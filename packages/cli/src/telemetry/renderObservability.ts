@@ -47,6 +47,7 @@ export function renderObservabilityTelemetryPayload(
     captureCompositionElementTags: capture.compositionElementTags,
     captureArollVideoCount: capture.arollVideoCount,
     captureHeygenVideoCount: capture.heygenVideoCount,
+    captureAdaptersUsed: capture.adaptersUsed,
     captureDeShortBand: capture.deShortBand,
     captureDeParallelRouter: capture.deParallelRouter,
     captureDeGpuRenderer: capture.deGpuRenderer,

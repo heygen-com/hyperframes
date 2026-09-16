@@ -519,6 +519,8 @@ export interface RenderPerfSummary {
     arollVideoCount?: number;
     /** `<video data-media-source="heygen">` elements from the same static scan. Only set when compositionElementCountSource is "static". */
     heygenVideoCount?: number;
+    /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`) — live+static union, always set (possibly empty). */
+    adaptersUsed?: readonly string[];
     /** Short-comp band attribution: "applied" | "skipped_elements" | "unmeasured"; unset when the frame count made the band irrelevant. */
     shortBand?: "applied" | "skipped_elements" | "unmeasured";
     /** DE parallel-router outcome: "routed" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". Mutually exclusive with workerInversion. */
@@ -1572,6 +1574,126 @@ export async function resolveCompositionElementCount(
     arollVideoCount: scan.arollVideoCount,
     heygenVideoCount: scan.heygenVideoCount,
   };
+}
+
+/**
+ * All 12 real runtime adapters registered by `runtime/init.ts`, including the
+ * map/data-source ones (d3/leaflet/mapbox/maplibre/google-maps) alongside animation ones.
+ */
+const KNOWN_RUNTIME_ADAPTERS = [
+  "animejs",
+  "css",
+  "d3",
+  "google-maps",
+  "gsap",
+  "leaflet",
+  "lottie",
+  "mapbox",
+  "maplibre",
+  "three",
+  "typegpu",
+  "waapi",
+] as const;
+
+export type RuntimeAdapterName = (typeof KNOWN_RUNTIME_ADAPTERS)[number];
+
+/**
+ * Static, authoring-time signature per adapter. Most match the adapter's own
+ * `window.__hf<Name>` registration token; gsap/three/css/waapi match a library-specific shape.
+ */
+const ADAPTER_STATIC_SIGNATURES: Readonly<Record<RuntimeAdapterName, RegExp>> = {
+  animejs: /\b__hfAnime\b/,
+  css: /@keyframes\s+[\w-]/,
+  d3: /\b__hfD3\b/,
+  "google-maps": /\b__hfGoogleMaps\b/,
+  gsap: /\bgsap\.(timeline|to|from|fromTo|set)\s*\(/,
+  leaflet: /\b__hfLeaflet\b/,
+  lottie: /\b__hfLottie\b/,
+  mapbox: /\b__hfMapbox\b/,
+  maplibre: /\b__hfMaplibre\b/,
+  three:
+    /\bwindow\.THREE\b|\bTHREE\.(Scene|WebGLRenderer|PerspectiveCamera|DefaultLoadingManager)\b/,
+  typegpu: /\bdata-requires-webgpu\b|\b__hfTypegpuTime\b/,
+  waapi: /\.animate\s*\(\s*\[/,
+};
+
+/**
+ * Static regex fallback for `resolveAdaptersUsed` — the sole signal with no probe session.
+ * Scans inline `<script>` bodies too, unlike `scanElementTags`, which strips them.
+ */
+export function detectAdaptersStatic(html: string): RuntimeAdapterName[] {
+  return KNOWN_RUNTIME_ADAPTERS.filter((name) => ADAPTER_STATIC_SIGNATURES[name].test(html));
+}
+
+/**
+ * Live-DOM probe body for `resolveAdaptersUsed`. Self-contained since `page.evaluate` serializes it.
+ * css/waapi split verified against `runtime/adapters/css.ts` (happy-dom can't exercise it here).
+ */
+function probeAdaptersUsed(): string[] {
+  const used: string[] = [];
+  const w = window as unknown as Record<string, unknown>;
+  const isNonEmptyArray = (value: unknown): boolean => Array.isArray(value) && value.length > 0;
+  // Libraries the adapter auto-detects from their own global.
+  if (typeof w.gsap !== "undefined") used.push("gsap");
+  if (typeof w.THREE !== "undefined") used.push("three");
+  // Adapters whose authoring convention is to push each instance onto a
+  // `window.__hf<Name>` registration array.
+  if (isNonEmptyArray(w.__hfAnime)) used.push("animejs");
+  if (isNonEmptyArray(w.__hfD3)) used.push("d3");
+  if (isNonEmptyArray(w.__hfGoogleMaps)) used.push("google-maps");
+  if (isNonEmptyArray(w.__hfLeaflet)) used.push("leaflet");
+  if (isNonEmptyArray(w.__hfLottie)) used.push("lottie");
+  if (isNonEmptyArray(w.__hfMapbox)) used.push("mapbox");
+  if (isNonEmptyArray(w.__hfMaplibre)) used.push("maplibre");
+  // typegpu registers a scalar clock rather than an instance array.
+  if (
+    typeof w.__hfTypegpuTime === "number" ||
+    document.querySelector("[data-composition-id][data-requires-webgpu]")
+  ) {
+    used.push("typegpu");
+  }
+  let liveAnimations: Animation[] = [];
+  try {
+    if (typeof document.getAnimations === "function") liveAnimations = document.getAnimations();
+  } catch {
+    // Detached or mid-navigation document — leave the list empty so the
+    // adapters resolved above are still reported.
+  }
+  // The real "css" adapter only discovers @keyframes-driven animations, never
+  // CSS `transition:` — a `CSSTransition` instance is neither adapter-managed
+  // "css" nor an imperative "waapi" call, so it is excluded from both.
+  const isKeyframesCss = (animation: Animation): boolean =>
+    typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation;
+  const isTransition = (animation: Animation): boolean =>
+    typeof CSSTransition !== "undefined" && animation instanceof CSSTransition;
+  if (liveAnimations.some(isKeyframesCss)) used.push("css");
+  if (liveAnimations.some((animation) => !isKeyframesCss(animation) && !isTransition(animation))) {
+    used.push("waapi");
+  }
+  return used;
+}
+
+/**
+ * Runtime adapters a composition exercises. Unlike `resolveCompositionElementCount`
+ * (one source of truth, for gating), this is observational: unions live + static every render.
+ */
+export async function resolveAdaptersUsed(
+  probeSession: Pick<CaptureSession, "isInitialized" | "page"> | null,
+  html: string,
+): Promise<readonly RuntimeAdapterName[]> {
+  const staticAdapters = detectAdaptersStatic(html);
+  if (!probeSession?.isInitialized) return staticAdapters;
+  try {
+    const live = await probeSession.page.evaluate(probeAdaptersUsed);
+    if (!Array.isArray(live)) return staticAdapters;
+    const detected = new Set<string>([...staticAdapters, ...live]);
+    return KNOWN_RUNTIME_ADAPTERS.filter((name) => detected.has(name));
+  } catch {
+    // Probe page evaluate can fail (navigation mid-flight, detached frame,
+    // page crash) — fall back to the static-only signal rather than block
+    // the render on a purely observational telemetry probe.
+    return staticAdapters;
+  }
 }
 
 /**
@@ -3011,6 +3133,7 @@ async function executeRenderPipeline(input: {
       arollVideoCount,
       heygenVideoCount,
     } = await resolveCompositionElementCount(probeSession, compiled.html);
+    const adaptersUsed = await resolveAdaptersUsed(probeSession, compiled.html);
     // HF_DE_SHORT_MAX_ELEMENTS=0 is the documented kill switch (symmetric
     // with HF_DE_SHORT_MIN_FRAMES=0, which disables via the predicate's own
     // minFrames > 0 guard). Gated explicitly here too — without it, a fired
@@ -3356,6 +3479,7 @@ async function executeRenderPipeline(input: {
       compositionElementTags,
       arollVideoCount,
       heygenVideoCount,
+      adaptersUsed,
       deShortBand,
       // Same rationale as the counters above: carried on live capture
       // observability, not only the success-path perfSummary, so a crash /
@@ -4269,6 +4393,7 @@ async function executeRenderPipeline(input: {
         compositionElementTags,
         arollVideoCount,
         heygenVideoCount,
+        adaptersUsed,
         shortBand: deShortBand,
         parallelRouter: deParallelRouter,
         preRouterWorkers: deParallelRouter ? preRoutingWorkerCount : undefined,

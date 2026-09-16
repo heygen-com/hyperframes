@@ -78,6 +78,7 @@ export interface RenderObservabilityTelemetryPayload {
   captureCompositionElementTags?: Readonly<Record<string, number>>;
   captureArollVideoCount?: number;
   captureHeygenVideoCount?: number;
+  captureAdaptersUsed?: readonly string[];
   captureDeShortBand?: string;
   captureDeParallelRouter?: string;
   captureDeGpuRenderer?: string;
@@ -143,6 +144,7 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     composition_element_tags: props.captureCompositionElementTags,
     aroll_video_count: props.captureArollVideoCount,
     heygen_video_count: props.captureHeygenVideoCount,
+    adapters_used: props.captureAdaptersUsed,
     de_short_band: props.captureDeShortBand,
     de_parallel_router: props.captureDeParallelRouter,
     gpu_renderer: props.captureDeGpuRenderer,
@@ -309,6 +311,7 @@ export function trackRenderComplete(
     compositionElementTags?: Readonly<Record<string, number>>;
     arollVideoCount?: number;
     heygenVideoCount?: number;
+    adaptersUsed?: readonly string[];
     deShortBand?: string;
     deParallelRouter?: string;
     dePreRouterWorkers?: number;
@@ -417,6 +420,7 @@ export function trackRenderComplete(
       composition_element_tags: props.compositionElementTags,
       aroll_video_count: props.arollVideoCount,
       heygen_video_count: props.heygenVideoCount,
+      adapters_used: props.adaptersUsed,
       de_short_band: props.deShortBand,
       de_parallel_router: props.deParallelRouter,
       de_pre_router_workers: props.dePreRouterWorkers,

@@ -46,6 +46,8 @@ import {
   isDeParallelRouterEnabled,
   mergeWorkerInitObservability,
   resolveCompositionElementCount,
+  detectAdaptersStatic,
+  resolveAdaptersUsed,
   resolveDeShortBand,
   shouldClampDefaultDrawElement,
   shouldPreferParallelDrawElement,
@@ -2311,6 +2313,112 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(result).not.toHaveProperty("byTag");
       expect(result).not.toHaveProperty("arollVideoCount");
       expect(result).not.toHaveProperty("heygenVideoCount");
+    });
+  });
+
+  describe("detectAdaptersStatic", () => {
+    it("returns empty for a composition using no tracked adapter", () => {
+      expect(detectAdaptersStatic("<div><span>hello</span></div>")).toEqual([]);
+    });
+
+    it("detects gsap from a timeline call, not a bare mention", () => {
+      expect(detectAdaptersStatic("<script>const gsap = 1;</script>")).toEqual([]);
+      expect(detectAdaptersStatic("<script>gsap.timeline().to('.a', {x:1});</script>")).toEqual([
+        "gsap",
+      ]);
+    });
+
+    it("detects the __hf<Name> registration token for each array-registered adapter", () => {
+      expect(detectAdaptersStatic("<script>window.__hfLottie.push(anim);</script>")).toEqual([
+        "lottie",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfAnime.push(tl);</script>")).toEqual([
+        "animejs",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfD3 = [t];</script>")).toEqual(["d3"]);
+      expect(detectAdaptersStatic("<script>window.__hfLeaflet.push(m);</script>")).toEqual([
+        "leaflet",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfMapbox.push(m);</script>")).toEqual([
+        "mapbox",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfMaplibre.push(m);</script>")).toEqual([
+        "maplibre",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfGoogleMaps.push(m);</script>")).toEqual([
+        "google-maps",
+      ]);
+    });
+
+    it("detects three from a THREE global reference", () => {
+      expect(
+        detectAdaptersStatic("<script>const mgr = THREE.DefaultLoadingManager;</script>"),
+      ).toEqual(["three"]);
+    });
+
+    it("detects typegpu from the data-requires-webgpu authoring attribute", () => {
+      expect(
+        detectAdaptersStatic('<div data-composition-id="a" data-requires-webgpu></div>'),
+      ).toEqual(["typegpu"]);
+    });
+
+    it("detects css from an authored @keyframes rule", () => {
+      expect(detectAdaptersStatic("<style>@keyframes spin { to { opacity: 1; } }</style>")).toEqual(
+        ["css"],
+      );
+    });
+
+    it("detects waapi from an element.animate keyframe-array call", () => {
+      expect(
+        detectAdaptersStatic("<script>el.animate([{opacity:0},{opacity:1}], 500);</script>"),
+      ).toEqual(["waapi"]);
+    });
+
+    it("reports multiple adapters in KNOWN_RUNTIME_ADAPTERS order, not detection order", () => {
+      const html = "<script>gsap.timeline();window.__hfLottie.push(a);window.__hfD3=[t];</script>";
+      expect(detectAdaptersStatic(html)).toEqual(["d3", "gsap", "lottie"]);
+    });
+  });
+
+  describe("resolveAdaptersUsed", () => {
+    it("falls back to the static scan when there is no probe session", async () => {
+      const html = "<script>gsap.timeline();</script>";
+      expect(await resolveAdaptersUsed(null, html)).toEqual(["gsap"]);
+    });
+
+    it("falls back to the static scan when the probe session is not yet initialized", async () => {
+      const session = { isInitialized: false, page: { evaluate: async () => ["three"] } };
+      const html = "<script>gsap.timeline();</script>";
+      expect(await resolveAdaptersUsed(session, html)).toEqual(["gsap"]);
+    });
+
+    it("unions the live probe result with the static scan, deduped and canonically ordered", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => ["three", "lottie"] } };
+      const html = "<script>gsap.timeline();window.__hfLottie.push(a);</script>";
+      expect(await resolveAdaptersUsed(session, html)).toEqual(["gsap", "lottie", "three"]);
+    });
+
+    it("falls back to the static scan when page.evaluate throws", async () => {
+      const session = {
+        isInitialized: true,
+        page: {
+          evaluate: async () => {
+            throw new Error("Execution context was destroyed");
+          },
+        },
+      };
+      const html = "<script>gsap.timeline();</script>";
+      expect(await resolveAdaptersUsed(session, html)).toEqual(["gsap"]);
+    });
+
+    it("ignores unknown values the live probe might return", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => ["gsap", "bogus"] } };
+      expect(await resolveAdaptersUsed(session, "<div></div>")).toEqual(["gsap"]);
+    });
+
+    it("reports an empty list — not absent — when nothing is detected", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => [] } };
+      expect(await resolveAdaptersUsed(session, "<div></div>")).toEqual([]);
     });
   });
 

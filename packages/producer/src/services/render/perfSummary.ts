@@ -96,6 +96,8 @@ export interface DrawElementPerfInput {
   arollVideoCount?: number;
   /** `<video data-media-source="heygen">` count from the same static scan; only set when compositionElementCountSource is "static". */
   heygenVideoCount?: number;
+  /** Runtime adapters exercised (live+static union); always set (possibly empty). */
+  adaptersUsed?: readonly string[];
   /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
   shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
@@ -144,6 +146,7 @@ function aggregateDrawElement(
     compositionElementTags: de.compositionElementTags,
     arollVideoCount: de.arollVideoCount,
     heygenVideoCount: de.heygenVideoCount,
+    adaptersUsed: de.adaptersUsed,
     shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,

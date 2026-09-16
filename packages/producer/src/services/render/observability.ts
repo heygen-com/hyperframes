@@ -117,6 +117,8 @@ export interface RenderCaptureObservability {
    * provider. Only set when `compositionElementCountSource` is "static".
    */
   heygenVideoCount?: number;
+  /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`) — live+static union, always set. */
+  adaptersUsed?: readonly string[];
   /**
    * Short-comp band decision, emitted only when the band is DECISIVE — every
    * other inversion-eligibility condition passed and only the floor (250 vs

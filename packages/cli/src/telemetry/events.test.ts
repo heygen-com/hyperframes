@@ -366,6 +366,42 @@ describe("render telemetry events", () => {
     expect(props.gif_fps_capped).toBeUndefined();
   });
 
+  it("names the runtime adapters a render exercised", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      adaptersUsed: ["gsap", "three"],
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.adapters_used).toEqual(["gsap", "three"]);
+  });
+
+  // adaptersUsed is a live+static UNION with no gating role (unlike
+  // compositionElementCount), so "no adapter detected" is a real measurement
+  // and must be reported as one: an absent property is indistinguishable from
+  // an older CLI that never sent it.
+  it("reports an empty adapter list rather than dropping the property", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      adaptersUsed: [],
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.adapters_used).toEqual([]);
+  });
+
+  it("omits adapters_used entirely when the caller never resolved it", () => {
+    trackRenderComplete({ durationMs: 1000, fps: 30, quality: "high", docker: false, gpu: false });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.adapters_used).toBeUndefined();
+  });
+
   it("flushes immediately after render_complete and render_error (exit races the lazy flush)", () => {
     trackRenderComplete({ durationMs: 1000, fps: 30, quality: "draft", docker: false, gpu: false });
     expect(flush).toHaveBeenCalledTimes(1);
