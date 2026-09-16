@@ -41,7 +41,7 @@ import { redactKnownPaths, redactTelemetryString } from "@hyperframes/core";
 const AUDIO_DURATION_TOLERANCE_SECONDS = 0.001;
 
 /** Delivery headroom applied after every AAC encode in this stage. */
-export const AAC_DELIVERY_TRUE_PEAK_DBFS = -1;
+const AAC_DELIVERY_TRUE_PEAK_DBFS = -1;
 const AAC_TRUE_PEAK_CORRECTION_HEADROOM_DB = 0.5;
 const MAX_TRUE_PEAK_CORRECTION_PASSES = 3;
 

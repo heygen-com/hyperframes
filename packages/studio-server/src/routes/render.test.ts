@@ -728,3 +728,152 @@ describe("POST /projects/:id/render — variables forwarding", () => {
     }
   });
 });
+
+describe("render route disposal", () => {
+  it("cancels and awaits every active render before resolving", async () => {
+    let finishRender!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      finishRender = resolve;
+    });
+    const cancel = vi.fn();
+    const spy = vi.fn();
+    const { adapter, rendersDir } = createAdapter(spy);
+    adapter.startRender = (opts) =>
+      ({
+        id: opts.jobId,
+        status: "rendering",
+        progress: 0,
+        outputPath: opts.outputPath,
+        cancel,
+        completion,
+      }) as ReturnType<StudioApiAdapter["startRender"]>;
+    const app = new Hono();
+    const routes = registerRenderRoutes(app, adapter);
+    try {
+      const started = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4" }),
+      });
+      expect(started.status).toBe(200);
+
+      let disposed = false;
+      const disposal = routes.dispose().then(() => {
+        disposed = true;
+      });
+      // A macrotask, not a microtask: disposal that forgot to await the
+      // render's completion would settle within the microtask queue, and a
+      // single `await Promise.resolve()` could not tell the two apart.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(disposed).toBe(false);
+
+      finishRender();
+      await disposal;
+      expect(disposed).toBe(true);
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a render request after disposal begins", async () => {
+    const spy = vi.fn();
+    const { adapter, rendersDir } = createAdapter(spy);
+    const app = new Hono();
+    const routes = registerRenderRoutes(app, adapter);
+    try {
+      await routes.dispose();
+      const response = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4" }),
+      });
+
+      expect(response.status).toBe(503);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a render whose request was in flight when disposal began", async () => {
+    // The handler awaits project resolution before it can start the render.
+    // Disposal that begins inside that await must still win: the first
+    // shutting-down check already passed, so only the re-check before
+    // startRender stands between dispose() and an unowned render.
+    let releaseProject!: () => void;
+    const projectGate = new Promise<void>((resolve) => {
+      releaseProject = resolve;
+    });
+    const spy = vi.fn();
+    const { adapter, rendersDir } = createAdapter(spy);
+    const originalResolveProject = adapter.resolveProject;
+    adapter.resolveProject = async (id) => {
+      await projectGate;
+      return originalResolveProject(id);
+    };
+    const app = new Hono();
+    const routes = registerRenderRoutes(app, adapter);
+    try {
+      const pending = app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4" }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const disposal = routes.dispose();
+      releaseProject();
+
+      const response = await pending;
+      await disposal;
+      expect(response.status).toBe(503);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
+  it("awaits a cancelled job whose resource cleanup is still running", async () => {
+    let finishRender!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      finishRender = resolve;
+    });
+    const cancel = vi.fn();
+    const spy = vi.fn();
+    const { adapter, rendersDir } = createAdapter(spy);
+    adapter.startRender = (opts) =>
+      ({
+        id: opts.jobId,
+        status: "cancelled",
+        progress: 0,
+        outputPath: opts.outputPath,
+        cancel,
+        completion,
+      }) as ReturnType<StudioApiAdapter["startRender"]>;
+    const app = new Hono();
+    const routes = registerRenderRoutes(app, adapter);
+    try {
+      const started = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4" }),
+      });
+      expect(started.status).toBe(200);
+
+      let disposed = false;
+      const disposal = routes.dispose().then(() => {
+        disposed = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(cancel).not.toHaveBeenCalled();
+      expect(disposed).toBe(false);
+      finishRender();
+      await disposal;
+      expect(disposed).toBe(true);
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+});

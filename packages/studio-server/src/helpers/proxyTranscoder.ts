@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 import { probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
@@ -291,6 +292,7 @@ function ensureHdrFilters(ffmpegPath: string): Promise<void> {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
+    trackChildProcess(proc);
     let stdout = "";
     proc.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -414,6 +416,11 @@ async function runFfmpeg(
       killSignal: "SIGKILL",
       windowsHide: true,
     });
+    // The timeout above is a parent-side timer: it dies with the parent. The
+    // shared tracker is what stops a minutes-long transcode from outliving a
+    // Ctrl+C on the preview server, and what lets a later run recover one
+    // that survived a crash.
+    trackChildProcess(proc, { kind: "ffmpeg" });
     let stderrTail = "";
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_MAX_CHARS);

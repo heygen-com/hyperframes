@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { extname } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 
 export interface FfprobeRunResult {
   status: number | null;
@@ -25,7 +26,7 @@ export type FfprobeRunner = (
  * (mirrors `execFileAsync` in packages/lint/src/hevcPreviewLint.ts). */
 const execFileRunner: FfprobeRunner = (command, args, options) =>
   new Promise<FfprobeRunResult>((resolvePromise) => {
-    execFile(
+    const proc = execFile(
       command,
       args,
       { timeout: options?.timeout, maxBuffer: options?.maxBuffer, windowsHide: true },
@@ -44,6 +45,7 @@ const execFileRunner: FfprobeRunner = (command, args, options) =>
         resolvePromise({ status: 0, stdout: stdout ?? "", stderr: stderr ?? "" });
       },
     );
+    trackChildProcess(proc);
   });
 
 export type MediaDynamicRange = "hdr" | "sdr" | "unknown";

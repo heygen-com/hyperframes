@@ -157,6 +157,14 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/store/groupLevels.ts",
     "#3454 deliberately removes group level-meter state",
   ],
+  [
+    "packages/engine/src/utils/processTracker.ts",
+    "moved to packages/parsers/src/processTracker.ts (@hyperframes/parsers/process-tracker) so studio-server can share one tracker instance without an engine dependency; the engine re-exports it, and the rewrite is too large for git to pair as a rename",
+  ],
+  [
+    "packages/engine/src/utils/processTracker.test.ts",
+    "moved to packages/parsers/src/processTracker.test.ts alongside the tracker module it covers",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

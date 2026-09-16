@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { spawn } from "node:child_process";
+import { describe, it, expect, vi } from "vitest";
+import { execFileSync, spawn } from "node:child_process";
 import {
   isProcessDescendant,
+  killOwnedOrphanedFfmpegProcesses,
   killProcessTree,
   killOrphanedProcesses,
   processIdentity,
@@ -72,7 +73,171 @@ describe("process-tree ownership", () => {
   });
 });
 
+describe("owned FFmpeg orphan cleanup", () => {
+  it("kills only the ownership-verified PID list", () => {
+    const kill = vi.fn();
+    const records = [
+      { pid: 41, identity: "linux:one" },
+      { pid: 42, identity: "linux:two" },
+    ];
+
+    expect(
+      killOwnedOrphanedFfmpegProcesses(
+        records,
+        kill,
+        (pid) => records.find((record) => record.pid === pid)?.identity ?? null,
+      ),
+    ).toBe(2);
+    expect(kill.mock.calls.map(([pid]) => pid)).toEqual([41, 42]);
+    expect(kill.mock.calls.every(([, , stillOwned]) => stillOwned())).toBe(true);
+  });
+
+  it("does not kill when the PID birth identity changed after discovery", () => {
+    const kill = vi.fn();
+
+    expect(
+      killOwnedOrphanedFfmpegProcesses(
+        [{ pid: 41, identity: "linux:original" }],
+        kill,
+        () => "linux:reused",
+      ),
+    ).toBe(0);
+    expect(kill).not.toHaveBeenCalled();
+  });
+});
+
+// These run the REAL killProcessTree against a live child. The identity fake
+// stands in for the OS handing the recorded PID to an unrelated process: it
+// returns the recorded birth identity at discovery time and a different one
+// afterwards, exactly as `processIdentity` would once the PID is recycled.
+// The child must survive — a kill that reaches it means a revalidation is gone.
+describe.skipIf(!IS_UNIX)("owned FFmpeg orphan cleanup — PID reuse with the real kill path", () => {
+  function isAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  it("does not signal a PID whose identity changed between discovery and kill", async () => {
+    const proc = spawn("sleep", ["60"], { stdio: "ignore" });
+    const closed = new Promise<void>((resolve) => proc.on("close", () => resolve()));
+    const pid = proc.pid!;
+    const identity = processIdentity(pid);
+    expect(identity).not.toBeNull();
+    try {
+      let lookups = 0;
+      const identityForPid = () => (++lookups === 1 ? identity : `${identity}:recycled`);
+
+      killOwnedOrphanedFfmpegProcesses(
+        [{ pid, identity: identity! }],
+        killProcessTree,
+        identityForPid,
+      );
+
+      // Longer than the 500 ms SIGKILL grace so a skipped escalation counts too.
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      expect(lookups).toBeGreaterThanOrEqual(2);
+      expect(isAlive(pid)).toBe(true);
+    } finally {
+      proc.kill("SIGKILL");
+      await closed;
+    }
+  }, 5000);
+
+  it("does not escalate to SIGKILL when ownership is lost during the grace period", async () => {
+    // Ignores SIGTERM so only the escalation could end it.
+    const proc = spawn("bash", ["-c", "trap '' TERM; sleep 60"], { stdio: "ignore" });
+    const closed = new Promise<void>((resolve) => proc.on("close", () => resolve()));
+    const pid = proc.pid!;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const identity = processIdentity(pid);
+    expect(identity).not.toBeNull();
+    try {
+      let owned = true;
+      let lookupsAfterLoss = 0;
+      const identityForPid = () => {
+        if (!owned) lookupsAfterLoss++;
+        return owned ? identity : `${identity}:recycled`;
+      };
+
+      killOwnedOrphanedFfmpegProcesses(
+        [{ pid, identity: identity! }],
+        killProcessTree,
+        identityForPid,
+      );
+      expect(isAlive(pid)).toBe(true);
+      // The PID is handed to someone else before the grace period elapses.
+      owned = false;
+
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      // Proves the escalation timer ran and revalidated — a still-alive child
+      // is not just a timer that has yet to fire.
+      expect(lookupsAfterLoss).toBeGreaterThanOrEqual(1);
+      expect(isAlive(pid)).toBe(true);
+    } finally {
+      killProcessTree(pid, "SIGKILL");
+      await closed;
+    }
+  }, 5000);
+});
+
 describe.skipIf(!IS_UNIX)("killProcessTree", () => {
+  it("does not escalate to SIGKILL on a descendant whose PID was recycled during the grace", async () => {
+    // Root and descendant both ignore SIGTERM, so only the escalation can end
+    // either. The root stays owned; the descendant's identity changes once the
+    // SIGTERM pass has run, standing in for a child that exited and had its PID
+    // handed to an unrelated process before the SIGKILL timer fired.
+    const parent = spawn(
+      "bash",
+      ["-c", "trap '' TERM; bash -c 'trap \"\" TERM; exec sleep 60' & wait"],
+      { stdio: "ignore" },
+    );
+    const parentClosed = new Promise<void>((resolve) => parent.on("close", () => resolve()));
+    let child: number | undefined;
+    try {
+      await new Promise((r) => setTimeout(r, 200));
+      const children = execFileSync("pgrep", ["-P", String(parent.pid)], { encoding: "utf8" })
+        .trim()
+        .split("\n")
+        .map(Number);
+      expect(children).toHaveLength(1);
+      child = children[0]!;
+      const descendant = child;
+      let recycled = false;
+      let childLookupsAfterRecycle = 0;
+      const identityForPid = (pid: number) => {
+        const real = processIdentity(pid);
+        if (pid !== descendant || !recycled) return real;
+        childLookupsAfterRecycle++;
+        return `${real}:recycled`;
+      };
+
+      killProcessTree(parent.pid!, "SIGTERM", () => true, identityForPid);
+      recycled = true;
+
+      // The root was still owned, so its SIGKILL is what closes it.
+      await parentClosed;
+      // The escalation timer re-checked the descendant through the same oracle
+      // (a re-check through a different lookup would leave this at 0) ...
+      expect(childLookupsAfterRecycle).toBeGreaterThanOrEqual(1);
+      // ... and acted on the answer: the descendant was not signalled.
+      expect(() => process.kill(descendant, 0)).not.toThrow();
+    } finally {
+      if (child !== undefined) {
+        try {
+          process.kill(child, "SIGKILL");
+        } catch {
+          // Already gone — which is the failure the assertion above reports.
+        }
+      }
+      parent.kill("SIGKILL");
+      await parentClosed;
+    }
+  }, 5000);
+
   it("kills a process and all its children", async () => {
     // Spawn a parent that spawns two sleeping children
     const parent = spawn("bash", ["-c", "sleep 60 & sleep 60 & wait"], {

@@ -47,6 +47,7 @@ import { trackInitTemplate } from "../telemetry/events.js";
 import { DEFAULT_MODEL, hasFFmpeg } from "../whisper/manager.js";
 import { initialModelForLanguage } from "../whisper/transcribe.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 import { VERSION } from "../version.js";
 import {
   CANVAS_DIMENSIONS,
@@ -203,8 +204,13 @@ function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean>
         "-y",
         outputPath,
       ],
-      { stdio: "pipe" },
+      // Nothing reads the child's stdio; piping it would let ffmpeg's stderr
+      // progress fill the pipe and block the encoder after a few minutes.
+      { stdio: "ignore" },
     );
+    // A minutes-long encoder on the first-run path: register it so a later
+    // run can recover it if this process dies before it finishes.
+    trackChildProcess(child, { kind: "ffmpeg" });
 
     child.on("close", (code) => resolvePromise(code === 0));
     child.on("error", () => resolvePromise(false));

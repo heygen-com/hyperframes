@@ -106,6 +106,12 @@
       "import": "./src/ffBinaries.ts",
       "types": "./src/ffBinaries.ts"
     },
+    "./process-tracker": {
+      "bun": "./src/processTracker.ts",
+      "node": "./dist/processTracker.js",
+      "import": "./src/processTracker.ts",
+      "types": "./src/processTracker.ts"
+    },
     "./asset-resolution": {
       "bun": "./src/assetResolution.ts",
       "node": "./dist/assetResolution.js",
@@ -176,6 +182,10 @@
       "./ff-binaries": {
         "import": "./dist/ffBinaries.js",
         "types": "./dist/ffBinaries.d.ts"
+      },
+      "./process-tracker": {
+        "import": "./dist/processTracker.js",
+        "types": "./dist/processTracker.d.ts"
       },
       "./asset-resolution": {
         "import": "./dist/assetResolution.js",

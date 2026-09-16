@@ -313,6 +313,8 @@ export interface StudioServerOptions {
 export interface StudioServer {
   app: Hono;
   watcher: ProjectWatcher;
+  /** Cancel and await every render owned by this server. */
+  dispose(): Promise<void>;
   /** Exposed for tests: the adapter handed to the shared studio API (carries
    * the resolved `autoProxy` flag the preview routes read). */
   adapter: PreviewApiAdapter;
@@ -480,7 +482,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
       // Run render asynchronously, mutating the state object
       const startTime = Date.now();
-      (async () => {
+      const completion = (async () => {
         let renderJob: RenderJob | undefined;
         const removeCancelledOutput = () => {
           // User-initiated cancel: not a failure. Remove any output so the
@@ -573,6 +575,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           }
         }
       })();
+      state.completion = completion;
 
       return state;
     },
@@ -995,5 +998,5 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return c.html(html, 200, { "Cache-Control": "no-cache" });
   });
 
-  return { app, watcher, adapter };
+  return { app, watcher, adapter, dispose: () => api.dispose() };
 }

@@ -1,18 +1,33 @@
 import { execFileSync, execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  findOwnedOrphanedFfmpegProcesses,
+  type OwnedFfmpegProcess,
+  processIdentity,
+  processParentPid,
+} from "@hyperframes/parsers/process-tracker";
+
+export { processIdentity };
 
 /**
- * Find and kill orphaned Chrome processes from previous crashed sessions.
+ * Find and kill orphaned Chrome and HyperFrames-owned FFmpeg processes from
+ * previous crashed sessions.
  * Targets both chrome-headless-shell (production/CI) and Google Chrome
  * launched by Puppeteer (dev mode). Puppeteer Chrome is identified by the
  * `puppeteer_dev_chrome_profile` marker in its user-data-dir argument.
  *
- * An orphan is a process whose PPID=1 (reparented to init/launchd after
+ * FFmpeg recovery additionally requires a private process-tracker record with
+ * a matching birth identity, so an unrelated same-user encoder is never
+ * selected by name. An orphan is a process whose PPID=1 (reparented to init/launchd after
  * its parent died). We kill the orphan's entire subtree so child helper
  * processes (GPU, renderer, network, etc.) are also cleaned up.
  *
  * Scoped to the current user via `pgrep -u` to avoid touching other
  * users' processes on shared machines.
+ *
+ * Inert on Windows (returns 0 without looking): both halves key on the POSIX
+ * PPID=1 reparenting signal, which Windows does not have, and the FFmpeg
+ * ownership registry is never written there. Windows relies solely on the
+ * in-process drain at shutdown.
  *
  * Returns the count of killed process trees.
  */
@@ -26,7 +41,30 @@ export function killOrphanedProcesses(): number {
   }
 
   killed += killOrphansByName("puppeteer_dev_chrome_profile");
+  killed += killOwnedOrphanedFfmpegProcesses();
 
+  return killed;
+}
+
+type IdentityLookup = (pid: number) => string | null;
+
+export function killOwnedOrphanedFfmpegProcesses(
+  records: OwnedFfmpegProcess[] = findOwnedOrphanedFfmpegProcesses(),
+  kill: (
+    pid: number,
+    signal?: NodeJS.Signals,
+    stillOwned?: () => boolean,
+    identityForPid?: IdentityLookup,
+  ) => void = killProcessTree,
+  identityForPid: IdentityLookup = processIdentity,
+): number {
+  let killed = 0;
+  for (const record of records) {
+    const stillOwned = () => identityForPid(record.pid) === record.identity;
+    if (!stillOwned()) continue;
+    kill(record.pid, "SIGTERM", stillOwned, identityForPid);
+    killed++;
+  }
   return killed;
 }
 
@@ -44,7 +82,13 @@ export function killOrphanedProcesses(): number {
  * ignore, and leaving a preview server alive is the worse failure here. Do not
  * pass SIGTERM expecting a clean shutdown on Windows.
  */
-export function killProcessTree(pid: number, signal: NodeJS.Signals = "SIGTERM"): void {
+export function killProcessTree(
+  pid: number,
+  signal: NodeJS.Signals = "SIGTERM",
+  stillOwned: () => boolean = () => true,
+  identityForPid: IdentityLookup = processIdentity,
+): void {
+  if (!stillOwned()) return;
   if (process.platform === "win32") {
     try {
       execFileSync("taskkill", windowsProcessTreeKillArgs(pid), {
@@ -60,8 +104,10 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = "SIGTERM")
 
   const descendants = getDescendants(pid);
   const allPids = [...descendants.reverse(), pid];
+  const identities = new Map(allPids.map((candidate) => [candidate, identityForPid(candidate)]));
 
   for (const p of allPids) {
+    if (!stillOwned()) return;
     try {
       process.kill(p, signal);
     } catch {
@@ -72,7 +118,12 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = "SIGTERM")
   // Escalate to SIGKILL after a short grace period for any survivors.
   if (signal !== "SIGKILL") {
     setTimeout(() => {
+      if (!stillOwned()) return;
       for (const p of allPids) {
+        // Per-PID re-check: a descendant that already exited can have had its
+        // PID handed to an unrelated process during the grace period.
+        const identity = identities.get(p);
+        if (!identity || identityForPid(p) !== identity) continue;
         try {
           process.kill(p, "SIGKILL");
         } catch {
@@ -87,84 +138,7 @@ export function windowsProcessTreeKillArgs(pid: number): string[] {
   return ["/PID", String(pid), "/T", "/F"];
 }
 
-/**
- * Return a process birth token suitable for detecting PID reuse. The token is
- * diagnostic state only: callers must still prove the live server is a
- * descendant before treating a saved wrapper as the owned process-tree root.
- */
-export function processIdentity(pid: number): string | null {
-  if (!Number.isInteger(pid) || pid <= 0) return null;
-  try {
-    if (process.platform === "win32") {
-      const created = execFileSync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue; if ($p) { $p.CreationDate.ToFileTimeUtc() }`,
-        ],
-        {
-          encoding: "utf8",
-          timeout: 2000,
-          stdio: ["pipe", "pipe", "ignore"],
-          windowsHide: true,
-        },
-      ).trim();
-      return created ? `windows:${created}` : null;
-    }
-
-    if (process.platform === "linux") {
-      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-      const fields = stat
-        .slice(stat.lastIndexOf(") ") + 2)
-        .trim()
-        .split(/\s+/);
-      const startTicks = fields[19]; // field 22 overall; fields starts at process state (3)
-      return startTicks ? `linux:${startTicks}` : null;
-    }
-
-    const started = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
-      encoding: "utf8",
-      timeout: 2000,
-    }).trim();
-    return started ? `posix:${started}` : null;
-  } catch {
-    return null;
-  }
-}
-
 type ParentPidLookup = (pid: number) => number | null;
-
-function processParentPid(pid: number): number | null {
-  try {
-    const output =
-      process.platform === "win32"
-        ? execFileSync(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue; if ($p) { $p.ParentProcessId }`,
-            ],
-            {
-              encoding: "utf8",
-              timeout: 2000,
-              stdio: ["pipe", "pipe", "ignore"],
-              windowsHide: true,
-            },
-          )
-        : execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], {
-            encoding: "utf8",
-            timeout: 2000,
-          });
-    const parentPid = Number(output.trim());
-    return Number.isInteger(parentPid) && parentPid > 0 ? parentPid : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Prove that `childPid` currently belongs to the process tree rooted at
@@ -254,13 +228,5 @@ function getUid(): string | null {
 }
 
 function isOrphan(pid: number): boolean {
-  try {
-    const ppid = execSync(`ps -p ${pid} -o ppid=`, {
-      encoding: "utf-8",
-      timeout: 2000,
-    }).trim();
-    return ppid === "1";
-  } catch {
-    return false;
-  }
+  return processParentPid(pid) === 1;
 }

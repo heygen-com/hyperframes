@@ -8,7 +8,7 @@
 
 import { spawn } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
-import { trackChildProcess } from "./processTracker.js";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 import {
   ManagedChildProcess,
   type ManagedProcessTerminationReason,
@@ -117,7 +117,7 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
   const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
-  trackChildProcess(ffmpeg);
+  trackChildProcess(ffmpeg, { kind: "ffmpeg" });
   const managed = new ManagedChildProcess(ffmpeg, {
     signal: opts?.signal,
     deadlineAtMs: Date.now() + timeout,

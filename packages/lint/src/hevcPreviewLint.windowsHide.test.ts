@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 
 const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn() }));
@@ -14,16 +15,13 @@ import { lintHevcPreviewCodec } from "./hevcPreviewLint.js";
 
 describe("HEVC preview probe options", () => {
   it("hides the ffprobe console window", async () => {
-    execFileMock.mockImplementation(
-      (
-        _command: string,
-        _args: string[],
-        _options: unknown,
-        callback: (...args: unknown[]) => void,
-      ) => {
-        callback(null, JSON.stringify({ streams: [{ codec_name: "hevc" }] }));
-      },
-    );
+    execFileMock.mockImplementation((...call: unknown[]) => {
+      const callback = call[3] as (...args: unknown[]) => void;
+      callback(null, JSON.stringify({ streams: [{ codec_name: "hevc" }] }));
+      // The real execFile returns the ChildProcess the runner registers with
+      // the process tracker.
+      return new EventEmitter();
+    });
 
     await lintHevcPreviewCodec(new Map([["/tmp/clip.mp4", "clip.mp4"]]));
 

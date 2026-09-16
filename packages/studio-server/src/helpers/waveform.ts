@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
@@ -78,12 +79,17 @@ export function decodeAudioPeaks(audioPath: string): Promise<number[]> {
       ],
       { stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
     );
+    trackChildProcess(proc, { kind: "ffmpeg" });
 
     const chunks: Buffer[] = [];
     proc.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
-    proc.on("close", (code) => {
-      if (code !== 0 && chunks.length === 0) {
-        reject(new Error(`ffmpeg exited with code ${code}`));
+    proc.on("close", (code, signal) => {
+      // Never accept partial output: the caller persists the peaks in a cache
+      // keyed only on the asset, so a decode cut short (drain SIGTERM at
+      // shutdown, ffmpeg exit 255 with samples already flushed) would be
+      // served as the asset's waveform on every later run.
+      if (code !== 0 || signal) {
+        reject(new Error(`ffmpeg exited with code ${code}${signal ? ` (${signal})` : ""}`));
         return;
       }
       const buf = Buffer.concat(chunks);

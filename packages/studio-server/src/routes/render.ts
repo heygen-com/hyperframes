@@ -9,15 +9,31 @@ import { resolveWithinProject } from "../helpers/safePath.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
+// Rejected both before project resolution and again after the awaits that
+// precede startRender; one definition keeps the two answers identical.
+const SHUTTING_DOWN_BODY = { error: "studio is shutting down" } as const;
+const SHUTTING_DOWN_STATUS = 503;
 
-export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
+export interface RenderRoutesHandle {
+  dispose(): Promise<void>;
+}
+
+interface StoredRenderJob {
+  state: RenderJobState;
+  createdAt: number;
+  finishedAt?: number;
+  pendingCompletion?: Promise<void>;
+}
+
+export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): RenderRoutesHandle {
   // Scoped job store — not shared across createStudioApi() calls
-  const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
+  const renderJobs = new Map<string, StoredRenderJob>();
 
   // TTL cleanup for completed jobs (5 minutes)
   const TTL_MS = 300_000;
   const CLEANUP_INTERVAL_MS = 60_000;
   let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  let disposalPromise: Promise<void> | null = null;
 
   const cleanupEnabled = () =>
     typeof process !== "undefined" &&
@@ -27,9 +43,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   const cleanupFinishedJobs = () => {
     const now = Date.now();
     for (const [key, job] of renderJobs) {
-      if (job.status !== "rendering" && now - job.createdAt > TTL_MS) {
-        renderJobs.delete(key);
-      }
+      if (job.state.status === "rendering" || job.pendingCompletion) continue;
+      job.finishedAt ??= now;
+      if (now - job.finishedAt > TTL_MS) renderJobs.delete(key);
     }
     if (renderJobs.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer);
@@ -45,10 +61,17 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     }
   };
 
+  const cancelRenderJob = (job: RenderJobState) => {
+    if (job.status !== "rendering") return;
+    job.status = "cancelled";
+    job.cancel?.();
+  };
+
   ensureCleanupTimer();
 
   // Start a render
   api.post("/projects/:id/render", async (c) => {
+    if (disposalPromise) return c.json(SHUTTING_DOWN_BODY, SHUTTING_DOWN_STATUS);
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
@@ -118,6 +141,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const ext = FORMAT_EXT[format] ?? ".mp4";
     const outputPath = join(rendersDir, `${jobId}${ext}`);
 
+    if (disposalPromise) return c.json(SHUTTING_DOWN_BODY, SHUTTING_DOWN_STATUS);
     const jobState = adapter.startRender({
       project,
       outputPath,
@@ -132,8 +156,19 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,
     });
-    (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
-    renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
+    const stored: StoredRenderJob = { state: jobState, createdAt: Date.now() };
+    if (jobState.completion) {
+      const completion = jobState.completion;
+      const clearCompletion = () => {
+        if (stored.pendingCompletion === completion) {
+          stored.pendingCompletion = undefined;
+          stored.finishedAt = Date.now();
+        }
+      };
+      stored.pendingCompletion = completion;
+      void completion.then(clearCompletion, clearCompletion);
+    }
+    renderJobs.set(jobId, stored);
 
     ensureCleanupTimer();
 
@@ -143,12 +178,12 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // SSE progress stream
   api.get("/render/:jobId/progress", (c) => {
     const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
+    const job = renderJobs.get(jobId)?.state;
     if (!job) return c.json({ error: "not found" }, 404);
 
     return streamSSE(c, async (stream) => {
       while (true) {
-        const current = renderJobs.get(jobId);
+        const current = renderJobs.get(jobId)?.state;
         if (!current) break;
         await stream.writeSSE({
           event: "progress",
@@ -169,12 +204,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // SSE stream terminates) and invokes the adapter's abort hook when present.
   api.post("/render/:jobId/cancel", (c) => {
     const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
+    const job = renderJobs.get(jobId)?.state;
     if (!job) return c.json({ error: "not found" }, 404);
-    if (job.status === "rendering") {
-      job.status = "cancelled";
-      job.cancel?.();
-    }
+    cancelRenderJob(job);
     return c.json({ status: job.status });
   });
 
@@ -194,7 +226,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/view", (c) => {
     const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
+    const job = renderJobs.get(jobId)?.state;
     if (!job?.outputPath || !existsSync(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
@@ -215,7 +247,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
+    const job = renderJobs.get(jobId)?.state;
     if (!job?.outputPath || !existsSync(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
@@ -233,7 +265,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // Delete render
   api.delete("/render/:jobId", (c) => {
     const { jobId } = c.req.param();
-    for (const [, state] of renderJobs) {
+    for (const { state } of renderJobs.values()) {
       if (state.id === jobId && state.outputPath) {
         const dir = state.outputPath.replace(/\/[^/]+$/, "");
         for (const ext of [".mp4", ".webm", ".mov", ".meta.json"]) {
@@ -317,14 +349,48 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     for (const file of files) {
       if (!renderJobs.has(file.id)) {
         renderJobs.set(file.id, {
-          id: file.id,
-          status: file.status,
-          progress: 100,
-          outputPath: join(rendersDir, file.filename),
+          state: {
+            id: file.id,
+            status: file.status,
+            progress: 100,
+            outputPath: join(rendersDir, file.filename),
+          },
           createdAt: file.createdAt,
-        } as RenderJobState & { createdAt: number });
+          finishedAt: file.createdAt,
+        });
       }
     }
     return c.json({ renders: files });
   });
+
+  const performDispose = async () => {
+    if (cleanupTimer) {
+      clearInterval(cleanupTimer);
+      cleanupTimer = null;
+    }
+    const jobs = [...renderJobs.values()];
+    const active = jobs.filter((job) => job.state.status === "rendering");
+    for (const job of active) {
+      try {
+        cancelRenderJob(job.state);
+      } catch {
+        // Continue cancelling and awaiting the remaining owned jobs.
+      }
+    }
+    await Promise.allSettled(
+      jobs
+        .map((job) => job.pendingCompletion)
+        .filter((completion): completion is Promise<void> => completion !== undefined),
+    );
+  };
+
+  return {
+    dispose() {
+      if (!disposalPromise) {
+        // Publish idempotency before a cancel hook can re-enter disposal.
+        disposalPromise = Promise.resolve().then(performDispose);
+      }
+      return disposalPromise;
+    },
+  };
 }
