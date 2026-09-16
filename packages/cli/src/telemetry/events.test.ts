@@ -366,6 +366,43 @@ describe("render telemetry events", () => {
     expect(props.gif_fps_capped).toBeUndefined();
   });
 
+  // Local-preflight toolchain majors; absent on Docker renders (the
+  // container runs its own preflight, never surfaced to the host CLI).
+  it("carries local toolchain majors on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      ffmpegVersionMajor: 7,
+      browserVersionMajor: 119,
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.ffmpeg_version_major).toBe(7);
+    expect(props.browser_version_major).toBe(119);
+  });
+
+  it("carries local toolchain majors on render_error", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "high",
+      docker: false,
+      ffmpegVersionMajor: 6,
+      browserVersionMajor: 118,
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.ffmpeg_version_major).toBe(6);
+    expect(props.browser_version_major).toBe(118);
+  });
+
+  it("omits toolchain majors on a Docker render", () => {
+    trackRenderComplete({ durationMs: 1, fps: 30, quality: "draft", docker: true, gpu: false });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.ffmpeg_version_major).toBeUndefined();
+    expect(props.browser_version_major).toBeUndefined();
+  });
+
   it("names the runtime adapters a render exercised", () => {
     trackRenderComplete({
       durationMs: 1000,

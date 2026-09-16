@@ -69,6 +69,7 @@ import {
   trackRenderError,
   trackRenderObservation,
   type RenderOutputShapeTelemetryPayload,
+  type RenderEnvironmentTelemetryPayload,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import {
@@ -422,6 +423,9 @@ export interface RenderOptions {
   gifLoop?: number;
   /** True when `createRenderPlan` clamped a requested `--fps` above 30 to 30 for `--format gif`. */
   gifFpsCapped?: boolean;
+  /** Major FFmpeg/Chrome version from local preflight (telemetry only); absent on Docker renders. */
+  ffmpegVersionMajor?: number;
+  browserVersionMajor?: number;
   workers?: number;
   gpu: boolean;
   /**
@@ -808,6 +812,7 @@ async function renderDocker(
       authoringSkill: options.authoringSkill,
       catalogUsage: options.catalogUsage,
       ...renderOutputShapeTelemetryPayload(options),
+      ...renderEnvironmentTelemetryPayload(options),
       ...getMemorySnapshot(),
     }),
   );
@@ -873,6 +878,11 @@ async function executeLocalRender(
     includeWindowsUnc: true,
     signal: cancellation.signal,
   });
+  options = {
+    ...options,
+    ffmpegVersionMajor: preflight.ffmpegVersionMajor,
+    browserVersionMajor: preflight.browserVersionMajor,
+  };
   cancellation.checkAncestors();
   cancellation.signal.throwIfAborted();
   const failedChecks = preflight.outcomes.filter((outcome) => !outcome.ok);
@@ -1106,6 +1116,16 @@ function renderOutputShapeTelemetryPayload(
     hdrMode: options.hdrMode,
     videoFrameFormat: options.videoFrameFormat,
     gifFpsCapped: options.gifFpsCapped,
+  };
+}
+
+/** Toolchain facts from local preflight; undefined on Docker renders (the container runs its own). */
+function renderEnvironmentTelemetryPayload(
+  options: RenderOptions,
+): RenderEnvironmentTelemetryPayload {
+  return {
+    ffmpegVersionMajor: options.ffmpegVersionMajor,
+    browserVersionMajor: options.browserVersionMajor,
   };
 }
 
@@ -1569,6 +1589,7 @@ function handleRenderError(
     errorMessage: message,
     failedStage,
     ...renderOutputShapeTelemetryPayload(options),
+    ...renderEnvironmentTelemetryPayload(options),
     // A bucketable failure taxonomy alongside the free-text error_message
     // above: error.name is one of ~20 typed producer error classes
     // (CaptureFailure, DrawElementCaptureError, SwiftShaderAssertionError, …);
@@ -1666,6 +1687,7 @@ function trackRenderMetrics(
     authoringSkill: options.authoringSkill,
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
+    ...renderEnvironmentTelemetryPayload(options),
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,

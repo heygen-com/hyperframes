@@ -207,6 +207,19 @@ function renderOutputShapeEventProperties(props: RenderOutputShapeTelemetryPaylo
   };
 }
 
+/** Local-preflight toolchain majors, shared by render_complete/render_error; absent on Docker renders. */
+export interface RenderEnvironmentTelemetryPayload {
+  ffmpegVersionMajor?: number;
+  browserVersionMajor?: number;
+}
+
+function renderEnvironmentEventProperties(props: RenderEnvironmentTelemetryPayload) {
+  return {
+    ffmpeg_version_major: props.ffmpegVersionMajor,
+    browser_version_major: props.browserVersionMajor,
+  };
+}
+
 function redactTelemetryMessage(value: string): string {
   return redactTelemetryString(value);
 }
@@ -396,7 +409,8 @@ export function trackRenderComplete(
     // triggered a studio render); defaults to the install anonymousId.
     distinctId?: string;
   } & RenderObservabilityTelemetryPayload &
-    RenderOutputShapeTelemetryPayload,
+    RenderOutputShapeTelemetryPayload &
+    RenderEnvironmentTelemetryPayload,
 ): void {
   trackEvent(
     "render_complete",
@@ -469,6 +483,7 @@ export function trackRenderComplete(
       ...powerStateFields(),
       source: props.source ?? "cli",
       ...renderOutputShapeEventProperties(props),
+      ...renderEnvironmentEventProperties(props),
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
       composition_height: props.compositionHeight,
@@ -535,7 +550,8 @@ export function trackRenderError(
     // triggered a studio render); defaults to the install anonymousId.
     distinctId?: string;
   } & RenderObservabilityTelemetryPayload &
-    RenderOutputShapeTelemetryPayload,
+    RenderOutputShapeTelemetryPayload &
+    RenderEnvironmentTelemetryPayload,
 ): void {
   trackEvent(
     "render_error",
@@ -553,6 +569,7 @@ export function trackRenderError(
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
       ...renderOutputShapeEventProperties(props),
+      ...renderEnvironmentEventProperties(props),
       peak_memory_mb: props.peakMemoryMb,
       memory_free_mb: props.memoryFreeMb,
       ...powerStateFields(),
