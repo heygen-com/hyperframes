@@ -30,7 +30,6 @@ import {
   createCaptureSession,
   createFrameReorderBuffer,
   crossfade,
-  initTransparentBackground,
   initializeSession,
 } from "@hyperframes/engine";
 import type { FileServerHandle } from "../../fileServer.js";
@@ -120,15 +119,17 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
   let shaderPool: ShaderTransitionWorkerPool | null = null;
   try {
     for (let w = 0; w < workerCount - 1; w++) {
+      // Same DOM-layer-over-HDR-backdrop session as domSession above — the
+      // composition root's own background must not paint over the HDR layer.
+      // initializeSession() applies this via clearCompositionRootBackground.
       const s = await createCaptureSession(
         fileServer.url,
         input.framesDir,
-        buildCaptureOptions(),
+        { ...buildCaptureOptions(), clearCompositionRootBackground: true },
         createRenderVideoFrameInjector(),
         cfg,
       );
       await initializeSession(s);
-      await initTransparentBackground(s.page);
       workerSessions.push(s);
     }
     const sessions: CaptureSession[] = [domSession, ...workerSessions];

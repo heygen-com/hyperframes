@@ -47,7 +47,6 @@ import {
   cloneCaptureWarnings,
   createCaptureSession,
   getEncoderPreset,
-  initTransparentBackground,
   initializeSession,
   spawnStreamingEncoder,
 } from "@hyperframes/engine";
@@ -205,10 +204,15 @@ export async function runCaptureHdrStage(
     compiledDir,
   });
 
+  // The HDR video layer is the backdrop for this DOM pass, so the composition
+  // root's own background must not paint over it — unlike a plain alpha export,
+  // where an authored root background is real content (see
+  // CaptureOptions.clearCompositionRootBackground). initializeSession() applies
+  // it, so no follow-up initTransparentBackground() call is needed here.
   const domSession = await createCaptureSession(
     fileServer.url,
     framesDir,
-    buildCaptureOptions(),
+    { ...buildCaptureOptions(), clearCompositionRootBackground: true },
     createRenderVideoFrameInjector(),
     hdrCfg,
   );
@@ -222,7 +226,6 @@ export async function runCaptureHdrStage(
     await initializeSession(domSession);
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
-    await initTransparentBackground(domSession.page);
 
     // ── Scene detection for shader transitions ──────────────────────────
     const transitionMeta: HdrTransitionMeta[] = await domSession.page.evaluate(() => {

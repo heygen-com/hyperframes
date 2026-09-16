@@ -13,6 +13,7 @@ import {
   injectVideoFramesBatch,
   syncVideoFrameVisibility,
   shouldDefaultCaptureBeyondViewport,
+  initTransparentBackground,
   DOM_LAYER_MASK_STYLE_ID,
 } from "./screenshotService.js";
 
@@ -172,6 +173,73 @@ describe("pageContentExceedsCaptureHeight", () => {
   it("is true when the page genuinely overflows the requested height", async () => {
     const page = makeFakePageWithScrollHeight(2007);
     await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(true);
+  });
+});
+
+describe("initTransparentBackground", () => {
+  // Fakes a Page whose evaluate() runs the given function directly against a
+  // real linkedom document (swapped into globalThis, mirroring the pattern
+  // used below for injectVideoFramesBatch), plus a CDP session stub so
+  // getCdpSession() resolves without a real page.createCDPSession() call.
+  function makeFakePageWithDom() {
+    const { document } = parseHTML("<html><body></body></html>");
+    const send = vi.fn().mockResolvedValue({});
+    const fakeSession = { send } as unknown as import("puppeteer-core").CDPSession;
+    const fakePage = {
+      evaluate: async (fn: (...args: never[]) => void, ...args: never[]) => fn(...args),
+    } as unknown as Page;
+    cdpSessionCache.set(fakePage, fakeSession);
+    const globals = globalThis as unknown as { document?: Document };
+    const previousDocument = globals.document;
+    globals.document = document;
+    return {
+      page: fakePage,
+      document,
+      send,
+      restore: () => {
+        globals.document = previousDocument;
+      },
+    };
+  }
+
+  it("clears only html/body when clearCompositionRoot is false — an authored composition-root background must survive", async () => {
+    const { page, document, send, restore } = makeFakePageWithDom();
+    try {
+      await initTransparentBackground(page, { clearCompositionRoot: false });
+      const style = document.getElementById("__hf_transparent_bg__");
+      expect(style?.textContent).toContain("html,body{");
+      expect(style?.textContent).not.toContain("[data-composition-id]");
+      expect(send).toHaveBeenCalledWith("Emulation.setDefaultBackgroundColorOverride", {
+        color: { r: 0, g: 0, b: 0, a: 0 },
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("also clears the composition root when clearCompositionRoot is true (HDR layered DOM pass)", async () => {
+    const { page, document, restore } = makeFakePageWithDom();
+    try {
+      await initTransparentBackground(page, { clearCompositionRoot: true });
+      const style = document.getElementById("__hf_transparent_bg__");
+      expect(style?.textContent).toContain("[data-composition-id]");
+    } finally {
+      restore();
+    }
+  });
+
+  it("a later call replaces the earlier call's rule instead of no-op'ing on the existing style element", async () => {
+    const { page, document, restore } = makeFakePageWithDom();
+    try {
+      await initTransparentBackground(page, { clearCompositionRoot: false });
+      await initTransparentBackground(page, { clearCompositionRoot: true });
+      expect(document.querySelectorAll('style[id="__hf_transparent_bg__"]').length).toBe(1);
+      expect(document.getElementById("__hf_transparent_bg__")?.textContent).toContain(
+        "[data-composition-id]",
+      );
+    } finally {
+      restore();
+    }
   });
 });
 
