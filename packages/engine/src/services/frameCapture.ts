@@ -12,6 +12,7 @@ import { type Browser, type Page, type Viewport, type ConsoleMessage } from "pup
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
+  quantizeSeekTime,
   quantizeTimeToFrame,
   fpsToNumber,
   resolveAuthoredTimingWindow,
@@ -19,6 +20,13 @@ import {
 } from "@hyperframes/core";
 
 import { DrawElementCaptureError } from "./drawElementCaptureError.js";
+import { encodePng } from "../utils/alphaBlit.js";
+import {
+  MotionBlurAccumulator,
+  motionBlurSampleTimes,
+  resolveMotionBlurPlan,
+  type MotionBlurPlan,
+} from "./motionBlur.js";
 
 // ── Extracted modules ───────────────────────────────────────────────────────
 import {
@@ -63,6 +71,7 @@ import type {
   CaptureBufferResult,
   CapturePerfSummary,
   CaptureWarning,
+  HfSeekOptions,
   SubTimelineWaitOutcome,
 } from "../types.js";
 import { cloneCaptureWarnings } from "./captureWarning.js";
@@ -97,6 +106,13 @@ export interface CaptureSession {
   lastFrameAbsoluteIndex?: number;
   /** Count of frames served from a reused buffer (dedup telemetry). */
   staticDedupCount?: number;
+  /**
+   * Resolved sub-frame motion-blur plan, or undefined when off. Set once by
+   * `resolveSessionMotionBlur` at the end of initialization, where the capture mode has
+   * settled, so an unsupported combination fails before the first frame rather than
+   * silently rendering unblurred.
+   */
+  motionBlur?: MotionBlurPlan;
   // ── Static-dedup observability (set by armStaticDedup; surfaced via
   // getCapturePerfSummary → RenderPerfSummary → the render_complete event) ──
   // `armed` derives from the verified staticFrames set. Predicted count is stored
@@ -2496,6 +2512,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   const commitCdp = await getCdpSession(page);
   await commitCdp.send("HeadlessExperimental.beginFrame", preparedBeginFrameTimeline.commitParams);
 
+  session.motionBlur = resolveSessionMotionBlur(session);
+
   session.isInitialized = true;
 }
 
@@ -2547,10 +2565,36 @@ export async function waitForPendingSeekCompletion(page: Pick<Page, "evaluate">)
   });
 }
 
+/**
+ * Seek the page timeline and report whether a page-side composite is pending.
+ *
+ * The page's `seek()` owns all framework-specific stepping (GSAP, CSS animations, WAAPI);
+ * the options object reaches it untouched through the producer's `__hf.seek` bridge.
+ * Seek and pending-flag read share one round trip.
+ */
+async function seekPageTimeline(
+  page: Page,
+  time: number,
+  seekOptions: HfSeekOptions | undefined,
+): Promise<boolean> {
+  return page.evaluate(
+    (t: number, opts: HfSeekOptions | undefined) => {
+      if (window.__hf && typeof window.__hf.seek === "function") {
+        window.__hf.seek(t, opts);
+      }
+      return !!(window as unknown as { __hf_page_composite_pending?: boolean })
+        .__hf_page_composite_pending;
+    },
+    time,
+    seekOptions,
+  );
+}
+
 async function prepareFrameForCapture(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  seekOptions?: HfSeekOptions,
 ): Promise<{
   quantizedTime: number;
   seekMs: number;
@@ -2562,19 +2606,14 @@ async function prepareFrameForCapture(
     throw new Error("[FrameCapture] Session not initialized");
   }
 
-  const quantizedTime = quantizeTimeToFrame(time, fpsToNumber(options.fps));
+  const quantizedTime = quantizeSeekTime(
+    time,
+    fpsToNumber(options.fps),
+    seekOptions?.subFrameDivisions,
+  );
 
   const seekStart = Date.now();
-  // Seek via the __hf protocol. The page's seek() implementation handles
-  // all framework-specific logic (GSAP stepping, CSS animation sync, etc.)
-  // Seek + check page-side composite pending flag in one round-trip.
-  const hasPendingComposite = await page.evaluate((t: number) => {
-    if (window.__hf && typeof window.__hf.seek === "function") {
-      window.__hf.seek(t);
-    }
-    return !!(window as unknown as { __hf_page_composite_pending?: boolean })
-      .__hf_page_composite_pending;
-  }, quantizedTime);
+  const hasPendingComposite = await seekPageTimeline(page, quantizedTime, seekOptions);
 
   await decodeDynamicCssBackgroundImages(page);
 
@@ -3568,12 +3607,199 @@ export async function withFrameDeadline<T>(
   }
 }
 
+/**
+ * Resolve the session's motion-blur plan, rejecting combinations the accumulation pass
+ * cannot render correctly instead of silently producing an unblurred frame.
+ *
+ * Called once initialization has settled the capture mode. `format: "png"` is required
+ * because samples are averaged pixel by pixel: JPEG samples would be averaged after
+ * lossy quantization and the blended frame is re-encoded as PNG. `<video>` content is
+ * out of scope because it is supplied by the before-capture frame-injection hook rather
+ * than by the timeline seek, so it cannot follow a sub-frame time.
+ */
+export function resolveSessionMotionBlur(session: CaptureSession): MotionBlurPlan | undefined {
+  const plan = resolveMotionBlurPlan(session.options.motionBlur);
+  if (!plan) return undefined;
+  if (session.captureMode !== "screenshot") {
+    throw new Error(
+      `[MotionBlur] sub-frame motion blur requires screenshot capture mode, got "${session.captureMode}"`,
+    );
+  }
+  if (session.options.format !== "png") {
+    throw new Error(
+      `[MotionBlur] sub-frame motion blur requires format "png", got "${session.options.format ?? "jpeg"}"`,
+    );
+  }
+  if (session.onBeforeCapture) {
+    throw new Error(
+      "[MotionBlur] sub-frame motion blur cannot run with injected video frames: video content is extracted per output frame and does not follow a sub-frame seek",
+    );
+  }
+  return plan;
+}
+
+/** Frame timings shared by the single-capture and accumulation paths. */
+interface CapturedSurface {
+  buffer: Buffer;
+  quantizedTime: number;
+  seekMs: number;
+  beforeCaptureMs: number;
+  screenshotMs: number;
+}
+
+/** Seek to `time` and capture one surface with the session's capture mode. */
+async function captureFrameSurface(
+  session: CaptureSession,
+  frameIndex: number,
+  time: number,
+  seekOptions?: HfSeekOptions,
+): Promise<CapturedSurface> {
+  const { page, options } = session;
+  const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
+    session,
+    frameIndex,
+    time,
+    seekOptions,
+  );
+
+  const screenshotStart = Date.now();
+  let screenshotBuffer: Buffer;
+
+  if (session.captureMode === "beginframe") {
+    const frameTimeTicks = session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
+    const result = await beginFrameCapture(
+      page,
+      options,
+      frameTimeTicks,
+      session.beginFrameIntervalMs,
+    );
+    if (result.hasDamage) session.beginFrameHasDamageCount++;
+    else session.beginFrameNoDamageCount++;
+    screenshotBuffer = result.buffer;
+  } else if (
+    session.captureMode === "drawelement" &&
+    session.clipBoundaryFrames?.has(frameIndex) &&
+    process.env.HF_FAST_CAPTURE_BOUNDARY_SS === "true"
+  ) {
+    throw new DrawElementCaptureError(
+      frameIndex,
+      "boundary screenshot requested on an injected canvas page",
+    );
+  } else if (session.captureMode === "drawelement") {
+    // Advance compositor state via BeginFrame when available (Linux headless-shell);
+    // on macOS the compositor advances naturally without BeginFrame.
+    if (session.beginFrameTimeTicks > 0) {
+      const client = await getCdpSession(page);
+      await client.send("HeadlessExperimental.beginFrame", {
+        frameTimeTicks: session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs,
+        interval: session.beginFrameIntervalMs,
+        noDisplayUpdates: false,
+        // no screenshot param — we capture via canvas
+      });
+    }
+    try {
+      screenshotBuffer = await captureDrawElementFrame(
+        page,
+        options.width,
+        options.height,
+        options.format ?? "jpeg",
+        options.quality ?? 80,
+        // Paint-event sync only without BeginFrame (macOS / screenshot-launched):
+        // under BeginFrame control the per-frame beginFrame above already painted
+        // a fresh snapshot, and no further paint would arrive during a wait.
+        session.beginFrameTimeTicks === 0,
+      );
+      // A tiny JPEG may be a dropped paint record. Never screenshot this page:
+      // its injected canvas can still hold the preceding frame's bitmap.
+      // Restart on a fresh screenshot page even if this was a simple valid frame.
+      if ((options.format ?? "jpeg") !== "png" && process.env.HF_FORCE_DRAWELEMENT !== "1") {
+        const sizes = (session.deFrameSizes ??= []);
+        const sorted = sizes.length >= 12 ? [...sizes].sort((a, b) => a - b) : null;
+        const median = sorted ? (sorted[sorted.length >> 1] ?? 0) : 0;
+        const floor = Math.max(20000, median * 0.12);
+        if (screenshotBuffer.length < floor) {
+          throw new DrawElementCaptureError(
+            frameIndex,
+            `suspect small frame (${screenshotBuffer.length}B < ${Math.round(floor)}B)`,
+          );
+        } else {
+          if (sizes.length >= 60) sizes.shift();
+          sizes.push(screenshotBuffer.length);
+        }
+      }
+    } catch (err) {
+      // Missing paint records/canvas state require a new screenshot page.
+      if (isRecoverableDrawElementError(err)) {
+        session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
+        const reason = isCanvasNotInitializedError(err)
+          ? "drawElement canvas not initialized"
+          : "No cached paint record";
+        throw new DrawElementCaptureError(frameIndex, reason, err);
+      } else {
+        throw err;
+      }
+    }
+  } else {
+    screenshotBuffer = await pageScreenshotCapture(page, options);
+  }
+
+  const screenshotMs = Date.now() - screenshotStart;
+
+  return { buffer: screenshotBuffer, quantizedTime, seekMs, beforeCaptureMs, screenshotMs };
+}
+
+/**
+ * Capture one output frame as the average of `plan.samplesPerFrame` sub-frame captures.
+ *
+ * Callback invariant: exactly one eventful seek per output frame, at the frame time,
+ * arriving from the previous frame's time. Every sample seek suppresses events and the
+ * playhead is restored to the frame time afterwards, so a composition's own
+ * onUpdate/onComplete fire on the same interval boundaries as a render with blur off.
+ */
+async function captureAccumulatedFrame(
+  session: CaptureSession,
+  frameIndex: number,
+  absFrameIndex: number,
+  plan: MotionBlurPlan,
+): Promise<CapturedSurface> {
+  const fps = fpsToNumber(session.options.fps);
+  const frameTime = quantizeSeekTime(absFrameIndex / fps, fps);
+
+  const eventfulSeekStart = Date.now();
+  await seekPageTimeline(session.page, frameTime, undefined);
+  const totals = { seekMs: Date.now() - eventfulSeekStart, beforeCaptureMs: 0, screenshotMs: 0 };
+
+  const sampleSeek: HfSeekOptions = {
+    suppressEvents: true,
+    subFrameDivisions: plan.subFrameDivisions,
+  };
+  const accumulator = new MotionBlurAccumulator(plan.blend);
+  for (const sampleTime of motionBlurSampleTimes(plan, absFrameIndex, fps)) {
+    const sample = await captureFrameSurface(session, frameIndex, sampleTime, sampleSeek);
+    totals.seekMs += sample.seekMs;
+    totals.beforeCaptureMs += sample.beforeCaptureMs;
+    totals.screenshotMs += sample.screenshotMs;
+    accumulator.add(sample.buffer);
+  }
+
+  const restoreSeekStart = Date.now();
+  await seekPageTimeline(session.page, frameTime, { suppressEvents: true });
+  totals.seekMs += Date.now() - restoreSeekStart;
+
+  const blended = accumulator.finish();
+  return {
+    buffer: encodePng(blended.width, blended.height, blended.data),
+    quantizedTime: frameTime,
+    ...totals,
+  };
+}
+
 async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
   time: number,
 ): Promise<{ buffer: Buffer; quantizedTime: number; captureTimeMs: number }> {
-  const { page, options } = session;
+  const { options } = session;
   const startTime = Date.now();
 
   // Static-frame dedup: this frame is byte-identical to its predecessor (predicted +
@@ -3606,95 +3832,12 @@ async function captureFrameCore(
   }
 
   try {
-    const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
-      session,
-      frameIndex,
-      time,
-    );
-
-    const screenshotStart = Date.now();
-    let screenshotBuffer: Buffer;
-
-    if (session.captureMode === "beginframe") {
-      const frameTimeTicks =
-        session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
-      const result = await beginFrameCapture(
-        page,
-        options,
-        frameTimeTicks,
-        session.beginFrameIntervalMs,
-      );
-      if (result.hasDamage) session.beginFrameHasDamageCount++;
-      else session.beginFrameNoDamageCount++;
-      screenshotBuffer = result.buffer;
-    } else if (
-      session.captureMode === "drawelement" &&
-      session.clipBoundaryFrames?.has(frameIndex) &&
-      process.env.HF_FAST_CAPTURE_BOUNDARY_SS === "true"
-    ) {
-      throw new DrawElementCaptureError(
-        frameIndex,
-        "boundary screenshot requested on an injected canvas page",
-      );
-    } else if (session.captureMode === "drawelement") {
-      // Advance compositor state via BeginFrame when available (Linux headless-shell);
-      // on macOS the compositor advances naturally without BeginFrame.
-      if (session.beginFrameTimeTicks > 0) {
-        const client = await getCdpSession(page);
-        await client.send("HeadlessExperimental.beginFrame", {
-          frameTimeTicks: session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs,
-          interval: session.beginFrameIntervalMs,
-          noDisplayUpdates: false,
-          // no screenshot param — we capture via canvas
-        });
-      }
-      try {
-        screenshotBuffer = await captureDrawElementFrame(
-          page,
-          options.width,
-          options.height,
-          options.format ?? "jpeg",
-          options.quality ?? 80,
-          // Paint-event sync only without BeginFrame (macOS / screenshot-launched):
-          // under BeginFrame control the per-frame beginFrame above already painted
-          // a fresh snapshot, and no further paint would arrive during a wait.
-          session.beginFrameTimeTicks === 0,
-        );
-        // A tiny JPEG may be a dropped paint record. Never screenshot this page:
-        // its injected canvas can still hold the preceding frame's bitmap.
-        // Restart on a fresh screenshot page even if this was a simple valid frame.
-        if ((options.format ?? "jpeg") !== "png" && process.env.HF_FORCE_DRAWELEMENT !== "1") {
-          const sizes = (session.deFrameSizes ??= []);
-          const sorted = sizes.length >= 12 ? [...sizes].sort((a, b) => a - b) : null;
-          const median = sorted ? (sorted[sorted.length >> 1] ?? 0) : 0;
-          const floor = Math.max(20000, median * 0.12);
-          if (screenshotBuffer.length < floor) {
-            throw new DrawElementCaptureError(
-              frameIndex,
-              `suspect small frame (${screenshotBuffer.length}B < ${Math.round(floor)}B)`,
-            );
-          } else {
-            if (sizes.length >= 60) sizes.shift();
-            sizes.push(screenshotBuffer.length);
-          }
-        }
-      } catch (err) {
-        // Missing paint records/canvas state require a new screenshot page.
-        if (isRecoverableDrawElementError(err)) {
-          session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
-          const reason = isCanvasNotInitializedError(err)
-            ? "drawElement canvas not initialized"
-            : "No cached paint record";
-          throw new DrawElementCaptureError(frameIndex, reason, err);
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      screenshotBuffer = await pageScreenshotCapture(page, options);
-    }
-
-    const screenshotMs = Date.now() - screenshotStart;
+    const plan = session.motionBlur;
+    // One capture per frame, or `plan.samplesPerFrame` captures averaged into one. Both
+    // report the same timings, so perf accounting and the dedup anchor stay shared.
+    const { buffer, quantizedTime, seekMs, beforeCaptureMs, screenshotMs } = plan
+      ? await captureAccumulatedFrame(session, frameIndex, absFrameIndex, plan)
+      : await captureFrameSurface(session, frameIndex, time);
     const captureTimeMs = Date.now() - startTime;
 
     session.capturePerf.frames += 1;
@@ -3706,11 +3849,11 @@ async function captureFrameCore(
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
     if (session.staticFrames) {
-      session.lastFrameBuffer = screenshotBuffer;
+      session.lastFrameBuffer = buffer;
       session.lastFrameAbsoluteIndex = absFrameIndex;
     }
 
-    return { buffer: screenshotBuffer, quantizedTime, captureTimeMs };
+    return { buffer, quantizedTime, captureTimeMs };
   } catch (captureError) {
     if (session.isInitialized) {
       await captureFrameErrorDiagnostics(
@@ -3808,6 +3951,13 @@ export async function captureFrameToBuffer(
  *  - JPEG format only. PNG falls back to `captureFrameToBuffer`.
  *  - macOS hardware GPU path (syncToPaintEvent=true, beginFrameTimeTicks=0).
  *    BeginFrame (Linux) uses the standard synchronous path unchanged.
+ */
+/**
+ * Worker-encode path, gated to drawElement capture. It does not route through
+ * `captureFrameCore` and so has no accumulation branch; that is safe only because
+ * `resolveSessionMotionBlur` rejects every capture mode except screenshot, which makes
+ * this function unreachable with motion blur on. Widening the supported capture modes
+ * means handling accumulation here too.
  */
 export async function captureFrameToBufferPipelined(
   session: CaptureSession,

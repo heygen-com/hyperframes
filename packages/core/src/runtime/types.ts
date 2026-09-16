@@ -257,6 +257,12 @@ export type RuntimePlayer = {
 
 export type RuntimeSeekOptions = {
   suppressEvents?: boolean;
+  /**
+   * Subdivide the output frame grid this render seek quantizes onto. Integer >= 1;
+   * 1 (or absent) is the output frame grid. Motion-blur sub-frame sampling passes the
+   * engine's sub-frame tick count so a fractional sample time survives quantization.
+   */
+  subFrameDivisions?: number;
 };
 
 export type RuntimeTimelineChildLike = {
