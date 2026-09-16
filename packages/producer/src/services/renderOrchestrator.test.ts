@@ -2232,7 +2232,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     it("counts audio/image/audio-group elements from the uncapped Map, not the capped byTag", () => {
       // 55 distinct single-use filler tags, each ranked (tied count=1) ahead
       // of audio/img/hf-audio-group by insertion order in a stable sort,
-      // push all three past the 50-tag cap into "other" in byTag — but the
+      // push all three past the 50-tag cap into "other" in byTag, but the
       // dedicated counts must still report the true number.
       const distinctTags = Array.from({ length: 55 }, (_, i) => `hf-tag-${i}`);
       const html =
@@ -2272,7 +2272,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
 
     it("decodes the &quot;-escaped attribute form the compile pipeline actually emits", () => {
       // linkedom's serializer re-emits this attribute &quot;-escaped on every
-      // compile round-trip — the real mainstream shape, not single-quoted.
+      // compile round-trip, the real mainstream shape, not single-quoted.
       const html = '<img data-color-grading="{&quot;lut&quot;:&quot;a.cube&quot;}">';
       const scan = scanElementTags(html);
       expect(scan.colorGradingCount).toBe(1);
@@ -2280,7 +2280,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     });
 
     // Mirrors normalizeLut (@hyperframes/core colorGrading.ts): an empty
-    // string, an object with no `src`, or a blank `src` are all "no LUT" —
+    // string, an object with no `src`, or a blank `src` are all "no LUT",
     // matching the runtime consumer, not just "the key is present".
     it("reports hasLut false for an empty-string, srcless, or blank-src lut value", () => {
       const html =
@@ -2292,7 +2292,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(scan.hasLut).toBe(false);
     });
 
-    it("does not crash on malformed data-color-grading JSON — counts the element, no LUT signal", () => {
+    it("does not crash on malformed data-color-grading JSON, counts the element, no LUT signal", () => {
       const html = "<img data-color-grading='{not json'>";
       const scan = scanElementTags(html);
       expect(scan.colorGradingCount).toBe(1);
@@ -2585,7 +2585,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveAdaptersUsed(session, "<div></div>")).toEqual(["gsap"]);
     });
 
-    it("reports an empty list — not absent — when nothing is detected", async () => {
+    it("reports an empty list, not absent, when nothing is detected", async () => {
       const session = { isInitialized: true, page: { evaluate: async () => [] } };
       expect(await resolveAdaptersUsed(session, "<div></div>")).toEqual([]);
     });

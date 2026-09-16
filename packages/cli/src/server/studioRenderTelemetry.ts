@@ -27,7 +27,7 @@ export interface StudioRenderOpts {
   // gif_fps_capped/hdr_mode/video_frame_format are deliberately absent: Studio
   // has no gif/png-sequence option and createRenderJob never receives an
   // hdrMode or videoFrameFormat from the Studio request type, so there is no
-  // per-request value — see the PR description for the full reasoning.
+  // per-request value: see the PR description for the full reasoning.
   // Telemetry id of the browser user who triggered the render, so the render
   // outcome joins their studio_session_start / studio_render_start events.
   // Undefined for older studio clients → falls back to the install anonymousId.

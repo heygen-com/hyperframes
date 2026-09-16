@@ -117,7 +117,7 @@ export interface RenderCaptureObservability {
    * provider. Only set when `compositionElementCountSource` is "static".
    */
   heygenVideoCount?: number;
-  /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`) — live+static union, always set. */
+  /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`), a live+static union, always set. */
   adaptersUsed?: readonly string[];
   /** Element/attribute counts from the same static scan; only set when the source above is "static". */
   audioCount?: number;

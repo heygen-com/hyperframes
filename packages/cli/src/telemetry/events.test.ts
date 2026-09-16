@@ -314,7 +314,7 @@ describe("render telemetry events", () => {
 
   // Output-shape request facts are resolved from CLI flags before the
   // pipeline starts, so both render_complete and render_error must carry
-  // them — a failure before perfSummary exists is exactly the case these
+  // them: a failure before perfSummary exists is exactly the case these
   // fields (unlike the perfSummary-derived ones) still need to cover.
   it("carries output-shape request facts on render_complete", () => {
     trackRenderComplete({

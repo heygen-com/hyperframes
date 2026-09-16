@@ -522,7 +522,7 @@ export interface RenderPerfSummary {
     arollVideoCount?: number;
     /** `<video data-media-source="heygen">` elements from the same static scan. Only set when compositionElementCountSource is "static". */
     heygenVideoCount?: number;
-    /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`) — live+static union, always set (possibly empty). */
+    /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`), a live+static union, always set (possibly empty). */
     adaptersUsed?: readonly string[];
     /** Audio/image/sub-comp/color-grading counts, same static scan; only set when the source above is "static". */
     audioCount?: number;
@@ -1437,7 +1437,7 @@ export interface ElementTagScan {
 
 const MAX_REPORTED_ELEMENT_TAGS = 50;
 
-/** First element carrying data-composition-id — same root marker other `[data-composition-id]` queries here use. */
+/** First element carrying data-composition-id, the same root marker other `[data-composition-id]` queries here use. */
 const ROOT_COMPOSITION_TAG_RE =
   /<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i;
 
@@ -1448,7 +1448,7 @@ function bucketPxDelta(delta: number): NonNullable<ElementTagScan["rootBodyDelta
   return "51+";
 }
 
-/** Authored root size vs. the scaffold's html/body CSS size — a source-level fact this HTML
+/** Authored root size vs. the scaffold's html/body CSS size, a source-level fact this HTML
  * string carries whether or not init.ts's runtime DOM correction ran. Undefined, not a false/"0"
  * default, when either side can't be read; a lighter root-tag heuristic than lint's findRootTag. */
 function detectRootBodySizeMismatch(
@@ -1504,7 +1504,7 @@ function detectRootBodySizeMismatch(
  * ordinary JS comparisons and divisions don't qualify — verified by test.
  *
  * Every other property derives from the SAME script/style-stripped markup as
- * `total` — and the per-tag counts from the SAME matched set — so one scan
+ * `total`, and the per-tag counts come from the SAME matched set, so one scan
  * feeds everything this function returns and none of them can drift apart.
  *
  * FALLBACK ONLY as of the live-DOM fix below — a string scan of the SOURCE
@@ -1617,7 +1617,7 @@ function colorGradingValueHasLut(rawAttributeValue: string): boolean {
     if (typeof parsed !== "object" || parsed === null || !("lut" in parsed)) return false;
     const lut = parsed.lut;
     // Mirrors normalizeLut (@hyperframes/core colorGrading.ts): a bare
-    // non-blank string, or an object with a non-blank string `src`, counts —
+    // non-blank string, or an object with a non-blank string `src`, counts.
     // null/absent/empty-string/blank-src does not.
     if (typeof lut === "string") return lut.trim() !== "";
     if (typeof lut !== "object" || lut === null) return false;
@@ -1747,7 +1747,7 @@ const ADAPTER_STATIC_SIGNATURES: Readonly<Record<RuntimeAdapterName, RegExp>> = 
 };
 
 /**
- * Static regex fallback for `resolveAdaptersUsed` — the sole signal with no probe session.
+ * Static regex fallback for `resolveAdaptersUsed`, the sole signal with no probe session.
  * Scans inline `<script>` bodies too, unlike `scanElementTags`, which strips them.
  */
 export function detectAdaptersStatic(html: string): RuntimeAdapterName[] {
@@ -1785,11 +1785,11 @@ function probeAdaptersUsed(): string[] {
   try {
     if (typeof document.getAnimations === "function") liveAnimations = document.getAnimations();
   } catch {
-    // Detached or mid-navigation document — leave the list empty so the
+    // Detached or mid-navigation document: leave the list empty so the
     // adapters resolved above are still reported.
   }
   // The real "css" adapter only discovers @keyframes-driven animations, never
-  // CSS `transition:` — a `CSSTransition` instance is neither adapter-managed
+  // CSS `transition:`. A `CSSTransition` instance is neither adapter-managed
   // "css" nor an imperative "waapi" call, so it is excluded from both.
   const isKeyframesCss = (animation: Animation): boolean =>
     typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation;
@@ -1819,7 +1819,7 @@ export async function resolveAdaptersUsed(
     return KNOWN_RUNTIME_ADAPTERS.filter((name) => detected.has(name));
   } catch {
     // Probe page evaluate can fail (navigation mid-flight, detached frame,
-    // page crash) — fall back to the static-only signal rather than block
+    // page crash), so fall back to the static-only signal rather than block
     // the render on a purely observational telemetry probe.
     return staticAdapters;
   }

@@ -38,7 +38,7 @@ describe("createRenderPlan", () => {
   });
 
   // GIF's Netscape frame-delay field is stored in centiseconds, so fps above
-  // 30 rounds to visually-indistinguishable delay values — createRenderPlan
+  // 30 rounds to visually-indistinguishable delay values. createRenderPlan
   // clamps and flags it so both the CLI console warning (present.ts) and
   // render telemetry (gif_fps_capped) can report the same decision.
   it("caps fps to 30 and flags it for --format gif above the ceiling", () => {
@@ -234,11 +234,11 @@ describe("createRenderPlan", () => {
       join(projectDir, "hyperframes.json"),
       JSON.stringify({ authoringSkill: "product-launch-video" }),
     );
-    // Fails SKILL_SLUG (spaces, uppercase) — normalizeSkillSlug rejects the shape,
+    // Fails SKILL_SLUG (spaces, uppercase): normalizeSkillSlug rejects the shape,
     // not a registry of known skill names.
     const plan = createRenderPlan({ dir: projectDir, skill: "Not A Skill!" });
     expect(plan.invalidAuthoringSkill).toBe("Not A Skill!");
-    // The invalid flag never wins attribution — the project's own config still does.
+    // The invalid flag never wins attribution: the project's own config still does.
     expect(plan.authoringSkill).toBe("product-launch-video");
     expect(plan.authoringSkillSource).toBe("project-config");
   });
