@@ -1,0 +1,301 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"mediaFit","type":"enum","role":"style","label":"Media · Fit","description":"Natural keeps each image&#39;s own ratio; Crop fills the card box at the media aspect below.","default":"natural","options":[{"value":"natural","label":"Natural (original ratio)"},{"value":"crop","label":"Crop"}]},{"id":"cropAspectRatio","type":"enum","role":"style","label":"Media · Aspect","description":"Card aspect used when Fit is Crop.","default":"1:1","options":[{"value":"16:9","label":"16:9"},{"value":"9:16","label":"9:16"},{"value":"1:1","label":"1:1"},{"value":"4:5","label":"4:5"},{"value":"3:2","label":"3:2"},{"value":"3:4","label":"3:4"},{"value":"2:3","label":"2:3"}]},{"id":"backgroundType","type":"enum","role":"style","label":"Background · Type","description":"Gradient (start → end colours), flat Colour, or your own Image.","default":"gradient","options":[{"value":"gradient","label":"Gradient"},{"value":"color","label":"Color"},{"value":"image","label":"Image"}]},{"id":"backgroundGradientStart","type":"color","role":"style","label":"Background · Gradient start","description":"Top colour of the gradient.","default":"#111111"},{"id":"backgroundGradientEnd","type":"color","role":"style","label":"Background · Gradient end","description":"Bottom colour of the gradient.","default":"#444444"},{"id":"backgroundColor","type":"color","role":"style","label":"Background · Color","description":"Flat colour when Type is Color; also the ground under an Image.","default":"#0b0b0f"},{"id":"backgroundImage","type":"image","role":"style","label":"Background · Image","description":"Cover-fitted background when Type is Image.","portrays":["background_image"],"default":""},{"id":"blurAmount","type":"number","role":"style","label":"Background · Blur","description":"Blur on the background image, px.","default":0,"min":0,"max":60,"step":1,"unit":"px"},{"id":"backgroundGradientNoise","type":"number","role":"style","label":"Background · Grain","description":"Film-grain overlay strength.","default":0,"min":0,"max":100,"step":1,"unit":"%"},{"id":"backgroundOpacity","type":"number","role":"style","label":"Background · Opacity","description":"Opacity of the whole background layer (0 = transparent ground).","default":1,"min":0,"max":1,"step":0.05},{"id":"borderRadius","type":"number","role":"style","label":"Appearance · Border radius","description":"Card corner radius in px at 1080.","default":0,"min":0,"max":200,"step":1,"unit":"px"},{"id":"imageFit","type":"enum","role":"style","label":"Template options · Image Fit","description":"Image Fit (engine parameter; see the block header comment).","default":"fit","options":[{"value":"fit","label":"Fit"},{"value":"fill","label":"Fill"}]},{"id":"count","type":"number","role":"style","label":"Template options · Count","description":"Count (engine parameter; see the block header comment).","default":500,"min":0,"max":1000,"step":10},{"id":"tilt","type":"number","role":"style","label":"Template options · Tilt","description":"Tilt (engine parameter; see the block header comment).","default":0,"min":-180,"max":180,"step":1,"unit":"°"},{"id":"sizeMix","type":"number","role":"style","label":"Template options · Size Mix","description":"Size Mix (engine parameter; see the block header comment).","default":0,"min":0,"max":200,"step":1},{"id":"minScale","type":"number","role":"style","label":"Template options · Min Scale","description":"Min Scale (engine parameter; see the block header comment).","default":0,"min":0,"max":86,"step":1},{"id":"maxScale","type":"number","role":"style","label":"Template options · Max Scale","description":"Max Scale (engine parameter; see the block header comment).","default":99,"min":0,"max":198,"step":1},{"id":"maxDist","type":"number","role":"style","label":"Template options · Max Dist","description":"Max Dist (engine parameter; see the block header comment).","default":32,"min":0,"max":86,"step":1},{"id":"atmosphere","type":"number","role":"style","label":"Template options · Atmosphere","description":"Atmosphere (engine parameter; see the block header comment).","default":0,"min":0,"max":100,"step":1},{"id":"panRange","type":"number","role":"style","label":"Template options · Pan Range","description":"Pan Range (engine parameter; see the block header comment).","default":180,"min":0,"max":360,"step":10},{"id":"buildInOut","type":"enum","role":"style","label":"Template options · Build In Out","description":"Build In Out (engine parameter; see the block header comment).","default":"off","options":[{"value":"off","label":"Off"},{"value":"on","label":"On"}]},{"id":"image1","type":"image","role":"content","label":"Media · Image 1","description":"Image on card 1 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image2","type":"image","role":"content","label":"Media · Image 2","description":"Image on card 2 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image3","type":"image","role":"content","label":"Media · Image 3","description":"Image on card 3 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image4","type":"image","role":"content","label":"Media · Image 4","description":"Image on card 4 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image5","type":"image","role":"content","label":"Media · Image 5","description":"Image on card 5 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image6","type":"image","role":"content","label":"Media · Image 6","description":"Image on card 6 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image7","type":"image","role":"content","label":"Media · Image 7","description":"Image on card 7 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image8","type":"image","role":"content","label":"Media · Image 8","description":"Image on card 8 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"}]'
+>
+  <head>
+    <title>loop-proximity-5</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0b0f;
+      }
+      #loop-proximity-5-bg {
+        position: absolute;
+        inset: 0;
+      }
+      #loop-proximity-5-stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 0;
+        height: 0;
+      }
+      .card {
+        transform-origin: 50% 50%;
+      }
+      .card img {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="loop-proximity-5-root"
+      data-composition-id="loop-proximity-5"
+      data-start="0"
+      data-width="1080"
+      data-height="1080"
+      data-duration="14"
+    >
+      <div
+        id="loop-proximity-5-loop"
+        class="clip"
+        data-start="0"
+        data-duration="14"
+        data-track-index="1"
+        data-layout-allow-overflow
+      >
+        <div id="loop-proximity-5-bg"></div>
+        <div id="loop-proximity-5-stage"></div>
+      </div>
+    </div>
+    <script>
+      // Shared runtime for the the reference tool loop ports. Loaded by every family engine.
+      // Everything here is a pure function of the HyperFrames variables + t.
+      //
+      // Reference constants (measured on the 512x512 preview library, 2026-09-08):
+      //   Marquee planeSize -> 0.3% of frame height per unit (7 variants, all 1.54px/unit @512)
+      //   Marquee gap       -> 0.2% of frame height per unit
+      //   3D perspective    -> CSS focal length f = 1000px * (100/perspective) at H=1080
+      //                        (3D01/02/08/11: card widths & far-card spacing match to <3%)
+      // Both are calibrated on a SQUARE canvas; for 16:9 we scale by H. ponytail: if the
+      // dashboard 16:9 reference shows width-relative scaling, flip REF below to W.
+      window.RF = (() => {
+        // Variables are injected by the inline script via RF.use(): HyperFrames wraps INLINE scripts in a
+        // per-composition scope where getVariables() resolves; this external file only sees the host window.
+        const V = {},
+          MEDIA = [];
+        const use = (vars, media) => {
+          Object.assign(V, vars || {});
+          MEDIA.splice(0, MEDIA.length, ...(media || []));
+        };
+        const root = document.querySelector("[data-composition-id]");
+        const W = +root.dataset.width,
+          H = +root.dataset.height;
+        const REF = H;
+        const num = (k, d) => (V[k] !== undefined && V[k] !== "" && !isNaN(+V[k]) ? +V[k] : d);
+        const str = (k, d) => (V[k] !== undefined && V[k] !== "" ? String(V[k]) : d);
+        const on = (k, d) => /^(true|on|1)$/i.test(str(k, d ? "on" : "off")); // spec booleans arrive as "true"/"false", enums as on/off
+
+        function pick(n) {
+          n = Math.max(1, Math.min(MEDIA.length, n | 0));
+          return MEDIA.slice(0, n);
+        }
+        // aspect (w/h) a card takes for a media item under mediaFit + cropAspectRatio
+        function aspect(m, fit, cropAR) {
+          if (fit === "natural") return m.w / m.h;
+          const [a, b] = String(cropAR || "1:1")
+            .split(":")
+            .map(Number);
+          return a && b ? a / b : 1;
+        }
+        function card(m, w, h, radius) {
+          const el = document.createElement("div");
+          el.className = "card";
+          el.style.cssText = `position:absolute;width:${w}px;height:${h}px;overflow:hidden;border-radius:${radius}px;`;
+          const img = document.createElement("img");
+          img.src = m.src;
+          img.width = Math.round(w);
+          img.height = Math.round(h);
+          img.style.cssText = `display:block;width:${w}px;height:${h}px;object-fit:cover;`;
+          el.appendChild(img);
+          return el;
+        }
+        function background(el) {
+          // the editor's Background panel: type gradient | color | image, gradient start/end, grain (noise %), opacity, image blur
+          const type = str("backgroundType", "gradient");
+          const c = str("backgroundColor", "#0b0b0f");
+          el.style.background = c;
+          if (type === "gradient") {
+            const g1 = str("backgroundGradientStart", "#111111"),
+              g2 = str("backgroundGradientEnd", "#444444");
+            el.style.background = `linear-gradient(180deg, ${g1}, ${g2})`;
+          } else if (type === "image") {
+            const im = V.backgroundImage,
+              src = im && typeof im === "object" ? im.url || im.src || "" : im || "";
+            if (src) {
+              el.style.background = `${c} url("${src}") center / cover no-repeat`;
+              const b = num("blurAmount", 0);
+              if (b > 0) el.style.filter = `blur(${b}px)`;
+            }
+          }
+          el.style.opacity = String(Math.max(0, Math.min(1, num("backgroundOpacity", 1))));
+          const noise = num("backgroundGradientNoise", 0);
+          if (noise > 0) {
+            const g = document.createElement("div");
+            g.style.cssText = `position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:${((noise / 100) * 0.7).toFixed(3)};background:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'256'%20height%3D'256'%3E%3Cfilter%20id%3D'n'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%20seed%3D'7'%2F%3E%3CfeColorMatrix%20values%3D'0%200%200%200%200.5%200%200%200%200%200.5%200%200%200%200%200.5%200%200%200%201%200'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'256'%20height%3D'256'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E") 0 0 / 256px 256px repeat`;
+            el.appendChild(g);
+          }
+        }
+        const expoInOut = (x) =>
+          x <= 0
+            ? 0
+            : x >= 1
+              ? 1
+              : x < 0.5
+                ? Math.pow(2, 20 * x - 10) / 2
+                : (2 - Math.pow(2, -20 * x + 10)) / 2;
+        const frac = (x) => x - Math.floor(x);
+        return {
+          V,
+          use,
+          W,
+          H,
+          REF,
+          num,
+          str,
+          on,
+          MEDIA,
+          pick,
+          aspect,
+          card,
+          background,
+          expoInOut,
+          frac,
+        };
+      })();
+    </script>
+    <script>
+      (async () => {
+        // Proximity loop family — hundreds of tiles swelling as the camera passes: a flat field
+        // of `count` square tiles; a lens fixed at the frame centre swells the tiles within `maxDist` of it while the field
+        // pans underneath on a closed path. Measured on the 512 previews (2026-09-08):
+        //   base tile = 2.2px·minScale @512 (01/02: minScale 5 -> 11px median over 1600+ isolated tiles; 03: 8 -> 16px);
+        //   swollen centre = 2.2px·maxScale (02: largest isolated tile 49px at r=130, blob merges inside; 60 -> 132px);
+        //   swell profile (02, 8000 tiles binned by distance r to the blob centroid): w = 49/42/33/25/15/11 at
+        //   r = 130/150/170/190/210/230 -> zero at r ≈ 220px = maxDist 43% of H; shape ≈ base + (max−base)·(1−r/R) (linear; ^1.2 under-swelled the rim: 90th pct 22 vs 27);
+        //   pan (small-tile drift integrated): 03 a circle of radius 155px for panRange 145; 02 a horizontal sweep of
+        //   amplitude 130px for panRange 165; speed ~2px/frame; period = the loop -> circle, radius 0.9·panRange·REF/512;
+        //   density: ~66 isolated 11px tiles per frame + ~100 merged in the blob for count 500 => field = frame + 1.3·pan margin
+        //   (02); 03/04 show far fewer tiles per frame (37 / 7 comps) => field side ≈ 1300 / 1900px, fitted as ×(1 + 1.1·sizeMix) (guess);
+        //   sizeMix 100 (04): isolated sizes 47..127px for minScale 43 (95px) -> factor 0.5..1.35; mix 50 (03): 0.68..1.3;
+        //   buildInOut on (01): frame 0 and the last frames are (nearly) empty -> global scale ramp in/out (~6% of the loop);
+        //   minScale 0 (05/06): tiles invisible except inside the lens (5 comps/frame) ✓.
+        // Guesses: pan path shape (02 is a line, 03 a circle, no setting differs -> circle everywhere); `atmosphere` dims
+        // un-swollen tiles by atmosphere% (03); `tilt` = random rotation ±tilt° per tile (04 squares look tilted); blur ignored.
+        const __V = Object.assign(
+          {},
+          (window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : null) || {},
+          { loopDuration: 14, loopRepeat: 2, imageCount: 8 },
+        );
+        const __PH = [
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+        ];
+        const __MEDIA = await Promise.all(
+          ["image1", "image2", "image3", "image4", "image5", "image6", "image7", "image8"].map(
+            async (id, i) => {
+              const v = __V[id];
+              const src = (v && typeof v === "object" ? v.url || v.src : v) || __PH[i];
+              const img = new Image();
+              img.src = src;
+              try {
+                await img.decode();
+              } catch (e) {}
+              return { src, w: img.naturalWidth || 1400, h: img.naturalHeight || 1050 };
+            },
+          ),
+        );
+        RF.use(__V, __MEDIA);
+        const { W, H, REF, num, str, on, pick, aspect, card, background, frac } = RF;
+        const DUR = num("loopDuration", 14);
+        const FIT = str("mediaFit", "natural");
+        const CROP_AR = str("cropAspectRatio", "1:1");
+        const IMGFIT = str("imageFit", "fit");
+        const COUNT = Math.max(1, num("count", 500) | 0);
+        const TILT = num("tilt", 0);
+        const MIX = num("sizeMix", 0) / 100;
+        const MINS = num("minScale", 5),
+          MAXS = num("maxScale", 60);
+        const R = (num("maxDist", 35) / 100) * REF;
+        const ATM = num("atmosphere", 0) / 100;
+        const A = (0.9 * num("panRange", 100) * REF) / 512;
+        const BUILD = on("buildInOut", false);
+        const RADIUS = (num("borderRadius", 0) * REF) / 1080;
+        const IMAGES = pick(num("imageCount", 16));
+        const N = IMAGES.length;
+
+        document.getElementById("loop-proximity-5-loop").dataset.duration = DUR;
+        background(document.getElementById("loop-proximity-5-bg"));
+        const stage = document.getElementById("loop-proximity-5-stage");
+        const PX = (2.1 * REF) / 512; // px per scale unit (ref median 11px for minScale 5)
+        const FS = 1 + 1.1 * MIX; // field grows with sizeMix (ref visible density => field side ≈ 915 / 1300 / 1900px for 02 / 03 / 04)
+        const HX = (W / 2 + 1.3 * A) * FS,
+          HY = (H / 2 + 1.3 * A) * FS; // field half-extent: frame + pan margin, × FS
+        let seed = 500;
+        const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+        const tiles = [];
+        for (let i = 0; i < COUNT; i++) {
+          const m = IMAGES[i % N],
+            a = aspect(m, FIT, CROP_AR);
+          const el = card(m, 100, 100, RADIUS); // unit tile 100px, scaled per frame
+          if (IMGFIT === "fit") {
+            const img = el.firstChild;
+            img.style.objectFit = "contain";
+          }
+          el.style.left = "-50px";
+          el.style.top = "-50px";
+          stage.appendChild(el);
+          tiles.push({
+            el,
+            x: (rnd() * 2 - 1) * HX,
+            y: (rnd() * 2 - 1) * HY,
+            mix: 1 - 0.5 * MIX + 0.85 * MIX * rnd(),
+            rot: (rnd() * 2 - 1) * TILT,
+          });
+        }
+        const smooth = (x) => {
+          x = Math.min(1, Math.max(0, x));
+          return x * x * (3 - 2 * x);
+        };
+        function renderAt(t) {
+          const px = A * Math.cos(2 * Math.PI * t) - A,
+            py = A * Math.sin(2 * Math.PI * t); // field offset (starts at 0,0)
+          const build = BUILD ? smooth(t / 0.07) * smooth((1 - t) / 0.07) : 1;
+          for (const k of tiles) {
+            const x = k.x + px,
+              y = k.y + py;
+            const r = Math.hypot(x, y);
+            const g = r < R ? 1 - r / R : 0;
+            const size = PX * (MINS + (MAXS - MINS) * g) * k.mix * build;
+            if (size < 0.5 || Math.abs(x) > W / 2 + size || Math.abs(y) > H / 2 + size) {
+              k.el.style.display = "none";
+              continue;
+            }
+            k.el.style.display = "";
+            k.el.style.transform = `translate3d(${x}px,${y}px,0) rotate(${k.rot}deg) scale(${size / 100})`;
+            k.el.style.zIndex = Math.round(size);
+            k.el.style.opacity = ATM > 0 ? (1 - ATM * (1 - g)).toFixed(3) : "1";
+          }
+        }
+        // one paused linear tween drives t; every frame is recomputed from t alone (seek-safe)
+        const state = { t: 0 };
+        const tl = gsap.timeline({ paused: true });
+        tl.to(state, { t: 1, duration: DUR, ease: "none", onUpdate: () => renderAt(state.t) }, 0);
+        renderAt(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["loop-proximity-5"] = tl;
+      })();
+    </script>
+  </body>
+</html>

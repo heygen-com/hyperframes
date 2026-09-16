@@ -436,6 +436,1002 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "loop-3d-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-10",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-11",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-12",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-3d-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-bento-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-board",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-book-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-book-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-book-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-book-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-book-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-box",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-cardtoss",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-cardtotem",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-10",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-11",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-12",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-13",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-14",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-15",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-16",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-17",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-18",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel3d-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel3d-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel3d-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel3d-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel3d-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carouselflow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-cascadedeck",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-cascadedrop",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-centerstage",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-circle",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-columndrift",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-columns-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-corridor",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-coverflow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-coverflowvertical",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-coverring",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-10",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-11",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-12",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deckpeel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-depthstackscroll",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-diagonalcarousel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-diagonalwipe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-eye",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-field-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-field-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-field-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-field-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-filmstrip",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-10",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flip-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flip-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flip-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flip-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flip-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flip-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flipgrid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-focusorbit",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-focusshift",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-focusslider",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-fold",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-10",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-11",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-gravity-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-gravity-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-gravity-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-grid-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-grid-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-grid-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-grid-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-grid-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-gridreveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-gridzoomstrip",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-heroreel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-imagetrail",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-iso",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-isofocus",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-isoorbit",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-10",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-11",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-12",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-13",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-14",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-15",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-16",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-17",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-18",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-19",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-20",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-21",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-22",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-mosaicmarquee",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-mosaicwipe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-10",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-11",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-12",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbitbloom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbitcarousel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbitglobe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbitshowcase",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-pages-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-pages-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-parallax-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-parallax-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-parallax-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-parallaxtotem",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-photoorbit",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-popgrid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-positiondance",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-posterburst",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-proximity-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-proximity-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-proximity-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-proximity-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-proximity-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-proximity-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-ring",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-scale-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-scale-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-scale-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-scale-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-shelf",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-slats",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spherecascade",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-sphereglobe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spherewall",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spin-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spin-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spin-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spin-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-7",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-8",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-9",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiralstream",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-splitreveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spotlightzoom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stack-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stack-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stack-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stack-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stackslide",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stories-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stories-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stories-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stories-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-streak",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stripereveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-swipe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-swirl",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-tabs",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-ticker",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-tickerloop",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-totemwall",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-tour01-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-tour02-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-tunnel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-vortexspin",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheel-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheel-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheel-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheel-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheel-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheel-6",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheelcarousel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheelspin",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheelspinbottom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wipe-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wipe-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wipe-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wipe-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-zoomparallax",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "lower-third-bild",
       "type": "hyperframes:block"
     },
@@ -1637,6 +2633,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "b33b552d4f830abfcccb2bfe9495ac6284a7e7c05b3d3f4df630dfd5e753e518"
+    "revision": "65bb81fd5680668756122563565277f4a63688f960e1a617998086fe9dbbf227"
   }
 }

@@ -1,0 +1,488 @@
+---
+title: "Loop Deck 2"
+description: "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-2.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-2.png" autoPlay muted loop playsInline />
+
+## Install
+
+<InstallCommand command="npx hyperframes add loop-deck-2" item="loop-deck-2" />
+
+That writes one file: `compositions/loop-deck-2.html`.
+
+## Add it to your video
+
+It runs for 7 seconds at 1080×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="loop-deck-2"
+  data-composition-src="compositions/loop-deck-2.html"
+  data-start="0"
+  data-duration="7"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `mediaFit` | `natural` | `natural`, `crop` | Natural keeps each image's own ratio; Crop fills the card box at the media aspect below. |
+| `cropAspectRatio` | `1:1` | `16:9`, `9:16`, `1:1`, `4:5`, `3:2`, `3:4`, `2:3` | Card aspect used when Fit is Crop. |
+| `backgroundType` | `gradient` | `gradient`, `color`, `image` | Gradient (start → end colours), flat Colour, or your own Image. |
+| `backgroundGradientStart` | `#111111` | color | Top colour of the gradient. |
+| `backgroundGradientEnd` | `#444444` | color | Bottom colour of the gradient. |
+| `backgroundColor` | `#0b0b0f` | color | Flat colour when Type is Color; also the ground under an Image. |
+| `backgroundImage` | `` | image | Cover-fitted background when Type is Image. |
+| `blurAmount` | `0` | 0px to 60px, step 1px | Blur on the background image, px. |
+| `backgroundGradientNoise` | `0` | 0% to 100%, step 1% | Film-grain overlay strength. |
+| `backgroundOpacity` | `1` | 0 to 1, step 0.05 | Opacity of the whole background layer (0 = transparent ground). |
+| `borderRadius` | `16` | 0px to 200px, step 1px | Card corner radius in px at 1080. |
+| `fade` | `0` | 0 to 100, step 1 | Fade (engine parameter; see the block header comment). |
+| `cycles` | `1` | 0 to 10, step 0.1 | Number of motion cycles per loop. |
+| `delay` | `0` | 0s to 2s, step 0.01s | Hold time between steps, seconds. |
+| `direction` | `down` | `up`, `down`, `left`, `right` | Direction of travel. |
+| `flipAxis` | `vertical` | `vertical`, `horizontal` | Flip Axis (engine parameter; see the block header comment). |
+| `planeSize` | `375` | 0 to 1000, step 10 | Card size in scene units. |
+| `distance` | `1000` | 0 to 8260, step 10 | Camera distance from the formation. |
+| `perspective` | `100` | 0 to 200, step 1 | Camera focal length: smaller = stronger perspective. |
+| `gap` | `0.44` | 0px to 2px, step 0.01px | Spacing between cards. |
+| `maxScale` | `1.15` | 0 to 3, step 0.1 | Max Scale (engine parameter; see the block header comment). |
+| `tilt` | `0` | -180° to 180°, step 1° | Tilt (engine parameter; see the block header comment). |
+| `twoSided` | `on` | `off`, `on` | Two Sided (engine parameter; see the block header comment). |
+| `solo` | `off` | `off`, `on` | Solo (engine parameter; see the block header comment). |
+| `image1` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 1 of 8. Any aspect; fitted per mediaFit. |
+| `image2` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 2 of 8. Any aspect; fitted per mediaFit. |
+| `image3` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 3 of 8. Any aspect; fitted per mediaFit. |
+| `image4` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 4 of 8. Any aspect; fitted per mediaFit. |
+| `image5` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 5 of 8. Any aspect; fitted per mediaFit. |
+| `image6` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 6 of 8. Any aspect; fitted per mediaFit. |
+| `image7` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 7 of 8. Any aspect; fitted per mediaFit. |
+| `image8` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 8 of 8. Any aspect; fitted per mediaFit. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="loop-deck-2"
+  data-composition-src="compositions/loop-deck-2.html"
+  data-variable-values='{"mediaFit":"natural","cropAspectRatio":"1:1","backgroundType":"gradient","backgroundGradientStart":"#111111","backgroundGradientEnd":"#444444","backgroundColor":"#0b0b0f","backgroundImage":"","blurAmount":0,"backgroundGradientNoise":0,"backgroundOpacity":1,"borderRadius":16,"fade":0,"cycles":1,"delay":0,"direction":"down","flipAxis":"vertical","planeSize":375,"distance":1000,"perspective":100,"gap":0.44,"maxScale":1.15,"tilt":0,"twoSided":"on","solo":"off","image1":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image2":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image3":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image4":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image5":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image6":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image7":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image8":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`loop-deck-2.html`}>
+
+```html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"mediaFit","type":"enum","role":"style","label":"Media · Fit","description":"Natural keeps each image&#39;s own ratio; Crop fills the card box at the media aspect below.","default":"natural","options":[{"value":"natural","label":"Natural (original ratio)"},{"value":"crop","label":"Crop"}]},{"id":"cropAspectRatio","type":"enum","role":"style","label":"Media · Aspect","description":"Card aspect used when Fit is Crop.","default":"1:1","options":[{"value":"16:9","label":"16:9"},{"value":"9:16","label":"9:16"},{"value":"1:1","label":"1:1"},{"value":"4:5","label":"4:5"},{"value":"3:2","label":"3:2"},{"value":"3:4","label":"3:4"},{"value":"2:3","label":"2:3"}]},{"id":"backgroundType","type":"enum","role":"style","label":"Background · Type","description":"Gradient (start → end colours), flat Colour, or your own Image.","default":"gradient","options":[{"value":"gradient","label":"Gradient"},{"value":"color","label":"Color"},{"value":"image","label":"Image"}]},{"id":"backgroundGradientStart","type":"color","role":"style","label":"Background · Gradient start","description":"Top colour of the gradient.","default":"#111111"},{"id":"backgroundGradientEnd","type":"color","role":"style","label":"Background · Gradient end","description":"Bottom colour of the gradient.","default":"#444444"},{"id":"backgroundColor","type":"color","role":"style","label":"Background · Color","description":"Flat colour when Type is Color; also the ground under an Image.","default":"#0b0b0f"},{"id":"backgroundImage","type":"image","role":"style","label":"Background · Image","description":"Cover-fitted background when Type is Image.","portrays":["background_image"],"default":""},{"id":"blurAmount","type":"number","role":"style","label":"Background · Blur","description":"Blur on the background image, px.","default":0,"min":0,"max":60,"step":1,"unit":"px"},{"id":"backgroundGradientNoise","type":"number","role":"style","label":"Background · Grain","description":"Film-grain overlay strength.","default":0,"min":0,"max":100,"step":1,"unit":"%"},{"id":"backgroundOpacity","type":"number","role":"style","label":"Background · Opacity","description":"Opacity of the whole background layer (0 = transparent ground).","default":1,"min":0,"max":1,"step":0.05},{"id":"borderRadius","type":"number","role":"style","label":"Appearance · Border radius","description":"Card corner radius in px at 1080.","default":16,"min":0,"max":200,"step":1,"unit":"px"},{"id":"fade","type":"number","role":"style","label":"Animation · Fade","description":"Fade (engine parameter; see the block header comment).","default":0,"min":0,"max":100,"step":1},{"id":"cycles","type":"number","role":"style","label":"Animation · Cycles","description":"Number of motion cycles per loop.","default":1,"min":0,"max":10,"step":0.1},{"id":"delay","type":"number","role":"style","label":"Animation · Delay","description":"Hold time between steps, seconds.","default":0,"min":0,"max":2,"step":0.01,"unit":"s"},{"id":"direction","type":"enum","role":"style","label":"Animation · Direction","description":"Direction of travel.","default":"down","options":[{"value":"up","label":"Up"},{"value":"down","label":"Down"},{"value":"left","label":"Left"},{"value":"right","label":"Right"}]},{"id":"flipAxis","type":"enum","role":"style","label":"Animation · Flip Axis","description":"Flip Axis (engine parameter; see the block header comment).","default":"vertical","options":[{"value":"vertical","label":"Vertical"},{"value":"horizontal","label":"Horizontal"}]},{"id":"planeSize","type":"number","role":"style","label":"Template options · Media size","description":"Card size in scene units.","default":375,"min":0,"max":1000,"step":10},{"id":"distance","type":"number","role":"style","label":"Template options · Distance","description":"Camera distance from the formation.","default":1000,"min":0,"max":8260,"step":10},{"id":"perspective","type":"number","role":"style","label":"Template options · Perspective","description":"Camera focal length: smaller = stronger perspective.","default":100,"min":0,"max":200,"step":1},{"id":"gap","type":"number","role":"style","label":"Template options · Gap","description":"Spacing between cards.","default":0.44,"min":0,"max":2,"step":0.01,"unit":"px"},{"id":"maxScale","type":"number","role":"style","label":"Template options · Max Scale","description":"Max Scale (engine parameter; see the block header comment).","default":1.15,"min":0,"max":3,"step":0.1},{"id":"tilt","type":"number","role":"style","label":"Template options · Tilt","description":"Tilt (engine parameter; see the block header comment).","default":0,"min":-180,"max":180,"step":1,"unit":"°"},{"id":"twoSided","type":"enum","role":"style","label":"Template options · Two Sided","description":"Two Sided (engine parameter; see the block header comment).","default":"on","options":[{"value":"off","label":"Off"},{"value":"on","label":"On"}]},{"id":"solo","type":"enum","role":"style","label":"Template options · Solo","description":"Solo (engine parameter; see the block header comment).","default":"off","options":[{"value":"off","label":"Off"},{"value":"on","label":"On"}]},{"id":"image1","type":"image","role":"content","label":"Media · Image 1","description":"Image on card 1 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image2","type":"image","role":"content","label":"Media · Image 2","description":"Image on card 2 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image3","type":"image","role":"content","label":"Media · Image 3","description":"Image on card 3 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image4","type":"image","role":"content","label":"Media · Image 4","description":"Image on card 4 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image5","type":"image","role":"content","label":"Media · Image 5","description":"Image on card 5 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image6","type":"image","role":"content","label":"Media · Image 6","description":"Image on card 6 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image7","type":"image","role":"content","label":"Media · Image 7","description":"Image on card 7 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image8","type":"image","role":"content","label":"Media · Image 8","description":"Image on card 8 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"}]'
+>
+  <head>
+    <title>loop-deck-2</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0b0f;
+      }
+      #loop-deck-2-bg {
+        position: absolute;
+        inset: 0;
+      }
+      #loop-deck-2-stage {
+        position: absolute;
+        inset: 0;
+        perspective-origin: 50% 50%;
+      }
+      /* never put opacity/filter/will-change on preserve-3d nodes: it flattens them silently */
+      #loop-deck-2-belt,
+      .slot,
+      .face {
+        transform-style: preserve-3d;
+      }
+      #loop-deck-2-belt {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 0;
+        height: 0;
+      }
+      .slot {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 0;
+        height: 0;
+      }
+      .face {
+        position: absolute;
+        overflow: hidden;
+        backface-visibility: hidden;
+      }
+      .face img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="loop-deck-2-root"
+      data-composition-id="loop-deck-2"
+      data-start="0"
+      data-width="1080"
+      data-height="1080"
+      data-duration="7"
+    >
+      <div
+        id="loop-deck-2-loop"
+        class="clip"
+        data-start="0"
+        data-duration="7"
+        data-track-index="1"
+        data-layout-allow-overflow
+      >
+        <div id="loop-deck-2-bg"></div>
+        <div id="loop-deck-2-stage"><div id="loop-deck-2-belt"></div></div>
+      </div>
+    </div>
+    <script>
+      // Shared runtime for the the reference tool loop ports. Loaded by every family engine.
+      // Everything here is a pure function of the HyperFrames variables + t.
+      //
+      // Reference constants (measured on the 512x512 preview library, 2026-09-08):
+      //   Marquee planeSize -> 0.3% of frame height per unit (7 variants, all 1.54px/unit @512)
+      //   Marquee gap       -> 0.2% of frame height per unit
+      //   3D perspective    -> CSS focal length f = 1000px * (100/perspective) at H=1080
+      //                        (3D01/02/08/11: card widths & far-card spacing match to <3%)
+      // Both are calibrated on a SQUARE canvas; for 16:9 we scale by H. ponytail: if the
+      // dashboard 16:9 reference shows width-relative scaling, flip REF below to W.
+      window.RF = (() => {
+        // Variables are injected by the inline script via RF.use(): HyperFrames wraps INLINE scripts in a
+        // per-composition scope where getVariables() resolves; this external file only sees the host window.
+        const V = {},
+          MEDIA = [];
+        const use = (vars, media) => {
+          Object.assign(V, vars || {});
+          MEDIA.splice(0, MEDIA.length, ...(media || []));
+        };
+        const root = document.querySelector("[data-composition-id]");
+        const W = +root.dataset.width,
+          H = +root.dataset.height;
+        const REF = H;
+        const num = (k, d) => (V[k] !== undefined && V[k] !== "" && !isNaN(+V[k]) ? +V[k] : d);
+        const str = (k, d) => (V[k] !== undefined && V[k] !== "" ? String(V[k]) : d);
+        const on = (k, d) => /^(true|on|1)$/i.test(str(k, d ? "on" : "off")); // spec booleans arrive as "true"/"false", enums as on/off
+
+        function pick(n) {
+          n = Math.max(1, Math.min(MEDIA.length, n | 0));
+          return MEDIA.slice(0, n);
+        }
+        // aspect (w/h) a card takes for a media item under mediaFit + cropAspectRatio
+        function aspect(m, fit, cropAR) {
+          if (fit === "natural") return m.w / m.h;
+          const [a, b] = String(cropAR || "1:1")
+            .split(":")
+            .map(Number);
+          return a && b ? a / b : 1;
+        }
+        function card(m, w, h, radius) {
+          const el = document.createElement("div");
+          el.className = "card";
+          el.style.cssText = `position:absolute;width:${w}px;height:${h}px;overflow:hidden;border-radius:${radius}px;`;
+          const img = document.createElement("img");
+          img.src = m.src;
+          img.width = Math.round(w);
+          img.height = Math.round(h);
+          img.style.cssText = `display:block;width:${w}px;height:${h}px;object-fit:cover;`;
+          el.appendChild(img);
+          return el;
+        }
+        function background(el) {
+          // the editor's Background panel: type gradient | color | image, gradient start/end, grain (noise %), opacity, image blur
+          const type = str("backgroundType", "gradient");
+          const c = str("backgroundColor", "#0b0b0f");
+          el.style.background = c;
+          if (type === "gradient") {
+            const g1 = str("backgroundGradientStart", "#111111"),
+              g2 = str("backgroundGradientEnd", "#444444");
+            el.style.background = `linear-gradient(180deg, ${g1}, ${g2})`;
+          } else if (type === "image") {
+            const im = V.backgroundImage,
+              src = im && typeof im === "object" ? im.url || im.src || "" : im || "";
+            if (src) {
+              el.style.background = `${c} url("${src}") center / cover no-repeat`;
+              const b = num("blurAmount", 0);
+              if (b > 0) el.style.filter = `blur(${b}px)`;
+            }
+          }
+          el.style.opacity = String(Math.max(0, Math.min(1, num("backgroundOpacity", 1))));
+          const noise = num("backgroundGradientNoise", 0);
+          if (noise > 0) {
+            const g = document.createElement("div");
+            g.style.cssText = `position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:${((noise / 100) * 0.7).toFixed(3)};background:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'256'%20height%3D'256'%3E%3Cfilter%20id%3D'n'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%20seed%3D'7'%2F%3E%3CfeColorMatrix%20values%3D'0%200%200%200%200.5%200%200%200%200%200.5%200%200%200%200%200.5%200%200%200%201%200'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'256'%20height%3D'256'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E") 0 0 / 256px 256px repeat`;
+            el.appendChild(g);
+          }
+        }
+        const expoInOut = (x) =>
+          x <= 0
+            ? 0
+            : x >= 1
+              ? 1
+              : x < 0.5
+                ? Math.pow(2, 20 * x - 10) / 2
+                : (2 - Math.pow(2, -20 * x + 10)) / 2;
+        const frac = (x) => x - Math.floor(x);
+        return {
+          V,
+          use,
+          W,
+          H,
+          REF,
+          num,
+          str,
+          on,
+          MEDIA,
+          pick,
+          aspect,
+          card,
+          background,
+          expoInOut,
+          frac,
+        };
+      })();
+    </script>
+    <script>
+      (async () => {
+        // Deck loop family — "Cards flip through in a stacked deck".
+        // Mechanism (measured on the 512 previews, 2026-09-08): cards sit on a straight belt (vertical for
+        // direction up/down, horizontal for left/right) with pitch P; every step (loop/(images*cycles),
+        // 26.25 frames in the 7s/8-image previews) each card advances one slot with an eased progress
+        // p = 0.25x + 0.75*expoInOut(x) (Deck03 centre-card position, maxerr 0.028) and at the same time
+        // rotates about its OWN centre by rho(u) = 115deg per slot up to |u|=1, then on to 180deg (flat,
+        // back side) by |u|=2 — so the card that just left the centre is seen edge-on at p≈0.75 (Deck03
+        // f15: p=0.746 by position, h=4px) and then shows its back. The far-from-centre edge of a slot
+        // card is nearer the camera (Deck01 upper neighbour top 162px / bottom 130px; Deck02 3D
+        // reconstruction from edge widths: rot 85..90deg at f9-12, 125 at f13, 180 at rest).
+        //   flipAxis vertical -> rotateX, horizontal -> rotateY (independent of the belt axis: Deck04 =
+        //   vertical belt + rotateY gives the tall slivers; Deck06 = horizontal belt + rotateX).
+        //   rotation sign: the leaving card's trailing edge swings toward the camera and over the top, so at
+        //   rest the far-from-centre edge is the near one (Deck01 edge widths 168/127 -> z 903/1194, rho 114deg);
+        //   solo (Deck09 f17: right edge taller) follows the same rule.
+        // Constants: planeSize = world units at z=distance with f = 1000px*(100/perspective) @1080 (Deck01
+        //   320 -> 152px@512, Deck03 445*2500/4130 -> 128px, Deck09 500*1000/1090*1.15 -> 250px: all <1%).
+        //   maxScale = centre-card scale, falls linearly to 1 at |u|=1 (Deck02 centre 204 = 177.8*1.15).
+        //   tilt = rotateZ of the centre card only (Deck01 4.5deg, neighbours 0), same 1-|u| falloff.
+        //   twoSided on: 8 images -> 4 two-sided cards (centre-card grey sequence has period 4 in Deck01
+        //   and Deck03; slot +1 and -1 show the same "back" grey for a card); back of card k = image 2k+1.
+        //   fade: 0 -> no dimming at any slot (Deck01 slot1/slot2 greys equal); 30 -> slot1 luma-above-bg
+        //   0.64 (Deck03 vs Deck01 same faces), slot2 0.60. Modelled as opacity below.
+        // Guesses/knobs: PITCH — P/planeSize measured 1.022 (D01 gap .29), 1.081 (D03 .44), ~1.3-1.4
+        //   (D06/D08 horizontal belts, neighbours partly cut) — no gap formula fits; used
+        //   P = S*(1+gap)*K, K = 0.78 vertical / 0.97 horizontal. delay = seconds of phase. natural fit =
+        //   contain in S x S. steps per loop = images*cycles. Solo (Deck09 f15-22): the belt still
+        //   translates, only the card nearest the centre (|u|<0.5) is drawn, rotation ~90deg/slot (40deg at
+        //   p=.45); the leaving card rises with its right edge toward the camera, the next one comes from
+        //   below with its left edge toward the camera.
+        // media list [{src,w,h}] is inlined by build.mjs; HyperFrames scopes inline scripts, so hand both to the shared lib explicitly
+        const __V = Object.assign(
+          {},
+          (window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : null) || {},
+          { loopDuration: 7, loopRepeat: 2, imageCount: 8 },
+        );
+        const __PH = [
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+        ];
+        const __MEDIA = await Promise.all(
+          ["image1", "image2", "image3", "image4", "image5", "image6", "image7", "image8"].map(
+            async (id, i) => {
+              const v = __V[id];
+              const src = (v && typeof v === "object" ? v.url || v.src : v) || __PH[i];
+              const img = new Image();
+              img.src = src;
+              try {
+                await img.decode();
+              } catch (e) {}
+              return { src, w: img.naturalWidth || 1400, h: img.naturalHeight || 1050 };
+            },
+          ),
+        );
+        RF.use(__V, __MEDIA);
+        const { W, H, REF, num, str, on, pick, aspect, background, expoInOut, frac } = RF;
+        const DUR = num("loopDuration", 7);
+        const FIT = str("mediaFit", "natural");
+        const CROP_AR = str("cropAspectRatio", "1:1");
+        const PLANE = num("planeSize", 320);
+        const D = Math.max(1, num("distance", 1000));
+        const PERSP = Math.max(1, num("perspective", 100));
+        const GAP = num("gap", 0.29);
+        const MAXS = num("maxScale", 1.15);
+        const TILT = num("tilt", 0);
+        const FADE = num("fade", 0);
+        const TWO = on("twoSided", true);
+        const CYCLES = Math.max(1, num("cycles", 1) | 0);
+        const DELAY = num("delay", 0);
+        const DIRN = str("direction", "up");
+        const FLIP = str("flipAxis", "vertical");
+        const SOLO = on("solo", false);
+        const RADIUS = (num("borderRadius", 16) * REF) / 1080;
+        const IMAGES = pick(num("imageCount", 16));
+        const N = IMAGES.length;
+        const VERT = DIRN === "up" || DIRN === "down"; // belt axis
+        const DIR = DIRN === "up" || DIRN === "left" ? 1 : -1; // +1: cards travel toward -screen
+        const ROT = FLIP === "vertical" ? "rotateX" : "rotateY";
+        const RHO1 = 115; // deg per slot (Deck03 118, D04/06/08 ~110)
+        const PITCH_K = SOLO ? 0.66 : VERT ? 0.78 : 0.97; // knob, see header (solo: Deck09 f18/19 centres ~±100px @ p≈.5)
+
+        document.getElementById("loop-deck-2-loop").dataset.duration = DUR;
+        background(document.getElementById("loop-deck-2-bg"));
+
+        const f = 1000 * (100 / PERSP) * (REF / 1080); // CSS focal length, px
+        const s = f / D; // world -> px at the belt plane (z = 0)
+        const S = PLANE * s;
+        const P = S * (1 + GAP) * PITCH_K;
+        const stage = document.getElementById("loop-deck-2-stage");
+        stage.style.perspective = f + "px";
+        const belt = document.getElementById("loop-deck-2-belt");
+        const ease = (x) => 0.25 * x + 0.75 * expoInOut(x);
+
+        // cards: two-sided packs image pairs (front 2k, back 2k+1)
+        const C = TWO ? Math.ceil(N / 2) : N;
+        const STEPS = N * CYCLES;
+        const cards = [];
+        const face = (m, back) => {
+          const a = aspect(m, FIT, CROP_AR);
+          const w = S * Math.min(1, a),
+            h = S * Math.min(1, 1 / a);
+          const el = document.createElement("div");
+          el.className = "face";
+          el.style.cssText =
+            `width:${w}px;height:${h}px;left:${-w / 2}px;top:${-h / 2}px;border-radius:${RADIUS}px;` +
+            (back ? `transform:${ROT}(180deg);` : "");
+          const img = document.createElement("img");
+          img.src = m.src;
+          img.width = Math.round(w);
+          img.height = Math.round(h);
+          el.appendChild(img);
+          return el;
+        };
+        for (let k = 0; k < C; k++) {
+          const slot = document.createElement("div");
+          slot.className = "slot";
+          const front = face(IMAGES[TWO ? (2 * k) % N : k], false);
+          slot.appendChild(front);
+          let backEl = null;
+          if (TWO) {
+            backEl = face(IMAGES[(2 * k + 1) % N], true);
+            slot.appendChild(backEl);
+          }
+          belt.appendChild(slot);
+          cards.push({
+            slot,
+            imgs: [front.firstChild, backEl && backEl.firstChild].filter(Boolean),
+          });
+        }
+
+        const rho = (u) => {
+          const a = Math.abs(u);
+          const r = SOLO
+            ? 90 * a
+            : a <= 1
+              ? RHO1 * a
+              : Math.min(180, RHO1 + (180 - RHO1) * (a - 1));
+          return Math.sign(u) * r;
+        };
+        function renderAt(t) {
+          const g = frac(t + DELAY / DUR) * STEPS;
+          const k = Math.floor(g),
+            p = ease(g - k);
+          for (let j = 0; j < C; j++) {
+            const c = cards[j];
+            // belt position in slots relative to the centre; card (k mod C) is centred at p = 0
+            let u = ((((j - k) % C) + C) % C) - p;
+            if (u > C / 2) u -= C;
+            const a = Math.abs(u);
+            if (a > 2.6 || (SOLO && a >= 0.5)) {
+              c.slot.style.display = "none";
+              continue;
+            } // solo: only the nearest card
+            c.slot.style.display = "";
+            const near = Math.max(0, 1 - a);
+            const scale = 1 + (MAXS - 1) * near;
+            const tilt = -TILT * near; // Deck01: centre card CCW
+            const off = DIR * u * P;
+            // leaving card: its trailing edge swings toward the camera and over. CSS rotateX(+) brings the bottom
+            // edge forward but rotateY(+) sends the right edge back, hence the axis-dependent sign.
+            const ang = (ROT === "rotateX" ? -1 : 1) * DIR * rho(u);
+            const tr = VERT ? `translate3d(0,${off}px,0)` : `translate3d(${off}px,0,0)`;
+            c.slot.style.transform = `${tr} rotateZ(${tilt}deg) ${ROT}(${ang}deg) scale(${scale})`;
+            const op = Math.max(
+              0,
+              1 - (FADE / 100) * (1.2 * Math.min(a, 1) + 0.13 * Math.max(0, a - 1)),
+            );
+            for (const im of c.imgs) im.style.opacity = op;
+          }
+        }
+        // one paused linear tween drives t; every frame is recomputed from t alone (seek-safe)
+        const state = { t: 0 };
+        const tl = gsap.timeline({ paused: true });
+        tl.to(state, { t: 1, duration: DUR, ease: "none", onUpdate: () => renderAt(state.t) }, 0);
+        renderAt(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["loop-deck-2"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `loop` `images` `showcase` `gallery` `deck` `3d`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

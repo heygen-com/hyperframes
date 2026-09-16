@@ -1,0 +1,441 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "loop-3d-9",
+  "type": "hyperframes:block",
+  "title": "Loop 3D Ring 9",
+  "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 20s seamless loop, 1:1.",
+  "tags": ["loop", "images", "showcase", "gallery", "3d"],
+  "author": "Miao Yang",
+  "license": "Apache-2.0",
+  "dimensions": {
+    "width": 1080,
+    "height": 1080
+  },
+  "duration": 20,
+  "variables": [
+    {
+      "id": "mediaFit",
+      "type": "enum",
+      "role": "style",
+      "label": "Media · Fit",
+      "description": "Natural keeps each image's own ratio; Crop fills the card box at the media aspect below.",
+      "default": "natural",
+      "options": [
+        {
+          "value": "natural",
+          "label": "Natural (original ratio)"
+        },
+        {
+          "value": "crop",
+          "label": "Crop"
+        }
+      ]
+    },
+    {
+      "id": "cropAspectRatio",
+      "type": "enum",
+      "role": "style",
+      "label": "Media · Aspect",
+      "description": "Card aspect used when Fit is Crop.",
+      "default": "1:1",
+      "options": [
+        {
+          "value": "16:9",
+          "label": "16:9"
+        },
+        {
+          "value": "9:16",
+          "label": "9:16"
+        },
+        {
+          "value": "1:1",
+          "label": "1:1"
+        },
+        {
+          "value": "4:5",
+          "label": "4:5"
+        },
+        {
+          "value": "3:2",
+          "label": "3:2"
+        },
+        {
+          "value": "3:4",
+          "label": "3:4"
+        },
+        {
+          "value": "2:3",
+          "label": "2:3"
+        }
+      ]
+    },
+    {
+      "id": "backgroundType",
+      "type": "enum",
+      "role": "style",
+      "label": "Background · Type",
+      "description": "Gradient (start → end colours), flat Colour, or your own Image.",
+      "default": "gradient",
+      "options": [
+        {
+          "value": "gradient",
+          "label": "Gradient"
+        },
+        {
+          "value": "color",
+          "label": "Color"
+        },
+        {
+          "value": "image",
+          "label": "Image"
+        }
+      ]
+    },
+    {
+      "id": "backgroundGradientStart",
+      "type": "color",
+      "role": "style",
+      "label": "Background · Gradient start",
+      "description": "Top colour of the gradient.",
+      "default": "#111111"
+    },
+    {
+      "id": "backgroundGradientEnd",
+      "type": "color",
+      "role": "style",
+      "label": "Background · Gradient end",
+      "description": "Bottom colour of the gradient.",
+      "default": "#444444"
+    },
+    {
+      "id": "backgroundColor",
+      "type": "color",
+      "role": "style",
+      "label": "Background · Color",
+      "description": "Flat colour when Type is Color; also the ground under an Image.",
+      "default": "#0b0b0f"
+    },
+    {
+      "id": "backgroundImage",
+      "type": "image",
+      "role": "style",
+      "label": "Background · Image",
+      "description": "Cover-fitted background when Type is Image.",
+      "portrays": ["background_image"],
+      "default": ""
+    },
+    {
+      "id": "blurAmount",
+      "type": "number",
+      "role": "style",
+      "label": "Background · Blur",
+      "description": "Blur on the background image, px.",
+      "default": 0,
+      "min": 0,
+      "max": 60,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "backgroundGradientNoise",
+      "type": "number",
+      "role": "style",
+      "label": "Background · Grain",
+      "description": "Film-grain overlay strength.",
+      "default": 0,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "backgroundOpacity",
+      "type": "number",
+      "role": "style",
+      "label": "Background · Opacity",
+      "description": "Opacity of the whole background layer (0 = transparent ground).",
+      "default": 1,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "borderRadius",
+      "type": "number",
+      "role": "style",
+      "label": "Appearance · Border radius",
+      "description": "Card corner radius in px at 1080.",
+      "default": 0,
+      "min": 0,
+      "max": 200,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "backface",
+      "type": "enum",
+      "role": "style",
+      "label": "Animation · Backface",
+      "description": "Backface (engine parameter; see the block header comment).",
+      "default": "show",
+      "options": [
+        {
+          "value": "show",
+          "label": "Show"
+        },
+        {
+          "value": "hide",
+          "label": "Hide"
+        }
+      ]
+    },
+    {
+      "id": "flipImage",
+      "type": "enum",
+      "role": "style",
+      "label": "Animation · Flip Image",
+      "description": "Flip Image (engine parameter; see the block header comment).",
+      "default": "off",
+      "options": [
+        {
+          "value": "off",
+          "label": "Off"
+        },
+        {
+          "value": "on",
+          "label": "On"
+        }
+      ]
+    },
+    {
+      "id": "cycles",
+      "type": "number",
+      "role": "style",
+      "label": "Animation · Cycles",
+      "description": "Number of motion cycles per loop.",
+      "default": 1,
+      "min": 0,
+      "max": 10,
+      "step": 0.1
+    },
+    {
+      "id": "planeSize",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Media size",
+      "description": "Card size in scene units.",
+      "default": 2478,
+      "min": 0,
+      "max": 8120,
+      "step": 10
+    },
+    {
+      "id": "orbitRadius",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Orbit Radius",
+      "description": "Ring radius in scene units.",
+      "default": 9047,
+      "min": 0,
+      "max": 25848,
+      "step": 10
+    },
+    {
+      "id": "rotationX",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Rotation X",
+      "description": "Formation tilt about the horizontal axis, degrees.",
+      "default": 20,
+      "min": -180,
+      "max": 180,
+      "step": 1,
+      "unit": "°"
+    },
+    {
+      "id": "rotationY",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Rotation Y",
+      "description": "Formation turn about the vertical axis, degrees.",
+      "default": 230,
+      "min": -180,
+      "max": 180,
+      "step": 1,
+      "unit": "°"
+    },
+    {
+      "id": "rotationZ",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Rotation Z",
+      "description": "Formation roll about the view axis, degrees.",
+      "default": 48,
+      "min": -180,
+      "max": 180,
+      "step": 1,
+      "unit": "°"
+    },
+    {
+      "id": "distance",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Distance",
+      "description": "Camera distance from the formation.",
+      "default": 20302,
+      "min": 0,
+      "max": 48424,
+      "step": 10
+    },
+    {
+      "id": "perspective",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Perspective",
+      "description": "Camera focal length: smaller = stronger perspective.",
+      "default": 100,
+      "min": 0,
+      "max": 300,
+      "step": 10
+    },
+    {
+      "id": "offsetX",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Offset X",
+      "description": "Horizontal offset of the formation, % of width.",
+      "default": 0,
+      "min": -100,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "offsetY",
+      "type": "number",
+      "role": "style",
+      "label": "Template options · Offset Y",
+      "description": "Vertical offset of the formation, % of height.",
+      "default": 5,
+      "min": -100,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "axis",
+      "type": "enum",
+      "role": "style",
+      "label": "Template options · Axis",
+      "description": "Axis (engine parameter; see the block header comment).",
+      "default": "horizontal",
+      "options": [
+        {
+          "value": "horizontal",
+          "label": "Horizontal"
+        },
+        {
+          "value": "vertical",
+          "label": "Vertical"
+        }
+      ]
+    },
+    {
+      "id": "surface",
+      "type": "enum",
+      "role": "style",
+      "label": "Template options · Surface",
+      "description": "Surface (engine parameter; see the block header comment).",
+      "default": "cylinder",
+      "options": [
+        {
+          "value": "flat",
+          "label": "Flat"
+        },
+        {
+          "value": "cylinder",
+          "label": "Cylinder"
+        }
+      ]
+    },
+    {
+      "id": "image1",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 1",
+      "description": "Image on card 1 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "id": "image2",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 2",
+      "description": "Image on card 2 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "id": "image3",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 3",
+      "description": "Image on card 3 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "id": "image4",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 4",
+      "description": "Image on card 4 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "id": "image5",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 5",
+      "description": "Image on card 5 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "id": "image6",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 6",
+      "description": "Image on card 6 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "id": "image7",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 7",
+      "description": "Image on card 7 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "id": "image8",
+      "type": "image",
+      "role": "content",
+      "label": "Media · Image 8",
+      "description": "Image on card 8 of 8. Any aspect; fitted per mediaFit.",
+      "portrays": ["subject_image"],
+      "default": "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"
+    }
+  ],
+  "files": [
+    {
+      "path": "loop-3d-9.html",
+      "target": "compositions/loop-3d-9.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
