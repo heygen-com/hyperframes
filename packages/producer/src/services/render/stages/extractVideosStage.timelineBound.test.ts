@@ -10,6 +10,7 @@ import type { ProducerLogger } from "../../../logger.js";
 const extractionCalls = vi.hoisted(
   () => new Array<{ timelineEnd: number | undefined; durationSeconds: number }>(),
 );
+const toneMapHdrToSdrCalls = vi.hoisted(() => new Array<boolean | undefined>());
 const fixtureState = vi.hoisted(() => ({ sourceDurationSeconds: 60 }));
 
 vi.mock("@hyperframes/engine", async (importOriginal) => {
@@ -19,7 +20,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
     extractAllVideoFrames: async (
       videos: VideoElement[],
       _baseDir: string,
-      options: { timelineEnd?: number },
+      options: { timelineEnd?: number; toneMapHdrToSdr?: boolean },
     ): Promise<ExtractionResult> => {
       const sourceDurationSeconds = fixtureState.sourceDurationSeconds;
       const video = videos[0];
@@ -36,6 +37,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
           : Math.min(resolvedDuration, Math.max(0, options.timelineEnd - video.start));
       video.end = video.start + durationSeconds;
       extractionCalls.push({ timelineEnd: options.timelineEnd, durationSeconds });
+      toneMapHdrToSdrCalls.push(options.toneMapHdrToSdr);
       return {
         success: true,
         extracted: [],
@@ -113,6 +115,7 @@ describe.each([
 ] as const)("%s video extraction timeline bound", (_mode, materializeSymlinks) => {
   it("caps an open 60-second source to a two-second composition", async () => {
     extractionCalls.splice(0);
+    toneMapHdrToSdrCalls.splice(0);
     fixtureState.sourceDurationSeconds = 60;
 
     await runStage(2, materializeSymlinks);
@@ -122,11 +125,21 @@ describe.each([
 
   it("keeps a two-second natural source inside a ten-second composition", async () => {
     extractionCalls.splice(0);
+    toneMapHdrToSdrCalls.splice(0);
     fixtureState.sourceDurationSeconds = 2;
 
     await runStage(10, materializeSymlinks);
 
     expect(extractionCalls).toEqual([{ timelineEnd: 10, durationSeconds: 2 }]);
+  });
+
+  it("requests HDR-to-SDR tone mapping for forced-SDR extraction", async () => {
+    extractionCalls.splice(0);
+    toneMapHdrToSdrCalls.splice(0);
+
+    await runStage(2, materializeSymlinks);
+
+    expect(toneMapHdrToSdrCalls).toEqual([true]);
   });
 });
 

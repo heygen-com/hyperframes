@@ -182,6 +182,7 @@ export interface ExtractionOptions {
   quality?: number;
   format?: VideoFrameFormat;
   sdrToHdrTransfer?: HdrTransfer;
+  toneMapHdrToSdr?: boolean;
   /** Extract exactly one frame at `startTime`. Used only after ffprobe has
    *  resolved the actual final decoded-frame timestamp for a held tail. */
   finalFrameOnly?: boolean;
@@ -207,6 +208,9 @@ export interface ExtractionOptions {
 const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
 const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv";
+const HDR_TO_SDR_TONEMAP_FILTER =
+  "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv";
+const HDR_TO_SDR_TRANSFORM_KEY = "hdr2sdr-hable-bt709";
 
 function sdrToHdrTransformKey(transfer: HdrTransfer): string {
   return `sdr2hdr-${transfer}`;
@@ -792,10 +796,9 @@ export async function extractVideoFramesRange(
   const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${format}`;
   const outputPattern = join(videoOutputDir, framePattern);
 
-  // When extracting from HDR source, tone-map to SDR in FFmpeg rather than
-  // letting Chrome's uncontrollable tone-mapper handle it (which washes out).
+  // Forced-SDR extraction tone-maps HDR before the intermediate frames reach Chrome.
   // macOS: VideoToolbox hardware decoder does HDR→SDR natively on Apple Silicon.
-  // Linux: zscale filter (when available) or colorspace filter as fallback.
+  // Linux: use the same zscale/tonemap policy as Studio proxies.
   const isHdr = isHdrColorSpaceUtil(metadata.colorSpace);
   const isMacOS = process.platform === "darwin";
 
@@ -842,6 +845,9 @@ export async function extractVideoFramesRange(
     // untested interaction (today the flags are mutually exclusive — the
     // remap only applies to SDR sources, nv12 only to HDR sources).
     vfFilters.push(SDR_TO_HDR_COLORSPACE_FILTER);
+  }
+  if (options.toneMapHdrToSdr && isHdr && !isMacOS) {
+    vfFilters.push(HDR_TO_SDR_TONEMAP_FILTER);
   }
   if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
   if (!options.finalFrameOnly && metadata.isVFR) {
@@ -1276,6 +1282,7 @@ type PreparedExtraction = {
   finalFrameOnly: boolean;
   format: CacheFrameFormat;
   sdrToHdrTransfer?: HdrTransfer;
+  toneMapHdrToSdr: boolean;
   dedupeKey: string;
 };
 
@@ -1339,6 +1346,7 @@ function supersetGroupingKey(work: PreparedExtraction, fps: number): string {
     String(fps),
     work.format,
     work.sdrToHdrTransfer ?? "",
+    work.toneMapHdrToSdr ? HDR_TO_SDR_TRANSFORM_KEY : "",
     work.finalFrameOnly ? "final" : "range",
   ].join("\0");
 }
@@ -1836,6 +1844,7 @@ export async function extractAllVideoFrames(
       ...options,
       format: work.format,
       sdrToHdrTransfer: work.sdrToHdrTransfer,
+      toneMapHdrToSdr: work.toneMapHdrToSdr,
       finalFrameOnly: work.finalFrameOnly,
     };
   }
@@ -1857,6 +1866,7 @@ export async function extractAllVideoFrames(
     if (!keyInput) return { work };
     const transformParts = [
       work.sdrToHdrTransfer ? sdrToHdrTransformKey(work.sdrToHdrTransfer) : undefined,
+      work.toneMapHdrToSdr ? HDR_TO_SDR_TRANSFORM_KEY : undefined,
       work.finalFrameOnly ? "final-frame" : undefined,
     ].filter((part): part is string => part !== undefined);
     const transform = transformParts.length > 0 ? transformParts.join("+") : undefined;
@@ -2082,8 +2092,10 @@ export async function extractAllVideoFrames(
 
         const format = resolveFrameFormat(metadata, options.format);
         const sdrToHdrTransfer = sdrToHdrTransfers[index];
+        const toneMapHdrToSdr =
+          options.toneMapHdrToSdr === true && isHdrColorSpaceUtil(metadata.colorSpace);
         const finalFrameOnly = window.finalFrameOnly === true;
-        const dedupeKey = `${videoPath}\0${extractionMediaStart}\0${videoDuration}\0${fpsKey}\0${format}\0${sdrToHdrTransfer ?? ""}\0${finalFrameOnly ? "final" : "range"}`;
+        const dedupeKey = `${videoPath}\0${extractionMediaStart}\0${videoDuration}\0${fpsKey}\0${format}\0${sdrToHdrTransfer ?? ""}\0${toneMapHdrToSdr ? HDR_TO_SDR_TRANSFORM_KEY : ""}\0${finalFrameOnly ? "final" : "range"}`;
 
         return {
           work: {
@@ -2096,6 +2108,7 @@ export async function extractAllVideoFrames(
             finalFrameOnly,
             format,
             sdrToHdrTransfer,
+            toneMapHdrToSdr,
             dedupeKey,
           },
         };

@@ -2709,6 +2709,115 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
   }, 60_000);
 });
 
+describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR extraction", () => {
+  let fixtureDir = "";
+
+  beforeAll(() => {
+    fixtureDir = mkdtempSync(join(tmpdir(), "hf-forced-sdr-tonemap-test-"));
+  });
+
+  afterAll(() => {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  });
+
+  it("matches Studio's HLG tone map and isolates transformed cache entries", async () => {
+    const source = join(fixtureDir, "hlg-warm.mp4");
+    const synthesized = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0xe0b080:s=64x64:r=1:d=1",
+      "-vf",
+      "zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=arib-std-b67:m=bt2020nc:r=tv,format=yuv420p",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-color_primaries",
+      "bt2020",
+      "-color_trc",
+      "arib-std-b67",
+      "-colorspace",
+      "bt2020nc",
+      "-bsf:v",
+      "h264_metadata=colour_primaries=9:transfer_characteristics=18:matrix_coefficients=9",
+      source,
+    ]);
+    if (!synthesized.success) {
+      throw new Error(`HLG fixture synthesis failed: ${synthesized.stderr.slice(-400)}`);
+    }
+
+    const reference = join(fixtureDir, "studio-reference.png");
+    const referenceResult = await runFfmpeg([
+      "-y",
+      "-ss",
+      "0",
+      "-i",
+      source,
+      "-t",
+      "1",
+      "-vf",
+      "fps=1,zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
+      "-q:v",
+      "0",
+      "-compression_level",
+      "1",
+      reference,
+    ]);
+    if (!referenceResult.success) {
+      throw new Error(`Studio reference extraction failed: ${referenceResult.stderr.slice(-400)}`);
+    }
+
+    const cacheDir = join(fixtureDir, "cache");
+    const video = (id: string): VideoElement => ({
+      id,
+      src: source,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const extract = (id: string, toneMapHdrToSdr = false) =>
+      extractAllVideoFrames(
+        [video(id)],
+        fixtureDir,
+        {
+          fps: 1,
+          outputDir: join(fixtureDir, id),
+          format: "png",
+          toneMapHdrToSdr,
+        },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+
+    const plain = await extract("plain");
+    const toneMapped = await extract("tone-mapped", true);
+    const toneMappedAgain = await extract("tone-mapped-again", true);
+
+    expect(plain.errors).toEqual([]);
+    expect(toneMapped.errors).toEqual([]);
+    expect(toneMapped.phaseBreakdown.cacheHits).toBe(0);
+    expect(toneMapped.phaseBreakdown.cacheMisses).toBe(1);
+    expect(toneMappedAgain.phaseBreakdown.cacheHits).toBe(1);
+    expect(readdirSync(cacheDir).filter((name) => name.startsWith(SCHEMA_PREFIX))).toHaveLength(2);
+
+    const frame = (result: ExtractionResult): Buffer => {
+      const path = result.extracted[0]?.framePaths.get(0);
+      if (!path) throw new Error("expected extracted frame");
+      return readFileSync(path);
+    };
+    expect(frame(toneMapped)).toEqual(readFileSync(reference));
+    expect(frame(plain)).not.toEqual(frame(toneMapped));
+    expect(frame(toneMappedAgain)).toEqual(frame(toneMapped));
+  }, 60_000);
+});
+
 describe("getFrameAtTime — IEEE 754 boundary precision", () => {
   function makeExtracted(fps: number, totalFrames: number): ExtractedFrames {
     const framePaths = new Map<number, string>();
