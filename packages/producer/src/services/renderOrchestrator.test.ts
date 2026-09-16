@@ -41,7 +41,7 @@ import {
   shouldRetryViaPinnedFallback,
   isDeRendererStallError,
   isSequentialCaptureStallError,
-  countElementTags,
+  scanElementTags,
   envInt,
   isDeParallelRouterEnabled,
   mergeWorkerInitObservability,
@@ -2075,14 +2075,14 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     });
   });
 
-  describe("countElementTags", () => {
+  describe("scanElementTags", () => {
     it("counts closing tags", () => {
-      expect(countElementTags("<div><span>a</span></div>")).toBe(2);
+      expect(scanElementTags("<div><span>a</span></div>").total).toBe(2);
     });
 
     it("counts void elements — an image gallery must not read as a tiny comp", () => {
-      expect(countElementTags("<img><br><hr>")).toBe(3);
-      expect(countElementTags('<img src="a.png"><IMG SRC="b.png">')).toBe(2);
+      expect(scanElementTags("<img><br><hr>").total).toBe(3);
+      expect(scanElementTags('<img src="a.png"><IMG SRC="b.png">').total).toBe(2);
     });
 
     // Review-flagged blocker (v1): SVG elements are neither closing-tag-shaped
@@ -2092,14 +2092,14 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     // measured 1.8x regression case is made of. The ceiling cannot bound an
     // error that has no bound of its own.
     it("counts self-closing SVG elements — the 40k-node regression case must not read as empty", () => {
-      expect(countElementTags("<circle/>".repeat(40000))).toBe(40000);
-      expect(countElementTags('<path d="M0 0 L1 1" stroke="red" />')).toBe(1);
-      expect(countElementTags("<feGaussianBlur stdDeviation='2'/>")).toBe(1);
+      expect(scanElementTags("<circle/>".repeat(40000)).total).toBe(40000);
+      expect(scanElementTags('<path d="M0 0 L1 1" stroke="red" />').total).toBe(1);
+      expect(scanElementTags("<feGaussianBlur stdDeviation='2'/>").total).toBe(1);
     });
 
     it("does not double-count a self-closed void element (still just 1)", () => {
-      expect(countElementTags('<img src="a.png"/>')).toBe(1);
-      expect(countElementTags('<img src="a.png" />')).toBe(1);
+      expect(scanElementTags('<img src="a.png"/>').total).toBe(1);
+      expect(scanElementTags('<img src="a.png" />').total).toBe(1);
     });
 
     it("does not false-positive on minified JS division-after-comparison (the self-closing alt's real risk)", () => {
@@ -2108,16 +2108,16 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       // starting a match — but it still requires the literal two-char "/>"
       // sequence, and here a "c" sits between the "/" and the ">", so
       // backtracking never finds one and it correctly fails to match.
-      expect(countElementTags("if(a<b/c>d){}")).toBe(0);
+      expect(scanElementTags("if(a<b/c>d){}").total).toBe(0);
     });
 
     it("does not false-positive on inline-script comparisons or void-prefixed words", () => {
       // Script bodies are stripped wholesale (with their own closing tag), so
       // nothing inside can match — including "<breadth" / "<imgWidth", which
       // would anyway fail the \b word boundary.
-      expect(countElementTags("<script>if (a < b && x <breadth && y <imgWidth) {}</script>")).toBe(
-        0,
-      );
+      expect(
+        scanElementTags("<script>if (a < b && x <breadth && y <imgWidth) {}</script>").total,
+      ).toBe(0);
     });
 
     // Review finding: the `</[a-zA-Z]` alternation matches ANY "</" + letter,
@@ -2126,16 +2126,17 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     // on the ~83% of renders with no probe, for which this scan is the only
     // element signal.
     it("does not count closing tags written inside inline script strings", () => {
-      expect(countElementTags('<div></div><script>const h = "</div></div></div>";</script>')).toBe(
-        1,
-      );
       expect(
-        countElementTags("<p></p><script>const t = words.map(w => `</span>`).join('');</script>"),
+        scanElementTags('<div></div><script>const h = "</div></div></div>";</script>').total,
+      ).toBe(1);
+      expect(
+        scanElementTags("<p></p><script>const t = words.map(w => `</span>`).join('');</script>")
+          .total,
       ).toBe(1);
     });
 
     it("strips <style> bodies too — CSS content strings can carry the same shapes", () => {
-      expect(countElementTags('<div></div><style>a::after{content:"</div>"}</style>')).toBe(1);
+      expect(scanElementTags('<div></div><style>a::after{content:"</div>"}</style>').total).toBe(1);
     });
 
     // CodeQL "incomplete multi-character sanitization": a single-pass replace
@@ -2145,28 +2146,83 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     it("strips script tags that reform after one pass", () => {
       // Inner <script> removed by pass 1 leaves "<script>alert(1)</script>",
       // which pass 2 removes. A single pass would leave a stray tag behind.
-      expect(countElementTags("<div></div><scr<script></script>ipt>alert(1)</script>")).toBe(1);
+      expect(scanElementTags("<div></div><scr<script></script>ipt>alert(1)</script>").total).toBe(
+        1,
+      );
     });
 
     it("terminates on input with no closing tag rather than looping", () => {
-      expect(countElementTags("<div></div><script>unterminated")).toBe(1);
+      expect(scanElementTags("<div></div><script>unterminated").total).toBe(1);
     });
 
     it("strips multiple and attributed script blocks, not just the first", () => {
       expect(
-        countElementTags(
+        scanElementTags(
           '<div></div><script type="module">"</span>"</script><script>"</span>"</script>',
-        ),
+        ).total,
       ).toBe(1);
     });
 
     it("is stable on empty and malformed input rather than throwing", () => {
-      expect(countElementTags("")).toBe(0);
-      expect(countElementTags("<<<>>>")).toBe(0);
+      expect(scanElementTags("").total).toBe(0);
+      expect(scanElementTags("<<<>>>").total).toBe(0);
     });
 
     it("scales to a large document without a full parse", () => {
-      expect(countElementTags("<p>x</p>".repeat(40000))).toBe(40000);
+      expect(scanElementTags("<p>x</p>".repeat(40000)).total).toBe(40000);
+    });
+
+    it("groups mixed native and custom hf-* tags by raw tag name", () => {
+      const html =
+        "<div><span>a</span></div><hf-caption></hf-caption><hf-audio-group></hf-audio-group><div></div>";
+      const scan = scanElementTags(html);
+      expect(scan.byTag).toEqual({ div: 2, span: 1, "hf-caption": 1, "hf-audio-group": 1 });
+      expect(scan.total).toBe(5);
+    });
+
+    it("normalizes case so <DIV>/<Div>/<div> collapse into one key", () => {
+      const scan = scanElementTags("<DIV></DIV><Div></Div><div></div>");
+      expect(scan.byTag).toEqual({ div: 3 });
+    });
+
+    it("count/map consistency: the sum of byTag always equals total", () => {
+      const html =
+        '<div><img src="a.png"><hf-caption></hf-caption></div><circle/><path d="M0 0" />' +
+        "<hf-audio-group></hf-audio-group>".repeat(3);
+      const scan = scanElementTags(html);
+      const sum = Object.values(scan.byTag).reduce((a, b) => a + b, 0);
+      expect(sum).toBe(scan.total);
+    });
+
+    it("caps distinct reported tags, folding the overflow into an `other` bucket", () => {
+      // 60 distinct single-use tag names, well past the 50-tag cap. "div"
+      // (100 uses) takes the top rank, leaving only 49 of the 50 slots for
+      // the 60 distinct tags — 11 of them fold into "other".
+      const distinctTags = Array.from({ length: 60 }, (_, i) => `hf-tag-${i}`);
+      const html = "<div></div>".repeat(100) + distinctTags.map((t) => `<${t}></${t}>`).join("");
+      const scan = scanElementTags(html);
+      expect(Object.keys(scan.byTag).length).toBe(51); // 50 reported + "other"
+      expect(scan.byTag.div).toBe(100);
+      expect(scan.byTag.other).toBe(11); // 60 distinct tags - 49 reported = 11 folded in
+      const sum = Object.values(scan.byTag).reduce((a, b) => a + b, 0);
+      expect(sum).toBe(scan.total);
+      expect(scan.total).toBe(100 + 60);
+    });
+
+    it("counts <video data-aroll=true> elements, not audio/img carrying the same attribute", () => {
+      const html =
+        '<video data-aroll="true" src="a.mp4"></video>' +
+        '<video src="b.mp4"></video>' +
+        '<audio data-aroll="true" src="a.mp3"></audio>' +
+        '<img data-aroll="true" src="a.png" />';
+      expect(scanElementTags(html).arollVideoCount).toBe(1);
+    });
+
+    it("reports zero (not undefined) arollVideoCount and an empty byTag when nothing matches", () => {
+      const scan = scanElementTags("plain text, no tags at all");
+      expect(scan.arollVideoCount).toBe(0);
+      expect(scan.byTag).toEqual({});
+      expect(scan.total).toBe(0);
     });
   });
 
@@ -2193,6 +2249,8 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(null, "<div><span></span></div>")).toEqual({
         count: 2,
         source: "static",
+        byTag: { div: 1, span: 1 },
+        arollVideoCount: 0,
       });
     });
 
@@ -2201,6 +2259,8 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(session, "<div></div>")).toEqual({
         count: 1,
         source: "static",
+        byTag: { div: 1 },
+        arollVideoCount: 0,
       });
     });
 
@@ -2216,6 +2276,8 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(session, "<div><span></span></div>")).toEqual({
         count: 2,
         source: "static",
+        byTag: { div: 1, span: 1 },
+        arollVideoCount: 0,
       });
     });
 
@@ -2224,7 +2286,16 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(session, "<div></div>")).toEqual({
         count: 1,
         source: "static",
+        byTag: { div: 1 },
+        arollVideoCount: 0,
       });
+    });
+
+    it("omits byTag/arollVideoCount on the live path — that path never runs the static scan", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => 40001 } };
+      const result = await resolveCompositionElementCount(session, "<div><span></span></div>");
+      expect(result).not.toHaveProperty("byTag");
+      expect(result).not.toHaveProperty("arollVideoCount");
     });
   });
 

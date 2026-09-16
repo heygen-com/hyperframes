@@ -74,7 +74,7 @@ export interface RenderCaptureObservability {
    * Element count for the short-comp band gate (`resolveCompositionElementCount`):
    * the LIVE DOM size from the already-running probe session when one is
    * initialized, falling back to a static scan of the compiled HTML
-   * (`countElementTags`) otherwise. Live is authoritative — a static scan
+   * (`scanElementTags`) otherwise. Live is authoritative — a static scan
    * cannot see elements a composition's own script creates at runtime.
    *
    * Emitted on every render, not just inverted ones — this is the variable the
@@ -93,6 +93,23 @@ export interface RenderCaptureObservability {
    * unlock for the band.
    */
   compositionElementCountSource?: "live" | "static";
+  /**
+   * Per-tag breakdown of the same static scan behind `compositionElementCount`
+   * — one shared regex pass feeds both fields, so a fleet query summing this
+   * map's values always reconciles against the integer. Capped by
+   * `scanElementTags` (top tags by count + an `other` bucket) so a
+   * pathological composition's distinct tag count can't inflate the event
+   * payload. Only set when
+   * `compositionElementCountSource` is "static" — the live path measures a
+   * DOM node count directly and never runs this scan.
+   */
+  compositionElementTags?: Readonly<Record<string, number>>;
+  /**
+   * `<video data-aroll="true">` elements from the same static scan as
+   * `compositionElementTags`. Only set when `compositionElementCountSource`
+   * is "static".
+   */
+  arollVideoCount?: number;
   /**
    * Short-comp band decision, emitted only when the band is DECISIVE — every
    * other inversion-eligibility condition passed and only the floor (250 vs

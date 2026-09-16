@@ -90,6 +90,10 @@ export interface DrawElementPerfInput {
   compositionElementCount?: number;
   /** Provenance of the element count: "live" (probe DOM, trusted to gate) | "static" (source scan, not). */
   compositionElementCountSource?: "live" | "static";
+  /** Per-tag breakdown of the same static scan behind compositionElementCount; only set when the source above is "static". */
+  compositionElementTags?: Readonly<Record<string, number>>;
+  /** `<video data-aroll="true">` count from the same static scan; only set when compositionElementCountSource is "static". */
+  arollVideoCount?: number;
   /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
   shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
@@ -135,6 +139,8 @@ function aggregateDrawElement(
     preInversionWorkers: de.preInversionWorkers,
     compositionElementCount: de.compositionElementCount,
     compositionElementCountSource: de.compositionElementCountSource,
+    compositionElementTags: de.compositionElementTags,
+    arollVideoCount: de.arollVideoCount,
     shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,

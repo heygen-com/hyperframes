@@ -513,6 +513,10 @@ export interface RenderPerfSummary {
     compositionElementCount?: number;
     /** Rough compiled-composition element-count provenance: "live" (probe DOM) | "static" (source scan, not trusted to open the band). */
     compositionElementCountSource?: "live" | "static";
+    /** Per-tag breakdown of the same static scan behind compositionElementCount, capped at MAX_REPORTED_ELEMENT_TAGS + an "other" bucket. Only set when the source above is "static" — the live path never runs this scan. */
+    compositionElementTags?: Readonly<Record<string, number>>;
+    /** `<video data-aroll="true">` elements from the same static scan. Only set when compositionElementCountSource is "static". */
+    arollVideoCount?: number;
     /** Short-comp band attribution: "applied" | "skipped_elements" | "unmeasured"; unset when the frame count made the band irrelevant. */
     shortBand?: "applied" | "skipped_elements" | "unmeasured";
     /** DE parallel-router outcome: "routed" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". Mutually exclusive with workerInversion. */
@@ -1392,7 +1396,22 @@ export function envInt(name: string, fallback: number): number {
 }
 
 /**
- * Rough element count for compiled composition HTML.
+ * `scanElementTags`'s per-tag breakdown, capped so a pathological composition
+ * with thousands of distinct tag names can't inflate the telemetry payload:
+ * the top `MAX_REPORTED_ELEMENT_TAGS` tags by count survive as named keys,
+ * everything past the cap folds into `other`. `total` is unaffected by the
+ * cap — it is the sum of every match, capped or not.
+ */
+export interface ElementTagScan {
+  total: number;
+  byTag: Readonly<Record<string, number>>;
+  arollVideoCount: number;
+}
+
+const MAX_REPORTED_ELEMENT_TAGS = 50;
+
+/**
+ * Rough element count (and per-tag breakdown) for compiled composition HTML.
  *
  * Deliberately a string scan and not a `parseHTML` + `querySelectorAll` (the
  * `countAuthoredTimedClips` approach): this runs on EVERY render before the
@@ -1422,6 +1441,10 @@ export function envInt(name: string, fallback: number): number {
  * literal closing marker (`</`, a void name at a word boundary, or `/>`), so
  * ordinary JS comparisons and divisions don't qualify — verified by test.
  *
+ * `byTag`/`arollVideoCount` derive from the SAME matched set and the SAME
+ * script/style-stripped markup as `total` — one scan feeds every property
+ * this function returns, so none of them can drift apart from each other.
+ *
  * FALLBACK ONLY as of the live-DOM fix below — a string scan of the SOURCE
  * markup cannot see elements a composition's own script creates at runtime
  * (`document.createElement`), which is an unbounded undercount no regex can
@@ -1430,7 +1453,7 @@ export function envInt(name: string, fallback: number): number {
  * `resolveCompositionElementCount` prefers the initialized probe session's
  * live count and uses this only when no such session exists.
  */
-export function countElementTags(html: string): number {
+export function scanElementTags(html: string): ElementTagScan {
   // Strip inline <script>/<style> bodies BEFORE matching. Every alternation
   // below can fire on ordinary JS text — `const html = "</div>"` or a
   // template literal building `</span>` inflates the count once per
@@ -1451,10 +1474,34 @@ export function countElementTags(html: string): number {
     previous = markup;
     markup = markup.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
   }
-  const matches = markup.match(
-    /<\/[a-zA-Z]|<(?:img|br|hr|input|source|track|area|base|col|embed|link|meta|param|wbr)\b|<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\/>/gi,
+  let total = 0;
+  const counts = new Map<string, number>();
+  for (const m of markup.matchAll(
+    /<\/([a-zA-Z][-a-zA-Z0-9]*)|<(img|br|hr|input|source|track|area|base|col|embed|link|meta|param|wbr)\b|<([a-zA-Z][-a-zA-Z0-9]*)\b[^>]*\/>/gi,
+  )) {
+    total++;
+    const tag = (m[1] ?? m[2] ?? m[3] ?? "").toLowerCase();
+    counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const byTag: Record<string, number> = Object.fromEntries(
+    ranked.slice(0, MAX_REPORTED_ELEMENT_TAGS),
   );
-  return matches === null ? 0 : matches.length;
+  const otherCount = ranked
+    .slice(MAX_REPORTED_ELEMENT_TAGS)
+    .reduce((sum, [, count]) => sum + count, 0);
+  // `+=`, not `=`: a real (if exotic) tag literally named "other" could
+  // already occupy this key from the top-N slice above — adding preserves
+  // sum(byTag) === total in every case; overwriting would silently drop it.
+  if (otherCount > 0) byTag.other = (byTag.other ?? 0) + otherCount;
+  // `data-aroll="true"` is stamped on any media element type the composition
+  // generator emits (video/img/audio — see hyperframes.ts's isMediaElement
+  // gate), but this count is scoped to <video> only, matching its name: a-roll
+  // is a video-editing term for primary-take footage, and every real usage in
+  // this codebase's fixtures stamps it on video elements.
+  const arollVideoCount =
+    markup.match(/<video\b[^>]*\bdata-aroll=["']true["'][^>]*>/gi)?.length ?? 0;
+  return { total, byTag, arollVideoCount };
 }
 
 /**
@@ -1466,7 +1513,7 @@ export function countElementTags(html: string): number {
  * caption-word-span pattern above builds thousands of nodes from two source
  * tags).
  *
- * `static` — the `countElementTags` fallback. Emitted for diagnostics, but
+ * `static` — the `scanElementTags` fallback. Emitted for diagnostics, but
  * NOT trusted to open the band: the probe is conditional (see
  * `probeStage.ts`'s `needsBrowser` — only unknown duration, unresolved
  * compositions, or specific media cases launch one), so a known-duration,
@@ -1482,7 +1529,12 @@ export function countElementTags(html: string): number {
 export async function resolveCompositionElementCount(
   probeSession: Pick<CaptureSession, "isInitialized" | "page"> | null,
   html: string,
-): Promise<{ count: number; source: "live" | "static" }> {
+): Promise<{
+  count: number;
+  source: "live" | "static";
+  byTag?: Readonly<Record<string, number>>;
+  arollVideoCount?: number;
+}> {
   if (probeSession?.isInitialized) {
     try {
       const liveCount = await probeSession.page.evaluate(
@@ -1499,7 +1551,15 @@ export async function resolveCompositionElementCount(
       // render on a routing-gate measurement.
     }
   }
-  return { count: countElementTags(html), source: "static" };
+  // byTag/arollVideoCount are static-only: the live path measures a real DOM
+  // node count and never runs this string scan, so it has nothing to report.
+  const scan = scanElementTags(html);
+  return {
+    count: scan.total,
+    source: "static",
+    byTag: scan.byTag,
+    arollVideoCount: scan.arollVideoCount,
+  };
 }
 
 /**
@@ -2932,8 +2992,12 @@ async function executeRenderPipeline(input: {
     // compositions, or specific media cases), so a known-duration media-free
     // comp that builds its DOM in script has no live count available and the
     // static scan reads it as tiny. Only a `live` count may open the band.
-    const { count: compositionElementCount, source: compositionElementCountSource } =
-      await resolveCompositionElementCount(probeSession, compiled.html);
+    const {
+      count: compositionElementCount,
+      source: compositionElementCountSource,
+      byTag: compositionElementTags,
+      arollVideoCount,
+    } = await resolveCompositionElementCount(probeSession, compiled.html);
     // HF_DE_SHORT_MAX_ELEMENTS=0 is the documented kill switch (symmetric
     // with HF_DE_SHORT_MIN_FRAMES=0, which disables via the predicate's own
     // minFrames > 0 guard). Gated explicitly here too — without it, a fired
@@ -3276,6 +3340,8 @@ async function executeRenderPipeline(input: {
       // perf shift can be split into "the new band did it" vs "unchanged".
       compositionElementCount,
       compositionElementCountSource,
+      compositionElementTags,
+      arollVideoCount,
       deShortBand,
       // Same rationale as the counters above: carried on live capture
       // observability, not only the success-path perfSummary, so a crash /
@@ -4186,6 +4252,8 @@ async function executeRenderPipeline(input: {
         preInversionWorkers: deWorkerInversion ? preRoutingWorkerCount : undefined,
         compositionElementCount,
         compositionElementCountSource,
+        compositionElementTags,
+        arollVideoCount,
         shortBand: deShortBand,
         parallelRouter: deParallelRouter,
         preRouterWorkers: deParallelRouter ? preRoutingWorkerCount : undefined,
