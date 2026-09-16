@@ -212,11 +212,9 @@ function spawnDetachedPreview(
       buildBackgroundPreviewArgs(dependencies.argv ?? process.argv.slice(1)),
       {
         detached: true,
-        // libuv only adds Windows' CREATE_NO_WINDOW when no stdio slot
-        // inherits a raw fd, and logFd is one — so this does less here than
-        // on the codebase's "ignore"/"pipe" spawns. Harmless and kept for
-        // consistency; suppressing the flash outright needs the child to
-        // open its own log file.
+        // windowsHide's CREATE_NO_WINDOW doesn't reach a child whose stdio
+        // inherits a raw fd (logFd), but DETACHED_PROCESS already leaves this
+        // one without a console; the flag is kept for consistency.
         stdio: ["ignore", logFd, logFd],
         env: process.env,
         windowsHide: true,

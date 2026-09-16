@@ -1422,7 +1422,7 @@ export function reportPreviewShutdown(json: boolean): void {
 /**
  * Dev mode: spawn the studio dev server from the monorepo.
  */
-async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+export async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
@@ -1488,7 +1488,10 @@ function hasLocalStudio(dir: string): boolean {
  * Local studio mode: spawn Vite using a locally installed @hyperframes/studio.
  * Provides full Vite HMR and the complete studio experience.
  */
-async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+export async function runLocalStudioMode(
+  dir: string,
+  options?: StudioLaunchOptions,
+): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
   const pName = options?.projectName ?? basename(dir);
