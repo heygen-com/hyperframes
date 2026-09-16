@@ -51,6 +51,29 @@ const payloadRoot = resolve(repoRoot, "docs/public/catalog");
  */
 const playerVersionRange = "latest";
 
+/**
+ * Render a JSX/MDX attribute as a plain double-quoted string.
+ *
+ * The value must stay a string literal, never a `{...}` expression: the docs
+ * search indexer stringifies expression nodes, so an expression title surfaces
+ * as "[object Object]" in search results. MDX decodes HTML character
+ * references inside quoted values, so escaping goes through them — `&` first,
+ * so the references it introduces are not re-escaped. Only `&` and `"` can
+ * break the literal; `<`, `{` and `}` are escaped as well so regex-based
+ * consumers of the MDX never mistake the value for markup or an expression.
+ * JSON.stringify cannot stand in: backslashes are not escape characters in
+ * JSX strings.
+ */
+export function mdxStringAttribute(name: string, value: string): string {
+  const escaped = value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/\{/g, "&#123;")
+    .replace(/\}/g, "&#125;");
+  return `${name}="${escaped}"`;
+}
+
 /** Has a preview payload been built for this item? */
 function hasPayload(kind: ItemKind, name: string): boolean {
   return existsSync(join(payloadRoot, typeDir(kind), `${name}.json`));
@@ -90,7 +113,7 @@ function playerEmbed(kind: ItemKind, name: string, posterUrl: string | null | un
   return [
     "<iframe",
     '  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"',
-    `  title=${JSON.stringify(`${name} preview`)}`,
+    `  ${mdxStringAttribute("title", `${name} preview`)}`,
     '  loading="lazy"',
     `  srcDoc={${"`"}${bootstrap}${"`"}}`,
     "/>",
@@ -804,7 +827,7 @@ function generateSource(kind: ItemKind, manifest: RegistryItem): string[] {
   return [
     "## Source",
     "",
-    "<Accordion title={`" + file.path + "`}>",
+    `<Accordion ${mdxStringAttribute("title", file.path)}>`,
     "",
     "```html",
     file.source,

@@ -22,7 +22,11 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
-import { variableBootstrap, variablePreviewWrapper } from "./generate-catalog-pages.ts";
+import {
+  mdxStringAttribute,
+  variableBootstrap,
+  variablePreviewWrapper,
+} from "./generate-catalog-pages.ts";
 
 const here = join(fileURLToPath(import.meta.url), "..");
 
@@ -198,5 +202,29 @@ describe("explorer producer", () => {
       "utf-8",
     );
     assert.match(source, /\?hfv=\$\{encodeURIComponent\(JSON\.stringify\(defaults\)\)\}/);
+  });
+});
+
+describe("mdxStringAttribute", () => {
+  it("emits a plain double-quoted string, not an expression", () => {
+    assert.equal(
+      mdxStringAttribute("title", "beat-freeze-cut.html"),
+      'title="beat-freeze-cut.html"',
+    );
+  });
+
+  it("escapes the characters that would end the string or open an expression", () => {
+    assert.equal(
+      mdxStringAttribute("title", 'say "hi" & <b>{x}</b>'),
+      'title="say &quot;hi&quot; &amp; &lt;b>&#123;x&#125;&lt;/b>"',
+    );
+  });
+
+  it("leaves backticks alone inside the quoted value", () => {
+    assert.equal(mdxStringAttribute("title", "`code`"), 'title="`code`"');
+  });
+
+  it("passes backslashes through unchanged, since JSX strings do not treat them as escapes", () => {
+    assert.equal(mdxStringAttribute("title", "a\\b"), 'title="a\\b"');
   });
 });
