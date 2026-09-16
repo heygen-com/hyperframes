@@ -28,6 +28,22 @@ describe("parseCssColor", () => {
     });
   });
 
+  it.each([
+    ["#0f172acc", { red: 15, green: 23, blue: 42, alpha: 0.8 }],
+    ["#f008", { red: 255, green: 0, blue: 0, alpha: 136 / 255 }],
+    ["rgb(255 0 0 / 50%)", { red: 255, green: 0, blue: 0, alpha: 0.5 }],
+    ["rgb(100% 0% 0% / 0.001)", { red: 255, green: 0, blue: 0, alpha: 0.001 }],
+  ])("parses %s without a browser", (input, expected) => {
+    expect(parseCssColor(input)).toEqual(expected);
+  });
+
+  it.each(["", "#12", "notacolor", "currentcolor", "none", "rgb(1..2, 3, 4)"])(
+    "rejects %s without a browser",
+    (input) => {
+      expect(parseCssColor(input)).toBeNull();
+    },
+  );
+
   it("parses transparent", () => {
     expect(parseCssColor("transparent")).toEqual({
       red: 0,
