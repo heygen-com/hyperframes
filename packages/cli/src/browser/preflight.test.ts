@@ -104,7 +104,22 @@ describe("runEnvironmentChecks", () => {
     });
   });
 
-  it("reports Chrome as not found (no throw) when browser discovery throws on a corrupt cache", async () => {
+  it("resolves Chrome via preferManagedChrome so a reported hit predicts what render will actually use", async () => {
+    const spy = vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "cache",
+    });
+
+    try {
+      await runEnvironmentChecks({ includeBrowser: true });
+
+      expect(spy).toHaveBeenCalledWith({ preferManagedChrome: true });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("reports Chrome as not found (no throw) when browser discovery throws", async () => {
     const spy = vi.spyOn(manager, "findBrowser").mockRejectedValue(
       Object.assign(new Error("ENOTDIR: not a directory, scandir 'chrome-headless-shell'"), {
         code: "ENOTDIR",
