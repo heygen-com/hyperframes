@@ -2,6 +2,11 @@ import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import {
+  HTML_BODY_CSS_WIDTH_FIRST_RE,
+  HTML_BODY_CSS_HEIGHT_FIRST_RE,
+  VIEWPORT_META_SIZE_RE,
+} from "@hyperframes/parsers";
+import {
   readAttr,
   readDecodedAttr,
   truncateSnippet,
@@ -232,6 +237,50 @@ function findVisibleMarkupCommentLeak(source: string): string | null {
   return null;
 }
 
+type ScaffoldSize = { width: string; height: string };
+
+function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
+  const widthFirst = source.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  if (widthFirst) {
+    const [, width = "", height = ""] = widthFirst;
+    return { width, height };
+  }
+  const heightFirst = source.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  if (heightFirst) {
+    const [, height = "", width = ""] = heightFirst;
+    return { width, height };
+  }
+  return null;
+}
+
+function readViewportMetaSize(source: string): ScaffoldSize | null {
+  const match = source.match(VIEWPORT_META_SIZE_RE);
+  if (!match) return null;
+  const [, width = "", height = ""] = match;
+  return { width, height };
+}
+
+function describeSizeMismatch(
+  label: string,
+  size: ScaffoldSize | null,
+  dataWidth: string,
+  dataHeight: string,
+): string | null {
+  if (!size || (size.width === dataWidth && size.height === dataHeight)) return null;
+  return `${label} is ${size.width}x${size.height}`;
+}
+
+function findScaffoldSizeMismatches(
+  source: string,
+  dataWidth: string,
+  dataHeight: string,
+): string[] {
+  return [
+    describeSizeMismatch("html/body CSS", readHtmlBodyCssSize(source), dataWidth, dataHeight),
+    describeSizeMismatch("the viewport meta", readViewportMetaSize(source), dataWidth, dataHeight),
+  ].filter((mismatch): mismatch is string => mismatch !== null);
+}
+
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // id_requires_css_escape
   ({ tags }) => {
@@ -277,6 +326,44 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       });
     }
     return findings;
+  },
+
+  // root_dimensions_mismatch
+  //
+  // Render size and the runtime's forced #root size both read the root's own
+  // data-width/data-height, so they stay correct. But editing only those two
+  // attributes — rather than scaffolding with `hyperframes init --resolution`,
+  // which rewrites the scaffold's other copies of the resolution too — leaves
+  // the `html, body` CSS and the `<meta viewport>` at the old value, and a
+  // stale body with `overflow: hidden` visually clips the correctly-sized
+  // root. `hyperframes check`'s layout audits can't see it: they measure
+  // against the root's own (already-correct) rect, not the body's.
+  //
+  // A sub-composition fragment has no html/body or viewport to compare
+  // against, which makes this top-level-only without a separate guard.
+  ({ rootTag, source }) => {
+    if (!rootTag) return [];
+    const dataWidth = readAttr(rootTag.raw, "data-width");
+    const dataHeight = readAttr(rootTag.raw, "data-height");
+    if (!dataWidth || !dataHeight) return [];
+
+    const mismatches = findScaffoldSizeMismatches(source, dataWidth, dataHeight);
+    if (mismatches.length === 0) return [];
+
+    return [
+      {
+        code: "root_dimensions_mismatch",
+        severity: "warning",
+        message:
+          `Root composition declares data-width="${dataWidth}" data-height="${dataHeight}", ` +
+          `but ${mismatches.join(" and ")}. The scaffolded body clips the composition at its ` +
+          `old size.`,
+        elementId: readAttr(rootTag.raw, "id") || undefined,
+        fixHint:
+          "update html/body CSS and the meta viewport to match, or scaffold with `hyperframes init --resolution portrait`",
+        snippet: truncateSnippet(rootTag.raw),
+      },
+    ];
   },
 
   // unbalanced_style_tags

@@ -517,6 +517,25 @@ export function initSandboxRuntimeModular(): void {
     if (forcedHeight) rootEl.style.height = forcedHeight;
     if (forcedWidth) rootEl.style.setProperty("--comp-width", forcedWidth);
     if (forcedHeight) rootEl.style.setProperty("--comp-height", forcedHeight);
+    // A scaffolded project's `html, body` CSS is fixed at init time to whatever
+    // resolution the template shipped with. An agent that edits ONLY the root's
+    // data-width/data-height (without `hyperframes init --resolution`, which
+    // rewrites html/body together with the root) leaves body at the stale
+    // size, so its `overflow: hidden` (set unconditionally above, to keep
+    // browser-default margins from bleeding into renders as white bars)
+    // clips this composition — sized correctly above — at the stale height.
+    // Mirror the SAME forced values onto documentElement/body (not a second
+    // read of the root's own dimensions): once body's own size agrees with
+    // the root it contains, `overflow: hidden` clips nothing that matters and
+    // the white-bar guard stays intact. `findRootCompositionEl` above returns
+    // the outermost `[data-root="true"]` composition by convention, not by a
+    // structural guarantee — this only ever affects a document whose author
+    // marked a NESTED composition `data-root="true"` too, which nothing in
+    // this runtime currently validates.
+    if (forcedWidth) document.documentElement.style.width = forcedWidth;
+    if (forcedHeight) document.documentElement.style.height = forcedHeight;
+    if (forcedWidth) document.body.style.width = forcedWidth;
+    if (forcedHeight) document.body.style.height = forcedHeight;
   };
 
   const sanitizeCompositionDurationAttributes = () => {

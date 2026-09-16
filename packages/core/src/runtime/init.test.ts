@@ -184,6 +184,10 @@ describe("initSandboxRuntimeModular", () => {
     window.__hfRuntimeTeardown?.();
     resetRuntimeDataForTests();
     document.body.innerHTML = "";
+    // The runtime sizes html/body from the root, so an init'd test would
+    // otherwise leave inline dimensions behind for the next one.
+    document.documentElement.removeAttribute("style");
+    document.body.removeAttribute("style");
     window.__timelines = {} as Record<string, RuntimeTimelineLike>;
     delete window.__player;
     delete window.__playerReady;
@@ -291,6 +295,43 @@ describe("initSandboxRuntimeModular", () => {
     expect(bus.hasAttribute("data-start")).toBe(false);
     expect(bus.hasAttribute("data-duration")).toBe(false);
     expect(caption.getAttribute("data-start")).toBe("0");
+  });
+
+  /**
+   * GH#4001: a root edited to portrait dims whose scaffolded `html, body` CSS
+   * is left at the old landscape size renders successfully with everything
+   * below the stale body height clipped away by body's own `overflow: hidden`.
+   * That guard stays (it keeps browser-default margins out of renders); sizing
+   * body to the root it contains is what stops it clipping. `applyResolutionPreset`
+   * (packages/cli/src/commands/init.ts) already keeps html/body in sync when a
+   * project scaffolds WITH `--resolution`, so only the edit-afterward path needs
+   * this — forcing the same values back is a no-op for the scaffolded path.
+   */
+  it("mirrors the root's forced dimensions onto html/body", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "1");
+    root.setAttribute("data-width", "1080");
+    root.setAttribute("data-height", "1920");
+    document.body.appendChild(root);
+    window.__timelines = { main: createMockTimeline(1) };
+
+    // Mimics the scaffolded template's `html, body { width: 1920px; height:
+    // 1080px; }` — the stale landscape size this composition was edited on
+    // top of without `--resolution`.
+    document.documentElement.style.width = "1920px";
+    document.documentElement.style.height = "1080px";
+    document.body.style.width = "1920px";
+    document.body.style.height = "1080px";
+
+    initSandboxRuntimeModular();
+
+    expect(document.documentElement.style.width).toBe("1080px");
+    expect(document.documentElement.style.height).toBe("1920px");
+    expect(document.body.style.width).toBe("1080px");
+    expect(document.body.style.height).toBe("1920px");
   });
 
   it("resolves Studio hold as a deterministic step at the segment end", () => {

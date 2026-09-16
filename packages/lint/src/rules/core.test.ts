@@ -19,6 +19,24 @@ ${rootContent}
 </html>`;
 }
 
+/** A portrait root inside a document whose scaffold copies of the resolution
+ *  are supplied by the caller, so they can be aligned or left stale. */
+function portraitCompositionWithScaffold(bodyCss: string, viewportContent: string): string {
+  return `
+<html>
+<head>
+  <meta name="viewport" content="${viewportContent}" />
+  <style>
+    html, body { ${bodyCss} overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+}
+
 describe("core rules", () => {
   it("does not lint scripts embedded inside an iframe srcdoc attribute", async () => {
     const html = `
@@ -113,6 +131,49 @@ describe("core rules", () => {
     const finding = result.findings.find((f) => f.code === "root_missing_dimensions");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
+  });
+
+  it("reports root_dimensions_mismatch when html/body CSS and the viewport meta are still the scaffolded landscape size", async () => {
+    // GH#4001: the root is edited to portrait without `hyperframes init
+    // --resolution`, the only thing that otherwise keeps the scaffold's copies
+    // of the resolution in sync. The stale landscape body (overflow: hidden)
+    // then clips the correctly-sized root at its old height.
+    const html = portraitCompositionWithScaffold(
+      "width: 1920px; height: 1080px;",
+      "width=1920, height=1080",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain("html/body CSS is 1920x1080");
+    expect(finding?.message).toContain("the viewport meta is 1920x1080");
+  });
+
+  it("reads a stale html/body size authored height-before-width", async () => {
+    const html = portraitCompositionWithScaffold(
+      "height: 1080px; width: 1920px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding?.message).toContain("html/body CSS is 1920x1080");
+    expect(finding?.message).not.toContain("viewport");
+  });
+
+  it("does not report root_dimensions_mismatch when the scaffold agrees with the root", async () => {
+    const html = portraitCompositionWithScaffold(
+      "width: 1080px; height: 1920px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
+  });
+
+  it("does not report root_dimensions_mismatch for a sub-composition fragment with no html/body/viewport to compare", async () => {
+    const html = `<div data-composition-id="c1" data-width="1080" data-height="1920"></div>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
   });
 
   it("accepts body as the composition root", async () => {
