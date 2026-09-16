@@ -17,7 +17,18 @@ import {
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
 import { trackRenderPreflightRejected } from "../../telemetry/events.js";
-import { applyRenderEnvironment, renderOutputDirectory, type RenderPlan } from "./plan.js";
+import {
+  ProgressNdjsonWriter,
+  createNdjsonSink,
+  redirectConsoleStdoutToStderr,
+  type NdjsonSink,
+} from "../../ui/progressNdjson.js";
+import {
+  applyRenderEnvironment,
+  progressNdjsonOwnsStdout,
+  renderOutputDirectory,
+  type RenderPlan,
+} from "./plan.js";
 import type { RenderOptions, SingleRenderResult } from "../render.js";
 
 type RenderExecutor = (
@@ -86,8 +97,25 @@ export async function executeRenderPlan(
   await runRenderLint(plan);
   await runResolutionPreflight(plan, dependencies.checkResolution);
 
+  // One shared sink per command; each render (batch row) gets its own writer
+  // so terminal-event dedupe stays scoped to the row it reports on.
+  const ndjsonSink =
+    plan.progressFormat === "ndjson" ? createNdjsonSink(plan.progressFd) : undefined;
+  // The event stream owning stdout implies quiet HUMAN output on stdout —
+  // same contract --batch --json already enforces via effectiveQuiet.
+  const humanQuiet = plan.quiet || (ndjsonSink !== undefined && progressNdjsonOwnsStdout(plan));
+  // Quiet only mutes the CLI's own prints; engine/producer diagnostics that
+  // write via console.log directly still land on stdout. Reroute them to
+  // stderr so the pipe carries nothing but NDJSON.
+  if (ndjsonSink !== undefined && progressNdjsonOwnsStdout(plan)) {
+    redirectConsoleStdoutToStderr();
+  }
+
   if (plan.batchPath && batchModule && preparedBatch) {
-    await executeBatchRender(plan, browserPath, batchModule, preparedBatch, dependencies);
+    await executeBatchRender(plan, browserPath, batchModule, preparedBatch, dependencies, {
+      ndjsonSink,
+      humanQuiet,
+    });
     return;
   }
 
@@ -112,7 +140,7 @@ export async function executeRenderPlan(
     vp9CpuUsed: plan.vp9CpuUsed,
     videoBitrate: plan.videoBitrate,
     videoFrameFormat: plan.videoFrameFormat,
-    quiet: plan.quiet,
+    quiet: humanQuiet,
     browserPath,
     debug: plan.debug,
     bestEffort: plan.bestEffort,
@@ -126,6 +154,8 @@ export async function executeRenderPlan(
     playerReadyTimeout: plan.playerReadyTimeout,
     exitAfterComplete: true,
     manageDeParallelRouterBreaker: true,
+    progressFormat: plan.progressFormat,
+    progressNdjson: ndjsonSink ? new ProgressNdjsonWriter({ sink: ndjsonSink }) : undefined,
   };
   if (plan.useDocker) {
     options.pageSideCompositing = plan.pageSideCompositing;
@@ -249,8 +279,9 @@ async function executeBatchRender(
   batchModule: typeof import("../batchRender.js"),
   preparedBatch: import("../batchRender.js").PreparedBatchRender,
   dependencies: RenderExecutionDependencies,
+  progress: { ndjsonSink: NdjsonSink | undefined; humanQuiet: boolean },
 ): Promise<void> {
-  const batchQuiet = plan.quiet || plan.batchJson;
+  const batchQuiet = progress.humanQuiet || plan.batchJson;
   const renderOptionsBase: RenderOptions = {
     fps: plan.fps,
     quality: plan.quality,
@@ -281,6 +312,7 @@ async function executeBatchRender(
     throwOnError: true,
     skipFeedback: true,
     manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
+    progressFormat: plan.progressFormat,
   };
   const manifest = await batchModule.runBatchRender({
     prepared: preparedBatch,
@@ -289,7 +321,13 @@ async function executeBatchRender(
     quiet: batchQuiet,
     json: plan.batchJson,
     renderOne: (row) => {
-      const options: RenderOptions = { ...renderOptionsBase, variables: row.variables };
+      const options: RenderOptions = {
+        ...renderOptionsBase,
+        variables: row.variables,
+        progressNdjson: progress.ndjsonSink
+          ? new ProgressNdjsonWriter({ sink: progress.ndjsonSink, row: row.index })
+          : undefined,
+      };
       if (plan.useDocker) options.pageSideCompositing = plan.pageSideCompositing;
       const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
       return execute(plan.project.dir, row.outputPath, options);

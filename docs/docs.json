@@ -867,6 +867,8 @@
             "group": "Rendering paths",
             "pages": [
               "guides/rendering",
+              "reference/cli-render",
+              "guides/agents",
               "deploy/overview",
               "deploy/cloud",
               "guides/deploy"
