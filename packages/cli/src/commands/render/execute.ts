@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { mkdirSync, readFileSync } from "node:fs";
 import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
@@ -19,11 +20,14 @@ import {
 import { trackRenderPreflightRejected } from "../../telemetry/events.js";
 import { applyRenderEnvironment, renderOutputDirectory, type RenderPlan } from "./plan.js";
 import type { RenderOptions, SingleRenderResult } from "../render.js";
+import type { RenderCancellationScope } from "../../utils/renderCancellation.js";
+import { runRenderSetupWorker } from "../../utils/cancellableProcess.js";
 
 type RenderExecutor = (
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
+  cancellation?: RenderCancellationScope,
 ) => Promise<SingleRenderResult>;
 
 type ResolutionPreflight = (
@@ -60,7 +64,9 @@ function renderLintShouldAbort(
 export async function executeRenderPlan(
   plan: RenderPlan,
   dependencies: RenderExecutionDependencies,
+  cancellation?: RenderCancellationScope,
 ): Promise<void> {
+  assertRenderActive(cancellation);
   applyRenderEnvironment(plan);
   if (!plan.batchPath) mkdirSync(renderOutputDirectory(plan), { recursive: true });
 
@@ -82,12 +88,24 @@ export async function executeRenderPlan(
     }
   }
 
-  const browserPath = plan.useDocker ? undefined : await ensureRenderBrowser(plan);
-  await runRenderLint(plan);
+  const browserPath = plan.useDocker
+    ? undefined
+    : await ensureRenderBrowser(plan, cancellation?.signal);
+  assertRenderActive(cancellation);
+  await runRenderLint(plan, lintProject, cancellation?.signal);
+  assertRenderActive(cancellation);
   await runResolutionPreflight(plan, dependencies.checkResolution);
+  assertRenderActive(cancellation);
 
   if (plan.batchPath && batchModule && preparedBatch) {
-    await executeBatchRender(plan, browserPath, batchModule, preparedBatch, dependencies);
+    await executeBatchRender(
+      plan,
+      browserPath,
+      batchModule,
+      preparedBatch,
+      dependencies,
+      cancellation,
+    );
     return;
   }
 
@@ -132,10 +150,15 @@ export async function executeRenderPlan(
     options.experimentalFastCapture = plan.experimentalFastCapture;
   }
   const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options);
+  await execute(plan.project.dir, plan.outputPath, options, cancellation);
 }
 
-async function ensureRenderBrowser(plan: RenderPlan): Promise<string> {
+function assertRenderActive(cancellation?: RenderCancellationScope): void {
+  cancellation?.checkAncestors();
+  cancellation?.signal.throwIfAborted();
+}
+
+async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Promise<string> {
   const { ensureBrowser } = await import("../../browser/manager.js");
   let browserSpinner:
     | {
@@ -146,13 +169,14 @@ async function ensureRenderBrowser(plan: RenderPlan): Promise<string> {
     | undefined;
   try {
     if (plan.effectiveQuiet) {
-      return (await ensureBrowser({ preferManagedChrome: true })).executablePath;
+      return (await ensureBrowser({ preferManagedChrome: true, signal })).executablePath;
     }
     const clack = await import("@clack/prompts");
     browserSpinner = clack.spinner();
     browserSpinner.start("Checking browser...");
     const info = await ensureBrowser({
       preferManagedChrome: true,
+      signal,
       onProgress: (downloaded, total) => {
         if (total <= 0) return;
         const pct = Math.floor((downloaded / total) * 100);
@@ -165,6 +189,7 @@ async function ensureRenderBrowser(plan: RenderPlan): Promise<string> {
     return info.executablePath;
   } catch (error: unknown) {
     browserSpinner?.stop(c.error("Browser not available"));
+    if (signal?.aborted) signal.throwIfAborted();
     errorBox(
       "Chrome not found",
       normalizeErrorMessage(error),
@@ -178,11 +203,15 @@ async function ensureRenderBrowser(plan: RenderPlan): Promise<string> {
 export async function runRenderLint(
   plan: RenderPlan,
   runLint: (projectDir: string, entryFile?: string) => Promise<ProjectLintResult> = lintProject,
+  signal?: AbortSignal,
 ): Promise<void> {
   // lintProject's explicit-entry contract is an absolute source path;
   // entryFile remains project-relative for the producer.
   const explicitEntry = plan.entryFile ? plan.renderTarget : undefined;
-  const lintResult = await runLint(plan.project.dir, explicitEntry);
+  const lintResult =
+    signal && runLint === lintProject
+      ? await runRenderLintInOwnedProcess(plan.project.dir, explicitEntry, signal)
+      : await runLint(plan.project.dir, explicitEntry);
   if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
   presentRenderLintFindings(lintResult, plan.effectiveQuiet);
   const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
@@ -191,6 +220,21 @@ export async function runRenderLint(
     failCommand();
   }
   presentRenderLintContinuation(plan);
+}
+
+async function runRenderLintInOwnedProcess(
+  projectDir: string,
+  entryFile: string | undefined,
+  signal: AbortSignal,
+): Promise<ProjectLintResult> {
+  return runRenderSetupWorker<ProjectLintResult>(
+    "lint",
+    { projectDir, entryFile },
+    {
+      signal,
+      maxBufferBytes: 8 * 1024 * 1024,
+    },
+  );
 }
 
 function presentRenderLintFindings(
@@ -249,6 +293,7 @@ async function executeBatchRender(
   batchModule: typeof import("../batchRender.js"),
   preparedBatch: import("../batchRender.js").PreparedBatchRender,
   dependencies: RenderExecutionDependencies,
+  cancellation?: RenderCancellationScope,
 ): Promise<void> {
   const batchQuiet = plan.quiet || plan.batchJson;
   const renderOptionsBase: RenderOptions = {
@@ -289,10 +334,11 @@ async function executeBatchRender(
     quiet: batchQuiet,
     json: plan.batchJson,
     renderOne: (row) => {
+      assertRenderActive(cancellation);
       const options: RenderOptions = { ...renderOptionsBase, variables: row.variables };
       if (plan.useDocker) options.pageSideCompositing = plan.pageSideCompositing;
       const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-      return execute(plan.project.dir, row.outputPath, options);
+      return execute(plan.project.dir, row.outputPath, options, cancellation);
     },
   });
   if (manifest.failed > 0) setCommandExitCode(1);

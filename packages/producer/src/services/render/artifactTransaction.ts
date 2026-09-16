@@ -363,3 +363,11 @@ export class ArtifactTransaction {
     }
   }
 }
+
+export async function commitArtifactTransaction(
+  transaction: ArtifactTransaction,
+  assertNotAborted: () => void,
+): Promise<void> {
+  assertNotAborted();
+  await transaction.commit();
+}

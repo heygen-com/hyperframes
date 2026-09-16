@@ -15,7 +15,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { scanActiveServers, type ActiveServer } from "../server/portUtils.js";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
-import { isProcessDescendant, killProcessTree, processIdentity } from "../utils/orphanCleanup.js";
+import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js";
+import { terminateProcessTree } from "../utils/processTree.js";
 
 export interface PreviewSession {
   pid: number;
@@ -42,7 +43,7 @@ interface LifecycleDependencies {
   scan?: (startPort?: number) => Promise<ActiveServer[]>;
   spawn?: SpawnPreview;
   sleep?: (ms: number) => Promise<void>;
-  kill?: (pid: number) => void;
+  kill?: (pid: number) => void | Promise<void>;
   isDescendant?: (childPid: number, ancestorPid: number) => boolean;
   identity?: (pid: number) => string | null;
   isSignalable?: (pid: number) => boolean;
@@ -188,15 +189,8 @@ function sameProjectPorts(servers: ActiveServer[], projectDir: string): Set<numb
   );
 }
 
-function stopProcess(pid: number): void {
-  killProcessTree(pid);
-  if (process.platform === "win32") {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      // Process already exited.
-    }
-  }
+async function stopProcess(pid: number): Promise<void> {
+  await terminateProcessTree(pid);
 }
 
 const delay = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
@@ -426,6 +420,19 @@ function savedOwnedPreview(
   return matchingServer(savedPortServers, projectDir);
 }
 
+async function readPreviewLifecycleState(
+  projectDir: string,
+  startPort: number,
+  dependencies: LifecycleDependencies,
+) {
+  const scan = dependencies.scan ?? scanActiveServers;
+  const stateHome = dependencies.stateHome ?? defaultStateHome();
+  const saved = readPreviewSession(projectDir, stateHome);
+  const scanStart = saved?.port ?? startPort;
+  const scanned = await scan(scanStart);
+  return { scan, stateHome, saved, scanStart, scanned };
+}
+
 export async function startBackgroundPreview(
   projectDir: string,
   startPort: number,
@@ -434,14 +441,14 @@ export async function startBackgroundPreview(
   | { type: "reused"; port: number; pid: number | null; logPath: string | null }
   | { type: "started"; port: number; pid: number; logPath: string }
 > {
-  const scan = dependencies.scan ?? scanActiveServers;
-  const stateHome = dependencies.stateHome ?? defaultStateHome();
-  const saved = readPreviewSession(projectDir, stateHome);
+  const { scan, stateHome, saved, scanned } = await readPreviewLifecycleState(
+    projectDir,
+    startPort,
+    dependencies,
+  );
   // Always inspect a saved custom port first. `--force-new --port <new>` must
   // replace that owned server before recording the replacement, otherwise the
   // single per-project ownership record would orphan the old listener.
-  const scanStart = saved?.port ?? startPort;
-  const scanned = await scan(scanStart);
   const requestedExisting = matchingServer(scanned, projectDir, dependencies.browserGpuMode);
   const ownedExisting = savedOwnedPreview(scanned, saved, projectDir);
   // A saved managed preview is the authoritative same-project instance. An
@@ -498,7 +505,7 @@ export async function startBackgroundPreview(
     await sleep(200);
   }
 
-  (dependencies.kill ?? stopProcess)(pid);
+  await (dependencies.kill ?? stopProcess)(pid);
   throw new Error(`background preview did not become ready; see ${logPath}`);
 }
 
@@ -507,11 +514,11 @@ export async function stopBackgroundPreview(
   startPort: number,
   dependencies: LifecycleDependencies = {},
 ): Promise<boolean> {
-  const scan = dependencies.scan ?? scanActiveServers;
-  const stateHome = dependencies.stateHome ?? defaultStateHome();
-  const saved = readPreviewSession(projectDir, stateHome);
-  const scanStart = saved?.port ?? startPort;
-  const scanned = await scan(scanStart);
+  const { scan, stateHome, saved, scanStart, scanned } = await readPreviewLifecycleState(
+    projectDir,
+    startPort,
+    dependencies,
+  );
   const server = saved
     ? matchingServerAtPort(scanned, projectDir, saved.port)
     : matchingServer(scanned, projectDir);
@@ -528,7 +535,7 @@ export async function stopBackgroundPreview(
   }
 
   const kill = dependencies.kill ?? stopProcess;
-  kill(ownedStopTargetPid(saved, pid, dependencies));
+  await kill(ownedStopTargetPid(saved, pid, dependencies));
 
   const sleep = dependencies.sleep ?? delay;
   for (let attempt = 0; attempt < 25; attempt++) {

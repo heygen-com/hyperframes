@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
@@ -10,7 +11,11 @@ const producerState = vi.hoisted(() => ({
   // Overridable per-test hook so the DE-parallel-router-trial tests can
   // mutate the job (perfSummary/errorDetails) or throw, without perturbing
   // every other test in this file that expects a plain no-op resolve.
-  executeImpl: async (_job: Record<string, unknown>): Promise<void> => undefined,
+  executeImpl: async (
+    _job: Record<string, unknown>,
+    _abortSignal?: AbortSignal,
+    _assertRenderActive?: () => void,
+  ): Promise<void> => undefined,
 }));
 
 // Defaults to "trial already fired" so the pre-existing renderLocal tests
@@ -51,6 +56,7 @@ const trackingState = vi.hoisted(() => ({
 }));
 
 const preflightState = vi.hoisted(() => ({
+  onRun: undefined as (() => void) | undefined,
   result: {
     outcomes: [
       { name: "FFmpeg", ok: true, level: "ok", detail: "/usr/bin/ffmpeg", path: "/usr/bin/ffmpeg" },
@@ -83,6 +89,11 @@ const ffmpegEncoderState = vi.hoisted(() => ({
 const orphanCleanupState = vi.hoisted(() => ({
   calls: 0,
   killed: 0,
+  parentPid: (_pid: number): number | null => null,
+  identity: (_pid: number): string | null => null,
+}));
+const browserManagerState = vi.hoisted(() => ({
+  onEnsure: undefined as ((signal?: AbortSignal) => Promise<void> | void) | undefined,
 }));
 
 vi.mock("../utils/producer.js", () => ({
@@ -114,7 +125,16 @@ vi.mock("../utils/producer.js", () => ({
       producerState.createdJobs.push(config);
       return { config, progress: 100, outcome: "completed", warnings: [] };
     }),
-    executeRenderJob: vi.fn(async (job: Record<string, unknown>) => producerState.executeImpl(job)),
+    executeRenderJob: vi.fn(
+      async (
+        job: Record<string, unknown>,
+        _projectDir: string,
+        _outputPath: string,
+        _onProgress: unknown,
+        abortSignal?: AbortSignal,
+        assertRenderActive?: () => void,
+      ) => producerState.executeImpl(job, abortSignal, assertRenderActive),
+    ),
   })),
 }));
 
@@ -185,7 +205,7 @@ vi.mock("../browser/ffmpeg.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../browser/ffmpeg.js")>();
   return {
     ...actual,
-    detectH264EncoderMode: vi.fn(() => {
+    detectH264EncoderModeForRender: vi.fn(async () => {
       if (ffmpegEncoderState.error) throw ffmpegEncoderState.error;
       if (ffmpegEncoderState.encoders !== null)
         return actual.resolveH264EncoderMode(ffmpegEncoderState.encoders, false);
@@ -197,7 +217,10 @@ vi.mock("../browser/ffmpeg.js", async (importOriginal) => {
 });
 
 vi.mock("../browser/preflight.js", () => ({
-  runEnvironmentChecks: vi.fn(async () => preflightState.result),
+  runEnvironmentChecks: vi.fn(async () => {
+    preflightState.onRun?.();
+    return preflightState.result;
+  }),
 }));
 
 // The "render command explicit composition" test below drives the real
@@ -208,7 +231,10 @@ vi.mock("../browser/preflight.js", () => ({
 // the shared `~/.cache/hyperframes/chrome`, racing other packages' browser
 // tests in CI.
 vi.mock("../browser/manager.js", () => ({
-  ensureBrowser: vi.fn(async () => ({ executablePath: "/mock/chrome", source: "cache" })),
+  ensureBrowser: vi.fn(async (options?: { signal?: AbortSignal }) => {
+    await browserManagerState.onEnsure?.(options?.signal);
+    return { executablePath: "/mock/chrome", source: "cache" };
+  }),
 }));
 
 vi.mock("../utils/orphanCleanup.js", () => ({
@@ -216,6 +242,18 @@ vi.mock("../utils/orphanCleanup.js", () => ({
     orphanCleanupState.calls += 1;
     return orphanCleanupState.killed;
   }),
+  killOrphanedProcessesForRender: vi.fn(async () => {
+    orphanCleanupState.calls += 1;
+    return orphanCleanupState.killed;
+  }),
+  processIdentity: vi.fn((pid: number) => orphanCleanupState.identity(pid)),
+  processAncestorSnapshot: vi.fn((pid: number) => {
+    const parent = orphanCleanupState.parentPid(pid);
+    if (parent === null) return [];
+    const identity = orphanCleanupState.identity(parent);
+    return identity === null ? [] : [{ pid: parent, identity }];
+  }),
+  processParentPid: vi.fn((pid: number) => orphanCleanupState.parentPid(pid)),
 }));
 
 // Collect the heavy render module once, after Vitest has hoisted the mocks
@@ -292,6 +330,7 @@ describe("renderLocal browser GPU config", () => {
     producerState.createdJobs = [];
     producerState.resolveConfigCalls = [];
     producerState.executeImpl = async () => undefined;
+    preflightState.onRun = undefined;
     configState.disk = { telemetryEnabled: true, deParallelRouterTrialFired: true };
     configState.cache = null;
     configState.failWrites = 0;
@@ -304,6 +343,9 @@ describe("renderLocal browser GPU config", () => {
     ffmpegEncoderState.encoders = null;
     orphanCleanupState.calls = 0;
     orphanCleanupState.killed = 0;
+    orphanCleanupState.parentPid = () => null;
+    orphanCleanupState.identity = () => null;
+    browserManagerState.onEnsure = undefined;
     resetTrialState();
     savedEnv.clear();
     savedEnv.set("HYPERFRAMES_FFMPEG_PATH", process.env.HYPERFRAMES_FFMPEG_PATH);
@@ -330,6 +372,123 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(orphanCleanupState.calls).toBe(1);
+  });
+
+  it("owns cancellation before preflight so an early wrapper loss cannot start rendering", async () => {
+    const priorListeners = new Set(process.listeners("SIGTERM"));
+    let rendererStarted = false;
+    preflightState.onRun = () => {
+      const cancellationListener = process
+        .listeners("SIGTERM")
+        .find((listener) => !priorListeners.has(listener));
+      expect(cancellationListener).toBeDefined();
+      cancellationListener?.("SIGTERM");
+    };
+    producerState.executeImpl = async (_job, abortSignal) => {
+      if (!abortSignal?.aborted) rendererStarted = true;
+      throw abortSignal?.reason;
+    };
+
+    await expect(
+      renderLocal("/tmp/project", "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+        throwOnError: true,
+      }),
+    ).rejects.toThrow("render_cancelled_by_sigterm");
+
+    expect(rendererStarted).toBe(false);
+    expect(
+      process.listeners("SIGTERM").filter((listener) => !priorListeners.has(listener)),
+    ).toEqual([]);
+  });
+
+  it.each(["SIGINT", "SIGTERM", "SIGHUP"] as const)(
+    "wires %s to the producer AbortSignal and removes render-scoped listeners",
+    async (signal) => {
+      let markExecutionStarted!: () => void;
+      const executionStarted = new Promise<void>((resolve) => {
+        markExecutionStarted = resolve;
+      });
+      let producerSignal: AbortSignal | undefined;
+      producerState.executeImpl = async (_job, abortSignal) => {
+        producerSignal = abortSignal;
+        markExecutionStarted();
+        await new Promise<void>((_resolve, reject) => {
+          abortSignal?.addEventListener("abort", () => reject(abortSignal.reason), { once: true });
+        });
+      };
+      const priorListeners = new Set(process.listeners(signal));
+
+      const render = renderLocal("/tmp/project", "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+        throwOnError: true,
+      });
+      await executionStarted;
+
+      const cancellationListener = process
+        .listeners(signal)
+        .find((listener) => !priorListeners.has(listener));
+      expect(cancellationListener).toBeDefined();
+      cancellationListener?.(signal);
+      expect(process.listeners(signal)).toContain(cancellationListener);
+      cancellationListener?.(signal);
+
+      await expect(render).rejects.toThrow(`render_cancelled_by_${signal.toLowerCase()}`);
+      expect(producerSignal).toBeInstanceOf(AbortSignal);
+      expect(producerSignal?.aborted).toBe(true);
+      expect(process.listeners(signal).filter((listener) => !priorListeners.has(listener))).toEqual(
+        [],
+      );
+    },
+  );
+
+  it("checks ancestors again at producer artifact finalization", async () => {
+    const controller = new AbortController();
+    let parentExited = false;
+    const cancellation = {
+      signal: controller.signal,
+      checkAncestors: vi.fn(() => {
+        if (parentExited) controller.abort(new Error("render_cancelled_parent_exited"));
+      }),
+      dispose: vi.fn(),
+    };
+    producerState.executeImpl = async (_job, abortSignal, assertRenderActive) => {
+      parentExited = true;
+      assertRenderActive?.();
+      abortSignal?.throwIfAborted();
+    };
+
+    await expect(
+      renderLocal(
+        "/tmp/project",
+        "/tmp/out.mp4",
+        {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "mp4",
+          gpu: false,
+          browserGpuMode: "software",
+          hdrMode: "auto",
+          quiet: true,
+          throwOnError: true,
+        },
+        cancellation,
+      ),
+    ).rejects.toThrow("render_cancelled_parent_exited");
+
+    expect(cancellation.checkAncestors).toHaveBeenLastCalledWith();
   });
 
   afterEach(() => {
@@ -1558,6 +1717,78 @@ describe("render fps arg definition", () => {
 });
 
 describe("render command explicit composition", () => {
+  it("cancels before rendering when the wrapper exits during browser preparation", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-prep-cancel-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-no-timeline></div></body></html>',
+    );
+    const wrapper = spawn(process.execPath, ["--eval", "setInterval(() => undefined, 1000)"], {
+      stdio: "ignore",
+    });
+    const jobsBefore = producerState.createdJobs.length;
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    let releasePreparation!: () => void;
+    const preparationBlocked = new Promise<void>((resolve) => {
+      releasePreparation = resolve;
+    });
+    orphanCleanupState.parentPid = (pid) => (pid === process.pid ? wrapper.pid! : null);
+    orphanCleanupState.identity = (pid) => (pid === wrapper.pid ? "wrapper-birth-token" : null);
+    browserManagerState.onEnsure = async (signal) => {
+      const exited = new Promise<void>((resolve) => wrapper.once("exit", () => resolve()));
+      wrapper.kill("SIGTERM");
+      await exited;
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => reject(signal?.reason);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (signal?.aborted) onAbort();
+        void preparationBlocked.then(() => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve();
+        });
+      });
+    };
+
+    try {
+      const command = renderModule.default.run?.({
+        args: {
+          dir: projectDir,
+          output: join(projectDir, "out.mp4"),
+          quiet: true,
+          quality: "standard",
+          format: "mp4",
+        },
+      } as never);
+      await expect(
+        Promise.race([
+          command,
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(
+              () => reject(new Error("Setup cancellation timed out")),
+              process.platform === "linux" ? 1_000 : 3_000,
+            ),
+          ),
+        ]),
+      ).rejects.toThrow("render_cancelled_parent_exited");
+      expect(producerState.createdJobs).toHaveLength(jobsBefore);
+      expect(
+        stderr.mock.calls.filter(([line]) =>
+          String(line).includes("Render cancelled: render_cancelled_parent_exited"),
+        ),
+      ).toEqual([["Render cancelled: render_cancelled_parent_exited\n"]]);
+    } finally {
+      releasePreparation();
+      const { consumeCommandResult } = await import("../utils/commandResult.js");
+      consumeCommandResult();
+      browserManagerState.onEnsure = undefined;
+      orphanCleanupState.parentPid = () => null;
+      orphanCleanupState.identity = () => null;
+      stderr.mockRestore();
+      wrapper.kill("SIGKILL");
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("renders an explicit composition from a project with no index.html", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-render-explicit-"));
     const outputPath = join(projectDir, "out.mp4");

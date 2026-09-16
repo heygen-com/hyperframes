@@ -7,7 +7,7 @@ vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
 }));
 
-import { isProcessDescendant, killProcessTree, processIdentity } from "./orphanCleanup.js";
+import { isProcessDescendant, processAncestorSnapshot, processIdentity } from "./orphanCleanup.js";
 
 describe("Windows orphan-cleanup child-process options", () => {
   const originalPlatform = process.platform;
@@ -29,14 +29,32 @@ describe("Windows orphan-cleanup child-process options", () => {
     vi.clearAllMocks();
   });
 
-  it("hides taskkill and PowerShell console windows", () => {
-    killProcessTree(4321);
+  it("hides PowerShell process-identity windows", () => {
     expect(processIdentity(4321)).toBe("windows:123456");
     expect(isProcessDescendant(400, 200)).toBe(true);
 
-    expect(execFileSyncMock).toHaveBeenCalledTimes(4);
+    expect(execFileSyncMock).toHaveBeenCalledTimes(3);
     for (const call of execFileSyncMock.mock.calls) {
       expect(call[2]).toEqual(expect.objectContaining({ windowsHide: true }));
     }
+  });
+
+  it("captures the complete Windows ancestor chain with one hidden PowerShell lookup", () => {
+    execFileSyncMock.mockImplementation((_command: string, args: string[]) => {
+      const script = args.at(-1) ?? "";
+      if (script.includes("Get-CimInstance Win32_Process |")) {
+        return "400 300 444\n300 200 333\n200 1 222\n";
+      }
+      return "";
+    });
+
+    expect(processAncestorSnapshot(400)).toEqual([
+      { pid: 300, identity: "windows:333" },
+      { pid: 200, identity: "windows:222" },
+    ]);
+    expect(execFileSyncMock).toHaveBeenCalledOnce();
+    expect(execFileSyncMock.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ windowsHide: true }),
+    );
   });
 });

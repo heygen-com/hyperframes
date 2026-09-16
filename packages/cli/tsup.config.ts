@@ -15,6 +15,7 @@ export default defineConfig({
     cli: "src/cli.ts",
     fontLocalizeCli: "src/fontLocalizeCli.ts",
     runtimeVersion: "src/runtimeVersion.ts",
+    renderSetupWorker: "src/renderSetupWorker.ts",
     shaderTransitionWorker: "../producer/src/services/shaderTransitionWorker.ts",
   },
   format: ["esm"],

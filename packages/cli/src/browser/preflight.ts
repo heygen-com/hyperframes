@@ -1,21 +1,16 @@
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
-import { findBrowser, type BrowserResult } from "./manager.js";
-import {
-  FFMPEG_PATH_ENV,
-  FFPROBE_PATH_ENV,
-  findFFmpeg,
-  findFFprobe,
-  getFFmpegInstallHint,
-} from "./ffmpeg.js";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
+import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, getFFmpegInstallHint } from "./ffmpeg.js";
 import {
   chromeDepsInstallCommand,
   detectLinuxDistro,
   distroLabel,
-  probeChromeSharedLibs,
+  parseLddMissingLibs,
 } from "./linuxDeps.js";
 import { getFreeDiskMb } from "../telemetry/system.js";
+import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
 export type EnvironmentCheckLevel = "ok" | "warn" | "error";
 
@@ -43,6 +38,7 @@ export interface EnvironmentCheckOptions {
   includeBrowser?: boolean;
   includeDisk?: boolean;
   includeWindowsUnc?: boolean;
+  signal?: AbortSignal;
 }
 
 export function parseToolVersion(raw: string): string {
@@ -58,17 +54,23 @@ function configuredMissingDetail(envName: string): string | undefined {
 
 type ToolVersionResult = { ok: true; detail: string } | { ok: false; detail: string };
 
-function readToolVersion(binaryPath: string): ToolVersionResult {
+// fallow-ignore-next-line complexity
+async function readToolVersion(
+  binaryPath: string,
+  signal?: AbortSignal,
+): Promise<ToolVersionResult> {
   try {
-    const raw =
-      execFileSync(binaryPath, ["-version"], {
-        encoding: "utf-8",
-        timeout: 5000,
-        windowsHide: true,
-      }).split("\n")[0] ?? "";
+    const output = (
+      await runCancellableProcess(binaryPath, ["-version"], {
+        signal,
+        timeoutMs: 5000,
+      })
+    ).stdout;
+    const raw = output.split("\n")[0] ?? "";
     const version = parseToolVersion(raw);
     return { ok: true, detail: version ? `${version} at ${binaryPath}` : binaryPath };
   } catch (error) {
+    if (signal?.aborted) signal.throwIfAborted();
     const status =
       typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
     const exitDetail = typeof status === "number" ? ` (exit code ${status})` : "";
@@ -79,7 +81,7 @@ function readToolVersion(binaryPath: string): ToolVersionResult {
   }
 }
 
-function checkFFmpeg(): EnvironmentCheckOutcome {
+async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcome> {
   const missingConfigured = configuredMissingDetail(FFMPEG_PATH_ENV);
   if (missingConfigured) {
     return {
@@ -92,9 +94,9 @@ function checkFFmpeg(): EnvironmentCheckOutcome {
     };
   }
 
-  const path = findFFmpeg();
+  const path = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (path) {
-    const version = readToolVersion(path);
+    const version = await readToolVersion(path, signal);
     if (!version.ok) {
       return {
         name: "FFmpeg",
@@ -121,7 +123,7 @@ function checkFFmpeg(): EnvironmentCheckOutcome {
   };
 }
 
-function checkFFprobe(): EnvironmentCheckOutcome {
+async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutcome> {
   const missingConfigured = configuredMissingDetail(FFPROBE_PATH_ENV);
   if (missingConfigured) {
     return {
@@ -134,9 +136,9 @@ function checkFFprobe(): EnvironmentCheckOutcome {
     };
   }
 
-  const path = findFFprobe();
+  const path = findFfBinary("ffprobe", { configuredMustExist: true });
   if (path) {
-    const version = readToolVersion(path);
+    const version = await readToolVersion(path, signal);
     return { name: "FFprobe", ok: true, level: "ok", detail: version.detail, path };
   }
 
@@ -160,12 +162,37 @@ function checkFFprobe(): EnvironmentCheckOutcome {
  * `Failed to launch the browser process` mid-render. No-op off Linux and when
  * `ldd` can't run (probe inconclusive).
  */
-function chromeSharedLibOutcome(
+// fallow-ignore-next-line complexity
+async function chromeSharedLibOutcome(
   executablePath: string,
   found: EnvironmentCheckOutcome,
-): EnvironmentCheckOutcome {
+  signal?: AbortSignal,
+): Promise<EnvironmentCheckOutcome> {
   if (process.platform !== "linux") return found;
-  const probe = probeChromeSharedLibs(executablePath);
+  let probe;
+  if (!existsSync(executablePath)) {
+    probe = { ok: true, missing: [], probeUnavailable: true };
+  } else {
+    try {
+      const result = await runCancellableProcess("ldd", [executablePath], {
+        signal,
+        timeoutMs: 5000,
+      });
+      probe = parseLddMissingLibs(result.stdout);
+    } catch (error) {
+      if (signal?.aborted) signal.throwIfAborted();
+      const stdout =
+        typeof error === "object" && error !== null && "stdout" in error
+          ? String(error.stdout ?? "")
+          : "";
+      const killed =
+        typeof error === "object" && error !== null && "killed" in error && error.killed === true;
+      probe =
+        stdout && !killed
+          ? parseLddMissingLibs(stdout)
+          : { ok: true, missing: [], probeUnavailable: true };
+    }
+  }
   if (probe.probeUnavailable || probe.ok) return found;
 
   const distro = detectLinuxDistro();
@@ -194,23 +221,22 @@ function chromeLaunchFailureDetails(error: unknown): string {
     .join(", ");
 }
 
-function chromeLaunchOutcome(
+async function chromeLaunchOutcome(
   executablePath: string,
   found: EnvironmentCheckOutcome,
-): EnvironmentCheckOutcome {
-  const libraries = chromeSharedLibOutcome(executablePath, found);
+  signal?: AbortSignal,
+): Promise<EnvironmentCheckOutcome> {
+  const libraries = await chromeSharedLibOutcome(executablePath, found, signal);
   if (!libraries.ok) return libraries;
   try {
-    execFileSync(executablePath, ["--version"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 5000,
-      killSignal: "SIGKILL",
-      maxBuffer: 64 * 1024,
-      windowsHide: true,
+    await runCancellableProcess(executablePath, ["--version"], {
+      signal,
+      timeoutMs: 5000,
+      maxBufferBytes: 64 * 1024,
     });
     return found;
   } catch (error) {
+    if (signal?.aborted) signal.throwIfAborted();
     const details = chromeLaunchFailureDetails(error);
     return {
       name: "Chrome",
@@ -226,16 +252,23 @@ function chromeLaunchOutcome(
   }
 }
 
-async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcome> {
+async function checkChrome(
+  browserPath?: string,
+  signal?: AbortSignal,
+): Promise<EnvironmentCheckOutcome> {
   if (browserPath) {
     if (existsSync(browserPath)) {
-      return chromeLaunchOutcome(browserPath, {
-        name: "Chrome",
-        ok: true,
-        level: "ok",
-        detail: `explicit: ${browserPath}`,
-        path: browserPath,
-      });
+      return chromeLaunchOutcome(
+        browserPath,
+        {
+          name: "Chrome",
+          ok: true,
+          level: "ok",
+          detail: `explicit: ${browserPath}`,
+          path: browserPath,
+        },
+        signal,
+      );
     }
     return {
       name: "Chrome",
@@ -254,18 +287,25 @@ async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcom
   // (notably `doctor`, which is documented to exit 0 even when checks fail).
   let info: Awaited<ReturnType<typeof findBrowser>>;
   try {
-    info = await findBrowser();
+    info = signal
+      ? await ensureBrowser({ preferManagedChrome: true, signal })
+      : await findBrowser();
   } catch {
+    if (signal?.aborted) signal.throwIfAborted();
     info = undefined;
   }
   if (info) {
-    return chromeLaunchOutcome(info.executablePath, {
-      name: "Chrome",
-      ok: true,
-      level: "ok",
-      detail: `${info.source}: ${info.executablePath}`,
-      path: info.executablePath,
-    });
+    return chromeLaunchOutcome(
+      info.executablePath,
+      {
+        name: "Chrome",
+        ok: true,
+        level: "ok",
+        detail: `${info.source}: ${info.executablePath}`,
+        path: info.executablePath,
+      },
+      signal,
+    );
   }
 
   return {
@@ -318,15 +358,15 @@ export async function runEnvironmentChecks(
 ): Promise<EnvironmentCheckResult> {
   const outcomes: EnvironmentCheckOutcome[] = [];
 
-  const ffmpeg = checkFFmpeg();
+  const ffmpeg = await checkFFmpeg(options.signal);
   outcomes.push(ffmpeg);
 
-  const ffprobe = checkFFprobe();
+  const ffprobe = await checkFFprobe(options.signal);
   outcomes.push(ffprobe);
 
   let browser: BrowserResult | undefined;
   if (options.includeBrowser) {
-    const chrome = await checkChrome(options.browserPath);
+    const chrome = await checkChrome(options.browserPath, options.signal);
     outcomes.push(chrome);
     if (chrome.ok && chrome.path) {
       browser = {

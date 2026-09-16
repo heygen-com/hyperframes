@@ -116,7 +116,7 @@ import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { RenderExecutionContext } from "./render/renderExecutionContext.js";
-import { ArtifactTransaction } from "./render/artifactTransaction.js";
+import { ArtifactTransaction, commitArtifactTransaction } from "./render/artifactTransaction.js";
 import {
   createCapturePlan,
   replanAfterFailure,
@@ -2144,6 +2144,7 @@ export async function executeRenderJob(
   outputPath: string,
   progressSink?: ProgressCallback,
   abortSignal?: AbortSignal,
+  assertRenderActive?: () => void,
 ): Promise<void> {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const producerRoot = process.env.PRODUCER_RENDERS_DIR
@@ -2183,6 +2184,7 @@ export async function executeRenderJob(
       logPath,
       pipelineStart,
       execution,
+      assertRenderActive,
     });
   } finally {
     await execution.dispose();
@@ -2197,8 +2199,18 @@ async function executeRenderPipeline(input: {
   logPath: string | null;
   pipelineStart: number;
   execution: RenderExecutionContext;
+  assertRenderActive?: () => void;
 }): Promise<void> {
-  const { job, projectDir, outputPath, workDir, logPath, pipelineStart, execution } = input;
+  const {
+    job,
+    projectDir,
+    outputPath,
+    workDir,
+    logPath,
+    pipelineStart,
+    execution,
+    assertRenderActive,
+  } = input;
   const log = execution.logger;
   const eventPublisher = execution.events;
   const onProgress = execution.onProgress;
@@ -4207,7 +4219,10 @@ async function executeRenderPipeline(input: {
       }
     }
 
-    await artifactTransaction.commit();
+    await commitArtifactTransaction(artifactTransaction, () => {
+      assertRenderActive?.();
+      assertNotAborted();
+    });
     job.outputPath = outputPath;
     updateJobStatus(job, "complete", "Render complete", 100, onProgress);
     await eventPublisher.flush();

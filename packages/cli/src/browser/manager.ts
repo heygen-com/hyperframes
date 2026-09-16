@@ -1,10 +1,21 @@
 // fallow-ignore-file code-duplication
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -57,6 +68,9 @@ const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headl
 // doubles as a zero-dependency cross-process mutex — no lockfile library needed.
 const INSTALL_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.lock");
 const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.reclaim.lock");
+const INSTALL_LOCK_OWNER_FILE = join(INSTALL_LOCK_DIR, "owner");
+const INSTALL_LOCK_OWNER_ENV = "HYPERFRAMES_BROWSER_LOCK_OWNER";
+let ownedInstallLockToken: string | undefined;
 const INSTALL_LOCK_TIMINGS = {
   staleMs: 120_000,
   pollMs: 200,
@@ -134,6 +148,7 @@ function touchInstallLock(): void {
   }
 }
 
+// fallow-ignore-next-line complexity
 export async function withInstallLock<T>(
   fn: () => Promise<T>,
   timings: InstallLockTimings = INSTALL_LOCK_TIMINGS,
@@ -156,6 +171,14 @@ export async function withInstallLock<T>(
       continue;
     }
     if (tryAcquireDirLock(INSTALL_LOCK_DIR)) {
+      ownedInstallLockToken = process.env[INSTALL_LOCK_OWNER_ENV] ?? randomUUID();
+      try {
+        writeFileSync(INSTALL_LOCK_OWNER_FILE, ownedInstallLockToken);
+      } catch (error) {
+        ownedInstallLockToken = undefined;
+        rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
+        throw error;
+      }
       rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
       break;
     }
@@ -184,8 +207,23 @@ export async function withInstallLock<T>(
     return await fn();
   } finally {
     clearInterval(heartbeat);
-    rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
+    releaseOwnedBrowserInstallLock();
   }
+}
+
+export function releaseOwnedBrowserInstallLock(): void {
+  if (!ownedInstallLockToken) return;
+  releaseBrowserInstallLock(ownedInstallLockToken);
+}
+
+function releaseBrowserInstallLock(ownerToken: string): void {
+  if (ownedInstallLockToken === ownerToken) ownedInstallLockToken = undefined;
+  try {
+    if (readFileSync(INSTALL_LOCK_OWNER_FILE, "utf8") !== ownerToken) return;
+  } catch {
+    return;
+  }
+  rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
 }
 
 export type BrowserSource = "env" | "cache" | "system" | "download";
@@ -211,6 +249,7 @@ export interface EnsureBrowserOptions {
   // eligible renders outright; HF#2060). `HYPERFRAMES_BROWSER_PATH` still
   // wins over this — an explicit override is still an explicit override.
   preferManagedChrome?: boolean;
+  signal?: AbortSignal;
 }
 
 interface CacheLookupResult {
@@ -614,6 +653,14 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
  * (puppeteer-cache preference and system Chrome are both skipped).
  */
 export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
+  if (options?.signal) return ensureBrowserInOwnedProcess(options);
+  return ensureBrowserInCurrentProcess(options);
+}
+
+// fallow-ignore-next-line complexity
+async function ensureBrowserInCurrentProcess(
+  options?: EnsureBrowserOptions,
+): Promise<BrowserResult> {
   const fromEnv = findFromEnv();
   if (fromEnv) return fromEnv;
 
@@ -663,6 +710,28 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
     }
     return downloadBrowser(options);
   });
+}
+
+async function ensureBrowserInOwnedProcess(options: EnsureBrowserOptions): Promise<BrowserResult> {
+  const signal = options.signal;
+  signal?.throwIfAborted();
+  const lockOwner = randomUUID();
+  try {
+    return await runRenderSetupWorker<BrowserResult>(
+      "browser",
+      {
+        force: options.force,
+        preferManagedChrome: options.preferManagedChrome,
+      },
+      {
+        signal,
+        maxBufferBytes: 4 * 1024 * 1024,
+        env: { [INSTALL_LOCK_OWNER_ENV]: lockOwner },
+      },
+    );
+  } finally {
+    releaseBrowserInstallLock(lockOwner);
+  }
 }
 
 /**

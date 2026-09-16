@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
+import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
 export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV } from "@hyperframes/parsers/ff-binaries";
 
@@ -38,6 +39,18 @@ export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean)
     windowsHide: true,
   });
   return resolveH264EncoderMode(encoders, gpuRequested);
+}
+
+export async function detectH264EncoderModeForRender(
+  ffmpegPath: string,
+  gpuRequested: boolean,
+  signal: AbortSignal,
+): Promise<H264EncoderMode> {
+  const result = await runCancellableProcess(ffmpegPath, ["-hide_banner", "-encoders"], {
+    signal,
+    timeoutMs: 5000,
+  });
+  return resolveH264EncoderMode(result.stdout, gpuRequested);
 }
 
 // `configuredMustExist`: the CLI surfaces an install hint when a binary is

@@ -85,14 +85,16 @@ import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArg
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import {
-  detectH264EncoderMode,
+  detectH264EncoderModeForRender,
   getFFmpegInstallHint,
   H264EncoderUnavailableError,
+  type H264EncoderMode,
 } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.js";
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
-import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
+import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
+import { createRenderCancellationScope } from "../utils/renderCancellation.js";
 import {
   markRenderSucceeded,
   runPostRenderStep,
@@ -368,15 +370,32 @@ export default defineCommand({
   // Keep the transport adapter thin: each phase has one ownership boundary.
   async run({ args }) {
     const plan = createRenderPlan(args);
-    // Teach the project its owning skill from an explicit --skill so every
-    // later flag-less render (re-render, `npm run render`, batch) inherits it.
-    seedProjectAuthoringSkill(plan.project.dir, args.skill);
-    await presentRenderPlan(plan);
-    await executeRenderPlan(plan, {
-      renderDocker,
-      renderLocal,
-      checkResolution: checkRenderResolutionPreflight,
-    });
+    const cancellation = plan.useDocker ? undefined : createRenderCancellationScope();
+    try {
+      // Teach the project its owning skill from an explicit --skill so every
+      // later flag-less render (re-render, `npm run render`, batch) inherits it.
+      seedProjectAuthoringSkill(plan.project.dir, args.skill);
+      await presentRenderPlan(plan);
+      await executeRenderPlan(
+        plan,
+        {
+          renderDocker,
+          renderLocal,
+          checkResolution: checkRenderResolutionPreflight,
+        },
+        cancellation,
+      );
+    } catch (error) {
+      if (cancellation?.signal.aborted) {
+        const reason = cancellation.signal.reason;
+        const message = reason instanceof Error ? reason.message : String(reason);
+        process.stderr.write(`Render cancelled: ${message}\n`);
+        requestCliExit(1);
+      }
+      throw error;
+    } finally {
+      cancellation?.dispose();
+    }
   },
 });
 
@@ -802,13 +821,37 @@ async function renderDocker(
   return { renderTimeMs: elapsed };
 }
 
-// fallow-ignore-next-line complexity
 export async function renderLocal(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
+  commandCancellation?: ReturnType<typeof createRenderCancellationScope>,
 ): Promise<SingleRenderResult> {
-  const recoveredOrphanTrees = killOrphanedProcesses();
+  const cancellation = commandCancellation ?? createRenderCancellationScope();
+  try {
+    return await executeLocalRender(projectDir, outputPath, options, cancellation);
+  } finally {
+    if (!commandCancellation) cancellation.dispose();
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function executeLocalRender(
+  projectDir: string,
+  outputPath: string,
+  options: RenderOptions,
+  cancellation: ReturnType<typeof createRenderCancellationScope>,
+): Promise<SingleRenderResult> {
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
+  let recoveredOrphanTrees = 0;
+  try {
+    recoveredOrphanTrees = await killOrphanedProcessesForRender(cancellation.signal);
+  } catch {
+    if (cancellation.signal.aborted) cancellation.signal.throwIfAborted();
+  }
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
   if (recoveredOrphanTrees > 0 && !options.quiet) {
     console.warn(
       c.warn(
@@ -824,7 +867,10 @@ export async function renderLocal(
     includeBrowser: true,
     includeDisk: true,
     includeWindowsUnc: true,
+    signal: cancellation.signal,
   });
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
   const failedChecks = preflight.outcomes.filter((outcome) => !outcome.ok);
   if (failedChecks.length > 0) {
     for (const check of failedChecks) {
@@ -848,10 +894,15 @@ export async function renderLocal(
   }
 
   if (!options.gpu && options.format === "mp4" && preflight.ffmpegPath) {
-    let encoderMode: ReturnType<typeof detectH264EncoderMode> = "software";
+    let encoderMode: H264EncoderMode = "software";
     try {
-      encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
+      encoderMode = await detectH264EncoderModeForRender(
+        preflight.ffmpegPath,
+        false,
+        cancellation.signal,
+      );
     } catch (error) {
+      if (cancellation.signal.aborted) cancellation.signal.throwIfAborted();
       // HDR MP4 uses HEVC; auto mode cannot resolve the codec until sources
       // have been inspected. Only forced SDR is definitely H.264 here.
       if (error instanceof H264EncoderUnavailableError && options.hdrMode === "force-sdr") {
@@ -877,6 +928,8 @@ export async function renderLocal(
     }
   }
 
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
   const producer = await loadProducer();
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
@@ -938,7 +991,15 @@ export async function renderLocal(
       };
 
   try {
-    await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
+    cancellation.checkAncestors();
+    await producer.executeRenderJob(
+      job,
+      projectDir,
+      outputPath,
+      onProgress,
+      cancellation.signal,
+      cancellation.checkAncestors,
+    );
   } catch (error: unknown) {
     maybeConsumeDeParallelRouterTrial(deParallelRouterActive, job, options.quiet);
     // The render container sets `ENV CONTAINER=true`; suggesting `--docker`

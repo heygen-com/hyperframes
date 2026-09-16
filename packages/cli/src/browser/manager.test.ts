@@ -70,6 +70,7 @@ function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMo
   // assert the lock dir doesn't leak after ensureBrowser resolves.
   const paths = new Set(existing);
   const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
+  const contents = new Map<string, string>();
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
@@ -94,6 +95,7 @@ function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMo
         if (existingPath === p || existingPath.startsWith(p + sep)) {
           paths.delete(existingPath);
           mtimes.delete(existingPath);
+          contents.delete(existingPath);
         }
       }
     },
@@ -113,6 +115,19 @@ function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMo
         throw err;
       }
       mtimes.set(p, mtime.getTime());
+    },
+    writeFileSync: (p: string, value: string) => {
+      paths.add(p);
+      contents.set(p, value);
+    },
+    readFileSync: (p: string) => {
+      const value = contents.get(p);
+      if (value === undefined) {
+        const err = new Error(`ENOENT: no such file or directory, read '${p}'`);
+        (err as NodeJS.ErrnoException).code = "ENOENT";
+        throw err;
+      }
+      return value;
     },
   }));
   vi.doMock("node:os", () => ({
