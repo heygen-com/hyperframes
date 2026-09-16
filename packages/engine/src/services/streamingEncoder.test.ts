@@ -363,6 +363,76 @@ describe("buildStreamingArgs", () => {
       expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,format=nv12,hwupload");
     });
   });
+
+  // The HLS format locks the GOP so `-f hls -c copy` can cut segments on
+  // exact time boundaries. Every other format must keep the old arg list.
+  describe("lockGopForChunkConcat", () => {
+    it("omits closed-GOP args by default", () => {
+      const args = buildStreamingArgs(baseSdr, "/tmp/out.mp4");
+      expect(args).not.toContain("-g");
+      expect(args).not.toContain("-keyint_min");
+      expect(args).not.toContain("-sc_threshold");
+      expect(args).not.toContain("-force_key_frames");
+      const paramIdx = args.indexOf("-x264-params");
+      expect(args[paramIdx + 1]).not.toContain("open-gop=0");
+    });
+
+    it("emits closed-GOP args and x264-params for libx264", () => {
+      const args = buildStreamingArgs(
+        { ...baseSdr, lockGopForChunkConcat: true, gopSize: 120 },
+        "/tmp/out.mp4",
+      );
+      expect(args[args.indexOf("-g") + 1]).toBe("120");
+      expect(args[args.indexOf("-keyint_min") + 1]).toBe("120");
+      expect(args[args.indexOf("-sc_threshold") + 1]).toBe("0");
+      expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:eq(mod(n,120),0)");
+      const paramIdx = args.indexOf("-x264-params");
+      expect(args[paramIdx + 1]).toContain("scenecut=0");
+      expect(args[paramIdx + 1]).toContain("open-gop=0");
+      expect(args[paramIdx + 1]).toContain("repeat-headers=1");
+      expect(args[paramIdx + 1]).toContain("aq-strength=0.8");
+      expect(args[args.indexOf("-bf") + 1]).toBe("0");
+    });
+
+    it("emits keyint in x265-params and disables B-frames for libx265", () => {
+      const args = buildStreamingArgs(
+        {
+          ...baseSdr,
+          codec: "h265",
+          lockGopForChunkConcat: true,
+          gopSize: 90,
+        },
+        "/tmp/out.mp4",
+      );
+      expect(args[args.indexOf("-g") + 1]).toBe("90");
+      expect(getX265ParamsValue(args)).toContain("keyint=90");
+      expect(getX265ParamsValue(args)).toContain("min-keyint=90");
+      expect(args[args.indexOf("-bf") + 1]).toBe("0");
+    });
+
+    it("emits only the generic keyframe args on GPU encoders", () => {
+      const args = buildStreamingArgs(
+        { ...baseSdr, useGpu: true, lockGopForChunkConcat: true, gopSize: 120 },
+        "/tmp/out.mp4",
+        "nvenc",
+      );
+      expect(args[args.indexOf("-g") + 1]).toBe("120");
+      expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:eq(mod(n,120),0)");
+      expect(args).not.toContain("-sc_threshold");
+      expect(args).not.toContain("-x264-params");
+    });
+
+    it("throws on a missing or invalid gopSize", () => {
+      for (const bad of [undefined, 0, -10, NaN, Infinity]) {
+        expect(() =>
+          buildStreamingArgs(
+            { ...baseSdr, lockGopForChunkConcat: true, gopSize: bad as number | undefined },
+            "/tmp/out.mp4",
+          ),
+        ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
+      }
+    });
+  });
 });
 
 describe("createFrameReorderBuffer", () => {

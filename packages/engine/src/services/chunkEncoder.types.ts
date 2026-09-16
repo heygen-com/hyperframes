@@ -17,17 +17,19 @@ export interface EncoderOptions {
   hdr?: { transfer: HdrTransfer };
   /**
    * When `true`, force closed-GOP encoding with a keyframe at every
-   * `gopSize` boundary so the resulting chunk file can be losslessly
-   * concatenated (`ffmpeg -f concat -c copy`) with sibling chunks.
+   * `gopSize` boundary so the resulting stream can be losslessly
+   * concatenated (`ffmpeg -f concat -c copy`) with sibling chunks, or cut
+   * into fixed-length HLS media segments with `-f hls -c copy`.
    *
    * Default `false`: GOP placement is left to libx264/libx265 defaults
    * (open-GOP, scenecut-driven keyframes), preserving the in-process
    * renderer's byte-identical output.
    *
-   * Honored by the SW libx264 / libx265 / libvpx-vp9 paths. GPU encoders
-   * and ProRes ignore the flag — GPU concat-copy is a separate story and
-   * ProRes is intra-only (every frame is already a keyframe, so no
-   * closed-GOP forcing is needed).
+   * The SW libx264 / libx265 / libvpx-vp9 paths honor it fully. GPU encoders
+   * take the generic `-g` / `-keyint_min` / `-force_key_frames` args only —
+   * `-sc_threshold` and the x264/x265 param string have no GPU equivalent.
+   * ProRes ignores the flag entirely: it is intra-only, so every frame is
+   * already a keyframe and there is nothing to force.
    *
    * For libvpx-vp9, closed-GOP also forces `-auto-alt-ref 0` so the
    * boundary frame between chunks remains independently decodable —

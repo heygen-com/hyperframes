@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
+import {
+  ENCODER_PRESETS,
+  appendLockedGopArgs,
+  buildEncoderArgs,
+  getEncoderPreset,
+  lockedGopCodecParams,
+  resolveLockedGopSize,
+} from "./chunkEncoder.js";
 import { renderProvenanceArgs } from "../utils/renderProvenance.js";
 
 const TINY_PNG = Buffer.from(
@@ -1355,9 +1362,10 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     expect(args[paramIdx + 1]).not.toContain("deblock");
   });
 
-  it("true is a no-op on GPU encoders", () => {
-    // GPU encoders take a separate code path; lockGopForChunkConcat does not
-    // wire `-g` / `-keyint_min` into nvenc/amf/qsv/vaapi.
+  it("true emits only the generic keyframe args on GPU encoders", () => {
+    // `-sc_threshold` and the x264/x265 param string are libx264/libx265
+    // private; nvenc/amf/qsv/vaapi get the portable trio so HLS `-c copy`
+    // segmentation still lands on IDRs.
     const args = buildEncoderArgs(
       {
         ...baseOptions,
@@ -1372,11 +1380,23 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
       "out.mp4",
       "nvenc",
     );
+    expect(args[args.indexOf("-g") + 1]).toBe("240");
+    expect(args[args.indexOf("-keyint_min") + 1]).toBe("240");
+    expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:eq(mod(n,240),0)");
+    expect(args).not.toContain("-sc_threshold");
+    expect(args.indexOf("-x264-params")).toBe(-1);
+  });
+
+  it("default (false) omits closed-GOP args on GPU encoders", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
     expect(args).not.toContain("-g");
     expect(args).not.toContain("-keyint_min");
     expect(args).not.toContain("-force_key_frames");
-    expect(args).not.toContain("-sc_threshold");
-    expect(args.indexOf("-x264-params")).toBe(-1);
   });
 
   it("true appends closed-GOP args for libvpx-vp9", () => {
@@ -1471,6 +1491,50 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
         "out.webm",
       ),
     ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
+  });
+
+  it("resolveLockedGopSize floors, passes through null, and rejects bad sizes", () => {
+    expect(resolveLockedGopSize({})).toBeNull();
+    expect(resolveLockedGopSize({ gopSize: 120 })).toBeNull();
+    expect(resolveLockedGopSize({ lockGopForChunkConcat: true, gopSize: 120.7 })).toBe(120);
+    for (const bad of [undefined, 0, -10, NaN, Infinity]) {
+      expect(() =>
+        resolveLockedGopSize({ lockGopForChunkConcat: true, gopSize: bad as number | undefined }),
+      ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
+    }
+  });
+
+  it("appendLockedGopArgs drops -sc_threshold for non-software encoders", () => {
+    const sw: string[] = [];
+    appendLockedGopArgs(sw, 120);
+    expect(sw).toEqual([
+      "-g",
+      "120",
+      "-keyint_min",
+      "120",
+      "-sc_threshold",
+      "0",
+      "-force_key_frames",
+      "expr:eq(mod(n,120),0)",
+    ]);
+
+    const gpu: string[] = [];
+    appendLockedGopArgs(gpu, 120, { softwareEncoder: false });
+    expect(gpu).toEqual([
+      "-g",
+      "120",
+      "-keyint_min",
+      "120",
+      "-force_key_frames",
+      "expr:eq(mod(n,120),0)",
+    ]);
+  });
+
+  it("lockedGopCodecParams adds keyint only for h265", () => {
+    expect(lockedGopCodecParams("h264", 120)).toBe("scenecut=0:open-gop=0:repeat-headers=1");
+    expect(lockedGopCodecParams("h265", 120)).toBe(
+      "keyint=120:min-keyint=120:scenecut=0:open-gop=0:repeat-headers=1",
+    );
   });
 
   it("true is a no-op on ProRes (intra-only — no GOP forcing needed)", () => {

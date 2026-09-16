@@ -159,6 +159,59 @@ export function getEncoderPreset(
 // Re-export GPU utilities so existing consumers that import from chunkEncoder still work.
 export { detectGpuEncoder, type GpuEncoder } from "../utils/gpuEncoder.js";
 
+/** The `lockGopForChunkConcat` / `gopSize` pair, shared by every encoder entry point. */
+export interface LockedGopOptions {
+  lockGopForChunkConcat?: boolean;
+  gopSize?: number;
+}
+
+/**
+ * Integer GOP length, or `null` when no lock was requested. Throws on a lock
+ * with an invalid size — a silent fallback ships open-GOP output that only
+ * surfaces later as a broken playback seam.
+ */
+export function resolveLockedGopSize(options: LockedGopOptions): number | null {
+  if (options.lockGopForChunkConcat !== true) return null;
+  if (
+    typeof options.gopSize !== "number" ||
+    !Number.isFinite(options.gopSize) ||
+    options.gopSize <= 0
+  ) {
+    throw new Error(
+      `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
+    );
+  }
+  return Math.floor(options.gopSize);
+}
+
+/**
+ * Closed-GOP / forced-keyframe args, so an orchestrator can concat chunks with
+ * `-c copy` or segment the stream with `-f hls -c copy`. Without them the
+ * encoder picks its own keyframes and a boundary may not be a decodable IDR.
+ *
+ * `-sc_threshold` is libx264/libx265-private; GPU encoders take only the
+ * generic `-g` / `-keyint_min` / `-force_key_frames`.
+ */
+export function appendLockedGopArgs(
+  args: string[],
+  gopSize: number,
+  options: { softwareEncoder?: boolean } = {},
+): void {
+  args.push("-g", String(gopSize), "-keyint_min", String(gopSize));
+  if (options.softwareEncoder !== false) args.push("-sc_threshold", "0");
+  args.push("-force_key_frames", `expr:eq(mod(n,${gopSize}),0)`);
+}
+
+/**
+ * The `-x264-params` / `-x265-params` fragment that bakes the IDR cadence into
+ * the encoder itself — `-force_key_frames` alone still permits mini-GOPs with
+ * open-GOP references. `repeat-headers=1` keeps each boundary self-contained.
+ */
+export function lockedGopCodecParams(codec: "h264" | "h265", gopSize: number): string {
+  const shared = "scenecut=0:open-gop=0:repeat-headers=1";
+  return codec === "h264" ? shared : `keyint=${gopSize}:min-keyint=${gopSize}:${shared}`;
+}
+
 export function buildEncoderArgs(
   options: EncoderOptions,
   inputArgs: string[],
@@ -251,6 +304,11 @@ export function buildEncoderArgs(
           args.push("-b_strategy", "0");
         }
       }
+
+      // An IDR every `gopSize` frames is all the concat-copy and HLS
+      // segmenters need, and it's all these encoders can promise.
+      const gpuGop = resolveLockedGopSize(options);
+      if (gpuGop !== null) appendLockedGopArgs(args, gpuGop, { softwareEncoder: false });
     } else {
       const encoderName = codec === "h264" ? "libx264" : "libx265";
       args.push("-c:v", encoderName, "-preset", preset);
@@ -258,34 +316,10 @@ export function buildEncoderArgs(
       else args.push("-crf", String(quality));
 
       // Closed-GOP / forced-keyframe args so an external orchestrator can
-      // ffmpeg-concat chunk files with `-c copy`. Without these, libx264 /
-      // libx265 emit open-GOP frames with mid-chunk scenecut keyframes; the
-      // first frame of each chunk isn't an independently-decodable IDR and
-      // concat-copy playback freezes at chunk seams on some decoders.
-      const lockGop = options.lockGopForChunkConcat === true;
-      let gop = 0;
-      if (lockGop) {
-        if (
-          typeof options.gopSize !== "number" ||
-          !Number.isFinite(options.gopSize) ||
-          options.gopSize <= 0
-        ) {
-          throw new Error(
-            `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
-          );
-        }
-        gop = Math.floor(options.gopSize);
-        args.push(
-          "-g",
-          String(gop),
-          "-keyint_min",
-          String(gop),
-          "-sc_threshold",
-          "0",
-          "-force_key_frames",
-          `expr:eq(mod(n,${gop}),0)`,
-        );
-      }
+      // ffmpeg-concat chunk files with `-c copy`. See `appendLockedGopArgs`.
+      const gop = resolveLockedGopSize(options);
+      const lockGop = gop !== null;
+      if (gop !== null) appendLockedGopArgs(args, gop);
 
       // Disable B-frames. Standard h264 with B-frames produces negative DTS
       // at the start of the stream (the first B-frame's decode order is
@@ -322,11 +356,7 @@ export function buildEncoderArgs(
         codec === "h265" && options.hdr
           ? getHdrEncoderColorParams(options.hdr.transfer).x265ColorParams
           : "colorprim=bt709:transfer=bt709:colormatrix=bt709";
-      let gopParams = "";
-      if (lockGop) {
-        const shared = "scenecut=0:open-gop=0:repeat-headers=1";
-        gopParams = codec === "h264" ? shared : `keyint=${gop}:min-keyint=${gop}:${shared}`;
-      }
+      const gopParams = gop !== null ? lockedGopCodecParams(codec, gop) : "";
       const joinParams = (...parts: string[]): string =>
         parts.filter((p) => p.length > 0).join(":");
       if (preset === "ultrafast") {
@@ -354,19 +384,10 @@ export function buildEncoderArgs(
     // displayable reference when alt-ref is on. The shared `vp9CpuUsed`
     // option pins speed/quality against libvpx-vp9 default drift across
     // versions for both chunked and streaming WebM encodes.
-    const lockGopVp9 = options.lockGopForChunkConcat === true;
-    if (lockGopVp9) {
-      if (
-        typeof options.gopSize !== "number" ||
-        !Number.isFinite(options.gopSize) ||
-        options.gopSize <= 0
-      ) {
-        throw new Error(
-          `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
-        );
-      }
-      const gop = Math.floor(options.gopSize);
-      args.push("-g", String(gop), "-keyint_min", String(gop), "-auto-alt-ref", "0");
+    const vp9Gop = resolveLockedGopSize(options);
+    const lockGopVp9 = vp9Gop !== null;
+    if (vp9Gop !== null) {
+      args.push("-g", String(vp9Gop), "-keyint_min", String(vp9Gop), "-auto-alt-ref", "0");
     }
     if (pixelFormat === "yuva420p") {
       // Alpha + alt-ref is unsupported by libvpx-vp9. The closed-GOP
