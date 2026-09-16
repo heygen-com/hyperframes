@@ -403,6 +403,34 @@ describe("render telemetry events", () => {
     expect(props.browser_version_major).toBeUndefined();
   });
 
+  it("reports which step resolved authoring-skill attribution", () => {
+    trackRenderComplete({
+      durationMs: 1,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      authoringSkill: "product-launch-video",
+      authoringSkillSource: "flag",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.authoring_skill).toBe("product-launch-video");
+    expect(props.authoring_skill_source).toBe("flag");
+    expect(props.authoring_skill_invalid).toBeUndefined();
+  });
+
+  it("carries a malformed --skill value on render_error without a resolved source", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      authoringSkillInvalid: "Not A Skill!",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.authoring_skill_invalid).toBe("Not A Skill!");
+    expect(props.authoring_skill_source).toBeUndefined();
+  });
+
   it("names the runtime adapters a render exercised", () => {
     trackRenderComplete({
       durationMs: 1000,

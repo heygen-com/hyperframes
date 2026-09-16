@@ -413,6 +413,10 @@ export interface RenderOptions {
   quality: "draft" | "standard" | "high";
   /** Authoring workflow skill that drove this render (telemetry attribution). */
   authoringSkill?: string;
+  /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
+  authoringSkillSource?: "flag" | "project-config";
+  /** Raw --skill value when it failed normalizeSkillSlug (an unrecognized skill name was passed). */
+  authoringSkillInvalid?: string;
   /**
    * Catalog items installed in this project and those the rendered composition
    * reaches. Resolved once in the render plan; absent on programmatic callers
@@ -810,6 +814,8 @@ async function renderDocker(
       docker: true,
       gpu: options.gpu,
       authoringSkill: options.authoringSkill,
+      authoringSkillSource: options.authoringSkillSource,
+      authoringSkillInvalid: options.authoringSkillInvalid,
       catalogUsage: options.catalogUsage,
       ...renderOutputShapeTelemetryPayload(options),
       ...renderEnvironmentTelemetryPayload(options),
@@ -1585,6 +1591,8 @@ function handleRenderError(
     workers: options.workers,
     gpu: options.gpu,
     authoringSkill: options.authoringSkill,
+    authoringSkillSource: options.authoringSkillSource,
+    authoringSkillInvalid: options.authoringSkillInvalid,
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
@@ -1685,6 +1693,8 @@ function trackRenderMetrics(
     docker,
     gpu: options.gpu,
     authoringSkill: options.authoringSkill,
+    authoringSkillSource: options.authoringSkillSource,
+    authoringSkillInvalid: options.authoringSkillInvalid,
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),

@@ -292,6 +292,10 @@ export function trackRenderComplete(
     quality: string;
     /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
     authoringSkill?: string;
+    /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
+    authoringSkillSource?: string;
+    /** Raw --skill value when it failed skill-slug normalization (an unrecognized skill name). */
+    authoringSkillInvalid?: string;
     /**
      * Catalog items installed in this project, and those the rendered
      * composition reaches. The pair is what joins `registry_item_added` to a
@@ -424,6 +428,8 @@ export function trackRenderComplete(
       fps: props.fps,
       quality: props.quality,
       authoring_skill: props.authoringSkill,
+      authoring_skill_source: props.authoringSkillSource,
+      authoring_skill_invalid: props.authoringSkillInvalid,
       ...catalogEventProperties(props.catalogUsage),
       workers: props.workers,
       workers_bound_by: props.workersBoundBy,
@@ -533,6 +539,10 @@ export function trackRenderError(
     quality: string;
     /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
     authoringSkill?: string;
+    /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
+    authoringSkillSource?: string;
+    /** Raw --skill value when it failed skill-slug normalization (an unrecognized skill name). */
+    authoringSkillInvalid?: string;
     docker: boolean;
     workers?: number;
     gpu?: boolean;
@@ -559,6 +569,8 @@ export function trackRenderError(
       fps: props.fps,
       quality: props.quality,
       authoring_skill: props.authoringSkill,
+      authoring_skill_source: props.authoringSkillSource,
+      authoring_skill_invalid: props.authoringSkillInvalid,
       docker: props.docker,
       workers: props.workers,
       gpu: props.gpu,

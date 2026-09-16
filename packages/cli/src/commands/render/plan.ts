@@ -106,6 +106,8 @@ export interface RenderPlan {
   quality: RenderQuality;
   authoringSkill?: string;
   invalidAuthoringSkill?: string;
+  /** Which resolution step provided authoringSkill: an explicit --skill flag, or the project's own config. */
+  authoringSkillSource?: "flag" | "project-config";
   /** Catalog items installed in this project, and those the entry reaches. */
   catalogUsage: CatalogUsage;
   format: RenderFormat;
@@ -211,10 +213,18 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   // renders, and `npm run render` (which never re-pass the flag) stay
   // attributed to the workflow that created the project.
   const flagSkill = normalizeSkillSlug(args.skill);
-  const authoringSkill = flagSkill ?? loadProjectConfig(project.dir).authoringSkill;
+  const projectConfigSkill = loadProjectConfig(project.dir).authoringSkill;
+  const authoringSkill = flagSkill ?? projectConfigSkill;
   const invalidAuthoringSkill =
     typeof args.skill === "string" && args.skill.trim() !== "" && !flagSkill
       ? args.skill
+      : undefined;
+  // Same flag-then-project-config resolution as authoringSkill above, named
+  // for telemetry (which attribution actually won, not just its value).
+  const authoringSkillSource = flagSkill
+    ? "flag"
+    : projectConfigSkill
+      ? "project-config"
       : undefined;
 
   // Resolved here, once, from the same entry the render will use: batch rows
@@ -442,6 +452,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     quality,
     authoringSkill,
     invalidAuthoringSkill,
+    authoringSkillSource,
     catalogUsage,
     format,
     gifLoop,

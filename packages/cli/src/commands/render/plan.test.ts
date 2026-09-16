@@ -209,6 +209,8 @@ describe("createRenderPlan", () => {
     );
     const plan = createRenderPlan({ dir: projectDir });
     expect(plan.authoringSkill).toBe("product-launch-video");
+    expect(plan.authoringSkillSource).toBe("project-config");
+    expect(plan.invalidAuthoringSkill).toBeUndefined();
   });
 
   it("lets an explicit --skill flag override the persisted project owner", () => {
@@ -218,5 +220,26 @@ describe("createRenderPlan", () => {
     );
     const plan = createRenderPlan({ dir: projectDir, skill: "motion-graphics" });
     expect(plan.authoringSkill).toBe("motion-graphics");
+    expect(plan.authoringSkillSource).toBe("flag");
+  });
+
+  it("reports no authoring skill source when neither a flag nor a project config resolved one", () => {
+    const plan = createRenderPlan({ dir: projectDir });
+    expect(plan.authoringSkill).toBeUndefined();
+    expect(plan.authoringSkillSource).toBeUndefined();
+  });
+
+  it("preserves a malformed --skill value for telemetry without adopting it as authoringSkill", () => {
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ authoringSkill: "product-launch-video" }),
+    );
+    // Fails SKILL_SLUG (spaces, uppercase) — normalizeSkillSlug rejects the shape,
+    // not a registry of known skill names.
+    const plan = createRenderPlan({ dir: projectDir, skill: "Not A Skill!" });
+    expect(plan.invalidAuthoringSkill).toBe("Not A Skill!");
+    // The invalid flag never wins attribution — the project's own config still does.
+    expect(plan.authoringSkill).toBe("product-launch-video");
+    expect(plan.authoringSkillSource).toBe("project-config");
   });
 });
