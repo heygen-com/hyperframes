@@ -320,8 +320,13 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       if (!id || !/^\d/.test(id)) continue;
       findings.push({
         code: "id_requires_css_escape",
-        severity: "warning",
-        message: `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector().`,
+        // A digit-leading id breaks any bare `#${id}` selector with a
+        // SyntaxError — including inline GSAP string selectors — silently
+        // aborting the rest of that <script> block. The element then just
+        // never animates: the render still reports success, so this can't
+        // be a "warning" callers may or may not act on.
+        severity: "error",
+        message: `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector() — any script relying on it (including GSAP string selectors) silently stops running from that point on.`,
         elementId: id,
         fixHint:
           "Rename the id to start with a letter (recommended), or build selectors with `#${CSS.escape(id)}` at runtime.",
