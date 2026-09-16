@@ -239,15 +239,17 @@ function findVisibleMarkupCommentLeak(source: string): string | null {
 
 type ScaffoldSize = { width: string; height: string };
 
+// Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
+// replace; lint only reads the digit groups (2 and 4).
 function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
   const widthFirst = source.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
   if (widthFirst) {
-    const [, width = "", height = ""] = widthFirst;
+    const [, , width = "", , height = ""] = widthFirst;
     return { width, height };
   }
   const heightFirst = source.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
   if (heightFirst) {
-    const [, height = "", width = ""] = heightFirst;
+    const [, , height = "", , width = ""] = heightFirst;
     return { width, height };
   }
   return null;
@@ -256,7 +258,7 @@ function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
 function readViewportMetaSize(source: string): ScaffoldSize | null {
   const match = source.match(VIEWPORT_META_SIZE_RE);
   if (!match) return null;
-  const [, width = "", height = ""] = match;
+  const [, , width = "", , height = ""] = match;
   return { width, height };
 }
 

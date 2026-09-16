@@ -53,6 +53,11 @@ import {
   normalizeResolutionFlag,
   type CanvasResolution,
 } from "@hyperframes/core";
+import {
+  HTML_BODY_CSS_HEIGHT_FIRST_RE,
+  HTML_BODY_CSS_WIDTH_FIRST_RE,
+  VIEWPORT_META_SIZE_RE,
+} from "@hyperframes/parsers";
 
 function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
   const example = exampleFlag === "agent" ? "blank" : exampleFlag;
@@ -527,20 +532,18 @@ export function applyResolutionPreset(destDir: string, resolution: CanvasResolut
 
     // Inline `html, body { ... }` CSS: handle width-before-height and
     // height-before-width orderings. Hand-authored templates can use either.
-    const bodyCssRe = /(html\s*,\s*body\s*\{[^}]*?width:\s*)\d+px([^}]*?height:\s*)\d+px/i;
-    if (bodyCssRe.test(html)) {
-      html = html.replace(bodyCssRe, `$1${width}px$2${height}px`);
+    // Groups 1 and 3 are the text before each dimension, 2 and 4 the digits.
+    if (HTML_BODY_CSS_WIDTH_FIRST_RE.test(html)) {
+      html = html.replace(HTML_BODY_CSS_WIDTH_FIRST_RE, `$1${width}px$3${height}px`);
       changed = true;
     }
-    const bodyCssReverseRe = /(html\s*,\s*body\s*\{[^}]*?height:\s*)\d+px([^}]*?width:\s*)\d+px/i;
-    if (bodyCssReverseRe.test(html)) {
-      html = html.replace(bodyCssReverseRe, `$1${height}px$2${width}px`);
+    if (HTML_BODY_CSS_HEIGHT_FIRST_RE.test(html)) {
+      html = html.replace(HTML_BODY_CSS_HEIGHT_FIRST_RE, `$1${height}px$3${width}px`);
       changed = true;
     }
 
-    const viewportRe = /(<meta[^>]*name=["']viewport["'][^>]*content=["'])width=\d+,\s*height=\d+/i;
-    if (viewportRe.test(html)) {
-      html = html.replace(viewportRe, `$1width=${width}, height=${height}`);
+    if (VIEWPORT_META_SIZE_RE.test(html)) {
+      html = html.replace(VIEWPORT_META_SIZE_RE, `$1${width}$3${height}`);
       changed = true;
     }
 
