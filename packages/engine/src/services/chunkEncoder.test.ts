@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
+import {
+  ENCODER_PRESETS,
+  appendLockedGopArgs,
+  buildEncoderArgs,
+  getEncoderPreset,
+  lockedGopCodecParams,
+  resolveLockedGopSize,
+} from "./chunkEncoder.js";
 import { renderProvenanceArgs } from "../utils/renderProvenance.js";
 
 const TINY_PNG = Buffer.from(
@@ -1471,6 +1478,39 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
         "out.webm",
       ),
     ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
+  });
+
+  it("resolveLockedGopSize floors, passes through null, and rejects bad sizes", () => {
+    expect(resolveLockedGopSize({})).toBeNull();
+    expect(resolveLockedGopSize({ gopSize: 120 })).toBeNull();
+    expect(resolveLockedGopSize({ lockGopForChunkConcat: true, gopSize: 120.7 })).toBe(120);
+    for (const bad of [undefined, 0, -10, NaN, Infinity]) {
+      expect(() =>
+        resolveLockedGopSize({ lockGopForChunkConcat: true, gopSize: bad as number | undefined }),
+      ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
+    }
+  });
+
+  it("appendLockedGopArgs emits the closed-GOP quartet in order", () => {
+    const args: string[] = [];
+    appendLockedGopArgs(args, 120);
+    expect(args).toEqual([
+      "-g",
+      "120",
+      "-keyint_min",
+      "120",
+      "-sc_threshold",
+      "0",
+      "-force_key_frames",
+      "expr:eq(mod(n,120),0)",
+    ]);
+  });
+
+  it("lockedGopCodecParams adds keyint only for h265", () => {
+    expect(lockedGopCodecParams("h264", 120)).toBe("scenecut=0:open-gop=0:repeat-headers=1");
+    expect(lockedGopCodecParams("h265", 120)).toBe(
+      "keyint=120:min-keyint=120:scenecut=0:open-gop=0:repeat-headers=1",
+    );
   });
 
   it("true is a no-op on ProRes (intra-only — no GOP forcing needed)", () => {
