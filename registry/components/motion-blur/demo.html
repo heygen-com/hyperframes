@@ -260,19 +260,11 @@
         (function () {
           if (!window._hfMbUid) window._hfMbUid = 0;
 
-          // The renderer injects its frame rate into the page before any composition
-          // script runs. The HTML compiler treats inline scripts that spell out that
-          // config's name as runtime bootstrap code and strips them, so the key is
-          // assembled here instead of written literally.
-          var RENDER_CONFIG_KEY = ["__HF_EXPORT", "RENDER_SEEK_CONFIG"].join("_");
-
+          // Shutter length is measured in frames, so the snippet must know the
+          // composition frame rate: explicit option, else the root's data-fps, else 30.
           function resolveFps(optionFps) {
             var explicit = Number(optionFps);
             if (explicit > 0) return explicit;
-
-            var cfg = window[RENDER_CONFIG_KEY];
-            var renderFps = cfg ? Number(cfg.fps) : 0;
-            if (renderFps > 0) return renderFps;
 
             var root = document.querySelector("[data-composition-id][data-fps]");
             var rootFps = root ? Number(root.getAttribute("data-fps")) : 0;
@@ -355,7 +347,7 @@
             }, []);
 
             var ns = "http://www.w3.org/2000/svg";
-            var weight = (1 / samples).toFixed(6);
+            var weight = String(1 / samples);
 
             // One SVG filter per target: N offset copies of SourceGraphic averaged
             // with equal weight. Averaging in sRGB matches AE's default (non-linear)

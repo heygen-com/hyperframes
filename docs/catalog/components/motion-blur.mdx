@@ -73,8 +73,9 @@ That writes one file: `compositions/components/motion-blur.html`.
     shutterPhase     — degrees offset of the window start from the frame
                        time (default -90 = centred on the frame, like AE)
     samplesPerFrame  — sub-frame samples per frame (default 16, max 64)
-    fps              — composition frame rate (default: the render's fps,
-                       else the root's data-fps, else 30)
+    fps              — composition frame rate (default: the root's data-fps,
+                       else 30). Pass it explicitly when rendering with an
+                       fps override (`hyperframes render --fps`).
     axis             — "x" | "y" | "both" (default "both")
 -->
 
@@ -82,19 +83,11 @@ That writes one file: `compositions/components/motion-blur.html`.
   (function () {
     if (!window._hfMbUid) window._hfMbUid = 0;
 
-    // The renderer injects its frame rate into the page before any composition
-    // script runs. The HTML compiler treats inline scripts that spell out that
-    // config's name as runtime bootstrap code and strips them, so the key is
-    // assembled here instead of written literally.
-    var RENDER_CONFIG_KEY = ["__HF_EXPORT", "RENDER_SEEK_CONFIG"].join("_");
-
+    // Shutter length is measured in frames, so the snippet must know the
+    // composition frame rate: explicit option, else the root's data-fps, else 30.
     function resolveFps(optionFps) {
       var explicit = Number(optionFps);
       if (explicit > 0) return explicit;
-
-      var cfg = window[RENDER_CONFIG_KEY];
-      var renderFps = cfg ? Number(cfg.fps) : 0;
-      if (renderFps > 0) return renderFps;
 
       var root = document.querySelector("[data-composition-id][data-fps]");
       var rootFps = root ? Number(root.getAttribute("data-fps")) : 0;
@@ -177,7 +170,7 @@ That writes one file: `compositions/components/motion-blur.html`.
       }, []);
 
       var ns = "http://www.w3.org/2000/svg";
-      var weight = (1 / samples).toFixed(6);
+      var weight = String(1 / samples);
 
       // One SVG filter per target: N offset copies of SourceGraphic averaged
       // with equal weight. Averaging in sRGB matches AE's default (non-linear)
@@ -367,8 +360,9 @@ Paste the snippet into your composition, then call `attachMotionBlur()` after yo
 tl.set(document.body, {}, DATA_DURATION);
 
 attachMotionBlur("#my-box", tl, {
-  axis: "x",      // "x" | "y" | "both"
-  blurMax: 40,    // max blur radius in px (default 20)
+  shutterAngle: 180,   // degrees of the frame interval the shutter is open
+  samplesPerFrame: 16, // sub-frame samples averaged per frame
+  axis: "x",           // "x" | "y" | "both"
 });
 
 window.__timelines = window.__timelines || {};
@@ -377,22 +371,23 @@ window.__timelines["my-composition"] = tl;
 
 ## How it works
 
-Each target element gets its own SVG filter. On every timeline seek, `attachMotionBlur` samples the element's GSAP `x`/`y` position, computes velocity, and drives three SVG filter primitives:
+This is the After Effects layer Motion Blur model — temporal supersampling — synthesised inside the page, because the renderer captures one instant per frame with no shutter.
 
-1. **Ghost copies** — three faded, blurred copies of the element placed behind it at increasing offsets proportional to speed. Inherently one-sided: no forward blur.
-2. **Top blur** — a small symmetric Gaussian at the current position so the element looks in-motion rather than crisp on top of the trail.
+1. **Sample the trajectory** — after every timeline seek, the snippet seeks the timeline (events suppressed) to `samplesPerFrame` sub-frame times spread evenly across the shutter window, reads each target's GSAP `x`/`y`, then restores the frame time. The window is `shutterAngle / 360 / fps` seconds long and starts `shutterPhase / 360 / fps` seconds from the frame time; the defaults (180°, −90°) centre it on the frame, exactly like After Effects.
+2. **Average the copies** — each target gets an SVG filter that stacks one `feOffset` copy of the element per sample at its sampled position and averages them with equal weight (`feComposite` arithmetic, 1/N each, sRGB). A solid translating at speed `v` becomes a flat, symmetric box smear of length `v × shutterTime`, centred on its instantaneous position — no one-sided trail, no Gaussian halo.
+3. **Rest is sharp** — when the sampled positions collapse onto the current one, the filter is removed.
 
-Blur scales linearly with velocity up to `blurMax`. Both the ghost trail and top blur clear automatically when the element decelerates to rest.
+Copies follow the real trajectory, so eased and curved motion smear correctly. The element's own scale and rotation are compensated when mapping the displacements into filter space; skew, 3D rotation and transformed ancestors are not. Only translation is integrated — rotation, scale or opacity changes within the shutter window are not blurred.
 
 ## Options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `axis` | `"both"` | Motion axis — `"x"`, `"y"`, or `"both"` |
-| `blurScale` | `0.008` | Blur per px/s of velocity |
-| `blurMax` | `20` | Max blur radius on the motion axis (px) |
-| `stretchScale` | `0.0002` | scaleX/Y added per px/s (requires `stretchMax > 0`) |
-| `stretchMax` | `0` | Max stretch above 1.0 — disabled by default |
+| `shutterAngle` | `180` | Degrees of the frame interval the shutter is open. `360` smears a full frame; `0` disables the blur |
+| `shutterPhase` | `-90` | Degrees offset of the window start from the frame time. `-90` centres the window on the frame (After Effects default) |
+| `samplesPerFrame` | `16` | Sub-frame samples averaged per frame (2–64). More samples smooth the plateau at high speed at a higher filter cost |
+| `fps` | root `data-fps`, else `30` | Composition frame rate. Pass it explicitly when rendering with an fps override (`hyperframes render --fps`) |
+| `axis` | `"both"` | Motion axis sampled — `"x"`, `"y"`, or `"both"` |
 
 {/* hf:generated-footer */}
 
