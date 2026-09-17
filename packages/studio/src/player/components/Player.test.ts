@@ -22,6 +22,7 @@ class TestHyperframesPlayer extends HTMLElement {
 
   constructor() {
     super();
+    this.attachShadow({ mode: "open" }).appendChild(this.iframeElement);
 
     const addIframeListener = this.iframeElement.addEventListener.bind(this.iframeElement);
     this.iframeElement.addEventListener = ((type, listener, options) => {
@@ -152,6 +153,15 @@ describe("preview errors", () => {
     const retryUrl = new URL(player.getAttribute("src") ?? "", window.location.origin);
     expect(retryUrl.searchParams.get("_hfStudioRetry")).toBe("1");
     expect(host.querySelector('[data-testid="composition-preview-error"]')).toBeNull();
+  });
+});
+
+describe("preview canvas chrome", () => {
+  it("does not paint Studio chrome on the scaled composition iframe", async () => {
+    const { player } = await mountPlayer();
+    const injectedStyles = Array.from(player.shadowRoot?.querySelectorAll("style") ?? []);
+
+    expect(injectedStyles.some((style) => style.textContent?.includes("box-shadow"))).toBe(false);
   });
 });
 
