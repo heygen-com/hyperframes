@@ -9,6 +9,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.45"
+  description="Released - 2026-09-17"
+  tags={["Release", "Engine"]}
+>
+The render engine can now average several sub-frame captures into each output frame, which blurs rotation, scale and opacity the way After Effects does. It is opt-in and not yet reachable from a render configuration, so nothing changes for existing projects.
+
+## Features
+
+- **Engine:** Sub-frame multi-sample motion blur. For each output frame the capture path seeks the timeline to several sub-frame times across the shutter window, captures each, and averages them. Because it re-renders at every sample rather than offsetting copies of an element, it integrates rotation, scale, opacity, filters and child animation, which the motion-blur catalog component cannot do. Defaults follow After Effects: 16 samples, a 180 degree shutter at phase -90, averaged in sRGB, with linear light available as an opt-in. Static frames still cost one capture, so only moving frames pay for the extra samples.
+  **Not yet reachable from a render.** This release adds the engine capability behind `CaptureOptions.motionBlur`, and no render configuration sets that option yet, so there is no flag to turn it on. Wiring it through the producer follows in the next release ([0a1c6f5a4](https://github.com/heygen-com/hyperframes/commit/0a1c6f5a457ca1345d6b8ccede04769a0e009719), [#4019](https://github.com/heygen-com/hyperframes/pull/4019)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.44...v0.8.45).
+</Update>
+
+<Update
   label="HyperFrames v0.8.44"
   description="Released - 2026-09-16"
   tags={["Release", "Engine", "Lint"]}
