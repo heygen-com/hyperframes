@@ -93,6 +93,7 @@ import {
   getDrawElementVerificationDetails,
   augmentProtocolTimeoutError,
   augmentPageNavigationTimeoutError,
+  type MotionBlurOptions,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { totalmem } from "node:os";
@@ -185,6 +186,7 @@ import { runCaptureHdrStage } from "./render/stages/captureHdrStage.js";
 import { runEncodeStage } from "./render/stages/encodeStage.js";
 import { runAssembleStage } from "./render/stages/assembleStage.js";
 import { shouldUseLayeredComposite } from "./hdrCompositor.js";
+import { resolveCaptureImageFormat } from "./render/captureImageFormat.js";
 
 function sampleDirectoryBytes(dir: string): number {
   let total = 0;
@@ -346,6 +348,12 @@ export interface RenderConfig {
    * A non-integer value throws at the start of `executeRenderJob`.
    */
   hlsSegmentSeconds?: number;
+  /**
+   * Opt into sub-frame multi-sample motion blur. Absent means off and the capture path is
+   * unchanged. Forces PNG frame capture, because the samples are averaged pixel by pixel
+   * and JPEG samples would be averaged after a lossy quantization.
+   */
+  motionBlur?: MotionBlurOptions;
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
@@ -2925,14 +2933,19 @@ async function executeRenderPipeline(input: {
     });
     const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(composition.videos.length);
 
+    const captureImageFormat = resolveCaptureImageFormat({
+      needsAlpha,
+      motionBlur: job.config.motionBlur,
+    });
     const captureOptions: CaptureOptions = {
       width,
       height,
       fps: job.config.fps,
-      format: needsAlpha ? "png" : "jpeg",
-      quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
+      format: captureImageFormat,
+      quality: captureImageFormat === "png" ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,
       deviceScaleFactor,
+      motionBlur: job.config.motionBlur,
       ...(videoCaptureBeyondViewport !== undefined
         ? { captureBeyondViewport: videoCaptureBeyondViewport }
         : {}),
@@ -4193,6 +4206,7 @@ async function executeRenderPipeline(input: {
               width,
               height,
               needsAlpha,
+              captureImageFormat: captureOptions.format ?? "jpeg",
               hasAudio,
               audioOutputPath,
               isPngSequence,

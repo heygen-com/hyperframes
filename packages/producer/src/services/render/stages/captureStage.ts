@@ -38,6 +38,7 @@
 
 import { statfsSync } from "node:fs";
 import {
+  frameFileExtension,
   type BeforeCaptureHook,
   type CaptureOptions,
   type CapturePerfSummary,
@@ -220,7 +221,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
   } = input;
   let { probeSession } = input;
   let { workerCount } = plan;
-  const { forceScreenshot, needsAlpha } = plan;
+  const { forceScreenshot } = plan;
   let lastBrowserConsole: string[] = [];
   let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
@@ -271,7 +272,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       totalFrames,
       initialWorkerCount: workerCount,
       allowRetry: shouldAllowAdaptiveCaptureRetry(workerCount, job.config.workers !== undefined),
-      frameExt: needsAlpha ? "png" : "jpg",
+      frameExt: frameFileExtension(captureOptions.format),
       captureOptions,
       createBeforeCaptureHook: createRenderVideoFrameInjector,
       abortSignal,

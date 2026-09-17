@@ -3882,6 +3882,16 @@ export async function captureFrame(
 }
 
 /**
+ * File extension for a captured frame, keyed on the format the frames were actually
+ * captured in. The encoder's input pattern and the writer must agree, so both read this
+ * rather than re-deriving the answer from whether the OUTPUT needs alpha, which is a
+ * different question and stops being equivalent as soon as anything else forces PNG.
+ */
+export function frameFileExtension(format: "jpeg" | "png" | undefined): "png" | "jpg" {
+  return format === "png" ? "png" : "jpg";
+}
+
+/**
  * Write an already-captured frame buffer to the session's output dir using the
  * canonical `frame_NNNNNN.{jpg,png}` naming. `fileIndex` is the ENCODER-facing
  * index (0-based within the captured range), which may differ from the absolute
@@ -3894,7 +3904,7 @@ export function writeCapturedFrame(
   fileIndex: number,
   buffer: Buffer,
 ): string {
-  const ext = session.options.format === "png" ? "png" : "jpg";
+  const ext = frameFileExtension(session.options.format);
   const framePath = join(session.outputDir, `frame_${String(fileIndex).padStart(6, "0")}.${ext}`);
   writeFileSync(framePath, buffer);
   return framePath;

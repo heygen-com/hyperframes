@@ -69,6 +69,7 @@ import {
 import type { RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
 import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
+import { resolveCaptureImageFormat } from "../captureImageFormat.js";
 
 export interface ProbeStageInput {
   projectDir: string;
@@ -328,14 +329,21 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     });
     assertNotAborted();
 
+    // Motion blur averages the sub-frame samples pixel by pixel, so the frames have to be
+    // captured losslessly even when the output container wants no alpha. This is the one
+    // place a render picks its capture format; the encoder reads the result rather than
+    // re-deriving it, so the two cannot disagree about what is on disk.
+    const motionBlur = job.config.motionBlur;
+    const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
     const captureOpts: CaptureOptions = {
       width,
       height,
       fps: job.config.fps,
-      format: needsAlpha ? "png" : "jpeg",
-      quality: needsAlpha ? undefined : 80,
+      format: captureFormat,
+      quality: captureFormat === "png" ? undefined : 80,
       variables: job.config.variables,
       deviceScaleFactor,
+      motionBlur,
     };
 
     const PROBE_MAX_ATTEMPTS = 2;
