@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "34370735fa1a93099519873178e547c43b14f3bd69491013577515f4bb4f5957",
+  "revision": "e1c1f6eb5505d4b68d8240850425465c8375fed95b0d30b31328a5a754ae7f24",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -289,6 +289,7 @@
     "shared-axis-z",
     "sheet-spring-up",
     "shimmer-sweep",
+    "shutter-slam",
     "signup-flow",
     "simulated-cursor",
     "skeleton-reveal",

@@ -1364,6 +1364,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "shutter-slam",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "signup-flow",
       "type": "hyperframes:component"
     },
@@ -1637,6 +1641,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "34370735fa1a93099519873178e547c43b14f3bd69491013577515f4bb4f5957"
+    "revision": "e1c1f6eb5505d4b68d8240850425465c8375fed95b0d30b31328a5a754ae7f24"
   }
 }

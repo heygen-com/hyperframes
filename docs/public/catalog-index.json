@@ -3340,7 +3340,7 @@
     "name": "motion-blur",
     "type": "component",
     "title": "Motion Blur",
-    "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight SVG copies along the real trajectory",
+    "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
     "tags": [
       "effect",
       "motion-blur",
@@ -4214,6 +4214,22 @@
     ],
     "href": "/catalog/components/shimmer-sweep",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
+  },
+  {
+    "name": "shutter-slam",
+    "type": "component",
+    "title": "Shutter Slam",
+    "description": "One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to",
+    "tags": [
+      "effect",
+      "motion-blur",
+      "shutter",
+      "after-effects",
+      "slam",
+      "animation"
+    ],
+    "href": "/catalog/components/shutter-slam",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shutter-slam.png"
   },
   {
     "name": "signup-flow",

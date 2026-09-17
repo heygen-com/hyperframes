@@ -15,25 +15,39 @@ const snippetHtml = readRepoFile("registry/components/motion-blur/motion-blur.ht
 
 /** First line of the snippet's IIFE body, which runs to the `};` closing it at the same indent. */
 const BODY_FIRST_LINE = "if (!window._hfMbUid) window._hfMbUid = 0;";
-const SNIPPET_INDENT = " ".repeat(4);
-const INLINED_INDENT = " ".repeat(10);
 
-/**
- * The snippet's IIFE body, leading whitespace dropped so the installable snippet and its inlined
- * copies compare regardless of how deeply each one nests it.
- */
-function snippetBody(source: string, indent: string): string {
-  const start = source.indexOf(indent + BODY_FIRST_LINE);
-  const endMarker = `\n${indent}};`;
-  const end = source.indexOf(endMarker, start);
-  if (start < 0 || end < 0) {
-    throw new Error(`could not locate the snippet body at indent ${indent.length}`);
+/** The snippet's IIFE body verbatim, located by the indent of its own first line, so a copy
+ *  nested in a component template is found as readily as one in a demo plate. */
+function snippetSource(source: string): string {
+  const escaped = BODY_FIRST_LINE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`^([ ]*)${escaped}$`, "m").exec(source);
+  const indent = match?.[1];
+  if (match === null || indent === undefined) {
+    throw new Error("could not locate the snippet body");
   }
-  return source
-    .slice(start, end + endMarker.length)
-    .split("\n")
-    .map((line) => line.trimStart())
-    .join("\n");
+  const endMarker = `\n${indent}};`;
+  const end = source.indexOf(endMarker, match.index);
+  if (end < 0) throw new Error("could not locate the end of the snippet body");
+  return source.slice(match.index, end + endMarker.length);
+}
+
+/** Runs of code lines joined, because oxfmt wraps a statement differently at each nesting depth.
+ *  Comment lines stay on their own line, so prose drift is still caught. */
+function joinWrappedLines(body: string): string {
+  const lines: string[] = [];
+  for (const line of body.split("\n")) {
+    const text = line.trim();
+    if (text === "") continue;
+    const previous = lines.at(-1);
+    const separate = previous === undefined || text.startsWith("//") || previous.startsWith("//");
+    if (separate) lines.push(text);
+    else lines[lines.length - 1] = `${previous} ${text}`;
+  }
+  return lines.join("\n");
+}
+
+function snippetBody(source: string): string {
+  return joinWrappedLines(snippetSource(source));
 }
 
 const FPS = 30;
@@ -42,6 +56,8 @@ const FRAME_TIME_S = 5;
 const DURATION_S = 10;
 const WORD_WIDTH = 1046;
 const WORD_HEIGHT = 193;
+const PERSPECTIVE = "2000px";
+const COPIES = reference.subIntervalsPerWindow + 1;
 
 /** The slice of GSAP's timeline API the snippet drives; `time()` reads, `time(value)` seeks. */
 interface Timeline {
@@ -49,6 +65,9 @@ interface Timeline {
   duration(): number;
   to(target: unknown, vars: { onUpdate?: () => void }): Timeline;
 }
+
+/** A resolved transform at one sample time, as `getComputedStyle` would report it. */
+type Trajectory = (framesFromNow: number) => string;
 
 /**
  * The reference's own trajectory around the measured frame: a parabola through the core centres of
@@ -61,6 +80,8 @@ function offsetAtFrames(df: number): number {
   const fwd = reference.leadingDisplacementPx;
   return ((fwd + back) / 2) * df * df + ((fwd - back) / 2) * df;
 }
+
+const translating: Trajectory = (df) => `matrix(1, 0, 0, 1, ${offsetAtFrames(df)}, 0)`;
 
 function installSnippet(): void {
   const body = snippetHtml.slice(
@@ -88,43 +109,92 @@ function makeTimeline(): { tl: Timeline; currentTime: () => number; fire: () => 
   return { tl, currentTime: () => now, fire: () => onUpdate?.() };
 }
 
-function installGsap(currentTime: () => number, trajectory: (df: number) => number): void {
-  (globalThis as unknown as { gsap: unknown }).gsap = {
-    getProperty(_el: Element, prop: string) {
-      if (prop === "x") return `${trajectory((currentTime() - FRAME_TIME_S) * FPS)}px`;
-      if (prop === "scaleX" || prop === "scaleY") return 1;
-      return 0;
+/**
+ * happy-dom resolves no transforms of its own, so the element's computed style is the trajectory.
+ * The stub also answers the declaration enumeration the style replay uses, and the perspective.
+ */
+function installComputedStyle(
+  word: Element,
+  currentTime: () => number,
+  trajectory: Trajectory,
+  opacity: () => string,
+  perspective: () => string,
+): void {
+  globalThis.getComputedStyle = ((element: Element) =>
+    ({
+      length: 0,
+      getPropertyValue: () => "",
+      transform: element === word ? trajectory((currentTime() - FRAME_TIME_S) * FPS) : "none",
+      transformOrigin: "50% 50%",
+      opacity: element === word ? opacity() : "1",
+      perspective: element === word ? "none" : perspective(),
+    }) as unknown as CSSStyleDeclaration) as typeof globalThis.getComputedStyle;
+}
+
+/** Captures the observers the snippet installs so a test can fire a resize itself. */
+function installResizeObserver(): { resize: () => void } {
+  const callbacks: Array<() => void> = [];
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+    constructor(callback: () => void) {
+      callbacks.push(callback);
+    }
+    observe(): void {}
+    disconnect(): void {}
+  };
+  return {
+    resize: () => {
+      for (const callback of callbacks) callback();
     },
   };
 }
 
+interface Attached {
+  group: HTMLElement;
+  word: HTMLElement;
+  copies: HTMLElement[];
+  fire: () => void;
+  reattach: () => void;
+}
+
 async function attach(
-  options: Record<string, unknown>,
-  trajectory: (df: number) => number = offsetAtFrames,
-): Promise<Element> {
-  const el = document.createElement("div");
-  el.id = "word";
-  Object.defineProperty(el, "offsetWidth", { value: WORD_WIDTH });
-  Object.defineProperty(el, "offsetHeight", { value: WORD_HEIGHT });
-  document.body.appendChild(el);
+  options: Record<string, unknown> = {},
+  trajectory: Trajectory = translating,
+  opacity: () => string = () => "1",
+  perspective: () => string = () => PERSPECTIVE,
+): Promise<Attached> {
+  const stage = document.createElement("div");
+  document.body.appendChild(stage);
+  const word = document.createElement("div");
+  word.id = "word";
+  Object.defineProperty(word, "offsetWidth", { value: WORD_WIDTH });
+  Object.defineProperty(word, "offsetHeight", { value: WORD_HEIGHT });
+  Object.defineProperty(word, "offsetLeft", { value: 437 });
+  Object.defineProperty(word, "offsetTop", { value: 442 });
+  stage.appendChild(word);
 
   const { tl, currentTime, fire } = makeTimeline();
-  installGsap(currentTime, trajectory);
+  installComputedStyle(word, currentTime, trajectory, opacity, perspective);
   installSnippet();
-  (
+  const attachBlur = (
     window as unknown as { attachMotionBlur: (s: string, t: Timeline, o: unknown) => void }
-  ).attachMotionBlur("#word", tl, options);
+  ).attachMotionBlur;
+  const reattach = () => attachBlur("#word", tl, { fps: FPS, ...options });
+  reattach();
 
   fire();
   await Promise.resolve();
-  const filter = document.querySelector("filter");
-  if (!filter) throw new Error("motion-blur filter was not created");
-  return filter;
+  const group = document.querySelector<HTMLElement>("[data-hf-motion-blur]");
+  if (!group) throw new Error("motion-blur group was not created");
+  return { group, word, copies: [...group.children] as HTMLElement[], fire, reattach };
 }
 
-/** Horizontal offset of every duplicate, in window order. */
-function copyOffsets(filter: Element): number[] {
-  return [...filter.querySelectorAll("feOffset")].map((node) => Number(node.getAttribute("dx")));
+/** Horizontal translation of every duplicate, in window order. */
+function copyOffsets(copies: HTMLElement[]): number[] {
+  return copies.map((copy) => {
+    const numbers = copy.style.transform.slice(copy.style.transform.lastIndexOf("(") + 1, -1);
+    const parts = numbers.split(",").map((value) => Number.parseFloat(value));
+    return parts[4] ?? Number.NaN;
+  });
 }
 
 /** The duplicates sitting at the two ends of the shutter window. */
@@ -132,7 +202,7 @@ function windowEdges(offsets: number[]): { trailing: number; leading: number } {
   const [trailing] = offsets;
   const leading = offsets.at(-1);
   if (trailing === undefined || leading === undefined) {
-    throw new Error("the filter carries no duplicates");
+    throw new Error("the group carries no duplicates");
   }
   return { trailing, leading };
 }
@@ -147,30 +217,34 @@ function copyPitches(offsets: number[]): number[] {
   return pitches;
 }
 
+const originalGetComputedStyle = globalThis.getComputedStyle;
+
 afterEach(() => {
   document.body.innerHTML = "";
+  globalThis.getComputedStyle = originalGetComputedStyle;
+  delete (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver;
 });
 
 describe("motion-blur snippet copies", () => {
-  // The demo and the example composition have to inline the snippet — a catalog demo is a single
-  // self-contained file and cannot import one. That makes three copies of the same shutter model, so
+  // The demos and the example composition have to inline the snippet — a catalog plate is a single
+  // self-contained file and cannot import one. That makes four copies of the same shutter model, so
   // the copies are asserted equal here rather than left to drift silently.
   it.each([
     "registry/components/motion-blur/demo.html",
+    "registry/components/shutter-slam/shutter-slam.html",
+    "registry/components/shutter-slam/demo.html",
     "registry/examples/motion-blur/index.html",
   ])("%s inlines the installable snippet verbatim", (relativePath) => {
-    expect(snippetBody(readRepoFile(relativePath), INLINED_INDENT)).toBe(
-      snippetBody(snippetHtml, SNIPPET_INDENT),
-    );
+    expect(snippetBody(readRepoFile(relativePath))).toBe(snippetBody(snippetHtml));
   });
 });
 
 describe("motion-blur shutter matches the After Effects reference", () => {
   it("opens the shutter over the frame before and the frame after, at the measured sub-interval count", async () => {
-    const offsets = copyOffsets(await attach({ fps: FPS }));
-    const { trailing, leading } = windowEdges(offsets);
+    const { copies } = await attach();
+    const { trailing, leading } = windowEdges(copyOffsets(copies));
 
-    expect(offsets).toHaveLength(reference.subIntervalsPerWindow + 1);
+    expect(copies).toHaveLength(COPIES);
     expect(trailing).toBeCloseTo(-reference.trailingDisplacementPx, 1);
     expect(leading).toBeCloseTo(reference.leadingDisplacementPx, 1);
   });
@@ -179,69 +253,131 @@ describe("motion-blur shutter matches the After Effects reference", () => {
     // The reference's staircase is even (15, 16, 16, 15, 16, 16, 16 px across a 125.8 px frame
     // displacement), so a constant-velocity trajectory has to come out evenly spaced at 1/8 frame.
     const speed = reference.trailingDisplacementPx;
-    const offsets = copyOffsets(await attach({ fps: FPS }, (df) => speed * df));
+    const { copies } = await attach({}, (df) => `matrix(1, 0, 0, 1, ${speed * df}, 0)`);
     const expected = speed / (reference.subIntervalsPerWindow / 2);
 
-    for (const pitch of copyPitches(offsets)) expect(pitch).toBeCloseTo(expected, 3);
+    for (const pitch of copyPitches(copyOffsets(copies))) expect(pitch).toBeCloseTo(expected, 3);
   });
 
   it("gives every duplicate the measured 1/16 opacity and none full opacity", async () => {
-    const filter = await attach({ fps: FPS });
-    const weights = [...filter.querySelectorAll("feComposite[operator='arithmetic']")].map((node) =>
-      Number(node.getAttribute("k3")),
+    const { copies } = await attach();
+
+    expect(copies).toHaveLength(COPIES);
+    for (const copy of copies) {
+      expect(Number(copy.style.opacity)).toBeCloseTo(reference.copyOpacity, 6);
+      expect(copy.style.mixBlendMode).toBe("plus-lighter");
+    }
+    // Flat, not tapered: the reference's plateau increments are all the same height.
+    expect(new Set(copies.map((copy) => copy.style.opacity)).size).toBe(1);
+  });
+
+  it("adds the duplicates among themselves, not onto the page", async () => {
+    // plus-lighter adds premultiplied colour, so without a backdrop of its own the first
+    // duplicate would add onto whatever is behind the element and blow a light page out to
+    // white. The isolation is the only thing standing between the shutter sum and the page.
+    const { group } = await attach();
+
+    expect(group.style.isolation).toBe("isolate");
+  });
+
+  it("paints the sharp frame-time instance over the accumulated smear", async () => {
+    const { group, word } = await attach();
+
+    // Document order is the paint order for positioned siblings at the same z-index, so the
+    // group has to precede the element rather than follow it.
+    expect(group.nextElementSibling).toBe(word);
+    expect(word.style.opacity).toBe("");
+  });
+
+  it("carries the element's own opacity on the smear", async () => {
+    // A beat that moves and fades at once must not leave a full-strength smear behind a
+    // vanishing element. The weight stays on the duplicates; the fade rides the group.
+    const { group, copies } = await attach({}, translating, () => "0.25");
+
+    expect(group.style.opacity).toBe("0.25");
+    for (const copy of copies)
+      expect(Number(copy.style.opacity)).toBeCloseTo(reference.copyOpacity, 6);
+  });
+});
+
+describe("motion-blur drivers", () => {
+  // The output stage carries each duplicate's whole resolved transform, so any property that
+  // reaches `transform` smears. The previous stage offset one rasterisation, which meant a beat
+  // that only scaled or only rotated sampled a displacement of zero and rendered sharp.
+  it("smears a scale beat that never translates", async () => {
+    const { copies } = await attach(
+      {},
+      (df) => `matrix(${1 + df * 0.5}, 0, 0, ${1 + df * 0.5}, 0, 0)`,
+    );
+    const scales = copies.map((copy) => copy.style.transform);
+
+    expect(new Set(scales).size).toBe(COPIES);
+    expect(copies[0]?.style.transform).toContain("matrix(0.5");
+  });
+
+  it("smears a 3D rotation beat and gives every duplicate its own perspective", async () => {
+    // mix-blend-mode flattens preserve-3d, so a duplicate cannot inherit the parent's 3D
+    // context: each one carries the parent's perspective as its own first transform function.
+    const { copies } = await attach(
+      {},
+      (df) =>
+        `matrix3d(${Math.cos(df)}, 0, ${Math.sin(df)}, 0, 0, 1, 0, 0, ${-Math.sin(df)}, 0, ${Math.cos(df)}, 0, 0, 0, 0, 1)`,
     );
 
-    expect(weights).toHaveLength(reference.subIntervalsPerWindow);
-    for (const weight of weights) expect(weight).toBeCloseTo(reference.copyOpacity, 6);
-    // Flat, not tapered: the reference's plateau increments are all the same height.
-    expect(new Set(weights).size).toBe(1);
+    expect(new Set(copies.map((copy) => copy.style.transform)).size).toBe(COPIES);
+    for (const copy of copies) {
+      expect(copy.style.transform.startsWith(`perspective(${PERSPECTIVE})`)).toBe(true);
+    }
   });
 
-  it("accumulates every duplicate exactly once, in one unbroken chain", async () => {
-    const filter = await attach({ fps: FPS });
-    const adds = [...filter.querySelectorAll("feComposite[operator='arithmetic']")];
-    const weight = 1 / reference.subIntervalsPerWindow;
+  it("renders sharp when nothing the transform can express has changed", async () => {
+    // The deadband is what keeps a held frame from paying for 17 duplicates of a still element.
+    const { group } = await attach({}, () => "matrix(1, 0, 0, 1, 0, 0)");
 
-    // The first composite is the only one that has to scale BOTH inputs, because it is the
-    // only one whose `in` is a raw duplicate rather than the running sum. Getting its k2
-    // wrong lets one duplicate through at full weight — the exact thing the reference rules out.
-    expect(adds[0]?.getAttribute("in")).toBe("s0");
-    expect(Number(adds[0]?.getAttribute("k2"))).toBeCloseTo(weight, 6);
-    for (const add of adds.slice(1)) expect(Number(add.getAttribute("k2"))).toBe(1);
-
-    // Each composite must fold in the next duplicate and feed the one after it, so every
-    // duplicate reaches the output and none is added twice.
-    adds.forEach((add, index) => {
-      expect(add.getAttribute("in")).toBe(index === 0 ? "s0" : `a${index}`);
-      expect(add.getAttribute("in2")).toBe(`s${index + 1}`);
-      expect(add.getAttribute("result")).toBe(`a${index + 1}`);
-    });
+    expect(group.style.display).toBe("none");
   });
 
-  it("composites the sharp frame-time instance over the full accumulated smear", async () => {
-    const filter = await attach({ fps: FPS });
-    const last = filter.lastElementChild;
+  it("renders sharp below half a pixel of travel", async () => {
+    const { group } = await attach({}, (df) => `matrix(1, 0, 0, 1, ${df * 0.1}, 0)`);
 
-    expect(last?.tagName).toBe("feComposite");
-    expect(last?.getAttribute("operator")).toBe("over");
-    expect(last?.getAttribute("in")).toBe("SourceGraphic");
-    // in2 must be the END of the accumulation chain, not some intermediate or single copy.
-    expect(last?.getAttribute("in2")).toBe(`a${reference.subIntervalsPerWindow}`);
-    expect(last?.getAttribute("result")).toBeNull();
+    expect(group.style.display).toBe("none");
   });
 
-  it("keeps the sharp instance inside the filter region when the window is entirely one-sided", async () => {
-    // shutterPhase 0 opens the shutter at the frame time, so every duplicate is ahead of the
-    // element and no duplicate sits at offset 0 — but the sharp instance still does. A region
-    // derived from the duplicates alone starts inside the element's own box and clips it.
-    const filter = await attach({ fps: FPS, shutterPhase: 360 });
-    const offsets = copyOffsets(filter);
+  it("blurs a target once, however many times it is named", async () => {
+    // A second set of copies over the first would double the ink at every sample, so
+    // the second call has to leave the element alone rather than stack onto it.
+    const { reattach } = await attach();
+    reattach();
 
-    expect(Math.min(...offsets)).toBeGreaterThan(0);
-    expect(Number.parseFloat(filter.getAttribute("x") ?? "")).toBeLessThanOrEqual(0);
-    const right =
-      Number.parseFloat(filter.getAttribute("x") ?? "") +
-      Number.parseFloat(filter.getAttribute("width") ?? "");
-    expect(right).toBeGreaterThanOrEqual((Math.max(...offsets) / WORD_WIDTH) * 100 + 100);
+    expect(document.querySelectorAll("[data-hf-motion-blur]")).toHaveLength(1);
+  });
+
+  it("re-reads the copies' styles when the element's box changes", async () => {
+    // Container-relative styles (a cqw font size, a cqw perspective) are px by the time
+    // they are read, so a preview that resizes after attaching would otherwise keep the
+    // smear at the old size for the rest of the render.
+    const observer = installResizeObserver();
+    let perspective = PERSPECTIVE;
+    const { copies, fire } = await attach(
+      {},
+      translating,
+      () => "1",
+      () => perspective,
+    );
+    expect(copies[0]?.style.transform.startsWith(`perspective(${PERSPECTIVE})`)).toBe(true);
+
+    perspective = "900px";
+    observer.resize();
+    fire();
+    await Promise.resolve();
+
+    for (const copy of copies)
+      expect(copy.style.transform.startsWith("perspective(900px)")).toBe(true);
+  });
+
+  it("disables the smear entirely at shutterAngle 0", async () => {
+    const { group } = await attach({ shutterAngle: 0 });
+
+    expect(group.style.display).toBe("none");
   });
 });

@@ -259,6 +259,7 @@
       <script>
         (function () {
           if (!window._hfMbUid) window._hfMbUid = 0;
+          if (!window._hfMbAttached) window._hfMbAttached = new WeakSet();
 
           // Shutter length is measured in frames, so the snippet must know the
           // composition frame rate: explicit option, else the root's data-fps, else 30.
@@ -277,9 +278,55 @@
             return value !== undefined ? Number(value) : fallback;
           }
 
-          // objectBoundingBox percentage for a px offset plus padding.
-          function regionPercent(offset, size, padPercent) {
-            return ((offset / size) * 100 + padPercent).toFixed(2) + "%";
+          // A resolved `transform` is either "none", a 2D matrix(a,b,c,d,e,f) or a 3D
+          // matrix3d of 16. Splitting the numbers into the linear part and the
+          // translation is what lets the deadband below use a pixel tolerance on the
+          // one and an angle/ratio tolerance on the other.
+          function parseTransform(value) {
+            if (!value || value === "none") return { linear: [1, 0, 0, 1], translate: [0, 0, 0] };
+            var nums = value
+              .slice(value.indexOf("(") + 1, -1)
+              .split(",")
+              .map(parseFloat);
+            if (nums.length === 16) {
+              return {
+                linear: [
+                  nums[0],
+                  nums[1],
+                  nums[2],
+                  nums[4],
+                  nums[5],
+                  nums[6],
+                  nums[8],
+                  nums[9],
+                  nums[10],
+                  nums[3],
+                  nums[7],
+                  nums[11],
+                  nums[15],
+                ],
+                translate: [nums[12], nums[13], nums[14]],
+              };
+            }
+            return {
+              linear: [nums[0], nums[1], nums[2], nums[3]],
+              translate: [nums[4], nums[5], 0],
+            };
+          }
+
+          // Deadband: half a pixel of travel, a thousandth of a unit of linear change,
+          // about 0.06 degrees or 0.1% of scale. Below it the average is the source.
+          // The 2D and 3D forms have different arities, so a change of form counts as
+          // movement rather than being compared component by component.
+          function differs(a, b) {
+            if (a.linear.length !== b.linear.length) return true;
+            for (var i = 0; i < a.linear.length; i++) {
+              if (Math.abs(a.linear[i] - b.linear[i]) > 0.001) return true;
+            }
+            for (var j = 0; j < 3; j++) {
+              if (Math.abs(a.translate[j] - b.translate[j]) > 0.5) return true;
+            }
+            return false;
           }
 
           window.attachMotionBlur = function (selector, tl, opts) {
@@ -290,49 +337,7 @@
             var samples = Number.isFinite(requestedSamples)
               ? Math.max(2, Math.min(64, Math.round(requestedSamples)))
               : 16;
-            var axis = opts.axis || "both";
             var fps = resolveFps(opts.fps);
-            var useX = axis !== "y";
-            var useY = axis !== "x";
-
-            // Untransformed box size; SVG elements have no offsetWidth, so use the
-            // same bbox GSAP uses to resolve their percent transforms.
-            function boxSize(el, horizontal) {
-              var box = typeof el.offsetWidth === "number" ? el : el.getBBox ? el.getBBox() : null;
-              var size = box
-                ? horizontal
-                  ? box.offsetWidth || box.width
-                  : box.offsetHeight || box.height
-                : 0;
-              return size || el.getBoundingClientRect()[horizontal ? "width" : "height"] || 1;
-            }
-
-            // GSAP x/y may carry a % unit and xPercent/yPercent is a separate term;
-            // resolve both against the element's own box so samples are in px.
-            function readAxis(el, prop, percentProp, size) {
-              var px = parseFloat(gsap.getProperty(el, prop, "px")) || 0;
-              var percent = parseFloat(gsap.getProperty(el, percentProp)) || 0;
-              return px + (percent * size) / 100;
-            }
-
-            function readPosition(el) {
-              return {
-                x: useX ? readAxis(el, "x", "xPercent", boxSize(el, true)) : 0,
-                y: useY ? readAxis(el, "y", "yPercent", boxSize(el, false)) : 0,
-              };
-            }
-
-            // CSS filters run in the element's pre-transform space while GSAP x/y are
-            // post-transform, so a displacement is mapped through the inverse of the
-            // element's own scale/rotation. Ancestor transforms are not compensated.
-            function toFilterSpace(el, dx, dy) {
-              var sx = parseFloat(gsap.getProperty(el, "scaleX")) || 1;
-              var sy = parseFloat(gsap.getProperty(el, "scaleY")) || 1;
-              var theta = ((parseFloat(gsap.getProperty(el, "rotation")) || 0) * Math.PI) / 180;
-              var cos = Math.cos(theta);
-              var sin = Math.sin(theta);
-              return { dx: (dx * cos + dy * sin) / sx, dy: (-dx * sin + dy * cos) / sy };
-            }
 
             var items = Array.isArray(selector) ? selector : [selector];
             var targets = items.reduce(function (acc, s) {
@@ -346,83 +351,103 @@
               return acc;
             }, []);
 
-            var ns = "http://www.w3.org/2000/svg";
             // `samples` counts sub-intervals of the shutter window, so there is one copy at
             // every interval boundary — both ends of the window included — and each carries
             // 1/samples of the source. That is what the reference export shows: the outermost
             // copy sits exactly one frame away from the frame time, not half a step short.
             var copies = samples + 1;
-            var weight = String(1 / samples);
+            var alpha = String(1 / samples);
 
-            // One SVG filter per target: N+1 offset copies of SourceGraphic added at 1/N
-            // each, then the element itself over the top. Accumulating in sRGB matches
-            // AE's default (non-linear) 8-bpc working space.
-            var state = targets.map(function (el) {
-              var uid = "hf-mb-" + window._hfMbUid++;
-              var svg = document.createElementNS(ns, "svg");
-              svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
-
-              var filter = document.createElementNS(ns, "filter");
-              filter.id = uid;
-              filter.setAttribute("color-interpolation-filters", "sRGB");
-
-              var offsets = [];
-              for (var k = 0; k < copies; k++) {
-                var feOff = document.createElementNS(ns, "feOffset");
-                feOff.setAttribute("in", "SourceGraphic");
-                feOff.setAttribute("dx", "0");
-                feOff.setAttribute("dy", "0");
-                feOff.setAttribute("result", "s" + k);
-                filter.appendChild(feOff);
-                offsets.push(feOff);
+            // A copy is styled by nothing that selected the original: dropping the id also
+            // drops every `#id` rule that gave it size, colour and font. So each copy carries
+            // its own resolved style inline. Chrome returns "" for a computed style's cssText,
+            // so the declarations are enumerated rather than taken wholesale.
+            function resolvedStyles(source, out) {
+              var cs = getComputedStyle(source);
+              var text = "";
+              for (var i = 0; i < cs.length; i++) {
+                text += cs[i] + ":" + cs.getPropertyValue(cs[i]) + ";";
               }
-
-              // Pairwise accumulation: the first composite scales both inputs by 1/N, every
-              // later one adds the next copy at 1/N to the running sum. The N+1 weights total
-              // (N+1)/N, so an element wider than its own smear saturates through the middle
-              // and the filter clamps there. That is the saturation the reference shows, and
-              // the sharp instance covers the same region regardless.
-              var accumulated = "s0";
-              for (var c = 1; c < copies; c++) {
-                var feComp = document.createElementNS(ns, "feComposite");
-                feComp.setAttribute("operator", "arithmetic");
-                feComp.setAttribute("in", accumulated);
-                feComp.setAttribute("in2", "s" + c);
-                feComp.setAttribute("k1", "0");
-                feComp.setAttribute("k2", c === 1 ? weight : "1");
-                feComp.setAttribute("k3", weight);
-                feComp.setAttribute("k4", "0");
-                accumulated = "a" + c;
-                feComp.setAttribute("result", accumulated);
-                filter.appendChild(feComp);
+              // A copy is a still of one instant. Left live, an inherited transition or
+              // keyframe animation would carry it somewhere the timeline never sampled.
+              out.push(text + "transition:none;animation:none;");
+              for (var c = 0; c < source.children.length; c++) {
+                resolvedStyles(source.children[c], out);
               }
-
-              // The frame-time instance is drawn sharp, at full opacity, over the smear.
-              // Every blurred copy stays at 1/N, so nothing but the instance the frame is
-              // actually at reads as solid. Unnamed, so it is the filter output.
-              var feOver = document.createElementNS(ns, "feComposite");
-              feOver.setAttribute("operator", "over");
-              feOver.setAttribute("in", "SourceGraphic");
-              feOver.setAttribute("in2", accumulated);
-              filter.appendChild(feOver);
-
-              svg.appendChild(filter);
-              document.body.appendChild(svg);
-
-              return { el: el, offsets: offsets, filter: filter, filterId: uid, xs: [], ys: [] };
-            });
-
-            // The element may carry its own inline filter (authored or tweened by
-            // GSAP); the blur is appended to that chain and removed from it, never
-            // written over it.
-            var OWN_FILTER = /\s*url\(["']?#hf-mb-\d+["']?\)/g;
-
-            function baseFilter(el) {
-              return el.style.filter.replace(OWN_FILTER, "").trim();
+              return out;
             }
 
-            function clearBlur(s) {
-              s.el.style.filter = baseFilter(s.el);
+            function paintResolvedStyles(copy, styles, cursor) {
+              copy.style.cssText = styles[cursor.i++];
+              for (var c = 0; c < copy.children.length; c++) {
+                paintResolvedStyles(copy.children[c], styles, cursor);
+              }
+            }
+
+            // Perspective applies to a parent's children only, and a copy is a grandchild.
+            // Sharing the parent's 3D context would need preserve-3d on the group, which
+            // mix-blend-mode flattens, so each copy carries the perspective itself. See the
+            // header for what that does to the vanishing point.
+            function parentPerspective(el) {
+              var value = el.parentNode ? getComputedStyle(el.parentNode).perspective : "none";
+              return value && value !== "none" ? "perspective(" + value + ") " : "";
+            }
+
+            var state = targets
+              .filter(function (el) {
+                // One group per element. A second call on the same element would stack a
+                // second set of copies over the first and double the ink, so the first
+                // call owns it.
+                if (window._hfMbAttached.has(el)) return false;
+                window._hfMbAttached.add(el);
+                return true;
+              })
+              .map(function (el) {
+                var group = document.createElement("div");
+                group.setAttribute("data-hf-motion-blur", "hf-mb-" + window._hfMbUid++);
+                group.style.cssText =
+                  "position:absolute;left:0;top:0;width:0;height:0;isolation:isolate;pointer-events:none;display:none;";
+
+                var clones = [];
+                for (var k = 0; k < copies; k++) {
+                  var clone = el.cloneNode(true);
+                  clone.removeAttribute("id");
+                  clones.push(clone);
+                  group.appendChild(clone);
+                }
+                el.parentNode.insertBefore(group, el);
+
+                var s = { el: el, group: group, clones: clones, samples: [], perspective: "" };
+
+                // Resolved styles and the parent's perspective are px once read, so a
+                // container-relative element needs them again when its box changes. Per frame
+                // that would walk the whole subtree once per copy; on resize it costs nothing
+                // on a fixed-size render and keeps a live preview honest.
+                function snapshot() {
+                  var styles = resolvedStyles(el, []);
+                  s.perspective = parentPerspective(el);
+                  for (var c = 0; c < clones.length; c++) {
+                    paintResolvedStyles(clones[c], styles, { i: 0 });
+                    clones[c].style.position = "absolute";
+                    clones[c].style.margin = "0";
+                    clones[c].style.opacity = alpha;
+                    clones[c].style.mixBlendMode = "plus-lighter";
+                  }
+                }
+
+                snapshot();
+                if (typeof ResizeObserver === "function") new ResizeObserver(snapshot).observe(el);
+                return s;
+              });
+
+            function readTransform(el) {
+              var cs = getComputedStyle(el);
+              return {
+                css: cs.transform,
+                origin: cs.transformOrigin,
+                opacity: cs.opacity,
+                parsed: parseTransform(cs.transform),
+              };
             }
 
             var scheduled = false;
@@ -430,7 +455,9 @@
             function applyShutter() {
               var shutterTime = shutterAngle / 360 / fps;
               if (!(shutterTime > 0)) {
-                state.forEach(clearBlur);
+                state.forEach(function (s) {
+                  s.group.style.display = "none";
+                });
                 return;
               }
 
@@ -440,15 +467,13 @@
 
               // Sample the real trajectory: seek to each sub-frame time with events
               // suppressed (so no tween callbacks, including this tracker's, fire),
-              // read positions, then restore the frame time.
+              // read the resolved transform, then restore the frame time.
               try {
                 for (var k = 0; k < copies; k++) {
                   var tk = windowStart + (k / samples) * shutterTime;
                   tl.time(Math.min(duration, Math.max(0, tk)), true);
                   state.forEach(function (s) {
-                    var pos = readPosition(s.el);
-                    s.xs[k] = pos.x;
-                    s.ys[k] = pos.y;
+                    s.samples[k] = readTransform(s.el);
                   });
                 }
               } finally {
@@ -456,48 +481,42 @@
               }
 
               state.forEach(function (s) {
-                var current = readPosition(s.el);
-                var minDx = Infinity;
-                var maxDx = -Infinity;
-                var minDy = Infinity;
-                var maxDy = -Infinity;
+                var current = readTransform(s.el);
+                var moved = false;
                 for (var i = 0; i < copies; i++) {
-                  var d = toFilterSpace(s.el, s.xs[i] - current.x, s.ys[i] - current.y);
-                  var dx = d.dx;
-                  var dy = d.dy;
-                  s.offsets[i].setAttribute("dx", dx.toFixed(3));
-                  s.offsets[i].setAttribute("dy", dy.toFixed(3));
-                  if (dx < minDx) minDx = dx;
-                  if (dx > maxDx) maxDx = dx;
-                  if (dy < minDy) minDy = dy;
-                  if (dy > maxDy) maxDy = dy;
+                  if (differs(s.samples[i].parsed, current.parsed)) {
+                    moved = true;
+                    break;
+                  }
                 }
-
-                // Below half a pixel of smear the average is indistinguishable from
-                // the source — render sharp instead of paying for the filter.
-                if (maxDx - minDx < 0.5 && maxDy - minDy < 0.5) {
-                  clearBlur(s);
+                if (!moved) {
+                  s.group.style.display = "none";
                   return;
                 }
 
-                // Grow the filter region to cover every copy AND the sharp instance the
-                // final composite draws at offset 0 (objectBoundingBox units, 10% padding
-                // so anti-aliased edges are not clipped). Clamping the bounds through 0
-                // matters whenever the window sits entirely on one side of the frame time
-                // — any shutterPhase above 0 or below -shutterAngle — because then no copy
-                // is at 0 and a region derived from the copies alone cuts the instance off.
-                var x0 = Math.min(0, minDx);
-                var x1 = Math.max(0, maxDx);
-                var y0 = Math.min(0, minDy);
-                var y1 = Math.max(0, maxDy);
-                var w = boxSize(s.el, true);
-                var h = boxSize(s.el, false);
-                s.filter.setAttribute("x", regionPercent(x0, w, -10));
-                s.filter.setAttribute("width", regionPercent(x1 - x0, w, 120));
-                s.filter.setAttribute("y", regionPercent(y0, h, -10));
-                s.filter.setAttribute("height", regionPercent(y1 - y0, h, 120));
-                var base = baseFilter(s.el);
-                s.el.style.filter = (base ? base + " " : "") + "url(#" + s.filterId + ")";
+                // The copies are absolutely positioned inside the group, and the group sits at
+                // the origin of the element's own containing block, so the element's offset box
+                // places them. Re-read every frame: a beat is free to move the box itself.
+                var left = s.el.offsetLeft + "px";
+                var top = s.el.offsetTop + "px";
+                var width = s.el.offsetWidth + "px";
+                var height = s.el.offsetHeight + "px";
+                for (var j = 0; j < copies; j++) {
+                  var clone = s.clones[j];
+                  clone.style.left = left;
+                  clone.style.top = top;
+                  clone.style.width = width;
+                  clone.style.height = height;
+                  clone.style.transformOrigin = s.samples[j].origin;
+                  clone.style.transform =
+                    s.perspective + (s.samples[j].css === "none" ? "" : s.samples[j].css);
+                }
+                // The copies are the element's own ink, so they have to carry its opacity too:
+                // a beat that moves and fades at once would otherwise leave a full-strength
+                // smear behind a vanishing element. It rides the group, not the copies, whose
+                // own opacity is the 1/N shutter weight.
+                s.group.style.opacity = current.opacity;
+                s.group.style.display = "";
               });
             }
 
@@ -542,7 +561,6 @@
           attachMotionBlur(
             ["#s1", "#s2", "#s3", "#s4", "#s5", "#t1", "#t2", "#t3", "#t4", "#t5"],
             tl,
-            { axis: "x" },
           );
 
           window.__timelines = window.__timelines || {};

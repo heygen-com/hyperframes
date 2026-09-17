@@ -1,0 +1,541 @@
+<!doctype html>
+<!--
+  shutter-slam: HyperFrames video primitive
+
+  One word thrown through six single-property beats, every frame integrated
+  over the camera shutter: two hard translate slams, a scale punch, then a
+  full turn about each of the three axes. It is the motion-blur primitive's
+  reference case — the beats are the ones measured off the After Effects
+  export the shutter model was fitted to, so every driver the model covers
+  (translate, scale, rotate, 3D rotate) is exercised in one mount.
+
+  Variables:
+    text: the slammed word
+    accent: green, blue, or violet word color
+    blur: shutter (integrated) or none (one instant per frame)
+    cues: comma seconds from mount start for each of the six beats
+    exit: none, fade, or up
+
+  Envelope, fixed beats with elastic HOLD:
+    BEATS = 5.97s at the authored rhythm (0.3s per slam, 0.6s per 3D turn,
+            0.73s for the Z turn)
+    HOLD  = max(0, D - BEATS - OUT), the word at rest
+    OUT   = 0.40s when exit is fade or up, else 0
+    If D is shorter than BEATS + OUT the beat clock compresses; the timeline
+    is never time-scaled.
+
+  Easing is power2.inOut because it measured best, not because it was the
+  default. A bezier fitted to the reference's own bbox centres looks like the
+  better curve on paper and renders worse: 1.3 dB down on the horizontal slam,
+  1.0 dB up on the vertical turn, 0.25 dB down over the clip. A blurred bbox
+  centre is the shutter window's average, not the instant, so on an
+  accelerating segment the fit is measuring its own blur.
+
+  Amplitudes are fractions of the host box (32.1cqw, 30.5cqh), so the slams
+  leave the frame on a wide mount exactly as far as they do on the reference.
+  The scale punch overflows on purpose; the clip crops it.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, and has no data-width or
+  data-height. One paused timeline registers under the literal shutter-slam
+  key.
+-->
+<html
+  lang="en"
+  data-composition-id="shutter-slam"
+  data-composition-duration="6"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Word", "description": "The word driven through the six beats.", "default": "MOTION" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Word color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "blur", "type": "enum", "role": "motion", "label": "Blur", "description": "Integrate each frame over the shutter window, or capture one instant per frame.", "default": "shutter", "options": [{ "value": "shutter", "label": "Shutter" }, { "value": "none", "label": "None" }] },
+    { "id": "cues", "type": "string", "role": "motion", "label": "Cues", "description": "Comma seconds from mount start for each of the six beats; empty keeps the authored rhythm.", "default": "" },
+    { "id": "exit", "type": "enum", "role": "motion", "label": "Exit", "description": "How the word leaves.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Shutter Slam</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="shutter-slam" data-duration="6" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .ss-clip {
+            position: absolute;
+            inset: 0;
+            width: 100cqw;
+            height: 100cqh;
+            overflow: hidden;
+          }
+
+          /* The turns need a perspective ancestor, and the blur reads its
+             perspective off the word's own parent, so the stage that carries
+             it must be the word's direct parent. */
+          .ss-stage {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            perspective: 104cqw;
+          }
+
+          .ss-word {
+            color: var(--ss-accent, #71f5a7);
+            font-size: var(--ss-font-size, min(14cqw, 26cqh));
+            font-weight: 900;
+            line-height: 1;
+            letter-spacing: -0.02em;
+            white-space: nowrap;
+            transform-origin: 50% 50%;
+            will-change: transform;
+          }
+        </style>
+
+        <div
+          id="shutter-slam-clip"
+          class="ss-clip clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="0"
+        >
+          <div class="ss-stage">
+            <div class="ss-word" id="shutter-slam-word" role="heading" aria-level="1"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            if (!window._hfMbUid) window._hfMbUid = 0;
+            if (!window._hfMbAttached) window._hfMbAttached = new WeakSet();
+
+            // Shutter length is measured in frames, so the snippet must know the
+            // composition frame rate: explicit option, else the root's data-fps, else 30.
+            function resolveFps(optionFps) {
+              var explicit = Number(optionFps);
+              if (explicit > 0) return explicit;
+
+              var root = document.querySelector("[data-composition-id][data-fps]");
+              var rootFps = root ? Number(root.getAttribute("data-fps")) : 0;
+              if (rootFps > 0) return rootFps;
+
+              return 30;
+            }
+
+            function numOption(value, fallback) {
+              return value !== undefined ? Number(value) : fallback;
+            }
+
+            // A resolved `transform` is either "none", a 2D matrix(a,b,c,d,e,f) or a 3D
+            // matrix3d of 16. Splitting the numbers into the linear part and the
+            // translation is what lets the deadband below use a pixel tolerance on the
+            // one and an angle/ratio tolerance on the other.
+            function parseTransform(value) {
+              if (!value || value === "none") return { linear: [1, 0, 0, 1], translate: [0, 0, 0] };
+              var nums = value
+                .slice(value.indexOf("(") + 1, -1)
+                .split(",")
+                .map(parseFloat);
+              if (nums.length === 16) {
+                return {
+                  linear: [
+                    nums[0],
+                    nums[1],
+                    nums[2],
+                    nums[4],
+                    nums[5],
+                    nums[6],
+                    nums[8],
+                    nums[9],
+                    nums[10],
+                    nums[3],
+                    nums[7],
+                    nums[11],
+                    nums[15],
+                  ],
+                  translate: [nums[12], nums[13], nums[14]],
+                };
+              }
+              return {
+                linear: [nums[0], nums[1], nums[2], nums[3]],
+                translate: [nums[4], nums[5], 0],
+              };
+            }
+
+            // Deadband: half a pixel of travel, a thousandth of a unit of linear change,
+            // about 0.06 degrees or 0.1% of scale. Below it the average is the source.
+            // The 2D and 3D forms have different arities, so a change of form counts as
+            // movement rather than being compared component by component.
+            function differs(a, b) {
+              if (a.linear.length !== b.linear.length) return true;
+              for (var i = 0; i < a.linear.length; i++) {
+                if (Math.abs(a.linear[i] - b.linear[i]) > 0.001) return true;
+              }
+              for (var j = 0; j < 3; j++) {
+                if (Math.abs(a.translate[j] - b.translate[j]) > 0.5) return true;
+              }
+              return false;
+            }
+
+            window.attachMotionBlur = function (selector, tl, opts) {
+              opts = opts || {};
+              var shutterAngle = numOption(opts.shutterAngle, 720);
+              var shutterPhase = numOption(opts.shutterPhase, -360);
+              var requestedSamples = numOption(opts.samplesPerFrame, 16);
+              var samples = Number.isFinite(requestedSamples)
+                ? Math.max(2, Math.min(64, Math.round(requestedSamples)))
+                : 16;
+              var fps = resolveFps(opts.fps);
+
+              var items = Array.isArray(selector) ? selector : [selector];
+              var targets = items.reduce(function (acc, s) {
+                if (typeof s === "string") {
+                  document.querySelectorAll(s).forEach(function (el) {
+                    acc.push(el);
+                  });
+                } else if (s instanceof Element) {
+                  acc.push(s);
+                }
+                return acc;
+              }, []);
+
+              // `samples` counts sub-intervals of the shutter window, so there is one copy at
+              // every interval boundary — both ends of the window included — and each carries
+              // 1/samples of the source. That is what the reference export shows: the outermost
+              // copy sits exactly one frame away from the frame time, not half a step short.
+              var copies = samples + 1;
+              var alpha = String(1 / samples);
+
+              // A copy is styled by nothing that selected the original: dropping the id also
+              // drops every `#id` rule that gave it size, colour and font. So each copy carries
+              // its own resolved style inline. Chrome returns "" for a computed style's cssText,
+              // so the declarations are enumerated rather than taken wholesale.
+              function resolvedStyles(source, out) {
+                var cs = getComputedStyle(source);
+                var text = "";
+                for (var i = 0; i < cs.length; i++) {
+                  text += cs[i] + ":" + cs.getPropertyValue(cs[i]) + ";";
+                }
+                // A copy is a still of one instant. Left live, an inherited transition or
+                // keyframe animation would carry it somewhere the timeline never sampled.
+                out.push(text + "transition:none;animation:none;");
+                for (var c = 0; c < source.children.length; c++) {
+                  resolvedStyles(source.children[c], out);
+                }
+                return out;
+              }
+
+              function paintResolvedStyles(copy, styles, cursor) {
+                copy.style.cssText = styles[cursor.i++];
+                for (var c = 0; c < copy.children.length; c++) {
+                  paintResolvedStyles(copy.children[c], styles, cursor);
+                }
+              }
+
+              // Perspective applies to a parent's children only, and a copy is a grandchild.
+              // Sharing the parent's 3D context would need preserve-3d on the group, which
+              // mix-blend-mode flattens, so each copy carries the perspective itself. See the
+              // header for what that does to the vanishing point.
+              function parentPerspective(el) {
+                var value = el.parentNode ? getComputedStyle(el.parentNode).perspective : "none";
+                return value && value !== "none" ? "perspective(" + value + ") " : "";
+              }
+
+              var state = targets
+                .filter(function (el) {
+                  // One group per element. A second call on the same element would stack a
+                  // second set of copies over the first and double the ink, so the first
+                  // call owns it.
+                  if (window._hfMbAttached.has(el)) return false;
+                  window._hfMbAttached.add(el);
+                  return true;
+                })
+                .map(function (el) {
+                  var group = document.createElement("div");
+                  group.setAttribute("data-hf-motion-blur", "hf-mb-" + window._hfMbUid++);
+                  group.style.cssText =
+                    "position:absolute;left:0;top:0;width:0;height:0;isolation:isolate;pointer-events:none;display:none;";
+
+                  var clones = [];
+                  for (var k = 0; k < copies; k++) {
+                    var clone = el.cloneNode(true);
+                    clone.removeAttribute("id");
+                    clones.push(clone);
+                    group.appendChild(clone);
+                  }
+                  el.parentNode.insertBefore(group, el);
+
+                  var s = { el: el, group: group, clones: clones, samples: [], perspective: "" };
+
+                  // Resolved styles and the parent's perspective are px once read, so a
+                  // container-relative element needs them again when its box changes. Per frame
+                  // that would walk the whole subtree once per copy; on resize it costs nothing
+                  // on a fixed-size render and keeps a live preview honest.
+                  function snapshot() {
+                    var styles = resolvedStyles(el, []);
+                    s.perspective = parentPerspective(el);
+                    for (var c = 0; c < clones.length; c++) {
+                      paintResolvedStyles(clones[c], styles, { i: 0 });
+                      clones[c].style.position = "absolute";
+                      clones[c].style.margin = "0";
+                      clones[c].style.opacity = alpha;
+                      clones[c].style.mixBlendMode = "plus-lighter";
+                    }
+                  }
+
+                  snapshot();
+                  if (typeof ResizeObserver === "function")
+                    new ResizeObserver(snapshot).observe(el);
+                  return s;
+                });
+
+              function readTransform(el) {
+                var cs = getComputedStyle(el);
+                return {
+                  css: cs.transform,
+                  origin: cs.transformOrigin,
+                  opacity: cs.opacity,
+                  parsed: parseTransform(cs.transform),
+                };
+              }
+
+              var scheduled = false;
+
+              function applyShutter() {
+                var shutterTime = shutterAngle / 360 / fps;
+                if (!(shutterTime > 0)) {
+                  state.forEach(function (s) {
+                    s.group.style.display = "none";
+                  });
+                  return;
+                }
+
+                var t0 = tl.time();
+                var duration = tl.duration();
+                var windowStart = t0 + shutterPhase / 360 / fps;
+
+                // Sample the real trajectory: seek to each sub-frame time with events
+                // suppressed (so no tween callbacks, including this tracker's, fire),
+                // read the resolved transform, then restore the frame time.
+                try {
+                  for (var k = 0; k < copies; k++) {
+                    var tk = windowStart + (k / samples) * shutterTime;
+                    tl.time(Math.min(duration, Math.max(0, tk)), true);
+                    state.forEach(function (s) {
+                      s.samples[k] = readTransform(s.el);
+                    });
+                  }
+                } finally {
+                  tl.time(t0, true);
+                }
+
+                state.forEach(function (s) {
+                  var current = readTransform(s.el);
+                  var moved = false;
+                  for (var i = 0; i < copies; i++) {
+                    if (differs(s.samples[i].parsed, current.parsed)) {
+                      moved = true;
+                      break;
+                    }
+                  }
+                  if (!moved) {
+                    s.group.style.display = "none";
+                    return;
+                  }
+
+                  // The copies are absolutely positioned inside the group, and the group sits at
+                  // the origin of the element's own containing block, so the element's offset box
+                  // places them. Re-read every frame: a beat is free to move the box itself.
+                  var left = s.el.offsetLeft + "px";
+                  var top = s.el.offsetTop + "px";
+                  var width = s.el.offsetWidth + "px";
+                  var height = s.el.offsetHeight + "px";
+                  for (var j = 0; j < copies; j++) {
+                    var clone = s.clones[j];
+                    clone.style.left = left;
+                    clone.style.top = top;
+                    clone.style.width = width;
+                    clone.style.height = height;
+                    clone.style.transformOrigin = s.samples[j].origin;
+                    clone.style.transform =
+                      s.perspective + (s.samples[j].css === "none" ? "" : s.samples[j].css);
+                  }
+                  // The copies are the element's own ink, so they have to carry its opacity too:
+                  // a beat that moves and fades at once would otherwise leave a full-strength
+                  // smear behind a vanishing element. It rides the group, not the copies, whose
+                  // own opacity is the 1/N shutter weight.
+                  s.group.style.opacity = current.opacity;
+                  s.group.style.display = "";
+                });
+              }
+
+              // tl.eventCallback("onUpdate") is unavailable under the HyperFrames runtime proxy, so a
+              // tracker tween's onUpdate fires on every seek. Sampling is deferred to a microtask:
+              // seeking GSAP from inside its own render reads stale tween state, while the microtask
+              // runs after the seek returns and before the frame is captured or painted.
+              var _proxy = { t: 0 };
+              tl.to(
+                _proxy,
+                {
+                  t: 1,
+                  duration: Math.max(tl.duration(), 0.1),
+                  ease: "none",
+                  onUpdate: function () {
+                    if (scheduled) return;
+                    scheduled = true;
+                    Promise.resolve().then(function () {
+                      scheduled = false;
+                      applyShutter();
+                    });
+                  },
+                },
+                0,
+              );
+            };
+          })();
+        </script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var word = root.querySelector(".ss-word");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "MOTION" : String(vars.text);
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #b895ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var blurred = vars.blur !== "none";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--ss-accent", accentColors[accent]);
+            word.textContent = text;
+
+            // One em per character keeps any word inside the box at rest, which is what
+            // the slam amplitudes are measured against; the scale punch is meant to
+            // overflow and the clip crops it.
+            var fittedCqw = Math.min(14, 76 / Math.max(1, Array.from(text).length));
+            root.style.setProperty("--ss-font-size", "min(" + fittedCqw.toFixed(3) + "cqw, 26cqh)");
+
+            // Measured best, not defaulted. A bezier fitted to the reference's own bbox
+            // centres renders 0.25 dB worse over the clip, because a blurred bbox centre
+            // is the shutter window's average rather than the instant. See the header.
+            var EASE = "power2.inOut";
+            var SLAM_X = 32.1; // cqw, the reference's 617 px on a 1920 px frame
+            var SLAM_Y = 30.5; // cqh, its 329 px on a 1080 px frame
+            var SLAM = 0.3;
+            var TURN = 0.6;
+            var TURN_Z = 0.733;
+            // Authored start of each beat.
+            var CUES_BASE = [0, 1.2, 2.4, 3.7, 4.5, 5.233];
+            var BEATS_BASE = CUES_BASE[5] + TURN_Z;
+            var OUT_BASE = exit === "none" ? 0 : 0.4;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "6"));
+            var baseTotal = BEATS_BASE + OUT_BASE;
+            var beatScale = duration < baseTotal ? duration / baseTotal : 1;
+
+            var slam = SLAM * beatScale;
+            var turn = TURN * beatScale;
+            var turnZ = TURN_Z * beatScale;
+            var out = OUT_BASE * beatScale;
+            // How long each beat runs, in beat order.
+            var LENGTHS = [slam * 4, slam * 4, slam * 4, turn, turn, turnZ];
+
+            // An authored cue replaces the rhythm rather than scaling it, so a beat locked
+            // to narration lands where the narration does. A missing or unreadable entry
+            // keeps its authored start; one that would run its beat past the mount is
+            // pulled back to end on the last frame, since past the end it never renders.
+            var authored = String(vars.cues == null ? "" : vars.cues)
+              .split(",")
+              .map(function (part) {
+                return parseFloat(part.trim());
+              });
+            var cues = CUES_BASE.map(function (base, index) {
+              var value = authored[index];
+              if (!Number.isFinite(value)) return base * beatScale;
+              return Math.min(Math.max(value, 0), Math.max(0, duration - out - LENGTHS[index]));
+            });
+
+            var tl = gsap.timeline({ paused: true, defaults: { ease: EASE } });
+
+            // Beat 1 — translate X, out and back twice.
+            tl.to(word, { x: SLAM_X + "cqw", duration: slam }, cues[0])
+              .to(word, { x: -SLAM_X + "cqw", duration: slam }, cues[0] + slam)
+              .to(word, { x: SLAM_X + "cqw", duration: slam }, cues[0] + slam * 2)
+              .to(word, { x: 0, duration: slam }, cues[0] + slam * 3);
+
+            // Beat 2 — translate Y, up first.
+            tl.to(word, { y: -SLAM_Y + "cqh", duration: slam }, cues[1])
+              .to(word, { y: SLAM_Y + "cqh", duration: slam }, cues[1] + slam)
+              .to(word, { y: -SLAM_Y + "cqh", duration: slam }, cues[1] + slam * 2)
+              .to(word, { y: 0, duration: slam }, cues[1] + slam * 3);
+
+            // Beat 3 — scale punch, up then down then up.
+            tl.to(word, { scale: 4.04, duration: slam }, cues[2])
+              .to(word, { scale: 0.466, duration: slam }, cues[2] + slam)
+              .to(word, { scale: 4.04, duration: slam }, cues[2] + slam * 2)
+              .to(word, { scale: 1, duration: slam }, cues[2] + slam * 3);
+
+            // Beats 4 to 6 — one full turn about each axis. A full turn ends where it
+            // started, so each is a single tween rather than an out-and-back pair.
+            tl.to(word, { rotationX: 360, duration: turn }, cues[3]);
+            tl.to(word, { rotationY: 360, duration: turn }, cues[4]);
+            tl.to(word, { rotation: 360, duration: turnZ }, cues[5]);
+
+            var beatsEnd = Math.max.apply(
+              null,
+              cues.map(function (cue, index) {
+                return cue + LENGTHS[index];
+              }),
+            );
+            var outStart = Math.max(beatsEnd, duration - out);
+
+            if (exit !== "none") {
+              var leaving = { opacity: 0, duration: out, ease: "power2.in" };
+              if (exit === "up") leaving.y = "-12cqh";
+              tl.to(word, leaving, outStart);
+            }
+
+            // Seeks past the last tween must still reach the blur's tracker, so the
+            // timeline runs to the mount's full duration.
+            tl.set(document.body, {}, duration);
+
+            // After every tween, before registration: the tracker tween the blur adds
+            // needs the timeline's final duration.
+            if (blurred) attachMotionBlur(word, tl, { fps: 30 });
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["shutter-slam"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

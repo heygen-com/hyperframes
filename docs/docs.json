@@ -705,6 +705,7 @@
                   "catalog/components/parallax-zoom",
                   "catalog/components/rubber-band-bumper",
                   "catalog/components/settings-toggle-flow",
+                  "catalog/components/shutter-slam",
                   "catalog/components/signup-flow",
                   "catalog/components/spotlight-card",
                   "catalog/components/stagger-cascade",
