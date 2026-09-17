@@ -1488,12 +1488,14 @@ function detectRootBodySizeMismatch(
   const dataHeight = rootTag && Number(rootTag.match(/\bdata-height=["'](\d+)["']/i)?.[1]);
   if (!dataWidth || !dataHeight) return {};
 
+  // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
+  // replace; this read-only comparison only needs the digit groups (2 and 4).
   const widthFirst = html.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
   const heightFirst = widthFirst ? undefined : html.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
   const [cssWidth, cssHeight] = widthFirst
-    ? [Number(widthFirst[1]), Number(widthFirst[2])]
+    ? [Number(widthFirst[2]), Number(widthFirst[4])]
     : heightFirst
-      ? [Number(heightFirst[2]), Number(heightFirst[1])]
+      ? [Number(heightFirst[4]), Number(heightFirst[2])]
       : [undefined, undefined];
   if (!cssWidth || !cssHeight) return {};
 

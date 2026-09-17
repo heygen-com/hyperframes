@@ -10,9 +10,6 @@ import {
   mergeWorkerFrames,
 } from "@hyperframes/engine";
 import type { CompiledComposition } from "./htmlCompiler.js";
-// TEMPORARY: static import mirroring renderOrchestrator.ts's own import, to check
-// whether a dynamic import() resolves the same regex object CI actually uses.
-import { HTML_BODY_CSS_WIDTH_FIRST_RE as TEMP_STATIC_WIDTH_FIRST_RE } from "@hyperframes/parsers";
 
 // Replace only the two engine functions the adaptive-retry loop uses to touch
 // disk; everything else (distributeFrames, types, etc.) stays real so the loop
@@ -2327,51 +2324,6 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
           `<body><div data-composition-id="c1" data-width="${rootWidth}" data-height="${rootHeight}"></div></body>`
         );
       }
-
-      // TEMPORARY diagnostic for a CI-only failure that will not reproduce locally.
-      // Remove once the CI log gives us enough to fix or revert.
-      it("TEMP diagnostic: dumps intermediate regex state for the exact-match fixture", async () => {
-        const { HTML_BODY_CSS_WIDTH_FIRST_RE, default: pkgDefault } =
-          (await import("@hyperframes/parsers")) as Record<string, unknown> as {
-            HTML_BODY_CSS_WIDTH_FIRST_RE: RegExp;
-            default: unknown;
-          };
-        const { createRequire } = await import("node:module");
-        const require = createRequire(import.meta.url);
-        let resolvedPath = "<resolve threw>";
-        let resolvedFileRegexLine = "<read threw>";
-        try {
-          resolvedPath = require.resolve("@hyperframes/parsers");
-          const fs = await import("node:fs");
-          const contents = fs.readFileSync(resolvedPath, "utf8");
-          const line = contents
-            .split("\n")
-            .find((l) => l.includes("HTML_BODY_CSS_WIDTH_FIRST_RE ="));
-          resolvedFileRegexLine = line ?? "<no matching line found in resolved file>";
-        } catch (err) {
-          resolvedFileRegexLine = `<error: ${String(err)}>`;
-        }
-        const rootRe = /<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i;
-        const input = html(1080, 1920, "html, body { width: 1080px; height: 1920px; }");
-        const rootTag = input.match(rootRe)?.[0];
-        console.error(
-          JSON.stringify({
-            input,
-            rootTag,
-            dataWidthMatch: rootTag?.match(/\bdata-width=["'](\d+)["']/i)?.[1],
-            dataHeightMatch: rootTag?.match(/\bdata-height=["'](\d+)["']/i)?.[1],
-            dynamicImportWidthFirstMatch: input.match(HTML_BODY_CSS_WIDTH_FIRST_RE),
-            staticImportWidthFirstMatch: input.match(TEMP_STATIC_WIDTH_FIRST_RE),
-            dynamicWidthFirstReSource: HTML_BODY_CSS_WIDTH_FIRST_RE.source,
-            staticWidthFirstReSource: TEMP_STATIC_WIDTH_FIRST_RE.source,
-            sameRegexObject: HTML_BODY_CSS_WIDTH_FIRST_RE === TEMP_STATIC_WIDTH_FIRST_RE,
-            hasDefaultExport: pkgDefault !== undefined,
-            resolvedPath,
-            resolvedFileRegexLine,
-          }),
-        );
-        expect(true).toBe(true);
-      });
 
       it("reports no mismatch and bucket 0 when the scaffold's html/body CSS matches the root exactly", () => {
         const scan = scanElementTags(
