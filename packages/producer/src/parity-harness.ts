@@ -116,7 +116,7 @@ function writeImageDiff(basePath: string, comparePath: string, outputPath: strin
       "[0:v][1:v]blend=all_mode=difference",
       outputPath,
     ],
-    { stdio: "pipe" },
+    { stdio: "pipe", windowsHide: true },
   );
   if (ffmpeg.status !== 0) {
     const stderr = (ffmpeg.stderr || Buffer.from("")).toString("utf-8");

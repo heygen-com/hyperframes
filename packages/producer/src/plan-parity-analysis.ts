@@ -40,6 +40,7 @@ function requireCommandSuccess(
     encoding: "buffer",
     maxBuffer,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -218,7 +219,7 @@ async function canonicalPcmAudio(
         "s16le",
         "-",
       ],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
     );
     const hash = createHash("sha256");
     const stderr: Buffer[] = [];
