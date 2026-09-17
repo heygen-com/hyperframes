@@ -822,6 +822,44 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.format).toBe("png-sequence");
   });
 
+  it("forwards format: hls and hlsSegmentSeconds through to createRenderJob", async () => {
+    await renderLocal("/tmp/project", "/tmp/stream", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "hls",
+      hlsSegmentSeconds: 6,
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.format).toBe("hls");
+    expect(producerState.createdJobs[0]?.hlsSegmentSeconds).toBe(6);
+  });
+
+  // HLS refuses the VideoToolbox fallback MP4 takes: fixed-length segments need
+  // the software encoder's forced-keyframe lock.
+  it("fails an HLS render instead of falling back to GPU H.264", async () => {
+    ffmpegEncoderState.encoders = " V....D h264_videotoolbox H.264 (VideoToolbox)\n";
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(
+      renderLocal("/tmp/project", "/tmp/stream", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "hls",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+      }),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+
+    expect(producerState.createdJobs).toHaveLength(0);
+    expect(stderr.mock.calls.flat().join(" ")).toContain("libx264");
+  });
+
   it("forwards format: gif and gifLoop through to createRenderJob", async () => {
     await renderLocal("/tmp/project", "/tmp/demo.gif", {
       fps: { num: 15, den: 1 },

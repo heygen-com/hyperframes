@@ -109,6 +109,17 @@ describe("formatRenderSummaryDetail", () => {
     expect(detail).not.toContain("video");
   });
 
+  it("shows the video length for an HLS playlist directory", () => {
+    const detail = formatRenderSummaryDetail({
+      elapsedMs: 12_000,
+      isDirectory: true,
+      playlistDirectory: true,
+      frameCount: 120,
+      outputDurationSeconds: 4,
+    });
+    expect(detail).toBe("4.0s video · rendered in 12.0s");
+  });
+
   it("does not crash and shows only render time for a directory with no frame count", () => {
     expect(formatRenderSummaryDetail({ elapsedMs: 1_000, isDirectory: true })).toBe(
       "rendered in 1.0s",

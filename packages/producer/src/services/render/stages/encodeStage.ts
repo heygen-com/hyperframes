@@ -52,6 +52,7 @@ import {
 } from "./gifEncodeArgs.js";
 import { updateJobStatus } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { frameFileExtension } from "@hyperframes/engine";
 
 export interface EncodeStageInput {
   job: RenderJob;
@@ -67,6 +68,12 @@ export interface EncodeStageInput {
   height: number;
   /** True when the output format requires an alpha channel; selects frame extension. */
   needsAlpha: boolean;
+  /**
+   * Format the frames on disk were captured in. Drives the encoder's input pattern, which
+   * must match what `writeCapturedFrame` named them. Not derivable from `needsAlpha`:
+   * motion blur also forces PNG capture on an opaque output.
+   */
+  captureImageFormat: "jpeg" | "png";
   /** True iff the composition has audio. Drives the sidecar copy. */
   hasAudio: boolean;
   /**
@@ -273,7 +280,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     if (hasAudio) {
       log.warn("[Render] GIF output does not support audio; audio tracks will be ignored.");
     }
-    const frameExt = needsAlpha ? "png" : "jpg";
+    const frameExt = frameFileExtension(input.captureImageFormat);
     const framePattern = `frame_%06d.${frameExt}`;
     const loop = resolveGifLoop(job.config.gifLoop);
     const encodeResult = await encodeGifFromDir(framesDir, framePattern, outputPath, {
@@ -306,7 +313,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       ? { ...engineCfg, ffmpegEncodeTimeout: scaledEncodeTimeout }
       : engineCfg;
 
-  const frameExt = needsAlpha ? "png" : "jpg";
+  const frameExt = frameFileExtension(input.captureImageFormat);
   const framePattern = `frame_%06d.${frameExt}`;
   const encoderOpts = {
     fps: job.config.fps,

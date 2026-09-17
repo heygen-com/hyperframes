@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { CliUsageError } from "../../utils/commandResult.js";
 import { createRenderPlan } from "./plan.js";
 
@@ -164,6 +164,43 @@ describe("createRenderPlan", () => {
     expect(plan).toMatchObject({ format: "mov", quality: "high" });
     expect(plan.crf).toBeUndefined();
     expect(plan.videoBitrate).toBeUndefined();
+  });
+
+  it("plans HLS as directory output with the default segment length", () => {
+    const plan = createRenderPlan({ dir: projectDir, format: "hls" });
+
+    expect(plan.format).toBe("hls");
+    expect(plan.hlsSegmentSeconds).toBe(4);
+    // No extension: outputPath is the directory the playlists are written into.
+    expect(plan.outputPath.startsWith(resolve("renders", plan.project.name))).toBe(true);
+    expect(basename(plan.outputPath)).not.toContain(".");
+  });
+
+  it("carries an explicit --hls-segment-seconds and rejects a fractional one", () => {
+    expect(
+      createRenderPlan({ dir: projectDir, format: "hls", "hls-segment-seconds": "6" })
+        .hlsSegmentSeconds,
+    ).toBe(6);
+    expect(() =>
+      createRenderPlan({ dir: projectDir, format: "hls", "hls-segment-seconds": "2.5" }),
+    ).toThrow(CliUsageError);
+  });
+
+  it("leaves hlsSegmentSeconds unset for other formats", () => {
+    expect(
+      createRenderPlan({ dir: projectDir, format: "mp4", "hls-segment-seconds": "6" })
+        .hlsSegmentSeconds,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ["--hdr", { hdr: true }],
+    ["--gpu", { gpu: true }],
+  ])("rejects %s with HLS output", (flag, conflicting) => {
+    expect(() => createRenderPlan({ dir: projectDir, format: "hls", ...conflicting })).toThrow(
+      CliUsageError,
+    );
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(flag);
   });
 
   it("keeps MP4 and WebM rate controls available", () => {

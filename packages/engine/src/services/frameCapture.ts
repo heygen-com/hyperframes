@@ -2311,7 +2311,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await armStaticDedup(session, session.page, logInitPhase);
     await ensureRenderFrameSiblings(session.page);
-    session.isInitialized = true;
+    finalizeSessionInit(session);
     return;
   }
 
@@ -2512,9 +2512,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   const commitCdp = await getCdpSession(page);
   await commitCdp.send("HeadlessExperimental.beginFrame", preparedBeginFrameTimeline.commitParams);
 
-  session.motionBlur = resolveSessionMotionBlur(session);
-
-  session.isInitialized = true;
+  finalizeSessionInit(session);
 }
 
 async function captureFrameErrorDiagnostics(
@@ -3749,6 +3747,20 @@ async function captureFrameSurface(
 }
 
 /**
+ * Mark the session ready to capture.
+ *
+ * The single owner of what finishing initialization means, because `initializeSession`
+ * has two exits: screenshot mode returns early, and every other mode falls through the
+ * end. Resolving motion blur at only one of them marks the session ready with no plan,
+ * which silently renders unblurred rather than failing. Both fields are set here so a
+ * third exit cannot forget one.
+ */
+function finalizeSessionInit(session: CaptureSession): void {
+  session.motionBlur = resolveSessionMotionBlur(session);
+  session.isInitialized = true;
+}
+
+/**
  * Capture one output frame as the average of `plan.samplesPerFrame` sub-frame captures.
  *
  * Callback invariant: exactly one eventful seek per output frame, at the frame time,
@@ -3882,6 +3894,16 @@ export async function captureFrame(
 }
 
 /**
+ * File extension for a captured frame, keyed on the format the frames were actually
+ * captured in. The encoder's input pattern and the writer must agree, so both read this
+ * rather than re-deriving the answer from whether the OUTPUT needs alpha, which is a
+ * different question and stops being equivalent as soon as anything else forces PNG.
+ */
+export function frameFileExtension(format: "jpeg" | "png" | undefined): "png" | "jpg" {
+  return format === "png" ? "png" : "jpg";
+}
+
+/**
  * Write an already-captured frame buffer to the session's output dir using the
  * canonical `frame_NNNNNN.{jpg,png}` naming. `fileIndex` is the ENCODER-facing
  * index (0-based within the captured range), which may differ from the absolute
@@ -3894,7 +3916,7 @@ export function writeCapturedFrame(
   fileIndex: number,
   buffer: Buffer,
 ): string {
-  const ext = session.options.format === "png" ? "png" : "jpg";
+  const ext = frameFileExtension(session.options.format);
   const framePath = join(session.outputDir, `frame_${String(fileIndex).padStart(6, "0")}.${ext}`);
   writeFileSync(framePath, buffer);
   return framePath;

@@ -244,6 +244,24 @@ describe("buildDockerRunArgs", () => {
     expect(args[formatIdx + 1]).toBe("png-sequence");
   });
 
+  it("forwards --format hls and --hls-segment-seconds to the container", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      outputFilename: "stream",
+      options: { ...BASE, format: "hls", hlsSegmentSeconds: 6 },
+    });
+    const formatIdx = args.indexOf("--format");
+    const segmentIdx = args.indexOf("--hls-segment-seconds");
+    expect(args[formatIdx + 1]).toBe("hls");
+    expect(args[segmentIdx + 1]).toBe("6");
+  });
+
+  it("omits --hls-segment-seconds for other formats", () => {
+    expect(buildDockerRunArgs({ ...FIXED_INPUT, options: BASE })).not.toContain(
+      "--hls-segment-seconds",
+    );
+  });
+
   it("forwards --format gif and --gif-loop to the container", () => {
     const args = buildDockerRunArgs({
       ...FIXED_INPUT,

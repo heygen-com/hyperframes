@@ -273,6 +273,8 @@ export {
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 export { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "@hyperframes/core";
+export { frameFileExtension } from "./services/frameCapture.js";
+export type { MotionBlurOptions, MotionBlurBlendSpace } from "./services/motionBlur.js";
 
 export {
   assertSwiftShader,

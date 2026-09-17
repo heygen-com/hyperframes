@@ -957,6 +957,7 @@ export async function renderChunk(
         width: plan.dimensions.width * encoder.deviceScaleFactor,
         height: plan.dimensions.height * encoder.deviceScaleFactor,
         needsAlpha: plan.dimensions.format !== "mp4",
+        captureImageFormat: captureOptions.format ?? "jpeg",
         // Each chunk produces video only — audio is muxed once at assemble
         // time. Suppressing `hasAudio` skips the png-sequence audio sidecar
         // AND the mp4 audio mux.

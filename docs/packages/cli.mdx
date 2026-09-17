@@ -845,6 +845,9 @@ npx hyperframes render --docker --output output.mp4
 # Transparent, for overlays and lower thirds
 npx hyperframes render --format webm --output overlay.webm
 
+# HLS VOD stream (output is a directory of playlists and .ts segments)
+npx hyperframes render --format hls --output stream
+
 npx hyperframes render --output output.mp4 --fps 60 --quality high
 npx hyperframes render --gpu --output gpu.mp4
 ```
@@ -855,7 +858,7 @@ The flags that come up most:
 | ------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--output, -o`      | `renders/<name>.mp4`          | Output file path                                                                                                                                  |
 | `--composition, -c` | `index.html`                  | Render a different composition file. Sub-compositions using `<template>` wrappers must be referenced from `index.html` via `data-composition-src`. |
-| `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, or `png-sequence`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory.                 |
+| `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, `png-sequence`, or `hls`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory; `hls` writes a VOD playlist directory. |
 | `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
 | `--quality, -q`     | `looks`                       | `draft`, `looks` (CRF 16, default), `delivery` (= `high`), `standard`, or `high`. MOV always uses the fixed alpha-preserving ProRes 4444 profile. |
 | `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
@@ -873,6 +876,7 @@ Quality and file size:
 | `--video-bitrate`      | from `--quality`| Target MP4/WebM bitrate, e.g. `10M` or `5000k`. Not with `--crf`; rejected for MOV.                       |
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
 | `--gif-loop`           | `0`             | GIF loop count, `0` for forever. Range 0–65535, `--format gif` only.                                     |
+| `--hls-segment-seconds`| `4`             | HLS target segment length in whole seconds, 1–60. `--format hls` only. Also fixes the encoder GOP so every segment starts on a keyframe. |
 | `--video-frame-format` | `auto`          | How source video frames are extracted: `auto`, `jpg`, `png`. Use `png` for UI recordings, screen captures, and other colour-sensitive footage. |
 | `--hdr`                | off             | Force HDR even with no HDR sources. MP4 only. See [HDR rendering](/guides/hdr).                           |
 | `--sdr`                | off             | Force SDR even when HDR sources are detected                                                              |

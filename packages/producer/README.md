@@ -47,16 +47,17 @@ await startServer({ port: 8080 });
 
 `RenderConfig` controls the render pipeline:
 
-| Option             | Default      | Description                                                                                                                                              |
-| ------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inputPath`        | —            | Path to the HTML composition                                                                                                                             |
-| `outputPath`       | —            | Output video file path (or directory, for `format: "png-sequence"`)                                                                                      |
-| `width`            | 1920         | Frame width in pixels                                                                                                                                    |
-| `height`           | 1080         | Frame height in pixels                                                                                                                                   |
-| `fps`              | 30           | Frames per second (24, 30, or 60)                                                                                                                        |
-| `quality`          | `"standard"` | Encoder preset (`"draft"`, `"standard"`, `"high"`)                                                                                                       |
-| `format`           | `"mp4"`      | Output container — `"mp4"`, `"webm"`, `"mov"`, or `"png-sequence"`. See [Transparent Video Output](#transparent-video-output) below.                     |
-| `videoFrameFormat` | `"auto"`     | Source video frame extraction format — `"auto"`, `"jpg"`, or `"png"`. Use `"png"` for UI recordings, screen captures, and color-sensitive source videos. |
+| Option              | Default      | Description                                                                                                                                                                          |
+| ------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `inputPath`         | —            | Path to the HTML composition                                                                                                                                                         |
+| `outputPath`        | —            | Output video file path (or directory, for `format: "png-sequence"` and `format: "hls"`)                                                                                              |
+| `width`             | 1920         | Frame width in pixels                                                                                                                                                                |
+| `height`            | 1080         | Frame height in pixels                                                                                                                                                               |
+| `fps`               | 30           | Frames per second (24, 30, or 60)                                                                                                                                                    |
+| `quality`           | `"standard"` | Encoder preset (`"draft"`, `"standard"`, `"high"`)                                                                                                                                   |
+| `format`            | `"mp4"`      | Output container — `"mp4"`, `"webm"`, `"mov"`, `"gif"`, `"png-sequence"`, or `"hls"`. See [Transparent Video Output](#transparent-video-output) and [HLS Output](#hls-output) below. |
+| `hlsSegmentSeconds` | `4`          | HLS target segment length in whole seconds. Ignored for every other format.                                                                                                          |
+| `videoFrameFormat`  | `"auto"`     | Source video frame extraction format — `"auto"`, `"jpg"`, or `"png"`. Use `"png"` for UI recordings, screen captures, and color-sensitive source videos.                             |
 
 ## Transparent Video Output
 
@@ -68,6 +69,7 @@ The producer can render HTML compositions to formats that carry a **true alpha c
 | `"webm"`          | VP9 + yuva420p                    | **True alpha**          | Opus                | Web playback as overlay (`<video>` over background); supported in Chrome, Edge, Firefox |
 | `"mov"`           | ProRes 4444 + yuva444p10le        | **True alpha + 10-bit** | AAC                 | Editor ingest (Premiere, Final Cut Pro, DaVinci Resolve)                                |
 | `"png-sequence"`  | Numbered RGBA PNGs in a directory | **Lossless alpha**      | Sidecar `audio.aac` | After Effects / Nuke / Fusion, or pipelines that post-process frames before encoding    |
+| `"hls"`           | H.264 (yuv420p) in MPEG-TS        | No                      | AAC rendition       | VOD streaming — see [HLS Output](#hls-output)                                           |
 
 ### Example
 
@@ -107,6 +109,42 @@ This is not chroma keying. There is no green/blue background to remove and no "k
 
 Don't paint a fullscreen background in your HTML. The default body background is overridden to transparent automatically — any `body { background: ... }`, `#root { background: ... }`, or `[data-composition-id] { background: ... }` rule is force-overridden during alpha rendering. Backgrounds on inner elements (cards, scenes, components) are kept.
 
+## HLS Output
+
+`format: "hls"` packages the same H.264 + AAC encode as `mp4` as an HLS VOD
+stream. `outputPath` is a **directory**:
+
+```
+master.m3u8      # references both renditions
+video.m3u8       # video media playlist
+video_00000.ts   # MPEG-TS segments, one IDR frame at the start of each
+audio.m3u8       # written only when the composition has audio
+audio_00000.ts
+```
+
+```typescript
+const job = createRenderJob({
+  inputPath: "./my-composition.html",
+  outputPath: "./renders/stream",
+  format: "hls",
+  hlsSegmentSeconds: 4,
+});
+```
+
+Segments are exactly `hlsSegmentSeconds` long except the last: the encoder's GOP
+is locked to `round(fps × hlsSegmentSeconds)` frames so the packaging pass can
+stream-copy (`-c copy`) and still cut on keyframes. There is no second encode.
+
+Constraints:
+
+- **SDR only.** `hdrMode: "force-hdr"` is rejected; HDR10 would need fMP4
+  segments and HEVC. Use `format: "mp4"` for HDR.
+- **Software encoder only.** `useGpu: true` is rejected — GPU encoders ignore
+  the forced-keyframe lock that fixed-length segments depend on.
+- **Not available in distributed rendering**, including Lambda and Cloud Run.
+- MPEG-TS carries no mov-family metadata, so the render provenance tags written
+  into MP4 output are absent.
+
 ## Distributed rendering
 
 For renders too large for a single machine, the producer ships a public set of distributed-render primitives. They are pure functions over local file paths — networking and orchestration live in adapter packages (Temporal, AWS Lambda + Step Functions, Cloud Run Jobs, K8s Jobs).
@@ -144,7 +182,7 @@ The activity functions plus their result types are also re-exported from `@hyper
 2. **Capture** — opens the page in headless Chrome, seeks frame-by-frame via `HeadlessExperimental.beginFrame` (or `Page.captureScreenshot` for transparent / non-Linux renders), captures screenshots
 3. **Encode** — pipes frames through FFmpeg (with GPU encoder detection and chunked concat). Skipped for `format: "png-sequence"`.
 4. **Mix** — extracts `<audio>` elements and mixes them into the final video. For `png-sequence`, audio is written as an `audio.aac` sidecar.
-5. **Finalize** — applies faststart for streaming-friendly MP4 (no-op for WebM, MOV, and `png-sequence`)
+5. **Finalize** — applies faststart for streaming-friendly MP4 (no-op for WebM, MOV, and `png-sequence`). For `hls`, stream-copies the encode into playlists and MPEG-TS segments instead.
 
 ## Documentation
 

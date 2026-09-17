@@ -23,6 +23,7 @@ import { resolveProject } from "../../utils/project.js";
 import {
   hasExplicitCompositionArg,
   parseGifLoopArg,
+  parseHlsSegmentSecondsArg,
   resolveBrowserTimeoutMsArg,
   resolveCompositionEntryArg,
   resolveDefaultFpsArg,
@@ -38,9 +39,12 @@ const QUALITY_ALIASES = {
   looks: { quality: "standard" as const, crf: 16 },
   delivery: { quality: "high" as const },
 } as const;
-const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif"] as const;
+const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif", "hls"] as const;
 const VALID_FORMAT = new Set<string>(RENDER_FORMATS);
-const RENDER_FORMAT_LABEL = "mp4, webm, mov, png-sequence, or gif";
+const RENDER_FORMAT_LABEL = "mp4, webm, mov, png-sequence, gif, or hls";
+
+/** Mirrors the producer's `DEFAULT_HLS_SEGMENT_SECONDS`; the plan is built before the producer loads. */
+const DEFAULT_HLS_SEGMENT_SECONDS = 4;
 
 export type RenderFormat = (typeof RENDER_FORMATS)[number];
 export type RenderQuality = "draft" | "standard" | "high";
@@ -54,6 +58,8 @@ const FORMAT_EXT: Record<RenderFormat, string> = {
   mov: ".mov",
   "png-sequence": "",
   gif: ".gif",
+  // Directory output, like png-sequence: playlists and .ts segments go inside.
+  hls: "",
 };
 
 export interface RenderCommandArgs {
@@ -65,6 +71,7 @@ export interface RenderCommandArgs {
   skill?: string;
   format?: string;
   "gif-loop"?: string;
+  "hls-segment-seconds"?: string;
   "video-frame-format"?: string;
   workers?: string;
   docker?: boolean;
@@ -113,6 +120,8 @@ export interface RenderPlan {
   format: RenderFormat;
   gifLoop?: number;
   gifFpsCapped: boolean;
+  /** HLS target segment length in seconds; only set for `format: "hls"`. */
+  hlsSegmentSeconds?: number;
   videoFrameFormat: VideoFrameFormat;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic: boolean;
@@ -273,6 +282,14 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   }
   const gifLoop = gifLoopParse.value ?? (format === "gif" ? 0 : undefined);
 
+  const hlsSegmentParse = parseHlsSegmentSecondsArg(args["hls-segment-seconds"]);
+  if (!hlsSegmentParse.ok) {
+    errorBox("Invalid hls-segment-seconds", hlsSegmentParse.message);
+    failUsage();
+  }
+  const hlsSegmentSeconds =
+    format === "hls" ? (hlsSegmentParse.value ?? DEFAULT_HLS_SEGMENT_SECONDS) : undefined;
+
   const videoFrameFormatRaw = args["video-frame-format"] ?? "auto";
   if (!isVideoFrameFormat(videoFrameFormatRaw)) {
     errorBox(
@@ -306,6 +323,24 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   }
   if (args.hdr && args.sdr) {
     errorBox("Conflicting flags", "--hdr and --sdr are mutually exclusive.");
+    failUsage();
+  }
+  if (format === "hls" && args.hdr) {
+    errorBox(
+      "Unsupported HLS output",
+      "--hdr cannot be combined with --format hls. HLS output is SDR only (H.264 + AAC in MPEG-TS); HDR10 would need fMP4 segments and HEVC.",
+      "Render HDR to MP4, or drop --hdr.",
+    );
+    failUsage();
+  }
+  // Fixed-length segments come from the software encoder's forced-keyframe
+  // lock, which GPU encoders ignore; the producer rejects the pair too.
+  if (format === "hls" && args.gpu) {
+    errorBox(
+      "Unsupported HLS output",
+      "--gpu cannot be combined with --format hls. Fixed-length segments require the software encoder's forced-keyframe lock, which GPU encoders ignore.",
+      "Re-run without --gpu.",
+    );
     failUsage();
   }
 
@@ -480,6 +515,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     format,
     gifLoop,
     gifFpsCapped,
+    hlsSegmentSeconds,
     videoFrameFormat: videoFrameFormatRaw,
     outputResolution,
     outputResolutionAspectAgnostic,
