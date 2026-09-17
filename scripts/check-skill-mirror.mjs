@@ -18,19 +18,27 @@ const B = join(REPO_ROOT, ".agents", "skills");
 // addresses Codex CLI users). Skill CONTENT must mirror; per-CLI docs need not.
 const MIRROR_EXCLUDE = new Set(["README.md"]);
 
-function collectFile(dir, entry, base) {
-  if (!entry.isFile()) return [];
-  const rel = relative(base, join(dir, entry.name));
+function collectFile(path, base) {
+  const rel = relative(base, path);
   if (MIRROR_EXCLUDE.has(rel)) return [];
   return [rel];
 }
 
+// Resolves symlinks: the CLI installs each skill as a relative symlink back
+// into its store (see packages/cli/src/utils/skillsMirror.ts), so a dirent's
+// own type says "symlink", not "directory". Following the link is what lets a
+// CLI-installed checkout compare skill CONTENT instead of skipping it and
+// reporting every symlinked skill as missing from one side.
 function walk(dir, base) {
   if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];
-  const entries = readdirSync(dir, { withFileTypes: true });
-  const out = entries.flatMap((entry) =>
-    entry.isDirectory() ? walk(join(dir, entry.name), base) : collectFile(dir, entry, base),
-  );
+  const entries = readdirSync(dir);
+  const out = entries.flatMap((name) => {
+    const path = join(dir, name);
+    const stat = statSync(path, { throwIfNoEntry: false });
+    if (stat?.isDirectory()) return walk(path, base);
+    if (stat?.isFile()) return collectFile(path, base);
+    return [];
+  });
   return out.sort();
 }
 
