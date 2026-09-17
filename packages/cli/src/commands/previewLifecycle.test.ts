@@ -338,7 +338,7 @@ describe("background preview lifecycle", () => {
     let spawned = false;
     const scan = vi.fn(async () => (spawned ? [server] : []));
     const unref = vi.fn();
-    const spawn = vi.fn(() => {
+    const spawn = vi.fn((..._args: unknown[]) => {
       spawned = true;
       return { pid: 4321, unref };
     });
@@ -355,6 +355,10 @@ describe("background preview lifecycle", () => {
 
     expect(result).toMatchObject({ type: "started", port: 3210, pid: 4321 });
     expect(unref).toHaveBeenCalledOnce();
+    // A detached child gets its own console window on Windows unless hidden.
+    expect(spawn.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ detached: true, windowsHide: true }),
+    );
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
   });
 
