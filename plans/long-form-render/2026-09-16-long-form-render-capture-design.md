@@ -1,6 +1,6 @@
 # Long-form render capture: lifting the duration ceiling without changing the document model
 
-**Status:** draft for review · **Date:** 2026-09-16 · **Scope:** `packages/engine`, `packages/producer`, `packages/cli`
+**Status:** draft for review · **Date:** 2026-09-16 · **Scope:** `packages/engine`, `packages/producer`, `packages/cli` · **Implementation plans:** [`README.md`](./README.md) in this directory
 
 ## 1. Why this spec exists
 
@@ -50,7 +50,7 @@ streaming-encode gate {"enabled":false,"configFlag":true,"outputFormat":"mp4","w
 1. **A single 300 s 1080p `<video>` renders on 0.8.44.** Runs 1 and 4. The 2026-07-02 observation ("272 s video kills the capture tab at any worker count") is not reproduced under these conditions. The July environment was the author's Apple Silicon laptop on a 0.7.3x release with real 1080p footage, about 8,160 extracted frames at 30 fps. Field data (§2.5) puts that render in a bucket with a 2.4 % Target-closed rate, so a single failure there is consistent with the wild rate and does not imply a hard limit. Treat the July case as an instance of the probabilistic crash class in §2.5, not as a separate bug.
 2. **Many short clips from one long source render.** Run 6: 60 `<video>` elements, each with `preload` forced to `auto` by the runtime, no failure and no material slowdown against run 1. The editor's natural output shape is not a problem.
 3. **The deterministic ceiling is `shouldUseStreamingEncode` → disk capture.** Runs 2, 3, 5. The gate (renderOrchestrator.ts) returns false when duration > `streamingEncodeMaxDurationSeconds` (240) **or** `workerCount > 1` (unless a parallel-stream router forces it). Every render that fails the gate goes to disk capture, which stores each captured frame as raw RGBA: `frames × width × height × 4` bytes (captureStage.ts `estimateDiskCaptureBytes`). At 1080p that is 8.3 MB per frame, 25 GB per minute at 30 fps, 100 GB per minute at 4K. Run 1 succeeded only because 3000 frames (25 GB) fit under the 90 % free-disk gate; run 5, the stock configuration, cannot render a 5-minute 1080p30 composition on a laptop with 40 GB free.
-4. **The 240 s cap's rationale is stale.** The cap landed in `dde26cf62` (2026-05-01, "default streaming encode for sequential renders", #579) with the comment "production has seen ffmpeg's streaming pipe hit FFMPEG*STREAMING_TIMEOUT_MS on longer videos". In `efc16a945` (2026-05-16) that timeout became a per-frame \_inactivity* timeout ("caps the duration of a single 'no frame arrived' gap, not the total render time"). A long render no longer trips it by being long. Run 4 (300 s streaming, single worker) confirms the path works past the cap.
+4. **The 240 s cap's rationale is stale.** The cap landed in `dde26cf62` (2026-05-01, "default streaming encode for sequential renders", #579) with the comment "production has seen ffmpeg's streaming pipe hit `FFMPEG_STREAMING_TIMEOUT_MS` on longer videos". In `efc16a945` (2026-05-16) that timeout became a per-frame _inactivity_ timeout ("caps the duration of a single 'no frame arrived' gap, not the total render time"). A long render no longer trips it by being long. Run 4 (300 s streaming, single worker) confirms the path works past the cap.
 5. **The media-load hypothesis could not be tested.** The proposal's item 1 suggested the capture tab's forced full-media load was the crash trigger and could be A/B'd with `preload="metadata"`. It cannot: `init.ts` sets `preload = "auto"` and calls `load()` on every media element, and `media.ts` re-forces `auto` on every active tick, neither gated on render mode. The compiler also strips `preload="none"` (htmlCompiler.ts). With no crash to explain, the experiment is dropped from scope (§7).
 
 ### 2.4 The two escape hatches, measured
@@ -124,11 +124,13 @@ Three phases, each independently shippable, plus an instrumentation change that 
 
 Before changing routing, make the probabilistic failure observable. `render_error` and `render_complete` gain: Chrome browser-process and renderer-process RSS sampled at a fixed cadence during capture (peak and last sample), the GPU process's presence at failure, the capture path (`streaming` / `disk` / `segmented`), and the segment index when applicable. This is a telemetry-only change with no behavioural effect, and it is the prerequisite for root-causing Target closed (§9). The existing `browser_diagnostic_*` counters stay.
 
-**Files.** `packages/engine/src/services/browserManager.ts` (process sampling), `packages/producer/src/services/renderOrchestrator.ts` (perf summary), `packages/cli` telemetry mapping.
+**Two routes, because the failure path never builds `RenderPerfSummary`.** (a) Live: the sampler updates `RenderCaptureObservability` (observability.ts) through `updateCaptureObservability`, which `renderObservability.ts` maps into the payload both `trackRenderError` and `trackRenderComplete` spread. This is the route that carries the crash case. (b) Aggregate: per-session peaks on `CaptureSession` flow through `getCapturePerfSummary` → `perfSummary.ts` aggregation → `render_complete`. "GPU process alive at failure" is not measurable after target loss; the field is `gpu_process_seen_last_sample`.
+
+**Files.** `packages/engine/src/utils/processRss.ts` (new, zero-dependency `ps` / `tasklist` sampler), `packages/engine/src/services/frameCapture.ts` (per-session interval started in `initializeSession`, cleared in `closeCaptureSession`), `packages/engine/src/types.ts`, `packages/producer/src/services/render/observability.ts`, `perfSummary.ts`, `packages/cli/src/telemetry/renderObservability.ts`, `events.ts`, `commands/render.ts`.
 
 ### Phase 0 — remove the single-worker duration cap
 
-**Change.** `streamingEncodeMaxDurationSeconds` default 240 → no cap for single-worker streaming (represent "no cap" as `Infinity` or `0 = disabled`, matching the existing `Math.max(0, envNum(...))` shape). Keep the env var as an operator override.
+**Change.** Add `streamingEncodeDurationCapEnabled: boolean` to `EngineConfig`, default `false`, env `PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED`. `shouldUseStreamingEncode` applies `streamingEncodeMaxDurationSeconds` only when the flag is on. The numeric field and its env var keep their meaning for operators who re-enable the cap. `Infinity` is not an option: `assertEngineConfigNumber` rejects non-finite values, and `0` already means "never stream" in the existing tests, so redefining either would invert a shipped contract.
 
 **Why it is safe.** The cap guarded against a total-render timeout that no longer exists (§2.3 item 4). The streaming encoder's memory is a bounded reorder window; the `--low-memory-mode` branch already streams regardless of duration for exactly the reason this change generalises ("so captured frames are drained directly into FFmpeg instead of accumulating hundreds of gigabytes of data URIs / disk frames").
 
@@ -146,12 +148,14 @@ Before changing routing, make the probabilistic failure observable. `render_erro
 - `HF_CAPTURE_PARALLEL_STREAM` genuinely engages a different path at `workers > 1`, but a `useDrawElement` ordering bug can silently defeat it on macOS hardware-GPU hosts (vault: `hf-capture-parallel-stream-usedrawelement-ordering-gap`, 2026-09-11).
 - Any multi-page drawElement design hits a one-GPU contention ceiling (~1.42× aggregate at two pages) (vault: `de-speedup-dead-ends`).
 
-**Change.** Make the parallel-stream routers the default for H.264-pipeline outputs when the duration or frame count would otherwise send the render to disk capture, after fixing the `useDrawElement` ordering gap. Concretely:
+**Change.** Make the parallel-stream routers the default for H.264-pipeline outputs when the duration or frame count would otherwise send the render to disk capture. Concretely:
 
-1. Fix the ordering gap so `captureParallelStreamForced` is evaluated after the final `useDrawElement` clamp (the 2026-09-11 finding names the two sites).
+1. The `useDrawElement` ordering gap named in the 2026-09-11 vault finding is already fixed on `main`: commit `26513984f` (PR #3886, 2026-09-11) moved the default-on drawElement clamp ahead of the router, and run 8 (macOS, hardware GPU) shows the clamp log line followed by "routed to streaming". No work here; the finding is stale for releases at or after that commit.
 2. In `shouldUseStreamingEncode`, replace `return workerCount === 1` with "true when the parallel-stream router is eligible" for the screenshot engine, keeping DE renders on the DE router (mutually exclusive by construction; both predicates require `useDrawElement`).
-3. Keep both env vars as kill switches (`=false` disables).
+3. Keep both env vars as kill switches (`=false` disables). Size the cohort first: `capture_parallel_stream = "eligible_off"` on `render_complete` already counts renders that would route if the switch were on.
 4. Disk capture remains the fallback for outputs the streaming pipeline does not serve: `png-sequence`, `gif`, HDR layered composite, shader-transition layered route.
+
+**Dependency.** The router's `streamingOk` input is `shouldUseStreamingEncode(cfg, format, 1, duration)`, which applies the duration cap before the parallel override. Until Phase 0 lands, Phase 1 gives long multi-worker renders nothing.
 
 **Why this and not per-worker encoders first.** It is the shortest working diff: the interleaved writer, reorder buffer, verify threading and routers already exist and have a benchmark. Per-worker encoders (Phase 2) are a different shape with their own boundary-correctness risk; they are justified by resumability, not by the disk ceiling.
 
@@ -165,17 +169,17 @@ Before changing routing, make the probabilistic failure observable. `render_erro
 
 **Change.** A local segmented capture plan:
 
-1. Reuse `planDistributedRender`'s chunk sizing (`targetChunkFrames`, `MIN_CHUNK_SIZE`, `DEFAULT_MAX_PARALLEL_CHUNKS`) to split the frame range into K segments.
+1. Split the frame range into fixed-size segments (`planSegments`, `HF_SEGMENT_FRAMES` frames each, default 3000, last one shorter). The distributed planner's `resolveChunkPlan` is not reused: its `maxParallelChunks` semantics size a worker pool, whereas segment size here is chosen for blast radius and encoder GOP length.
 2. Workers take segments from a queue. Each segment spawns its own `spawnStreamingEncoder` with `lockGopForChunkConcat: true` and `gopSize = framesInChunk`, writing `chunk_k.mp4` into the work dir. A worker keeps its browser session across segments but recycles it every `HF_SEGMENT_BROWSER_RECYCLE` segments (default: enough to cap a session near 10k captured frames, the bucket where the field crash rate crosses 4 %); Chromium boot is 150–200 ms, so recycling is cheap.
 3. Completed segments are recorded in a manifest (`chunks.json`-shaped, same as the distributed plan). A rerun with the same plan hash skips completed segments. A segment whose browser dies (`Target closed`, `detached Frame`) is retried once on a fresh session before the render fails; the retry is logged with the segment index and the Phase −1 memory samples.
 4. `assemble()` from `services/distributed/assemble.ts` concat-copies chunks and muxes audio. Stitch cost is sub-second (cortex: parallel rendering architecture decision).
-5. Boundary correctness: each segment's first frames are captured after the same warm-up the distributed chunk worker uses (`lockWarmupTicks`). The acceptance gate is PSNR at every segment boundary against a single-worker streaming reference of the same composition; the flicker class this guards against is issue #842. Note: cortex describes a `TemporalConsistencyManager` (PR #1105); no symbol by that name exists in current source, so the spec relies on the mechanisms that do (`lockWarmupTicks`, locked GOP).
+5. Boundary correctness: parallel disk workers already start sessions at arbitrary `startFrame > 0` (parallelCoordinator.ts), so a segment or a recycled session reuses that path; nothing new is needed for a frame-N first seek. `lockWarmupTicks` is a Linux BeginFrame chunk-worker knob and is not promised on macOS screenshot capture. The acceptance gate is PSNR at every segment boundary against a single-worker streaming reference of the same composition; the flicker class this guards against is issue #842. Note: cortex describes a `TemporalConsistencyManager` (PR #1105); no symbol by that name exists in current source.
 
 **Exclusions inherited from the distributed path.** VP9/WebM concat-copy is fragile across ffmpeg versions; HDR uses a per-frame layered compositor with shared state. Both stay on Phase 0/1 paths.
 
 **Not in Phase 2.** Cross-machine distribution (that is the existing Lambda / Cloud Run path), per-chunk video-frame slicing of the extraction cache (deferred in the distributed design too).
 
-**Files.** New `packages/producer/src/services/render/stages/captureSegmentedStage.ts`; `renderOrchestrator.ts` route selection; reuse of `distributed/plan.ts` sizing helpers and `distributed/assemble.ts`; CLI flag `--resume` or automatic resume keyed on plan hash.
+**Files.** New `packages/producer/src/services/render/stages/captureSegmentedStage.ts`; `renderOrchestrator.ts` route selection; `distributed/plan.ts` `resolveChunkPlan` for sizing; a small concat helper extracted from the pattern at `chunkEncoder.ts` ~660 (`-f concat -safe 0 -c copy`), then the existing `runAssembleStage` muxes audio. The distributed `assemble()` is not used: it requires a `planDir`. CLI flag `--resume` or automatic resume keyed on plan hash. Delivered as four plans: sequential segments + concat; manifest + resume; browser recycle + retry; multi-worker segments.
 
 ### Router precedence after all phases
 
