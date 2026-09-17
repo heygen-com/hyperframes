@@ -208,6 +208,40 @@ export function adaptiveSampleCount(diff: number): number {
   return MAX_SAMPLES_PER_FRAME;
 }
 
+/** GSAP property names that move an element in screen space. Matches the Transform
+ * categories of SUPPORTED_PROPS in packages/parsers/src/gsapConstants.ts. Passed into
+ * computeStaticFrameSet's page.evaluate as data; the matching code stays inline there. */
+export const SPATIAL_TWEEN_PROPERTIES: readonly string[] = [
+  "x",
+  "y",
+  "z",
+  "xPercent",
+  "yPercent",
+  "rotation",
+  "rotationX",
+  "rotationY",
+  "rotationZ",
+  "scale",
+  "scaleX",
+  "scaleY",
+  "scaleZ",
+  "skewX",
+  "skewY",
+  "perspective",
+  "transformPerspective",
+  "top",
+  "left",
+  "right",
+  "bottom",
+  "width",
+  "height",
+  "translate",
+  "translateX",
+  "translateY",
+  "translateZ",
+  "transform",
+];
+
 /** Mean absolute byte difference between two probe captures (never a sample that
  * enters the average) — the motion signal `adaptiveSampleCount` maps to a count. */
 export function probeDiffMagnitude(a: Buffer, b: Buffer): number {

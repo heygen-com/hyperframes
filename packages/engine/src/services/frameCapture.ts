@@ -24,6 +24,7 @@ import { encodePng } from "../utils/alphaBlit.js";
 import {
   DEFAULT_SAMPLES_PER_FRAME,
   MotionBlurAccumulator,
+  SPATIAL_TWEEN_PROPERTIES,
   adaptiveSampleCount,
   motionBlurProbeTimes,
   motionBlurSampleTimes,
@@ -2759,7 +2760,7 @@ export async function computeStaticFrameSet(
   eligible: boolean;
   reason: string;
 }> {
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate((spatialProps: readonly string[]) => {
     type AnyTween = {
       startTime(): number;
       duration(): number;
@@ -2767,32 +2768,10 @@ export async function computeStaticFrameSet(
       getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
       vars?: Record<string, unknown>;
     };
-    const SPATIAL_PROPS = new Set([
-      "x",
-      "y",
-      "z",
-      "rotation",
-      "rotationX",
-      "rotationY",
-      "rotationZ",
-      "scale",
-      "scaleX",
-      "scaleY",
-      "scaleZ",
-      "skewX",
-      "skewY",
-      "top",
-      "left",
-      "right",
-      "bottom",
-      "width",
-      "height",
-      "translate",
-      "translateX",
-      "translateY",
-      "translateZ",
-      "transform",
-    ]);
+    // Passed in from SPATIAL_TWEEN_PROPERTIES rather than declared here, so the list
+    // stays the one this module's own tests exercise (the matching code itself must
+    // stay inline — this closure is serialized and runs in the page realm).
+    const SPATIAL_PROPS = new Set(spatialProps);
     function isSpatial(vars: Record<string, unknown> | undefined): boolean {
       if (!vars) return false;
       for (const key of Object.keys(vars)) if (SPATIAL_PROPS.has(key)) return true;
@@ -2900,7 +2879,7 @@ export async function computeStaticFrameSet(
       hasUnresolvableClipStart,
       hasTimelineCall,
     };
-  });
+  }, SPATIAL_TWEEN_PROPERTIES);
 
   const {
     intervals,

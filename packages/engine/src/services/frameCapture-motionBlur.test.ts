@@ -467,3 +467,52 @@ describe("armStaticDedup reads the raw caller options for the adaptive gate, not
     }
   });
 });
+
+describe("computeStaticFrameSet's real page-side property matching (not a canned mock)", () => {
+  // Runs the ACTUAL closure passed to page.evaluate, against a stubbed window/document —
+  // the other computeStaticFrameSet tests above mock the whole result and never exercise
+  // isSpatial()/SPATIAL_PROPS at all, which is how xPercent/yPercent went unclassified.
+  function makeTimeline(vars: Record<string, unknown>) {
+    const child = { startTime: () => 0, duration: () => 1, totalDuration: () => 1, vars };
+    return { getChildren: () => [child], duration: () => 1 };
+  }
+
+  function makePage(timelines: Record<string, unknown>) {
+    const root = globalThis as Record<string, unknown>;
+    root.window = { __timelines: timelines, __hf: { duration: 1 } };
+    root.document = {
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      getAnimations: undefined,
+    };
+    return {
+      evaluate: async (fn: unknown, ...args: unknown[]) =>
+        typeof fn === "function" ? (fn as (...a: unknown[]) => unknown)(...args) : undefined,
+    } as unknown as Parameters<typeof computeStaticFrameSet>[0];
+  }
+
+  afterEach(() => {
+    const root = globalThis as Record<string, unknown>;
+    delete root.window;
+    delete root.document;
+  });
+
+  it.each(["xPercent", "yPercent", "perspective", "transformPerspective"])(
+    "classifies a tween on %s as spatial",
+    async (prop) => {
+      const page = makePage({ main: makeTimeline({ [prop]: 50 }) });
+
+      const result = await computeStaticFrameSet(page, 30);
+
+      expect(result.nonSpatialOnlyFrameSet.has(0)).toBe(false);
+    },
+  );
+
+  it("classifies a tween on opacity as non-spatial", async () => {
+    const page = makePage({ main: makeTimeline({ opacity: 0.5 }) });
+
+    const result = await computeStaticFrameSet(page, 30);
+
+    expect(result.nonSpatialOnlyFrameSet.has(0)).toBe(true);
+  });
+});
