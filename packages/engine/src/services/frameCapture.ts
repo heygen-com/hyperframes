@@ -23,8 +23,11 @@ import { DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
 import {
   MotionBlurAccumulator,
+  adaptiveSampleCount,
+  motionBlurProbeTimes,
   motionBlurSampleTimes,
   motionBlurWindowIsStatic,
+  probeDiffMagnitude,
   resolveMotionBlurPlan,
   type MotionBlurPlan,
 } from "./motionBlur.js";
@@ -114,6 +117,9 @@ export interface CaptureSession {
    * silently rendering unblurred.
    */
   motionBlur?: MotionBlurPlan;
+  /** Frames confirmed to move only non-spatial properties (opacity, colour); set for
+   * adaptive motion blur. Absent from this set means "probe" — see computeStaticFrameSet. */
+  motionBlurNonSpatialFrames?: Set<number>;
   // ── Static-dedup observability (set by armStaticDedup; surfaced via
   // getCapturePerfSummary → RenderPerfSummary → the render_complete event) ──
   // `armed` derives from the verified staticFrames set. Predicted count is stored
@@ -2742,6 +2748,9 @@ export async function computeStaticFrameSet(
 ): Promise<{
   totalFrames: number;
   staticFrameSet: Set<number>;
+  /** Frames whose only active motion is non-spatial (opacity, colour); safe to skip
+   * the adaptive probe. Empty (not meaningful) when `!eligible`. */
+  nonSpatialOnlyFrameSet: Set<number>;
   hasVideo: boolean;
   hasCanvas: boolean;
   hasNonGsapAnim: boolean;
@@ -2757,7 +2766,38 @@ export async function computeStaticFrameSet(
       getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
       vars?: Record<string, unknown>;
     };
-    const intervals: Array<{ start: number; end: number }> = [];
+    const SPATIAL_PROPS = new Set([
+      "x",
+      "y",
+      "z",
+      "rotation",
+      "rotationX",
+      "rotationY",
+      "rotationZ",
+      "scale",
+      "scaleX",
+      "scaleY",
+      "scaleZ",
+      "skewX",
+      "skewY",
+      "top",
+      "left",
+      "right",
+      "bottom",
+      "width",
+      "height",
+      "translate",
+      "translateX",
+      "translateY",
+      "translateZ",
+      "transform",
+    ]);
+    function isSpatial(vars: Record<string, unknown> | undefined): boolean {
+      if (!vars) return false;
+      for (const key of Object.keys(vars)) if (SPATIAL_PROPS.has(key)) return true;
+      return false;
+    }
+    const intervals: Array<{ start: number; end: number; spatial: boolean }> = [];
     let tweenCount = 0;
     // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
     // a repeating timeline is marked opaque over its whole span (conservative).
@@ -2781,7 +2821,8 @@ export async function computeStaticFrameSet(
       // Mark its entire span as animated so those frames are never deduped.
       if (typeof tl.vars?.onUpdate === "function") {
         const total = typeof tl.totalDuration === "function" ? tl.totalDuration() : 0;
-        if (total > 0) intervals.push({ start: offset, end: offset + total });
+        // onUpdate can move anything (e.g. x/y from Math.random) — conservatively spatial.
+        if (total > 0) intervals.push({ start: offset, end: offset + total, spatial: true });
       }
       for (const child of tl.getChildren(false, true, true)) {
         const start = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
@@ -2789,7 +2830,10 @@ export async function computeStaticFrameSet(
         const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
         if (typeof child.getChildren === "function") {
           if (total > single + 1e-6) {
-            intervals.push({ start, end: start + total });
+            // A repeating nested timeline's own children are walked for their real
+            // vars below; this span is a conservative (spatial) placeholder for the
+            // repeat/yoyo overrun, which a per-child walk doesn't otherwise cover.
+            intervals.push({ start, end: start + total, spatial: true });
             // Still descend for hasTimelineCall even though the repeating
             // span is already opaque (its frames are excluded from dedup
             // regardless): a call() inside it is a review-flagged detection
@@ -2802,7 +2846,7 @@ export async function computeStaticFrameSet(
           }
         } else {
           tweenCount++;
-          intervals.push({ start, end: start + total });
+          intervals.push({ start, end: start + total, spatial: isSpatial(child.vars) });
           if (
             total <= 1e-6 &&
             (typeof child.vars?.onComplete === "function" ||
@@ -2867,7 +2911,7 @@ export async function computeStaticFrameSet(
     hasUnresolvableClipStart,
     hasTimelineCall,
   } = result as {
-    intervals: Array<{ start: number; end: number }>;
+    intervals: Array<{ start: number; end: number; spatial: boolean }>;
     tweenCount: number;
     duration: number;
     hasVideo: boolean;
@@ -2881,6 +2925,7 @@ export async function computeStaticFrameSet(
     return {
       totalFrames,
       staticFrameSet: new Set<number>(),
+      nonSpatialOnlyFrameSet: new Set<number>(),
       hasVideo,
       hasCanvas,
       hasNonGsapAnim,
@@ -2890,10 +2935,14 @@ export async function computeStaticFrameSet(
     };
   }
   const animated = new Set<number>();
-  for (const { start, end } of intervals) {
+  const spatialFrameSet = new Set<number>();
+  for (const { start, end, spatial } of intervals) {
     const lo = Math.max(0, Math.floor(start * fps));
     const hi = Math.min(totalFrames - 1, Math.ceil(end * fps));
-    for (let f = lo; f <= hi; f++) animated.add(f);
+    for (let f = lo; f <= hi; f++) {
+      animated.add(f);
+      if (spatial) spatialFrameSet.add(f);
+    }
   }
   for (const f of await computeClipBoundaryFrames(page, fps)) animated.add(f);
   const reasons: string[] = [];
@@ -2916,9 +2965,14 @@ export async function computeStaticFrameSet(
       if (!animated.has(f) && !animated.has(f - 1)) staticFrameSet.add(f);
     }
   }
+  const nonSpatialOnlyFrameSet = new Set<number>();
+  if (eligible) {
+    for (const f of animated) if (!spatialFrameSet.has(f)) nonSpatialOnlyFrameSet.add(f);
+  }
   return {
     totalFrames,
     staticFrameSet,
+    nonSpatialOnlyFrameSet,
     hasVideo,
     hasCanvas,
     hasNonGsapAnim,
@@ -3281,6 +3335,18 @@ async function armStaticDedup(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  // Adaptive motion-blur sample-count classification shares the GSAP-timeline walk
+  // below but is gated independently of dedup (capture mode / before-capture hooks are
+  // about buffer-reuse safety, irrelevant to which properties a tween touches), so it
+  // is computed here, once, ahead of dedup's own idempotency check.
+  if (
+    session.motionBlur &&
+    session.motionBlur.fixedSamplesPerFrame === null &&
+    !session.motionBlurNonSpatialFrames
+  ) {
+    const stats = await computeStaticFrameSet(page, fpsToNumber(session.options.fps));
+    session.motionBlurNonSpatialFrames = stats.nonSpatialOnlyFrameSet;
+  }
   // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
   // (verification screenshots need the un-injected DOM), and initializeSession
   // calls this again unconditionally afterwards. Once staticFrames is
@@ -3761,13 +3827,52 @@ function finalizeSessionInit(session: CaptureSession): void {
   session.isInitialized = true;
 }
 
+/** Choose how many samples this frame gets when the plan is adaptive: the floor with
+ * no probe for a frame confirmed non-spatial, otherwise two edge probes (see
+ * motionBlurProbeTimes) mapped through adaptiveSampleCount. Probe cost is returned
+ * alongside the count so the caller folds it into the frame's timing totals. */
+async function resolveAdaptiveSampleCount(
+  session: CaptureSession,
+  frameIndex: number,
+  absFrameIndex: number,
+  plan: MotionBlurPlan,
+  fps: number,
+  sampleSeek: HfSeekOptions,
+): Promise<{
+  samplesPerFrame: number;
+  seekMs: number;
+  beforeCaptureMs: number;
+  screenshotMs: number;
+}> {
+  if (session.motionBlurNonSpatialFrames?.has(absFrameIndex)) {
+    return {
+      samplesPerFrame: adaptiveSampleCount(0),
+      seekMs: 0,
+      beforeCaptureMs: 0,
+      screenshotMs: 0,
+    };
+  }
+  const { windowStart, windowEnd } = motionBlurProbeTimes(plan, absFrameIndex, fps);
+  const probeA = await captureFrameSurface(session, frameIndex, windowStart, sampleSeek);
+  const probeB = await captureFrameSurface(session, frameIndex, windowEnd, sampleSeek);
+  return {
+    samplesPerFrame: adaptiveSampleCount(probeDiffMagnitude(probeA.buffer, probeB.buffer)),
+    seekMs: probeA.seekMs + probeB.seekMs,
+    beforeCaptureMs: probeA.beforeCaptureMs + probeB.beforeCaptureMs,
+    screenshotMs: probeA.screenshotMs + probeB.screenshotMs,
+  };
+}
+
 /**
- * Capture one output frame as the average of `plan.samplesPerFrame` sub-frame captures.
+ * Capture one output frame as the average of some number of sub-frame captures — fixed
+ * by the caller, or chosen per frame from measured motion (see
+ * `resolveAdaptiveSampleCount`).
  *
  * Callback invariant: exactly one eventful seek per output frame, at the frame time,
- * arriving from the previous frame's time. Every sample seek suppresses events and the
- * playhead is restored to the frame time afterwards, so a composition's own
- * onUpdate/onComplete fire on the same interval boundaries as a render with blur off.
+ * arriving from the previous frame's time. Every sample seek (including a probe)
+ * suppresses events and the playhead is restored to the frame time afterwards, so a
+ * composition's own onUpdate/onComplete fire on the same interval boundaries as a
+ * render with blur off.
  */
 async function captureAccumulatedFrame(
   session: CaptureSession,
@@ -3786,8 +3891,25 @@ async function captureAccumulatedFrame(
     suppressEvents: true,
     subFrameDivisions: plan.subFrameDivisions,
   };
+
+  let samplesPerFrame = plan.fixedSamplesPerFrame;
+  if (samplesPerFrame === null) {
+    const chosen = await resolveAdaptiveSampleCount(
+      session,
+      frameIndex,
+      absFrameIndex,
+      plan,
+      fps,
+      sampleSeek,
+    );
+    samplesPerFrame = chosen.samplesPerFrame;
+    totals.seekMs += chosen.seekMs;
+    totals.beforeCaptureMs += chosen.beforeCaptureMs;
+    totals.screenshotMs += chosen.screenshotMs;
+  }
+
   const accumulator = new MotionBlurAccumulator(plan.blend);
-  for (const sampleTime of motionBlurSampleTimes(plan, absFrameIndex, fps)) {
+  for (const sampleTime of motionBlurSampleTimes(plan, absFrameIndex, fps, samplesPerFrame)) {
     const sample = await captureFrameSurface(session, frameIndex, sampleTime, sampleSeek);
     totals.seekMs += sample.seekMs;
     totals.beforeCaptureMs += sample.beforeCaptureMs;

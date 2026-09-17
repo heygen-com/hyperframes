@@ -35,10 +35,8 @@ export interface MotionBlurOptions {
 
 export type MotionBlurBlendSpace = "srgb" | "linear";
 
-/**
- * A resolved plan. Only `resolveMotionBlurPlan` produces one, so every field is already
- * clamped and the sample offsets are integers on a fixed sub-frame tick grid.
- */
+/** A resolved plan. The window is fixed by shutter angle/phase alone, independent of
+ * how many samples fill it, which is what lets the count vary per frame. */
 export interface MotionBlurPlan {
   readonly blend: MotionBlurBlendSpace;
   /**
@@ -46,8 +44,12 @@ export interface MotionBlurPlan {
    * contains the output frame grid, so the frame-time instant never moves.
    */
   readonly subFrameDivisions: number;
-  /** Tick offsets from the frame instant, ascending. Integers, so every host agrees. */
-  readonly sampleTickOffsets: readonly number[];
+  /** Window start, in frames relative to the frame instant (`shutterPhase / 360`). */
+  readonly windowStartFrames: number;
+  /** Window width, in frames (`shutterAngle / 360`). */
+  readonly shutterFrames: number;
+  /** Explicit count from the caller (clamped to 1..64), or null for adaptive per-frame. */
+  readonly fixedSamplesPerFrame: number | null;
 }
 
 export const MAX_SAMPLES_PER_FRAME = 64;
@@ -72,27 +74,42 @@ export function resolveMotionBlurPlan(
 ): MotionBlurPlan | null {
   if (!options) return null;
 
-  const samplesPerFrame = Math.min(
-    MAX_SAMPLES_PER_FRAME,
-    Math.max(1, Math.round(finiteOr(options.samplesPerFrame, DEFAULT_SAMPLES_PER_FRAME))),
-  );
+  const fixedSamplesPerFrame =
+    options.samplesPerFrame === undefined
+      ? null
+      : Math.min(
+          MAX_SAMPLES_PER_FRAME,
+          Math.max(1, Math.round(finiteOr(options.samplesPerFrame, DEFAULT_SAMPLES_PER_FRAME))),
+        );
   const shutterAngle = finiteOr(options.shutterAngle, DEFAULT_SHUTTER_ANGLE);
   const shutterPhase = finiteOr(options.shutterPhase, DEFAULT_SHUTTER_PHASE);
   const blend: MotionBlurBlendSpace = options.blend === "linear" ? "linear" : "srgb";
 
-  const windowStartFrames = shutterPhase / 360;
-  const shutterFrames = shutterAngle / 360;
-  const sampleTickOffsets: number[] = [];
-  for (let k = 0; k < samplesPerFrame; k++) {
-    const offsetFrames = windowStartFrames + ((k + 0.5) / samplesPerFrame) * shutterFrames;
-    sampleTickOffsets.push(Math.round(offsetFrames * SUB_FRAME_DIVISIONS));
-  }
+  return {
+    blend,
+    subFrameDivisions: SUB_FRAME_DIVISIONS,
+    windowStartFrames: shutterPhase / 360,
+    shutterFrames: shutterAngle / 360,
+    fixedSamplesPerFrame,
+  };
+}
 
-  return { blend, subFrameDivisions: SUB_FRAME_DIVISIONS, sampleTickOffsets };
+/** Tick offsets from the frame instant for `samplesPerFrame` samples spread evenly
+ * across the plan's window, ascending. Integers, so every host agrees. */
+function sampleTickOffsets(plan: MotionBlurPlan, samplesPerFrame: number): number[] {
+  const offsets: number[] = [];
+  for (let k = 0; k < samplesPerFrame; k++) {
+    const offsetFrames =
+      plan.windowStartFrames + ((k + 0.5) / samplesPerFrame) * plan.shutterFrames;
+    offsets.push(Math.round(offsetFrames * plan.subFrameDivisions));
+  }
+  return offsets;
 }
 
 /**
- * Absolute seek times for one output frame, in ascending order.
+ * Absolute seek times for one output frame, in ascending order, for `samplesPerFrame`
+ * samples spread across the plan's window (independent of `plan.fixedSamplesPerFrame` —
+ * the caller decides how many samples this particular frame gets).
  *
  * Built from integer ticks rather than by adding floats to `frameIndex / fps`, so the
  * page-side quantizer recovers the intended tick exactly on every host. Times before the
@@ -102,10 +119,35 @@ export function motionBlurSampleTimes(
   plan: MotionBlurPlan,
   frameIndex: number,
   fps: number,
+  samplesPerFrame: number,
 ): number[] {
   const grid = fps * plan.subFrameDivisions;
   const frameTicks = frameIndex * plan.subFrameDivisions;
-  return plan.sampleTickOffsets.map((offset) => Math.max(0, frameTicks + offset) / grid);
+  return sampleTickOffsets(plan, samplesPerFrame).map(
+    (offset) => Math.max(0, frameTicks + offset) / grid,
+  );
+}
+
+/** The two true shutter-window edges (not samples — see `motionBlurProbeTimes`'s
+ * caller), for measuring motion magnitude before a sample count is chosen. */
+export function motionBlurProbeTimes(
+  plan: MotionBlurPlan,
+  frameIndex: number,
+  fps: number,
+): {
+  windowStart: number;
+  windowEnd: number;
+} {
+  const grid = fps * plan.subFrameDivisions;
+  const frameTicks = frameIndex * plan.subFrameDivisions;
+  const startTick = Math.round(plan.windowStartFrames * plan.subFrameDivisions);
+  const endTick = Math.round(
+    (plan.windowStartFrames + plan.shutterFrames) * plan.subFrameDivisions,
+  );
+  return {
+    windowStart: Math.max(0, frameTicks + startTick) / grid,
+    windowEnd: Math.max(0, frameTicks + endTick) / grid,
+  };
 }
 
 /**
@@ -127,17 +169,58 @@ export function motionBlurWindowIsStatic(
   frameIndex: number,
   staticFrames: ReadonlySet<number>,
 ): boolean {
-  const first = Math.floor(
-    frameIndex - 1 + Math.min(...plan.sampleTickOffsets) / plan.subFrameDivisions,
-  );
+  // Bound by the outermost sample this frame could take (its half-step inset from the
+  // true edge), not the edge itself. An adaptive plan's K is unknown here, so use the
+  // widest possible inset (K=64) rather than the true edge, which any chosen K stays inside.
+  const worstCaseSamples = plan.fixedSamplesPerFrame ?? MAX_SAMPLES_PER_FRAME;
+  const inset = plan.shutterFrames / (2 * worstCaseSamples);
+  const minOffsetFrames = plan.windowStartFrames + inset;
+  const maxOffsetFrames = plan.windowStartFrames + plan.shutterFrames - inset;
+  const first = Math.floor(frameIndex - 1 + Math.min(0, minOffsetFrames));
   // A sample landing inside [F, F+1) reads content the frame set only pins down at both
   // ends, so the frame after the last one touched has to be static as well.
-  const last =
-    Math.floor(frameIndex + Math.max(...plan.sampleTickOffsets) / plan.subFrameDivisions) + 1;
+  const last = Math.floor(frameIndex + Math.max(0, maxOffsetFrames)) + 1;
   for (let frame = first; frame <= last; frame++) {
     if (!staticFrames.has(frame)) return false;
   }
   return true;
+}
+
+/** Diff magnitude → sample count, ascending and exhaustive. Calibration provenance and
+ * measured numbers are in the PR description for #4029; the 32-sample step is
+ * interpolated, not independently measured. */
+export const ADAPTIVE_SAMPLE_STEPS: ReadonlyArray<{
+  readonly maxDiff: number;
+  readonly samples: number;
+}> = [
+  { maxDiff: 3, samples: DEFAULT_SAMPLES_PER_FRAME },
+  { maxDiff: 6, samples: 32 },
+  { maxDiff: Infinity, samples: MAX_SAMPLES_PER_FRAME },
+];
+
+/** Sample count for a frame whose probe diff magnitude is `diff` (see `ADAPTIVE_SAMPLE_STEPS`). */
+export function adaptiveSampleCount(diff: number): number {
+  for (const step of ADAPTIVE_SAMPLE_STEPS) {
+    if (diff <= step.maxDiff) return step.samples;
+  }
+  return MAX_SAMPLES_PER_FRAME;
+}
+
+/** Mean absolute byte difference between two probe captures (never a sample that
+ * enters the average) — the motion signal `adaptiveSampleCount` maps to a count. */
+export function probeDiffMagnitude(a: Buffer, b: Buffer): number {
+  const decodedA = decodePng(a);
+  const decodedB = decodePng(b);
+  if (decodedA.width !== decodedB.width || decodedA.height !== decodedB.height) {
+    throw new Error(
+      `probeDiffMagnitude: sample geometry mismatch (${decodedA.width}x${decodedA.height} vs ${decodedB.width}x${decodedB.height})`,
+    );
+  }
+  let sum = 0;
+  for (let i = 0; i < decodedA.data.length; i++) {
+    sum += Math.abs((decodedA.data[i] as number) - (decodedB.data[i] as number));
+  }
+  return sum / decodedA.data.length;
 }
 
 const SRGB_TO_LINEAR = (() => {
