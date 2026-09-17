@@ -9,6 +9,36 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.45"
+  description="Released - 2026-09-17"
+  tags={["Release", "Producer", "CLI", "Registry"]}
+>
+Motion blur arrives twice in this release, as two separate mechanisms for two different jobs. The catalog component now matches After Effects, and the render engine can average several sub-frame captures per output frame. Renders can also be written as an HLS package.
+
+## Features
+
+- **Producer:** `motionBlur` on a render configuration turns on sub-frame multi-sample blur. An empty object takes the After Effects defaults, which are 16 samples per frame, a 180 degree shutter angle and a shutter phase of -90. `samplesPerFrame` accepts up to 64. Setting it forces PNG frame capture, because the samples are averaged pixel by pixel and JPEG samples would be averaged after a lossy step. Whether a render captures lossless frames now has one owner instead of being decided in three places from a different fact ([b64a7a3a6](https://github.com/heygen-com/hyperframes/commit/b64a7a3a67ae1f5c22915a88938853169eb3cea2), [#4020](https://github.com/heygen-com/hyperframes/pull/4020)).
+- **Engine:** Each output frame can be the average of several captures taken across the shutter window. Unlike an SVG ghost filter this blurs rotation, scale and opacity, not translation alone. It is off unless asked for, and a static frame still costs one capture. Capture modes other than screenshot throw a named error rather than quietly rendering unblurred ([0a1c6f5a4](https://github.com/heygen-com/hyperframes/commit/0a1c6f5a457ca1345d6b8ccede04769a0e009719), [#4019](https://github.com/heygen-com/hyperframes/pull/4019)).
+- **CLI:** Add hls output format ([e4b1832fa](https://github.com/heygen-com/hyperframes/commit/e4b1832fadd4c063bcf9a19cd351684815fbc23e), [#4022](https://github.com/heygen-com/hyperframes/pull/4022)).
+- **Producer:** A render can output an HLS VOD package. It is the same H.264 and AAC encode as MP4, copied into MPEG-TS segments with playlists, and every segment starts on a keyframe ([462f9db73](https://github.com/heygen-com/hyperframes/commit/462f9db73dc0951a112a057416d03effb2fcf1a0), [#4014](https://github.com/heygen-com/hyperframes/pull/4014)).
+
+## Catalog
+
+- **Registry:** The `motion-blur` component now follows the After Effects shutter model instead of a row of hard copies. Measured against a real After Effects export over 72 frames, the match improved from 24.19 dB to 32.51 dB on average, and the worst frame from 17.07 dB to 27.57 dB ([9aa60a844](https://github.com/heygen-com/hyperframes/commit/9aa60a844fa645ef92949cf6025ddbb634a97e63), [#4008](https://github.com/heygen-com/hyperframes/pull/4008)).
+
+## Choosing a motion blur, and what each one costs
+
+The two mechanisms are alternatives. Applying both blurs the same motion twice.
+
+- The catalog component is cheap and looks like After Effects, and it blurs translation only.
+- The engine path blurs any animated property, and it costs one capture per sample. At 16 samples a 1080p frame spends roughly 600 ms in the blend on top of the 16 captures, so a slow render is expected rather than stuck.
+- A video's own motion does not blur on the engine path. Injected video frames are extracted once per output frame, so a sub-frame seek does not move them.
+- The engine path is a plain average across the shutter window, which is what a real shutter does. After Effects keeps a sharp copy on top of the smear, so the engine result reads softer on fast motion even though the averaging is correct.
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.44...v0.8.45).
+</Update>
+
+<Update
   label="HyperFrames v0.8.44"
   description="Released - 2026-09-16"
   tags={["Release", "Engine", "Lint"]}
