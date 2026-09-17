@@ -566,6 +566,8 @@ jobs:
         with:
           node-version: 22
       - run: bash scripts/ci/install-workspace-dependencies.sh
+      - name: Parse CSS colors in a real browser
+        run: bun run --cwd packages/studio test:colors:browser
       # Same reason as studio-load-smoke: vite.config.ts is loaded by Node and
       # resolves the workspace packages through their "node" export condition.
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
