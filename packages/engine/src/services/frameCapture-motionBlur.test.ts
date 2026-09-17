@@ -5,7 +5,7 @@ import {
   resolveSessionMotionBlur,
   type CaptureSession,
 } from "./frameCapture.js";
-import { mkdtempSync } from "fs";
+import { mkdtempSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { resolveMotionBlurPlan } from "./motionBlur.js";
@@ -129,6 +129,23 @@ describe("sub-frame accumulation reaches the page with distinct sample times", (
     expect(seeks).toHaveLength(18);
   });
 
+  it("captures K distinct samples rather than K copies of one instant", async () => {
+    // Guards the failure mode where every sub-frame seek lands on the same time: the
+    // average of K identical frames is the unblurred frame, which looks like the feature
+    // doing nothing rather than like an error.
+    const captured: string[] = [];
+    vi.mocked(pageScreenshotCapture).mockImplementation(async () => {
+      const png = solidPng(16 * captured.length);
+      captured.push(png.toString("base64"));
+      return png;
+    });
+
+    await captureFrameToBuffer(makeSession(), 10, 10 / 30);
+
+    expect(captured).toHaveLength(16);
+    expect(new Set(captured).size).toBe(16);
+  });
+
   it("averages the captured samples into the output frame", async () => {
     const result = await captureFrameToBuffer(makeSession(), 10, 10 / 30);
 
@@ -181,6 +198,27 @@ describe("accumulation composes with static-frame dedup", () => {
     await captureFrameToBuffer(session, 12, 12 / 30);
 
     expect(vi.mocked(pageScreenshotCapture)).toHaveBeenCalledTimes(16);
+  });
+});
+
+describe("every path that marks a session ready also resolves the plan", () => {
+  // The defect this locks: `initializeSession` has two exits, and screenshot mode (the only
+  // mode motion blur supports) returns from the first one. Resolving the plan at the other
+  // exit left `session.motionBlur` undefined on exactly the path the feature runs on, so a
+  // real render captured one frame per output frame and produced no blur at all, while the
+  // plan, the producer wiring and every unit test stayed correct.
+  const source = readFileSync(new URL("./frameCapture.ts", import.meta.url), "utf8");
+
+  it("assigns isInitialized in exactly one place", () => {
+    const assignments = source.match(/session\.isInitialized = true/g) ?? [];
+    expect(assignments).toHaveLength(1);
+  });
+
+  it("resolves the motion-blur plan in that same place", () => {
+    const start = source.indexOf("function finalizeSessionInit");
+    const finalize = source.slice(start, start + 400);
+    expect(finalize).toContain("resolveSessionMotionBlur");
+    expect(finalize).toContain("session.isInitialized = true");
   });
 });
 

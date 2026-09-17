@@ -2311,7 +2311,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await armStaticDedup(session, session.page, logInitPhase);
     await ensureRenderFrameSiblings(session.page);
-    session.isInitialized = true;
+    finalizeSessionInit(session);
     return;
   }
 
@@ -2512,9 +2512,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   const commitCdp = await getCdpSession(page);
   await commitCdp.send("HeadlessExperimental.beginFrame", preparedBeginFrameTimeline.commitParams);
 
-  session.motionBlur = resolveSessionMotionBlur(session);
-
-  session.isInitialized = true;
+  finalizeSessionInit(session);
 }
 
 async function captureFrameErrorDiagnostics(
@@ -3746,6 +3744,20 @@ async function captureFrameSurface(
   const screenshotMs = Date.now() - screenshotStart;
 
   return { buffer: screenshotBuffer, quantizedTime, seekMs, beforeCaptureMs, screenshotMs };
+}
+
+/**
+ * Mark the session ready to capture.
+ *
+ * The single owner of what finishing initialization means, because `initializeSession`
+ * has two exits: screenshot mode returns early, and every other mode falls through the
+ * end. Resolving motion blur at only one of them marks the session ready with no plan,
+ * which silently renders unblurred rather than failing. Both fields are set here so a
+ * third exit cannot forget one.
+ */
+function finalizeSessionInit(session: CaptureSession): void {
+  session.motionBlur = resolveSessionMotionBlur(session);
+  session.isInitialized = true;
 }
 
 /**
