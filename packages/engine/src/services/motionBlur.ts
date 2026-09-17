@@ -209,8 +209,9 @@ export function adaptiveSampleCount(diff: number): number {
 }
 
 /** GSAP property names that move an element in screen space. Matches the Transform
- * categories of SUPPORTED_PROPS in packages/parsers/src/gsapConstants.ts. Passed into
- * computeStaticFrameSet's page.evaluate as data; the matching code stays inline there. */
+ * categories of SUPPORTED_PROPS in packages/parsers/src/gsapConstants.ts, minus
+ * transformOrigin (that file's own classifyTweenPropertyGroup excludes it: a pivot-point
+ * modifier, not independent motion). Passed into computeStaticFrameSet's page.evaluate as data. */
 export const SPATIAL_TWEEN_PROPERTIES: readonly string[] = [
   "x",
   "y",
@@ -218,6 +219,7 @@ export const SPATIAL_TWEEN_PROPERTIES: readonly string[] = [
   "xPercent",
   "yPercent",
   "rotation",
+  "rotate",
   "rotationX",
   "rotationY",
   "rotationZ",

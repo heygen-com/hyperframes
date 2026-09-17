@@ -497,7 +497,7 @@ describe("computeStaticFrameSet's real page-side property matching (not a canned
     delete root.document;
   });
 
-  it.each(["xPercent", "yPercent", "perspective", "transformPerspective"])(
+  it.each(["xPercent", "yPercent", "perspective", "transformPerspective", "rotate"])(
     "classifies a tween on %s as spatial",
     async (prop) => {
       const page = makePage({ main: makeTimeline({ [prop]: 50 }) });
@@ -507,6 +507,14 @@ describe("computeStaticFrameSet's real page-side property matching (not a canned
       expect(result.nonSpatialOnlyFrameSet.has(0)).toBe(false);
     },
   );
+
+  it("does not classify transformOrigin alone as spatial (a pivot-point modifier, not independent motion)", async () => {
+    const page = makePage({ main: makeTimeline({ transformOrigin: "center" }) });
+
+    const result = await computeStaticFrameSet(page, 30);
+
+    expect(result.nonSpatialOnlyFrameSet.has(0)).toBe(true);
+  });
 
   it("classifies a tween on opacity as non-spatial", async () => {
     const page = makePage({ main: makeTimeline({ opacity: 0.5 }) });
