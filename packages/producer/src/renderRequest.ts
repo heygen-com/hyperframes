@@ -37,6 +37,7 @@ export interface RenderRequestOptions {
   quality: "draft" | "standard" | "high";
   format: NonNullable<RenderConfig["format"]>;
   gifLoop?: number;
+  hlsSegmentSeconds?: number;
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
@@ -158,6 +159,7 @@ function assertDistributedOptions(value: unknown): void {
 
 function assertRequestOptionScalars(options: Record<string, unknown>): void {
   assertOptionalInteger(options, "gifLoop");
+  assertOptionalInteger(options, "hlsSegmentSeconds", 1);
   assertOptionalInteger(options, "workers", 1);
   assertOptionalInteger(options, "crf");
   for (const field of ["useGpu", "debug", "outputResolutionAspectAgnostic"] as const) {
@@ -190,7 +192,7 @@ function assertRequestOptions(options: unknown): asserts options is RenderReques
   if (!["draft", "standard", "high"].includes(String(options.quality))) {
     throw new Error("Render request quality is invalid");
   }
-  if (!["mp4", "webm", "mov", "png-sequence", "gif"].includes(String(options.format))) {
+  if (!["mp4", "webm", "mov", "png-sequence", "gif", "hls"].includes(String(options.format))) {
     throw new Error("Render request format is invalid");
   }
   assertRequestOptionScalars(options);
@@ -268,7 +270,12 @@ export function distributedConfigFromRequest(
   const options = request.options;
   const distributed = options.distributed;
   if (!distributed) throw new Error("Render request is missing distributed options");
-  if (options.format === "gif") throw new Error("Distributed render does not support gif");
+  // Both are in-process only, and the narrowing matters: `DistributedFormat`
+  // does not carry either member, so `format: options.format` below only
+  // typechecks once they are thrown out.
+  if (options.format === "gif" || options.format === "hls") {
+    throw new Error(`Distributed render does not support ${options.format}`);
+  }
   if (options.hdrMode === "force-hdr") {
     throw new Error("Distributed render does not support force-hdr");
   }

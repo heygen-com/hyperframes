@@ -54,7 +54,11 @@ import {
   isMemberGroupHidden,
 } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
-import { quantizeTimeToFrame, snapTimeToFrameBoundary } from "../inline-scripts/parityContract";
+import {
+  quantizeSeekTime,
+  quantizeTimeToFrame,
+  snapTimeToFrameBoundary,
+} from "../inline-scripts/parityContract";
 import { createManualEditGestureWatch } from "./manualEditGestureWatch";
 import type {
   RuntimeDeterministicAdapter,
@@ -3030,9 +3034,10 @@ export function initSandboxRuntimeModular(): void {
     },
     renderSeek: (timeSeconds, options) => {
       renderCaptureSeekStarted = true;
-      const quantized = quantizeTimeToFrame(
+      const quantized = quantizeSeekTime(
         Math.max(0, Number(timeSeconds) || 0),
         state.canonicalFps,
+        options?.subFrameDivisions,
       );
       webAudio.stopAll();
       clock.detachAudioSource();

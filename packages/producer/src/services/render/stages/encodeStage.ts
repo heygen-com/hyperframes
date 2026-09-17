@@ -94,13 +94,20 @@ export interface EncodeStageInput {
   onProgress?: ProgressCallback;
   /**
    * Pass-through of `EncoderOptions.lockGopForChunkConcat`. When `true`,
-   * the encode emits closed-GOP keyframes at every `gopSize` boundary so
-   * downstream `ffmpeg -f concat -c copy` round-trips losslessly. Only the
-   * distributed chunk worker (`renderChunk`) sets this — the in-process
-   * renderer's call site omits it, preserving the existing open-GOP output.
+   * the encode emits closed-GOP keyframes at every `gopSize` boundary so a
+   * downstream `-c copy` stream-copy can cut the stream on those boundaries.
+   *
+   * Two callers set it: the distributed chunk worker (`renderChunk`), so
+   * `ffmpeg -f concat -c copy` round-trips losslessly, and an in-process
+   * `format: "hls"` render, so `-hls_time` segments land exactly on the
+   * segment boundary. Every other render omits it, preserving the existing
+   * open-GOP output.
    */
   lockGopForChunkConcat?: boolean;
-  /** Required when `lockGopForChunkConcat === true`. Number of frames per GOP — set to the chunk's frame count by `renderChunk`. */
+  /**
+   * Required when `lockGopForChunkConcat === true`. Frames per GOP — the
+   * chunk's frame count for `renderChunk`, `hlsSegmentSeconds × fps` for HLS.
+   */
   gopSize?: number;
 }
 

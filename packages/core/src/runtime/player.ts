@@ -1,5 +1,5 @@
 import type { RuntimePlayer, RuntimeSeekOptions, RuntimeTimelineLike } from "./types";
-import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
+import { quantizeSeekTime } from "../inline-scripts/parityContract";
 import { swallow } from "./diagnostics";
 
 /**
@@ -89,7 +89,7 @@ function seekTimelineDeterministically(
   canonicalFps: number,
   options?: RuntimeSeekOptions,
 ): number {
-  const quantized = quantizeTimeToFrame(timeSeconds, canonicalFps);
+  const quantized = quantizeSeekTime(timeSeconds, canonicalFps, options?.subFrameDivisions);
   const suppressEvents = options?.suppressEvents === true;
   safeVoid(timeline, "pause");
   if (typeof timeline.totalTime === "function") {
@@ -248,7 +248,11 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
             activateSiblingTimelines(deps.getTimelineRegistry?.(), timeline);
             return seekTimelineDeterministically(timeline, timeSeconds, canonicalFps, options);
           })()
-        : quantizeTimeToFrame(Math.max(0, Number(timeSeconds) || 0), canonicalFps);
+        : quantizeSeekTime(
+            Math.max(0, Number(timeSeconds) || 0),
+            canonicalFps,
+            options?.subFrameDivisions,
+          );
       deps.onDeterministicSeek(quantized, options);
       deps.setIsPlaying(false);
       deps.onSyncMedia(quantized, false);

@@ -161,10 +161,15 @@ export {
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
   applyFaststart,
+  packageHls,
   detectGpuEncoder,
   ENCODER_PRESETS,
   getEncoderPreset,
+  HLS_MASTER_PLAYLIST,
+  HLS_VIDEO_PLAYLIST,
+  HLS_AUDIO_PLAYLIST,
   type GpuEncoder,
+  type PackageHlsOptions,
 } from "./services/chunkEncoder.js";
 export type { EncoderOptions, EncodeResult, MuxResult } from "./services/chunkEncoder.types.js";
 

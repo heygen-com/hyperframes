@@ -5,6 +5,7 @@
  * as video must expose `window.__hf` implementing the HfProtocol interface.
  */
 import type { Fps } from "@hyperframes/core";
+import type { MotionBlurOptions } from "./services/motionBlur.js";
 
 /**
  * Outcome of waiting for a sub-composition's GSAP timelines to register.
@@ -96,11 +97,23 @@ export interface HfTransitionMeta {
  * GSAP, Framer Motion, CSS animations, Three.js — anything works as long
  * as `seek()` produces deterministic visual output for a given time.
  */
+/**
+ * Per-seek controls the page honours. Both default off, which is an ordinary frame seek.
+ *
+ * `suppressEvents` stops a composition's own timeline callbacks from firing, and
+ * `subFrameDivisions` refines the grid the page quantizes onto so a fractional time is
+ * not floored back onto the output frame. Motion-blur sampling sets both.
+ */
+export interface HfSeekOptions {
+  suppressEvents?: boolean;
+  subFrameDivisions?: number;
+}
+
 export interface HfProtocol {
   /** Total duration of the composition in seconds */
   duration: number;
   /** Seek to a specific time. Must produce deterministic visual output. */
-  seek(time: number): void;
+  seek(time: number, options?: HfSeekOptions): void;
   /** Optional: media elements the engine should handle */
   media?: HfMediaElement[];
   /** Optional: shader transition metadata, populated by @hyperframes/shader-transitions */
@@ -130,6 +143,12 @@ export interface CaptureOptions {
   fps: Fps;
   format?: "jpeg" | "png";
   quality?: number;
+  /**
+   * Opt into sub-frame multi-sample motion blur (issue #4010). Absent means off and the
+   * capture path is byte-identical to a render without it. Requires `format: "png"` and
+   * screenshot capture mode; see `services/motionBlur.ts`.
+   */
+  motionBlur?: MotionBlurOptions;
   deviceScaleFactor?: number;
   /**
    * Opt into Chrome's capture-beyond-viewport screenshot path. Leave undefined

@@ -1,25 +1,16 @@
 /**
- * Where a scaffolded project's canvas resolution lives besides the composition
- * root's own `data-width`/`data-height`: the inline `html, body { width;
- * height }` CSS block and the `<meta name="viewport">` `content` attribute.
- * `@hyperframes/cli`'s `applyResolutionPreset` rewrites those same two places
- * when a project scaffolds with `--resolution`, but keeps its own
- * prefix-capturing regexes for that replace — these are a separate read-only
- * definition of the same locations, not the literal patterns it uses.
- *
- * Lives in `@hyperframes/parsers` rather than `@hyperframes/cli` because
- * `@hyperframes/lint` cannot depend on `cli` (`cli` depends on `lint`, not the
- * reverse), and `parsers` is a dependency both already share.
+ * Where a scaffolded project's canvas resolution lives besides the root's own
+ * data-width/data-height: the html/body CSS size and the meta viewport content.
  */
 
-/** Matches `html, body { ...width: <n>px... height: <n>px... }`. */
+/** html/body CSS, width first. Groups 1/3 are the surrounding text, 2/4 the digits. */
 export const HTML_BODY_CSS_WIDTH_FIRST_RE =
-  /html\s*,\s*body\s*\{[^}]*?width:\s*(\d+)px[^}]*?height:\s*(\d+)px/i;
+  /(html\s*,\s*body\s*\{[^}]*?width:\s*)(\d+)px([^}]*?height:\s*)(\d+)px/i;
 
-/** Matches the same block with height authored before width. */
+/** Same block, height authored first. */
 export const HTML_BODY_CSS_HEIGHT_FIRST_RE =
-  /html\s*,\s*body\s*\{[^}]*?height:\s*(\d+)px[^}]*?width:\s*(\d+)px/i;
+  /(html\s*,\s*body\s*\{[^}]*?height:\s*)(\d+)px([^}]*?width:\s*)(\d+)px/i;
 
-/** Matches `<meta ... name="viewport" ... content="width=<n>, height=<n>">`. */
+/** Viewport meta content. Shared by lint (reads groups 2/4) and cli (replaces via 1/3). */
 export const VIEWPORT_META_SIZE_RE =
-  /<meta[^>]*name=["']viewport["'][^>]*content=["']width=(\d+),\s*height=(\d+)/i;
+  /(<meta[^>]*name=["']viewport["'][^>]*content=["']width=)(\d+)(,\s*height=)(\d+)/i;

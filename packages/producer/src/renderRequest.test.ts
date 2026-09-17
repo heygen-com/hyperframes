@@ -261,4 +261,85 @@ describe("RenderRequest", () => {
       }),
     ).toThrow("must be even");
   });
+
+  describe("format: hls", () => {
+    function hlsRequest(options: { hlsSegmentSeconds?: number } = {}) {
+      return createRenderRequest({
+        projectDir: "/project",
+        outputPath: "/output/video-hls",
+        engineConfig: DEFAULT_CONFIG,
+        options: {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "hls",
+          ...options,
+        },
+      });
+    }
+
+    it("round-trips hls and its segment length", () => {
+      const value = hlsRequest({ hlsSegmentSeconds: 6 });
+      expect(value.options.format).toBe("hls");
+      expect(value.options.hlsSegmentSeconds).toBe(6);
+      expect(parseRenderRequest(serializeRenderRequest(value))).toEqual(value);
+    });
+
+    it("carries the segment length through to the local render config", () => {
+      expect(renderConfigFromRequest(hlsRequest({ hlsSegmentSeconds: 2 }))).toMatchObject({
+        format: "hls",
+        hlsSegmentSeconds: 2,
+      });
+    });
+
+    it("omits hlsSegmentSeconds when unset so the orchestrator default applies", () => {
+      expect(hlsRequest().options).not.toHaveProperty("hlsSegmentSeconds");
+    });
+
+    it("rejects a non-positive or fractional segment length at the wire boundary", () => {
+      const value = hlsRequest();
+      for (const hlsSegmentSeconds of [0, -4, 4.5]) {
+        expect(() =>
+          parseRenderRequest({ ...value, options: { ...value.options, hlsSegmentSeconds } }),
+        ).toThrow("hlsSegmentSeconds must be an integer >= 1");
+      }
+    });
+
+    // v1 is in-process only. `DistributedFormat` has no "hls" member, so this
+    // gate is also what makes the adapter's `format:` assignment typecheck.
+    it("refuses to convert an hls request to a distributed config", () => {
+      const value = createRenderRequest({
+        projectDir: "/project",
+        outputPath: "/output/video-hls",
+        engineConfig: DEFAULT_CONFIG,
+        options: {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "hls",
+          distributed: { width: 1920, height: 1080 },
+        },
+      });
+
+      expect(() => distributedConfigFromRequest(value)).toThrow(
+        "Distributed render does not support hls",
+      );
+    });
+
+    it("still names gif in the same rejection", () => {
+      const value = createRenderRequest({
+        projectDir: "/project",
+        outputPath: "/output/video.gif",
+        engineConfig: DEFAULT_CONFIG,
+        options: {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "gif",
+          distributed: { width: 1920, height: 1080 },
+        },
+      });
+
+      expect(() => distributedConfigFromRequest(value)).toThrow(
+        "Distributed render does not support gif",
+      );
+    });
+  });
 });

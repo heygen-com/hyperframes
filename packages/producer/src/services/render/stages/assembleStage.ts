@@ -9,6 +9,10 @@
  * `applyFaststart(videoOnlyPath, outputPath)` to move the `moov` atom to
  * the front so the file plays from a partial download.
  *
+ * `format: "hls"` replaces both with a single `packageHls` stream-copy into an
+ * HLS VOD directory. The audio normalization above it is unchanged — the
+ * packager needs the same frame-exact AAC sidecar the mp4 mux does.
+ *
  * Hard constraints preserved verbatim:
  *   - The "Assembling final video" `updateJobStatus` payload fires at
  *     90% at the start of the stage.
@@ -16,11 +20,13 @@
  *     verbatim on the respective `success: false` results.
  */
 
-import { applyFaststart, muxVideoWithAudio } from "@hyperframes/engine";
+import { applyFaststart, muxVideoWithAudio, packageHls } from "@hyperframes/engine";
 import { extname } from "node:path";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { padOrTrimAudioToVideoFrameCount } from "../audioPadTrim.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { DEFAULT_HLS_SEGMENT_SECONDS } from "../hlsConfig.js";
+import type { RenderOutputFormat } from "../renderFormat.js";
 import { updateJobStatus } from "../shared.js";
 
 export interface AssembleStageInput {
@@ -29,9 +35,16 @@ export interface AssembleStageInput {
   videoOnlyPath: string;
   /** Mixed audio path (only read when `hasAudio` is true). */
   audioOutputPath: string;
-  /** Final on-disk output. */
+  /** Final on-disk output. A directory when `format` is `"hls"`. */
   outputPath: string;
   hasAudio: boolean;
+  /**
+   * Output container. Only `"hls"` changes this stage's behavior; every other
+   * format (and `undefined`, for direct callers) takes the mux/faststart path.
+   */
+  format?: RenderOutputFormat;
+  /** Segment length for `format: "hls"`. Defaults to {@link DEFAULT_HLS_SEGMENT_SECONDS}. */
+  hlsSegmentSeconds?: number;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -49,10 +62,12 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
     audioOutputPath,
     outputPath,
     hasAudio,
+    format,
     abortSignal,
     assertNotAborted,
     onProgress,
   } = input;
+  const isHls = format === "hls";
 
   const stage6Start = Date.now();
   updateJobStatus(job, "assembling", "Assembling final video", 90, onProgress);
@@ -73,20 +88,26 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
     if (!normalizeResult.success) {
       throw encoderFailureError("Audio duration normalization failed", normalizeResult);
     }
-    const muxResult = await muxVideoWithAudio(
-      videoOnlyPath,
-      normalizeResult.outputPath,
-      outputPath,
-      abortSignal,
-      {
-        audioCodec: "aac",
-      },
-      job.config.fps,
-    );
-    assertNotAborted();
-    if (!muxResult.success) {
-      throw encoderFailureError("Audio muxing failed", muxResult);
+    if (isHls) {
+      await runHlsPackaging(input, normalizeResult.outputPath);
+    } else {
+      const muxResult = await muxVideoWithAudio(
+        videoOnlyPath,
+        normalizeResult.outputPath,
+        outputPath,
+        abortSignal,
+        {
+          audioCodec: "aac",
+        },
+        job.config.fps,
+      );
+      assertNotAborted();
+      if (!muxResult.success) {
+        throw encoderFailureError("Audio muxing failed", muxResult);
+      }
     }
+  } else if (isHls) {
+    await runHlsPackaging(input, null);
   } else {
     const faststartResult = await applyFaststart(
       videoOnlyPath,
@@ -102,4 +123,28 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
   }
 
   return { assembleMs: Date.now() - stage6Start };
+}
+
+/**
+ * Stream-copy the encoded video (plus the already-normalized AAC sidecar, when
+ * there is one) into the HLS VOD directory at `outputPath`. No re-encode, so
+ * this runs at copy speed regardless of composition length.
+ */
+async function runHlsPackaging(
+  input: AssembleStageInput,
+  normalizedAudioPath: string | null,
+): Promise<void> {
+  const packageResult = await packageHls(
+    input.videoOnlyPath,
+    normalizedAudioPath,
+    input.outputPath,
+    {
+      segmentSeconds: input.hlsSegmentSeconds ?? DEFAULT_HLS_SEGMENT_SECONDS,
+      signal: input.abortSignal,
+    },
+  );
+  input.assertNotAborted();
+  if (!packageResult.success) {
+    throw encoderFailureError("HLS packaging failed", packageResult);
+  }
 }

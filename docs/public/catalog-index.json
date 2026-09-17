@@ -3340,13 +3340,14 @@
     "name": "motion-blur",
     "type": "component",
     "title": "Motion Blur",
-    "description": "Velocity-driven motion blur — samples element position each frame and applies a one-sided SVG feGaussianBlur ghost trail proportional to speed",
+    "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight SVG copies along the real trajectory",
     "tags": [
       "effect",
       "motion-blur",
+      "shutter",
+      "after-effects",
       "velocity",
-      "animation",
-      "physics"
+      "animation"
     ],
     "href": "/catalog/components/motion-blur",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png"

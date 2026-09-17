@@ -112,14 +112,24 @@ import { defaultLogger, type ProducerLogger } from "../logger.js";
 import {
   outputNeedsAlpha,
   outputSupportsPageSideShaderCompositing,
+  outputUsesH264Pipeline,
   type RenderOutputFormat,
 } from "./render/renderFormat.js";
+import {
+  resolveHlsEncoderGopLock,
+  resolveHlsSegmentSeconds,
+  validateHlsRenderConfig,
+} from "./render/hlsConfig.js";
 import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { RenderExecutionContext } from "./render/renderExecutionContext.js";
-import { ArtifactTransaction, commitArtifactTransaction } from "./render/artifactTransaction.js";
+import {
+  ArtifactTransaction,
+  buildArtifactExpectation,
+  commitArtifactTransaction,
+} from "./render/artifactTransaction.js";
 import {
   createCapturePlan,
   replanAfterFailure,
@@ -307,6 +317,15 @@ export interface RenderConfig {
    *   / Fusion ingest, or when frames need post-processing before
    *   encoding. `outputPath` is treated as a directory; it is created if
    *   it doesn't exist.
+   * - `"hls"`: HLS VOD package — the same opaque H.264 + AAC encode as
+   *   `"mp4"`, stream-copied (no re-encode) into a directory of MPEG-TS
+   *   segments: `master.m3u8`, `video.m3u8` + `video_%05d.ts`, and
+   *   `audio.m3u8` + `audio_%05d.ts` when the composition has audio.
+   *   Segments are fixed-length (see {@link RenderConfig.hlsSegmentSeconds})
+   *   and every one starts on an IDR frame, because the encoder's GOP is
+   *   locked to `hlsSegmentSeconds × fps`. Like `"png-sequence"`,
+   *   `outputPath` is treated as a directory. SDR only, software encoder
+   *   only, and not available in distributed / Lambda / Cloud Run mode.
    *
    * Alpha output (`"webm"`, `"mov"`, `"png-sequence"`, `"gif"`) automatically
    * forces screenshot capture (Chrome's BeginFrame compositor does not
@@ -320,6 +339,16 @@ export interface RenderConfig {
   format?: RenderOutputFormat;
   /** GIF Netscape loop count. 0 means infinite looping. Only used with `format: "gif"`. */
   gifLoop?: number;
+  /**
+   * HLS target segment length in whole seconds. Defaults to 4. Only used with
+   * `format: "hls"`; ignored for every other format.
+   *
+   * Must be a positive integer — it is both ffmpeg's `-hls_time` and the
+   * encoder's GOP size (`round(fps × hlsSegmentSeconds)` frames), and whole
+   * seconds keep the integer `#EXT-X-TARGETDURATION` in the playlist honest.
+   * A non-integer value throws at the start of `executeRenderJob`.
+   */
+  hlsSegmentSeconds?: number;
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
@@ -1967,7 +1996,7 @@ export function shouldPreferSingleWorkerDrawElement(args: {
     args.useDrawElement &&
     !args.deCompileGate &&
     !args.forceScreenshot &&
-    args.outputFormat === "mp4" &&
+    outputUsesH264Pipeline(args.outputFormat) &&
     args.minFrames > 0 &&
     args.totalFrames >= args.minFrames &&
     args.singleWorkerStreamingOk &&
@@ -2107,7 +2136,7 @@ export function shouldPreferParallelDrawElement(args: {
     args.useDrawElement &&
     !args.deCompileGate &&
     !args.forceScreenshot &&
-    args.outputFormat === "mp4" &&
+    outputUsesH264Pipeline(args.outputFormat) &&
     args.minFrames > 0 &&
     args.totalFrames >= args.minFrames &&
     !args.layeredOrEffectRoute &&
@@ -2337,7 +2366,7 @@ export function shouldStreamParallelCapture(args: {
     args.routerEnabled &&
     args.workerCount > 1 &&
     !args.useDrawElement &&
-    args.outputFormat === "mp4" &&
+    outputUsesH264Pipeline(args.outputFormat) &&
     args.streamingOk &&
     !args.layeredOrEffectRoute
   );
@@ -2469,6 +2498,9 @@ export async function executeRenderJob(
   abortSignal?: AbortSignal,
   assertRenderActive?: () => void,
 ): Promise<void> {
+  // Ahead of the work dir / log file / execution context: a config the format
+  // cannot honor must fail before anything is written to disk.
+  validateHlsRenderConfig(job.config);
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const producerRoot = process.env.PRODUCER_RENDERS_DIR
     ? resolve(process.env.PRODUCER_RENDERS_DIR, "..")
@@ -2562,9 +2594,20 @@ async function executeRenderPipeline(input: {
   const outputFormat = job.config.format ?? ("mp4" as const);
   const isPngSequence = outputFormat === "png-sequence";
   const isGif = outputFormat === "gif";
+  const isHls = outputFormat === "hls";
+  // Segment length and the matching GOP, resolved once. Both encoder paths
+  // spread the same `hlsEncoderGopLock`, so they cannot disagree — a GOP that
+  // is not exactly `segmentSeconds × fps` frames silently produces
+  // variable-length segments instead of failing.
+  const hlsSegmentSeconds = isHls ? resolveHlsSegmentSeconds(job.config) : undefined;
+  const hlsEncoderGopLock = resolveHlsEncoderGopLock(
+    outputFormat,
+    job.config.fps,
+    job.config.hlsSegmentSeconds,
+  );
   const artifactTransaction = new ArtifactTransaction(
     outputPath,
-    isPngSequence ? "directory" : "file",
+    isPngSequence || isHls ? "directory" : "file",
   );
   const stagedOutputPath = artifactTransaction.stagingPath;
   const needsAlpha = outputNeedsAlpha(outputFormat);
@@ -3770,12 +3813,17 @@ async function executeRenderPipeline(input: {
     // the encode/mux/faststart stages are skipped entirely. The empty extension
     // keeps `videoOnlyPath` (which is constructed below) sensible even though
     // it will not be written.
+    //
+    // hls is a directory output too, but it does run encode + assemble: the
+    // intermediate stays an MP4 and only the assemble stage changes container,
+    // stream-copying it into segments.
     const FORMAT_EXT: Record<string, string> = {
       mp4: ".mp4",
       webm: ".webm",
       mov: ".mov",
       "png-sequence": "",
       gif: ".gif",
+      hls: ".mp4",
     };
     const videoExt = FORMAT_EXT[outputFormat] ?? ".mp4";
     const videoOnlyPath = join(workDir, `video-only${videoExt}`);
@@ -4084,6 +4132,11 @@ async function executeRenderPipeline(input: {
                   useGpu: job.config.useGpu,
                   imageFormat: captureOptions.format || "jpeg",
                   hdr: preset.hdr,
+                  // HLS only: force an IDR every `gopSize` frames so the
+                  // assemble stage's `-c copy` segmentation cuts exactly on
+                  // the segment boundary. Every other format leaves the
+                  // encoder's open-GOP output untouched.
+                  ...hlsEncoderGopLock,
                 },
                 buildCaptureOptions,
                 createRenderVideoFrameInjector,
@@ -4419,6 +4472,9 @@ async function executeRenderPipeline(input: {
               enableChunkedEncode,
               chunkedEncodeSize,
               engineConfig: cfg,
+              // Same value the streaming encoder above spreads — the disk and
+              // chunked-concat encoders need an identical GOP lock for HLS.
+              ...hlsEncoderGopLock,
               abortSignal: executionSignal,
               assertNotAborted,
               onProgress,
@@ -4461,7 +4517,8 @@ async function executeRenderPipeline(input: {
     // ── Stage 6: Assemble ───────────────────────────────────────────────
     // Skipped for formats with no mux/faststart step. png-sequence is a
     // directory deliverable, and gif is written directly to outputPath by the
-    // two-pass palette encoder.
+    // two-pass palette encoder. hls is a directory deliverable but still runs
+    // this stage — the HLS packaging IS its assemble step.
     if (!isPngSequence && !isGif) {
       const assembleRes = await observeRenderStage(
         observability,
@@ -4474,6 +4531,8 @@ async function executeRenderPipeline(input: {
             audioOutputPath,
             outputPath: stagedOutputPath,
             hasAudio,
+            format: outputFormat,
+            hlsSegmentSeconds,
             abortSignal: executionSignal,
             assertNotAborted,
             onProgress,
@@ -4485,13 +4544,12 @@ async function executeRenderPipeline(input: {
     }
 
     await artifactTransaction.validate(
-      !isPngSequence && !isGif && Number.isFinite(job.duration) && job.duration > 0
-        ? {
-            expectedDurationSeconds: job.duration,
-            fps: fpsToNumber(job.config.fps),
-            expectedFrames: captureTotalFrames,
-          }
-        : undefined,
+      buildArtifactExpectation({
+        outputFormat,
+        durationSeconds: job.duration,
+        fps: fpsToNumber(job.config.fps),
+        expectedFrames: captureTotalFrames,
+      }),
     );
 
     const totalElapsed = Date.now() - pipelineStart;
@@ -4578,10 +4636,11 @@ async function executeRenderPipeline(input: {
 
     if (job.config.debug) {
       // Copy output MP4 (or single-file alpha output) into the debug dir for
-      // easy access. Skipped for png-sequence: outputPath is a directory, not
-      // a single file — the captured frames already live in `framesDir` under
-      // workDir during a debug run anyway.
-      if (!isPngSequence && existsSync(stagedOutputPath)) {
+      // easy access. Skipped for the directory formats: outputPath is a
+      // directory, not a single file — the captured frames already live in
+      // `framesDir` under workDir during a debug run anyway, and an HLS
+      // render's pre-segmentation `video-only.mp4` is already in workDir.
+      if (!isPngSequence && !isHls && existsSync(stagedOutputPath)) {
         const debugOutput = join(workDir, `output${videoExt}`);
         copyFileSync(stagedOutputPath, debugOutput);
       }
