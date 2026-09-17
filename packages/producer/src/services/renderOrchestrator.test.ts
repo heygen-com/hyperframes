@@ -2325,6 +2325,29 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         );
       }
 
+      // TEMPORARY diagnostic for a CI-only failure that will not reproduce locally.
+      // Remove once the CI log gives us enough to fix or revert.
+      it("TEMP diagnostic: dumps intermediate regex state for the exact-match fixture", async () => {
+        const { HTML_BODY_CSS_WIDTH_FIRST_RE, HTML_BODY_CSS_HEIGHT_FIRST_RE } =
+          await import("@hyperframes/parsers");
+        const rootRe = /<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i;
+        const input = html(1080, 1920, "html, body { width: 1080px; height: 1920px; }");
+        const rootTag = input.match(rootRe)?.[0];
+        console.error(
+          JSON.stringify({
+            input,
+            rootTag,
+            dataWidthMatch: rootTag?.match(/\bdata-width=["'](\d+)["']/i)?.[1],
+            dataHeightMatch: rootTag?.match(/\bdata-height=["'](\d+)["']/i)?.[1],
+            widthFirstMatch: input.match(HTML_BODY_CSS_WIDTH_FIRST_RE),
+            heightFirstMatch: input.match(HTML_BODY_CSS_HEIGHT_FIRST_RE),
+            widthFirstReSource: HTML_BODY_CSS_WIDTH_FIRST_RE.source,
+            widthFirstReFlags: HTML_BODY_CSS_WIDTH_FIRST_RE.flags,
+          }),
+        );
+        expect(true).toBe(true);
+      });
+
       it("reports no mismatch and bucket 0 when the scaffold's html/body CSS matches the root exactly", () => {
         const scan = scanElementTags(
           html(1080, 1920, "html, body { width: 1080px; height: 1920px; }"),
