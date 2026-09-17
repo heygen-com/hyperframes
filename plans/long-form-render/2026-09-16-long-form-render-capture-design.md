@@ -6,9 +6,9 @@
 
 A footage-first HyperFrames editor (the desktop variant under discussion) makes long compositions the common case: a ten-minute interview, a thirty-minute recording with captions. The document-model brief published 2026-09-16 listed "long embedded video crashes the capture tab" as a constraint shared by every document model. Before designing around it, the claim was validated on the current release. The result changes the problem.
 
-**The July crash did not reproduce. The real ceiling is the capture-path selection, and it is deterministic.**
+**The July crash did not reproduce on a synthetic 300 s fixture. Field telemetry shows why: it is not a hard limit but a failure rate that climbs with extracted video frame volume, from under 1 % on short renders to about 40 % above 100k frames. Separately, the capture-path selection imposes a deterministic disk ceiling that fast-fails thousands of renders a day since 2026-09-04.**
 
-This spec records the validation, states the actual constraint, and specifies the changes that remove it for the HTML-as-truth document model. Nothing here touches the composition contract or the document model.
+This spec records the local validation (§2.2–2.4), the field data (§2.5), states both constraints (§3), and specifies the changes that remove them for the HTML-as-truth document model. Nothing here touches the composition contract or the document model.
 
 ## 2. Validation
 
@@ -45,7 +45,7 @@ streaming-encode gate {"enabled":false,"configFlag":true,"outputFormat":"mp4","w
 
 ### 2.3 What the runs establish
 
-1. **A single 300 s 1080p `<video>` renders on 0.8.44.** Runs 1 and 4. The 2026-07-02 observation ("272 s video kills the capture tab at any worker count") is not reproduced under these conditions. It is not shown to be fixed either: the July source was real footage on an older release, and this test used synthetic content. Treat it as unreproduced, not closed.
+1. **A single 300 s 1080p `<video>` renders on 0.8.44.** Runs 1 and 4. The 2026-07-02 observation ("272 s video kills the capture tab at any worker count") is not reproduced under these conditions. The July environment was the author's Apple Silicon laptop on a 0.7.3x release with real 1080p footage, about 8,160 extracted frames at 30 fps. Field data (§2.5) puts that render in a bucket with a 2.4 % Target-closed rate, so a single failure there is consistent with the wild rate and does not imply a hard limit. Treat the July case as an instance of the probabilistic crash class in §2.5, not as a separate bug.
 2. **Many short clips from one long source render.** Run 6: 60 `<video>` elements, each with `preload` forced to `auto` by the runtime, no failure and no material slowdown against run 1. The editor's natural output shape is not a problem.
 3. **The deterministic ceiling is `shouldUseStreamingEncode` → disk capture.** Runs 2, 3, 5. The gate (renderOrchestrator.ts) returns false when duration > `streamingEncodeMaxDurationSeconds` (240) **or** `workerCount > 1` (unless a parallel-stream router forces it). Every render that fails the gate goes to disk capture, which stores each captured frame as raw RGBA: `frames × width × height × 4` bytes (captureStage.ts `estimateDiskCaptureBytes`). At 1080p that is 8.3 MB per frame, 25 GB per minute at 30 fps, 100 GB per minute at 4K. Run 1 succeeded only because 3000 frames (25 GB) fit under the 90 % free-disk gate; run 5, the stock configuration, cannot render a 5-minute 1080p30 composition on a laptop with 40 GB free.
 4. **The 240 s cap's rationale is stale.** The cap landed in `dde26cf62` (2026-05-01, "default streaming encode for sequential renders", #579) with the comment "production has seen ffmpeg's streaming pipe hit FFMPEG*STREAMING_TIMEOUT_MS on longer videos". In `efc16a945` (2026-05-16) that timeout became a per-frame \_inactivity* timeout ("caps the duration of a single 'no frame arrived' gap, not the total render time"). A long render no longer trips it by being long. Run 4 (300 s streaming, single worker) confirms the path works past the cap.
@@ -56,22 +56,73 @@ streaming-encode gate {"enabled":false,"configFlag":true,"outputFormat":"mp4","w
 6. **`--low-memory-mode` works but costs 3×.** Run 7: the shipped escape hatch bypasses the duration cap and streams, but it pins one worker and forces screenshot capture; 8 m 05 s against 2 m 39 s for the same render on the plain streaming path (run 4).
 7. **The flag-gated parallel streaming path works on 0.8.44 for this composition.** Run 8: `HF_CAPTURE_PARALLEL_STREAM=true` routed four workers through the interleaved writer to one encoder; scratch was the 257 MB encoded output, not 75 GB of raw frames. Speedup over single-worker streaming was modest (2 m 17 s vs 2 m 39 s, 1.16×): a video composition is bound by frame extraction and injection, not by capture, so parallel capture has little to parallelise. The value of the path here is the bounded scratch, not wall-clock. drawElement was auto-disabled for the parallel run ("parallel capture has no runtime self-verification"), so this path is screenshot capture by construction.
 
+### 2.5 Field data (PostHog project "Hyperframes", `render_complete` / `render_error`, 90 days to 2026-09-17)
+
+The local runs cover one machine and one fixture. Render telemetry covers every CLI render that reports. Queries were HogQL over `events`; `os IS NOT NULL` excludes the web player's same-named events. Local CLI renders are anonymous, so no test-account filter applies.
+
+**Crash class by environment.** `error_message ILIKE '%Target closed%'`, 90 days, top buckets:
+
+| os     | host RAM | events | distinct hosts |
+| ------ | -------- | ------ | -------------- |
+| linux  | ≤ 8 GB   | 10,000 | 3,852          |
+| linux  | 9–16 GB  | 5,407  | 1,177          |
+| darwin | 9–16 GB  | 5,024  | 2,085          |
+| darwin | 17–32 GB | 4,225  | 1,205          |
+| darwin | ≤ 8 GB   | 4,057  | 1,798          |
+| win32  | 9–16 GB  | 2,566  | 1,126          |
+| linux  | > 32 GB  | 2,372  | 619            |
+| darwin | > 32 GB  | 2,042  | 714            |
+
+Target closed is not a low-memory-Linux story. It occurs on every OS and every RAM tier, with `docker=false` throughout. Linux ≤ 8 GB is the largest single bucket but a minority of the total.
+
+**Crash rate versus extracted video frame volume.** `observability_extract_total_frames` is the number of video frames ffmpeg extracted for the render, a direct proxy for "how much footage":
+
+| extracted frames | completes | Target closed | rate     | of which streaming / disk | median free RAM at crash | median free RAM at success |
+| ---------------- | --------- | ------------- | -------- | ------------------------- | ------------------------ | -------------------------- |
+| < 3k             | 4,883,439 | 33,484        | 0.68 %   | 24,356 / 7,988            | 3.6 GB                   | 3.0 GB                     |
+| 3k–10k           | 105,374   | 2,535         | 2.35 %   | 1,593 / 681               | 3.4 GB                   | 5.4 GB                     |
+| 10k–30k          | 19,357    | 814           | 4.0 %    | 318 / 438                 | 4.0 GB                   | 7.1 GB                     |
+| 30k–100k         | 2,393     | 206           | 7.9 %    | 78 / 124                  | 6.9 GB                   | 7.4 GB                     |
+| > 100k           | 111       | 72            | **39 %** | 11 / 59                   | 52 GB                    | 15.5 GB                    |
+
+The rate rises monotonically with footage volume. Above 100k extracted frames (about 55 minutes at 30 fps) two renders in five die, on hosts with a median of 64 GB RAM and 52 GB free. Both capture paths are affected. A second crash signature, `Attempted to use detached Frame`, tracks the same shape at about a seventh of the volume. Sampled rows include current releases (0.8.30, 0.8.33) on 32–128 GB Macs at 60k–147k frames, failing mid-capture at arbitrary frame indices. Node's own `peak_memory_mb` at failure is a few hundred MB; Chrome's memory is not recorded.
+
+By longest single video rather than total frames: no video 0.71 %, < 30 s 0.74 %, 30–60 s 1.15 %, 1–4 min 2.0 %, > 4 min 4.1 %.
+
+**Trend.** Weekly Target-closed share of outcomes fell from about 2 % (June) to 0.4 % (September) while absolute counts held near 3,000 a week; whatever improved did not remove the class. The disk-capture preflight (`Disk capture may need …`) first appears the week of 2026-08-31, matching PR #3643 (2026-09-04), and ran at 12,612 events in the week of 2026-09-07 across macOS and Windows hosts at every RAM tier, mostly with auto worker count. Before that gate the same renders ran into the disk path without a check.
+
+**What the field data adds to §2.3.**
+
+- The disk-path ceiling (§2.3 item 3) is live in the field at roughly 2,000 renders a day, on ordinary laptops, for compositions with and without video.
+- There is a second, probabilistic ceiling: mid-capture Chrome target loss whose rate scales with extracted footage volume and is not explained by host RAM. For a footage-first editor whose typical timeline is 20–60 minutes, this is the dominant failure, and it is not reproducible with a 9,000-frame fixture.
+- The crash's mechanism is not established by telemetry. Candidates consistent with the data: Chrome renderer memory growth over long captures (injected frame data URIs, decoded media buffers, compositor state) and GPU process loss. `render_error` does not carry Chrome process RSS, so the hypothesis cannot be checked from existing events.
+
 ## 3. Problem statement
 
-For the HTML-as-truth editor, a composition longer than four minutes, or any composition rendered with more than one worker, is routed to a capture path whose scratch space is proportional to `frames × pixels × 4`. On typical developer and creator hardware this fails at preflight for anything over a few minutes at 1080p, and the failure message points at an environment variable that does not help multi-worker renders. The shipped escape hatch (`--low-memory-mode`) pins the render to one worker and screenshot capture.
+Two constraints bound long renders on the HTML-as-truth editor.
 
-Long compositions should render with the same worker count, capture engine and disk footprint as short ones. Scratch space must be bounded by encoded output, not raw frames.
+**Deterministic.** A composition longer than four minutes, or any composition rendered with more than one worker, is routed to a capture path whose scratch space is `frames × width × height × 4` bytes of raw RGBA. On typical laptops this fails at preflight for anything over a few minutes at 1080p (about 2,000 renders a day in the field), and the failure message points at an environment variable that does not help multi-worker renders. The shipped escape hatch (`--low-memory-mode`) pins the render to one worker and screenshot capture at a 3× time cost.
+
+**Probabilistic.** Mid-capture loss of the Chrome target ("Target closed", "detached Frame") at a rate that climbs from under 1 % on short renders to about 40 % above 100k extracted video frames, on both capture paths and on well-provisioned hosts. Cause not established.
+
+Long compositions should render with the same worker count, capture engine and disk footprint as short ones; scratch space must be bounded by encoded output, not raw frames; and a Chrome target loss at minute 40 must cost the minutes since the last checkpoint, not the whole render.
 
 ## 4. Non-goals
 
 - Changing the composition contract, the document model, or how `<video>` clips are expressed. This spec is what makes Approach A (HTML as sole source of truth) viable for long footage; it does not revisit the choice.
-- Root-causing the unreproduced July crash. If it resurfaces on real footage it gets its own investigation with the fixture set in §8 as the starting point.
+- Root-causing the mid-capture target loss. This spec instruments it (Phase −1) and contains it (Phase 2); the fix is a follow-up (§9) that needs the telemetry first.
 - The footage passthrough lane (ffmpeg assembling untouched footage clips while Chrome renders only overlay layers). It is a performance and fidelity feature, not a correctness fix, and is deferred to its own spec (§9).
 - Distributed (Lambda / Cloud Run) rendering. Its planner already bounds per-chunk exposure; this spec is about the local path.
 
 ## 5. Design
 
-Three phases, each independently shippable. Phase 0 is a default change. Phase 1 promotes an existing flag-gated path. Phase 2 is new code and is the piece a footage editor eventually needs for resumable multi-hour renders.
+Three phases, each independently shippable, plus an instrumentation change that should land first. Phase 0 is a default change. Phase 1 promotes an existing flag-gated path. Phase 2 is new code and, given §2.5, is not optional for a footage editor: segment isolation is what turns a 40 % whole-render loss into a retried segment.
+
+### Phase −1 — instrument the crash class
+
+Before changing routing, make the probabilistic failure observable. `render_error` and `render_complete` gain: Chrome browser-process and renderer-process RSS sampled at a fixed cadence during capture (peak and last sample), the GPU process's presence at failure, the capture path (`streaming` / `disk` / `segmented`), and the segment index when applicable. This is a telemetry-only change with no behavioural effect, and it is the prerequisite for root-causing Target closed (§9). The existing `browser_diagnostic_*` counters stay.
+
+**Files.** `packages/engine/src/services/browserManager.ts` (process sampling), `packages/producer/src/services/renderOrchestrator.ts` (perf summary), `packages/cli` telemetry mapping.
 
 ### Phase 0 — remove the single-worker duration cap
 
@@ -108,13 +159,13 @@ Three phases, each independently shippable. Phase 0 is a default change. Phase 1
 
 ### Phase 2 — segmented streaming with per-worker encoders (resumable long renders)
 
-**Motivation.** A footage editor will render 20–60 minute timelines. One ffmpeg pipe for the whole render means one crash anywhere loses everything, and a paused or killed render cannot resume. The distributed planner already models the alternative: closed-GOP chunks, concat-copy assembly.
+**Motivation.** A footage editor will render 20–60 minute timelines, which is exactly the regime where the field shows 8–40 % mid-capture target loss (§2.5). One ffmpeg pipe and one browser session for the whole render means one Chrome crash anywhere loses everything, and a paused or killed render cannot resume. Segmenting bounds three things at once: scratch (encoded chunks), blast radius (one segment), and per-session lifetime (a fresh browser per N segments caps whatever grows inside Chrome over a long capture, which is the leading hypothesis for the crash). The distributed planner already models the alternative: closed-GOP chunks, concat-copy assembly.
 
 **Change.** A local segmented capture plan:
 
 1. Reuse `planDistributedRender`'s chunk sizing (`targetChunkFrames`, `MIN_CHUNK_SIZE`, `DEFAULT_MAX_PARALLEL_CHUNKS`) to split the frame range into K segments.
-2. Workers take segments from a queue. Each segment spawns its own `spawnStreamingEncoder` with `lockGopForChunkConcat: true` and `gopSize = framesInChunk`, writing `chunk_k.mp4` into the work dir. A worker keeps its browser session across segments; only the encoder is per segment.
-3. Completed segments are recorded in a manifest (`chunks.json`-shaped, same as the distributed plan). A rerun with the same plan hash skips completed segments.
+2. Workers take segments from a queue. Each segment spawns its own `spawnStreamingEncoder` with `lockGopForChunkConcat: true` and `gopSize = framesInChunk`, writing `chunk_k.mp4` into the work dir. A worker keeps its browser session across segments but recycles it every `HF_SEGMENT_BROWSER_RECYCLE` segments (default: enough to cap a session near 10k captured frames, the bucket where the field crash rate crosses 4 %); Chromium boot is 150–200 ms, so recycling is cheap.
+3. Completed segments are recorded in a manifest (`chunks.json`-shaped, same as the distributed plan). A rerun with the same plan hash skips completed segments. A segment whose browser dies (`Target closed`, `detached Frame`) is retried once on a fresh session before the render fails; the retry is logged with the segment index and the Phase −1 memory samples.
 4. `assemble()` from `services/distributed/assemble.ts` concat-copies chunks and muxes audio. Stitch cost is sub-second (cortex: parallel rendering architecture decision).
 5. Boundary correctness: each segment's first frames are captured after the same warm-up the distributed chunk worker uses (`lockWarmupTicks`). The acceptance gate is PSNR at every segment boundary against a single-worker streaming reference of the same composition; the flicker class this guards against is issue #842. Note: cortex describes a `TemporalConsistencyManager` (PR #1105); no symbol by that name exists in current source, so the spec relies on the mechanisms that do (`lockWarmupTicks`, locked GOP).
 
@@ -124,7 +175,7 @@ Three phases, each independently shippable. Phase 0 is a default change. Phase 1
 
 **Files.** New `packages/producer/src/services/render/stages/captureSegmentedStage.ts`; `renderOrchestrator.ts` route selection; reuse of `distributed/plan.ts` sizing helpers and `distributed/assemble.ts`; CLI flag `--resume` or automatic resume keyed on plan hash.
 
-### Router precedence after all three phases
+### Router precedence after all phases
 
 ```
 outputFormat in {png-sequence, gif}          → disk capture (unchanged)
@@ -141,14 +192,15 @@ otherwise                                     → disk capture with corrected pr
 - The `streaming-encode gate` log line gains a `reason` field (`single_worker`, `parallel_router`, `segmented`, `format_excluded`, `layered_route`) so telemetry can show path distribution per version.
 - Phase 2 manifests record per-segment status, duration and encoder exit code; a resumed render logs which segments it skipped.
 - Kill switches: `PRODUCER_ENABLE_STREAMING_ENCODE=false` (all streaming), `HF_CAPTURE_PARALLEL_STREAM=false`, `HF_DE_PARALLEL_STREAM=false`, and a Phase 2 `HF_SEGMENTED_CAPTURE=false`.
+- Phase −1 fields on `render_error` / `render_complete`: `chrome_browser_rss_peak_mb`, `chrome_renderer_rss_peak_mb`, `chrome_rss_last_mb`, `gpu_process_alive_at_failure`, `capture_path`, `segment_index`, `segment_retries`.
 
 ## 7. Dropped from the original proposal, and why
 
-| Item                                                       | Disposition             | Reason                                                                                                                                                                      |
-| ---------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Neutralise `<video src>` / `preload` in the capture tab    | Dropped                 | No crash to explain (§2.3 items 1, 5). Runtime forces `preload=auto` unconditionally, so it is also not a one-line change. Revisit only if a real-footage crash reproduces. |
-| Editor-side shaping (many short clips, sub-comp per scene) | Dropped as a mitigation | Run 6 shows many short clips are not a problem. Sub-compositions remain a good authoring practice for other reasons.                                                        |
-| Footage passthrough lane                                   | Deferred, own spec      | Performance and pixel-exactness feature; independent of the disk ceiling.                                                                                                   |
+| Item                                                       | Disposition                           | Reason                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Neutralise `<video src>` / `preload` in the capture tab    | Deferred to the root-cause item in §9 | Not reproducible on a 9k-frame fixture, and the runtime forces `preload=auto` unconditionally, so it is not a one-line change. It stays a live hypothesis for the long-render crash class in §2.5; Phase −1 telemetry decides whether it is worth pursuing. |
+| Editor-side shaping (many short clips, sub-comp per scene) | Dropped as a mitigation               | Run 6 shows many short clips are not a problem. Sub-compositions remain a good authoring practice for other reasons.                                                                                                                                        |
+| Footage passthrough lane                                   | Deferred, own spec                    | Performance and pixel-exactness feature; independent of the disk ceiling.                                                                                                                                                                                   |
 
 ## 8. Testing
 
@@ -208,6 +260,9 @@ ffmpeg -y -f lavfi -i "testsrc2=size=1920x1080:rate=30" -f lavfi -i "sine=freque
 - `a-single -w 4` stock config renders to 300.000 s with peak scratch < 2 GB (Phase 1 acceptance).
 - `c-clips60 -w 4` renders; PSNR against the `-w 1` output ≥ 45 dB at every 5 s clip boundary.
 - Phase 2: kill the process after segment 2 of 6; rerun completes with 4 segments rendered and the output byte-identical to an uninterrupted run.
+- Phase 2: inject a simulated `Target closed` (close the page from a test hook) mid-segment; the segment retries on a fresh session and the render completes.
+
+**Soak gate** (nightly, not per-PR). The wild failures live at 60k–147k extracted frames; a 9,000-frame fixture cannot exercise them. Generate a 40-minute 1080p30 source (72k frames) with the §8 script (`DUR = 2400`), render `a-single` at `-w 4` through Phase 2, and record: completion, segment retries, peak Chrome RSS per session (Phase −1), and wall time. The acceptance criterion is completion with zero unrecovered failures across five consecutive nights; the retry count is the health metric to watch.
 
 **Mutation checks** (per team rule: break the guarded thing on purpose): flip the default cap back to 240 and confirm the Phase 0 integration gate fails; set `HF_CAPTURE_PARALLEL_STREAM=false` and confirm the Phase 1 gate fails at preflight with the corrected message.
 
@@ -215,11 +270,13 @@ ffmpeg -y -f lavfi -i "testsrc2=size=1920x1080:rate=30" -f lavfi -i "sine=freque
 
 - **Footage passthrough lane.** Planner classifies `<video>` clips with no CSS transform, filter, blend or overlapping motion above them; ffmpeg assembles those directly (trim/concat/`-ss`), Chrome renders the remaining layers as an alpha overlay (ProRes 4444 or VP9 alpha, already supported), ffmpeg composites. Benefits: no per-frame extract/inject/capture for footage, pixel-exact source (sidesteps the known SDR colour shift), large speedup on footage-heavy timelines. Needs its own gating rules, PSNR verification and fallback, like the drawElement router.
 - **Re-publish the document-model brief.** Its §7 says long video crashes capture and that the cause is unknown; both statements are superseded by §2 here.
-- **Root-cause the July observation** if it recurs on real footage: start from `a-single` with the original 272 s source and `hyperframes@0.7.x`.
+- **Root-cause mid-capture target loss on long renders.** Once Phase −1 ships, correlate Chrome RSS samples with `Target closed` at 30k–147k frames. Working hypotheses, in order: renderer-process memory growth from per-frame injected data URIs and replacement `<img>` churn; decoded media buffers from the forced `preload="auto"` on every `<video>` (§2.3 item 5); GPU-process loss under sustained capture on hardware-GPU hosts. Phase 2's session recycling is the mitigation; this item is the fix.
+- **Field query to re-run after each phase ships**: the §2.5 rate-by-extracted-frames table, filtered to `cli_version ≥` the release. Phase 0/1 should zero the `Disk capture may need` series; Phase 2 should flatten the > 30k-frame Target-closed rate toward the < 3k baseline.
 
 ## 10. References
 
 - Validation logs: `/tmp/hf-longvideo/logs-*.txt` on the author's machine at time of writing (not committed; the streaming-gate lines are quoted in §2.2).
+- Field data: PostHog project "Hyperframes" (id 356858), events `render_complete` / `render_error`, HogQL queries over 90 days ending 2026-09-17; dashboard "HyperFrames Rendering Performance" (id 1729161) carries the standing failure-reason tiles. Disk preflight gate: PR #3643 (`3314168e3`, 2026-09-04). Related reports: issues #1072, #1219, #1236 (low-memory Linux, 2026-05/06); vault `screenshot-capture-protocol-error-unrecognized-by-either-retry-gate` (fire-44: 15,980 frames, `--low-memory-mode`, `Unable to capture screenshot` at frame 4,857, zero retry).
 - `packages/producer/src/services/renderOrchestrator.ts` — `shouldUseStreamingEncode`, `shouldStreamParallelCapture`.
 - `packages/producer/src/services/render/stages/captureStage.ts` — `estimateDiskCaptureBytes`, `inspectDiskCaptureHeadroom`, preflight message.
 - `packages/engine/src/config.ts` — `streamingEncodeMaxDurationSeconds` (commit `dde26cf62`), `ffmpegStreamingTimeout` inactivity semantics (commit `efc16a945`).
