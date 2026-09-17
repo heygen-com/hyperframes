@@ -68,3 +68,4 @@ export type {
 export { createMemoryAdapter } from "./adapters/memory.js";
 export { createHeadlessAdapter } from "./adapters/headless.js";
 export { createIframePreviewAdapter, resolveNearestHfElement } from "./adapters/iframe.js";
+export { cssColorAlpha, isTransparentColor } from "./visualPaint.js";
