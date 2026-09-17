@@ -187,6 +187,7 @@ import { runEncodeStage } from "./render/stages/encodeStage.js";
 import { runAssembleStage } from "./render/stages/assembleStage.js";
 import { shouldUseLayeredComposite } from "./hdrCompositor.js";
 import { resolveCaptureImageFormat } from "./render/captureImageFormat.js";
+import { assertMotionBlurSupported } from "./render/motionBlurRoute.js";
 
 function sampleDirectoryBytes(dir: string): number {
   let total = 0;
@@ -3700,6 +3701,9 @@ async function executeRenderPipeline(input: {
       routing: captureRouting,
     });
     const syncCapturePlan = (): void => {
+      // Every route the render can end up on passes through here, including the ones a
+      // replan lands on, so this is where motion blur's one supported-route answer belongs.
+      assertMotionBlurSupported(job.config.motionBlur, capturePlan.kind);
       workerCount = capturePlan.workerCount;
       captureForceScreenshot = capturePlan.forceScreenshot;
       useStreamingEncode = capturePlan.kind === "sdr_streaming";
