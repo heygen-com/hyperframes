@@ -108,6 +108,38 @@ export function motionBlurSampleTimes(
   return plan.sampleTickOffsets.map((offset) => Math.max(0, frameTicks + offset) / grid);
 }
 
+/**
+ * Is every frame the shutter window reads from known static, so this frame can reuse its
+ * predecessor's buffer instead of paying K captures?
+ *
+ * The static-frame dedup asks whether a frame is byte-identical to the one before it. With
+ * blur on that is not enough: the window reads content from either side of the frame
+ * instant, so a still frame next to a moving one still has to be captured. At a shutter
+ * angle above 360 the window spans whole neighbouring frames and the reuse would drop a
+ * frame of motion outright.
+ *
+ * The range covers the previous frame's window too, because reuse claims this frame's
+ * blurred output equals that one's. Contract taken from #4013 by Dante-dan, which carried
+ * this guard before we did.
+ */
+export function motionBlurWindowIsStatic(
+  plan: MotionBlurPlan,
+  frameIndex: number,
+  staticFrames: ReadonlySet<number>,
+): boolean {
+  const first = Math.floor(
+    frameIndex - 1 + Math.min(...plan.sampleTickOffsets) / plan.subFrameDivisions,
+  );
+  // A sample landing inside [F, F+1) reads content the frame set only pins down at both
+  // ends, so the frame after the last one touched has to be static as well.
+  const last =
+    Math.floor(frameIndex + Math.max(...plan.sampleTickOffsets) / plan.subFrameDivisions) + 1;
+  for (let frame = first; frame <= last; frame++) {
+    if (!staticFrames.has(frame)) return false;
+  }
+  return true;
+}
+
 const SRGB_TO_LINEAR = (() => {
   const lut = new Float64Array(256);
   for (let i = 0; i < 256; i++) lut[i] = srgbByteToLinear(i);

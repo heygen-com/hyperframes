@@ -24,6 +24,7 @@ import { encodePng } from "../utils/alphaBlit.js";
 import {
   MotionBlurAccumulator,
   motionBlurSampleTimes,
+  motionBlurWindowIsStatic,
   resolveMotionBlurPlan,
   type MotionBlurPlan,
 } from "./motionBlur.js";
@@ -3832,7 +3833,9 @@ async function captureFrameCore(
   if (
     session.staticFrames?.has(absFrameIndex) &&
     session.lastFrameBuffer &&
-    session.lastFrameAbsoluteIndex === absFrameIndex - 1
+    session.lastFrameAbsoluteIndex === absFrameIndex - 1 &&
+    (!session.motionBlur ||
+      motionBlurWindowIsStatic(session.motionBlur, absFrameIndex, session.staticFrames))
   ) {
     session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
     session.lastFrameAbsoluteIndex = absFrameIndex;

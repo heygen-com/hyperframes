@@ -172,10 +172,15 @@ describe("sub-frame accumulation reaches the page with distinct sample times", (
 });
 
 describe("accumulation composes with static-frame dedup", () => {
+  // 720 degrees is the widest shutter After Effects offers, and the AD5 reference export
+  // uses it, so it is the case a reader is most likely to check the frame ranges against.
+  const wideShutter = resolveMotionBlurPlan({ shutterAngle: 720, shutterPhase: -360 }) ?? undefined;
+
   it("pays nothing on a static frame instead of capturing K samples of the same instant", async () => {
     const anchor = solidPng(42);
     const session = makeSession({
-      staticFrames: new Set([11]),
+      // The whole window either side of frame 11 is static, which is what reuse claims.
+      staticFrames: new Set([9, 10, 11, 12]),
       lastFrameBuffer: anchor,
       lastFrameAbsoluteIndex: 10,
     });
@@ -198,6 +203,40 @@ describe("accumulation composes with static-frame dedup", () => {
     await captureFrameToBuffer(session, 12, 12 / 30);
 
     expect(vi.mocked(pageScreenshotCapture)).toHaveBeenCalledTimes(16);
+  });
+
+  // The defect this locks: dedup asked only whether THIS frame matched its predecessor.
+  // The shutter window reads either side of the frame instant, so a still frame sitting
+  // next to a moving one reused a buffer that carries none of that motion. Frame 11 is
+  // static and 12 is not, and at a 720 degree shutter frame 11's window runs to 11.94, so
+  // it reaches motion the reused buffer cannot contain. Guard from #4013 by Dante-dan.
+  it("captures rather than reuses when the shutter window reaches a moving frame", async () => {
+    const session = makeSession({
+      motionBlur: wideShutter,
+      staticFrames: new Set([9, 10, 11]),
+      lastFrameBuffer: solidPng(42),
+      lastFrameAbsoluteIndex: 10,
+    });
+
+    await captureFrameToBuffer(session, 11, 11 / 30);
+
+    expect(vi.mocked(pageScreenshotCapture)).toHaveBeenCalledTimes(16);
+    expect(session.staticDedupCount).toBeUndefined();
+  });
+
+  it("still reuses at 720 degrees when the whole window is static", async () => {
+    const anchor = solidPng(42);
+    const session = makeSession({
+      motionBlur: wideShutter,
+      staticFrames: new Set([9, 10, 11, 12]),
+      lastFrameBuffer: anchor,
+      lastFrameAbsoluteIndex: 10,
+    });
+
+    const result = await captureFrameToBuffer(session, 11, 11 / 30);
+
+    expect(result.buffer).toBe(anchor);
+    expect(vi.mocked(pageScreenshotCapture)).not.toHaveBeenCalled();
   });
 });
 
