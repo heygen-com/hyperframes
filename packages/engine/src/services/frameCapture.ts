@@ -3341,10 +3341,13 @@ async function armStaticDedup(
   // about buffer-reuse safety, irrelevant to which properties a tween touches), so it
   // is computed here, once, ahead of dedup's own idempotency check. Cached in
   // `sharedStaticFrameStats` so dedup's own call further down does not repeat the walk.
+  // Reads `session.options.motionBlur` (the raw caller options), not `session.motionBlur`
+  // (the resolved plan) — every armStaticDedup call site runs before finalizeSessionInit
+  // resolves the plan, so the resolved field is never set yet at this point.
   let sharedStaticFrameStats: Awaited<ReturnType<typeof computeStaticFrameSet>> | undefined;
   if (
-    session.motionBlur &&
-    session.motionBlur.fixedSamplesPerFrame === null &&
+    session.options.motionBlur &&
+    session.options.motionBlur.samplesPerFrame === undefined &&
     !session.motionBlurNonSpatialFrames
   ) {
     sharedStaticFrameStats = await computeStaticFrameSet(page, fpsToNumber(session.options.fps));

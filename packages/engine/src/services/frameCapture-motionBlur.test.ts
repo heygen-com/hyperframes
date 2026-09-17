@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   captureFrame,
   captureFrameToBuffer,
+  computeStaticFrameSet,
   resolveSessionMotionBlur,
   type CaptureSession,
 } from "./frameCapture.js";
@@ -364,5 +365,105 @@ describe("adaptive sample count (issue #4029)", () => {
     );
 
     expect(calls).toBe(2 + 16); // probed, diff was zero, landed on the floor anyway
+  });
+});
+
+describe("computeStaticFrameSet classifies spatial vs non-spatial intervals", () => {
+  function makePage(intervals: Array<{ start: number; end: number; spatial: boolean }>) {
+    return {
+      evaluate: vi
+        .fn()
+        .mockResolvedValueOnce({
+          intervals,
+          tweenCount: intervals.length,
+          duration: 10,
+          hasVideo: false,
+          hasCanvas: false,
+          hasNonGsapAnim: false,
+          hasUnresolvableClipStart: false,
+          hasTimelineCall: false,
+        })
+        .mockResolvedValueOnce([]), // computeClipBoundaryFrames' own [data-start] scan
+    } as unknown as Parameters<typeof computeStaticFrameSet>[0];
+  }
+
+  it("marks a frame touched only by a non-spatial interval (e.g. opacity) as safe to skip the probe", async () => {
+    const page = makePage([{ start: 0, end: 1, spatial: false }]);
+
+    const result = await computeStaticFrameSet(page, 30);
+
+    expect(result.eligible).toBe(true);
+    expect(result.nonSpatialOnlyFrameSet.has(0)).toBe(true);
+  });
+
+  it("does not mark a frame touched by any spatial interval (e.g. x), even alongside a non-spatial one", async () => {
+    const page = makePage([
+      { start: 0, end: 1, spatial: false },
+      { start: 0, end: 1, spatial: true },
+    ]);
+
+    const result = await computeStaticFrameSet(page, 30);
+
+    expect(result.nonSpatialOnlyFrameSet.has(0)).toBe(false);
+  });
+
+  it("reports an empty set when the analysis is ineligible, never a false 'confirmed non-spatial'", async () => {
+    const page = {
+      evaluate: vi
+        .fn()
+        .mockResolvedValueOnce({
+          intervals: [{ start: 0, end: 1, spatial: false }],
+          tweenCount: 0, // no GSAP tweens -> ineligible, per the existing "reasons" gate
+          duration: 10,
+          hasVideo: false,
+          hasCanvas: false,
+          hasNonGsapAnim: false,
+          hasUnresolvableClipStart: false,
+          hasTimelineCall: false,
+        })
+        .mockResolvedValueOnce([]), // computeClipBoundaryFrames' own [data-start] scan
+    } as unknown as Parameters<typeof computeStaticFrameSet>[0];
+
+    const result = await computeStaticFrameSet(page, 30);
+
+    expect(result.eligible).toBe(false);
+    expect(result.nonSpatialOnlyFrameSet.size).toBe(0);
+  });
+});
+
+describe("armStaticDedup reads the raw caller options for the adaptive gate, not the resolved plan", () => {
+  // armStaticDedup always runs before finalizeSessionInit sets session.motionBlur, so a
+  // gate reading that field is always false; it must read session.options.motionBlur.
+  const source = readFileSync(new URL("./frameCapture.ts", import.meta.url), "utf8");
+
+  it("gates the adaptive classification block on session.options.motionBlur", () => {
+    // Anchored on the `let` declaration, AFTER the explanatory comment above it, so this
+    // reads only the functional `if (...)` condition — not prose that could name either
+    // symbol without the code actually using it.
+    const start = source.indexOf("let sharedStaticFrameStats");
+    if (start < 0) throw new Error("sharedStaticFrameStats declaration not found");
+    const conditionEnd = source.indexOf(") {", start);
+    const condition = source.slice(start, conditionEnd);
+    expect(condition).toContain("session.options.motionBlur");
+    // Bare "session.motionBlur" (the resolved plan) not followed by a letter, so this
+    // does not false-positive on the unrelated "session.motionBlurNonSpatialFrames".
+    expect(condition).not.toMatch(/session\.motionBlur(?![A-Za-z])/);
+  });
+
+  it("every armStaticDedup call site runs before finalizeSessionInit in the same init path", () => {
+    // Confirms the premise: if a future refactor made these coincide, the raw-options
+    // gate above would still be correct (session.options.motionBlur is set unconditionally
+    // at session creation), but this pins today's actual ordering as documented context.
+    const finalizeCalls = [...source.matchAll(/finalizeSessionInit\(session\)/g)].map(
+      (m) => m.index as number,
+    );
+    const armCalls = [...source.matchAll(/armStaticDedup\(session,/g)].map(
+      (m) => m.index as number,
+    );
+    expect(finalizeCalls.length).toBeGreaterThan(0);
+    for (const finalizeAt of finalizeCalls) {
+      const precedingArm = armCalls.filter((a) => a < finalizeAt).at(-1);
+      expect(precedingArm).toBeDefined();
+    }
   });
 });
