@@ -47,3 +47,19 @@ Plans 1 and 2 are independent and can run in parallel in separate worktrees. Eve
 | `HF_SEGMENTED_CAPTURE`                                       | env, `"true"` opts in (2a), default flips in 2d                                               | 2a                  | all Phase 2                                    |
 | `HF_SEGMENT_FRAMES`                                          | env, frames per segment, default `3000`                                                       | 2a                  | 2b–2d                                          |
 | `HF_SEGMENT_BROWSER_RECYCLE`                                 | env, segments per browser session, default `3`                                                | 2c                  | 2d                                             |
+
+## Linear tracking (Product Infra / HyperFrames project)
+
+Umbrella: [PRINFRA-1196](https://linear.app/heygen/issue/PRINFRA-1196) (spec + README attached, PostHog evidence, related PRINFRA-647 / 358 / 1103).
+
+| Phase                        | Ticket       | Task tickets                       |
+| ---------------------------- | ------------ | ---------------------------------- |
+| −1 Chrome memory telemetry   | PRINFRA-1197 | 1216, 1217, 1219, 1220, 1221, 1222 |
+| 0 streaming duration cap     | PRINFRA-1198 | 1206, 1208, 1209, 1210, 1211       |
+| 1 parallel streaming default | PRINFRA-1199 | 1212 (sizing), 1213, 1214, 1215    |
+| 2a segmented capture         | PRINFRA-1200 | 1223, 1224, 1225, 1229, 1232       |
+| 2b manifest + resume         | PRINFRA-1201 | 1233, 1234, 1235                   |
+| 2c recycle + retry           | PRINFRA-1202 | 1236, 1238, 1239                   |
+| 2d multi-worker + default-on | PRINFRA-1203 | 1240, 1241, 1242                   |
+
+Each phase ticket has its plan file attached; each task ticket carries the task's files, interfaces and steps. Phase-level `blockedBy` relations mirror the dependency table above.
