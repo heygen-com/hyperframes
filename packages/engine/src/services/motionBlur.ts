@@ -54,7 +54,9 @@ export interface MotionBlurPlan {
 
 export const MAX_SAMPLES_PER_FRAME = 64;
 
-const DEFAULT_SAMPLES_PER_FRAME = 16;
+/** Sample count for a frame confirmed to need no measurement (the adaptive floor, and
+ * the count an explicit `samplesPerFrame` defaults to). */
+export const DEFAULT_SAMPLES_PER_FRAME = 16;
 const DEFAULT_SHUTTER_ANGLE = 180;
 const DEFAULT_SHUTTER_PHASE = -90;
 

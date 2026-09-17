@@ -22,6 +22,7 @@ import {
 import { DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
 import {
+  DEFAULT_SAMPLES_PER_FRAME,
   MotionBlurAccumulator,
   adaptiveSampleCount,
   motionBlurProbeTimes,
@@ -3338,14 +3339,16 @@ async function armStaticDedup(
   // Adaptive motion-blur sample-count classification shares the GSAP-timeline walk
   // below but is gated independently of dedup (capture mode / before-capture hooks are
   // about buffer-reuse safety, irrelevant to which properties a tween touches), so it
-  // is computed here, once, ahead of dedup's own idempotency check.
+  // is computed here, once, ahead of dedup's own idempotency check. Cached in
+  // `sharedStaticFrameStats` so dedup's own call further down does not repeat the walk.
+  let sharedStaticFrameStats: Awaited<ReturnType<typeof computeStaticFrameSet>> | undefined;
   if (
     session.motionBlur &&
     session.motionBlur.fixedSamplesPerFrame === null &&
     !session.motionBlurNonSpatialFrames
   ) {
-    const stats = await computeStaticFrameSet(page, fpsToNumber(session.options.fps));
-    session.motionBlurNonSpatialFrames = stats.nonSpatialOnlyFrameSet;
+    sharedStaticFrameStats = await computeStaticFrameSet(page, fpsToNumber(session.options.fps));
+    session.motionBlurNonSpatialFrames = sharedStaticFrameStats.nonSpatialOnlyFrameSet;
   }
   // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
   // (verification screenshots need the un-injected DOM), and initializeSession
@@ -3396,7 +3399,7 @@ async function armStaticDedup(
     return;
   }
   const fps = fpsToNumber(session.options.fps);
-  const stats = await computeStaticFrameSet(page, fps);
+  const stats = sharedStaticFrameStats ?? (await computeStaticFrameSet(page, fps));
   if (!stats.eligible || stats.staticFrameSet.size === 0) {
     session.staticDedupSkipReason = "ineligible";
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
@@ -3846,7 +3849,7 @@ async function resolveAdaptiveSampleCount(
 }> {
   if (session.motionBlurNonSpatialFrames?.has(absFrameIndex)) {
     return {
-      samplesPerFrame: adaptiveSampleCount(0),
+      samplesPerFrame: DEFAULT_SAMPLES_PER_FRAME,
       seekMs: 0,
       beforeCaptureMs: 0,
       screenshotMs: 0,
