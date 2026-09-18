@@ -1,11 +1,17 @@
 // @vitest-environment happy-dom
 
-import { act, useRef, useState } from "react";
+import { act, useMemo, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useResetSelectionOnProjectSwitch } from "./useResetSelectionOnProjectSwitch";
 import { useAutoOpenRootComposition } from "./useAutoOpenRootComposition";
-import { isHydratedFromUrlState, readStudioUrlStateFromWindow } from "../utils/studioUrlState";
+import { useActiveComposition } from "./useActiveComposition";
+import { useFileTree } from "./useFileTree";
+import {
+  isHydratedFromUrlState,
+  readStudioUrlStateFromWindow,
+  resolveMasterCompositionPath,
+} from "../utils/studioUrlState";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -139,5 +145,67 @@ describe("project switch integration (mirrors App.tsx's wiring)", () => {
     });
 
     expect(onSelectComposition).toHaveBeenCalledExactlyOnceWith("hero.html");
+  });
+});
+
+describe("full stack: useFileTree -> useActiveComposition (masterCompPath staleness)", () => {
+  const FILES_BY_PROJECT: Record<string, string[]> = {
+    "project-a": ["index.html"],
+    "project-b": ["hero.html"],
+  };
+
+  function mockFetch(url: string): Promise<Response> {
+    const match = /^\/api\/projects\/([^/]+)$/.exec(url);
+    if (match) {
+      const files = FILES_BY_PROJECT[decodeURIComponent(match[1])] ?? [];
+      return Promise.resolve(new Response(JSON.stringify({ files }), { status: 200 }));
+    }
+    return Promise.resolve(new Response(null, { status: 404 }));
+  }
+
+  function FullStackHarness({ projectId }: { projectId: string | null }) {
+    const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
+    const projectIdRef = useRef(projectId);
+    projectIdRef.current = projectId;
+    const { fileTree, fileTreeLoaded } = useFileTree({ projectId, projectIdRef });
+    const masterCompPath = useMemo(() => resolveMasterCompositionPath(fileTree), [fileTree]);
+    const { activeCompPath } = useActiveComposition({
+      projectId,
+      initialUrlStateRef,
+      fileTree,
+      fileTreeLoaded,
+      masterCompPath,
+      setEditingFile: vi.fn(),
+      showToast: vi.fn(),
+    });
+    return <div data-active-comp-path={activeCompPath ?? ""} />;
+  }
+
+  it("opens project B's real root, not project A's stale master path, on an in-session switch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(mockFetch as typeof fetch);
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<FullStackHarness projectId="project-a" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    let el = host.firstElementChild as HTMLElement;
+    expect(el.dataset.activeCompPath).toBe("index.html");
+
+    // Switch in-session (no remount) before asserting — this is the exact race the
+    // adversarial review found: project A's fileTree/masterCompPath are still in state
+    // for at least one render after projectId flips, until B's own fetch resolves.
+    await act(async () => {
+      root?.render(<FullStackHarness projectId="project-b" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    el = host.firstElementChild as HTMLElement;
+    expect(el.dataset.activeCompPath).toBe("hero.html");
+
+    fetchSpy.mockRestore();
   });
 });

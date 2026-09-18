@@ -9,36 +9,60 @@ interface UseFileTreeOptions {
   projectIdRef: React.RefObject<string | null>;
 }
 
+interface FetchedFileTree {
+  projectId: string;
+  loaded: boolean;
+  fileTree: string[];
+  compositionPaths: string[];
+  projectDir: string | null;
+}
+
+// Stable references so a mismatched projectId doesn't create a new array every render
+// and defeat useMemo/useCallback deps downstream (e.g. the `assets` memo below).
+const EMPTY_FILE_LIST: string[] = [];
+
+/**
+ * Holds the tree with the `projectId` it was fetched for; exposes empty/not-loaded
+ * whenever that id doesn't match the current one, so a switch can't read another project's tree.
+ */
 export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
-  const [projectDir, setProjectDir] = useState<string | null>(null);
-  const [fileTree, setFileTree] = useState<string[]>([]);
-  const [compositionPaths, setCompositionPaths] = useState<string[]>([]);
-  const [fileTreeLoaded, setFileTreeLoaded] = useState(false);
+  const [fetched, setFetched] = useState<FetchedFileTree | null>(null);
+  const current = fetched?.projectId === projectId ? fetched : null;
+  const fileTree = current?.fileTree ?? EMPTY_FILE_LIST;
+  const compositionPaths = current?.compositionPaths ?? EMPTY_FILE_LIST;
+  const projectDir = current?.projectDir ?? null;
+  const fileTreeLoaded = current?.loaded ?? false;
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!projectId) {
-      setFileTreeLoaded(false);
-      return;
-    }
+    if (!projectId) return;
     let cancelled = false;
-    setFileTreeLoaded(false);
+    setFetched({ projectId, loaded: false, fileTree: [], compositionPaths: [], projectDir: null });
     fetch(buildProjectApiPath(projectId))
       .then((r) => r.json())
       .then((data: { files?: string[]; dir?: string; compositions?: string[] }) => {
         if (cancelled) return;
-        if (data.files) setFileTree(data.files);
-        if (data.compositions) setCompositionPaths(data.compositions);
-        setProjectDir(typeof data.dir === "string" ? data.dir : null);
+        setFetched({
+          projectId,
+          loaded: true,
+          fileTree: data.files ?? [],
+          compositionPaths: data.compositions ?? [],
+          projectDir: typeof data.dir === "string" ? data.dir : null,
+        });
         // Snapshot how this project was made, while the listing is in hand and
         // the app is still alive. A crash later has no other way to learn it.
         void captureProjectProvenance(projectId, data.files ?? [], data.compositions ?? []);
       })
       .catch(() => {
-        if (!cancelled) setProjectDir(null);
-      })
-      .finally(() => {
-        if (!cancelled) setFileTreeLoaded(true);
+        if (!cancelled) {
+          setFetched({
+            projectId,
+            loaded: true,
+            fileTree: [],
+            compositionPaths: [],
+            projectDir: null,
+          });
+        }
       });
     return () => {
       cancelled = true;
@@ -50,10 +74,10 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     if (!pid) return;
     const res = await fetch(buildProjectApiPath(pid));
     const data = await res.json();
-    if (data.files) setFileTree(data.files);
+    if (data.files) {
+      setFetched((prev) => (prev?.projectId === pid ? { ...prev, fileTree: data.files } : prev));
+    }
   }, [projectIdRef]);
-
-  const compositions = compositionPaths;
 
   const assets = useMemo(
     () =>
@@ -76,10 +100,9 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
   return {
     projectDir,
     fileTree,
-    setFileTree,
     fileTreeLoaded,
     refreshFileTree,
-    compositions,
+    compositions: compositionPaths,
     assets,
     fontAssets,
   };
