@@ -42,6 +42,13 @@ describe("findMatchingTimelineElementId", () => {
     expect(findMatchingTimelineElementId({ id: "s1", sourceFile: "index.html" }, els)).toBe("s1");
   });
 
+  it("matches by hfId when the selection has no domId, so an element with no authored id can still be found", () => {
+    const els = [el({ id: "hf-1", domId: undefined, hfId: "hf-1", sourceFile: "index.html" })];
+    expect(
+      findMatchingTimelineElementId({ id: undefined, hfId: "hf-1", sourceFile: "index.html" }, els),
+    ).toBe("hf-1");
+  });
+
   it("returns a qualified id for a sub-comp child with no matching timeline element", () => {
     const els = [el({ id: "s3", domId: "s3", sourceFile: "index.html" })];
     expect(

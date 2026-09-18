@@ -58,6 +58,20 @@ describe("resolveGroupChildTracks", () => {
     ]);
   });
 
+  it("resolves a child's track by hfId when it has no DOM id, so an unauthored ungroup child can't drift to a new row", () => {
+    const group = document.createElement("div");
+    group.id = "group-1";
+    const child = document.createElement("div");
+    child.setAttribute("data-hf-id", "hf-child-a");
+    group.append(child);
+
+    const timelineElements = [timelineElement({ hfId: "hf-child-a", authoredTrack: 3 })];
+
+    const result = resolveGroupChildTracks(makeSelection("Group 1", group), timelineElements);
+
+    expect(result).toEqual([{ target: { id: undefined, hfId: "hf-child-a" }, track: 3 }]);
+  });
+
   it("skips a child with neither a DOM id nor an hfId", () => {
     const group = document.createElement("div");
     const anonymous = document.createElement("div");

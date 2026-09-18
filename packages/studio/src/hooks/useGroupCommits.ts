@@ -81,8 +81,8 @@ export function computeGroupGeometry(
 }
 
 // Ungroup re-derives each child's track from the raw DOM (no DomEditSelection
-// exists per child) and matches by id only; an id-less child keeps its
-// current track, unchanged from before this fix.
+// exists per child); matches by id, falling back to hfId for a child with no
+// authored id. A child with neither keeps its current track, unstamped.
 export function resolveGroupChildTracks(
   group: DomEditSelection,
   timelineElements: TimelineElement[],
@@ -94,7 +94,7 @@ export function resolveGroupChildTracks(
     const hfId = readHfId(child);
     if (!id && !hfId) continue;
     const track = resolveAuthoredTrack(
-      { id, sourceFile, isCompositionHost: false },
+      { id, hfId, sourceFile, isCompositionHost: false },
       timelineElements,
     );
     result.push({ target: buildDomEditPatchTarget({ id, hfId }), track });
