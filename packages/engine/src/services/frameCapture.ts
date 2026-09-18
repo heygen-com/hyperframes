@@ -1528,7 +1528,7 @@ export function formatConsoleDiagnostic(
   return { text: `${prefix} ${text}`, suppressHostLog: false };
 }
 
-const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
+export const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
   var hf = window.__hf;
   var player = window.__player;
   var renderReady = !!window.__renderReady;
@@ -1539,15 +1539,19 @@ const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
   var declaredDuration = root ? Number(root.getAttribute("data-duration")) : -1;
   var registry = (window.__hf && window.__hf.buildReady) || {};
   var keys = Object.keys(registry);
-  // Races each entry against a bare resolved promise: microtasks run FIFO,
-  // so an already-settled registry[key] wins the race (null); a pending one
-  // loses (key stays). Detects "settled" without a timer or timeout.
-  var pendingBuildReadyKeys = (await Promise.all(keys.map(function(key) {
-    return Promise.race([
-      Promise.resolve(registry[key]).then(function() { return null; }),
-      Promise.resolve().then(function() { return key; }),
-    ]);
-  }))).filter(function(key) { return key !== null; });
+  // A microtask race mis-sorts a non-native thenable (extra adoption tick)
+  // and rejects the whole expression on a rejected entry. Settling each
+  // key onto its own record and waiting one macrotask avoids both.
+  var settled = {};
+  keys.forEach(function(key) {
+    Promise.resolve(registry[key]).then(
+      function() { settled[key] = "resolved"; },
+      function() { settled[key] = "rejected"; },
+    );
+  });
+  await new Promise(function(r) { setTimeout(r, 0); });
+  var pendingBuildReadyKeys = keys.filter(function(key) { return !settled[key]; });
+  var rejectedBuildReadyKeys = keys.filter(function(key) { return settled[key] === "rejected"; });
   return {
     renderReady: renderReady,
     hasHf: !!hf,
@@ -1557,6 +1561,7 @@ const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
     hasTimeline: hasTimeline,
     declaredDuration: declaredDuration,
     pendingBuildReadyKeys: pendingBuildReadyKeys,
+    rejectedBuildReadyKeys: rejectedBuildReadyKeys,
   };
 })()`;
 
@@ -1570,6 +1575,7 @@ export function buildZeroDurationDiagnostic(diag: {
   hasTimeline: boolean;
   declaredDuration: number;
   pendingBuildReadyKeys: string[];
+  rejectedBuildReadyKeys: string[];
 }): string {
   const hints: string[] = [];
   if (diag.pendingBuildReadyKeys.length > 0) {
@@ -1577,6 +1583,12 @@ export function buildZeroDurationDiagnostic(diag: {
       `window.__hf.buildReady never resolved for: ${diag.pendingBuildReadyKeys.join(", ")}. ` +
         "The runtime holds render-ready until every registered buildReady promise settles — " +
         "find where the composition registers that key and confirm it actually resolves.",
+    );
+  }
+  if (diag.rejectedBuildReadyKeys.length > 0) {
+    hints.push(
+      `window.__hf.buildReady rejected for: ${diag.rejectedBuildReadyKeys.join(", ")}. ` +
+        "That key's build promise failed rather than hanging — find why it rejects.",
     );
   }
   if (!diag.hasPlayer) {
@@ -1618,6 +1630,7 @@ interface HfDiagnostic {
   hasTimeline: boolean;
   declaredDuration: number;
   pendingBuildReadyKeys: string[];
+  rejectedBuildReadyKeys: string[];
 }
 
 async function evaluateHfDiagnostic(page: Page): Promise<HfDiagnostic> {
