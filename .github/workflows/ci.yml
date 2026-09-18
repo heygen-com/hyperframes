@@ -36,6 +36,7 @@ jobs:
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
       catalog_index: ${{ steps.filter.outputs.catalog_index }}
+      docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
       gcp_beginframe: ${{ steps.filter.outputs.gcp_beginframe }}
       studio: ${{ steps.filter.outputs.studio }}
@@ -61,7 +62,8 @@ jobs:
             docs_catalog:
               - "docs/**"
               - "registry/**"
-              - "scripts/*docs-catalog*"
+              - "scripts/*catalog*"
+              - "scripts/docs-catalog-shared.mjs"
               - "package.json"
               - ".github/workflows/ci.yml"
             code:
@@ -167,6 +169,29 @@ jobs:
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run lint
       - run: bun run check:docs-catalog
+
+  # Loads every catalog payload a PR changes in headless Chrome. A static scan of the
+  # markup cannot see an asset a script fetches, and the docs host serves only fonts,
+  # images and JSON, so a payload that runs locally can 404 there.
+  catalog-payloads:
+    name: Catalog payloads
+    needs: changes
+    if: needs.changes.outputs.docs_catalog == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: bun run --cwd packages/core build:hyperframes-runtime
+      - run: bun run verify:catalog-payloads --changed origin/main
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
   # the changed files. The default `--gate new-only` means existing legacy
