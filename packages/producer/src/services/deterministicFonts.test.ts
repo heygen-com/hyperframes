@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   FONT_ALIASES,
   FONT_ALIAS_KEYS,
@@ -66,6 +69,63 @@ describe("Google Fonts CSS request caching", () => {
     await injectDeterministicFontFaces(htmlA, { fetchImpl, allowSystemFontCapture: false });
     await injectDeterministicFontFaces(htmlB, { fetchImpl, allowSystemFontCapture: false });
     expect(requests).toBe(1);
+  });
+
+  it("does not fail a concurrent caller when another caller sharing the lookup aborts", async () => {
+    const prevCacheEnv = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-font-abort-isolation-"));
+    process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
+    try {
+      const htmlA = `<html><head></head><body><p style="font-family: 'Abort Isolation Font';">Hello</p></body></html>`;
+      const htmlB = `<html><head></head><body><p style="font-family: 'Abort Isolation Font';">olleH</p></body></html>`;
+      const woff2Url = "https://fonts.gstatic.com/s/abortisolationfont/v1/font.woff2";
+      const cssBody =
+        `@font-face { font-style: normal; font-weight: 400; ` +
+        `src: url(${woff2Url}) format('woff2'); }`;
+      let resolveCss: (() => void) | undefined;
+      // Mirrors real fetch(): the CSS request rejects if its own `init.signal`
+      // aborts, so this proves the shared lookup isn't wired to any one
+      // caller's signal. The woff2 request always succeeds immediately —
+      // only the shared CSS lookup is under test here.
+      const fetchImpl = Object.assign(
+        async (url: string, init?: RequestInit) => {
+          if (!url.includes("css2")) return new Response(new Uint8Array([0, 1, 2, 3]));
+          return new Promise<Response>((resolve, reject) => {
+            resolveCss = () => resolve(new Response(cssBody, { status: 200 }));
+            init?.signal?.addEventListener("abort", () =>
+              reject(new DOMException("aborted", "AbortError")),
+            );
+          });
+        },
+        { preconnect: fetch.preconnect },
+      );
+      const controllerA = new AbortController();
+      // A must populate the cache entry first, and both resolve to a real
+      // face (not a 404) so failClosedFontFetch's own "unresolved font"
+      // check can't confound the result with a leaked abort.
+      const resultA = injectDeterministicFontFaces(htmlA, {
+        fetchImpl,
+        allowSystemFontCapture: false,
+        abortSignal: controllerA.signal,
+      });
+      while (!resolveCss) await new Promise((r) => setTimeout(r, 0));
+      const resultB = injectDeterministicFontFaces(htmlB, {
+        fetchImpl,
+        allowSystemFontCapture: false,
+        failClosedFontFetch: true,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      controllerA.abort();
+      resolveCss();
+
+      await expect(resultA).rejects.toThrow();
+      expect(await resultB).toContain("@font-face");
+    } finally {
+      if (prevCacheEnv === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
+      else process.env.HYPERFRAMES_FONT_CACHE_DIR = prevCacheEnv;
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 });
 

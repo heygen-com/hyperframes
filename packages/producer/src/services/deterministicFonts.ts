@@ -1128,26 +1128,42 @@ export function _clearGoogleFontCssCacheForTests(): void {
   googleFontCssCache.clear();
 }
 
+/** Rejects with `signal`'s own abort reason without cancelling `promise` itself. */
+function raceAgainstAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(callerAbortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(callerAbortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 function fetchGoogleFontCss(
   url: string,
   familyName: string,
   options: InternalFontFetchOptions,
 ): Promise<{ ok: true; body: string } | { ok: false }> {
-  const cached = googleFontCssCache.get(url);
-  if (cached) return cached;
-  const promise = fetchFontResource(
-    url,
-    { headers: { "User-Agent": WOFF2_USER_AGENT } },
-    (response) => response.text(),
-    familyName,
-    "Google Fonts CSS",
-    options,
-  ).then((result) =>
-    result.ok ? { ok: true as const, body: result.body } : { ok: false as const },
-  );
-  googleFontCssCache.set(url, promise);
-  promise.catch(() => googleFontCssCache.delete(url));
-  return promise;
+  let shared = googleFontCssCache.get(url);
+  if (!shared) {
+    // Shared across every concurrent caller requesting this URL, so the
+    // underlying fetch must not carry any single caller's abortSignal — that
+    // caller cancelling would otherwise fail the lookup for every other
+    // caller reusing this cache entry.
+    shared = fetchFontResource(
+      url,
+      { headers: { "User-Agent": WOFF2_USER_AGENT } },
+      (response) => response.text(),
+      familyName,
+      "Google Fonts CSS",
+      { ...options, abortSignal: undefined },
+    ).then((result) =>
+      result.ok ? { ok: true as const, body: result.body } : { ok: false as const },
+    );
+    googleFontCssCache.set(url, shared);
+    shared.catch(() => googleFontCssCache.delete(url));
+  }
+  return raceAgainstAbort(shared, options.abortSignal);
 }
 
 async function fetchGoogleFont(
