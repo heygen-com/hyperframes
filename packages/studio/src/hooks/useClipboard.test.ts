@@ -170,6 +170,19 @@ describe("pasteTimelineClips", () => {
     expect(content).not.toContain("data-hf-id");
   });
 
+  it("leaves html unstripped when it has no parseable element root (documents the fallback)", () => {
+    // stripHfIds only strips when DOMParser finds an element; bare text has
+    // none, so this pins the fallback rather than a real safety guarantee.
+    const noRoot: TimelineClipboardClip = {
+      html: 'text mentioning data-hf-id="hf-leak" with no tag at all',
+      start: 0,
+      duration: 1,
+      track: 0,
+    };
+    const { content } = pasteTimelineClips(ROOT, [noRoot], 0, []);
+    expect(content).toContain('data-hf-id="hf-leak"');
+  });
+
   it("captures the root's own id, not a data-id that happens to precede it", () => {
     const withDataId: TimelineClipboardClip = {
       html: '<audio data-id="not-the-id" id="sfx-23" src="typenew.mp3" data-start="21.61" data-duration="0.57" data-track-index="132"></audio>',

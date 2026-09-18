@@ -5,6 +5,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import {
   type ClipboardPayload,
   type TimelineClipboardClip,
+  ID_ATTR_RE,
   deduplicateIds,
   insertAsSibling,
 } from "../utils/clipboardPayload";
@@ -98,8 +99,8 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
 /** Strips data-hf-id from the root and every descendant so a clone re-mints
  *  its own. DOMParser, not a bracket-scoped regex, so a `>` inside an earlier
  *  attribute value or a single-quoted id can't defeat the strip. */
-function stripHfIds(html: string): string {
-  const root = new DOMParser().parseFromString(html, "text/html").body.firstElementChild;
+function stripHfIds(html: string, parser: DOMParser): string {
+  const root = parser.parseFromString(html, "text/html").body.firstElementChild;
   if (!root) return html;
   root.querySelectorAll("[data-hf-id]").forEach((el) => el.removeAttribute("data-hf-id"));
   root.removeAttribute("data-hf-id");
@@ -126,8 +127,9 @@ export function pasteTimelineClips(
   const ids: string[] = [];
   let result = content;
   let requiredEnd = 0;
+  const domParser = new DOMParser();
   for (const clip of clips) {
-    const stripped = stripHfIds(clip.html);
+    const stripped = stripHfIds(clip.html, domParser);
     const deduped = deduplicateIds(stripped, existingIds);
     existingIds = existingIds.concat(collectHtmlIds(deduped));
     const newStart = anchorTime + (clip.start - groupMinStart);
@@ -149,10 +151,7 @@ export function pasteTimelineClips(
     const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
     result = insertTimelineAssetIntoSource(result, withPatched);
 
-    // Lookbehind requires the attribute to start at a word boundary preceded
-    // by whitespace, same pattern deduplicateIds uses above, so `id="x"`
-    // matches but the `id` inside `data-id="x"` does not.
-    const id = patchedRootTag.match(/(?<=\s)id="([^"]+)"/)?.[1];
+    const id = patchedRootTag.match(ID_ATTR_RE)?.[1];
     if (id) ids.push(id);
   }
   return { content: result, ids, requiredEnd };

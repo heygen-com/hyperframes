@@ -177,9 +177,13 @@ function findClosingTagPosition(html: string, openTagStart: number): number {
   return -1;
 }
 
+/** An `id="..."` attribute, not `data-id="..."` or similar — only matches
+ *  when preceded by whitespace, the way every generated attribute is. */
+export const ID_ATTR_RE = /(?<=\s)id="([^"]+)"/;
+
 export function deduplicateIds(html: string, existingIds: string[]): string {
   const existingSet = new Set(existingIds);
-  return html.replace(/(?<=\s)id="([^"]+)"/g, (full, id: string) => {
+  return html.replace(new RegExp(ID_ATTR_RE.source, "g"), (full, id: string) => {
     if (!existingSet.has(id)) return full;
     let counter = 2;
     while (existingSet.has(`${id}-${counter}`)) counter++;
