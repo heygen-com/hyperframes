@@ -1260,7 +1260,7 @@ export async function createCaptureSession(
   // still fails loudly if the server is actually down.
   const requiresWebGpu =
     options.requiresWebGpu ??
-    (await fetch(`${serverUrl}/index.html`)
+    (await fetch(`${serverUrl}/index.html`, { signal: AbortSignal.timeout(5_000) })
       .then((res) => res.text())
       .then(compositionRequiresWebGpu)
       .catch(() => false));
