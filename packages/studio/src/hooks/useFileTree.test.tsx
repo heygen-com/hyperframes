@@ -156,6 +156,64 @@ describe("useFileTree.refreshFileTree", () => {
     fetchSpy.mockRestore();
   });
 
+  it("aborts the superseded request's fetch when a newer refresh is issued", async () => {
+    let call = 0;
+    const signals: AbortSignal[] = [];
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_url, init?: RequestInit) => {
+        call += 1;
+        if (call === 1) {
+          return new Response(
+            JSON.stringify({ files: ["index.html"], compositions: ["index.html"] }),
+            { status: 200 },
+          );
+        }
+        if (init?.signal) signals.push(init.signal);
+        return new Promise<Response>(() => {});
+      });
+
+    const handleRef = { current: null as Handle | null };
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(
+        <Harness
+          ref={(h) => {
+            handleRef.current = h;
+          }}
+          projectId="project-a"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => {
+      void handleRef.current?.refresh();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(signals).toHaveLength(1);
+    expect(signals[0].aborted).toBe(false);
+
+    act(() => {
+      void handleRef.current?.refresh();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(signals).toHaveLength(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+
+    fetchSpy.mockRestore();
+  });
+
   it("keeps the prior compositions list when a refresh response omits the field", async () => {
     let call = 0;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {

@@ -258,12 +258,9 @@ export const VariablesPanel = memo(function VariablesPanel({
   const { refreshKey } = useStudioPlaybackContext();
   const { readProjectFile, writeProjectFile, fileTree, compositions } = useFileManagerContext();
   const { domEditSelection } = useDomEditContext();
-  // On the master view (no activeCompPath) the panel targets the project's real
-  // main composition — the first composition in the tree — not a hardcoded
-  // index.html that may not exist. This same path is used for the persist write
-  // target (so an edit never lands in a phantom index.html) AND the handoff
-  // render command. Null only when the project has no composition yet, in which
-  // case sdkSession is also null and the panel is inert.
+  // Master view (no activeCompPath) targets the real main composition, not a
+  // hardcoded index.html — used for both the persist write target and the
+  // handoff render command. Null only when the project has no composition.
   const effectiveCompPath = activeCompPath ?? resolveMasterCompositionPath(compositions);
   const previewValues = usePreviewVariablesStore((s) => s.values);
   const setPreviewValues = usePreviewVariablesStore((s) => s.setValues);

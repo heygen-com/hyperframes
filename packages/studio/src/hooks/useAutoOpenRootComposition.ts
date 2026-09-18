@@ -1,9 +1,8 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Opens the root composition once hydration settles on no selection; fires at most once per
- * `projectId`. Relies on the caller resetting selection on an in-session project switch
- * (see `useResetSelectionOnProjectSwitch`) or a stale selection reads as "already open".
+ * Opens the root composition once hydration settles with no selection, at most once per
+ * `projectId`. Caller must reset selection on a project switch (`useResetSelectionOnProjectSwitch`).
  */
 export function useAutoOpenRootComposition({
   projectId,
