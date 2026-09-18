@@ -186,7 +186,9 @@ export interface CompositionReadinessResult {
 /** Invokes `onSettled` once every input settles, or the timeout elapses.
  * Calls back synchronously, before returning, when nothing is pending — a
  * caller that plays right after this call sees the decision already
- * applied, same as before this gate existed. */
+ * applied, same as before this gate existed. With the default inputs this
+ * only happens for a document with no `defaultView`, since
+ * paintAndIdleReadinessInput always has a frame to wait on otherwise. */
 export function settleCompositionReadiness(
   doc: Document,
   onSettled: (result: CompositionReadinessResult) => void,
