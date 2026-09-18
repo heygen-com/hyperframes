@@ -334,10 +334,10 @@ export interface RenderConfig {
    * forces screenshot capture (Chrome's BeginFrame compositor does not
    * preserve alpha on Linux headless-shell) and disables HDR — HDR +
    * alpha is not a supported combination, a warning is logged and HDR
-   * falls back to SDR. The transparent-background CSS is injected by
-   * the engine's `initTransparentBackground` helper, so authors should
-   * not paint a fullscreen `body` / `#root` background in their
-   * compositions when targeting alpha output.
+   * falls back to SDR. The engine's `initTransparentBackground` helper
+   * injects CSS that forces `html` / `body` transparent, so a fullscreen
+   * page background never reaches alpha output; a background authored on
+   * the composition root itself IS preserved.
    */
   format?: RenderOutputFormat;
   /** GIF Netscape loop count. 0 means infinite looping. Only used with `format: "gif"`. */
