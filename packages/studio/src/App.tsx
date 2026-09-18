@@ -64,6 +64,7 @@ import { useStudioSessionStart } from "./hooks/useStudioSessionStart";
 import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
 import { readStudioUrlStateFromWindow, resolveMasterCompositionPath } from "./utils/studioUrlState";
 import { useHydrateActiveCompPathFromUrl } from "./hooks/useHydrateActiveCompPathFromUrl";
+import { useAutoOpenRootComposition } from "./hooks/useAutoOpenRootComposition";
 const getTimelineSelectionSet = () => usePlayerStore.getState().selectedElementIds;
 // fallow-ignore-next-line complexity
 export function StudioApp() {
@@ -378,6 +379,13 @@ export function StudioApp() {
     setEditingFile,
     setActiveCompPath,
     showToast,
+  });
+  useAutoOpenRootComposition({
+    projectId,
+    activeCompPath,
+    activeCompPathHydrated,
+    masterCompPath,
+    onSelectComposition: handleSelectComposition,
   });
   const {
     designPanelActive,

@@ -3,6 +3,7 @@ import {
   useState,
   useCallback,
   useImperativeHandle,
+  useMemo,
   useRef,
   forwardRef,
   type ReactNode,
@@ -11,6 +12,7 @@ import { CompositionsTab } from "./CompositionsTab";
 import { AssetsTab } from "./AssetsTab";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { safeLocalStorage } from "../../utils/safeStorage";
+import { resolveMasterCompositionPath } from "../../utils/studioUrlState";
 import { BlocksTab, type BlockPreviewInfo } from "./BlocksTab";
 import { FileTree } from "../editor/FileTree";
 import { Tooltip } from "../ui";
@@ -120,6 +122,10 @@ export const LeftSidebar = memo(
     const tabRef = useRef(tab);
     tabRef.current = tab;
     const tablistRef = useRef<HTMLDivElement>(null);
+    const masterCompositionPath = useMemo(
+      () => resolveMasterCompositionPath(fileProp ?? []),
+      [fileProp],
+    );
 
     const selectTab = useCallback((t: SidebarTab) => {
       setTab(t);
@@ -228,6 +234,7 @@ export const LeftSidebar = memo(
                   projectId={projectId}
                   compositions={compositions}
                   activeComposition={activeComposition}
+                  masterCompositionPath={masterCompositionPath}
                   onSelect={onSelectComposition}
                   onAddToTimeline={onAddCompositionToTimeline}
                   onRenderComposition={onRenderComposition}
