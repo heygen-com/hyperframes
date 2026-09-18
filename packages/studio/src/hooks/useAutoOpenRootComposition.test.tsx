@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoOpenRootComposition } from "./useAutoOpenRootComposition";
+import { readStudioUrlStateFromWindow } from "../utils/studioUrlState";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,7 +25,12 @@ afterEach(() => {
 });
 
 function Harness(props: Props) {
-  useAutoOpenRootComposition(props);
+  useAutoOpenRootComposition({
+    ...props,
+    initialUrlStateRef: { current: readStudioUrlStateFromWindow() },
+    setActiveCompPath: vi.fn(),
+    setActiveCompPathHydrated: vi.fn(),
+  });
   return null;
 }
 
@@ -134,10 +140,9 @@ describe("useAutoOpenRootComposition", () => {
     });
     expect(onSelectComposition).toHaveBeenCalledExactlyOnceWith("index.html");
 
-    // Covers the case where App.tsx's activeCompPath/masterCompPath already happen to be
-    // null for the new project (e.g. nothing was open in the old one). It does NOT cover
-    // switching away from a project with something already open — see the hook's own
-    // doc-comment for that gap.
+    // This hook's OWN decision logic, given activeCompPath/masterCompPath already reset for
+    // the new project (by whatever reset the caller wires up — see
+    // useResetSelectionOnProjectSwitch.test.tsx for that end-to-end case with real state).
     rerender({
       projectId: "project-b",
       activeCompPath: null,

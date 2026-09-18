@@ -36,7 +36,6 @@ import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
-import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import { useEffectiveTimelineDuration } from "./hooks/useEffectiveTimelineDuration";
 import {
@@ -63,8 +62,7 @@ import { useServerConnection } from "./hooks/useServerConnection";
 import { useStudioSessionStart } from "./hooks/useStudioSessionStart";
 import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
 import { readStudioUrlStateFromWindow, resolveMasterCompositionPath } from "./utils/studioUrlState";
-import { useHydrateActiveCompPathFromUrl } from "./hooks/useHydrateActiveCompPathFromUrl";
-import { useAutoOpenRootComposition } from "./hooks/useAutoOpenRootComposition";
+import { useActiveComposition } from "./hooks/useActiveComposition";
 const getTimelineSelectionSet = () => usePlayerStore.getState().selectedElementIds;
 // fallow-ignore-next-line complexity
 export function StudioApp() {
@@ -72,10 +70,6 @@ export function StudioApp() {
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   const viewModeValue = useViewModeState();
   useStudioSessionStart(projectId, resolving, waitingForServer);
-  const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
-  const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
-    () => initialUrlStateRef.current.activeCompPath == null,
-  );
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
@@ -83,10 +77,7 @@ export function StudioApp() {
   const [previewDocumentVersion, refreshPreviewDocumentVersion] = usePreviewDocumentVersion();
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const activeCompPathRef = useRef(activeCompPath);
-  activeCompPathRef.current = activeCompPath;
   const leftSidebarRef = useRef<LeftSidebarHandle>(null);
-  const renderQueue = useRenderQueue(projectId, activeCompPathRef);
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
   const captionHasSelection = useCaptionStore((s) => s.selectedSegmentIds.size > 0);
   const captionSync = useCaptionSync(projectId);
@@ -119,19 +110,24 @@ export function StudioApp() {
     () => resolveMasterCompositionPath(fileManager.fileTree),
     [fileManager.fileTree],
   );
+  const { activeCompPath, activeCompPathHydrated, setActiveCompPath, handleSelectComposition } =
+    useActiveComposition({
+      projectId,
+      initialUrlStateRef,
+      fileTree: fileManager.fileTree,
+      fileTreeLoaded: fileManager.fileTreeLoaded,
+      masterCompPath,
+      setEditingFile: fileManager.setEditingFile,
+      showToast,
+    });
   const { sdkHandle, editFlowSdkSession } = useStudioSdkSessions(
     projectId,
     activeCompPath,
     masterCompPath,
   );
-  useHydrateActiveCompPathFromUrl({
-    hydrated: activeCompPathHydrated,
-    fileTreeLoaded: fileManager.fileTreeLoaded,
-    fileTree: fileManager.fileTree,
-    initialUrlStateRef,
-    setActiveCompPath,
-    setHydrated: setActiveCompPathHydrated,
-  });
+  const activeCompPathRef = useRef(activeCompPath);
+  activeCompPathRef.current = activeCompPath;
+  const renderQueue = useRenderQueue(projectId, activeCompPathRef);
   const previewPersistence = usePreviewPersistence({
     showToast,
     readOptionalProjectFile: fileManager.readOptionalProjectFile,
@@ -373,20 +369,6 @@ export function StudioApp() {
     },
     [appHotkeys, resetConsoleErrors, refreshPreviewDocumentVersion],
   );
-  const { setEditingFile } = fileManager;
-  const handleSelectComposition = useCompositionContentLoader({
-    projectId,
-    setEditingFile,
-    setActiveCompPath,
-    showToast,
-  });
-  useAutoOpenRootComposition({
-    projectId,
-    activeCompPath,
-    activeCompPathHydrated,
-    masterCompPath,
-    onSelectComposition: handleSelectComposition,
-  });
   const {
     designPanelActive,
     inspectorPanelActive,
