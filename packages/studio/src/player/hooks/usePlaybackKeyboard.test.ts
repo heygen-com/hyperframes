@@ -171,6 +171,28 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
 
     expect(spies.play).toHaveBeenCalledTimes(1);
   });
+
+  it("'A' does not seek to the in-point while the razor tool is armed, so it's free for the razor's own return-to-select binding", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ inPoint: 1.5, activeTool: "razor" });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyA", key: "a" }));
+    });
+
+    expect(spies.seek).not.toHaveBeenCalled();
+  });
+
+  it("'A' still seeks to the in-point when the razor tool isn't armed", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ inPoint: 1.5, activeTool: "select" });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyA", key: "a" }));
+    });
+
+    expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });
+  });
 });
 
 describe("usePlaybackKeyboard — mute & loop shortcuts (#905)", () => {

@@ -160,7 +160,11 @@ export function usePlaybackKeyboard({
         usePlayerStore.getState().setOutPoint(e.shiftKey ? null : t);
         return;
       }
+      // The razor tool owns "a" (return to select) while it's armed; this
+      // can't rely on defaultPrevented since both listeners register on
+      // window and fire in an order this hook doesn't control.
       if (key === "a") {
+        if (usePlayerStore.getState().activeTool === "razor") return;
         e.preventDefault();
         seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
         return;

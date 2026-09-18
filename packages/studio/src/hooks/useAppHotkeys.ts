@@ -301,9 +301,8 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
   }
 
   // CapCut returns to the select tool with "A". Scoped to the razor being
-  // armed — unscoped, this would steal the global "A" (seek to in-point;
-  // usePlaybackKeyboard.ts), which already yields via e.defaultPrevented
-  // once we've claimed the key here.
+  // armed; usePlaybackKeyboard.ts's own "A" (seek to in-point) checks the
+  // same activeTool to stay out of the way.
   if (key === "a" && !event.shiftKey && !event.altKey) {
     const { activeTool, setActiveTool } = usePlayerStore.getState();
     if (activeTool === "razor") {
