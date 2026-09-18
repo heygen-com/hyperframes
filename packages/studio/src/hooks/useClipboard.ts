@@ -18,6 +18,7 @@ import { formatTimelineAttributeNumber } from "../player/components/timelineEdit
 import { findElementForSelection } from "../components/editor/domEditingElement";
 import { findTimelineElementInIframe, readFileContent } from "./timelineEditingHelpers";
 import { buildTimelineElementKey } from "../player/lib/timelineElementHelpers";
+import { timeRangesOverlap } from "../player/components/timelineCollision";
 
 interface RecordEditInput {
   label: string;
@@ -85,7 +86,10 @@ export interface PlacedClip {
 }
 
 function tracksOverlap(a: PlacedClip, b: PlacedClip): boolean {
-  return a.track === b.track && a.start < b.start + b.duration && b.start < a.start + a.duration;
+  return (
+    a.track === b.track &&
+    timeRangesOverlap(a.start, a.start + a.duration, b.start, b.start + b.duration)
+  );
 }
 
 /** CapCut: keeps the preferred track if free at the new time, else the next
