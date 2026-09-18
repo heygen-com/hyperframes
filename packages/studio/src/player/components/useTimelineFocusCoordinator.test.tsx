@@ -171,4 +171,31 @@ describe("useTimelineFocusCoordinator", () => {
     expect(usePlayerStore.getState().timelineFocus?.id).toBe(nextRowId);
     expect(document.activeElement?.getAttribute("data-timeline-focus-id")).toBe(nextRowId);
   });
+
+  it("keeps a request alive across a few renders where its target hasn't landed yet", async () => {
+    // A request issued the same tick as its own element's creation (a fresh
+    // drop) can race logicalRows by a render or two; it must not be dropped
+    // before the element actually appears.
+    usePlayerStore.getState().requestTimelineFocus(clipId);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const notYetRows: readonly TimelineLogicalRow[] = [{ ...rows[0]!, items: [] }];
+      await act(async () => root.render(<Harness logicalRows={notYetRows} />));
+    }
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(clipId);
+
+    await act(async () => root.render(<Harness logicalRows={rows} mountedId={clipId} />));
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(clipId);
+    expect(document.activeElement?.getAttribute("data-timeline-focus-id")).toBe(clipId);
+  });
+
+  it("gives up once a target never lands after its retry budget", async () => {
+    usePlayerStore.getState().requestTimelineFocus(clipId);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      // A fresh array reference each render, like a real re-render caused by
+      // unrelated state, or the memoized resolution never recomputes at all.
+      const neverRows: readonly TimelineLogicalRow[] = [{ ...rows[0]!, items: [] }];
+      await act(async () => root.render(<Harness logicalRows={neverRows} />));
+    }
+    expect(usePlayerStore.getState().timelineFocus).toBeNull();
+  });
 });

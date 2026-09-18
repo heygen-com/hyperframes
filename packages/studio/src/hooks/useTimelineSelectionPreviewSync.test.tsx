@@ -199,7 +199,8 @@ describe("useTimelineSelectionPreviewSync", () => {
       onSelectionNotFound,
     });
 
-    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    // Still within the retry grace window: quiet, not yet a warning.
+    expect(onSelectionNotFound).not.toHaveBeenCalled();
     expect(applyDomSelection).not.toHaveBeenCalled();
     harness.cleanup();
   });
@@ -230,13 +231,14 @@ describe("useTimelineSelectionPreviewSync", () => {
       onSelectionNotFound,
     });
 
-    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    // Still within the retry grace window: quiet, not yet a warning.
+    expect(onSelectionNotFound).not.toHaveBeenCalled();
     expect(applyDomSelection).not.toHaveBeenCalled();
     expect(applyMarqueeSelection).not.toHaveBeenCalled();
     harness.cleanup();
   });
 
-  it("warns once while retrying a timeline selection after preview refreshes", async () => {
+  it("stays quiet through retries and resolves once the preview refreshes", async () => {
     const { secondSelection, timelineElements } = makeSyncFixture();
     const applyDomSelection = vi.fn();
     const applyMarqueeSelection = vi.fn();
@@ -260,7 +262,7 @@ describe("useTimelineSelectionPreviewSync", () => {
       onSelectionNotFound,
     });
 
-    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    expect(onSelectionNotFound).not.toHaveBeenCalled();
     expect(applyDomSelection).not.toHaveBeenCalled();
 
     await harness.rerender({
@@ -275,7 +277,7 @@ describe("useTimelineSelectionPreviewSync", () => {
       onSelectionNotFound,
     });
 
-    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    expect(onSelectionNotFound).not.toHaveBeenCalled();
 
     previewReady = true;
     await harness.rerender({
@@ -291,6 +293,7 @@ describe("useTimelineSelectionPreviewSync", () => {
     });
 
     expect(applyDomSelection).toHaveBeenCalledWith(secondSelection);
+    expect(onSelectionNotFound).not.toHaveBeenCalled();
     harness.cleanup();
   });
 
@@ -371,17 +374,19 @@ describe("useTimelineSelectionPreviewSync", () => {
       onSelectionNotFound,
     });
 
-    await harness.rerender({
-      selectedElementId: "clip-1",
-      selectedElementIds,
-      timelineElements: [...timelineElements],
-      domEditSelection: null,
-      domEditGroupSelections: [],
-      buildDomSelectionForTimelineElement,
-      applyDomSelection,
-      applyMarqueeSelection,
-      onSelectionNotFound,
-    });
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await harness.rerender({
+        selectedElementId: "clip-1",
+        selectedElementIds,
+        timelineElements: [...timelineElements],
+        domEditSelection: null,
+        domEditGroupSelections: [],
+        buildDomSelectionForTimelineElement,
+        applyDomSelection,
+        applyMarqueeSelection,
+        onSelectionNotFound,
+      });
+    }
 
     expect(onSelectionNotFound).toHaveBeenCalledTimes(2);
     harness.cleanup();

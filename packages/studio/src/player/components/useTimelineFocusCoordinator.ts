@@ -108,6 +108,10 @@ function scrollToTarget(
   return target.left !== null || target.top !== null;
 }
 
+// A request racing a fresh element's own creation (drop/paste) resolves within
+// a render or two; past this many misses on the same nonce it truly never will.
+const MAX_UNRESOLVED_FOCUS_RETRIES = 5;
+
 /** Model-first focus actor; mounting is a consequence of its returned pins. */
 // Resolution, fallback, reveal, and focus form one ordered state machine.
 // fallow-ignore-next-line complexity
@@ -128,6 +132,10 @@ export function useTimelineFocusCoordinator({
   const previousRowsRef = useRef(logicalRows);
   const resolvedRef = useRef<{ nonce: number; id: string } | null>(null);
   const appliedRef = useRef<{ nonce: number; id: string } | null>(null);
+  const unresolvedFocusAttemptsRef = useRef<{ nonce: number; count: number }>({
+    nonce: -1,
+    count: 0,
+  });
   const resolution = useMemo<ResolvedFocus | null>(() => {
     if (isCurrentRequest(request, projectId, sessionEpoch)) {
       if (resolvedRef.current?.nonce !== request.nonce) {
@@ -163,9 +171,18 @@ export function useTimelineFocusCoordinator({
   useEffect(() => {
     if (!isCurrentRequest(request, projectId, sessionEpoch)) return;
     if (!resolution) {
-      usePlayerStore.getState().clearTimelineFocus(request.nonce);
+      const previous = unresolvedFocusAttemptsRef.current;
+      const count = previous.nonce === request.nonce ? previous.count + 1 : 1;
+      unresolvedFocusAttemptsRef.current = { nonce: request.nonce, count };
+      // A request issued the same tick as its element (a fresh drop/paste) can
+      // outrun logicalRows by a render or two; only give up once it clearly
+      // never resolves, so the reveal isn't lost to that ordinary race.
+      if (count > MAX_UNRESOLVED_FOCUS_RETRIES) {
+        usePlayerStore.getState().clearTimelineFocus(request.nonce);
+      }
       return;
     }
+    unresolvedFocusAttemptsRef.current = { nonce: -1, count: 0 };
     if (resolution.target.id !== request.id) {
       usePlayerStore.getState().requestTimelineFocus(resolution.target.id);
       return;

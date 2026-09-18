@@ -193,19 +193,21 @@ export function useTimelineSelectionPreviewSync({
       if (cancelled) return;
       if (selections.length < selectedIds.length) {
         if (recordUnresolvedSelectionAttempt(unresolvedAttemptsRef, selectedKey)) {
-          warnSelectionMissingOnce();
-          // Delete acts on the canvas first, so only an anchor OUTSIDE this selection
-          // (an element the user isn't looking at) is cleared here, quietly — a member
-          // still resolving has no anchor yet and is left for the later run.
+          // Still within the retry grace window: stay quiet (warn only once
+          // exhausted, below). Delete acts on the canvas first, so only an
+          // anchor OUTSIDE this selection is cleared here, quietly.
           if (anchorIsOutsideSelection(currentAnchor, selectedIds)) {
             applyDomSelection(null, { revealPanel: false, announce: false });
           }
           return;
         }
+        // Budget exhausted: warn once (missingSelectionKeyRef dedupes further
+        // reruns of this same still-unresolved key) and apply whatever did resolve.
+        warnSelectionMissingOnce();
       } else {
         unresolvedAttemptsRef.current = { key: "", count: 0 };
+        missingSelectionKeyRef.current = "";
       }
-      missingSelectionKeyRef.current = "";
       logSelect("timeline-sync", {
         wanted: selectedIds.length,
         had: currentIds.length,
