@@ -11,6 +11,7 @@ import {
   type TimelineLogicalTarget,
 } from "./timelineKeyboardNavigation";
 import { computeRevealScroll } from "./timelineRevealScroll";
+import { recordRetryAttempt, type RetryBudgetState } from "../../utils/retryBudget";
 
 interface TimelineFocusCoordinatorInput {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -132,10 +133,7 @@ export function useTimelineFocusCoordinator({
   const previousRowsRef = useRef(logicalRows);
   const resolvedRef = useRef<{ nonce: number; id: string } | null>(null);
   const appliedRef = useRef<{ nonce: number; id: string } | null>(null);
-  const unresolvedFocusAttemptsRef = useRef<{ nonce: number; count: number }>({
-    nonce: -1,
-    count: 0,
-  });
+  const unresolvedFocusAttemptsRef = useRef<RetryBudgetState<number>>({ id: -1, count: 0 });
   const resolution = useMemo<ResolvedFocus | null>(() => {
     if (isCurrentRequest(request, projectId, sessionEpoch)) {
       if (resolvedRef.current?.nonce !== request.nonce) {
@@ -171,18 +169,22 @@ export function useTimelineFocusCoordinator({
   useEffect(() => {
     if (!isCurrentRequest(request, projectId, sessionEpoch)) return;
     if (!resolution) {
-      const previous = unresolvedFocusAttemptsRef.current;
-      const count = previous.nonce === request.nonce ? previous.count + 1 : 1;
-      unresolvedFocusAttemptsRef.current = { nonce: request.nonce, count };
       // A request issued the same tick as its element (a fresh drop/paste) can
       // outrun logicalRows by a render or two; only give up once it clearly
       // never resolves, so the reveal isn't lost to that ordinary race.
-      if (count > MAX_UNRESOLVED_FOCUS_RETRIES) {
+      const withinBudget = recordRetryAttempt(
+        unresolvedFocusAttemptsRef,
+        request.nonce,
+        MAX_UNRESOLVED_FOCUS_RETRIES,
+      );
+      if (!withinBudget) {
         usePlayerStore.getState().clearTimelineFocus(request.nonce);
       }
       return;
     }
-    unresolvedFocusAttemptsRef.current = { nonce: -1, count: 0 };
+    if (unresolvedFocusAttemptsRef.current.count !== 0) {
+      unresolvedFocusAttemptsRef.current = { id: -1, count: 0 };
+    }
     if (resolution.target.id !== request.id) {
       usePlayerStore.getState().requestTimelineFocus(resolution.target.id);
       return;

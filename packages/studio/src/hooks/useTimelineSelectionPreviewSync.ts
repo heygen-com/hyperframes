@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 import { logSelect } from "../utils/selectDebug";
+import { recordRetryAttempt, type RetryBudgetState } from "../utils/retryBudget";
 
 interface UseTimelineSelectionPreviewSyncParams {
   selectedElementId: string | null;
@@ -69,17 +70,6 @@ function anchorIsOutsideSelection(anchor: string | null, selectedIds: string[]):
   return anchor !== null && !selectedIds.includes(anchor);
 }
 
-// Per-selection retry budget; a new selectedKey starts a fresh count.
-function recordUnresolvedSelectionAttempt(
-  attemptsRef: MutableRefObject<{ key: string; count: number }>,
-  selectedKey: string,
-): boolean {
-  const previous = attemptsRef.current;
-  const count = previous.key === selectedKey ? previous.count + 1 : 1;
-  attemptsRef.current = { key: selectedKey, count };
-  return count <= MAX_UNRESOLVED_SYNC_RETRIES;
-}
-
 async function resolveSelectionsForIds(
   ids: string[],
   timelineElements: TimelineElement[],
@@ -130,7 +120,7 @@ export function useTimelineSelectionPreviewSync({
   const domEditGroupSelectionsRef = useRef(domEditGroupSelections);
   const lastSyncedSelectedKeyRef = useRef("");
   const missingSelectionKeyRef = useRef("");
-  const unresolvedAttemptsRef = useRef<{ key: string; count: number }>({ key: "", count: 0 });
+  const unresolvedAttemptsRef = useRef<RetryBudgetState<string>>({ id: "", count: 0 });
   domEditSelectionRef.current = domEditSelection;
   domEditGroupSelectionsRef.current = domEditGroupSelections;
 
@@ -159,7 +149,7 @@ export function useTimelineSelectionPreviewSync({
       // A deselect is the one unambiguous "new attempt" signal: without it, reselecting the
       // same permanently-unresolvable id later picks up an already-exhausted retry budget
       // and skips straight to the degraded fallback instead of getting a fresh grace window.
-      unresolvedAttemptsRef.current = { key: "", count: 0 };
+      unresolvedAttemptsRef.current = { id: "", count: 0 };
       // The timeline holds nothing, so the canvas is about to hold nothing either.
       // This is the path that silently drops a selection the user can still see.
       logSelect("timeline-empty", {
@@ -192,7 +182,7 @@ export function useTimelineSelectionPreviewSync({
       );
       if (cancelled) return;
       if (selections.length < selectedIds.length) {
-        if (recordUnresolvedSelectionAttempt(unresolvedAttemptsRef, selectedKey)) {
+        if (recordRetryAttempt(unresolvedAttemptsRef, selectedKey, MAX_UNRESOLVED_SYNC_RETRIES)) {
           // Still within the retry grace window: stay quiet (warn only once
           // exhausted, below). Delete acts on the canvas first, so only an
           // anchor OUTSIDE this selection is cleared here, quietly.
@@ -205,7 +195,7 @@ export function useTimelineSelectionPreviewSync({
         // reruns of this same still-unresolved key) and apply whatever did resolve.
         warnSelectionMissingOnce();
       } else {
-        unresolvedAttemptsRef.current = { key: "", count: 0 };
+        unresolvedAttemptsRef.current = { id: "", count: 0 };
         missingSelectionKeyRef.current = "";
       }
       logSelect("timeline-sync", {
