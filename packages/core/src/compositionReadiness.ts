@@ -91,16 +91,22 @@ const RENDER_READY_POLL_MS = 50;
 // locally instead of depending on a global merge from outside this file's scope.
 interface RuntimeReadinessWindow extends Window {
   __renderReady?: boolean;
+  // __renderReady is only ever set by init.ts, which always sets __hf
+  // first (`window.__hf = window.__hf || {}`) — a doc with no __hf can
+  // never get __renderReady either, so this alone is enough to gate on
+  // (unlike composition-probe.ts's hasRuntime, this doesn't need __player too).
+  __hf?: unknown;
 }
 
-/** Declared-compute readiness input: waits on `window.__renderReady`, which
- * init.ts already gates on every adapter's `getReadyPromise()` and on
- * `window.__hf.buildReady` (a piece's own declared-compute hold). Same
- * signal the render/capture path trusts for "safe to look at this frame". */
+/** Declared-compute readiness input: waits on `window.__renderReady`. A
+ * probe-only composition (no HyperFrames runtime injected) never sets
+ * it — __hf absent means nothing to wait on, not an 8s poll for a flag
+ * that was never going to flip. */
 export function computeReadinessInput(doc: Document, signal: AbortSignal): Promise<void> | null {
   const win = doc.defaultView as RuntimeReadinessWindow | null;
   if (!win) return null;
   if (win.__renderReady) return null;
+  if (!win.__hf) return null;
   return new Promise<void>((resolve) => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const finish = () => {
@@ -132,6 +138,11 @@ const IDLE_FRAME_GAP_MS = 50;
 // directly after the busy work finishes mid-frame and says nothing about
 // whether the next frame is also free.
 const IDLE_FRAMES_REQUIRED = 2;
+// A composition painting steadily below 20fps never produces a sub-50ms
+// gap, so quietStreak never advances — this is the giving-up bound so that
+// doesn't ride the full shared timeout. ponytail: 1500ms is unmeasured,
+// retune once Frost-class pieces have production data.
+const MAX_PAINT_WAIT_MS = 1_500;
 
 // Resolves with -1 on abort instead of rejecting: every caller already
 // re-checks `signal.aborted` right after awaiting this, so a sentinel value
@@ -154,9 +165,10 @@ function nextAnimationFrame(win: Window, signal: AbortSignal): Promise<number> {
   });
 }
 
-/** Composition-agnostic readiness input: waits for a frame to paint (two
- * nested rAFs), then for two consecutive quiet frame gaps. Needs no
- * composition code. Bounded by settleCompositionReadiness's shared timeout. */
+/** Composition-agnostic readiness input: waits for a frame to paint, then
+ * two consecutive quiet frame gaps — an early-out once the main thread is
+ * free, not a hold on steady sub-20fps painting. Gives up after
+ * MAX_PAINT_WAIT_MS with no quiet gap and resolves anyway. */
 export function paintAndIdleReadinessInput(
   doc: Document,
   signal: AbortSignal,
@@ -164,11 +176,12 @@ export function paintAndIdleReadinessInput(
   const win = doc.defaultView;
   if (!win) return null;
   return (async () => {
-    await nextAnimationFrame(win, signal);
+    const firstTs = await nextAnimationFrame(win, signal);
     if (signal.aborted) return;
     let lastTs = await nextAnimationFrame(win, signal);
     let quietStreak = 0;
     while (!signal.aborted && quietStreak < IDLE_FRAMES_REQUIRED) {
+      if (lastTs - firstTs >= MAX_PAINT_WAIT_MS) return;
       const ts = await nextAnimationFrame(win, signal);
       if (signal.aborted) return;
       quietStreak = ts - lastTs < IDLE_FRAME_GAP_MS ? quietStreak + 1 : 0;

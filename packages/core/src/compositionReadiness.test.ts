@@ -17,9 +17,12 @@ function docWith(bodyHtml: string): Document {
 // two timing-based inputs need one to call requestAnimationFrame on, so
 // `docWith` (a viewless DOMImplementation document, like the composition
 // tag-scanning tests above use) can't exercise them.
-function docWithFakeWindow(renderReady = false): {
+function docWithFakeWindow(
+  renderReady = false,
+  hasRuntime = true,
+): {
   doc: Document;
-  win: { __renderReady: boolean };
+  win: { __renderReady: boolean; __hf?: Record<string, unknown> };
   fireFrame: (ts: number) => void;
   pendingFrameCount: () => number;
 } {
@@ -27,6 +30,7 @@ function docWithFakeWindow(renderReady = false): {
   let nextId = 1;
   const win = {
     __renderReady: renderReady,
+    __hf: hasRuntime ? {} : undefined,
     requestAnimationFrame: (cb: (ts: number) => void) => {
       const id = nextId++;
       queue.set(id, cb);
@@ -75,6 +79,15 @@ describe("computeReadinessInput", () => {
 
   it("returns null for a document with no view (nothing to poll)", () => {
     expect(computeReadinessInput(docWith(""), new AbortController().signal)).toBeNull();
+  });
+
+  it("returns null when no runtime ever ran (no window.__hf) instead of polling for __renderReady forever", () => {
+    // A probe-only composition (plain video/native duration, no HyperFrames
+    // runtime injected) never sets window.__hf, so __renderReady would also
+    // never be set — this is the exact shape that used to poll for the full
+    // 8s shared timeout on every single Play.
+    const { doc } = docWithFakeWindow(false, false);
+    expect(computeReadinessInput(doc, new AbortController().signal)).toBeNull();
   });
 
   it("resolves once __renderReady flips true", async () => {
@@ -187,6 +200,32 @@ describe("paintAndIdleReadinessInput", () => {
     await flushMicrotasks();
     expect(isResolved()).toBe(true);
     expect(pendingFrameCount()).toBe(0); // the in-flight rAF was cancelled, not left pending
+  });
+
+  it("gives up and resolves after MAX_PAINT_WAIT_MS of steady sub-20fps painting, never reaching a quiet gap", async () => {
+    // A composition rendering a real, steady 15fps (~66ms/frame) never
+    // produces a sub-50ms gap — this is the exact shape that used to hang
+    // paintAndIdleReadinessInput until settleCompositionReadiness's 8s
+    // shared timeout won the race on every single Play.
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
+    const FRAME_GAP_MS = 66;
+
+    let ts = 0;
+    fireFrame(ts); // first paint scheduled
+    await flushMicrotasks();
+    ts += FRAME_GAP_MS;
+    fireFrame(ts); // first paint presented, lastTs = 66
+    await flushMicrotasks();
+
+    while (ts < 1_500) {
+      expect(isResolved()).toBe(false);
+      ts += FRAME_GAP_MS;
+      fireFrame(ts);
+      await flushMicrotasks();
+    }
+    // The frame that crosses MAX_PAINT_WAIT_MS resolves on its own — no
+    // quiet gap was ever produced, only elapsed steady-paint time.
+    expect(isResolved()).toBe(true);
   });
 });
 
