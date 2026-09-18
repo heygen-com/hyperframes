@@ -96,7 +96,8 @@ const RENDER_READY_POLL_MS = 50;
 // file lives under src/runtime — excluded from this package's own build
 // program (see tsconfig.json) — so it isn't visible here. Same flag, declared
 // locally instead of depending on a global merge from outside this file's scope.
-interface RuntimeReadinessWindow extends Window {
+// `__hf` is omitted from Window so the runtime program's strict shape can't conflict with `unknown`.
+interface RuntimeReadinessWindow extends Omit<Window, "__hf"> {
   __renderReady?: boolean;
   // __renderReady is only ever set by init.ts, which always sets __hf
   // first (`window.__hf = window.__hf || {}`) — a doc with no __hf can
