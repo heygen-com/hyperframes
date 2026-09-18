@@ -40,6 +40,19 @@ function fileTransfer(files: File[]): DropTransfer {
   return { types: ["Files"], files, dropEffect: "none", getData: () => "" };
 }
 
+/** Drag-over then drop `transfer` at (x, y), wrapped in one `act`. */
+function dropAt(
+  api: ReturnType<typeof useTimelineAssetDrop>,
+  transfer: DropTransfer,
+  x: number,
+  y: number,
+): void {
+  act(() => {
+    api.handleAssetDragOver(dragEvent(transfer, x, y));
+    api.handleAssetDrop(dragEvent(transfer, x, y));
+  });
+}
+
 function renderHarness(
   onAssetDrop: Mock,
   sessionEpoch = 1,
@@ -151,10 +164,7 @@ describe("useTimelineAssetDrop", () => {
     view.scroll.scrollTop = view.scroll.scrollHeight - view.scroll.clientHeight;
     const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
 
-    act(() => {
-      view.api.handleAssetDragOver(dragEvent(transfer, 400, 239));
-      view.api.handleAssetDrop(dragEvent(transfer, 400, 239));
-    });
+    dropAt(view.api, transfer, 400, 239);
 
     expect(onAssetDrop).toHaveBeenCalledTimes(1);
     // pps=40, clientX=400 -> 10s at the pointer, not the playhead.
@@ -172,10 +182,7 @@ describe("useTimelineAssetDrop", () => {
     usePlayerStore.getState().setCurrentTime(50);
     const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
 
-    act(() => {
-      view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
-      view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
-    });
+    dropAt(view.api, transfer, 80, 100);
 
     // pps=40, clientX=80 -> 2s, far from the 50s playhead: proves start tracks
     // the drop position, not usePlayerStore.currentTime.
@@ -214,10 +221,7 @@ describe("useTimelineAssetDrop", () => {
             : "",
     };
 
-    act(() => {
-      view.api.handleAssetDragOver(dragEvent(transfer, 400, 100));
-      view.api.handleAssetDrop(dragEvent(transfer, 400, 100));
-    });
+    dropAt(view.api, transfer, 400, 100);
 
     expect(onAssetDrop).not.toHaveBeenCalled();
     // pps=40, clientX=400 -> 10s at the pointer.
@@ -241,10 +245,7 @@ describe("useTimelineAssetDrop", () => {
       const view = renderHarness(onAssetDrop);
       const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
 
-      act(() => {
-        view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
-        view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
-      });
+      dropAt(view.api, transfer, 80, 100);
 
       // clientX=80 would normally place it at 2s (see the playhead test); the
       // empty main track (track 0) overrides that to 0.
@@ -257,10 +258,7 @@ describe("useTimelineAssetDrop", () => {
       const view = renderHarness(onAssetDrop);
       const transfer = assetTransfer(JSON.stringify({ path: "/media/song.mp3" }));
 
-      act(() => {
-        view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
-        view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
-      });
+      dropAt(view.api, transfer, 80, 100);
 
       expect(onAssetDrop).toHaveBeenCalledWith("/media/song.mp3", { start: 2, track: 0 });
       act(() => view.root.unmount());
@@ -272,10 +270,7 @@ describe("useTimelineAssetDrop", () => {
       const file = new File(["data"], "clip.mp4", { type: "video/mp4" });
       const transfer = fileTransfer([file]);
 
-      act(() => {
-        view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
-        view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
-      });
+      dropAt(view.api, transfer, 80, 100);
 
       expect(onFileDrop).toHaveBeenCalledWith([file], { start: 0, track: 0 });
       act(() => view.root.unmount());
