@@ -212,6 +212,15 @@ describe("compositionRequiresWebGpu", () => {
     ).toBe(true);
     expect(compositionRequiresWebGpu('<div data-composition-id="dom"></div>')).toBe(false);
   });
+
+  it("reads only the composition root tag and stays linear on repeated '<'", () => {
+    expect(
+      compositionRequiresWebGpu('<p data-requires-webgpu></p><div data-composition-id="a"></div>'),
+    ).toBe(false);
+    const started = performance.now();
+    expect(compositionRequiresWebGpu("<".repeat(200_000))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
 });
 
 describe("assertWebGpuAdapterAvailable", () => {

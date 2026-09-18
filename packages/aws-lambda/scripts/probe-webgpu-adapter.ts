@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-/** Reports whether the pinned Linux Chromium gets a hardware WebGPU adapter; a software-only host is reported, not a build failure. */
+/** Reports whether the pinned Linux Chromium gets a hardware WebGPU adapter; software-only is not a failure. */
 // Dynamic `puppeteer-core` import from a real file, same as probe-beginframe.ts —
 // an inline `bun -e` eval's synthetic `/app/[eval]` path can't see the hoisted dep.
 // Usage: bun probe-webgpu-adapter.ts --executable-path /opt/chrome/chrome-headless-shell

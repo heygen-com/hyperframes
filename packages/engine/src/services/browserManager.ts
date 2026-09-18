@@ -961,10 +961,11 @@ export function buildChromeArgs(
 
 /** Does the composition's root element declare `data-requires-webgpu`? */
 export function compositionRequiresWebGpu(html: string): boolean {
-  const compositionRoot = html.match(
-    /<[^>]*\bdata-composition-id(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))?[^>]*>/i,
-  );
-  return compositionRoot ? /\bdata-requires-webgpu(?:\s|=|>)/i.test(compositionRoot[0]) : false;
+  // Tags are scanned with [^<>]* so a run of '<' cannot backtrack polynomially.
+  for (const [tag] of html.matchAll(/<[^<>]*>/g)) {
+    if (/\bdata-composition-id\b/i.test(tag)) return /\bdata-requires-webgpu(?:\s|=|>)/i.test(tag);
+  }
+  return false;
 }
 
 /** No hardware WebGPU adapter on this host; distinct from a browser or navigation failure. */
