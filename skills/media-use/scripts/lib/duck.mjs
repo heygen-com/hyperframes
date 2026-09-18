@@ -63,6 +63,21 @@ export function duckKeyframes(
   return keyframes.sort((a, b) => a.time - b.time);
 }
 
+/** Volume lane for `data-automation`: composition-time keyframes as clip-local ramps. */
+export function duckLane(keyframes, { clipStart = 0, baseVolume = 1 } = {}) {
+  const start = finiteOr(clipStart, 0);
+  const points = [{ t: 0, v: round3(finiteOr(baseVolume, 1)) }];
+  const push = (t, v) => {
+    if (t > points.at(-1).t) points.push({ t: round3(t), v });
+  };
+  for (const kf of keyframes) {
+    const t = Math.max(0, kf.time - start);
+    push(t, points.at(-1).v);
+    push(t + kf.duration, kf.volume);
+  }
+  return { version: 1, lanes: [{ target: "volume", points }] };
+}
+
 function mergeIntervals(intervals, mergeGap) {
   const sorted = intervals
     .map((range) => ({ start: round3(range.start), end: round3(range.end) }))

@@ -13,6 +13,7 @@ const TWEEN_SCANNED = [
   "skills/hyperframes-audio/SKILL.md",
   "skills/hyperframes-audio/references/attributes.md",
   "skills/music-to-video/references/montage.md",
+  "skills/media-use/references/operations.md",
   "packages/cli/src/docs/data-attributes.md",
 ];
 

@@ -145,9 +145,10 @@ Use `--plan` first when you want to inspect the kept segment JSON before encodin
 
 ## Ducking (declare in-composition / bake for export)
 
-B1, declare ducking in the composition. `audio-duck.mjs` emits GSAP volume
-keyframes. Paste them into the composition timeline, the source file stays
-untouched.
+B1, declare ducking in the composition. `audio-duck.mjs` emits a volume lane
+as a `data-automation` attribute. Add it to the background `<audio>` element;
+the source file stays untouched. Lane times are clip-local, so pass
+`--composition` to let the script subtract the element's `data-start`.
 
 ```bash
 node <SKILL_DIR>/scripts/audio-duck.mjs \
@@ -156,10 +157,9 @@ node <SKILL_DIR>/scripts/audio-duck.mjs \
   --composition index.html
 ```
 
-```js
-// auto-duck: #bgm under narration (generated; base volume 0.6)
-tl.to("#bgm", { volume: 0.15, duration: 0.15 }, 3.42);
-tl.to("#bgm", { volume: 0.6, duration: 0.4 }, 9.87);
+```html
+<!-- auto-duck: #bgm under narration; add to its <audio> element -->
+data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0.6},{"t":3.42,"v":0.6},{"t":3.57,"v":0.15},{"t":9.87,"v":0.15},{"t":10.27,"v":0.6}]}]}'
 ```
 
 B2, bake ducking only for exported or standalone files.
