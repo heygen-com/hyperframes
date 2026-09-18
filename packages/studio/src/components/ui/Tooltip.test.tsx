@@ -5,35 +5,19 @@
  * dismisses it (WCAG 1.4.13), aria-describedby ties trigger to bubble (4.1.2).
  */
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
+import { cleanupMounted, mountHost } from "./mountHost.testHelpers";
 import { Tooltip } from "./Tooltip";
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-let mounted: { root: Root; host: HTMLElement } | null = null;
-
-afterEach(() => {
-  if (!mounted) return;
-  const { root, host } = mounted;
-  mounted = null;
-  act(() => root.unmount());
-  host.remove();
-});
+afterEach(cleanupMounted);
 
 function mount(): HTMLElement {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  mounted = { root, host };
-  act(() =>
-    root.render(
-      <Tooltip label="Selection tool (V)" delay={0}>
-        <button type="button" data-testid="trigger">
-          V
-        </button>
-      </Tooltip>,
-    ),
+  const host = mountHost(
+    <Tooltip label="Selection tool (V)" delay={0}>
+      <button type="button" data-testid="trigger">
+        V
+      </button>
+    </Tooltip>,
   );
   const trigger = host.querySelector<HTMLElement>('[data-testid="trigger"]');
   if (!trigger) throw new Error("trigger not rendered");
@@ -99,5 +83,5 @@ it("puts the trigger props on the caller's own element", () => {
   const trigger = mount();
 
   expect(trigger.tagName).toBe("BUTTON");
-  expect(trigger.parentElement).toBe(mounted?.host);
+  expect(trigger.parentElement?.parentElement).toBe(document.body);
 });

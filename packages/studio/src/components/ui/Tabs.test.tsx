@@ -5,48 +5,31 @@
  * three of Studio's six hand-rolled strips don't.
  */
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
+import { cleanupMounted, mountHost } from "./mountHost.testHelpers";
 import { Tab, TabPanel, Tabs, TabsList } from "./Tabs";
-
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const TABS = ["code", "comps", "assets", "catalog"];
 
-let mounted: { root: Root; host: HTMLElement } | null = null;
-
-afterEach(() => {
-  if (!mounted) return;
-  const { root, host } = mounted;
-  mounted = null;
-  act(() => root.unmount());
-  host.remove();
-});
+afterEach(cleanupMounted);
 
 function mount(): HTMLElement {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  mounted = { root, host };
-  act(() =>
-    root.render(
-      <Tabs defaultValue="code">
-        <TabsList aria-label="Sidebar panels">
-          {TABS.map((id) => (
-            <Tab key={id} value={id}>
-              {id}
-            </Tab>
-          ))}
-        </TabsList>
+  return mountHost(
+    <Tabs defaultValue="code">
+      <TabsList aria-label="Sidebar panels">
         {TABS.map((id) => (
-          <TabPanel key={id} value={id}>
-            {id} panel
-          </TabPanel>
+          <Tab key={id} value={id}>
+            {id}
+          </Tab>
         ))}
-      </Tabs>,
-    ),
+      </TabsList>
+      {TABS.map((id) => (
+        <TabPanel key={id} value={id}>
+          {id} panel
+        </TabPanel>
+      ))}
+    </Tabs>,
   );
-  return host;
 }
 
 function tab(host: HTMLElement, id: string): HTMLElement {

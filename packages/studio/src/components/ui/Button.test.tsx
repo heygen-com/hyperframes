@@ -8,38 +8,19 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { compile } from "tailwindcss";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { Button, type ButtonSize, type ButtonVariant } from "./Button";
 import { IconButton } from "./IconButton";
 import { Tab, Tabs, TabsList } from "./Tabs";
+import { cleanupMounted, mountHost } from "./mountHost.testHelpers";
 import { isTypingTarget } from "../../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
-
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const VARIANTS: ButtonVariant[] = ["primary", "secondary", "danger", "ghost"];
 const SIZES: ButtonSize[] = ["sm", "md", "lg"];
 
-let mounted: { root: Root; host: HTMLElement } | null = null;
-
-function render(element: React.ReactElement): HTMLElement {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  mounted = { root, host };
-  act(() => root.render(element));
-  return host;
-}
-
-afterEach(() => {
-  if (!mounted) return;
-  const { root, host } = mounted;
-  mounted = null;
-  act(() => root.unmount());
-  host.remove();
-});
+afterEach(cleanupMounted);
 
 function classesOf(host: HTMLElement, selector = "button"): string[] {
   const el = host.querySelector(selector);
@@ -78,7 +59,7 @@ describe("Button classes", () => {
     const emitted = new Set<string>();
     for (const variant of VARIANTS) {
       for (const size of SIZES) {
-        const host = render(
+        const host = mountHost(
           <>
             <Button variant={variant} size={size}>
               Export
@@ -89,9 +70,7 @@ describe("Button classes", () => {
         for (const el of host.querySelectorAll("button")) {
           for (const cls of el.classList) emitted.add(cls);
         }
-        act(() => mounted?.root.unmount());
-        mounted?.host.remove();
-        mounted = null;
+        cleanupMounted();
       }
     }
 
@@ -110,7 +89,7 @@ describe("Button classes", () => {
     // The Renders Export case: `size="md"` brings `text-step-12`, the caller
     // wants 11px, and with plain concatenation both survived into the class
     // list and the stylesheet's order decided the winner.
-    const classes = classesOf(render(<Button size="md" className="text-step-11" />));
+    const classes = classesOf(mountHost(<Button size="md" className="text-step-11" />));
 
     expect(classes).toContain("text-step-11");
     expect(classes).not.toContain("text-step-12");
@@ -127,10 +106,8 @@ describe("Button classes", () => {
     };
 
     for (const variant of VARIANTS) {
-      const classes = classesOf(render(<Button variant={variant}>Export</Button>));
-      act(() => mounted?.root.unmount());
-      mounted?.host.remove();
-      mounted = null;
+      const classes = classesOf(mountHost(<Button variant={variant}>Export</Button>));
+      cleanupMounted();
 
       for (const [state, prefixes] of Object.entries(realPrefix)) {
         const previewPrefix = `data-[preview-state=${state}]:`;
@@ -152,7 +129,7 @@ describe("Button classes", () => {
     // (theme.css), not in a `motion-reduce:` class beside it, so a caller
     // cannot use the token and forget the reduced-motion half. The button's
     // job is to name the token; the stylesheet's job is the media query.
-    expect(classesOf(render(<Button>Export</Button>))).toContain("duration-press");
+    expect(classesOf(mountHost(<Button>Export</Button>))).toContain("duration-press");
 
     expect(compileStudioCss(["duration-press"])).toMatch(
       /\.duration-press \{[\s\S]*?prefers-reduced-motion: reduce[\s\S]*?transition-duration: 0ms/,
@@ -163,7 +140,7 @@ describe("Button classes", () => {
 describe("Button behaviour", () => {
   it("does not fire a disabled click, and says it is disabled", () => {
     let clicks = 0;
-    const host = render(
+    const host = mountHost(
       <Button disabled onClick={() => (clicks += 1)}>
         Export
       </Button>,
@@ -178,7 +155,7 @@ describe("Button behaviour", () => {
 
   it("still fires a click while a preview state is forced", () => {
     let clicks = 0;
-    const host = render(
+    const host = mountHost(
       <Button data-preview-state="hover" onClick={() => (clicks += 1)}>
         Export
       </Button>,
@@ -195,7 +172,7 @@ describe("Button behaviour", () => {
     // KTD13. Both selector lists gate on roles and element names. A primitive
     // that landed on a different role would leak or swallow global hotkeys with
     // nothing to notice it.
-    const host = render(
+    const host = mountHost(
       <>
         <button type="button" data-testid="plain">
           Export
