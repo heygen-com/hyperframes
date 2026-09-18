@@ -19,7 +19,6 @@ Composition id: `glass-shard-title`. Duration 12.16 s at 30 fps, 1920×1080.
 - `assets/fonts/CormorantGaramond-OFL.txt` (4 KB)
 - `assets/glass-main.js` (549 KB)
 - `assets/glass-main.mjs` (37 KB, ESM source `build-bundle.mjs` compiles into `glass-main.js`)
-- `assets/matcap-1.png` (3.0 MB)
 - `build-bundle.mjs` (1 KB)
 - `compositions/glass-shard-title.html` (565 KB)
 - `hyperframes.json` (1 KB)

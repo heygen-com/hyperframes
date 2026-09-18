@@ -62,11 +62,6 @@
       "type": "hyperframes:asset"
     },
     {
-      "path": "assets/matcap-1.png",
-      "target": "compositions/glass-shard-title/assets/matcap-1.png",
-      "type": "hyperframes:asset"
-    },
-    {
       "path": "SKILL.md",
       "target": "compositions/glass-shard-title/SKILL.md",
       "type": "hyperframes:asset"

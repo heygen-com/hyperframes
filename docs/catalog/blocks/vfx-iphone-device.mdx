@@ -652,14 +652,31 @@ That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under
         if (ready === 2) onReady();
       });
 
+      function waitForPaint(canvas) {
+        return new Promise(function (resolvePaint) {
+          if (!canvas || typeof canvas.requestPaint !== "function") {
+            resolvePaint();
+            return;
+          }
+          var resolved = false;
+          function done() {
+            if (resolved) return;
+            resolved = true;
+            canvas.onpaint = null;
+            resolvePaint();
+          }
+          canvas.onpaint = done;
+          canvas.requestPaint();
+          setTimeout(done, 100);
+        });
+      }
+
       function onReady() {
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () {
-            paintReady = true;
-            captureScreens();
-            window.__timelines = window.__timelines || {};
-            window.__timelines["devices-canvas"] = tl;
-          });
+        Promise.all([waitForPaint(capPhoneCvs), waitForPaint(capLapCvs)]).then(function () {
+          paintReady = true;
+          captureScreens();
+          window.__timelines = window.__timelines || {};
+          window.__timelines["devices-canvas"] = tl;
         });
       }
 
