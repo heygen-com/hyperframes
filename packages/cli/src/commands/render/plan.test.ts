@@ -266,6 +266,89 @@ describe("createRenderPlan", () => {
     expect(plan.authoringSkillSource).toBeUndefined();
   });
 
+  describe("motion blur", () => {
+    it("is absent unless the flag or the project config asks for it", () => {
+      expect(createRenderPlan({ dir: projectDir }).motionBlur).toBeUndefined();
+    });
+
+    it("reads a bare --motion-blur as the engine's own defaults", () => {
+      const plan = createRenderPlan({ dir: projectDir, "motion-blur": "" });
+      expect(plan.motionBlur).toEqual({});
+    });
+
+    it("parses the angle:phase:samples micro-syntax", () => {
+      const plan = createRenderPlan({ dir: projectDir, "motion-blur": "180:-90:16" });
+      expect(plan.motionBlur).toEqual({
+        shutterAngle: 180,
+        shutterPhase: -90,
+        samplesPerFrame: 16,
+      });
+    });
+
+    // The whole point of the config key: the After Effects exporter writes the
+    // comp's own shutter into hyperframes.json, so a later flag-less render of
+    // that project blurs without the caller restating anything.
+    it("falls back to the project's hyperframes.json render.motionBlur", () => {
+      writeFileSync(
+        join(projectDir, "hyperframes.json"),
+        JSON.stringify({ render: { motionBlur: { shutterAngle: 720, shutterPhase: -360 } } }),
+      );
+      const plan = createRenderPlan({ dir: projectDir });
+      expect(plan.motionBlur).toEqual({ shutterAngle: 720, shutterPhase: -360 });
+    });
+
+    it("lets an explicit flag override the project config field by field", () => {
+      writeFileSync(
+        join(projectDir, "hyperframes.json"),
+        JSON.stringify({
+          render: { motionBlur: { shutterAngle: 720, shutterPhase: -360, samplesPerFrame: 32 } },
+        }),
+      );
+      const plan = createRenderPlan({ dir: projectDir, "motion-blur": "180:-90:16" });
+      expect(plan.motionBlur).toEqual({
+        shutterAngle: 180,
+        shutterPhase: -90,
+        samplesPerFrame: 16,
+      });
+    });
+
+    // citty reports `--no-motion-blur` as the boolean false, which is a
+    // deliberate opt-out and has to beat a config that turns the option on.
+    it("lets --no-motion-blur switch off a project config that turned it on", () => {
+      writeFileSync(
+        join(projectDir, "hyperframes.json"),
+        JSON.stringify({ render: { motionBlur: { shutterAngle: 720 } } }),
+      );
+      expect(
+        createRenderPlan({ dir: projectDir, "motion-blur": false }).motionBlur,
+      ).toBeUndefined();
+    });
+
+    // The opt-out travels separately from `motionBlur === undefined`, because a
+    // Docker render forwards the option set it was given and the in-container
+    // CLI re-reads the same hyperframes.json. Without a durable flag the
+    // container's fallback would silently re-enable the blur.
+    it("records --no-motion-blur as a durable opt-out alongside the absent option", () => {
+      writeFileSync(
+        join(projectDir, "hyperframes.json"),
+        JSON.stringify({ render: { motionBlur: { shutterAngle: 720 } } }),
+      );
+      const plan = createRenderPlan({ dir: projectDir, "motion-blur": false });
+      expect(plan.motionBlur).toBeUndefined();
+      expect(plan.motionBlurOff).toBe(true);
+      // A normal render (flag absent) leaves the opt-out off, so the project
+      // config still applies.
+      expect(createRenderPlan({ dir: projectDir }).motionBlurOff).toBe(false);
+      expect(createRenderPlan({ dir: projectDir }).motionBlur).toEqual({ shutterAngle: 720 });
+    });
+
+    it("classifies a malformed flag value as a usage error", () => {
+      expect(() => createRenderPlan({ dir: projectDir, "motion-blur": "./my-video" })).toThrow(
+        CliUsageError,
+      );
+    });
+  });
+
   it("preserves a malformed --skill value for telemetry without adopting it as authoringSkill", () => {
     writeFileSync(
       join(projectDir, "hyperframes.json"),

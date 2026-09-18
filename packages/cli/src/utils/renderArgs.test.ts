@@ -6,6 +6,7 @@ import {
   MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS,
   hasExplicitCompositionArg,
   parseBrowserTimeoutMsArg,
+  parseMotionBlurArg,
   resolveDiagnosticNavigationTimeoutMs,
   parseCompositionEntryArg,
   parseGifLoopArg,
@@ -314,5 +315,125 @@ describe("parseHlsSegmentSecondsArg", () => {
     expect(parseHlsSegmentSecondsArg("2.5").ok).toBe(false);
     expect(parseHlsSegmentSecondsArg("61").ok).toBe(false);
     expect(parseHlsSegmentSecondsArg(" ").ok).toBe(false);
+  });
+});
+
+describe("parseMotionBlurArg", () => {
+  it("returns undefined when the flag is absent so the config can still win", () => {
+    expect(parseMotionBlurArg(undefined)).toEqual({ ok: true, value: undefined });
+  });
+
+  it("reads a bare flag as the engine's own defaults", () => {
+    expect(parseMotionBlurArg("")).toEqual({ ok: true, value: {} });
+    expect(parseMotionBlurArg("   ")).toEqual({ ok: true, value: {} });
+  });
+
+  // The order is the engine's own MotionBlurOptions field order, so the value
+  // needs no lookup: shutterAngle, shutterPhase, samplesPerFrame.
+  it("accepts angle, angle:phase, and angle:phase:samples", () => {
+    expect(parseMotionBlurArg("180")).toEqual({ ok: true, value: { shutterAngle: 180 } });
+    expect(parseMotionBlurArg("180:-90")).toEqual({
+      ok: true,
+      value: { shutterAngle: 180, shutterPhase: -90 },
+    });
+    expect(parseMotionBlurArg("180:-90:16")).toEqual({
+      ok: true,
+      value: { shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 },
+    });
+  });
+
+  it("tolerates surrounding whitespace on each component", () => {
+    expect(parseMotionBlurArg(" 180 : -90 : 16 ")).toEqual({
+      ok: true,
+      value: { shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 },
+    });
+  });
+
+  it("accepts fractional angles and negative phases", () => {
+    expect(parseMotionBlurArg("360:-180")).toEqual({
+      ok: true,
+      value: { shutterAngle: 360, shutterPhase: -180 },
+    });
+    expect(parseMotionBlurArg("180.5")).toEqual({ ok: true, value: { shutterAngle: 180.5 } });
+  });
+
+  // citty hands an optional-value string flag the NEXT argv token, so
+  // `--motion-blur ./my-video` arrives as "./my-video". Anything that is not
+  // the documented form must be a usage error, not a silently-ignored value.
+  it("rejects a positional directory swallowed by the flag", () => {
+    const result = parseMotionBlurArg("./my-video");
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a stray flag token swallowed by the flag", () => {
+    expect(parseMotionBlurArg("--quiet").ok).toBe(false);
+    expect(parseMotionBlurArg("--output").ok).toBe(false);
+  });
+
+  it("rejects more components than the three the engine accepts", () => {
+    expect(parseMotionBlurArg("180:-90:16:extra").ok).toBe(false);
+  });
+
+  it("rejects an empty component wherever it appears", () => {
+    expect(parseMotionBlurArg("180:").ok).toBe(false);
+    expect(parseMotionBlurArg("180::16").ok).toBe(false);
+    expect(parseMotionBlurArg(":").ok).toBe(false);
+  });
+
+  it("rejects a non-numeric component", () => {
+    expect(parseMotionBlurArg("abc").ok).toBe(false);
+    expect(parseMotionBlurArg("180:abc").ok).toBe(false);
+    expect(parseMotionBlurArg("180:-90:abc").ok).toBe(false);
+  });
+
+  // The engine clamps 1..64; a value outside it is a typo, not a request to clamp.
+  it("rejects a samples count outside the engine's 1..64 window", () => {
+    expect(parseMotionBlurArg("180:-90:0").ok).toBe(false);
+    expect(parseMotionBlurArg("180:-90:65").ok).toBe(false);
+    expect(parseMotionBlurArg("180:-90:2.5").ok).toBe(false);
+    expect(parseMotionBlurArg("180:-90:1").ok).toBe(true);
+    expect(parseMotionBlurArg("180:-90:64").ok).toBe(true);
+  });
+
+  // The named form is the transport spelling the Docker hop writes; it exists
+  // because the positional form cannot express a gap between fields.
+  describe("named transport form", () => {
+    it("reads each field back under its own name", () => {
+      expect(parseMotionBlurArg("angle=180")).toEqual({
+        ok: true,
+        value: { shutterAngle: 180 },
+      });
+      expect(parseMotionBlurArg("samples=32")).toEqual({
+        ok: true,
+        value: { samplesPerFrame: 32 },
+      });
+      expect(parseMotionBlurArg("angle=180,phase=-90,samples=16")).toEqual({
+        ok: true,
+        value: { shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 },
+      });
+    });
+
+    it("accepts the blend field", () => {
+      expect(parseMotionBlurArg("blend=linear")).toEqual({
+        ok: true,
+        value: { blend: "linear" },
+      });
+      expect(parseMotionBlurArg("samples=16,blend=srgb")).toEqual({
+        ok: true,
+        value: { samplesPerFrame: 16, blend: "srgb" },
+      });
+    });
+
+    it("rejects an unknown field name and a malformed pair", () => {
+      expect(parseMotionBlurArg("angle=180,shutter=90").ok).toBe(false);
+      expect(parseMotionBlurArg("angle=180,oops").ok).toBe(false);
+      expect(parseMotionBlurArg("=180").ok).toBe(false);
+    });
+
+    it("rejects a bad value in the named form", () => {
+      expect(parseMotionBlurArg("angle=abc").ok).toBe(false);
+      expect(parseMotionBlurArg("samples=0").ok).toBe(false);
+      expect(parseMotionBlurArg("blend=xyz").ok).toBe(false);
+    });
   });
 });

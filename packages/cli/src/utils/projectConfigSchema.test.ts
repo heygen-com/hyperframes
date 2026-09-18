@@ -43,6 +43,7 @@ const EVERY_WRITTEN_KEY: Required<ProjectConfig> = {
   registry: "https://example.test/registry",
   paths: DEFAULT_PROJECT_CONFIG.paths,
   media: { autoProxy: true },
+  render: { motionBlur: { shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 } },
   authoringSkill: "product-launch-video",
   registryItems: [EVERY_RECORD_FIELD],
 };
@@ -72,5 +73,11 @@ describe("hyperframes.json schema", () => {
         registryItems: [{ ...EVERY_RECORD_FIELD, unknownItemKey: 1 }],
       }),
     ).toBe(false);
+    // `render.motionBlur` is closed too: the exporter writes this object into a
+    // committed file, so an undeclared key has to fail here rather than in a
+    // user's editor.
+    expect(validate({ ...EVERY_WRITTEN_KEY, render: { motionBlur: { unknownBlurKey: 1 } } })).toBe(
+      false,
+    );
   });
 });

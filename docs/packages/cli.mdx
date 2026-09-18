@@ -868,6 +868,45 @@ The flags that come up most:
 | `--batch`           | —                             | Render one output per variables row, from a JSON array or a `{ "rows": [...] }` object                                                             |
 | `--json`            | off                           | With `--batch`, print one final JSON result document instead of progress                                                                            |
 
+**Motion blur.** `--motion-blur` reproduces After Effects' shutter by
+integrating the frame across a sub-frame window instead of sampling one instant:
+
+```bash
+# The engine's defaults: 180-degree shutter, phase -90, adaptive sample count.
+# The empty value is deliberate — see the flag notes below.
+npx hyperframes render --motion-blur= --output output.mp4
+
+# Explicit: 720-degree shutter, phase -360, 16 samples per frame
+npx hyperframes render --motion-blur=720:-360:16 --output output.mp4
+```
+
+`--motion-blur` is an optional-value flag, so its space form is fragile: the bare
+`--motion-blur` only works as the **last** argument, and anywhere else it reads
+the next token as its value (`--motion-blur --output out.mp4` fails, because the
+flag receives the literal `--output`). Always pass it with `=`: `--motion-blur=`
+for the defaults, `--motion-blur=<value>` for an explicit shutter.
+
+A project exported from After Effects with motion blur on carries the comp's own
+shutter in `hyperframes.json`, so a flag-less render of it blurs the same way:
+
+```json
+{
+  "registry": "https://hyperframes.heygen.com/registry",
+  "paths": { "blocks": "compositions", "components": "compositions/components", "assets": "assets" },
+  "render": { "motionBlur": { "shutterAngle": 180, "shutterPhase": -90, "samplesPerFrame": 16 } }
+}
+```
+
+An explicit flag always wins, and `--no-motion-blur` switches it off for one run,
+including under `--docker` — the opt-out is forwarded to the container, so a
+project's `render.motionBlur` cannot turn it back on inside the render.
+The capture is forced to PNG and screenshot mode, so a render with the option on
+is slower than the same render without it. Two routes cannot carry it and reject
+it by name rather than rendering sharp: HDR and shader-transition captures (the
+layered compositor), and compositions with injected video frames. The
+[`preview`](#preview) stays sharp — After Effects' own preview is sharp with
+motion blur off too.
+
 Quality and file size:
 
 | Flag                   | Default         | Description                                                                                              |
@@ -877,6 +916,7 @@ Quality and file size:
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
 | `--gif-loop`           | `0`             | GIF loop count, `0` for forever. Range 0–65535, `--format gif` only.                                     |
 | `--hls-segment-seconds`| `4`             | HLS target segment length in whole seconds, 1–60. `--format hls` only. Also fixes the encoder GOP so every segment starts on a keyframe. |
+| `--motion-blur[=angle[:phase[:samples]]]` | from `render.motionBlur` | Sub-frame multi-sample motion blur, reproducing After Effects' shutter: `samples` sub-frame captures are averaged into each output frame, so rotation, scale, opacity and filters smear too, not just translation. Bare = engine defaults (180° shutter, phase −90, adaptive samples). `hyperframes.json`'s [`render.motionBlur`](#hyperframes-json) supplies it when the flag is omitted; `--no-motion-blur` overrides it off. Forces PNG and screenshot capture, costs roughly `samples`× the capture time, and leaves **preview sharp**. Pass it with `=` — as an optional-value flag, the space form reads the next argument as its value. |
 | `--video-frame-format` | `auto`          | How source video frames are extracted: `auto`, `jpg`, `png`. Use `png` for UI recordings, screen captures, and other colour-sensitive footage. |
 | `--hdr`                | off             | Force HDR even with no HDR sources. MP4 only. See [HDR rendering](/guides/hdr).                           |
 | `--sdr`                | off             | Force SDR even when HDR sources are detected                                                              |
@@ -1705,8 +1745,40 @@ delete it to fall back to the defaults.
 | `paths.blocks`     | Where block `.html` files land, relative to the project root.                            |
 | `paths.components` | Where component files land.                                                             |
 | `paths.assets`     | Where referenced assets — images, fonts — land.                                          |
+| `render.motionBlur`| Sub-frame multi-sample motion blur to apply to every render of this project. See below.  |
 
 Anything you leave out gets the default, so the file only needs your overrides.
+
+### Motion blur as a project default
+
+A composition whose After Effects comp has motion blur on should blur on every
+render of it, without each caller restating the shutter:
+
+```json
+{
+  "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
+  "registry": "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
+  "paths": {
+    "blocks": "compositions",
+    "components": "compositions/components",
+    "assets": "assets"
+  },
+  "render": {
+    "motionBlur": { "shutterAngle": 180, "shutterPhase": -90, "samplesPerFrame": 16 }
+  }
+}
+```
+
+| Field            | Default | Description                                                                                              |
+| ---------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `shutterAngle`   | `180`   | Shutter window width in degrees of one frame. After Effects' own default.                                 |
+| `shutterPhase`   | `-90`   | Window offset in degrees. `-90` centres the window on the frame time, which is what AE does by default.   |
+| `samplesPerFrame`| adaptive| Sub-frame captures averaged into each output frame, 1–64. Omit it to let the engine choose per frame.     |
+| `blend`          | `srgb`  | Working space for the average: `srgb` (matches AE's 8-bit working space) or `linear`.                      |
+
+`--motion-blur` on the command line overrides this for one render, and
+`--no-motion-blur` switches it off for one render. See
+[`render`](#render) for what the option costs and which capture routes reject it.
 
 ## Related topics
 

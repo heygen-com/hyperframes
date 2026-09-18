@@ -52,6 +52,39 @@
         }
       }
     },
+    "render": {
+      "type": "object",
+      "description": "Default `hyperframes render` options for this project. An explicit CLI flag always wins.",
+      "additionalProperties": false,
+      "properties": {
+        "motionBlur": {
+          "type": "object",
+          "description": "Opt into sub-frame multi-sample motion blur for every render of this project. Absent means off and the capture path is unchanged. The exporter writes this from the comp's own After Effects shutter settings. Forces PNG frame capture and screenshot capture; rejected on the HDR layered capture route.",
+          "additionalProperties": false,
+          "properties": {
+            "samplesPerFrame": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "description": "Sub-frame captures averaged into one output frame. Default 16, adaptive per frame when omitted."
+            },
+            "shutterAngle": {
+              "type": "number",
+              "description": "Shutter window width in degrees of one frame. Default 180, After Effects' own default."
+            },
+            "shutterPhase": {
+              "type": "number",
+              "description": "Window offset in degrees. Default -90, which centres the window on the frame time."
+            },
+            "blend": {
+              "type": "string",
+              "enum": ["srgb", "linear"],
+              "description": "Working space for the average. Default \"srgb\", matching After Effects' non-linearised work space."
+            }
+          }
+        }
+      }
+    },
     "authoringSkill": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",

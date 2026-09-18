@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { runCommand } from "citty";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
@@ -703,6 +704,54 @@ describe("renderLocal browser GPU config", () => {
       browserGpuMode: "auto",
       resolved: true,
     });
+  });
+
+  // Motion blur's accumulation pass seeks the live timeline at sub-frame times,
+  // which only the screenshot path can do. The engine's own guards reject the
+  // other two capture modes by name, so a render that reaches them fails
+  // loudly; forcing screenshot here is what keeps the option usable at all on
+  // a default (auto-GPU, drawElement-eligible) host.
+  it("forces screenshot capture and forwards the shutter when motion blur is on", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "auto",
+      hdrMode: "auto",
+      quiet: true,
+      motionBlur: { shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 },
+    });
+
+    expect(producerState.resolveConfigCalls).toContainEqual({
+      browserGpuMode: "auto",
+      forceScreenshot: true,
+    });
+    // `createRenderJob`'s mock records the config it was handed, and
+    // `renderConfigFromRequest` spreads the request options into it — so this
+    // is the same object the orchestrator's `job.config.motionBlur` reads.
+    expect(producerState.createdJobs[0]).toMatchObject({
+      motionBlur: { shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 },
+    });
+  });
+
+  it("leaves the capture route untouched when motion blur is off", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "hardware",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "hardware" });
+    // `toBeUndefined` rather than `not.toHaveProperty`: the real
+    // `createRenderRequest` strips undefined options
+    // (`omitUndefinedProperties`) so the key is absent, but this file's mock
+    // spreads the options verbatim and keeps it. The value is what both agree on.
+    expect(producerState.createdJobs[0]?.motionBlur).toBeUndefined();
   });
 
   it("honors PRODUCER_FORCE_SCREENSHOT=true even on local auto GPU", async () => {
@@ -1858,6 +1907,30 @@ describe("render fps arg definition", () => {
     const fpsArg = args.fps;
     expect(fpsArg).toBeDefined();
     expect(fpsArg?.default).toBeUndefined();
+  });
+});
+
+describe("render command motion-blur flags", () => {
+  it("parses --no-motion-blur to the boolean false through the real arg definition", async () => {
+    // `--no-motion-blur` only reaches createRenderPlan's opt-out branch if
+    // citty's negated-flag pass resolves it against THIS arg, and only the
+    // `false` value (not undefined, not "") distinguishes the opt-out from an
+    // omitted flag. Run the real definition through citty rather than reading
+    // the arg table, so a rename or a dropped `negativeDescription` fails here.
+    const cmd = (await import("./render.js")).default;
+    let captured: Record<string, unknown> = {};
+    await runCommand(
+      {
+        ...cmd,
+        meta: { ...(cmd.meta as object), name: "render" },
+        run: ({ args }) => {
+          captured = { ...args };
+        },
+      },
+      { rawArgs: ["--no-motion-blur", "--fps", "30"] },
+    );
+    expect(captured["motion-blur"]).toBe(false);
+    expect(captured.fps).toBe("30");
   });
 });
 

@@ -3,6 +3,7 @@ import {
   resolveConfig,
   validateEngineConfigSnapshot,
   type EngineConfig,
+  type MotionBlurOptions,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution, type Fps } from "@hyperframes/core";
@@ -46,6 +47,13 @@ export interface RenderRequestOptions {
   crf?: number;
   videoBitrate?: string;
   videoFrameFormat?: VideoFrameFormat;
+  /**
+   * Sub-frame multi-sample motion blur. Presence of the object is the opt-in;
+   * there is no enabled flag (see `MotionBlurOptions`). Forces PNG frame
+   * capture and screenshot capture in the render, and is rejected on the
+   * HDR layered capture route.
+   */
+  motionBlur?: MotionBlurOptions;
   hdrMode?: RenderConfig["hdrMode"];
   variables?: Record<string, unknown>;
   outputResolution?: CanvasResolution;
@@ -178,7 +186,54 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   }
 }
 
+/** The option's own fields, in the order `MotionBlurOptions` declares them. */
+const MOTION_BLUR_NUMBER_FIELDS = ["shutterAngle", "shutterPhase", "samplesPerFrame"] as const;
+const MOTION_BLUR_BLEND_SPACES = ["srgb", "linear"] as const;
+
+/** Motion blur's own rules, one predicate per field, split out to keep each readable. */
+function assertMotionBlurField(field: string, raw: unknown): void {
+  if (raw === undefined) return;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    throw new Error(`Render request motionBlur.${field} must be a finite number`);
+  }
+  if (field === "samplesPerFrame" && (!Number.isInteger(raw) || raw < 1 || raw > 64)) {
+    throw new Error(
+      "Render request motionBlur.samplesPerFrame must be an integer between 1 and 64",
+    );
+  }
+}
+
+/**
+ * Validate the motion-blur option before it is serialized.
+ *
+ * `validateJsonSafeValue` only rejects JSON-unsafe leaves, so without this a
+ * `blend: "xyz"` survives the round trip and reaches the engine, which silently
+ * treats anything other than "linear" as sRGB. Same reasoning as
+ * `assertDistributedOptions`: this boundary is where a caller's typo should
+ * become an error, not a quietly different render.
+ */
+function assertMotionBlurOptions(value: unknown): void {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) {
+    throw new Error("Render request motionBlur must be an object");
+  }
+  const blend = value.blend;
+  if (blend !== undefined && !MOTION_BLUR_BLEND_SPACES.some((space) => space === blend)) {
+    throw new Error("Render request motionBlur.blend is invalid");
+  }
+  const known: string[] = [...MOTION_BLUR_NUMBER_FIELDS, "blend"];
+  for (const field of Object.keys(value)) {
+    if (!known.includes(field)) {
+      throw new Error(`Render request motionBlur has unknown field(s): ${field}`);
+    }
+  }
+  for (const field of MOTION_BLUR_NUMBER_FIELDS) {
+    assertMotionBlurField(field, value[field]);
+  }
+}
+
 function assertRequestOptionObjects(options: Record<string, unknown>): void {
+  assertMotionBlurOptions(options.motionBlur);
   validateEngineConfigSnapshot(options.engineConfig);
   if (options.variables !== undefined && !isPlainObject(options.variables)) {
     throw new Error("Render request variables must be a JSON object");

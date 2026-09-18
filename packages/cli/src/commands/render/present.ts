@@ -2,6 +2,7 @@ import { cpus } from "node:os";
 import { readFileSync } from "node:fs";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import type { MotionBlurOptions } from "@hyperframes/engine";
 import type { RenderPlan } from "./plan.js";
 
 /** Present warnings and the human render plan. JSON batch output stays silent. */
@@ -45,9 +46,31 @@ function presentRenderSummary(plan: RenderPlan): void {
   if (plan.format === "hls") {
     console.log(c.dim(`   HLS: ${plan.hlsSegmentSeconds}s segments in a playlist directory`));
   }
+  if (plan.motionBlur) {
+    // Preview is sharp under this route: the smear is integrated during frame
+    // capture, so `hyperframes preview` and Studio show the composition
+    // unblurred. Say so rather than letting an author read the sharp preview
+    // as the blur having failed.
+    console.log(
+      c.dim(`   Motion blur: ${formatMotionBlurLabel(plan.motionBlur)} (preview stays sharp)`),
+    );
+  }
   const gpuModes = formatGpuModes(plan);
   if (gpuModes) console.log(c.dim("   GPU: " + gpuModes));
   console.log("");
+}
+
+/** Human label for the resolved motion-blur shutter, for the plan summary. */
+function formatMotionBlurLabel(options: MotionBlurOptions): string {
+  const parts: string[] = [];
+  parts.push(`${options.shutterAngle ?? 180}deg shutter`);
+  if (options.shutterPhase !== undefined) parts.push(`phase ${options.shutterPhase}`);
+  parts.push(
+    options.samplesPerFrame !== undefined
+      ? `${options.samplesPerFrame} samples/frame`
+      : "adaptive samples",
+  );
+  return parts.join(", ");
 }
 
 /** The GPU line's accelerated modes, or undefined when neither is. */

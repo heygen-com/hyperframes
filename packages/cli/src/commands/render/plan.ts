@@ -15,6 +15,7 @@ import {
   MAX_VP9_CPU_USED,
   MIN_VP9_CPU_USED,
   isVideoFrameFormat,
+  type MotionBlurOptions,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
 import { errorBox } from "../../ui/format.js";
@@ -24,6 +25,7 @@ import {
   hasExplicitCompositionArg,
   parseGifLoopArg,
   parseHlsSegmentSecondsArg,
+  resolveMotionBlurArg,
   resolveBrowserTimeoutMsArg,
   resolveCompositionEntryArg,
   resolveDefaultFpsArg,
@@ -72,6 +74,7 @@ export interface RenderCommandArgs {
   format?: string;
   "gif-loop"?: string;
   "hls-segment-seconds"?: string;
+  "motion-blur"?: string | boolean;
   "video-frame-format"?: string;
   workers?: string;
   docker?: boolean;
@@ -123,6 +126,26 @@ export interface RenderPlan {
   gifFpsCapped: boolean;
   /** HLS target segment length in seconds; only set for `format: "hls"`. */
   hlsSegmentSeconds?: number;
+  /**
+   * Sub-frame multi-sample motion blur for this render, resolved flag-first.
+   *
+   * Presence of the object is the opt-in — the engine has no `enabled` field,
+   * so `undefined` here means the capture path is unchanged. When set, the PNG
+   * frame format follows from it in the producer
+   * (`resolveCaptureImageFormat`) and screenshot capture is forced onto the
+   * engine config in `renderLocal`, since the sub-frame accumulation seeks the
+   * live timeline rather than reading paint records.
+   */
+  motionBlur?: MotionBlurOptions;
+  /**
+   * `--no-motion-blur` was passed, so this render must not blur — project config
+   * included. `motionBlur === undefined` alone cannot carry this: a Docker render
+   * forwards the option set it is given, and the in-container CLI re-reads the
+   * same `hyperframes.json`, so an absent value lets the project's config turn
+   * motion blur back on inside the container. This flag is forwarded explicitly
+   * as `--no-motion-blur` so the opt-out survives the hop.
+   */
+  motionBlurOff: boolean;
   videoFrameFormat: VideoFrameFormat;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic: boolean;
@@ -291,6 +314,17 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   }
   const hlsSegmentSeconds =
     format === "hls" ? (hlsSegmentParse.value ?? DEFAULT_HLS_SEGMENT_SECONDS) : undefined;
+
+  // Motion blur resolves flag-first, then the project's own `render.motionBlur`.
+  // `--no-motion-blur` arrives from citty as the boolean `false`, which is a
+  // deliberate opt-out and must beat a config that turns it on.
+  const projectRenderConfig = loadProjectConfig(project.dir).render;
+  const motionBlurOff = args["motion-blur"] === false;
+  const motionBlur = motionBlurOff
+    ? undefined
+    : (resolveMotionBlurArg(
+        typeof args["motion-blur"] === "string" ? args["motion-blur"] : undefined,
+      ) ?? projectRenderConfig?.motionBlur);
 
   const videoFrameFormatRaw = args["video-frame-format"] ?? "auto";
   if (!isVideoFrameFormat(videoFrameFormatRaw)) {
@@ -518,6 +552,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     gifLoop,
     gifFpsCapped,
     hlsSegmentSeconds,
+    motionBlur,
+    motionBlurOff,
     videoFrameFormat: videoFrameFormatRaw,
     outputResolution,
     outputResolutionAspectAgnostic,

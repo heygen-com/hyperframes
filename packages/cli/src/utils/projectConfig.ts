@@ -8,6 +8,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import type { MotionBlurOptions } from "@hyperframes/engine";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
@@ -35,6 +36,25 @@ export interface ProjectConfigMedia {
 }
 
 /**
+ * Default `hyperframes render` options stored on the project.
+ *
+ * These exist so a project can carry the render intent its author already
+ * knows (a comp exported from After Effects with motion blur on wants
+ * `motionBlur` set for every render of it) instead of every caller restating
+ * it. An explicit CLI flag always wins; see `resolveMotionBlur`.
+ */
+export interface ProjectConfigRender {
+  /**
+   * Sub-frame multi-sample motion blur, on by default for this project.
+   *
+   * Absent means off, and the capture path is unchanged. Written by the
+   * After Effects exporter from the comp's own shutter settings, and settable
+   * by hand.
+   */
+  motionBlur?: MotionBlurOptions;
+}
+
+/**
  * One catalog item installed into this project by `hyperframes add`.
  *
  * Installed files are plain composition HTML with no provenance marker, so
@@ -59,6 +79,8 @@ export interface ProjectConfig {
   paths: ProjectConfigPaths;
   /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
   media?: ProjectConfigMedia;
+  /** Default `hyperframes render` options for this project. */
+  render?: ProjectConfigRender;
   /**
    * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
    * by `hyperframes init --skill` or seeded from the first `hyperframes render
@@ -151,6 +173,7 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
           ? partial.media.autoProxy
           : DEFAULT_PROJECT_CONFIG.media?.autoProxy,
     },
+    render: normalizeRender(partial.render),
     // Slug-gate on read so a hand-edited or corrupt value never reaches the
     // telemetry stream; an invalid slug simply drops the attribution.
     authoringSkill: normalizeSkillSlug(partial.authoringSkill),
@@ -159,6 +182,33 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
     // installed a catalog item".
     registryItems: normalizeRegistryItems(partial.registryItems),
   };
+}
+
+/**
+ * Rebuild the render options from the fields the engine actually accepts.
+ *
+ * Same whitelist discipline as the rest of this function: `motionBlur` is a
+ * `MotionBlurOptions` object, so a hand-edited string or a stray key must not
+ * survive into a render. Non-finite numbers are dropped rather than clamped —
+ * the engine clamps samples itself, and a NaN shutter angle is a broken config,
+ * not a request for the default.
+ */
+function normalizeRender(raw: unknown): ProjectConfigRender | undefined {
+  if (!isJsonObject(raw)) return undefined;
+  const motionBlur = raw.motionBlur;
+  // A malformed value is dropped, NOT coerced to `{}`: `{}` means "on with the
+  // engine's defaults", which would change the frame format and the capture
+  // route of every render of this project on the strength of a typo.
+  if (!isJsonObject(motionBlur)) return undefined;
+  const normalized: MotionBlurOptions = {};
+  for (const field of ["shutterAngle", "shutterPhase", "samplesPerFrame"] as const) {
+    const value = motionBlur[field];
+    if (typeof value === "number" && Number.isFinite(value)) normalized[field] = value;
+  }
+  if (motionBlur.blend === "srgb" || motionBlur.blend === "linear") {
+    normalized.blend = motionBlur.blend;
+  }
+  return { motionBlur: normalized };
 }
 
 /**

@@ -8,6 +8,7 @@
  * silent-drop regressions like the one that lost `--hdr` historically.
  */
 import { fpsToFfmpegArg, type Fps } from "@hyperframes/core";
+import type { MotionBlurOptions } from "@hyperframes/engine";
 
 export interface DockerRunArgsInput {
   imageTag: string;
@@ -61,6 +62,25 @@ export interface DockerRenderOptions {
   /** EXPERIMENTAL. drawElementImage frame capture; forwarded as `--experimental-fast-capture`. */
   experimentalFastCapture?: boolean;
   /**
+   * Sub-frame motion blur, forwarded as `--motion-blur=<named fields>` (see
+   * `formatMotionBlurArg`). Always the `=` spelling, and always with the `=`:
+   * the flag takes an optional value, so the space form would swallow the next
+   * argument inside the container (and the bare form needs the empty value
+   * spelled out).
+   */
+  motionBlur?: MotionBlurOptions;
+  /**
+   * The caller passed `--no-motion-blur`, so the container must not blur. This
+   * cannot be expressed by leaving `motionBlur` undefined: the in-container CLI
+   * re-reads the project's own `hyperframes.json`, whose `render.motionBlur`
+   * (written by the AE exporter for every comp with MB on) would turn the blur
+   * straight back on. Forwarded as `--no-motion-blur`, which the in-container
+   * citty parser reports as the boolean `false` — the same opt-out the host
+   * resolved. When both are set the opt-out wins, matching the host's own
+   * precedence.
+   */
+  motionBlurOff?: boolean;
+  /**
    * Puppeteer page-navigation timeout, in milliseconds. Forwarded to the
    * in-container CLI as `--browser-timeout <seconds>` (the CLI takes
    * seconds; the engine takes ms — kept consistent with the host-side
@@ -71,6 +91,29 @@ export interface DockerRenderOptions {
   protocolTimeoutMs?: number;
   /** Player readiness timeout in milliseconds. */
   playerReadyTimeoutMs?: number;
+}
+
+/**
+ * Serialize `MotionBlurOptions` into the named form `parseMotionBlurArg` reads
+ * back (`angle=180,samples=16`), so the in-container CLI reconstructs the same
+ * object field by field.
+ *
+ * The positional `angle:phase:samples` spelling cannot carry this: its slots
+ * are positional, so `{ samplesPerFrame: 16 }` alone would serialize to `16`
+ * and re-parse as a 16-degree shutter — every later field shifting one slot
+ * left. Naming the present fields is what makes a partially-specified option
+ * (a hand-authored `render.motionBlur` with a gap, or one produced field by
+ * field by the AE exporter) survive the host → container hop unchanged.
+ * `blend` names its own field so a linear-blend render does not silently drop
+ * to sRGB inside the container.
+ */
+export function formatMotionBlurArg(options: MotionBlurOptions): string {
+  const parts: string[] = [];
+  if (options.shutterAngle !== undefined) parts.push(`angle=${options.shutterAngle}`);
+  if (options.shutterPhase !== undefined) parts.push(`phase=${options.shutterPhase}`);
+  if (options.samplesPerFrame !== undefined) parts.push(`samples=${options.samplesPerFrame}`);
+  if (options.blend !== undefined) parts.push(`blend=${options.blend}`);
+  return parts.join(",");
 }
 
 /**
@@ -159,6 +202,14 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.outputResolution ? ["--resolution", options.outputResolution] : []),
     ...(options.pageSideCompositing === false ? ["--no-page-side-compositing"] : []),
     ...(options.experimentalFastCapture ? ["--experimental-fast-capture"] : []),
+    ...(options.motionBlur && !options.motionBlurOff
+      ? [`--motion-blur=${formatMotionBlurArg(options.motionBlur)}`]
+      : []),
+    // The opt-out travels as the negated flag the in-container citty parser
+    // reports as `false`. Without it an absent `--motion-blur` would let the
+    // container re-read the project's own `render.motionBlur` and blur a render
+    // the caller explicitly asked to leave sharp.
+    ...(options.motionBlurOff ? ["--no-motion-blur"] : []),
     ...(options.pageNavigationTimeoutMs != null
       ? ["--browser-timeout", String(options.pageNavigationTimeoutMs / 1000)]
       : []),

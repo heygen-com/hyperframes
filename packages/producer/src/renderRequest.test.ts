@@ -277,6 +277,57 @@ describe("RenderRequest", () => {
       });
     }
 
+    describe("motionBlur", () => {
+      function blurRequest(motionBlur: unknown, format = "mp4") {
+        return parseRenderRequest({
+          ...request(),
+          options: { ...request().options, format, motionBlur },
+        });
+      }
+
+      it("round-trips the shutter through the wire and into the render config", () => {
+        const value = blurRequest({ shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 });
+        expect(value.options.motionBlur).toEqual({
+          shutterAngle: 180,
+          shutterPhase: -90,
+          samplesPerFrame: 16,
+        });
+        expect(parseRenderRequest(serializeRenderRequest(value))).toEqual(value);
+        expect(renderConfigFromRequest(value)).toMatchObject({
+          motionBlur: { shutterAngle: 180, shutterPhase: -90, samplesPerFrame: 16 },
+        });
+      });
+
+      it("accepts the bare engine-defaults object and the empty form", () => {
+        expect(blurRequest({}).options.motionBlur).toEqual({});
+      });
+
+      // The engine treats anything other than "linear" as sRGB, so an unknown
+      // blend would silently render with the other working space.
+      it("rejects an unknown blend space at the wire boundary", () => {
+        expect(() => blurRequest({ blend: "display-p3" })).toThrow("motionBlur.blend");
+      });
+
+      it("rejects a samples count outside the engine's 1..64 window", () => {
+        for (const samplesPerFrame of [0, 65, 2.5]) {
+          expect(() => blurRequest({ samplesPerFrame })).toThrow("samplesPerFrame");
+        }
+      });
+
+      it("rejects a non-finite shutter value and a non-object option", () => {
+        expect(() => blurRequest({ shutterAngle: Number.NaN })).toThrow("shutterAngle");
+        expect(() => blurRequest("on")).toThrow("motionBlur must be an object");
+      });
+
+      it("rejects an unknown field rather than dropping it silently", () => {
+        expect(() => blurRequest({ samples: 16 })).toThrow("unknown field");
+      });
+
+      it("omits motionBlur when unset so the capture path is unchanged", () => {
+        expect(request().options).not.toHaveProperty("motionBlur");
+      });
+    });
+
     it("round-trips hls and its segment length", () => {
       const value = hlsRequest({ hlsSegmentSeconds: 6 });
       expect(value.options.format).toBe("hls");

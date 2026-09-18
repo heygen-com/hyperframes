@@ -111,7 +111,11 @@ import {
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
-import { EXTRACT_CACHE_DIR_DISABLED_ALIASES, type VideoFrameFormat } from "@hyperframes/engine";
+import {
+  EXTRACT_CACHE_DIR_DISABLED_ALIASES,
+  type MotionBlurOptions,
+  type VideoFrameFormat,
+} from "@hyperframes/engine";
 import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
@@ -190,6 +194,24 @@ export default defineCommand({
         "HLS target segment length in whole seconds (default: 4). Range: 1-60. " +
         "Also fixes the encoder GOP at segment x fps frames so every segment " +
         "starts on a keyframe. Only used with --format hls.",
+    },
+    "motion-blur": {
+      type: "string",
+      description:
+        "Sub-frame multi-sample motion blur, reproducing After Effects' shutter. " +
+        "--motion-blur= (empty value) uses the engine's defaults (180 degrees, " +
+        "phase -90, adaptive samples); --motion-blur=<angle[:phase[:samples]]> " +
+        "sets them (e.g. --motion-blur=180:-90:16). Falls back to the project's " +
+        "hyperframes.json render.motionBlur when omitted; --no-motion-blur switches " +
+        "that fallback off for this render (and is forwarded through --docker). " +
+        "Forces PNG frame " +
+        "capture and screenshot capture; unavailable on HDR/shader-transition " +
+        "captures, which the render rejects by name. Always pass it with '=': " +
+        "the bare form is only safe as the last argument, since the flag takes " +
+        "an optional value and would otherwise read the next argument as its own.",
+      negativeDescription: "Render without motion blur, overriding hyperframes.json.",
+      // No `default`: an omitted flag must stay `undefined` so the project
+      // config can win, matching the --experimental-fast-capture idiom.
     },
     "video-frame-format": {
       type: "string",
@@ -455,6 +477,19 @@ export interface RenderOptions {
   browserVersionMajor?: number;
   /** HLS target segment length in seconds; ignored unless `format` is `"hls"`. */
   hlsSegmentSeconds?: number;
+  /**
+   * Sub-frame multi-sample motion blur. Presence of the object is the opt-in.
+   * Requires PNG capture (the producer derives it) and screenshot mode, which
+   * this module forces onto the engine config.
+   */
+  motionBlur?: MotionBlurOptions;
+  /**
+   * `--no-motion-blur` was passed. Carried separately from `motionBlur` so the
+   * Docker hop can forward the opt-out explicitly: the in-container CLI re-reads
+   * the project's `hyperframes.json`, so an absent option would let a project
+   * config re-enable the blur the caller switched off.
+   */
+  motionBlurOff?: boolean;
   workers?: number;
   gpu: boolean;
   /**
@@ -795,6 +830,8 @@ async function renderDocker(
       debug: options.debug,
       bestEffort: options.bestEffort,
       experimentalFastCapture: options.experimentalFastCapture,
+      motionBlur: options.motionBlur,
+      motionBlurOff: options.motionBlurOff,
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
       protocolTimeoutMs: options.protocolTimeout,
       playerReadyTimeoutMs: options.playerReadyTimeout,
@@ -1012,15 +1049,27 @@ async function executeLocalRender(
     producer.createConsoleLogger?.(options.debug ? "debug" : "info") ?? createNoopProducerLogger(),
   );
 
+  // Motion blur's accumulation pass reads the live timeline at sub-frame times,
+  // which only the screenshot path can do: drawElement reads paint records for
+  // one instant, and BeginFrame drives the compositor itself. `resolveConfig`
+  // clamps drawElement off under an explicit `forceScreenshot: true`, and the
+  // engine's own init-time gate routes a screenshot request away from
+  // BeginFrame, so this single override settles the whole capture route.
+  const forceScreenshotForMotionBlur = options.motionBlur !== undefined;
   const engineConfig = producer.resolveConfig({
     browserGpuMode: options.browserGpuMode ?? "software",
     // Local auto opts out of the software-GPU screenshot clamp. Docker and
     // --no-browser-gpu request software; --resolution supersamples via screenshot.
+    // Motion blur is a third reason to want screenshot capture and takes
+    // precedence over the opt-out: its accumulation pass has no other route.
     ...(options.browserGpuMode === "auto" &&
     options.outputResolution == null &&
-    process.env.PRODUCER_FORCE_SCREENSHOT !== "true"
+    process.env.PRODUCER_FORCE_SCREENSHOT !== "true" &&
+    !forceScreenshotForMotionBlur
       ? { forceScreenshot: false }
-      : {}),
+      : forceScreenshotForMotionBlur
+        ? { forceScreenshot: true }
+        : {}),
     ...(options.pageNavigationTimeoutMs != null
       ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
       : {}),
@@ -1038,6 +1087,7 @@ async function executeLocalRender(
       format: options.format,
       gifLoop: options.gifLoop,
       hlsSegmentSeconds: options.hlsSegmentSeconds,
+      motionBlur: options.motionBlur,
       workers: options.workers,
       useGpu: options.gpu,
       hdrMode: options.hdrMode,
