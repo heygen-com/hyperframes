@@ -98,11 +98,8 @@ describe("TransportClock stall policy — interactive playback", () => {
     // Audio becomes unavailable without a formal detachAudioSource() call —
     // now() falls through to monotonic within the same read.
     Object.assign(audioEl, { paused: true });
-    // The fallback must read as if no stall correction ever ran: this is the
-    // first monotonic-branch read, so it must not be held back by the 5s gap
-    // that only ever applied to audio-authoritative reads. Real elapsed time
-    // since play() is exactly 5s (the one advance() call above); a corrupted
-    // `_playStartMs` would report roughly 33ms instead.
+    // First monotonic-branch read: must not be held back by the 5s audio gap.
+    // A corrupted `_playStartMs` would report ~33ms instead of the true ~5s.
     expect(clock.now()).toBeCloseTo(5, 2);
   });
 
