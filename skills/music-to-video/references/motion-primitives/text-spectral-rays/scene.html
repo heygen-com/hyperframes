@@ -1,6 +1,12 @@
 <template id="text-spectral-rays-template">
   <div
     data-composition-id="text-spectral-rays"
+    data-composition-variables='[
+    {"id":"text",       "type":"string", "label":"Wordmark",           "default":"SPECTRAL"},
+    {"id":"textColor",  "type":"color",  "label":"Wordmark fill",       "default":"#f6ff7a"},
+    {"id":"bgColor",    "type":"color",  "label":"Stage background",    "default":"#000000"},
+    {"id":"sweepSpeed", "type":"number", "label":"Light sweep speed", "default":1, "min":0.2, "max":3, "step":0.1}
+  ]'
     data-width="1920"
     data-height="1080"
     data-duration="4"
@@ -17,13 +23,6 @@
         margin: 0;
         padding: 0;
         box-sizing: border-box;
-      }
-      #scene {
-        position: absolute;
-        inset: 0;
-        width: 1920px;
-        height: 1080px;
-        background: #000;
       }
       .vfx-canvas {
         position: absolute;
