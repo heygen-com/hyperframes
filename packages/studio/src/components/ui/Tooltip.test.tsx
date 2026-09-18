@@ -1,16 +1,8 @@
 // @vitest-environment happy-dom
+
 /**
- * The tooltip's accessibility contract, which moving to Base UI must not lose:
- *
- *  - it opens on focus as well as on pointer, because a keyboard user reaches a
- *    control by focusing it and never hovers it,
- *  - Escape dismisses it (WCAG 1.4.13),
- *  - the trigger points at the bubble with `aria-describedby` while it is open
- *    (WCAG 4.1.2). Base UI 1.7.0 does not wire this itself, which is why the
- *    wrapper controls the open state, and why this test exists at all.
- *
- * Position, flip and the portal are the library's and need real layout, so they
- * belong to the screenshot run, not to happy-dom.
+ * Tooltip a11y contract Base UI must not lose: focus opens it, Escape
+ * dismisses it (WCAG 1.4.13), aria-describedby ties trigger to bubble (4.1.2).
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

@@ -1,23 +1,6 @@
 /**
- * Tooltip — Base UI's tooltip wearing Studio's tokens.
- *
- * The props are the ones Studio's own tooltip had (`label`, `delay`, `side`),
- * so the call sites did not change. What changed underneath is who owns the
- * hard parts: the portal, the viewport flip and the shift away from a collision
- * edge are the library's now, not a hand-rolled clamp against an approximated
- * bubble height.
- *
- * Two accessibility details stay ours, because Base UI 1.7.0 does not add them:
- *
- *  - WCAG 4.1.2: the popup carries `role="tooltip"` and an id, and the trigger
- *    points at that id with `aria-describedby` while it is open. That is why
- *    the open state is controlled here rather than left to the library.
- *  - WCAG 1.4.13: Escape dismisses. This one Base UI does provide, through its
- *    dismiss interaction, and `Tooltip.test.tsx` holds it to that.
- *
- * The trigger renders the caller's own element (Base UI's `render` prop) rather
- * than wrapping it. A wrapper would need a box to be positioned against, and
- * the old `display: contents` wrapper had none.
+ * Tooltip — Base UI's tooltip wearing Studio's tokens, same props as before.
+ * WCAG 4.1.2 (`aria-describedby`) and the `render`-not-wrapper trigger stay ours.
  */
 
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";

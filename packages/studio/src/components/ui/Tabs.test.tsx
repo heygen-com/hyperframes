@@ -1,10 +1,8 @@
 // @vitest-environment happy-dom
+
 /**
- * Tabs: the keyboard behaviour Studio's hand-rolled strips mostly do not have,
- * and the two hooks a consumer depends on.
- *
- * Three of the six existing strips render `aria-pressed` buttons that no arrow
- * key reaches. This test is what says the shared one does.
+ * Tabs: proves the shared strip reaches every tab by arrow key, something
+ * three of Studio's six hand-rolled strips don't.
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

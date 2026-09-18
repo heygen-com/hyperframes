@@ -1,17 +1,8 @@
 // @vitest-environment happy-dom
+
 /**
- * Button and IconButton.
- *
- * The class-resolution test is the load-bearing one. Tailwind has no strict
- * mode for markup: a class nobody defines is not an error, it is silence, and
- * that is how `rounded-button` and `shadow-btn-primary` sat in this file
- * styling nothing. So the test renders every variant and size, reads the class
- * list off the real DOM node, and compiles Studio's actual stylesheet with
- * those classes as candidates. A class that produces no selector fails, and
- * the failure names it.
- *
- * happy-dom has no layout, so nothing here asserts a pixel. What a rendered
- * control looks like is the screenshot script's job.
+ * Button/IconButton: renders every variant and size, then compiles Studio's
+ * real stylesheet against the emitted classes so an unstyled class fails.
  */
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";

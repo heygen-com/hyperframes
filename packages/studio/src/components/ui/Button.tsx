@@ -5,15 +5,10 @@
  * radius scale, the semantic colours, the motion durations. No value is decided
  * here, so a button cannot drift from the rest of the system.
  *
- * Two conventions run through the file:
- *
- *  - Classes are merged with `cn`, so a caller's `className` beats the
- *    variant's and the size's classes from the same group.
- *  - Every interactive look is written twice, once as the real state
- *    (`enabled:hover:…`) and once as `data-[preview-state=hover]:…`. The
- *    attribute is read by CSS only and changes no behaviour: it exists so a
- *    story or a screenshot can show the hover, active and focus looks without a
- *    pointer. `Button.test.tsx` asserts the two lists stay in step.
+ * Two conventions: classes merge through `cn`, so a caller's `className`
+ * always wins within its group; and every interactive look is written twice,
+ * once as the real state and once as `data-[preview-state=…]` (CSS-only, for
+ * screenshots). `Button.test.tsx` asserts the two stay in sync.
  */
 
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";

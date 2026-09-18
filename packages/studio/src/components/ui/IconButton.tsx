@@ -1,13 +1,6 @@
 /**
- * IconButton — Button's square sibling for icon-only controls.
- *
- * Shares Button's base and variant classes verbatim, so the two can never drift
- * apart on focus ring, disabled look or motion. The only difference is the box:
- * a square on the same three control heights, which keeps every icon control on
- * the same grid as every labelled one.
- *
- * `aria-label` is required by the type. An icon-only control with no accessible
- * name is unreachable by name for screen-reader and voice-control users.
+ * IconButton — Button's square sibling; shares its base/variant classes so
+ * the two never drift. `aria-label` is required for screen readers.
  */
 
 import { forwardRef } from "react";

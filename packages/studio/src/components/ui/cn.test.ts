@@ -1,7 +1,6 @@
 /**
- * The two things Studio's `cn` instance has to do that a bare `clsx` cannot:
- * drop a losing class from the same group, and know about the two class
- * families `theme.css` invents.
+ * The two things `cn` must do that a bare `clsx` cannot: drop a losing class
+ * from the same group, and know the two class families `theme.css` invents.
  */
 import { describe, expect, it } from "vitest";
 import { cn } from "./cn";
