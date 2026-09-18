@@ -971,19 +971,28 @@ export function compositionRequiresWebGpu(html: string): boolean {
  * Confirms the already-navigated page can obtain a WebGPU adapter; no-op otherwise.
  * `page` must be on a secure-context origin, or navigator.gpu always reads absent.
  */
+const WEBGPU_ADAPTER_PROBE_TIMEOUT_MS = 10_000;
+
 export async function assertWebGpuAdapterAvailable(
   page: Page,
   requiresWebGpu: boolean,
 ): Promise<void> {
   if (!requiresWebGpu) return;
-  const hasAdapter = await page.evaluate(async () => {
+  // requestAdapter() has no native timeout; a broken driver can hang it
+  // indefinitely. Race it in-page so a stuck adapter reads as "unavailable"
+  // instead of hanging the caller (and, in the GCP image build, the build).
+  const hasAdapter = await page.evaluate(async (timeoutMs) => {
     if (typeof navigator === "undefined" || !navigator.gpu) return false;
     try {
-      return !!(await navigator.gpu.requestAdapter());
+      const adapter = await Promise.race([
+        navigator.gpu.requestAdapter(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
+      return !!adapter;
     } catch {
       return false;
     }
-  });
+  }, WEBGPU_ADAPTER_PROBE_TIMEOUT_MS);
   if (!hasAdapter) {
     throw new Error(
       "This composition declares data-requires-webgpu, but no WebGPU adapter (hardware or " +
