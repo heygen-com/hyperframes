@@ -390,17 +390,14 @@ function isMirrorPair(file: {
 // target -> path for every pair mirrorRegistryTargets already copied, so a
 // target's bytes can be reused instead of re-read and re-charged.
 function installMirrorTargets(projectDir: string): Map<string, string> {
-  try {
-    const manifest = JSON.parse(readFileSync(join(projectDir, "registry-item.json"), "utf-8")) as {
-      files?: { path?: string; target?: string }[];
-    };
-    return new Map(
-      (manifest.files ?? []).filter(isMirrorPair).map((file) => [file.target, file.path]),
-    );
-  } catch (error) {
-    if (isMissingFile(error)) return new Map();
-    throw error;
-  }
+  const bytes = readProjectFile(projectDir, join(projectDir, "registry-item.json"), 1_000_000);
+  if (bytes === null) return new Map();
+  const manifest = JSON.parse(bytes.toString("utf-8")) as {
+    files?: { path?: string; target?: string }[];
+  };
+  return new Map(
+    (manifest.files ?? []).filter(isMirrorPair).map((file) => [file.target, file.path]),
+  );
 }
 
 /**
