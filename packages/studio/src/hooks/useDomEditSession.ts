@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { isAudioDomElement } from "../utils/timelineInspector";
-import type { SelectElementOptions, TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
@@ -23,24 +22,13 @@ import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { membersForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
+import type { DomEditTimelineParams } from "./useDomSelectionTypes";
 // Re-exported: the delete rule lives in its own module now, and callers (and its
 // own test) have always imported it from here.
 export { membersForDelete };
 
-// fallow-ignore-next-line code-duplication
-export interface UseDomEditSessionParams {
-  projectId: string | null;
-  activeCompPath: string | null;
-  compIdToSrc: Map<string, string>;
-  captionEditMode: boolean;
+export interface UseDomEditSessionParams extends DomEditTimelineParams {
   compositionLoading: boolean;
-  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  timelineElements: TimelineElement[];
-  getTimelineSelectionSet: () => ReadonlySet<string>;
-  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
-  setTimelineSelectionSet: (ids: Set<string>) => void;
-  setRightCollapsed: (collapsed: boolean) => void;
-  setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   isRecordingRef?: React.RefObject<boolean>;
   refreshPreviewDocumentVersion: () => void;

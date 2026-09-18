@@ -601,39 +601,31 @@ export interface UnwrapChildTrack {
   track?: number;
 }
 
-// fallow-ignore-next-line complexity
-export function unwrapElementsFromHtml(
-  source: string,
-  groupTarget: SourceMutationTarget,
-  childTracks: UnwrapChildTrack[] = [],
-): UnwrapElementsResult {
-  const { document, wrappedFragment } = parseSourceDocument(source);
-  const group = findTargetElement(document, groupTarget);
-  if (!group || !isHTMLElement(group)) return { html: source, unwrapped: false };
-  // Shape guard mirroring the wrap-side contract: only ever dissolve an actual
-  // group wrapper. A stale/desynced selection that resolves to a plain <div>
-  // would otherwise be unwrapped — rebasing its children by the parent's origin
-  // (silent corruption). Wrap enforces invariants; unwrap must too.
-  if (!group.hasAttribute("data-hf-group")) return { html: source, unwrapped: false };
-
-  const parent = group.parentElement;
-  if (!parent) return { html: source, unwrapped: false };
-
+// Only children actually inside the group and given a resolved track qualify —
+// same hazard and fix as wrap's members, scoped to this group's own children.
+function buildChildTrackMap(
+  document: Document,
+  group: Element,
+  childTracks: UnwrapChildTrack[],
+): Map<Element, number> {
   const trackByEl = new Map<Element, number>();
   for (const entry of childTracks) {
     const el = findTargetElement(document, entry.target);
     if (el && group.contains(el) && entry.track != null) trackByEl.set(el, entry.track);
   }
+  return trackByEl;
+}
 
-  // Undo the rebase: child absolute position = child (rebased) + wrapper origin.
-  const wLeft = getInlineStylePx(group, "left");
-  const wTop = getInlineStylePx(group, "top");
-  const groupCenter = {
-    cx: wLeft + getInlineStylePx(group, "width") / 2,
-    cy: wTop + getInlineStylePx(group, "height") / 2,
-  };
-
-  // Move children back to the wrapper's slot, preserving order.
+// Undoes the wrap-side rebase (child absolute = child rebased + wrapper
+// origin), stamps each child's resolved track where one was given, and moves
+// every child back into the parent ahead of the wrapper — preserving order.
+function relocateGroupChildren(
+  group: Element,
+  parent: Element,
+  wLeft: number,
+  wTop: number,
+  trackByEl: Map<Element, number>,
+): Array<{ id: string; cx: number; cy: number }> {
   const members: Array<{ id: string; cx: number; cy: number }> = [];
   for (const child of Array.from(group.children)) {
     if (isHTMLElement(child)) {
@@ -652,6 +644,37 @@ export function unwrapElementsFromHtml(
     }
     parent.insertBefore(child, group);
   }
+  return members;
+}
+
+export function unwrapElementsFromHtml(
+  source: string,
+  groupTarget: SourceMutationTarget,
+  childTracks: UnwrapChildTrack[] = [],
+): UnwrapElementsResult {
+  const { document, wrappedFragment } = parseSourceDocument(source);
+  const group = findTargetElement(document, groupTarget);
+  if (!group || !isHTMLElement(group)) return { html: source, unwrapped: false };
+  // Shape guard mirroring the wrap-side contract: only ever dissolve an actual
+  // group wrapper. A stale/desynced selection that resolves to a plain <div>
+  // would otherwise be unwrapped — rebasing its children by the parent's origin
+  // (silent corruption). Wrap enforces invariants; unwrap must too.
+  if (!group.hasAttribute("data-hf-group")) return { html: source, unwrapped: false };
+
+  const parent = group.parentElement;
+  if (!parent) return { html: source, unwrapped: false };
+
+  const trackByEl = buildChildTrackMap(document, group, childTracks);
+
+  // Undo the rebase: child absolute position = child (rebased) + wrapper origin.
+  const wLeft = getInlineStylePx(group, "left");
+  const wTop = getInlineStylePx(group, "top");
+  const groupCenter = {
+    cx: wLeft + getInlineStylePx(group, "width") / 2,
+    cy: wTop + getInlineStylePx(group, "height") / 2,
+  };
+
+  const members = relocateGroupChildren(group, parent, wLeft, wTop, trackByEl);
   const groupId = group.id || undefined;
   group.remove();
 
