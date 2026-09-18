@@ -10,7 +10,7 @@ function createClock(opts?: ConstructorParameters<typeof TransportClock>[0]) {
   return { clock, advance, getMs: () => ms };
 }
 
-/** Advances `totalMs` in sub-threshold steps, reading `now()` each time (AD91 stall policy, clock.ts). */
+/** Advances `totalMs` in sub-threshold steps, reading `now()` each time (see clock.ts's stall policy). */
 function advancePolled(clock: TransportClock, advance: (deltaMs: number) => void, totalMs: number) {
   for (let remaining = totalMs; remaining > 0; remaining -= 250) {
     advance(Math.min(250, remaining));

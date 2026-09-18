@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { TransportClock } from "./clock";
 
-// AD91 stall policy — see evidence-ad91-2026-09-18/ISSUES.md and the PR body.
+// Stall policy for TransportClock's interactive playback — see the PR body.
 
 function createClock(opts?: ConstructorParameters<typeof TransportClock>[0]) {
   let ms = 0;
@@ -12,7 +12,7 @@ function createClock(opts?: ConstructorParameters<typeof TransportClock>[0]) {
   return { clock, advance };
 }
 
-describe("TransportClock stall policy (AD91) — interactive playback", () => {
+describe("TransportClock stall policy — interactive playback", () => {
   it("a gap under the 500ms threshold advances exactly, unsmoothed", () => {
     const { clock, advance } = createClock();
     clock.play();
@@ -124,7 +124,7 @@ describe("TransportClock stall policy (AD91) — interactive playback", () => {
   });
 });
 
-describe("TransportClock stall policy (AD91) — render/export capture is untouched", () => {
+describe("TransportClock stall policy — render/export capture is untouched", () => {
   // packages/producer's `renderSeek` (init.ts) always pauses then seeks; never plays.
   it("a seek while paused reports exactly the seeked time, regardless of any elapsed wall time before it", () => {
     const { clock, advance } = createClock({ duration: 30 });

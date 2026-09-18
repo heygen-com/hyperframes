@@ -2532,7 +2532,7 @@ describe("initSandboxRuntimeModular", () => {
     expect(player).toBeDefined();
 
     player?.play();
-    // Sub-threshold steps: AD91's stall policy treats one big unread jump as a stall.
+    // Sub-threshold steps: the stall policy treats one big unread jump as a stall.
     for (let steps = 0; steps < 4; steps++) raf.step(250);
 
     expect(player?.isPlaying()).toBe(true);
