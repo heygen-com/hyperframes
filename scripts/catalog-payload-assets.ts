@@ -416,11 +416,12 @@ function installMirrorTargets(projectDir: string): Map<string, string> {
 /**
  * What an item may add by publishing its own directory.
  *
- * The texture sheets are the reason: one ships 66 masks, twice over, for 12 MB
- * — against a whole catalog that is otherwise around 30 MB. An item over budget
- * keeps the recorded video it already had, which is no worse than before.
+ * The texture sheet is the reason: 66 masks published under both path layouts,
+ * about 11.4 MB. The browser fetches them only when the tile plays, so this
+ * costs repository size, not page weight. An item over budget has no live
+ * preview, which the docs catalog check rejects.
  */
-export const MAX_HOSTED_DIRECTORY_BYTES = 2_000_000;
+export const MAX_HOSTED_DIRECTORY_BYTES = 12_000_000;
 
 // "not-needed" and "over-budget" both leave nothing published, but the caller
 // must not treat them alike: an over-budget item still needs the directory,
