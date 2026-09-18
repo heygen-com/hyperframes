@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Storage } from "@google-cloud/storage";
 import { Hono } from "hono";
+import { createProducerApp } from "@hyperframes/producer";
 import {
   assemble,
   type AssembleResult,
@@ -944,6 +945,13 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
 export function createApp(deps?: HandlerDeps): Hono {
   const app = new Hono();
 
+  // Mount Producer OSS routes (/render, /render/stream, /health, /lint, /outputs/:token)
+  const storageDir = process.env.HYPERFRAMES_STORAGE_DIR || "/data";
+  const producerApp = createProducerApp({
+    rendersDir: storageDir,
+  });
+  app.route("/", producerApp);
+
   app.get("/healthz", (c) => c.json({ status: "ok" }));
 
   // fallow-ignore-next-line complexity
@@ -972,6 +980,7 @@ export function createApp(deps?: HandlerDeps): Hono {
 
 /** Start the HTTP server. Cloud Run injects `PORT` (default 8080). */
 export function startServer(): void {
+  primeChrome();
   const port = Number(process.env.PORT ?? 8080);
   const app = createApp();
   serve({ fetch: app.fetch, port }, (info) => {

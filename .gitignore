@@ -188,3 +188,6 @@ tmp/
 
 # Local Chrome-for-Testing downloads (large binaries, never commit)
 chrome/
+
+# Local mount for Storage Bucket testing
+.data/
