@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file complexity
+// fallow-ignore-file complexity
 /**
  * HyperFrames early stub — injected at the very start of `<head>` before any
  * other scripts run. Compiled to an IIFE by scripts/build-hf-early-stub.ts.
@@ -99,6 +99,10 @@ interface GsapTimeline {
   paused(...args: unknown[]): unknown;
   timeScale(...args: unknown[]): unknown;
   kill(): void;
+  /** Label name -> position, set as an instance property by GSAP's Timeline
+   * constructor (not a prototype method), so `forwardRemainingMethods` — which
+   * only forwards function-valued prototype members — never sees it. */
+  labels: Record<string, number>;
   [key: string]: unknown;
 }
 
@@ -354,6 +358,14 @@ function wrapTimeline(real: GsapTimeline): TimelineProxy {
     __hfReal: real,
     __hfQueue: [],
     __hfIsProxy: true,
+
+    // Live pass-through, not a copied snapshot: GSAP mutates the same
+    // `labels` object in place on `addLabel`, so reading through to `real`
+    // on every access keeps this correct regardless of when composition
+    // scripts read `tl.labels` relative to when labels are added.
+    get labels(): Record<string, number> {
+      return real.labels;
+    },
 
     to(...args: unknown[]): TimelineProxy {
       return enqueueTimelineOperation(proxy, "to", args);
