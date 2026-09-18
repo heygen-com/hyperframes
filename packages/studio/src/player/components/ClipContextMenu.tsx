@@ -65,10 +65,13 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
 
-  const itemClass =
-    "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer";
-  const disabledItemClass =
-    "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none text-neutral-600 cursor-not-allowed";
+  // Same enabled/disabled menu-item pattern as the sibling TrackGapContextMenu.
+  const itemClass = (enabled: boolean) =>
+    `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none${
+      enabled
+        ? " focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
+        : " text-neutral-600 cursor-not-allowed"
+    }`;
 
   return createPortal(
     <div
@@ -109,7 +112,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <button
               type="button"
               role="menuitem"
-              className={itemClass}
+              className={itemClass(true)}
               onClick={() => {
                 onCopy();
                 onClose();
@@ -123,7 +126,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <button
               type="button"
               role="menuitem"
-              className={canPaste ? itemClass : disabledItemClass}
+              className={itemClass(!!canPaste)}
               disabled={!canPaste}
               onClick={() => {
                 if (!canPaste) return;
@@ -139,7 +142,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <button
               type="button"
               role="menuitem"
-              className={itemClass}
+              className={itemClass(true)}
               onClick={() => {
                 void onDuplicate();
                 onClose();
