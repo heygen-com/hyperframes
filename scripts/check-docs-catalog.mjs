@@ -86,32 +86,25 @@ for (const item of data.items) {
 }
 
 // The identical-page-list proof: diff against the pre-PR1 docs.json at the merge base.
-let before = null;
-try {
-  const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: root })
-    .toString()
-    .trim();
-  const prior = JSON.parse(
-    execFileSync("git", ["show", `${base}:docs/docs.json`], { cwd: root }).toString(),
-  );
-  const priorTab = getCatalogTab(prior);
-  before = leafPaths(priorTab);
-} catch (e) {
-  console.warn(
-    `! Could not diff against origin/main's docs.json (${e.message}); skipping the before/after page-list proof.`,
-  );
-}
-if (before) {
-  const beforeSet = new Set(before);
-  const afterSet = new Set(after);
-  const missing = before.filter((p) => !afterSet.has(p));
-  const added = after.filter((p) => !beforeSet.has(p));
-  assert.equal(missing.length, 0, `Pages present before but missing after: ${missing.join(", ")}`);
-  assert.equal(added.length, 0, `Pages present after but not before: ${added.join(", ")}`);
-  console.log(
-    `PASS identical page list: ${before.length} pages before and after PR1, byte-for-byte the same set.`,
-  );
-}
+// This is the one check that proves no catalog page was lost; a checkout that can't compute
+// it (shallow clone, missing origin/main) must fail loudly, not skip the proof and exit 0.
+const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: root })
+  .toString()
+  .trim();
+const prior = JSON.parse(
+  execFileSync("git", ["show", `${base}:docs/docs.json`], { cwd: root }).toString(),
+);
+const priorTab = getCatalogTab(prior);
+const before = leafPaths(priorTab);
+const beforeSet = new Set(before);
+const afterSet = new Set(after);
+const missing = before.filter((p) => !afterSet.has(p));
+const added = after.filter((p) => !beforeSet.has(p));
+assert.equal(missing.length, 0, `Pages present before but missing after: ${missing.join(", ")}`);
+assert.equal(added.length, 0, `Pages present after but not before: ${added.join(", ")}`);
+console.log(
+  `PASS identical page list: ${before.length} pages before and after PR1, byte-for-byte the same set.`,
+);
 console.log(
   `PASS ${data.items.length} gallery items, all present in the sidebar and on disk; no duplicate sidebar entries.`,
 );
