@@ -73,9 +73,6 @@ describe("live DOM manifest hydration", () => {
       canTrimEnd: true,
     });
     expect(getTimelineEditCapabilities({ ...input, timelineLocked: true }).canMove).toBe(false);
-    expect(getTimelineEditCapabilities({ ...input, timingSource: "implicit" }).canTrimEnd).toBe(
-      false,
-    );
   });
   it("uses at most one fallback candidate snapshot per hydration pass", () => {
     const doc = documentWith(

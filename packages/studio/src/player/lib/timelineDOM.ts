@@ -271,7 +271,6 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selectorIndex,
       sourceFile,
       stackingContextId: resolveCssStackingContextId(el),
-      timingSource: "authored",
       zIndex: readTimelineElementZIndex(el),
     };
 

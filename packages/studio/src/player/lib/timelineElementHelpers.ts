@@ -2,7 +2,7 @@
  * Low-level helpers for building and identifying TimelineElement objects.
  *
  * Covers: duration reading, media-element metadata extraction, selector/key/
- * identity builders, DOM node lookup, and implicit layer detection. These are
+ * identity builders, and DOM node lookup. These are
  * intentionally dependency-free (no store, no hooks) so they can be used in
  * both the React hook and test environments.
  */
@@ -82,13 +82,7 @@ function normalizePlaybackRate(raw: number): number {
 }
 
 export function isTimelineIgnoredElement(el: Element): boolean {
-  // An `<hf-audio-group>` is a mixer bus, not a clip: it carries the group's
-  // label, fader, mute and FX chain, has no timing of its own, and is drawn as
-  // a GROUP ROW by the group derivation. Left in, the implicit-layer fallback
-  // also gave it an ordinary full-duration track — so a grouped composition
-  // showed "Voiceover • 0.0s – 12.0s" as a phantom clip directly above the real
-  // group header. Harmless-looking, but that row is draggable and trimmable,
-  // and writing timing onto the bus is meaningless.
+  // An `<hf-audio-group>` is a mixer bus with no timing of its own, drawn as a group row, never a clip.
   if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return true;
   return Boolean(
     el.closest(

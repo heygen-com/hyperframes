@@ -82,7 +82,6 @@ describe("useRazorSplit mutation versions", () => {
           start: 0,
           duration: 4,
           track: 0,
-          timingSource: "authored",
         },
         2,
       );

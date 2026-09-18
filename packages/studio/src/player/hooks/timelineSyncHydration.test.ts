@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectSubCompositionDomChildren,
   collectTopLevelElementIds,
+  syncManifestTimeline,
   collectSubCompositionHostState,
 } from "./timelineSyncHydration";
 import type { ClipManifestClip } from "../lib/playbackTypes";
@@ -110,5 +111,19 @@ describe("collectTopLevelElementIds", () => {
   it("is null when the document has no composition root", () => {
     expect(collectTopLevelElementIds(docOf("<p>hi</p>"))).toBeNull();
     expect(collectTopLevelElementIds(null)).toBeNull();
+  });
+});
+
+describe("syncManifestTimeline", () => {
+  it("commits an empty timeline so a composition with no rows clears the store", () => {
+    const calls: unknown[][] = [];
+    syncManifestTimeline([], 10, 0, (els, duration) => calls.push([els, duration]));
+    expect(calls).toEqual([[[], 10]]);
+  });
+
+  it("falls back to the store duration for clamping and passes no duration on", () => {
+    const calls: unknown[][] = [];
+    syncManifestTimeline([], 0, 5, (els, duration) => calls.push([els, duration]));
+    expect(calls).toEqual([[[], undefined]]);
   });
 });

@@ -60,7 +60,6 @@ export interface TimelineElement {
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;
   /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
-  timingSource?: "authored" | "implicit";
   /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */
   timelineLocked?: boolean;
   /** Set by data-hidden on the host element — hides the clip in preview and render. */

@@ -10,7 +10,6 @@ const element = (over: Partial<TimelineElement> = {}): TimelineElement => ({
   start: 0,
   duration: 4,
   track: 0,
-  timingSource: "authored",
   sourceFile: "index.html",
   ...over,
 });

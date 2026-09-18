@@ -17,7 +17,7 @@ import { buildMissingCompositionElements } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
 import {
   buildTimelineElementsFromClips,
-  clampElementsToDuration,
+  syncManifestTimeline,
   clipTreeParentMap,
   collectTopLevelElementIds,
   collectSubCompositionDomChildren,
@@ -153,13 +153,12 @@ export function useTimelineSyncCallbacks({
         manifestDurationSeconds: data.durationInFrames / acceptedRuntimeMessageFps(data),
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
       });
-      const timelineEls = clampElementsToDuration(
+      syncManifestTimeline(
         els,
-        newDuration > 0 ? newDuration : usePlayerStore.getState().duration,
+        newDuration,
+        usePlayerStore.getState().duration,
+        syncTimelineElements,
       );
-      if (timelineEls.length > 0) {
-        syncTimelineElements(timelineEls, newDuration > 0 ? newDuration : undefined);
-      }
     },
     [iframeRef, syncTimelineElements],
   );

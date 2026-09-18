@@ -29,7 +29,6 @@ const element: TimelineElement = {
   track: 0,
   domId: "clip1",
   sourceFile: "index.html",
-  timingSource: "authored",
 };
 
 type Split = (element: TimelineElement, splitTime: number) => Promise<void>;
