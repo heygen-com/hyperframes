@@ -30,6 +30,28 @@ const Harness = forwardRef<Handle, { projectId: string }>(function Harness({ pro
   return null;
 });
 
+async function renderHarness(projectId: string): Promise<{ current: Handle | null }> {
+  const handleRef = { current: null as Handle | null };
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+
+  await act(async () => {
+    root?.render(
+      <Harness
+        ref={(h) => {
+          handleRef.current = h;
+        }}
+        projectId={projectId}
+      />,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  return handleRef;
+}
+
 describe("useFileTree.refreshFileTree", () => {
   it("updates compositions, not just the raw file list, on refresh", async () => {
     let call = 0;
@@ -45,23 +67,7 @@ describe("useFileTree.refreshFileTree", () => {
       return new Response(JSON.stringify(body), { status: 200 });
     });
 
-    const handleRef = { current: null as Handle | null };
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-
-    await act(async () => {
-      root?.render(
-        <Harness
-          ref={(h) => {
-            handleRef.current = h;
-          }}
-          projectId="project-a"
-        />,
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    const handleRef = await renderHarness("project-a");
     expect(handleRef.current?.compositions).toEqual(["index.html"]);
 
     await act(async () => {
@@ -90,23 +96,7 @@ describe("useFileTree.refreshFileTree", () => {
       });
     });
 
-    const handleRef = { current: null as Handle | null };
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-
-    await act(async () => {
-      root?.render(
-        <Harness
-          ref={(h) => {
-            handleRef.current = h;
-          }}
-          projectId="project-a"
-        />,
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    const handleRef = await renderHarness("project-a");
 
     let firstDone = false;
     let secondDone = false;
@@ -173,23 +163,7 @@ describe("useFileTree.refreshFileTree", () => {
         return new Promise<Response>(() => {});
       });
 
-    const handleRef = { current: null as Handle | null };
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-
-    await act(async () => {
-      root?.render(
-        <Harness
-          ref={(h) => {
-            handleRef.current = h;
-          }}
-          projectId="project-a"
-        />,
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    const handleRef = await renderHarness("project-a");
 
     act(() => {
       void handleRef.current?.refresh();
@@ -225,23 +199,7 @@ describe("useFileTree.refreshFileTree", () => {
       return new Response(JSON.stringify(body), { status: 200 });
     });
 
-    const handleRef = { current: null as Handle | null };
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-
-    await act(async () => {
-      root?.render(
-        <Harness
-          ref={(h) => {
-            handleRef.current = h;
-          }}
-          projectId="project-a"
-        />,
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    const handleRef = await renderHarness("project-a");
     expect(handleRef.current?.compositions).toEqual(["index.html"]);
 
     await act(async () => {
