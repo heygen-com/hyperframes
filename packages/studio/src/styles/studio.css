@@ -1,4 +1,5 @@
 @import "tailwindcss" source(none);
+@import "./palette-reset.css";
 @import "./theme.css";
 
 /* Explicit sources: Studio's own TypeScript and its shell HTML. Automatic

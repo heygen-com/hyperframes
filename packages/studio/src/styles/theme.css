@@ -3,11 +3,6 @@
  * tokens in `:root` so plain CSS and canvas code can still read them. */
 
 @theme static {
-  /* Clear Tailwind's stock palette so a colour that is not a Studio token
-   * cannot be reached from markup. The entries Studio still uses are
-   * re-declared below as deprecated aliases. */
-  --color-*: initial;
-
   /* ---------------------------------------------------------------- colour */
 
   /* Background levels, darkest (app shell) to lightest (inset panel body). */
