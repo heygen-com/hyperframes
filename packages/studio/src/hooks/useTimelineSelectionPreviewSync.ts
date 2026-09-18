@@ -69,11 +69,7 @@ function anchorIsOutsideSelection(anchor: string | null, selectedIds: string[]):
   return anchor !== null && !selectedIds.includes(anchor);
 }
 
-/**
- * Records this attempt against the per-selection retry budget (a new
- * selectedKey starts a fresh count) and reports whether it's still within
- * budget to bail and retry.
- */
+// Per-selection retry budget; a new selectedKey starts a fresh count.
 function recordUnresolvedSelectionAttempt(
   attemptsRef: MutableRefObject<{ key: string; count: number }>,
   selectedKey: string,
