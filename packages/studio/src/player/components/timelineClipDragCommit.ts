@@ -360,11 +360,6 @@ function buildTrackInsertEdits(
   // Expanded-child rows are synthetic host lanes, not source-file topology.
   if (element.expandedParentStart != null) return null;
   const targetTrack = insertTrackValue(trackOrder, insertRow);
-  const candidate = elements.map((e) => {
-    if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
-    if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
-    return e;
-  });
   // Foreign display rows and the opposite zone must not affect this topology.
   const writableZone = classifyZone(element);
   const writable = (src: TimelineElement): boolean =>
@@ -401,6 +396,26 @@ function buildTrackInsertEdits(
       return null;
     }
   }
+  // insertTrackValue's fractional aim is never literal track 0, but this renumber
+  // can still land the dragged clip there (the topmost visual lane was non-zero)
+  // — the real main track. Resolve the snap once, from the FINAL literal track,
+  // and reuse it below for both the persisted edit and the z-sync candidate.
+  const finalDragTrack = normalized.find((norm) => keyOf(norm) === editKey)?.track ?? targetTrack;
+  const snappedStart = multi
+    ? previewStart
+    : resolveMainTrackDropStart(
+        elements,
+        editKey,
+        element.track,
+        finalDragTrack,
+        isAudioTimelineElement(element),
+        previewStart,
+      );
+  const candidate = elements.map((e) => {
+    if (keyOf(e) === editKey) return { ...e, start: snappedStart, track: targetTrack };
+    if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
+    return e;
+  });
   const edits: TimelineMoveEdit[] = [];
   if (multi) {
     for (const src of elements) {
@@ -418,9 +433,11 @@ function buildTrackInsertEdits(
     const src = bySrc.get(keyOf(norm));
     if (!src || !canMoveElement(src)) continue;
     const start =
-      keyOf(norm) === editKey || multi?.keys.has(keyOf(norm))
-        ? (multi?.movedStart(src) ?? previewStart)
-        : src.start;
+      keyOf(norm) === editKey
+        ? snappedStart
+        : multi?.keys.has(keyOf(norm))
+          ? multi.movedStart(src)
+          : src.start;
     edits.push({ element: src, updates: { start, track: norm.track } });
   }
   return { candidate, edits };
@@ -445,24 +462,6 @@ function commitTrackInsert(
   if (!built) return;
   const { candidate, edits } = built;
   if (edits.length === 0) return;
-
-  // insertTrackValue's fractional aim is never literal 0, but normalizeToZones can
-  // still renumber it there (e.g. the topmost visual lane was track 1). Snap that
-  // one edit the same way every other main-track landing does; skip for a
-  // multi-selection, whose other members key off the unsnapped previewStart.
-  if (!multi) {
-    const dragEdit = edits.find((e) => keyOf(e.element) === dragKey);
-    if (dragEdit) {
-      dragEdit.updates.start = resolveMainTrackDropStart(
-        deps.elements,
-        dragKey,
-        drag.element.track,
-        dragEdit.updates.track,
-        isAudioTimelineElement(drag.element),
-        dragEdit.updates.start,
-      );
-    }
-  }
 
   const coalesceKey = `clip-lane-move:${laneChangeGestureSeq++}`;
   if (!deps.readZIndex || !deps.onStackingPatches) {

@@ -1239,6 +1239,30 @@ describe("commitDraggedClipMove", () => {
       expect(map.v1).toEqual({ start: 0, track: 0 });
     });
 
+    it("the z-sync candidate reflects the snapped start, not the raw previewStart", async () => {
+      // v1 snaps from previewStart 8 to 0 (see the test above). A foreign-file
+      // sibling at [2, 5) only overlaps the SNAPPED window [0, 5), never the
+      // raw [8, 13) — so a z-sync firing at all proves the candidate the
+      // stacking check reads from carries the snapped start.
+      const v1 = el("v1", 2, 0, 5);
+      const sibling = el("s", 1, 2, 3); // [2, 5) — same source file, same paint scope
+      const elements = [v1, sibling];
+      const onStackingPatches = vi.fn();
+      // v1 lands on lane 0, which paints above lane 1 (lower track paints higher),
+      // yet carries the lower z: a violation only while the two overlap in time.
+      commitDraggedClipMove(drag(v1, { previewStart: 8, previewTrack: 2, insertRow: 0 }), {
+        elements,
+        trackOrder: [1, 2],
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        onMoveElements: vi.fn(),
+        readZIndex: (element) => (element.key === "v1" ? 1 : 10),
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+    });
+
     it("a multi-selection top-gutter insert does NOT snap (siblings key off the unsnapped start)", () => {
       const dragged = el("v1", 1, 0, 5);
       const sibling = el("v2", 1, 10, 5);
