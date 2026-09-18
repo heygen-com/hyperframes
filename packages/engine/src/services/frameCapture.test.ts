@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildZeroDurationDiagnostic,
   classifyConsoleScriptFailure,
   DrawElementVerificationError,
   formatHttpErrorDiagnostic,
@@ -355,5 +356,41 @@ describe("DrawElementVerificationError details", () => {
       { kind: "psnr", frameIndex: 5, failedDb: 12.1, verifyThresholdDb: 32 },
     );
     expect(getDrawElementVerificationDetails(adversarial)?.kind).toBe("psnr");
+  });
+});
+
+describe("buildZeroDurationDiagnostic", () => {
+  const baseDiag = {
+    renderReady: false,
+    hasHf: true,
+    hasSeek: true,
+    hasPlayer: true,
+    duration: 0,
+    hasTimeline: true,
+    declaredDuration: 6,
+    pendingBuildReadyKeys: [] as string[],
+  };
+
+  it("names the stuck buildReady key instead of blaming GSAP/data-duration", () => {
+    const message = buildZeroDurationDiagnostic({
+      ...baseDiag,
+      pendingBuildReadyKeys: ["heavy-mesh"],
+    });
+    expect(message).toContain("window.__hf.buildReady never resolved for: heavy-mesh");
+  });
+
+  it("lists every stuck key when more than one is pending", () => {
+    const message = buildZeroDurationDiagnostic({
+      ...baseDiag,
+      pendingBuildReadyKeys: ["heavy-mesh", "shader-warmup"],
+    });
+    expect(message).toContain(
+      "window.__hf.buildReady never resolved for: heavy-mesh, shader-warmup",
+    );
+  });
+
+  it("omits the buildReady hint entirely when nothing is pending", () => {
+    const message = buildZeroDurationDiagnostic(baseDiag);
+    expect(message).not.toContain("buildReady");
   });
 });

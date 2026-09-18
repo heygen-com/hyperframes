@@ -1528,7 +1528,7 @@ export function formatConsoleDiagnostic(
   return { text: `${prefix} ${text}`, suppressHostLog: false };
 }
 
-const HF_READY_DIAGNOSTIC_EXPR = `(function() {
+const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
   var hf = window.__hf;
   var player = window.__player;
   var renderReady = !!window.__renderReady;
@@ -1537,6 +1537,17 @@ const HF_READY_DIAGNOSTIC_EXPR = `(function() {
   var hasTimeline = !!(window.__timelines && Object.keys(window.__timelines).length > 0);
   var root = document.querySelector("[data-composition-id]");
   var declaredDuration = root ? Number(root.getAttribute("data-duration")) : -1;
+  var registry = (window.__hf && window.__hf.buildReady) || {};
+  var keys = Object.keys(registry);
+  // Races each entry against a bare resolved promise: microtasks run FIFO,
+  // so an already-settled registry[key] wins the race (null); a pending one
+  // loses (key stays). Detects "settled" without a timer or timeout.
+  var pendingBuildReadyKeys = (await Promise.all(keys.map(function(key) {
+    return Promise.race([
+      Promise.resolve(registry[key]).then(function() { return null; }),
+      Promise.resolve().then(function() { return key; }),
+    ]);
+  }))).filter(function(key) { return key !== null; });
   return {
     renderReady: renderReady,
     hasHf: !!hf,
@@ -1545,11 +1556,12 @@ const HF_READY_DIAGNOSTIC_EXPR = `(function() {
     duration: duration,
     hasTimeline: hasTimeline,
     declaredDuration: declaredDuration,
+    pendingBuildReadyKeys: pendingBuildReadyKeys,
   };
 })()`;
 
 // fallow-ignore-next-line complexity
-function buildZeroDurationDiagnostic(diag: {
+export function buildZeroDurationDiagnostic(diag: {
   renderReady: boolean;
   hasHf: boolean;
   hasSeek: boolean;
@@ -1557,8 +1569,16 @@ function buildZeroDurationDiagnostic(diag: {
   duration: number;
   hasTimeline: boolean;
   declaredDuration: number;
+  pendingBuildReadyKeys: string[];
 }): string {
   const hints: string[] = [];
+  if (diag.pendingBuildReadyKeys.length > 0) {
+    hints.push(
+      `window.__hf.buildReady never resolved for: ${diag.pendingBuildReadyKeys.join(", ")}. ` +
+        "The runtime holds render-ready until every registered buildReady promise settles — " +
+        "find where the composition registers that key and confirm it actually resolves.",
+    );
+  }
   if (!diag.hasPlayer) {
     hints.push("window.__player was never set — the HyperFrames runtime did not initialize.");
   }
@@ -1597,6 +1617,7 @@ interface HfDiagnostic {
   duration: number;
   hasTimeline: boolean;
   declaredDuration: number;
+  pendingBuildReadyKeys: string[];
 }
 
 async function evaluateHfDiagnostic(page: Page): Promise<HfDiagnostic> {
