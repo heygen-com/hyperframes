@@ -19,7 +19,7 @@ import {
 import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
-import { createPlaybackReadinessSlice, type PlaybackReadinessSlice } from "./readinessSlice";
+import { createPlaybackReadinessSlice, resetPlaybackReadinessState } from "./readinessSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -59,7 +59,7 @@ type PlayerStoreSlices = KeyframeSlice &
   AutomationSelectionSlice &
   ThumbnailSlice &
   EditingModeSlice &
-  PlaybackReadinessSlice;
+  ReturnType<typeof createPlaybackReadinessSlice>;
 interface PlayerState extends PlayerStoreSlices {
   isPlaying: boolean;
   currentTime: number;
@@ -263,7 +263,7 @@ export function createTimelineResetState() {
     isPlaying: false,
     currentTime: 0,
     duration: 0,
-    timelineReady: false,
+    ...resetPlaybackReadinessState(),
     beatDragging: false,
     elements: [],
     selectedElementId: null,

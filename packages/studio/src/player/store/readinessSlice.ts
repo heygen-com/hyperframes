@@ -15,12 +15,22 @@ export interface PlaybackReadinessSlice {
 
 let timelineReadyGeneration = 0;
 
+/** For a full timeline reset: bumps the generation so any requestTimelineReady
+ * wait in flight can never resolve into what replaced it. */
+export function resetPlaybackReadinessState(): Pick<PlaybackReadinessSlice, "timelineReady"> {
+  timelineReadyGeneration++;
+  return { timelineReady: false };
+}
+
 export function createPlaybackReadinessSlice(
   set: StoreApi<PlaybackReadinessSlice>["setState"],
 ): PlaybackReadinessSlice {
   return {
     timelineReady: false,
-    setTimelineReady: (ready) => set({ timelineReady: ready }),
+    setTimelineReady: (ready) => {
+      timelineReadyGeneration++;
+      set({ timelineReady: ready });
+    },
     requestTimelineReady: (doc) => {
       const generation = ++timelineReadyGeneration;
       if (!doc) return set({ timelineReady: true });

@@ -373,25 +373,25 @@ class HyperframesPlayer extends HTMLElement {
     // check doesn't immediately self-terminate on the first callback.
     this._paused = false;
     const directTimelineStarted = this._tryDirectTimelinePlay();
+    // Set when the probe hasn't resolved yet: retried from _onProbeReady /
+    // _onRuntimeTimelineReady once ready, which is the call that actually
+    // starts playback — this premature call must not ALSO dispatch "play"
+    // for what hasn't started, or a host listener sees it fire twice.
+    let queuedForReady = false;
     if (!directTimelineStarted) {
       this._sendControl("play");
       // Only start the parent tick clock once the composition is ready and
       // confirmed on the runtime bridge path (not the direct-timeline path).
-      // Guards against firing ticks into an uninitialized iframe when play()
-      // is called before the probe has resolved.
       if (this._ready && !this._directTimelineAdapter) {
         this._startParentTickClock();
       } else if (!this._ready) {
-        // Bridge path but probe hasn't resolved: the control message above
-        // has nothing to land on yet and no tick clock started, so without
-        // this the click is silently dropped. Retried from _onProbeReady /
-        // _onRuntimeTimelineReady once ready.
         this._pendingPlay = true;
+        queuedForReady = true;
       }
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     this.controlsApi?.updatePlaying(true);
-    this.dispatchEvent(new Event("play"));
+    if (!queuedForReady) this.dispatchEvent(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
       this._directTimelineClock.start(
         this._directTimelineAdapter,

@@ -2927,4 +2927,34 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(playSpy).not.toHaveBeenCalled();
   });
+
+  it("dispatches 'play' exactly once for a call made before the probe resolves", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    (
+      player as unknown as {
+        _onProbeReady: (r: {
+          duration: number;
+          adapter: { kind: string; getDuration: () => number };
+          compositionSize: null;
+        }) => void;
+      }
+    )._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: null,
+    });
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
 });
