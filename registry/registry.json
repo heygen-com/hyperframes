@@ -436,6 +436,146 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "loop-3d-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-bento-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-book-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-cardtoss",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-carousel3d-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-corridor",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-coverflow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-deck-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-field-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-filmstrip",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flicker-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-flip-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-fold",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-frames-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-globe-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-gravity-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-grid-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-marquee-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-orbit-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-pages-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-parallax-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-proximity-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-ring",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-scale-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-shelf",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spin-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-spiral-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stack-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-stories-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-swirl",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-tunnel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-vortexspin",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wheel-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "loop-wipe-1",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "lower-third-bild",
       "type": "hyperframes:block"
     },
