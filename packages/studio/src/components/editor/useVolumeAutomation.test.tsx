@@ -154,6 +154,21 @@ describe("useVolumeAutomation", () => {
     expect(binding.automatedVolumeValue).toBe(0.2);
   });
 
+  it("translates to clip-local time, not composition time, for a clip that starts mid-timeline", () => {
+    // start=10 keeps this inside the clip's own duration either way, so the
+    // duration clamp can't mask a missing `currentTime - elStart` subtraction
+    // the way start=0 cases elsewhere in this file do.
+    const { binding, onSetAttributeQuiet } = bind(
+      { volume: "0.4", automation: volumeLane(0.2), start: "10", duration: "20" },
+      15,
+    );
+    act(() => binding.onCommitVolumeAt(0.9));
+    expect(writtenVolumePoints(onSetAttributeQuiet)).toEqual([
+      { t: 0, v: 0.2 },
+      { t: 5, v: 0.9 },
+    ]);
+  });
+
   it("reports no automated value when the track is not automated", () => {
     expect(bind({ volume: "0.4" }).binding.automatedVolumeValue).toBeUndefined();
   });
