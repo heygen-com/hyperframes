@@ -6,6 +6,7 @@ import {
   commitCloseAllTrackGaps,
   commitCloseTrackGap,
   resolveMainTrackDeleteRippleShifts,
+  resolveShiftedElements,
 } from "./timelineGapCommit";
 import { resolveAllTrackGaps } from "./timelineGaps";
 
@@ -148,6 +149,25 @@ describe("commitCloseAllTrackGaps", () => {
     expect(edits.map((e) => ({ id: e.element.id, start: e.updates.start }))).toEqual([
       { id: "b", start: 2 },
     ]);
+  });
+});
+
+describe("resolveShiftedElements", () => {
+  it("maps each shift to its element and new start", () => {
+    const elements = [el("a", 0, 2), el("c", 8, 1)];
+    const resolved = resolveShiftedElements(elements, [{ key: "c", newStart: 2 }]);
+    expect(resolved).toEqual([{ element: elements[1], start: 2 }]);
+  });
+
+  it("resolves by key when present, falling back to id", () => {
+    const withKey: TimelineElement = { ...el("a", 0, 2), key: "a-key" };
+    const resolved = resolveShiftedElements([withKey], [{ key: "a-key", newStart: 5 }]);
+    expect(resolved).toEqual([{ element: withKey, start: 5 }]);
+  });
+
+  it("drops a shift whose key matches no element", () => {
+    const elements = [el("a", 0, 2)];
+    expect(resolveShiftedElements(elements, [{ key: "ghost", newStart: 0 }])).toEqual([]);
   });
 });
 

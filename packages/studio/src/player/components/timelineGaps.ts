@@ -180,19 +180,3 @@ export function resolveCloseGapShifts(
     .filter((c) => followSet.has(keyOf(c)))
     .map((c) => ({ key: keyOf(c), newStart: Math.max(gap.gapStart, round3(c.start - width)) }));
 }
-
-/** Per-clip shifts to OPEN a gap of `duration` seconds at `at` (the inverse
- *  of {@link resolveCloseGapShifts}): every clip starting at or after `at`
- *  moves right by `duration`. A clip starting before `at` is untouched even
- *  if it extends past it — the caller resolves `at` to a boundary first. */
-export function resolveOpenGapShifts(
-  elements: readonly TimelineElement[],
-  at: number,
-  duration: number,
-  epsilon: number = TRACK_GAP_EPSILON_S,
-): TrackGapShift[] {
-  if (duration <= epsilon) return [];
-  return sortedLaneClips(elements)
-    .filter((c) => c.start >= at - epsilon)
-    .map((c) => ({ key: keyOf(c), newStart: round3(c.start + duration) }));
-}

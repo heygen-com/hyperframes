@@ -5,7 +5,6 @@ import {
   resolveAllGapIntervals,
   resolveAllTrackGaps,
   resolveCloseGapShifts,
-  resolveOpenGapShifts,
   resolveTrackGapAt,
   trackHasGaps,
 } from "./timelineGaps";
@@ -100,42 +99,6 @@ describe("resolveCloseGapShifts", () => {
     const gap = resolveTrackGapAt(els, 2)!;
     const shifts = resolveCloseGapShifts(els, gap);
     expect(shifts).toEqual([{ key: "b", newStart: 1.1 }]);
-  });
-});
-
-describe("resolveOpenGapShifts", () => {
-  it("shifts every clip at/after the insertion point right by the opened duration", () => {
-    const els = [el("a", 0, 2), el("b", 2, 3), el("c", 5, 1)];
-    expect(resolveOpenGapShifts(els, 2, 4)).toEqual([
-      { key: "b", newStart: 6 },
-      { key: "c", newStart: 9 },
-    ]);
-  });
-
-  it("leaves clips before the insertion point untouched", () => {
-    const els = [el("a", 0, 2), el("b", 10, 1)];
-    expect(resolveOpenGapShifts(els, 5, 3)).toEqual([{ key: "b", newStart: 13 }]);
-  });
-
-  it("is a no-op for a zero or negative duration", () => {
-    const els = [el("a", 0, 2), el("b", 2, 3)];
-    expect(resolveOpenGapShifts(els, 2, 0)).toEqual([]);
-    expect(resolveOpenGapShifts(els, 2, -1)).toEqual([]);
-  });
-
-  it("is the exact inverse of resolveCloseGapShifts for the same width", () => {
-    const els = [el("a", 0, 2), el("b", 6, 3), el("c", 11, 1)];
-    const gap = resolveTrackGapAt(els, 3)!; // gapStart 2, gapEnd 6, width 4
-    const closed = resolveCloseGapShifts(els, gap);
-    const shifted = els.map((c) => {
-      const s = closed.find((s) => s.key === c.id);
-      return s ? { ...c, start: s.newStart } : c;
-    });
-    const reopened = resolveOpenGapShifts(shifted, 2, 4);
-    expect(reopened).toEqual([
-      { key: "b", newStart: 6 },
-      { key: "c", newStart: 11 },
-    ]);
   });
 });
 

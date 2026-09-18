@@ -12,33 +12,25 @@ import { buildPatchTarget } from "./timelineEditingHelpers";
 import { captureDurationRollback, readFileContent } from "./timelineTimingSync";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
-import { resolveMainTrackDeleteRippleShifts } from "../player/components/timelineGapCommit";
-import type { TrackGapShift } from "../player/components/timelineGaps";
+import {
+  resolveMainTrackDeleteRippleShifts,
+  resolveShiftedElements,
+} from "../player/components/timelineGapCommit";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
 } from "./useTimelineGroupEditing";
 
-/** Shift -> TimelineGroupMoveChange, resolving each shift's element from the
- *  surviving set. Pure — no IO. */
-export function buildRippleMoveChanges(
-  survivors: readonly TimelineElement[],
-  shifts: readonly TrackGapShift[],
-): TimelineGroupMoveChange[] {
-  const byKey = new Map(survivors.map((te) => [te.key ?? te.id, te]));
-  return shifts.map((s) => ({ element: byKey.get(s.key)!, start: s.newStart }));
-}
-
-/** Apply ripple shifts to the surviving elements for the optimistic store
- *  update after a delete. Pure — no IO. */
+/** Apply already-resolved ripple changes to the surviving elements for the
+ *  optimistic store update after a delete. Pure — no IO. */
 export function applyRippleShifts(
   survivors: TimelineElement[],
-  shifts: readonly TrackGapShift[] | null,
+  changes: readonly TimelineGroupMoveChange[] | null,
 ): TimelineElement[] {
-  if (!shifts) return survivors;
-  const newStartByKey = new Map(shifts.map((s) => [s.key, s.newStart]));
+  if (!changes) return survivors;
+  const newStartByElement = new Map(changes.map((c) => [c.element, c.start]));
   return survivors.map((te) => {
-    const newStart = newStartByKey.get(te.key ?? te.id);
+    const newStart = newStartByElement.get(te);
     return newStart != null ? { ...te, start: newStart } : te;
   });
 }
@@ -191,14 +183,15 @@ export function useTimelineDeleteOps({
           sameFile,
           usePlayerStore.getState().rippleEditEnabled,
         );
-        let rippleApplied: typeof rippleShifts = null;
+        let rippleApplied: TimelineGroupMoveChange[] | null = null;
         if (rippleShifts) {
+          const rippleChanges = resolveShiftedElements(survivors, rippleShifts);
           try {
-            await handleTimelineGroupMove(buildRippleMoveChanges(survivors, rippleShifts), {
+            await handleTimelineGroupMove(rippleChanges, {
               coalesceKey,
               coalesceMs: Number.POSITIVE_INFINITY,
             });
-            rippleApplied = rippleShifts;
+            rippleApplied = rippleChanges;
           } catch (error) {
             // The delete already committed; a failed ripple leaves the gap the
             // toggle-off behaviour would have left anyway — not worth undoing
