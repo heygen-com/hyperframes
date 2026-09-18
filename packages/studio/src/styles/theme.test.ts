@@ -1,10 +1,8 @@
 // @vitest-environment happy-dom
 
-/**
- * Guards the ways `theme.css` can silently break: a token dropped as a CSS
- * custom property, a utility that stops compiling, the stock Tailwind palette
- * leaking back in, or the JS preset / legacy colours drifting from what they copy.
- */
+/** Guards the ways `theme.css` can silently break: a dropped CSS custom
+ * property, a utility that stops compiling, the stock Tailwind palette
+ * leaking back in, or the JS preset / legacy colours drifting from it. */
 
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
