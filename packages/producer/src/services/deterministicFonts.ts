@@ -1118,6 +1118,38 @@ async function ensureWoff2DataUri(
   return `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
 }
 
+// Per-process cache for Google Fonts CSS lookups, keyed by request URL —
+// repeat compiles of the same family reuse one network round trip. A
+// rejected lookup evicts itself so a later call still retries.
+const googleFontCssCache = new Map<string, Promise<{ ok: true; body: string } | { ok: false }>>();
+
+/** Test-only reset — the cache is otherwise process-lifetime, shared across calls. */
+export function _clearGoogleFontCssCacheForTests(): void {
+  googleFontCssCache.clear();
+}
+
+function fetchGoogleFontCss(
+  url: string,
+  familyName: string,
+  options: InternalFontFetchOptions,
+): Promise<{ ok: true; body: string } | { ok: false }> {
+  const cached = googleFontCssCache.get(url);
+  if (cached) return cached;
+  const promise = fetchFontResource(
+    url,
+    { headers: { "User-Agent": WOFF2_USER_AGENT } },
+    (response) => response.text(),
+    familyName,
+    "Google Fonts CSS",
+    options,
+  ).then((result) =>
+    result.ok ? { ok: true as const, body: result.body } : { ok: false as const },
+  );
+  googleFontCssCache.set(url, promise);
+  promise.catch(() => googleFontCssCache.delete(url));
+  return promise;
+}
+
 async function fetchGoogleFont(
   familyName: string,
   options: InternalFontFetchOptions,
@@ -1136,14 +1168,7 @@ async function fetchGoogleFont(
 
   let cssText: string;
   try {
-    const cssResult = await fetchFontResource(
-      url,
-      { headers: { "User-Agent": WOFF2_USER_AGENT } },
-      (response) => response.text(),
-      familyName,
-      "Google Fonts CSS",
-      options,
-    );
+    const cssResult = await fetchGoogleFontCss(url, familyName, options);
     if (!cssResult.ok) {
       // 4xx is a *deterministic* answer from Google Fonts that this
       // family is not served (e.g. HTTP 400 for "Segoe UI", "Arial",

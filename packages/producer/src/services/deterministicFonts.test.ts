@@ -1,7 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import {
   FONT_ALIASES,
   FONT_ALIAS_KEYS,
+  _clearGoogleFontCssCacheForTests,
   injectDeterministicFontFaces,
 } from "./deterministicFonts.js";
 
@@ -42,6 +43,29 @@ describe("existing font-face recognition", () => {
   ])("handles a long incomplete font-face suffix", async (css) => {
     const html = `<html><head><style>${css}</style></head><body>Hello</body></html>`;
     expect(await injectDeterministicFontFaces(html, { allowSystemFontCapture: false })).toBe(html);
+  });
+});
+
+describe("Google Fonts CSS request caching", () => {
+  beforeEach(() => _clearGoogleFontCssCacheForTests());
+
+  it("reuses one CSS lookup across separate compiles requesting the same family", async () => {
+    // Same character repertoire (just reordered) so both compute the same
+    // Google Fonts `text=` subset and thus the same request URL — isolates
+    // the cache from font-text extraction, covered elsewhere.
+    const htmlA = `<html><body><p style="font-family: 'Cache Probe Font';">Hello</p></body></html>`;
+    const htmlB = `<html><body><p style="font-family: 'Cache Probe Font';">olleH</p></body></html>`;
+    let requests = 0;
+    const fetchImpl = Object.assign(
+      async () => {
+        requests += 1;
+        return new Response("", { status: 404 });
+      },
+      { preconnect: fetch.preconnect },
+    );
+    await injectDeterministicFontFaces(htmlA, { fetchImpl, allowSystemFontCapture: false });
+    await injectDeterministicFontFaces(htmlB, { fetchImpl, allowSystemFontCapture: false });
+    expect(requests).toBe(1);
   });
 });
 
