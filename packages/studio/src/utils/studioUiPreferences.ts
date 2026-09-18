@@ -1,3 +1,5 @@
+import { parseProjectIdFromHash } from "./projectRouting";
+
 export interface StoredPreviewZoomState {
   zoomPercent: number;
   panX: number;
@@ -62,11 +64,20 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
+function getActiveProjectId(): string | null {
+  if (typeof window === "undefined") return null;
+  return parseProjectIdFromHash(window.location.hash);
+}
+
+function storageKeyFor(projectId: string | null): string {
+  return projectId ? `${STUDIO_UI_PREFERENCES_KEY}:${projectId}` : STUDIO_UI_PREFERENCES_KEY;
+}
+
 // fallow-ignore-next-line complexity
-function readStorage(storage: Storage | null): StudioUiPreferences {
+function readStorage(storage: Storage | null, key: string): StudioUiPreferences {
   if (!storage) return {};
   try {
-    const raw = storage.getItem(STUDIO_UI_PREFERENCES_KEY);
+    const raw = storage.getItem(key);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return {};
@@ -163,21 +174,32 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
   }
 }
 
-export function readStudioUiPreferences(storage: Storage | null = getBrowserStorage()) {
-  return readStorage(storage);
+/**
+ * Scoped per project, since each project's panel widths, zoom and timeline
+ * settings are its own — falls back once to the pre-scoping global entry so
+ * a project's first load after this shipped doesn't look reset.
+ */
+export function readStudioUiPreferences(
+  storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = getActiveProjectId(),
+): StudioUiPreferences {
+  const scoped = readStorage(storage, storageKeyFor(projectId));
+  if (!projectId || Object.keys(scoped).length > 0) return scoped;
+  return readStorage(storage, STUDIO_UI_PREFERENCES_KEY);
 }
 
 export function writeStudioUiPreferences(
   patch: StudioUiPreferences,
   storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = getActiveProjectId(),
 ) {
   if (!storage) return;
   try {
     const next = {
-      ...readStorage(storage),
+      ...readStudioUiPreferences(storage, projectId),
       ...patch,
     };
-    storage.setItem(STUDIO_UI_PREFERENCES_KEY, JSON.stringify(next));
+    storage.setItem(storageKeyFor(projectId), JSON.stringify(next));
   } catch {
     /* localStorage may be unavailable or full */
   }
