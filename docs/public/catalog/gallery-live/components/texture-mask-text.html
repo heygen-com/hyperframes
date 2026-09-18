@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Texture Mask Text - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="texture-mask-text-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+      data-start="0"
+    >
+      <div class="demo-canvas">
+        <div class="header">
+          <div class="title">Texture Mask Text</div>
+          <div class="count">66 ambientCG luminance masks</div>
+        </div>
+        <div class="groups" id="texture-groups"></div>
+      </div>
+
+      <style>
+        #demo {
+          width: 1920px;
+          height: 1080px;
+          overflow: hidden;
+          background: #111;
+          color: #fff;
+          font-family:
+            Arial Black,
+            Arial,
+            sans-serif;
+        }
+
+        .hf-texture-text {
+          color: #fff;
+          -webkit-mask-size: var(--mask-size, cover);
+          mask-size: var(--mask-size, cover);
+          -webkit-mask-position: var(--mask-position, center);
+          mask-position: var(--mask-position, center);
+          -webkit-mask-mode: luminance;
+          mask-mode: luminance;
+          filter: contrast(var(--mask-contrast, 1));
+        }
+
+        .demo-canvas {
+          width: 1920px;
+          height: 1080px;
+          background: #111;
+          padding: 42px 44px 38px;
+        }
+
+        .header {
+          height: 84px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+          margin-bottom: 18px;
+        }
+
+        .title {
+          font-size: 34px;
+          line-height: 1;
+          letter-spacing: 0;
+          text-transform: uppercase;
+        }
+
+        .count {
+          font-family: Arial, sans-serif;
+          font-size: 18px;
+          line-height: 1;
+          letter-spacing: 0;
+          color: rgba(255, 255, 255, 0.55);
+          text-transform: uppercase;
+        }
+
+        .groups {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          grid-template-rows: repeat(2, 1fr);
+          gap: 22px 24px;
+          width: 1832px;
+          height: 898px;
+        }
+
+        .group-panel {
+          min-width: 0;
+          min-height: 0;
+          overflow: hidden;
+        }
+
+        .group-header {
+          height: 34px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          margin-bottom: 10px;
+        }
+
+        .group-name {
+          font-family: Arial, sans-serif;
+          font-size: 13px;
+          line-height: 1;
+          letter-spacing: 0;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.74);
+        }
+
+        .group-count {
+          font-family: Arial, sans-serif;
+          font-size: 10px;
+          line-height: 1;
+          letter-spacing: 0;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.52);
+        }
+
+        .group-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px 10px;
+        }
+
+        .cell {
+          min-width: 0;
+          height: 66px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
+          overflow: hidden;
+        }
+
+        .label {
+          width: 100%;
+          font-family: Arial, sans-serif;
+          font-size: 11px;
+          line-height: 1.1;
+          letter-spacing: 0;
+          text-transform: uppercase;
+          text-align: center;
+          color: rgba(255, 255, 255, 0.5);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .shadow-wrap {
+          width: 100%;
+          filter: drop-shadow(2px 3px 4px rgba(0, 0, 0, 0.46));
+        }
+
+        .sample {
+          width: 100%;
+          font-family:
+            Impact,
+            Arial Black,
+            Arial,
+            sans-serif;
+          font-size: 31px;
+          line-height: 0.9;
+          letter-spacing: 0;
+          text-transform: uppercase;
+          text-align: center;
+          white-space: nowrap;
+        }
+      </style>
+      <script>
+        const textureMaskTextGroups = [
+          [
+            "Masonry",
+            "brick|Brick|MORTAR,bricks-104|Bricks 104|BRICK,bricks-102|Bricks 102|BRICK,bricks-101|Bricks 101|BRICK,bricks-075-a|Bricks 075 A|BRICK,concrete|Concrete|SCORED,concrete-034|Concrete 034|CONCRETE,concrete-047-a|Concrete 047 A|CONCRETE,concrete-046|Concrete 046|CONCRETE,concrete-042-a|Concrete 042 A|CONCRETE,plaster-001|Plaster 001|PLASTER,painted-plaster-017|Painted Plaster 017|PLASTER",
+          ],
+          [
+            "Stone",
+            "rock|Rock|RUINED,rock-063|Rock 063|ROCK,rock-058|Rock 058|ROCK,onyx|Onyx|VEINED,marble-012|Marble 012|MARBLE,marble-016|Marble 016|MARBLE,travertine-009|Travertine 009|STONE,paving-stones-150|Paving Stones 150|STONE,paving-stones-138|Paving Stones 138|STONE,tiles-138|Tiles 138|TILE",
+          ],
+          [
+            "Ground / Road",
+            "ground-103|Ground 103|GROUND,ground-037|Ground 037|GROUND,ground-054|Ground 054|GROUND,ground-104|Ground 104|GROUND,ground-068|Ground 068|GROUND,ground-080|Ground 080|GROUND,road-012-a|Road 012 A|ROAD,road-008-a|Road 008 A|ROAD,road-007|Road 007|ROAD,road-013-a|Road 013 A|ROAD,road-012-b|Road 012 B|ROAD,road-009-c|Road 009 C|ROAD,asphalt-031|Asphalt 031|ASPHALT",
+          ],
+          [
+            "Wood",
+            "wood|Wood|SLICED,wood-094|Wood 094|WOOD,wood-092|Wood 092|WOOD,wood-051|Wood 051|WOOD,wood-066|Wood 066|WOOD,wood-049|Wood 049|WOOD,wood-058|Wood 058|WOOD,wood-floor-051|Wood Floor 051|FLOOR,wood-floor-064|Wood Floor 064|FLOOR,wood-floor-070|Wood Floor 070|FLOOR,bark-014|Bark 014|BARK",
+          ],
+          [
+            "Metal",
+            "metal|Metal|FADING,metal-049-a|Metal 049 A|METAL,metal-055-a|Metal 055 A|METAL,metal-046-b|Metal 046 B|METAL,metal-061-b|Metal 061 B|METAL,metal-048-a|Metal 048 A|METAL,metal-032|Metal 032|METAL,metal-041-a|Metal 041 A|METAL,metal-038|Metal 038|METAL,diamond-plate-009|Diamond Plate 009|PLATE",
+          ],
+          [
+            "Organic / Soft",
+            "lava|Lava|MOLTEN,grass-005|Grass 005|GRASS,grass-001|Grass 001|GRASS,grass-004|Grass 004|GRASS,carpet|Carpet|WOVEN,fabric-083|Fabric 083|FABRIC,snow|Snow|THAW,snow-015|Snow 015|SNOW,leather-037|Leather 037|LEATHER,fabric-080|Fabric 080|FABRIC",
+          ],
+        ];
+        const textureGroups = document.getElementById("texture-groups");
+        for (const [groupName, rows] of textureMaskTextGroups) {
+          const items = rows.split(",").map((row) => {
+            const [slug, title, sample] = row.split("|");
+            return { slug, title, sample };
+          });
+          const panel = document.createElement("section");
+          panel.className = "group-panel";
+
+          const groupHeader = document.createElement("div");
+          groupHeader.className = "group-header";
+
+          const name = document.createElement("div");
+          name.className = "group-name";
+          name.textContent = groupName;
+
+          const count = document.createElement("div");
+          count.className = "group-count";
+          count.textContent = `${items.length} masks`;
+
+          groupHeader.append(name, count);
+
+          const groupGrid = document.createElement("div");
+          groupGrid.className = "group-grid";
+
+          for (const item of items) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+
+            const label = document.createElement("div");
+            label.className = "label";
+            label.textContent = item.title;
+
+            const shadowWrap = document.createElement("div");
+            shadowWrap.className = "shadow-wrap";
+
+            const sample = document.createElement("div");
+            sample.className = "hf-texture-text sample";
+            sample.style.webkitMaskImage = `url("masks/${item.slug}.png")`;
+            sample.style.maskImage = `url("masks/${item.slug}.png")`;
+            sample.textContent = item.sample;
+
+            shadowWrap.appendChild(sample);
+            cell.append(label, shadowWrap);
+            groupGrid.appendChild(cell);
+          }
+
+          panel.append(groupHeader, groupGrid);
+          textureGroups.appendChild(panel);
+        }
+
+        window.__timelines = window.__timelines || {};
+        const textureMaskTextTimeline = {
+          play() {},
+          pause() {},
+          seek() {},
+          time() {
+            return 0;
+          },
+          duration() {
+            return 5;
+          },
+          add() {},
+          paused() {},
+          set() {},
+        };
+        window.__timelines["texture-mask-text-demo"] = textureMaskTextTimeline;
+      </script>
+    </div>
+  </body>
+</html>

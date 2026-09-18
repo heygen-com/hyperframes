@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>US Hex Grid Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="us-map-hex"
+      data-composition-id="us-map-hex"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="10"
+    >
+      <div class="map-header">
+        <h1 class="map-headline">Median Household Income by State</h1>
+        <p class="map-subtitle">American Community Survey, 2024</p>
+      </div>
+
+      <svg class="hex-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet">
+        <g class="hex-grid"></g>
+        <g class="hex-labels"></g>
+      </svg>
+
+      <div class="map-legend">
+        <div class="legend-label legend-low">$52k</div>
+        <div class="legend-bar"></div>
+        <div class="legend-label legend-high">$107k</div>
+      </div>
+
+      <div class="map-source">Source: U.S. Census Bureau, American Community Survey 2024</div>
+
+      <style>
+        #us-map-hex {
+          width: 1920px;
+          height: 1080px;
+          background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+          font-family: "Inter", sans-serif;
+          color: #f8fafc;
+          position: relative;
+          overflow: hidden;
+        }
+
+        #us-map-hex .map-header {
+          position: absolute;
+          top: 48px;
+          left: 80px;
+          z-index: 2;
+        }
+
+        #us-map-hex .map-headline {
+          font-size: 48px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: #f8fafc;
+          clip-path: inset(0 100% 0 0);
+          white-space: nowrap;
+        }
+
+        #us-map-hex .map-subtitle {
+          font-size: 20px;
+          font-weight: 400;
+          color: #94a3b8;
+          margin-top: 8px;
+          opacity: 0;
+        }
+
+        #us-map-hex .hex-svg {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1920px;
+          height: 1080px;
+        }
+
+        #us-map-hex .hex-poly {
+          stroke: #0f172a;
+          stroke-width: 2;
+          opacity: 0;
+        }
+
+        #us-map-hex .hex-text {
+          font-family: "Inter", sans-serif;
+          font-size: 14px;
+          font-weight: 600;
+          fill: #0f172a;
+          text-anchor: middle;
+          dominant-baseline: central;
+          pointer-events: none;
+          opacity: 0;
+        }
+
+        #us-map-hex .hex-text.light-text {
+          fill: #fef3c7;
+        }
+
+        #us-map-hex .map-legend {
+          position: absolute;
+          bottom: 80px;
+          left: 80px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          opacity: 0;
+        }
+
+        #us-map-hex .legend-bar {
+          width: 240px;
+          height: 16px;
+          border-radius: 4px;
+          background: linear-gradient(90deg, #451a03 0%, #f59e0b 50%, #fef3c7 100%);
+        }
+
+        #us-map-hex .legend-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #94a3b8;
+        }
+
+        #us-map-hex .map-source {
+          position: absolute;
+          bottom: 48px;
+          left: 80px;
+          font-size: 12px;
+          color: #475569;
+          opacity: 0;
+        }
+      </style>
+
+      <script>
+        (function () {
+          var NS = "http://www.w3.org/2000/svg";
+          var hexGrid = document.querySelector("#us-map-hex .hex-grid");
+          var hexLabels = document.querySelector("#us-map-hex .hex-labels");
+
+          /* --- State grid positions (col, row) --- */
+          var positions = {
+            ME: [10, 0],
+            VT: [9, 1],
+            NH: [10, 1],
+            WA: [0, 2],
+            MT: [1, 2],
+            ND: [2, 2],
+            MN: [3, 2],
+            WI: [4, 2],
+            MI: [7, 2],
+            NY: [8, 2],
+            MA: [9, 2],
+            RI: [10, 2],
+            ID: [0, 3],
+            WY: [1, 3],
+            SD: [2, 3],
+            IA: [3, 3],
+            IL: [4, 3],
+            IN: [5, 3],
+            OH: [6, 3],
+            PA: [7, 3],
+            NJ: [8, 3],
+            CT: [9, 3],
+            OR: [0, 4],
+            NV: [1, 4],
+            CO: [2, 4],
+            NE: [3, 4],
+            MO: [4, 4],
+            KY: [5, 4],
+            WV: [6, 4],
+            VA: [7, 4],
+            MD: [8, 4],
+            DE: [9, 4],
+            CA: [0, 5],
+            UT: [1, 5],
+            NM: [2, 5],
+            KS: [3, 5],
+            AR: [4, 5],
+            TN: [5, 5],
+            NC: [6, 5],
+            SC: [7, 5],
+            DC: [8, 5],
+            AZ: [1, 6],
+            OK: [3, 6],
+            LA: [4, 6],
+            MS: [5, 6],
+            AL: [6, 6],
+            GA: [7, 6],
+            HI: [0, 7],
+            TX: [3, 7],
+            FL: [7, 7],
+            AK: [0, 8],
+          };
+
+          /* --- Median household income (2024 ACS, rounded to nearest $1k) --- */
+          var income = {
+            MD: 106998,
+            NJ: 101778,
+            MA: 101079,
+            CT: 92545,
+            HI: 91010,
+            NH: 90845,
+            WA: 90325,
+            CA: 89648,
+            CO: 87598,
+            VA: 87249,
+            UT: 86833,
+            MN: 84313,
+            AK: 83601,
+            NY: 81386,
+            RI: 81370,
+            IL: 79253,
+            OR: 76632,
+            DE: 75932,
+            WI: 72458,
+            NV: 71646,
+            VT: 71560,
+            PA: 71610,
+            ND: 71017,
+            NE: 70654,
+            TX: 70813,
+            AZ: 70821,
+            ID: 69973,
+            MT: 68091,
+            GA: 67992,
+            ME: 67587,
+            FL: 67917,
+            IA: 67684,
+            WY: 67249,
+            SD: 66894,
+            MI: 66986,
+            IN: 65834,
+            OH: 64018,
+            MO: 63594,
+            KS: 66354,
+            NC: 65070,
+            TN: 63426,
+            SC: 62064,
+            OK: 60438,
+            KY: 57584,
+            NM: 58257,
+            AL: 57563,
+            LA: 55728,
+            WV: 52520,
+            AR: 53289,
+            MS: 52434,
+            DC: 101722,
+          };
+
+          /* --- Color interpolation --- */
+          var incomeValues = [];
+          var stateKeys = Object.keys(income);
+          for (var i = 0; i < stateKeys.length; i++) {
+            incomeValues.push(income[stateKeys[i]]);
+          }
+          var minIncome = Math.min.apply(null, incomeValues);
+          var maxIncome = Math.max.apply(null, incomeValues);
+
+          function lerp(a, b, t) {
+            return a + (b - a) * t;
+          }
+
+          function hexToRgb(hex) {
+            var r = parseInt(hex.substring(1, 3), 16);
+            var g = parseInt(hex.substring(3, 5), 16);
+            var b = parseInt(hex.substring(5, 7), 16);
+            return [r, g, b];
+          }
+
+          var colorLow = hexToRgb("#451a03");
+          var colorMid = hexToRgb("#f59e0b");
+          var colorHigh = hexToRgb("#fef3c7");
+
+          function getColor(val) {
+            var t = (val - minIncome) / (maxIncome - minIncome);
+            var r, g, b;
+            if (t < 0.5) {
+              var t2 = t / 0.5;
+              r = Math.round(lerp(colorLow[0], colorMid[0], t2));
+              g = Math.round(lerp(colorLow[1], colorMid[1], t2));
+              b = Math.round(lerp(colorLow[2], colorMid[2], t2));
+            } else {
+              var t2 = (t - 0.5) / 0.5;
+              r = Math.round(lerp(colorMid[0], colorHigh[0], t2));
+              g = Math.round(lerp(colorMid[1], colorHigh[1], t2));
+              b = Math.round(lerp(colorMid[2], colorHigh[2], t2));
+            }
+            return "rgb(" + r + "," + g + "," + b + ")";
+          }
+
+          /* Determine if text should be light on dark hex */
+          function isLightText(val) {
+            var t = (val - minIncome) / (maxIncome - minIncome);
+            return t < 0.35;
+          }
+
+          /* --- Hex geometry (flat-top) --- */
+          var hexW = 80;
+          var hexS = hexW / 2;
+          var hexH = hexS * Math.sqrt(3);
+          var startX = 480;
+          var startY = 200;
+
+          function hexCenter(col, row) {
+            var cx = startX + col * (hexW * 0.75);
+            var cy = startY + row * hexH;
+            if (row % 2 === 1) {
+              cx += hexW * 0.375;
+            }
+            return [cx, cy];
+          }
+
+          function hexPoints(cx, cy) {
+            var pts = [
+              [cx - hexS, cy],
+              [cx - hexS / 2, cy - hexH / 2],
+              [cx + hexS / 2, cy - hexH / 2],
+              [cx + hexS, cy],
+              [cx + hexS / 2, cy + hexH / 2],
+              [cx - hexS / 2, cy + hexH / 2],
+            ];
+            var strs = [];
+            for (var i = 0; i < pts.length; i++) {
+              strs.push(pts[i][0].toFixed(2) + "," + pts[i][1].toFixed(2));
+            }
+            return strs.join(" ");
+          }
+
+          /* --- Compute center of all hexes for stagger distance --- */
+          var allCenters = [];
+          var allStates = Object.keys(positions);
+          for (var i = 0; i < allStates.length; i++) {
+            var pos = positions[allStates[i]];
+            var center = hexCenter(pos[0], pos[1]);
+            allCenters.push(center);
+          }
+          var avgCx = 0;
+          var avgCy = 0;
+          for (var i = 0; i < allCenters.length; i++) {
+            avgCx += allCenters[i][0];
+            avgCy += allCenters[i][1];
+          }
+          avgCx /= allCenters.length;
+          avgCy /= allCenters.length;
+
+          /* --- Create hex elements --- */
+          var hexPolys = [];
+          var hexTexts = [];
+          var distances = [];
+
+          for (var i = 0; i < allStates.length; i++) {
+            var st = allStates[i];
+            var pos = positions[st];
+            var center = hexCenter(pos[0], pos[1]);
+            var cx = center[0];
+            var cy = center[1];
+
+            var poly = document.createElementNS(NS, "polygon");
+            poly.setAttribute("points", hexPoints(cx, cy));
+            poly.setAttribute("fill", getColor(income[st]));
+            poly.setAttribute("class", "hex-poly");
+            poly.setAttribute("data-state", st);
+            hexGrid.appendChild(poly);
+            hexPolys.push(poly);
+
+            var text = document.createElementNS(NS, "text");
+            text.setAttribute("x", cx);
+            text.setAttribute("y", cy);
+            var textClass = "hex-text";
+            if (isLightText(income[st])) {
+              textClass += " light-text";
+            }
+            text.setAttribute("class", textClass);
+            text.textContent = st;
+            hexLabels.appendChild(text);
+            hexTexts.push(text);
+
+            var dx = cx - avgCx;
+            var dy = cy - avgCy;
+            distances.push(Math.sqrt(dx * dx + dy * dy));
+          }
+
+          /* --- Sort indices by distance from center (for stagger) --- */
+          var sortedIndices = [];
+          for (var i = 0; i < allStates.length; i++) {
+            sortedIndices.push(i);
+          }
+          sortedIndices.sort(function (a, b) {
+            return distances[a] - distances[b];
+          });
+
+          var sortedPolys = [];
+          var sortedTexts = [];
+          for (var i = 0; i < sortedIndices.length; i++) {
+            sortedPolys.push(hexPolys[sortedIndices[i]]);
+            sortedTexts.push(hexTexts[sortedIndices[i]]);
+          }
+
+          /* --- GSAP Timeline --- */
+          var tl = gsap.timeline({ paused: true });
+
+          /* 0s: headline wipe */
+          tl.to(
+            "#us-map-hex .map-headline",
+            {
+              clipPath: "inset(0 0% 0 0)",
+              duration: 1,
+              ease: "power2.inOut",
+            },
+            0,
+          );
+
+          /* 0.3s: subtitle fade */
+          tl.to(
+            "#us-map-hex .map-subtitle",
+            {
+              opacity: 1,
+              duration: 0.5,
+              ease: "power2.out",
+            },
+            0.3,
+          );
+
+          /* 0.8s: hexagons stagger in from center outward */
+          tl.fromTo(
+            sortedPolys,
+            {
+              opacity: 0,
+              scale: 0,
+              transformOrigin: "50% 50%",
+            },
+            {
+              opacity: 1,
+              scale: 1,
+              duration: 0.4,
+              stagger: 0.03,
+              ease: "back.out(1.4)",
+            },
+            0.8,
+          );
+
+          /* 3.5s: state labels fade in */
+          tl.fromTo(
+            sortedTexts,
+            { opacity: 0 },
+            {
+              opacity: 1,
+              duration: 0.3,
+              stagger: 0.02,
+              ease: "power2.out",
+            },
+            3.5,
+          );
+
+          /* 5.0s: legend fade */
+          tl.to(
+            "#us-map-hex .map-legend",
+            {
+              opacity: 1,
+              duration: 0.6,
+              ease: "power2.out",
+            },
+            5.0,
+          );
+
+          /* 5.5s: source fade */
+          tl.to(
+            "#us-map-hex .map-source",
+            {
+              opacity: 1,
+              duration: 0.5,
+              ease: "power2.out",
+            },
+            5.5,
+          );
+
+          /* 6.0s: top 5 income states pulse */
+          var topStates = ["MD", "NJ", "MA", "CT", "HI"];
+          var topPolys = [];
+          for (var i = 0; i < topStates.length; i++) {
+            for (var j = 0; j < allStates.length; j++) {
+              if (allStates[j] === topStates[i]) {
+                topPolys.push(hexPolys[j]);
+                break;
+              }
+            }
+          }
+
+          tl.to(
+            topPolys,
+            {
+              filter: "brightness(1.4)",
+              duration: 0.4,
+              stagger: 0.08,
+              ease: "power2.out",
+            },
+            6.0,
+          );
+
+          tl.to(
+            topPolys,
+            {
+              filter: "brightness(1)",
+              duration: 0.4,
+              stagger: 0.08,
+              ease: "power2.in",
+            },
+            6.8,
+          );
+
+          tl.to(
+            topPolys,
+            {
+              filter: "brightness(1.3)",
+              duration: 0.3,
+              stagger: 0.06,
+              ease: "power2.out",
+            },
+            7.4,
+          );
+
+          tl.to(
+            topPolys,
+            {
+              filter: "brightness(1)",
+              duration: 0.5,
+              stagger: 0.06,
+              ease: "power2.in",
+            },
+            8.0,
+          );
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["us-map-hex"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

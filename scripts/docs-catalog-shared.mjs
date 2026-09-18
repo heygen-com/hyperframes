@@ -21,13 +21,14 @@ export function getCatalogTab(config) {
 }
 
 // Same output as packages/core/src/tokenSlug.ts's slugify, minus its CSS-variable-name
-// fallback: a character-scan trim instead of /^-+|-+$/, which CodeQL flags as polynomial
-// ReDoS (js/polynomial-redos) on adversarial input.
+// fallback. Collapsing every run of non-alphanumeric characters to one "-" first means a
+// leading or trailing "-" can only ever be a single character, so trimming it needs no
+// quantifier — unlike /^-+|-+$/, which CodeQL flags as polynomial ReDoS (js/polynomial-redos)
+// on adversarial input.
 export function slug(s) {
-  const collapsed = s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  let start = 0;
-  let end = collapsed.length;
-  while (start < end && collapsed[start] === "-") start++;
-  while (end > start && collapsed[end - 1] === "-") end--;
-  return collapsed.slice(start, end);
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-/, "")
+    .replace(/-$/, "");
 }

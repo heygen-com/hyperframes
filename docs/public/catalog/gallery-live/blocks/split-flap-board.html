@@ -1,0 +1,346 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"boardText","type":"string","label":"Board text","default":"NOW BOARDING","maxLength":24},
+    {"id":"flapAlphabet","type":"string","label":"Flap alphabet (drum order)","default":" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,&#39;","maxLength":64},
+    {"id":"flipDuration","type":"number","label":"Seconds per flap","default":0.09,"min":0.03,"max":1.2,"step":0.01,"unit":"s"},
+    {"id":"cellStagger","type":"number","label":"Per-cell start stagger","default":0.05,"min":0,"max":0.5,"step":0.01,"unit":"s"},
+    {"id":"cellCount","type":"number","label":"Cells on the board","default":12,"min":1,"max":24,"step":1}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Split-Flap Board</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="sf-root"
+      data-composition-id="split-flap-board"
+      data-start="0"
+      data-duration="3.5"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+      style="position: relative; width: 1920px; height: 1080px; overflow: hidden"
+    >
+      <style>
+        /* The root's own box lives in an inline style, not a rule: every
+           sub-composition rule is rewritten to
+           `[data-composition-id="split-flap-board"] <selector>` at render,
+           which can never match the root element itself. */
+        #sf-bg {
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(120% 90% at 50% 42%, #23242a 0%, #121317 62%, #0a0a0c 100%), #0a0a0c;
+        }
+        #sf-board {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .sf-cell {
+          position: relative;
+          flex: 0 0 auto;
+          perspective: 900px;
+          border-radius: 9px;
+          background: #0c0c0e;
+          box-shadow:
+            0 18px 34px rgba(0, 0, 0, 0.55),
+            0 0 0 1px rgba(255, 255, 255, 0.05);
+        }
+        .sf-face {
+          position: absolute;
+          left: 0;
+          width: 100%;
+          height: 50%;
+          overflow: hidden;
+          background: linear-gradient(180deg, #26272c 0%, #1a1b1f 100%);
+        }
+        .sf-top,
+        .sf-leaf-a {
+          top: 0;
+          border-radius: 9px 9px 0 0;
+        }
+        .sf-bot,
+        .sf-leaf-b {
+          top: 50%;
+          border-radius: 0 0 9px 9px;
+          background: linear-gradient(180deg, #191a1e 0%, #232429 100%);
+        }
+        .sf-leaf-a {
+          transform-origin: 50% 100%;
+          z-index: 3;
+          backface-visibility: hidden;
+        }
+        .sf-leaf-b {
+          transform-origin: 50% 0%;
+          z-index: 3;
+          backface-visibility: hidden;
+        }
+        .sf-glyph {
+          position: absolute;
+          left: 0;
+          width: 100%;
+          display: block;
+          text-align: center;
+          font-family: ui-monospace, monospace;
+          font-weight: 700;
+          color: #f4efe2;
+          white-space: pre;
+        }
+        .sf-seam {
+          position: absolute;
+          left: 0;
+          top: 50%;
+          width: 100%;
+          height: 3px;
+          margin-top: -1.5px;
+          background: #050506;
+          z-index: 4;
+        }
+      </style>
+
+      <div id="sf-bg"></div>
+      <div id="sf-board" class="clip" data-start="0" data-duration="3.5" data-track-index="0"></div>
+
+      <script>
+        (function () {
+          window.__timelines = window.__timelines || {};
+
+          // ---------------------------------------------------------------
+          // Reference numbers (see report / research entry F#1)
+          //
+          // Alphabet: the 40-position drum from the scottbez1/splitflap
+          // project (Apache-2.0, README read) — blank, A-Z, 0-9, then `.,'`.
+          // Drum order is what makes the cascade read as a real board: a cell
+          // never jumps, it walks the drum forward through every intervening
+          // character, so letters resolve early and digits/punctuation late.
+          //
+          // Flip duration: the only published-ish figure is a DIY firmware
+          // proxy (28BYJ-48 stepper, ~83.59 steps/flap, a=500 steps/s^2 ->
+          // triangular profile -> ~1.16 s/flap). That is a hobby build, NOT a
+          // Solari spec, and real boards audibly flutter at tens of ms per
+          // flap. The default below sits in that observed band; the DIY proxy
+          // is still reachable at the top of the `flipDuration` range.
+          //
+          // Flap fall: constant angular acceleration through 180 degrees,
+          // theta(p) = 180 * p^2. The flap therefore hangs near the top and
+          // slaps down — no ease-out, because a falling leaf does not
+          // decelerate. The two CSS leaves are the two faces of that one flap
+          // (hand-off at theta = 90, i.e. p = 0.707).
+          // ---------------------------------------------------------------
+          var DEFAULT_ALPHABET = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,'";
+          var DEG = Math.PI / 180;
+
+          function num(value, min, max, fallback) {
+            var n = typeof value === "number" ? value : parseFloat(value);
+            if (!isFinite(n)) return fallback;
+            return Math.min(max, Math.max(min, n));
+          }
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          var alphabet = String(vars.flapAlphabet || DEFAULT_ALPHABET);
+          if (alphabet.length < 2) alphabet = DEFAULT_ALPHABET;
+          var N = alphabet.length;
+
+          var flipDur = num(vars.flipDuration, 0.03, 1.2, 0.09);
+          var stagger = num(vars.cellStagger, 0, 0.5, 0.05);
+          var cellCount = Math.round(num(vars.cellCount, 1, 24, 12));
+
+          var text = String(vars.boardText == null ? "NOW BOARDING" : vars.boardText)
+            .toUpperCase()
+            .slice(0, cellCount);
+          // Centre the string across the board; unused cells stay on the
+          // drum's first position (blank in the default alphabet).
+          var lead = Math.floor((cellCount - text.length) / 2);
+          var targets = [];
+          for (var i = 0; i < cellCount; i++) {
+            var ch =
+              i >= lead && i < lead + text.length ? text.charAt(i - lead) : alphabet.charAt(0);
+            var g = alphabet.indexOf(ch);
+            targets.push(g < 0 ? 0 : g);
+          }
+
+          // Geometry: fit `cellCount` cells across 1920 with a 120px margin.
+          var GAP = 10;
+          var cw = Math.min(130, Math.floor((1920 - 240 - (cellCount - 1) * GAP) / cellCount));
+          var chh = Math.round(cw * 1.45);
+
+          var board = document.getElementById("sf-board");
+          board.style.gap = GAP + "px";
+
+          function makeFace(cls, glyphTop) {
+            var face = document.createElement("div");
+            face.className = "sf-face " + cls;
+            var glyph = document.createElement("span");
+            glyph.className = "sf-glyph";
+            glyph.style.height = chh + "px";
+            glyph.style.lineHeight = chh + "px";
+            glyph.style.fontSize = Math.round(cw * 0.78) + "px";
+            glyph.style.top = glyphTop + "px";
+            face.appendChild(glyph);
+            return face;
+          }
+
+          var cells = [];
+          for (var c = 0; c < cellCount; c++) {
+            var cell = document.createElement("div");
+            cell.className = "sf-cell";
+            cell.id = "sf-cell-" + c;
+            cell.style.width = cw + "px";
+            cell.style.height = chh + "px";
+            // The mechanism IS clipped, stacked half-glyphs: each face holds a
+            // whole character and shows half of it, and the falling leaf sits
+            // on top of the face behind it. Declared intentional so the layout
+            // auditor reports real regressions instead of the design.
+            cell.setAttribute("data-layout-allow-overlap", "");
+            cell.setAttribute("data-layout-allow-occlusion", "");
+            cell.setAttribute("data-layout-allow-overflow", "");
+
+            var top = makeFace("sf-top", 0);
+            var bot = makeFace("sf-bot", -Math.round(chh / 2));
+            var leafA = makeFace("sf-leaf-a", 0);
+            var leafB = makeFace("sf-leaf-b", -Math.round(chh / 2));
+
+            var seam = document.createElement("div");
+            seam.className = "sf-seam";
+
+            cell.appendChild(top);
+            cell.appendChild(bot);
+            cell.appendChild(leafA);
+            cell.appendChild(leafB);
+            cell.appendChild(seam);
+            board.appendChild(cell);
+
+            cells.push({
+              // steps is unidirectional: the drum only ever spins forward,
+              // start position is always the drum's first flap (index 0).
+              steps: targets[c],
+              top: top.firstChild,
+              bot: bot.firstChild,
+              leafA: leafA,
+              leafB: leafB,
+              glyphA: leafA.firstChild,
+              glyphB: leafB.firstChild,
+            });
+          }
+
+          // A face that is not in use must be wiped, not merely hidden.
+          // Leaving a stale transform/filter/glyph on an opacity-0 leaf makes
+          // the DOM (and, via layer promotion, the rasterised pixels) depend
+          // on which frames were visited before this one — the exact failure
+          // seeking is supposed to be immune to.
+          function clearLeaf(leaf, glyph) {
+            leaf.style.opacity = "0";
+            leaf.style.transform = "";
+            leaf.style.filter = "";
+            glyph.textContent = "";
+          }
+
+          function showLeaf(leaf, glyph, char, angle, shade) {
+            glyph.textContent = char;
+            leaf.style.opacity = "1";
+            leaf.style.transform = "rotateX(" + angle.toFixed(2) + "deg)";
+            leaf.style.filter = "brightness(" + shade + ")";
+          }
+
+          // Pure function of absolute composition time. No accumulator, no
+          // dependence on the previous frame — seeking to any t reconstructs
+          // the whole board from t alone.
+          function paint(t) {
+            for (var i = 0; i < cells.length; i++) {
+              var cell = cells[i];
+              var tLocal = t - i * stagger;
+              var raw = tLocal <= 0 ? 0 : tLocal / flipDur;
+              var count = Math.floor(raw);
+              var p = raw - count;
+              if (count >= cell.steps) {
+                count = cell.steps;
+                p = 0;
+              }
+
+              var outgoing = alphabet.charAt(count % N);
+              var incoming = alphabet.charAt((count + 1) % N);
+              var flipping = count < cell.steps && p > 0;
+
+              if (!flipping) {
+                cell.top.textContent = outgoing;
+                cell.bot.textContent = outgoing;
+                clearLeaf(cell.leafA, cell.glyphA);
+                clearLeaf(cell.leafB, cell.glyphB);
+                continue;
+              }
+
+              // The new character is already seated behind the falling flap:
+              // its top half shows, its bottom half is still hidden by the
+              // outgoing flap lying in the lower slot.
+              cell.top.textContent = incoming;
+              cell.bot.textContent = outgoing;
+
+              var theta = 180 * p * p;
+              var shade = (1 - 0.5 * Math.sin(theta * DEG)).toFixed(3);
+              if (theta < 90) {
+                showLeaf(cell.leafA, cell.glyphA, outgoing, -theta, shade);
+                clearLeaf(cell.leafB, cell.glyphB);
+              } else {
+                clearLeaf(cell.leafA, cell.glyphA);
+                showLeaf(cell.leafB, cell.glyphB, incoming, 180 - theta, shade);
+              }
+            }
+          }
+
+          var duration = parseFloat(document.getElementById("sf-root").dataset.duration) || 8;
+
+          // GSAP suppresses events on seek(), so onUpdate callbacks never fire
+          // during a render. A property setter on the tweened driver always
+          // runs, because GSAP writes the value itself.
+          var driverTime = 0;
+          var driver = {};
+          Object.defineProperty(driver, "t", {
+            configurable: true,
+            get: function () {
+              return driverTime;
+            },
+            set: function (value) {
+              driverTime = value;
+              paint(value);
+            },
+          });
+
+          var tl = gsap.timeline({ paused: true });
+          tl.to(driver, { t: duration, duration: duration, ease: "none" }, 0);
+
+          paint(0);
+
+          window.__timelines["split-flap-board"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

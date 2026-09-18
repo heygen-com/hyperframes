@@ -166,7 +166,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                         if (!window.__hfDocsPlayerLoading) {
                             window.__hfDocsPlayerLoading = new Promise((resolve, reject) => {
                                 const script = document.createElement('script');
-                                script.src = 'https://cdn.jsdelivr.net/npm/@hyperframes/player@0.8.27/dist/hyperframes-player.global.js';
+                                script.src = 'https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js';
                                 script.onload = resolve;
                                 script.onerror = () => { script.remove(); delete window.__hfDocsPlayerLoading; reject(new Error('Player unavailable')); };
                                 document.head.appendChild(script);

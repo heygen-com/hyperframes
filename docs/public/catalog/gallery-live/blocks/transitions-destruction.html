@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      }
+      .scene {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .scene-inner {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+      }
+      .info-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: rgba(0, 0, 0, 0.88);
+        padding: 24px 60px;
+        display: flex;
+        align-items: center;
+        gap: 40px;
+        opacity: 0;
+      }
+      .info-num {
+        font-size: 14px;
+        font-weight: 700;
+        color: #e07a5f;
+        letter-spacing: 0.1em;
+      }
+      .info-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .info-desc {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      #title-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        z-index: 50;
+      }
+      #outro-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        z-index: 50;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="main"
+      data-start="0"
+      data-duration="14"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Title Card -->
+      <div id="title-card">
+        <div
+          id="title-label"
+          style="
+            font-size: 14px;
+            font-weight: 700;
+            color: #e07a5f;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            opacity: 0;
+          "
+        >
+          TRANSITION CATALOG
+        </div>
+        <div
+          id="title-main"
+          style="font-size: 72px; font-weight: 900; color: #fff; margin-top: 16px; opacity: 0"
+        >
+          Destruction Transitions
+        </div>
+        <div
+          id="title-count"
+          style="
+            font-size: 24px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 12px;
+            opacity: 0;
+          "
+        >
+          1 transition
+        </div>
+      </div>
+
+      <!-- Scene A -->
+      <div id="scene1" class="scene" style="z-index: 1">
+        <div class="scene-inner" id="s1" style="background: #1b263b">
+          <div style="font-size: 200px; font-weight: 900; color: rgba(255, 255, 255, 0.08)">
+            ONE
+          </div>
+          <div
+            style="
+              font-size: 32px;
+              font-weight: 700;
+              color: #778da9;
+              letter-spacing: 0.15em;
+              margin-top: -20px;
+            "
+          >
+            SCENE A
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene B -->
+      <div id="scene2" class="scene" style="z-index: 2; opacity: 0">
+        <div class="scene-inner" id="s2" style="background: #e07a5f">
+          <div style="font-size: 200px; font-weight: 900; color: rgba(255, 255, 255, 0.15)">
+            TWO
+          </div>
+          <div
+            style="
+              font-size: 32px;
+              font-weight: 700;
+              color: #fff;
+              letter-spacing: 0.15em;
+              margin-top: -20px;
+            "
+          >
+            SCENE B
+          </div>
+        </div>
+      </div>
+
+      <!-- Burn Canvas -->
+      <canvas
+        id="burn-canvas"
+        width="1920"
+        height="1080"
+        style="position: absolute; inset: 0; z-index: 40; pointer-events: none"
+      ></canvas>
+
+      <!-- Info Bar -->
+      <div id="info-1" class="info-bar">
+        <div class="info-num">01</div>
+        <div class="info-name">Page Burn</div>
+        <div class="info-desc">Use a page burn destruction transition</div>
+      </div>
+
+      <!-- Outro Card -->
+      <div id="outro-card">
+        <div
+          id="outro-label"
+          style="
+            font-size: 14px;
+            font-weight: 700;
+            color: #e07a5f;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            opacity: 0;
+          "
+        >
+          DESTRUCTION TRANSITIONS
+        </div>
+        <div
+          id="outro-main"
+          style="font-size: 56px; font-weight: 900; color: #fff; margin-top: 16px; opacity: 0"
+        >
+          1 Transition
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+        var t = 0;
+
+        // === TITLE CARD (3s) ===
+        tl.to("#title-label", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, t + 0.3);
+        tl.fromTo(
+          "#title-main",
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          t + 0.6,
+        );
+        tl.fromTo(
+          "#title-count",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.4, ease: "power2.out" },
+          t + 1.0,
+        );
+        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+        t += 3;
+
+        // === TRANSITION 1: Page Burn (8s total: 2s build, 3s burn, 3s settle) ===
+        tl.set(
+          "#scene1",
+          {
+            opacity: 1,
+            x: 0,
+            y: 0,
+            scale: 1,
+            rotation: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+          },
+          t,
+        );
+        tl.set(
+          "#scene2",
+          {
+            opacity: 0,
+            x: 0,
+            y: 0,
+            scale: 1,
+            rotation: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+          },
+          t,
+        );
+        tl.set("#s1", { opacity: 1, x: 0, y: 0, scale: 1, rotation: 0, filter: "none" }, t);
+        tl.set("#s2", { opacity: 1, x: 0, y: 0, scale: 1, rotation: 0, filter: "none" }, t);
+
+        // Show info bar
+        tl.to("#info-1", { opacity: 1, duration: 0.3 }, t + 0.2);
+
+        // Burn transition starts at t+2
+        var T = t + 2;
+
+        var burnCanvas = document.getElementById("burn-canvas");
+        var burnCtx = burnCanvas.getContext("2d");
+        var burnState = { progress: 0 };
+
+        function noise(x) {
+          var ix = Math.floor(x),
+            fx = x - ix;
+          var a = Math.sin(ix * 127.1 + 311.7) * 43758.5453;
+          var b = Math.sin((ix + 1) * 127.1 + 311.7) * 43758.5453;
+          var t2 = fx * fx * (3 - 2 * fx);
+          return a - Math.floor(a) + (b - Math.floor(b) - (a - Math.floor(a))) * t2;
+        }
+
+        function drawBurn(progress) {
+          burnCtx.clearRect(0, 0, 1920, 1080);
+          if (progress <= 0 || progress >= 1) return;
+
+          var maxR = 1400;
+          var cx = 960,
+            cy = 540;
+
+          // Draw fire edge glow
+          burnCtx.beginPath();
+          var steps = 60;
+          for (var i = 0; i <= steps; i++) {
+            var angle = (i / steps) * Math.PI * 2;
+            var baseR = progress * maxR;
+            var r =
+              baseR + noise(angle * 3 + progress * 4) * 80 + noise(angle * 8 + progress * 9) * 30;
+            var px = cx + Math.cos(angle) * r;
+            var py = cy + Math.sin(angle) * r;
+            if (i === 0) burnCtx.moveTo(px, py);
+            else burnCtx.lineTo(px, py);
+          }
+          burnCtx.closePath();
+
+          // Orange/red edge glow
+          var grad = burnCtx.createRadialGradient(
+            cx,
+            cy,
+            progress * maxR * 0.8,
+            cx,
+            cy,
+            progress * maxR * 1.1,
+          );
+          grad.addColorStop(0, "rgba(0,0,0,0)");
+          grad.addColorStop(0.7, "rgba(255,100,0,0.6)");
+          grad.addColorStop(0.9, "rgba(255,50,0,0.8)");
+          grad.addColorStop(1, "rgba(200,30,0,0.4)");
+          burnCtx.fillStyle = grad;
+          burnCtx.fill();
+
+          // Inner ember particles
+          var particleCount = Math.floor(progress * 40);
+          for (var p = 0; p < particleCount; p++) {
+            var pAngle = noise(p * 0.7 + progress * 2) * Math.PI * 2;
+            var pDist = progress * maxR * (0.85 + noise(p * 1.3 + progress * 5) * 0.15);
+            var ex = cx + Math.cos(pAngle) * pDist;
+            var ey = cy + Math.sin(pAngle) * pDist;
+            var pSize = 2 + noise(p * 2.1) * 4;
+            burnCtx.beginPath();
+            burnCtx.arc(ex, ey, pSize, 0, Math.PI * 2);
+            burnCtx.fillStyle =
+              "rgba(255," +
+              Math.floor(80 + noise(p * 3) * 120) +
+              ",0," +
+              (0.4 + noise(p * 1.7) * 0.4) +
+              ")";
+            burnCtx.fill();
+          }
+        }
+
+        // Animate burn progress over 3 seconds
+        tl.to(
+          burnState,
+          {
+            progress: 1,
+            duration: 3.0,
+            ease: "power1.in",
+            onUpdate: function () {
+              var p = burnState.progress;
+              drawBurn(p);
+              var scene1El = document.getElementById("scene1");
+              if (p <= 0) {
+                scene1El.style.clipPath = "none";
+              } else if (p < 1) {
+                // Shrink scene1 with circular clip from center
+                var radius = Math.max(0, 75 - p * 80);
+                scene1El.style.clipPath = "circle(" + radius + "% at 50% 50%)";
+              } else {
+                scene1El.style.clipPath = "circle(0% at 50% 50%)";
+              }
+            },
+          },
+          T,
+        );
+
+        // Scene 2 fades in from behind as burn progresses
+        tl.set("#scene2", { opacity: 1 }, T + 0.5);
+        tl.fromTo(
+          "#s2",
+          { opacity: 0 },
+          { opacity: 1, duration: 2.0, ease: "power1.out" },
+          T + 0.5,
+        );
+
+        // Clean up after burn completes
+        tl.set("#scene1", { opacity: 0, clipPath: "none" }, T + 3.0);
+        tl.call(
+          function () {
+            burnCtx.clearRect(0, 0, 1920, 1080);
+          },
+          null,
+          T + 3.0,
+        );
+
+        // Settle time (hold scene B)
+        t = T + 3.0 + 2.0;
+        tl.to("#info-1", { opacity: 0, duration: 0.2 }, t);
+        t += 0.5;
+
+        // === OUTRO (3s) ===
+        tl.set("#scene1", { opacity: 0 }, t);
+        tl.set("#scene2", { opacity: 0 }, t);
+        tl.to("#outro-card", { opacity: 1, duration: 0.4, ease: "power2.inOut" }, t);
+        tl.to("#outro-label", { opacity: 1, duration: 0.4, ease: "power2.out" }, t + 0.3);
+        tl.fromTo(
+          "#outro-main",
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          t + 0.6,
+        );
+        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

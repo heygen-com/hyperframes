@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Editorial Emphasis</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Playfair+Display:ital,wght@0,800;1,800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: "Inter", sans-serif;
+      }
+
+      #editorial-emphasis {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+
+      .caption-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        pointer-events: none;
+        transform: translateZ(0);
+      }
+
+      .safe-zone {
+        position: absolute;
+        top: 580px;
+        left: 60px;
+        width: 1800px;
+        height: 430px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+      }
+
+      .caption-block {
+        position: absolute;
+        left: 0;
+        top: 0;
+        opacity: 0;
+        transform-origin: 0% 0%;
+        will-change: transform, opacity;
+        backface-visibility: hidden;
+      }
+
+      .caption-line {
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        line-height: 1.1;
+        white-space: nowrap;
+      }
+
+      .caption-line + .caption-line {
+        margin-top: 8px;
+      }
+
+      .word {
+        display: inline-block;
+        color: #f5f0d0;
+        text-shadow:
+          0 2px 12px rgba(0, 0, 0, 0.6),
+          0 4px 24px rgba(0, 0, 0, 0.35);
+        will-change: transform, opacity;
+        backface-visibility: hidden;
+      }
+
+      .word--normal {
+        font-family: "Inter", sans-serif;
+        font-size: 86px;
+        font-weight: 400;
+        font-style: normal;
+      }
+
+      .word--italic {
+        font-family: "Inter", sans-serif;
+        font-size: 86px;
+        font-weight: 400;
+        font-style: italic;
+      }
+
+      .word--emphasis {
+        font-family: "Playfair Display", serif;
+        font-size: 180px;
+        font-weight: 800;
+        font-style: italic;
+        line-height: 0.9;
+        color: #f5f0d0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="editorial-emphasis"
+      data-composition-id="caption-editorial-emphasis"
+      data-start="0"
+      data-duration="8"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="caption-layer" aria-hidden="true">
+        <div id="caption-stage" class="safe-zone"></div>
+      </div>
+    </div>
+
+    <script>
+      var DURATION = 8;
+      var SAFE_WIDTH = 1800;
+      var ENTRY_DUR = 0.1;
+      var SLIDE_DUR = 0.2;
+
+      var _fitCanvas = document.createElement("canvas");
+      var _fitCtx = _fitCanvas.getContext("2d");
+      function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
+        var size = baseFontSize;
+        var minSize = Math.floor(baseFontSize * 0.45);
+        while (size > minSize) {
+          _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
+          if (_fitCtx.measureText(text).width <= maxWidth) return size;
+          size -= 2;
+        }
+        return minSize;
+      }
+
+      // Generic transcript words
+      var W = [
+        { text: "Every", start: 0.0, end: 0.3 },
+        { text: "great", start: 0.3, end: 0.55 },
+        { text: "video", start: 0.55, end: 0.85 },
+        { text: "starts", start: 0.85, end: 1.1 },
+        { text: "with", start: 1.1, end: 1.25 },
+        { text: "a", start: 1.25, end: 1.35 },
+        { text: "single", start: 1.35, end: 1.65 },
+        { text: "frame.", start: 1.65, end: 2.0 },
+        { text: "HyperFrames", start: 2.1, end: 2.65 },
+        { text: "lets", start: 2.65, end: 2.85 },
+        { text: "you", start: 2.85, end: 2.95 },
+        { text: "write", start: 2.95, end: 3.15 },
+        { text: "HTML", start: 3.15, end: 3.55 },
+        { text: "and", start: 3.55, end: 3.65 },
+        { text: "render", start: 3.65, end: 3.95 },
+        { text: "professional", start: 3.95, end: 4.45 },
+        { text: "video.", start: 4.45, end: 4.8 },
+        { text: "No", start: 4.9, end: 5.05 },
+        { text: "timeline.", start: 5.05, end: 5.45 },
+        { text: "No", start: 5.5, end: 5.65 },
+        { text: "drag", start: 5.65, end: 5.85 },
+        { text: "and", start: 5.85, end: 5.95 },
+        { text: "drop.", start: 5.95, end: 6.25 },
+        { text: "Just", start: 6.35, end: 6.55 },
+        { text: "code", start: 6.55, end: 6.8 },
+        { text: "that", start: 6.8, end: 6.95 },
+        { text: "becomes", start: 6.95, end: 7.3 },
+        { text: "cinema.", start: 7.3, end: 7.7 },
+      ];
+
+      // Block layout: [wordIndex, type] — n=normal, i=italic, e=emphasis(large)
+      // Emphasis words: HyperFrames(8), HTML(12), professional(15), code(24), cinema.(27)
+      var BLOCKS = [
+        {
+          line1: [
+            [0, "n"],
+            [1, "n"],
+            [2, "n"],
+          ],
+          line2: [
+            [3, "n"],
+            [4, "n"],
+          ],
+        },
+        {
+          line1: [
+            [5, "n"],
+            [6, "n"],
+          ],
+          line2: [[7, "e"]],
+        },
+        { line1: [[8, "e"]], line2: null },
+        {
+          line1: [
+            [9, "n"],
+            [10, "n"],
+            [11, "n"],
+          ],
+          line2: [[12, "e"]],
+        },
+        {
+          line1: [
+            [13, "n"],
+            [14, "n"],
+          ],
+          line2: [[15, "e"]],
+        },
+        {
+          line1: [
+            [16, "n"],
+            [17, "n"],
+          ],
+          line2: null,
+        },
+        {
+          line1: [[18, "n"]],
+          line2: [
+            [19, "n"],
+            [20, "n"],
+          ],
+        },
+        {
+          line1: [
+            [21, "n"],
+            [22, "n"],
+          ],
+          line2: null,
+        },
+        {
+          line1: [
+            [23, "i"],
+            [24, "e"],
+          ],
+          line2: null,
+        },
+        {
+          line1: [
+            [25, "n"],
+            [26, "n"],
+          ],
+          line2: [[27, "e"]],
+        },
+      ];
+
+      var CLASS_MAP = { n: "word word--normal", i: "word word--italic", e: "word word--emphasis" };
+
+      function computeLineSize(linePairs) {
+        var hasEmphasis = linePairs.some(function (p) {
+          return p[1] === "e";
+        });
+        if (hasEmphasis) {
+          var lineText = linePairs
+            .map(function (p) {
+              return W[p[0]].text;
+            })
+            .join(" ");
+          return fitFontSize(lineText, 180, "800", "Playfair Display", SAFE_WIDTH);
+        }
+        var lineText = linePairs
+          .map(function (p) {
+            return W[p[0]].text;
+          })
+          .join(" ");
+        return fitFontSize(lineText, 86, "400", "Inter", SAFE_WIDTH);
+      }
+
+      function buildBlocks() {
+        var stage = document.getElementById("caption-stage");
+        BLOCKS.forEach(function (block, bi) {
+          var el = document.createElement("div");
+          el.className = "caption-block";
+          el.id = "b" + bi;
+
+          var l1Size = computeLineSize(block.line1);
+          var l1 = document.createElement("div");
+          l1.className = "caption-line";
+          l1.id = "b" + bi + "L1";
+          block.line1.forEach(function (pair, wi) {
+            var span = document.createElement("span");
+            span.className = CLASS_MAP[pair[1]];
+            span.id = "b" + bi + "L1w" + wi;
+            span.textContent = W[pair[0]].text;
+            if (pair[1] === "e") {
+              span.style.fontSize = l1Size + "px";
+            } else {
+              span.style.fontSize = l1Size + "px";
+            }
+            l1.appendChild(span);
+          });
+          el.appendChild(l1);
+
+          if (block.line2) {
+            var l2Size = computeLineSize(block.line2);
+            var l2 = document.createElement("div");
+            l2.className = "caption-line";
+            l2.id = "b" + bi + "L2";
+            block.line2.forEach(function (pair, wi) {
+              var span = document.createElement("span");
+              span.className = CLASS_MAP[pair[1]];
+              span.id = "b" + bi + "L2w" + wi;
+              span.textContent = W[pair[0]].text;
+              if (pair[1] === "e") {
+                span.style.fontSize = l2Size + "px";
+              } else {
+                span.style.fontSize = l2Size + "px";
+              }
+              l2.appendChild(span);
+            });
+            el.appendChild(l2);
+          }
+
+          stage.appendChild(el);
+        });
+      }
+
+      buildBlocks();
+
+      // Scale blocks that exceed safe width
+      (function fitBlocks() {
+        BLOCKS.forEach(function (block, bi) {
+          var el = document.getElementById("b" + bi);
+          el.style.opacity = "1";
+          el.style.position = "relative";
+          var lines = el.querySelectorAll(".caption-line");
+          var maxW = 0;
+          lines.forEach(function (line) {
+            if (line.scrollWidth > maxW) maxW = line.scrollWidth;
+          });
+          if (maxW > SAFE_WIDTH) {
+            var s = SAFE_WIDTH / maxW;
+            el.style.transform = "scale(" + s + ")";
+          }
+          el.style.opacity = "0";
+          el.style.position = "";
+        });
+      })();
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var allEls = BLOCKS.map(function (_, i) {
+        return document.getElementById("b" + i);
+      });
+
+      function blockStart(bi) {
+        return W[BLOCKS[bi].line1[0][0]].start;
+      }
+
+      BLOCKS.forEach(function (block, bi) {
+        var el = allEls[bi];
+        var start = blockStart(bi);
+        var nextStart = bi < BLOCKS.length - 1 ? blockStart(bi + 1) : DURATION;
+
+        allEls.forEach(function (other, oi) {
+          if (oi !== bi) tl.set(other, { opacity: 0 }, start);
+        });
+        tl.set(el, { opacity: 1 }, start);
+
+        block.line1.forEach(function (pair, wi) {
+          var wordEl = document.getElementById("b" + bi + "L1w" + wi);
+          var wordStart = W[pair[0]].start;
+          tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
+          tl.to(
+            wordEl,
+            { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
+            wordStart,
+          );
+        });
+
+        if (block.line2) {
+          var hasEmphasis = block.line2.some(function (p) {
+            return p[1] === "e";
+          });
+          var l2El = document.getElementById("b" + bi + "L2");
+          if (hasEmphasis) {
+            var l2Start = W[block.line2[0][0]].start;
+            tl.set(l2El, { opacity: 0, x: -1920 }, start);
+            tl.to(l2El, { opacity: 1, x: 0, duration: SLIDE_DUR, ease: "power2.out" }, l2Start);
+          } else {
+            tl.set(l2El, { opacity: 1 }, start);
+            block.line2.forEach(function (pair, wi) {
+              var wordEl = document.getElementById("b" + bi + "L2w" + wi);
+              var wordStart = W[pair[0]].start;
+              tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
+              tl.to(
+                wordEl,
+                { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
+                wordStart,
+              );
+            });
+          }
+        }
+
+        tl.set(el, { opacity: 0 }, nextStart);
+      });
+
+      tl.to({}, { duration: DURATION }, 0);
+      window.__timelines["caption-editorial-emphasis"] = tl;
+    </script>
+  </body>
+</html>

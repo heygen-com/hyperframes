@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920" />
+    <title>Radial Transitions</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      }
+
+      .scene {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      .scene-inner {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+      }
+
+      #scene1 {
+        z-index: 1;
+      }
+      #scene2 {
+        z-index: 2;
+        opacity: 0;
+      }
+
+      #s1 {
+        background: #1b263b;
+      }
+      #s2 {
+        background: #e07a5f;
+      }
+
+      .big-text {
+        font-size: 200px;
+        font-weight: 900;
+        line-height: 1;
+        user-select: none;
+        pointer-events: none;
+      }
+      #s1 .big-text {
+        color: rgba(255, 255, 255, 0.08);
+      }
+      #s2 .big-text {
+        color: rgba(255, 255, 255, 0.15);
+      }
+
+      .label {
+        font-size: 32px;
+        font-weight: 600;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+        margin-top: 12px;
+      }
+      #s1 .label {
+        color: #778da9;
+      }
+      #s2 .label {
+        color: #fff;
+      }
+
+      #info-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 1920px;
+        height: 80px;
+        background: rgba(0, 0, 0, 0.88);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      #info-bar span {
+        color: #fff;
+        font-size: 22px;
+        font-weight: 500;
+        letter-spacing: 2px;
+      }
+
+      #title-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        opacity: 0;
+      }
+      #title-card .category {
+        font-size: 64px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: 8px;
+        text-transform: uppercase;
+      }
+      #title-card .subtitle {
+        font-size: 24px;
+        font-weight: 400;
+        color: #778da9;
+        margin-top: 16px;
+        letter-spacing: 4px;
+      }
+
+      #outro-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        opacity: 0;
+      }
+      #outro-card .category {
+        font-size: 48px;
+        font-weight: 700;
+        color: #778da9;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="composition"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="20"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="title-card">
+        <div class="category">Radial Transitions</div>
+        <div class="subtitle">3 Transitions</div>
+      </div>
+
+      <div id="scene1" class="scene">
+        <div id="s1" class="scene-inner">
+          <div class="big-text">ONE</div>
+          <div class="label">Scene A</div>
+        </div>
+      </div>
+
+      <div id="scene2" class="scene">
+        <div id="s2" class="scene-inner">
+          <div class="big-text">TWO</div>
+          <div class="label">Scene B</div>
+        </div>
+      </div>
+
+      <div id="info-bar"><span id="info-text">Transition Name</span></div>
+
+      <div id="outro-card">
+        <div class="category">End of Radial Transitions</div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+        var t = 0;
+
+        var demos = [
+          { name: "Circle Iris", time: 0 },
+          { name: "Diamond Iris", time: 0 },
+          { name: "Diagonal Split", time: 0 },
+        ];
+
+        function resetScenes() {
+          tl.set(
+            "#scene1",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              scaleX: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              clipPath: "none",
+              zIndex: 1,
+              skewX: 0,
+            },
+            t,
+          );
+          tl.set(
+            "#scene2",
+            {
+              opacity: 0,
+              x: 0,
+              y: 0,
+              scale: 1,
+              scaleX: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              clipPath: "none",
+              zIndex: 2,
+              skewX: 0,
+            },
+            t,
+          );
+          tl.set(
+            "#s1",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              skewX: 0,
+              clipPath: "none",
+            },
+            t,
+          );
+          tl.set(
+            "#s2",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              skewX: 0,
+              clipPath: "none",
+            },
+            t,
+          );
+        }
+
+        /* ── Title card (3s) ── */
+        tl.set("#title-card", { opacity: 1 }, 0);
+        tl.to("#title-card", { opacity: 0, duration: 0.5 }, 2.5);
+        t = 3;
+
+        /* ── Demo 1: Circle Iris ── */
+        resetScenes();
+        tl.set("#info-text", { textContent: "Circle Iris" }, t);
+        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
+        t += 1.5;
+        var T = t;
+        demos[0].time = T;
+        tl.set("#scene2", { opacity: 1, clipPath: "circle(0% at 50% 50%)" }, T);
+        tl.to(
+          "#scene2",
+          { clipPath: "circle(75% at 50% 50%)", duration: 0.5, ease: "power2.out" },
+          T,
+        );
+        tl.set("#scene1", { opacity: 0 }, T + 0.5);
+        tl.set("#scene2", { clipPath: "none" }, T + 0.55);
+        t = T + 1.5;
+        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
+        t += 0.5;
+
+        /* ── Demo 2: Diamond Iris ── */
+        resetScenes();
+        tl.set("#info-text", { textContent: "Diamond Iris" }, t);
+        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
+        t += 1.5;
+        T = t;
+        demos[1].time = T;
+        tl.set(
+          "#scene2",
+          { opacity: 1, clipPath: "polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%)" },
+          T,
+        );
+        tl.to(
+          "#scene2",
+          {
+            clipPath: "polygon(50% -20%, 120% 50%, 50% 120%, -20% 50%)",
+            duration: 0.5,
+            ease: "power2.out",
+          },
+          T,
+        );
+        tl.set("#scene1", { opacity: 0 }, T + 0.5);
+        tl.set("#scene2", { clipPath: "none" }, T + 0.55);
+        t = T + 1.5;
+        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
+        t += 0.5;
+
+        /* ── Demo 3: Diagonal Split ── */
+        resetScenes();
+        tl.set("#info-text", { textContent: "Diagonal Split" }, t);
+        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
+        t += 1.5;
+        T = t;
+        demos[2].time = T;
+        tl.set("#scene2", { opacity: 1, zIndex: 1 }, T);
+        tl.set(
+          "#scene1",
+          { zIndex: 10, clipPath: "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)" },
+          T,
+        );
+        tl.to(
+          "#scene1",
+          {
+            clipPath: "polygon(60% 0%, 100% 0%, 100% 40%, 60% 0%)",
+            duration: 0.5,
+            ease: "power3.inOut",
+          },
+          T,
+        );
+        tl.set("#scene1", { opacity: 0, zIndex: 1, clipPath: "none" }, T + 0.55);
+        tl.set("#scene2", { zIndex: 2 }, T + 0.55);
+        t = T + 1.5;
+        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
+        t += 0.5;
+
+        /* ── Outro (3s) ── */
+        tl.set("#outro-card", { opacity: 1 }, t);
+        tl.to("#outro-card", { opacity: 0, duration: 0.5 }, t + 2.5);
+
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

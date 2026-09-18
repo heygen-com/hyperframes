@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Grid Pixelate Wipe — Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="grid-pixelate-wipe-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="8"
+    >
+      <!-- Scene A -->
+      <div id="scene-a" class="demo-scene scene-a">
+        <div style="text-align: center; color: white">
+          <div style="font-size: 80px; font-weight: 800">Scene A</div>
+          <div style="font-size: 32px; margin-top: 20px; opacity: 0.7">
+            The grid wipe dissolves this away
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene B (hidden initially) -->
+      <div id="scene-b" class="demo-scene scene-b">
+        <div style="text-align: center; color: white">
+          <div style="font-size: 80px; font-weight: 800">Scene B</div>
+          <div style="font-size: 32px; margin-top: 20px; opacity: 0.7">Revealed from the grid</div>
+        </div>
+      </div>
+
+      <!-- Grid Pixelate Wipe overlay -->
+      <div
+        id="grid-pixelate-overlay"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 999;
+          display: grid;
+        "
+      ></div>
+
+      <style>
+        #grid-pixelate-overlay {
+          --grid-color: black;
+        }
+
+        #grid-pixelate-overlay .grid-cell {
+          background: var(--grid-color);
+          transform: scale(0);
+          transform-origin: center center;
+        }
+      </style>
+
+      <style>
+        .demo-scene {
+          position: absolute;
+          width: 1920px;
+          height: 1080px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          font-family: "Inter", sans-serif;
+        }
+
+        .scene-a {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .scene-b {
+          background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+          opacity: 0;
+        }
+      </style>
+
+      <script>
+        (function () {
+          const COLS = 16;
+          const ROWS = 9;
+          const overlay = document.getElementById("grid-pixelate-overlay");
+
+          overlay.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+          overlay.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+
+          for (let i = 0; i < COLS * ROWS; i++) {
+            const cell = document.createElement("div");
+            cell.className = "grid-cell";
+            overlay.appendChild(cell);
+          }
+
+          const tl = gsap.timeline({ paused: true });
+
+          // Scene A visible for 2 seconds
+          // Grid covers screen (transition out of A)
+          tl.to(
+            ".grid-cell",
+            {
+              scale: 1,
+              duration: 0.6,
+              stagger: { amount: 0.6, from: "center" },
+              ease: "power2.inOut",
+            },
+            2.0,
+          );
+
+          // Swap scenes at midpoint
+          tl.set("#scene-a", { opacity: 0 }, 3.0);
+          tl.set("#scene-b", { opacity: 1 }, 3.0);
+
+          // Grid reveals scene B
+          tl.to(
+            ".grid-cell",
+            {
+              scale: 0,
+              duration: 0.6,
+              stagger: { amount: 0.6, from: "edges" },
+              ease: "power2.inOut",
+            },
+            3.0,
+          );
+
+          // Second transition: back to A using random pattern
+          tl.to(
+            ".grid-cell",
+            {
+              scale: 1,
+              duration: 0.5,
+              stagger: { amount: 0.5, from: "random" },
+              ease: "power2.inOut",
+            },
+            5.5,
+          );
+
+          tl.set("#scene-b", { opacity: 0 }, 6.3);
+          tl.set("#scene-a", { opacity: 1 }, 6.3);
+
+          tl.to(
+            ".grid-cell",
+            {
+              scale: 0,
+              duration: 0.5,
+              stagger: { amount: 0.5, from: "random" },
+              ease: "power2.inOut",
+            },
+            6.3,
+          );
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["grid-pixelate-wipe-demo"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

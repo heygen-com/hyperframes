@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Grain Overlay — Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="grain-overlay-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <!-- Background content to demonstrate the overlay -->
+      <div class="demo-bg">
+        <div style="text-align: center; z-index: 1">
+          <div
+            class="demo-title"
+            style="font-size: 80px; font-weight: 700; color: #2c1e16; opacity: 0"
+          >
+            Grain Overlay
+          </div>
+          <div
+            class="demo-subtitle"
+            style="font-size: 32px; color: #5a4a3a; margin-top: 20px; opacity: 0"
+          >
+            Adds warmth and analog character
+          </div>
+        </div>
+      </div>
+
+      <!-- The grain overlay component -->
+      <div
+        id="grain-overlay"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 100;
+        "
+      >
+        <div class="grain-texture"></div>
+      </div>
+
+      <style>
+        .demo-bg {
+          width: 1920px;
+          height: 1080px;
+          background: linear-gradient(135deg, #f5f0e0 0%, #e8d8b8 50%, #d4c4a0 100%);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          font-family: "Inter", sans-serif;
+          position: relative;
+        }
+
+        @keyframes hf-grain-noise {
+          0%,
+          100% {
+            transform: translate(0, 0);
+          }
+          10% {
+            transform: translate(-5%, -5%);
+          }
+          20% {
+            transform: translate(-10%, 5%);
+          }
+          30% {
+            transform: translate(5%, -10%);
+          }
+          40% {
+            transform: translate(-5%, 15%);
+          }
+          50% {
+            transform: translate(-10%, 5%);
+          }
+          60% {
+            transform: translate(15%, 0);
+          }
+          70% {
+            transform: translate(0, 10%);
+          }
+          80% {
+            transform: translate(-15%, 0);
+          }
+          90% {
+            transform: translate(10%, 5%);
+          }
+        }
+
+        #grain-overlay .grain-texture {
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+          opacity: 0.15;
+          animation: hf-grain-noise 0.5s steps(1) infinite;
+        }
+      </style>
+
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          tl.to(
+            ".demo-title",
+            {
+              opacity: 1,
+              y: -10,
+              duration: 1,
+              ease: "power3.out",
+            },
+            0.5,
+          );
+
+          tl.to(
+            ".demo-subtitle",
+            {
+              opacity: 1,
+              y: -5,
+              duration: 0.8,
+              ease: "power3.out",
+            },
+            1.0,
+          );
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["grain-overlay-demo"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Kinetic Slam</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #0a0a0a;
+      }
+      #kinetic-slam {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0a0a;
+      }
+      .kt-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 1;
+        pointer-events: none;
+      }
+      #kt-container {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+      }
+      .kt-word {
+        font-family: "Anton", sans-serif;
+        font-weight: 400;
+        text-transform: uppercase;
+        color: #ffffff;
+        position: absolute;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        top: 50%;
+        letter-spacing: 0.04em;
+        line-height: 1;
+        opacity: 0;
+        visibility: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="kinetic-slam"
+      data-composition-id="caption-kinetic-slam"
+      data-start="0"
+      data-duration="8"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="kt-overlay"></div>
+      <div id="kt-container"></div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        var _fitCanvas = document.createElement("canvas");
+        var _fitCtx = _fitCanvas.getContext("2d");
+        function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
+          var size = baseFontSize;
+          var minSize = Math.floor(baseFontSize * 0.45);
+          while (size > minSize) {
+            _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
+            if (_fitCtx.measureText(text).width <= maxWidth) return size;
+            size -= 2;
+          }
+          return minSize;
+        }
+
+        function mulberry32(seed) {
+          return function () {
+            seed |= 0;
+            seed = (seed + 0x6d2b79f5) | 0;
+            var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        var WORDS = [
+          { text: "Every", start: 0.0, end: 0.3 },
+          { text: "great", start: 0.3, end: 0.55 },
+          { text: "video", start: 0.55, end: 0.85 },
+          { text: "starts", start: 0.85, end: 1.1 },
+          { text: "with", start: 1.1, end: 1.25 },
+          { text: "a", start: 1.25, end: 1.35 },
+          { text: "single", start: 1.35, end: 1.65 },
+          { text: "frame.", start: 1.65, end: 2.0 },
+          { text: "HyperFrames", start: 2.1, end: 2.65 },
+          { text: "lets", start: 2.65, end: 2.85 },
+          { text: "you", start: 2.85, end: 2.95 },
+          { text: "write", start: 2.95, end: 3.15 },
+          { text: "HTML", start: 3.15, end: 3.55 },
+          { text: "and", start: 3.55, end: 3.65 },
+          { text: "render", start: 3.65, end: 3.95 },
+          { text: "professional", start: 3.95, end: 4.45 },
+          { text: "video.", start: 4.45, end: 4.8 },
+          { text: "No", start: 4.9, end: 5.05 },
+          { text: "timeline.", start: 5.05, end: 5.45 },
+          { text: "No", start: 5.5, end: 5.65 },
+          { text: "drag", start: 5.65, end: 5.85 },
+          { text: "and", start: 5.85, end: 5.95 },
+          { text: "drop.", start: 5.95, end: 6.25 },
+          { text: "Just", start: 6.35, end: 6.55 },
+          { text: "code", start: 6.55, end: 6.8 },
+          { text: "that", start: 6.8, end: 6.95 },
+          { text: "becomes", start: 6.95, end: 7.3 },
+          { text: "cinema.", start: 7.3, end: 7.7 },
+        ];
+
+        var KEYWORDS = new Set([8, 12, 15, 24, 27]); // HyperFrames, HTML, professional, code, cinema.
+
+        var container = document.getElementById("kt-container");
+        var tl = gsap.timeline({ paused: true });
+
+        WORDS.forEach(function (w, wi) {
+          var el = document.createElement("div");
+          el.className = "kt-word";
+          el.id = "kt-w-" + wi;
+          el.textContent = w.text.toUpperCase();
+          el.style.fontSize =
+            fitFontSize(w.text.toUpperCase(), 220, "400", "'Anton', sans-serif", 1720) + "px";
+          if (KEYWORDS.has(wi)) el.style.color = "#FFD700";
+          container.appendChild(el);
+
+          gsap.set(el, { yPercent: -50 });
+
+          var entranceMode = wi % 4;
+          tl.set(el, { visibility: "visible" }, w.start);
+          if (entranceMode === 0) {
+            tl.fromTo(
+              el,
+              { y: -120, opacity: 0 },
+              { y: 0, opacity: 1, duration: 0.22, ease: "back.out(1.7)" },
+              w.start,
+            );
+          } else if (entranceMode === 1) {
+            tl.fromTo(
+              el,
+              { x: -300, opacity: 0 },
+              { x: 0, opacity: 1, duration: 0.2, ease: "expo.out" },
+              w.start,
+            );
+          } else if (entranceMode === 2) {
+            tl.fromTo(
+              el,
+              { x: 300, opacity: 0 },
+              { x: 0, opacity: 1, duration: 0.2, ease: "expo.out" },
+              w.start,
+            );
+          } else {
+            tl.fromTo(
+              el,
+              { scale: 0.4, opacity: 0 },
+              { scale: 1, opacity: 1, duration: 0.24, ease: "back.out(2.2)" },
+              w.start,
+            );
+          }
+
+          tl.to(el, { opacity: 0, duration: 0.1, ease: "power2.in" }, w.end);
+          tl.set(el, { opacity: 0, visibility: "hidden" }, w.end + 0.1);
+        });
+
+        tl.seek(0);
+        window.__timelines["caption-kinetic-slam"] = tl;
+      })();
+    </script>
+  </body>
+</html>

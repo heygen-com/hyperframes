@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>app-showcase</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background-color: #0a0a0f;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="app-showcase"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="5.5"
+    >
+      <!-- Background -->
+      <div class="s3-bg" id="s3Bg"></div>
+      <div class="s3-bg-glow" id="s3BgGlow"></div>
+
+      <!-- Stage wrapper for ambient scale -->
+      <div class="s3-stage" id="s3Stage">
+        <!-- ═══════════════════════════════════════
+           LEFT PHONE — Lifestyle / Motivational
+      ═══════════════════════════════════════ -->
+        <div class="s3-phone s3-phone-left" id="s3PhoneLeft">
+          <div class="s3-bezel">
+            <div class="s3-notch"></div>
+            <div class="s3-screen s3-screen-left">
+              <!-- Abstract exercise shapes -->
+              <div class="left-shapes">
+                <svg viewBox="0 0 304 400" xmlns="http://www.w3.org/2000/svg" fill="none">
+                  <!-- Abstract running figure — geometric -->
+                  <circle cx="152" cy="80" r="28" fill="#271f15" opacity="0.15" />
+                  <line
+                    x1="152"
+                    y1="108"
+                    x2="152"
+                    y2="200"
+                    stroke="#271f15"
+                    stroke-width="6"
+                    stroke-linecap="round"
+                    opacity="0.15"
+                  />
+                  <line
+                    x1="152"
+                    y1="145"
+                    x2="115"
+                    y2="175"
+                    stroke="#271f15"
+                    stroke-width="6"
+                    stroke-linecap="round"
+                    opacity="0.15"
+                  />
+                  <line
+                    x1="152"
+                    y1="145"
+                    x2="195"
+                    y2="165"
+                    stroke="#271f15"
+                    stroke-width="6"
+                    stroke-linecap="round"
+                    opacity="0.15"
+                  />
+                  <line
+                    x1="152"
+                    y1="200"
+                    x2="120"
+                    y2="260"
+                    stroke="#271f15"
+                    stroke-width="6"
+                    stroke-linecap="round"
+                    opacity="0.15"
+                  />
+                  <line
+                    x1="152"
+                    y1="200"
+                    x2="190"
+                    y2="255"
+                    stroke="#271f15"
+                    stroke-width="6"
+                    stroke-linecap="round"
+                    opacity="0.15"
+                  />
+                  <!-- Decorative arcs -->
+                  <path
+                    d="M60 300 Q152 240 244 300"
+                    stroke="#e4fa72"
+                    stroke-width="3"
+                    fill="none"
+                    opacity="0.5"
+                  />
+                  <path
+                    d="M40 330 Q152 260 264 330"
+                    stroke="#e4fa72"
+                    stroke-width="2"
+                    fill="none"
+                    opacity="0.3"
+                  />
+                </svg>
+              </div>
+              <div class="left-bottom">
+                <div class="left-tagline" id="s3Tagline">Unleash Full Potential</div>
+                <div class="left-cta">START NOW</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════
+           CENTER PHONE — Dashboard (Hero)
+      ═══════════════════════════════════════ -->
+        <div class="s3-phone s3-phone-center" id="s3PhoneCenter">
+          <div class="s3-bezel">
+            <div class="s3-notch"></div>
+            <div class="s3-screen s3-screen-center">
+              <!-- Header -->
+              <div class="center-header">
+                <div class="center-avatar">JM</div>
+                <div class="center-user-info">
+                  <div class="center-name">James Medrano</div>
+                  <div class="center-subtitle">Premium Member</div>
+                </div>
+                <div class="center-bell">
+                  <svg viewBox="0 0 20 20" width="20" height="20" fill="none">
+                    <path
+                      d="M10 2a5 5 0 00-5 5v3l-1.5 2.5h13L15 10V7a5 5 0 00-5-5z"
+                      stroke="#7c857c"
+                      stroke-width="1.4"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M8 16.5a2 2 0 004 0"
+                      stroke="#7c857c"
+                      stroke-width="1.4"
+                      stroke-linecap="round"
+                    />
+                    <circle cx="14" cy="5" r="3" fill="#e4fa72" />
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Weekly Goal -->
+              <div class="center-goal">
+                <div class="goal-label">Weekly Goal</div>
+                <div class="goal-ring-wrap">
+                  <svg class="goal-ring" viewBox="0 0 140 140">
+                    <circle
+                      class="ring-track"
+                      cx="70"
+                      cy="70"
+                      r="52"
+                      fill="none"
+                      stroke="#333"
+                      stroke-width="10"
+                    />
+                    <circle
+                      class="ring-fill"
+                      id="s3Ring"
+                      cx="70"
+                      cy="70"
+                      r="52"
+                      fill="none"
+                      stroke="#e4fa72"
+                      stroke-width="10"
+                      stroke-linecap="round"
+                      transform="rotate(-90 70 70)"
+                    />
+                  </svg>
+                  <div class="goal-count">
+                    <span class="goal-num">2</span>
+                    <span class="goal-sep">/</span>
+                    <span class="goal-den">3</span>
+                  </div>
+                </div>
+                <div class="goal-days">
+                  <span class="day done">M</span>
+                  <span class="day done">T</span>
+                  <span class="day">W</span>
+                  <span class="day">T</span>
+                  <span class="day">F</span>
+                  <span class="day">S</span>
+                  <span class="day">S</span>
+                </div>
+              </div>
+
+              <!-- Your Progress -->
+              <div class="center-progress">
+                <div class="progress-header">
+                  <span class="progress-title">Your Progress</span>
+                  <span class="progress-link">See all</span>
+                </div>
+                <div class="progress-bars">
+                  <div class="bar-row">
+                    <div class="bar-icon">
+                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+                        <path
+                          d="M8 2l1.5 3H13l-2.5 2 1 3L8 8.5 4.5 10l1-3L3 5h3.5z"
+                          fill="#e4fa72"
+                        />
+                      </svg>
+                    </div>
+                    <div class="bar-info">
+                      <span class="bar-name">Running</span>
+                      <span class="bar-val">5.2 km</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-value bar-v1" id="s3Bar1"></div></div>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-icon">
+                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+                        <circle cx="8" cy="8" r="5" stroke="#e4fa72" stroke-width="2" />
+                      </svg>
+                    </div>
+                    <div class="bar-info">
+                      <span class="bar-name">Cycling</span>
+                      <span class="bar-val">12.8 km</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-value bar-v2" id="s3Bar2"></div></div>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-icon">
+                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+                        <rect
+                          x="3"
+                          y="6"
+                          width="10"
+                          height="6"
+                          rx="1"
+                          stroke="#e4fa72"
+                          stroke-width="1.5"
+                        />
+                        <path d="M6 6V4a2 2 0 014 0v2" stroke="#e4fa72" stroke-width="1.5" />
+                      </svg>
+                    </div>
+                    <div class="bar-info">
+                      <span class="bar-name">Strength</span>
+                      <span class="bar-val">45 min</span>
+                    </div>
+                    <div class="bar-track"><div class="bar-value bar-v3" id="s3Bar3"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════
+           RIGHT PHONE — Calories Data
+      ═══════════════════════════════════════ -->
+        <div class="s3-phone s3-phone-right" id="s3PhoneRight">
+          <div class="s3-bezel">
+            <div class="s3-notch"></div>
+            <div class="s3-screen s3-screen-right">
+              <div class="right-header">
+                <div class="right-title">Burned Calories</div>
+                <div class="right-value">740 <span class="right-unit">kcal</span></div>
+              </div>
+
+              <div class="right-graph-wrap">
+                <svg class="right-graph" viewBox="0 0 260 130" xmlns="http://www.w3.org/2000/svg">
+                  <!-- Grid lines -->
+                  <line
+                    x1="10"
+                    y1="25"
+                    x2="250"
+                    y2="25"
+                    stroke="#d9e0bc"
+                    stroke-width="0.5"
+                    opacity="0.5"
+                  />
+                  <line
+                    x1="10"
+                    y1="55"
+                    x2="250"
+                    y2="55"
+                    stroke="#d9e0bc"
+                    stroke-width="0.5"
+                    opacity="0.5"
+                  />
+                  <line
+                    x1="10"
+                    y1="85"
+                    x2="250"
+                    y2="85"
+                    stroke="#d9e0bc"
+                    stroke-width="0.5"
+                    opacity="0.5"
+                  />
+                  <line
+                    x1="10"
+                    y1="115"
+                    x2="250"
+                    y2="115"
+                    stroke="#d9e0bc"
+                    stroke-width="0.5"
+                    opacity="0.5"
+                  />
+                  <!-- Area fill -->
+                  <path
+                    class="graph-area"
+                    id="s3GraphArea"
+                    d="M10,105 L50,80 90,90 130,45 170,60 210,25 250,35 250,115 10,115 Z"
+                    fill="#e4fa72"
+                    opacity="0.15"
+                  />
+                  <!-- Line -->
+                  <polyline
+                    class="graph-line"
+                    id="s3GraphLine"
+                    points="10,105 50,80 90,90 130,45 170,60 210,25 250,35"
+                    fill="none"
+                    stroke="#e4fa72"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <!-- Dots -->
+                  <circle class="graph-dot" cx="10" cy="105" r="3.5" fill="#e4fa72" />
+                  <circle class="graph-dot" cx="50" cy="80" r="3.5" fill="#e4fa72" />
+                  <circle class="graph-dot" cx="90" cy="90" r="3.5" fill="#e4fa72" />
+                  <circle class="graph-dot" cx="130" cy="45" r="3.5" fill="#e4fa72" />
+                  <circle class="graph-dot" cx="170" cy="60" r="3.5" fill="#e4fa72" />
+                  <circle class="graph-dot" cx="210" cy="25" r="3.5" fill="#e4fa72" />
+                  <circle class="graph-dot" cx="250" cy="35" r="3.5" fill="#e4fa72" />
+                </svg>
+                <div class="right-labels">
+                  <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span
+                  ><span>Sat</span><span>Sun</span>
+                </div>
+              </div>
+
+              <div class="right-stats">
+                <div class="stat-pill">
+                  <span class="stat-dot" style="background: #e4fa72"></span>
+                  <span class="stat-label">Active</span>
+                  <span class="stat-num">540</span>
+                </div>
+                <div class="stat-pill">
+                  <span class="stat-dot" style="background: #7c857c"></span>
+                  <span class="stat-label">Rest</span>
+                  <span class="stat-num">200</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <style>
+        @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap");
+
+        [data-composition-id="app-showcase"] {
+          position: relative;
+          width: 1920px;
+          height: 1080px;
+          overflow: hidden;
+          font-family: "DM Sans", sans-serif;
+          color: #271f15;
+        }
+
+        /* ── Background ── */
+        [data-composition-id="app-showcase"] .s3-bg {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(160deg, #f1f2ec 0%, #e8ecda 40%, #f1f2ec 100%);
+        }
+        [data-composition-id="app-showcase"] .s3-bg-glow {
+          position: absolute;
+          width: 900px;
+          height: 900px;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: radial-gradient(circle, rgba(228, 250, 114, 0.18) 0%, transparent 70%);
+          border-radius: 50%;
+        }
+
+        /* ── Stage ── */
+        [data-composition-id="app-showcase"] .s3-stage {
+          position: absolute;
+          inset: 0;
+          transform-origin: center center;
+        }
+
+        /* ── Phones ── */
+        [data-composition-id="app-showcase"] .s3-phone {
+          position: absolute;
+          width: 320px;
+          height: 650px;
+          top: 215px;
+          left: 800px;
+        }
+        [data-composition-id="app-showcase"] .s3-phone-center {
+          z-index: 30;
+        }
+        [data-composition-id="app-showcase"] .s3-phone-left {
+          z-index: 20;
+        }
+        [data-composition-id="app-showcase"] .s3-phone-right {
+          z-index: 20;
+        }
+
+        /* ── Bezel ── */
+        [data-composition-id="app-showcase"] .s3-bezel {
+          width: 100%;
+          height: 100%;
+          border-radius: 42px;
+          background: #271f15;
+          padding: 8px;
+          box-shadow:
+            0 24px 64px rgba(39, 31, 21, 0.35),
+            0 4px 16px rgba(39, 31, 21, 0.15);
+          position: relative;
+          overflow: hidden;
+        }
+        [data-composition-id="app-showcase"] .s3-notch {
+          position: absolute;
+          top: 8px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100px;
+          height: 26px;
+          background: #271f15;
+          border-radius: 0 0 18px 18px;
+          z-index: 5;
+        }
+
+        /* ── Screens ── */
+        [data-composition-id="app-showcase"] .s3-screen {
+          width: 100%;
+          height: 100%;
+          border-radius: 36px;
+          overflow: hidden;
+          position: relative;
+        }
+
+        /* Left screen */
+        [data-composition-id="app-showcase"] .s3-screen-left {
+          background: linear-gradient(160deg, #d9e0bc 0%, #c8d4a0 50%, #b8c78a 100%);
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+        }
+        [data-composition-id="app-showcase"] .left-shapes {
+          position: absolute;
+          top: 40px;
+          left: 0;
+          width: 100%;
+          height: 400px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        [data-composition-id="app-showcase"] .left-shapes svg {
+          width: 200px;
+          height: 280px;
+        }
+        [data-composition-id="app-showcase"] .left-bottom {
+          padding: 0 28px 40px;
+          position: relative;
+          z-index: 2;
+        }
+        [data-composition-id="app-showcase"] .left-tagline {
+          font-size: 28px;
+          font-weight: 700;
+          color: #271f15;
+          line-height: 1.15;
+          margin-bottom: 16px;
+          letter-spacing: -0.02em;
+        }
+        [data-composition-id="app-showcase"] .left-cta {
+          display: inline-block;
+          background: #271f15;
+          color: #e4fa72;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          padding: 10px 28px;
+          border-radius: 24px;
+        }
+
+        /* Center screen */
+        [data-composition-id="app-showcase"] .s3-screen-center {
+          background: #1a1a1a;
+          padding: 42px 22px 22px;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        [data-composition-id="app-showcase"] .center-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        [data-composition-id="app-showcase"] .center-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #e4fa72, #d9e0bc);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 15px;
+          font-weight: 700;
+          color: #271f15;
+          flex-shrink: 0;
+        }
+        [data-composition-id="app-showcase"] .center-user-info {
+          flex: 1;
+        }
+        [data-composition-id="app-showcase"] .center-name {
+          font-size: 18px;
+          font-weight: 700;
+          color: #f1f2ec;
+          line-height: 1.2;
+        }
+        [data-composition-id="app-showcase"] .center-subtitle {
+          font-size: 12px;
+          font-weight: 400;
+          color: #7c857c;
+          margin-top: 1px;
+        }
+        [data-composition-id="app-showcase"] .center-bell {
+          flex-shrink: 0;
+        }
+
+        /* Weekly Goal */
+        [data-composition-id="app-showcase"] .center-goal {
+          background: #242424;
+          border-radius: 20px;
+          padding: 18px 16px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+        }
+        [data-composition-id="app-showcase"] .goal-label {
+          font-size: 15px;
+          font-weight: 500;
+          color: #7c857c;
+          align-self: flex-start;
+        }
+        [data-composition-id="app-showcase"] .goal-ring-wrap {
+          position: relative;
+          width: 130px;
+          height: 130px;
+        }
+        [data-composition-id="app-showcase"] .goal-ring {
+          width: 100%;
+          height: 100%;
+        }
+        [data-composition-id="app-showcase"] .ring-track {
+          opacity: 0.3;
+        }
+        [data-composition-id="app-showcase"] .goal-count {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2px;
+        }
+        [data-composition-id="app-showcase"] .goal-num {
+          font-size: 36px;
+          font-weight: 700;
+          color: #e4fa72;
+        }
+        [data-composition-id="app-showcase"] .goal-sep {
+          font-size: 24px;
+          font-weight: 400;
+          color: #7c857c;
+          margin: 0 2px;
+        }
+        [data-composition-id="app-showcase"] .goal-den {
+          font-size: 24px;
+          font-weight: 400;
+          color: #7c857c;
+        }
+        [data-composition-id="app-showcase"] .goal-days {
+          display: flex;
+          gap: 8px;
+        }
+        [data-composition-id="app-showcase"] .day {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          font-weight: 500;
+          color: #7c857c;
+          background: #1a1a1a;
+        }
+        [data-composition-id="app-showcase"] .day.done {
+          background: #e4fa72;
+          color: #271f15;
+          font-weight: 700;
+        }
+
+        /* Progress section */
+        [data-composition-id="app-showcase"] .center-progress {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        [data-composition-id="app-showcase"] .progress-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        [data-composition-id="app-showcase"] .progress-title {
+          font-size: 15px;
+          font-weight: 500;
+          color: #f1f2ec;
+        }
+        [data-composition-id="app-showcase"] .progress-link {
+          font-size: 12px;
+          font-weight: 400;
+          color: #e4fa72;
+        }
+        [data-composition-id="app-showcase"] .progress-bars {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        [data-composition-id="app-showcase"] .bar-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        [data-composition-id="app-showcase"] .bar-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: #2a2a2a;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        [data-composition-id="app-showcase"] .bar-info {
+          width: 70px;
+          flex-shrink: 0;
+        }
+        [data-composition-id="app-showcase"] .bar-name {
+          display: block;
+          font-size: 12px;
+          font-weight: 500;
+          color: #f1f2ec;
+          line-height: 1.2;
+        }
+        [data-composition-id="app-showcase"] .bar-val {
+          display: block;
+          font-size: 10px;
+          font-weight: 400;
+          color: #7c857c;
+        }
+        [data-composition-id="app-showcase"] .bar-track {
+          flex: 1;
+          height: 8px;
+          background: #2a2a2a;
+          border-radius: 4px;
+          overflow: hidden;
+        }
+        [data-composition-id="app-showcase"] .bar-value {
+          height: 100%;
+          border-radius: 4px;
+          background: #e4fa72;
+          width: 0%;
+        }
+
+        /* Right screen */
+        [data-composition-id="app-showcase"] .s3-screen-right {
+          background: #f1f2ec;
+          padding: 42px 20px 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        [data-composition-id="app-showcase"] .right-header {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        [data-composition-id="app-showcase"] .right-title {
+          font-size: 14px;
+          font-weight: 500;
+          color: #7c857c;
+        }
+        [data-composition-id="app-showcase"] .right-value {
+          font-size: 40px;
+          font-weight: 700;
+          color: #271f15;
+          line-height: 1;
+          letter-spacing: -0.03em;
+        }
+        [data-composition-id="app-showcase"] .right-unit {
+          font-size: 20px;
+          font-weight: 400;
+          color: #7c857c;
+        }
+
+        [data-composition-id="app-showcase"] .right-graph-wrap {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        [data-composition-id="app-showcase"] .right-graph {
+          width: 100%;
+          flex: 1;
+        }
+        [data-composition-id="app-showcase"] .right-labels {
+          display: flex;
+          justify-content: space-between;
+          padding: 0 6px;
+          font-size: 10px;
+          font-weight: 400;
+          color: #7c857c;
+        }
+
+        [data-composition-id="app-showcase"] .right-stats {
+          display: flex;
+          gap: 12px;
+        }
+        [data-composition-id="app-showcase"] .stat-pill {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: #e8ecda;
+          border-radius: 20px;
+          padding: 8px 14px;
+        }
+        [data-composition-id="app-showcase"] .stat-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        [data-composition-id="app-showcase"] .stat-label {
+          font-size: 12px;
+          font-weight: 400;
+          color: #7c857c;
+        }
+        [data-composition-id="app-showcase"] .stat-num {
+          font-size: 13px;
+          font-weight: 700;
+          color: #271f15;
+        }
+      </style>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var S = '[data-composition-id="app-showcase"] ';
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+
+          // ── SVG setup ──
+          var graphLine = document.querySelector(S + "#s3GraphLine");
+          var graphLen = graphLine.getTotalLength();
+          gsap.set(graphLine, { strokeDasharray: graphLen, strokeDashoffset: graphLen });
+
+          var graphArea = document.querySelector(S + "#s3GraphArea");
+          gsap.set(graphArea, { opacity: 0 });
+
+          var graphDots = document.querySelectorAll(S + ".graph-dot");
+          gsap.set(graphDots, { opacity: 0, scale: 0 });
+
+          var CIRC = 2 * 3.14159265 * 52;
+          gsap.set(S + "#s3Ring", { strokeDasharray: CIRC, strokeDashoffset: CIRC });
+
+          // ── Initial states ──
+          gsap.set(S + ".s3-bg", { opacity: 0 });
+          gsap.set(S + ".s3-bg-glow", { opacity: 0 });
+          // Center phone: starts scaled down + hidden
+          gsap.set(S + "#s3PhoneCenter", { opacity: 0, scale: 0.85 });
+          // Side phones: start stacked behind center (same position), hidden
+          gsap.set(S + "#s3PhoneLeft", { opacity: 0, x: 0, rotation: 0 });
+          gsap.set(S + "#s3PhoneRight", { opacity: 0, x: 0, rotation: 0 });
+          gsap.set(S + ".bar-value", { width: "0%" });
+          gsap.set(S + "#s3Tagline", { opacity: 0, y: 20 });
+          gsap.set(S + ".left-cta", { opacity: 0, y: 12 });
+
+          // ════════════════════════════════════
+          // BUILD PHASE (0–2s)
+          // ════════════════════════════════════
+
+          // Background
+          tl.to(S + ".s3-bg", { opacity: 1, duration: 0.8, ease: "power1.out" }, 0);
+          tl.to(S + ".s3-bg-glow", { opacity: 1, duration: 1.2, ease: "power1.out" }, 0.2);
+
+          // Center phone — scales up first
+          tl.to(
+            S + "#s3PhoneCenter",
+            {
+              scale: 1,
+              opacity: 1,
+              duration: 0.7,
+              ease: "back.out(1.4)",
+            },
+            0.2,
+          );
+
+          // Side phones: opacity matches center (0.7s, back.out), fan starts at 0.1
+          tl.to(S + "#s3PhoneLeft", { opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.3);
+          tl.to(
+            S + "#s3PhoneLeft",
+            {
+              x: -340,
+              rotation: -12,
+              duration: 1.2,
+              ease: "expo.out",
+            },
+            0.3,
+          );
+
+          tl.to(S + "#s3PhoneRight", { opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.4);
+          tl.to(
+            S + "#s3PhoneRight",
+            {
+              x: 340,
+              rotation: 12,
+              duration: 1.2,
+              ease: "expo.out",
+            },
+            0.4,
+          );
+
+          // ════════════════════════════════════
+          // BREATHE PHASE (2–4s)
+          // ════════════════════════════════════
+
+          // Progress ring fills to 2/3
+          tl.to(
+            S + "#s3Ring",
+            {
+              strokeDashoffset: CIRC * (1 - 2 / 3),
+              duration: 1.2,
+              ease: "circ.out",
+            },
+            1.8,
+          );
+
+          // Activity bars stagger in
+          tl.to(S + "#s3Bar1", { width: "75%", duration: 0.8, ease: "power3.out" }, 2.1);
+          tl.to(S + "#s3Bar2", { width: "50%", duration: 0.8, ease: "power3.out" }, 2.3);
+          tl.to(S + "#s3Bar3", { width: "90%", duration: 0.8, ease: "power3.out" }, 2.5);
+
+          // Graph line draws on
+          tl.to(
+            graphLine,
+            {
+              strokeDashoffset: 0,
+              duration: 1.4,
+              ease: "sine.inOut",
+            },
+            2.0,
+          );
+
+          // Graph area fades in
+          tl.to(graphArea, { opacity: 0.15, duration: 0.8, ease: "power1.out" }, 2.6);
+
+          // Graph dots pop in
+          tl.to(
+            graphDots,
+            {
+              opacity: 1,
+              scale: 1,
+              duration: 0.3,
+              ease: "back.out(2)",
+              stagger: { each: 0.06, ease: "power2.in" },
+            },
+            3.0,
+          );
+
+          // Tagline and CTA on left phone
+          tl.to(
+            S + "#s3Tagline",
+            {
+              opacity: 1,
+              y: 0,
+              duration: 0.6,
+              ease: "power2.out",
+            },
+            2.2,
+          );
+          tl.to(
+            S + ".left-cta",
+            {
+              opacity: 1,
+              y: 0,
+              duration: 0.5,
+              ease: "power2.out",
+            },
+            2.5,
+          );
+
+          // Ambient slow scale push
+          tl.to(
+            S + "#s3Stage",
+            {
+              scale: 1.02,
+              duration: 3.5,
+              ease: "sine.inOut",
+            },
+            2.0,
+          );
+
+          // ════════════════════════════════════
+          // RESOLVE PHASE (4–5.5s)
+          // ════════════════════════════════════
+
+          // Subtle glow pulse on lime accent elements
+          tl.to(S + ".ring-fill", { opacity: 0.65, duration: 0.6, ease: "sine.inOut" }, 4.0);
+          tl.to(S + ".ring-fill", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.6);
+
+          tl.to(S + ".bar-value", { opacity: 0.7, duration: 0.6, ease: "sine.inOut" }, 4.1);
+          tl.to(S + ".bar-value", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.7);
+
+          tl.to(graphLine, { opacity: 0.65, duration: 0.6, ease: "sine.inOut" }, 4.05);
+          tl.to(graphLine, { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.65);
+
+          window.__timelines["app-showcase"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

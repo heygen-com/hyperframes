@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>World Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0f172a;
+      }
+
+      #world-map {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+        font-family: "Inter", sans-serif;
+        color: #f0fdfa;
+        overflow: hidden;
+      }
+
+      #world-map .headline {
+        position: absolute;
+        top: 48px;
+        left: 80px;
+        font-size: 52px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #f0fdfa;
+        clip-path: inset(0 100% 0 0);
+      }
+
+      #world-map .subtitle {
+        position: absolute;
+        top: 114px;
+        left: 80px;
+        font-size: 22px;
+        font-weight: 300;
+        color: #94a3b8;
+        opacity: 0;
+      }
+
+      #world-map .map-container {
+        position: absolute;
+        top: 170px;
+        left: 80px;
+        width: 1380px;
+        height: 700px;
+      }
+
+      #world-map .map-container svg {
+        width: 1380px;
+        height: 700px;
+      }
+
+      #world-map .country-path {
+        stroke: #1e293b;
+        stroke-width: 0.6;
+        opacity: 0;
+        cursor: default;
+      }
+
+      #world-map .ocean {
+        fill: none;
+      }
+
+      #world-map .graticule {
+        fill: none;
+        stroke: #1e293b;
+        stroke-width: 0.3;
+        stroke-opacity: 0.4;
+      }
+
+      #world-map .legend-group {
+        position: absolute;
+        bottom: 80px;
+        right: 80px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+        opacity: 0;
+      }
+
+      #world-map .legend-bar {
+        width: 280px;
+        height: 14px;
+        border-radius: 7px;
+      }
+
+      #world-map .legend-labels {
+        display: flex;
+        justify-content: space-between;
+        width: 280px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #94a3b8;
+      }
+
+      #world-map .source {
+        position: absolute;
+        bottom: 36px;
+        left: 80px;
+        font-size: 13px;
+        font-weight: 400;
+        color: #475569;
+        opacity: 0;
+      }
+
+      #world-map .tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #f0fdfa;
+        white-space: nowrap;
+        opacity: 0;
+        transform: translateY(4px);
+        backdrop-filter: blur(8px);
+        z-index: 10;
+      }
+
+      #world-map .tooltip .tt-value {
+        color: #22d3ee;
+        font-weight: 600;
+        margin-left: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="world-map"
+      data-composition-id="world-map"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="14"
+    >
+      <h1 class="headline">Global GDP per Capita</h1>
+      <p class="subtitle">Nominal GDP per capita, 2024 IMF estimates</p>
+
+      <div class="map-container">
+        <svg id="world-map-svg"></svg>
+      </div>
+
+      <div class="legend-group">
+        <div
+          class="legend-bar"
+          style="
+            background: linear-gradient(90deg, #064e3b 0%, #0d9488 33%, #22d3ee 66%, #f0fdfa 100%);
+          "
+        ></div>
+        <div class="legend-labels">
+          <span>Low</span>
+          <span>High</span>
+        </div>
+      </div>
+
+      <p class="source">Source: International Monetary Fund</p>
+
+      <div class="tooltip"></div>
+    </div>
+
+    <script>
+      (function () {
+        /* ── GDP per capita data (2024 IMF estimates, USD) ── */
+        /* Keys are ISO 3166-1 numeric codes as strings (3-digit, zero-padded) */
+        var gdpData = {
+          840: { name: "United States", gdp: 85373 },
+          156: { name: "China", gdp: 13136 },
+          356: { name: "India", gdp: 2731 },
+          276: { name: "Germany", gdp: 54291 },
+          826: { name: "United Kingdom", gdp: 48913 },
+          250: { name: "France", gdp: 44408 },
+          392: { name: "Japan", gdp: 33950 },
+          "076": { name: "Brazil", gdp: 10412 },
+          "036": { name: "Australia", gdp: 65366 },
+          124: { name: "Canada", gdp: 54866 },
+          643: { name: "Russia", gdp: 14403 },
+          410: { name: "South Korea", gdp: 33147 },
+          484: { name: "Mexico", gdp: 13434 },
+          360: { name: "Indonesia", gdp: 5108 },
+          566: { name: "Nigeria", gdp: 1621 },
+          710: { name: "South Africa", gdp: 6190 },
+          818: { name: "Egypt", gdp: 4295 },
+          792: { name: "Turkey", gdp: 13110 },
+          682: { name: "Saudi Arabia", gdp: 32270 },
+          764: { name: "Thailand", gdp: 7647 },
+          704: { name: "Vietnam", gdp: 4623 },
+          616: { name: "Poland", gdp: 22393 },
+          752: { name: "Sweden", gdp: 59324 },
+          578: { name: "Norway", gdp: 94660 },
+          756: { name: "Switzerland", gdp: 105669 },
+          "032": { name: "Argentina", gdp: 13709 },
+          170: { name: "Colombia", gdp: 7230 },
+          404: { name: "Kenya", gdp: 2198 },
+          586: { name: "Pakistan", gdp: 1658 },
+          "050": { name: "Bangladesh", gdp: 2688 },
+        };
+
+        /* Top 5 GDP countries for highlight pulse */
+        var top5Codes = ["756", "578", "840", "036", "752"];
+
+        /* GDP range for color scale */
+        var gdpValues = [];
+        var codes = Object.keys(gdpData);
+        for (var i = 0; i < codes.length; i++) {
+          gdpValues.push(gdpData[codes[i]].gdp);
+        }
+        var minGdp = Math.min.apply(null, gdpValues);
+        var maxGdp = Math.max.apply(null, gdpValues);
+
+        /* Color interpolation: green → teal → cyan → white */
+        var colorStops = [
+          { r: 6, g: 78, b: 59 },
+          { r: 13, g: 148, b: 136 },
+          { r: 34, g: 211, b: 238 },
+          { r: 240, g: 253, b: 250 },
+        ];
+
+        function gdpToColor(value) {
+          var t = (value - minGdp) / (maxGdp - minGdp);
+          t = Math.max(0, Math.min(1, t));
+          var scaledT = t * (colorStops.length - 1);
+          var idx = Math.floor(scaledT);
+          if (idx >= colorStops.length - 1) idx = colorStops.length - 2;
+          var localT = scaledT - idx;
+          var c0 = colorStops[idx];
+          var c1 = colorStops[idx + 1];
+          var r = Math.round(c0.r + (c1.r - c0.r) * localT);
+          var g = Math.round(c0.g + (c1.g - c0.g) * localT);
+          var b = Math.round(c0.b + (c1.b - c0.b) * localT);
+          return "rgb(" + r + "," + g + "," + b + ")";
+        }
+
+        /* Default fill for countries without data */
+        var defaultFill = "#1e293b";
+
+        /* ── Build the map ── */
+        var svg = d3
+          .select("#world-map-svg")
+          .attr("viewBox", "0 0 1380 700")
+          .attr("preserveAspectRatio", "xMidYMid meet");
+
+        var projection = d3.geoNaturalEarth1().fitSize([1380, 700], { type: "Sphere" });
+
+        var pathGenerator = d3.geoPath().projection(projection);
+
+        /* Graticule */
+        var graticule = d3.geoGraticule10();
+        svg.append("path").datum(graticule).attr("class", "graticule").attr("d", pathGenerator);
+
+        /* Tooltip element */
+        var tooltipEl = document.querySelector("#world-map .tooltip");
+
+        /* Fetch topology and render countries */
+        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(
+          function (world) {
+            var countries = topojson.feature(world, world.objects.countries).features;
+
+            svg
+              .selectAll(".country-path")
+              .data(countries)
+              .enter()
+              .append("path")
+              .attr("class", "country-path")
+              .attr("d", pathGenerator)
+              .attr("data-country", function (d) {
+                return String(d.id).padStart(3, "0");
+              })
+              .attr("fill", function (d) {
+                var code = String(d.id).padStart(3, "0");
+                if (gdpData[code]) {
+                  return gdpToColor(gdpData[code].gdp);
+                }
+                return defaultFill;
+              })
+              .on("mouseenter", function (event, d) {
+                var code = String(d.id).padStart(3, "0");
+                if (gdpData[code]) {
+                  var entry = gdpData[code];
+                  tooltipEl.innerHTML =
+                    entry.name +
+                    '<span class="tt-value">$' +
+                    entry.gdp.toLocaleString() +
+                    "</span>";
+                  tooltipEl.style.opacity = "1";
+                  tooltipEl.style.transform = "translateY(0)";
+                }
+              })
+              .on("mousemove", function (event) {
+                var container = document.querySelector("#world-map");
+                var rect = container.getBoundingClientRect();
+                var x = event.clientX - rect.left + 16;
+                var y = event.clientY - rect.top - 40;
+                tooltipEl.style.left = x + "px";
+                tooltipEl.style.top = y + "px";
+              })
+              .on("mouseleave", function () {
+                tooltipEl.style.opacity = "0";
+                tooltipEl.style.transform = "translateY(4px)";
+              });
+
+            /* ── GSAP Timeline ── */
+            buildTimeline();
+          },
+        );
+
+        function buildTimeline() {
+          var tl = gsap.timeline({ paused: true });
+
+          /* 0s: Headline clip-path wipe reveal (1s) */
+          tl.to(
+            "#world-map .headline",
+            {
+              clipPath: "inset(0 0% 0 0)",
+              duration: 1,
+              ease: "power3.inOut",
+            },
+            0,
+          );
+
+          /* 0.4s: Subtitle fade in (0.6s) */
+          tl.to(
+            "#world-map .subtitle",
+            {
+              opacity: 1,
+              duration: 0.6,
+              ease: "power2.out",
+            },
+            0.4,
+          );
+
+          /* 1.0s: Countries stagger reveal */
+          tl.to(
+            "#world-map .country-path",
+            {
+              opacity: 1,
+              duration: 0.3,
+              stagger: {
+                each: 0.02,
+                from: "center",
+              },
+              ease: "power1.out",
+            },
+            1.0,
+          );
+
+          /* 4.0s: Legend fade in */
+          tl.to(
+            "#world-map .legend-group",
+            {
+              opacity: 1,
+              duration: 0.6,
+              ease: "power2.out",
+            },
+            4.0,
+          );
+
+          /* 4.5s: Source fade in */
+          tl.to(
+            "#world-map .source",
+            {
+              opacity: 1,
+              duration: 0.5,
+              ease: "power2.out",
+            },
+            4.5,
+          );
+
+          /* 5.0s: Highlight pulse on top 5 GDP countries */
+          for (var i = 0; i < top5Codes.length; i++) {
+            var selector = '#world-map [data-country="' + top5Codes[i] + '"]';
+
+            /* Pulse up: brightness + white stroke */
+            tl.to(
+              selector,
+              {
+                filter: "brightness(1.5)",
+                stroke: "#ffffff",
+                strokeWidth: 1.8,
+                duration: 0.4,
+                ease: "power2.out",
+              },
+              5.0 + i * 0.15,
+            );
+
+            /* Pulse back to normal */
+            tl.to(
+              selector,
+              {
+                filter: "brightness(1)",
+                stroke: "#1e293b",
+                strokeWidth: 0.6,
+                duration: 0.6,
+                ease: "power2.inOut",
+              },
+              5.0 + i * 0.15 + 0.4,
+            );
+          }
+
+          /* Register timeline */
+          if (!window.__timelines) {
+            window.__timelines = {};
+          }
+          window.__timelines["world-map"] = tl;
+        }
+      })();
+    </script>
+  </body>
+</html>

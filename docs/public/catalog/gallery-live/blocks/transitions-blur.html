@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      }
+      .scene {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .scene-inner {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+      }
+      .info-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: rgba(0, 0, 0, 0.88);
+        padding: 24px 60px;
+        display: flex;
+        align-items: center;
+        gap: 40px;
+        opacity: 0;
+      }
+      .info-num {
+        font-size: 14px;
+        font-weight: 700;
+        color: #e07a5f;
+        letter-spacing: 0.1em;
+      }
+      .info-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .info-desc {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      #title-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        z-index: 50;
+      }
+      #outro-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        z-index: 50;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="main"
+      data-start="0"
+      data-duration="20"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Title Card -->
+      <div id="title-card">
+        <div
+          id="title-label"
+          style="
+            font-size: 14px;
+            font-weight: 700;
+            color: #e07a5f;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            opacity: 0;
+          "
+        >
+          TRANSITION CATALOG
+        </div>
+        <div
+          id="title-main"
+          style="font-size: 72px; font-weight: 900; color: #fff; margin-top: 16px; opacity: 0"
+        >
+          Blur Transitions
+        </div>
+        <div
+          id="title-count"
+          style="
+            font-size: 24px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 12px;
+            opacity: 0;
+          "
+        >
+          3 transitions
+        </div>
+      </div>
+
+      <!-- Scene A -->
+      <div id="scene1" class="scene" style="z-index: 1">
+        <div class="scene-inner" id="s1" style="background: #1b263b">
+          <div style="font-size: 200px; font-weight: 900; color: rgba(255, 255, 255, 0.08)">
+            ONE
+          </div>
+          <div
+            style="
+              font-size: 32px;
+              font-weight: 700;
+              color: #778da9;
+              letter-spacing: 0.15em;
+              margin-top: -20px;
+            "
+          >
+            SCENE A
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene B -->
+      <div id="scene2" class="scene" style="z-index: 2; opacity: 0">
+        <div class="scene-inner" id="s2" style="background: #e07a5f">
+          <div style="font-size: 200px; font-weight: 900; color: rgba(255, 255, 255, 0.15)">
+            TWO
+          </div>
+          <div
+            style="
+              font-size: 32px;
+              font-weight: 700;
+              color: #fff;
+              letter-spacing: 0.15em;
+              margin-top: -20px;
+            "
+          >
+            SCENE B
+          </div>
+        </div>
+      </div>
+
+      <!-- Info Bars -->
+      <div id="info-1" class="info-bar">
+        <div class="info-num">01</div>
+        <div class="info-name">Blur Through</div>
+        <div class="info-desc">Use a blur through transition</div>
+      </div>
+      <div id="info-2" class="info-bar">
+        <div class="info-num">02</div>
+        <div class="info-name">Directional Blur</div>
+        <div class="info-desc">Use a directional blur transition with motion skew</div>
+      </div>
+      <div id="info-3" class="info-bar">
+        <div class="info-num">03</div>
+        <div class="info-name">Calm Blur Through</div>
+        <div class="info-desc">Use a slow calm blur through transition</div>
+      </div>
+
+      <!-- Outro Card -->
+      <div id="outro-card">
+        <div
+          id="outro-label"
+          style="
+            font-size: 14px;
+            font-weight: 700;
+            color: #e07a5f;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            opacity: 0;
+          "
+        >
+          BLUR TRANSITIONS
+        </div>
+        <div
+          id="outro-main"
+          style="font-size: 56px; font-weight: 900; color: #fff; margin-top: 16px; opacity: 0"
+        >
+          3 Transitions
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+        var t = 0;
+
+        // === TITLE CARD (3s) ===
+        tl.to("#title-label", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, t + 0.3);
+        tl.fromTo(
+          "#title-main",
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          t + 0.6,
+        );
+        tl.fromTo(
+          "#title-count",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.4, ease: "power2.out" },
+          t + 1.0,
+        );
+        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+        t += 3;
+
+        function resetScenes() {
+          tl.set(
+            "#scene1",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              scaleX: 1,
+              rotation: 0,
+              filter: "none",
+              clipPath: "none",
+              zIndex: 1,
+              skewX: 0,
+            },
+            t,
+          );
+          tl.set(
+            "#scene2",
+            {
+              opacity: 0,
+              x: 0,
+              y: 0,
+              scale: 1,
+              scaleX: 1,
+              rotation: 0,
+              filter: "none",
+              clipPath: "none",
+              zIndex: 2,
+              skewX: 0,
+            },
+            t,
+          );
+          tl.set(
+            "#s1",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotation: 0,
+              filter: "none",
+              skewX: 0,
+              scaleX: 1,
+              transformOrigin: "50% 50%",
+            },
+            t,
+          );
+          tl.set(
+            "#s2",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotation: 0,
+              filter: "none",
+              skewX: 0,
+              scaleX: 1,
+              transformOrigin: "50% 50%",
+            },
+            t,
+          );
+        }
+
+        // === TRANSITION 1: Blur Through ===
+        resetScenes();
+        tl.to("#info-1", { opacity: 1, duration: 0.3 }, t + 0.2);
+        var T = t + 1.5;
+        tl.to(
+          "#s1",
+          { filter: "blur(15px)", scale: 1.05, opacity: 0, duration: 0.4, ease: "power2.in" },
+          T,
+        );
+        tl.set("#scene2", { opacity: 1 }, T);
+        tl.fromTo(
+          "#s2",
+          { filter: "blur(15px)", scale: 0.95, opacity: 0 },
+          { filter: "blur(0px)", scale: 1, opacity: 1, duration: 0.4, ease: "power2.out" },
+          T + 0.2,
+        );
+        t = T + 1.5 + 1.0;
+        tl.to("#info-1", { opacity: 0, duration: 0.2 }, t);
+        t += 0.5;
+
+        // === TRANSITION 2: Directional Blur ===
+        resetScenes();
+        tl.to("#info-2", { opacity: 1, duration: 0.3 }, t + 0.2);
+        T = t + 1.5;
+        tl.to(
+          "#s1",
+          {
+            filter: "blur(12px)",
+            skewX: -8,
+            x: -200,
+            opacity: 0,
+            duration: 0.4,
+            ease: "power3.in",
+          },
+          T,
+        );
+        tl.set("#scene2", { opacity: 1 }, T);
+        tl.fromTo(
+          "#s2",
+          { filter: "blur(12px)", skewX: 8, x: 200, opacity: 0 },
+          { filter: "blur(0px)", skewX: 0, x: 0, opacity: 1, duration: 0.4, ease: "power3.out" },
+          T + 0.15,
+        );
+        t = T + 1.5 + 1.0;
+        tl.to("#info-2", { opacity: 0, duration: 0.2 }, t);
+        t += 0.5;
+
+        // === TRANSITION 3: Calm Blur Through ===
+        resetScenes();
+        tl.to("#info-3", { opacity: 1, duration: 0.3 }, t + 0.2);
+        T = t + 1.5;
+        tl.to("#s1", { filter: "blur(30px)", scale: 1.08, duration: 0.5, ease: "power1.in" }, T);
+        tl.to("#s1", { opacity: 0, duration: 0.3, ease: "power1.in" }, T + 0.3);
+        tl.set("#scene2", { opacity: 1 }, T + 0.3);
+        tl.fromTo(
+          "#s2",
+          { filter: "blur(30px)", scale: 0.92, opacity: 0 },
+          { filter: "blur(30px)", scale: 0.92, opacity: 1, duration: 0.2, ease: "none" },
+          T + 0.5,
+        );
+        tl.to("#s2", { filter: "blur(0px)", scale: 1, duration: 0.7, ease: "power1.out" }, T + 0.7);
+        t = T + 1.5 + 1.0;
+        tl.to("#info-3", { opacity: 0, duration: 0.2 }, t);
+        t += 0.5;
+
+        // === OUTRO (3s) ===
+        tl.set("#scene1", { opacity: 0 }, t);
+        tl.set("#scene2", { opacity: 0 }, t);
+        tl.to("#outro-card", { opacity: 1, duration: 0.4, ease: "power2.inOut" }, t);
+        tl.to("#outro-label", { opacity: 1, duration: 0.4, ease: "power2.out" }, t + 0.3);
+        tl.fromTo(
+          "#outro-main",
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          t + 0.6,
+        );
+        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

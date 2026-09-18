@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Light Transitions Showcase</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      }
+
+      /* Title Card */
+      #title-card {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        opacity: 1;
+      }
+      #title-card h1 {
+        font-size: 72px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -1px;
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      #title-card .subtitle {
+        font-size: 28px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.5);
+        margin-top: 12px;
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      /* Scenes */
+      #scene1,
+      #scene2 {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      #scene1 {
+        background: #1b263b;
+        z-index: 2;
+        opacity: 0;
+      }
+      #scene2 {
+        background: #e07a5f;
+        z-index: 1;
+        opacity: 0;
+      }
+
+      .scene-number {
+        font-size: 180px;
+        font-weight: 900;
+        line-height: 1;
+        opacity: 0.12;
+        letter-spacing: -6px;
+      }
+      #scene1 .scene-number {
+        color: #fff;
+      }
+      #scene2 .scene-number {
+        color: #000;
+      }
+
+      .scene-label {
+        font-size: 48px;
+        font-weight: 700;
+        margin-top: -20px;
+      }
+      #scene1 .scene-label {
+        color: #fff;
+      }
+      #scene2 .scene-label {
+        color: #fff;
+      }
+
+      /* Info bar */
+      .info-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 48px;
+      }
+      #scene1 .info-bar {
+        background: rgba(0, 0, 0, 0.3);
+      }
+      #scene2 .info-bar {
+        background: rgba(0, 0, 0, 0.2);
+      }
+      .info-bar .label {
+        font-size: 18px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.7);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+      .info-bar .desc {
+        font-size: 16px;
+        color: rgba(255, 255, 255, 0.5);
+        font-style: italic;
+      }
+
+      /* Outro */
+      #outro {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      #outro h2 {
+        font-size: 56px;
+        font-weight: 800;
+        color: #fff;
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      #outro .tag {
+        font-size: 22px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-top: 10px;
+        opacity: 0;
+        transform: translateY(15px);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="comp"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="21"
+      data-width="1920"
+      data-height="1080"
+      style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #000"
+    >
+      <!-- Title Card -->
+      <div id="title-card">
+        <h1 id="title-h1">Light Transitions</h1>
+        <div class="subtitle" id="title-sub">3 transition styles</div>
+      </div>
+
+      <!-- Scene A -->
+      <div id="scene1">
+        <div class="scene-number">ONE</div>
+        <div class="scene-label">SCENE A</div>
+        <div class="info-bar">
+          <span class="label" id="info-label-a"></span>
+          <span class="desc" id="info-desc-a"></span>
+        </div>
+      </div>
+
+      <!-- Scene B -->
+      <div id="scene2">
+        <div class="scene-number">TWO</div>
+        <div class="scene-label">SCENE B</div>
+        <div class="info-bar">
+          <span class="label" id="info-label-b"></span>
+          <span class="desc" id="info-desc-b"></span>
+        </div>
+      </div>
+
+      <!-- Light Leak Overlays -->
+      <div
+        id="leak-warm"
+        style="
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255, 165, 0, 0.6), transparent 60%);
+          z-index: 50;
+          opacity: 0;
+          pointer-events: none;
+        "
+      ></div>
+      <div
+        id="leak-1"
+        style="
+          position: absolute;
+          top: -200px;
+          left: -400px;
+          width: 2400px;
+          height: 1500px;
+          background: radial-gradient(ellipse at 30% 40%, rgba(255, 140, 0, 0.5), transparent 50%);
+          z-index: 51;
+          opacity: 0;
+          pointer-events: none;
+        "
+      ></div>
+      <div
+        id="leak-2"
+        style="
+          position: absolute;
+          top: -100px;
+          left: -200px;
+          width: 2400px;
+          height: 1400px;
+          background: radial-gradient(ellipse at 60% 50%, rgba(255, 200, 0, 0.4), transparent 50%);
+          z-index: 51;
+          opacity: 0;
+          pointer-events: none;
+        "
+      ></div>
+
+      <!-- Flash Overlay -->
+      <div
+        id="flash-overlay"
+        style="
+          position: absolute;
+          inset: 0;
+          background: #fff;
+          z-index: 50;
+          opacity: 0;
+          pointer-events: none;
+        "
+      ></div>
+
+      <!-- Film Burn Overlays -->
+      <div
+        id="burn-a"
+        style="
+          position: absolute;
+          top: -300px;
+          right: -800px;
+          width: 2400px;
+          height: 1800px;
+          background: radial-gradient(ellipse at 70% 40%, rgba(255, 100, 0, 0.5), transparent 50%);
+          z-index: 51;
+          opacity: 0;
+          pointer-events: none;
+        "
+      ></div>
+      <div
+        id="burn-b"
+        style="
+          position: absolute;
+          top: -200px;
+          right: -600px;
+          width: 2400px;
+          height: 1600px;
+          background: radial-gradient(ellipse at 80% 50%, rgba(255, 160, 0, 0.4), transparent 50%);
+          z-index: 51;
+          opacity: 0;
+          pointer-events: none;
+        "
+      ></div>
+      <div
+        id="burn-c"
+        style="
+          position: absolute;
+          top: -100px;
+          right: -500px;
+          width: 2200px;
+          height: 1400px;
+          background: radial-gradient(ellipse at 60% 60%, rgba(255, 200, 50, 0.3), transparent 50%);
+          z-index: 51;
+          opacity: 0;
+          pointer-events: none;
+        "
+      ></div>
+
+      <!-- Outro -->
+      <div id="outro">
+        <h2 id="outro-h2">Light Transitions</h2>
+        <div class="tag" id="outro-tag">End of showcase</div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var tl = gsap.timeline({ paused: false });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+
+        // Transition demos config
+        var demos = [
+          { label: "LIGHT LEAK", desc: "Use a light leak transition with warm overlays" },
+          { label: "OVEREXPOSURE BURN", desc: "Use an overexposure burn transition" },
+          { label: "FILM BURN", desc: "Use a film burn transition with warm edge bleeds" },
+        ];
+
+        // Reset scenes helper
+        function resetScenes(t, demoIndex) {
+          tl.set("#scene1", { opacity: 1, filter: "none", scale: 1 }, t);
+          tl.set("#scene2", { opacity: 0 }, t);
+          tl.set("#info-label-a", { textContent: demos[demoIndex].label }, t);
+          tl.set("#info-desc-a", { textContent: demos[demoIndex].desc }, t);
+          tl.set("#info-label-b", { textContent: demos[demoIndex].label }, t);
+          tl.set("#info-desc-b", { textContent: demos[demoIndex].desc }, t);
+          // Reset light leak overlays
+          tl.set("#leak-warm", { opacity: 0 }, t);
+          tl.set("#leak-1", { opacity: 0, x: 0 }, t);
+          tl.set("#leak-2", { opacity: 0, x: 0 }, t);
+          // Reset flash
+          tl.set("#flash-overlay", { opacity: 0 }, t);
+          // Reset burn overlays
+          tl.set("#burn-a", { opacity: 0, x: 0 }, t);
+          tl.set("#burn-b", { opacity: 0, x: 0 }, t);
+          tl.set("#burn-c", { opacity: 0, x: 0 }, t);
+        }
+
+        // ===== TITLE CARD (0s - 3s) =====
+        tl.to("#title-h1", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 0.3);
+        tl.to("#title-sub", { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.6);
+        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power1.inOut" }, 2.5);
+
+        // ===== DEMO 1: LIGHT LEAK (3s - 8s) =====
+        var T1 = 3;
+        resetScenes(T1, 0);
+        var T = T1 + 2;
+        tl.to("#leak-warm", { opacity: 0.4, duration: 0.3, ease: "power1.in" }, T);
+        tl.to("#leak-1", { opacity: 0.9, x: 300, duration: 0.5, ease: "sine.inOut" }, T + 0.05);
+        tl.to("#leak-2", { opacity: 0.8, x: 200, duration: 0.6, ease: "sine.inOut" }, T + 0.1);
+        tl.to("#leak-warm", { opacity: 0.6, duration: 0.15, ease: "power2.in" }, T + 0.35);
+        tl.set("#scene1", { opacity: 0 }, T + 0.45);
+        tl.set("#scene2", { opacity: 1 }, T + 0.45);
+        tl.to("#leak-warm", { opacity: 0, duration: 0.4, ease: "power2.out" }, T + 0.5);
+        tl.to("#leak-1", { opacity: 0, x: 600, duration: 0.35, ease: "power1.out" }, T + 0.5);
+        tl.to("#leak-2", { opacity: 0, x: 400, duration: 0.35, ease: "power1.out" }, T + 0.55);
+
+        // ===== DEMO 2: OVEREXPOSURE BURN (8s - 13s) =====
+        var T2 = 8;
+        resetScenes(T2, 1);
+        T = T2 + 2;
+        tl.to(
+          "#scene1",
+          { filter: "brightness(1.5)", scale: 1.03, duration: 0.2, ease: "power1.in" },
+          T,
+        );
+        tl.to(
+          "#scene1",
+          { filter: "brightness(3)", scale: 1.06, duration: 0.2, ease: "power2.in" },
+          T + 0.2,
+        );
+        tl.to("#flash-overlay", { opacity: 0.5, duration: 0.25, ease: "power1.in" }, T + 0.15);
+        tl.to("#flash-overlay", { opacity: 1, duration: 0.15, ease: "power2.in" }, T + 0.4);
+        tl.set("#scene1", { opacity: 0 }, T + 0.55);
+        tl.set("#scene2", { opacity: 1 }, T + 0.55);
+        tl.set("#scene1", { filter: "none", scale: 1 }, T + 0.55);
+        tl.to("#flash-overlay", { opacity: 0, duration: 0.35, ease: "power2.out" }, T + 0.55);
+
+        // ===== DEMO 3: FILM BURN (13s - 18s) =====
+        var T3 = 13;
+        resetScenes(T3, 2);
+        T = T3 + 2;
+        tl.to("#burn-a", { opacity: 1, x: -300, duration: 0.4, ease: "power1.in" }, T);
+        tl.to("#burn-b", { opacity: 1, x: -500, duration: 0.5, ease: "power1.in" }, T + 0.05);
+        tl.to("#burn-c", { opacity: 1, x: -200, duration: 0.45, ease: "power1.in" }, T + 0.1);
+        tl.set("#scene1", { opacity: 0 }, T + 0.35);
+        tl.set("#scene2", { opacity: 1 }, T + 0.35);
+        tl.to("#burn-a", { opacity: 0, duration: 0.3, ease: "power2.out" }, T + 0.45);
+        tl.to("#burn-b", { opacity: 0, duration: 0.3, ease: "power2.out" }, T + 0.5);
+        tl.to("#burn-c", { opacity: 0, duration: 0.3, ease: "power2.out" }, T + 0.55);
+
+        // ===== OUTRO (18s - 21s) =====
+        tl.to("#scene1", { opacity: 0, duration: 0.3 }, 18);
+        tl.to("#scene2", { opacity: 0, duration: 0.3 }, 18);
+        tl.to("#outro", { opacity: 1, duration: 0.4, ease: "power1.inOut" }, 18.2);
+        tl.to("#outro-h2", { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 18.5);
+        tl.to("#outro-tag", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 18.8);
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Shimmer Sweep — Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="shimmer-sweep-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <div class="demo-canvas">
+        <!-- Example 1: Large heading -->
+        <div class="shimmer-sweep-target" style="--shimmer-color: rgba(255, 255, 255, 0.5)">
+          <div
+            class="demo-heading"
+            style="font-size: 120px; font-weight: 800; color: #ffffff; opacity: 0"
+          >
+            AI-Powered
+          </div>
+        </div>
+
+        <!-- Example 2: Subheading -->
+        <div class="shimmer-sweep-target" style="--shimmer-color: rgba(100, 200, 255, 0.4)">
+          <div
+            class="demo-subheading"
+            style="font-size: 48px; font-weight: 400; color: #888888; opacity: 0"
+          >
+            Video generation, reimagined
+          </div>
+        </div>
+
+        <!-- Example 3: Pill badge -->
+        <div
+          class="shimmer-sweep-target"
+          style="--shimmer-color: rgba(255, 255, 255, 0.3); --shimmer-width: 30%"
+        >
+          <div
+            class="demo-pill"
+            style="
+              background: linear-gradient(135deg, #1a1a2e, #2a2a4e);
+              border: 1px solid #333;
+              border-radius: 100px;
+              padding: 16px 40px;
+              font-size: 20px;
+              color: #aaa;
+              opacity: 0;
+            "
+          >
+            Try it free →
+          </div>
+        </div>
+      </div>
+
+      <!-- Shimmer Sweep component -->
+      <style>
+        .demo-canvas {
+          width: 1920px;
+          height: 1080px;
+          background: #0a0a0f;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          gap: 60px;
+          font-family: "Inter", sans-serif;
+        }
+
+        .shimmer-sweep-target {
+          position: relative;
+          display: inline-block;
+        }
+
+        .shimmer-sweep-target .shimmer-mask {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          background: linear-gradient(
+            var(--shimmer-angle, 120deg),
+            transparent 0%,
+            transparent calc(var(--shimmer-pos, -20%) - var(--shimmer-width, 20%) / 2),
+            var(--shimmer-color, rgba(255, 255, 255, 0.6)) var(--shimmer-pos, -20%),
+            transparent calc(var(--shimmer-pos, -20%) + var(--shimmer-width, 20%) / 2),
+            transparent 100%
+          );
+          mix-blend-mode: overlay;
+        }
+      </style>
+
+      <script>
+        (function () {
+          // Inject shimmer masks
+          document.querySelectorAll(".shimmer-sweep-target").forEach((el) => {
+            if (!el.querySelector(".shimmer-mask")) {
+              const mask = document.createElement("div");
+              mask.className = "shimmer-mask";
+              el.appendChild(mask);
+            }
+          });
+
+          const tl = gsap.timeline({ paused: true });
+
+          // Fade in elements
+          tl.to(".demo-heading", { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.3);
+          tl.to(".demo-subheading", { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.6);
+          tl.to(".demo-pill", { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.9);
+
+          // First shimmer sweep across all targets
+          tl.fromTo(
+            ".shimmer-sweep-target",
+            { "--shimmer-pos": "-20%" },
+            {
+              "--shimmer-pos": "120%",
+              duration: 1.2,
+              ease: "power2.inOut",
+              stagger: 0.15,
+            },
+            1.5,
+          );
+
+          // Second sweep
+          tl.fromTo(
+            ".shimmer-sweep-target",
+            { "--shimmer-pos": "-20%" },
+            {
+              "--shimmer-pos": "120%",
+              duration: 1.0,
+              ease: "power2.inOut",
+              stagger: 0.1,
+            },
+            3.5,
+          );
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["shimmer-sweep-demo"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>
