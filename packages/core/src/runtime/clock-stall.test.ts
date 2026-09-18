@@ -106,6 +106,39 @@ describe("TransportClock stall policy — interactive playback", () => {
     expect(clock.now()).toBeCloseTo(5, 2);
   });
 
+  it("a monotonic read before audio takes over does not go stale across the whole audio-authoritative stretch", () => {
+    const { clock, advance } = createClock({ duration: 30 });
+    const audioEl = { currentTime: 0, paused: true } as HTMLMediaElement;
+    clock.play();
+    clock.attachAudioSource({ el: audioEl, compositionStart: 0, mediaStart: 0 });
+    expect(clock.now()).toBeCloseTo(0, 5); // audio not ready yet, falls to monotonic
+    advance(10); // audio starts an instant later
+    Object.assign(audioEl, { paused: false, currentTime: 0.01 });
+    expect(clock.now()).toBeCloseTo(0.01, 2); // now audio-authoritative
+    advance(10_000); // ten real seconds pass, entirely under audio's own clock
+    audioEl.currentTime = 10.01;
+    expect(clock.now()).toBe(10.01); // still audio-authoritative, still correct
+    Object.assign(audioEl, { paused: true }); // audio drops out, no detachAudioSource()
+    // The stale pre-audio read must not be what this gets compared against:
+    // ~10.01s of real time genuinely passed and none of it was a stall.
+    expect(clock.now()).toBeCloseTo(10.01, 1);
+  });
+
+  it("real elapsed time during a sustained audio outage advances normally, not smoothed away as a stall", () => {
+    const { clock, advance } = createClock({ duration: 30 });
+    const audioEl = { currentTime: 0, paused: true } as HTMLMediaElement;
+    clock.play();
+    clock.attachAudioSource({ el: audioEl, compositionStart: 0, mediaStart: 0 });
+    // Audio stays unavailable (buffering) for two real seconds, polled at a
+    // normal frame cadence — no JS-thread stall anywhere in this window.
+    let reported = clock.now();
+    for (let frame = 0; frame < 120; frame++) {
+      advance(16.666);
+      reported = clock.now();
+    }
+    expect(reported).toBeCloseTo(2, 1);
+  });
+
   it("a long real gap while genuinely paused is not a stall — resuming play() does not inherit it", () => {
     const { clock, advance } = createClock();
     clock.play();
