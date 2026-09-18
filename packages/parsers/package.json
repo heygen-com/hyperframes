@@ -88,6 +88,12 @@
       "import": "./src/compositionContract.ts",
       "types": "./src/compositionContract.ts"
     },
+    "./top-level-elements": {
+      "bun": "./src/topLevelElements.ts",
+      "node": "./dist/topLevelElements.js",
+      "import": "./src/topLevelElements.ts",
+      "types": "./src/topLevelElements.ts"
+    },
     "./color-grading-contract": {
       "bun": "./src/colorGradingContract.ts",
       "node": "./dist/colorGradingContract.js",
@@ -164,6 +170,10 @@
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
+      },
+      "./top-level-elements": {
+        "import": "./dist/topLevelElements.js",
+        "types": "./dist/topLevelElements.d.ts"
       },
       "./color-grading-contract": {
         "import": "./dist/colorGradingContract.js",
