@@ -152,10 +152,11 @@ export function useTimelineDeleteOps({
         // step with the delete, not two (editHistory.ts coalesces by key +
         // window across separate recordEdit calls, not by label).
         const coalesceKey = `main-track-ripple-delete:${deleteGestureSeq++}`;
+        const deleteHistoryLabel = "Delete timeline clip";
         try {
           await saveProjectFilesWithHistory({
             projectId: pid,
-            label: "Delete timeline clip",
+            label: deleteHistoryLabel,
             kind: "timeline",
             coalesceKey,
             files: { [targetPath]: patchedContent },
@@ -193,7 +194,7 @@ export function useTimelineDeleteOps({
               // Coalescing keeps the LAST entry's label; without this the undo
               // toast reads "Undid Move timeline clips" after a delete, naming
               // the ripple's mechanics instead of what the user actually did.
-              label: "Delete timeline clip",
+              label: deleteHistoryLabel,
             });
             rippleApplied = rippleChanges;
           } catch (error) {
@@ -201,6 +202,7 @@ export function useTimelineDeleteOps({
             // toggle-off behaviour would have left anyway — not worth undoing
             // an otherwise-successful delete over.
             console.error("[Timeline] ripple-edit failed to persist after delete", error);
+            showToast("Clip deleted, but the gap could not be closed.", "error");
           }
         }
 

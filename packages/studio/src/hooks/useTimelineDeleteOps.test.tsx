@@ -87,4 +87,38 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       expect.objectContaining({ label: "Delete timeline clip" }),
     );
   });
+
+  it("tells the user when a ripple fails to persist after a committed delete", async () => {
+    const a = el("hf-a", 0, 2);
+    const b = el("hf-b", 2, 2);
+    const c = el("hf-c", 4, 2);
+    const handleTimelineGroupMove = vi.fn().mockRejectedValue(new Error("persist failed"));
+    const showToast = vi.fn();
+
+    let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
+    function Harness() {
+      hook = useTimelineDeleteOps({
+        projectIdRef: { current: "test-project" },
+        activeCompPath: "index.html",
+        timelineElements: [a, b, c],
+        showToast,
+        writeProjectFile: vi.fn().mockResolvedValue(undefined),
+        recordEdit: vi.fn().mockResolvedValue(undefined),
+        reloadPreview: vi.fn(),
+        previewIframeRef: { current: null },
+        handleTimelineGroupMove,
+      });
+      return null;
+    }
+
+    mountReactHarness(<Harness />);
+    await act(async () => {
+      await hook!.handleTimelineElementDelete(b);
+    });
+
+    expect(showToast).toHaveBeenCalledWith(
+      "Clip deleted, but the gap could not be closed.",
+      "error",
+    );
+  });
 });
