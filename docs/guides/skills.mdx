@@ -52,6 +52,18 @@ Install or refresh one workflow explicitly:
 npx hyperframes skills update pr-to-video
 ```
 
+## Use the skills in IBM Bob
+
+Run `npx hyperframes skills update`, then open or restart Bob Shell in the
+project folder so it discovers the skills linked under `~/.bob/skills`:
+
+```bash
+bob
+```
+
+Ask Bob to use `/hyperframes` for the first request. Running the update again
+refreshes the same global skill bundles without changing the project format.
+
 ## Use the skills in Google Antigravity
 
 Install the skills from the root of the project you open in Antigravity:

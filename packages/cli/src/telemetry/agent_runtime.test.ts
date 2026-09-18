@@ -6,6 +6,9 @@ import { HINT_KEY_PATTERN } from "./agent_runtime.js";
 // detectSandboxRuntime is exercised through a small set of node:os mocks.
 
 const VENDOR_ENV_KEYS = [
+  "BOBSHELL_CLI",
+  "BOBSHELL_API_KEY",
+  "BOBSHELL_NO_RELAUNCH",
   "CLAUDECODE",
   "CLAUDE_CODE_ENTRYPOINT",
   "CODEX_THREAD_ID",
@@ -63,6 +66,35 @@ describe("detectAgentRuntime — base behavior", () => {
     expect(result).toBe("codex");
     expect(typeof result).toBe("string");
     expect((result ?? "").includes("supersecret")).toBe(false);
+  });
+});
+
+describe("detectAgentRuntime — IBM Bob Shell", () => {
+  const savedEnv = { ...process.env };
+  beforeEach(stripVendorEnv);
+  afterEach(() => {
+    process.env = { ...savedEnv };
+  });
+
+  it("detects via BOBSHELL_CLI (set on both shell execution paths)", async () => {
+    process.env["BOBSHELL_CLI"] = "1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("bob");
+  });
+
+  it("wins over inherited outer-agent markers as the immediate executor", async () => {
+    process.env["BOBSHELL_CLI"] = "1";
+    process.env["CLAUDECODE"] = "1";
+    process.env["CODEX_THREAD_ID"] = "thread-1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("bob");
+  });
+
+  it("does not treat Bob authentication or relaunch state as execution proof", async () => {
+    process.env["BOBSHELL_API_KEY"] = "secret-not-read";
+    process.env["BOBSHELL_NO_RELAUNCH"] = "true";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
   });
 });
 
