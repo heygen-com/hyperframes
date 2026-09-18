@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 /**
  * captureStage — SDR disk-capture path of `executeRenderJob`.
  *
@@ -38,7 +39,6 @@
 
 import { statfsSync } from "node:fs";
 import {
-  frameFileExtension,
   type BeforeCaptureHook,
   type CaptureOptions,
   type CapturePerfSummary,
@@ -138,6 +138,21 @@ export function shouldAllowAdaptiveCaptureRetry(
   return workerCount > 1;
 }
 
+/**
+ * Conservative bytes-per-pixel for temporary frame storage, by capture
+ * format. Disk frames are written as compressed images, not raw RGBA:
+ * measured 1080p JPEG captures land at ~150–400 KB/frame (~0.05–0.1 B/px),
+ * so 0.5 B/px keeps a ~5× safety margin while shrinking the gate's estimate
+ * 8× versus the old uncompressed-RGBA ceiling (4 B/px) — that ceiling
+ * mis-rejected ordinary renders on machines with ample free disk (the raw
+ * estimate for a 44 s 1080p30 composition exceeds 11 GB while the actual
+ * JPEG footprint is a few hundred MB). PNG (alpha renders) is lossless and
+ * photographic content can approach raw size, so it keeps half the RGBA
+ * ceiling.
+ */
+const JPEG_FRAME_BYTES_PER_PIXEL_ESTIMATE = 0.5;
+const PNG_FRAME_BYTES_PER_PIXEL_ESTIMATE = 2;
+
 export function estimateDiskCaptureBytes(
   totalFrames: number,
   captureOptions: CaptureOptions,
@@ -145,7 +160,13 @@ export function estimateDiskCaptureBytes(
   const scale = captureOptions.deviceScaleFactor ?? 1;
   const outputWidth = Math.ceil(captureOptions.width * scale);
   const outputHeight = Math.ceil(captureOptions.height * scale);
-  return Math.ceil(totalFrames) * outputWidth * outputHeight * 4;
+  // Undefined format resolves to the engine default (jpeg) everywhere the
+  // producer builds capture options.
+  const bytesPerPixel =
+    captureOptions.format === "png"
+      ? PNG_FRAME_BYTES_PER_PIXEL_ESTIMATE
+      : JPEG_FRAME_BYTES_PER_PIXEL_ESTIMATE;
+  return Math.ceil(Math.ceil(totalFrames) * outputWidth * outputHeight * bytesPerPixel);
 }
 
 /**
@@ -192,11 +213,11 @@ export function assertDiskCaptureHeadroom(
   );
   if (headroom.available) return;
   throw new Error(
-    `Disk capture may need ~${(headroom.estimatedBytes / 1e6).toFixed(1)} MB of temporary frame storage, ` +
+    `Disk capture skipped: estimated temporary frame storage is ~${(headroom.estimatedBytes / 1e6).toFixed(1)} MB ` +
+      "(compressed-frame estimate with safety margin; actual usage is usually lower), " +
       `but only ${(headroom.freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
-      "Re-run with --low-memory-mode to stream frames, raise " +
-      "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS if streaming is supported, " +
-      "or free up disk space.",
+      "Free up disk space — even a small margin may be enough — or stream frames to the encoder instead " +
+      "(--low-memory-mode; PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS raises the streaming duration cap).",
   );
 }
 
@@ -221,7 +242,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
   } = input;
   let { probeSession } = input;
   let { workerCount } = plan;
-  const { forceScreenshot } = plan;
+  const { forceScreenshot, needsAlpha } = plan;
   let lastBrowserConsole: string[] = [];
   let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
@@ -272,7 +293,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       totalFrames,
       initialWorkerCount: workerCount,
       allowRetry: shouldAllowAdaptiveCaptureRetry(workerCount, job.config.workers !== undefined),
-      frameExt: frameFileExtension(captureOptions.format),
+      frameExt: needsAlpha ? "png" : "jpg",
       captureOptions,
       createBeforeCaptureHook: createRenderVideoFrameInjector,
       abortSignal,

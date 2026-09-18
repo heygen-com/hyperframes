@@ -1435,6 +1435,33 @@ export function shouldUseStreamingEncode(
 }
 
 /**
+ * Whether a disk capture plan that failed the disk-headroom gate should
+ * degrade to single-worker streaming instead of failing the render.
+ *
+ * The disk gate estimates worst-case temporary frame storage and refuses
+ * captures whose estimate crosses 90% of free disk, while auto-parallel
+ * renders always land on the disk path (ordered streaming would stall later
+ * workers). A machine with modest free disk therefore failed renders that
+ * single-worker streaming could finish. Degradation is only offered when
+ * streaming is genuinely eligible for this render at one worker (same gates
+ * as the normal streaming decision: format, duration cap,
+ * enableStreamingEncode, low-memory mode).
+ */
+export function shouldDegradeDiskCaptureToStreaming(args: {
+  planKind: CapturePlan["kind"];
+  workerCount: number;
+  diskHeadroomAvailable: boolean;
+  streamingEligible: boolean;
+}): boolean {
+  return (
+    args.planKind === "sdr_disk" &&
+    args.workerCount > 1 &&
+    !args.diskHeadroomAvailable &&
+    args.streamingEligible
+  );
+}
+
+/**
  * Integer tuning knob from the environment. Matches the convention the
  * surrounding DE thresholds already use: unset OR set-but-empty falls back to
  * the default (a blank var is not a kill switch), and so does anything
@@ -3971,6 +3998,34 @@ async function executeRenderPipeline(input: {
       needsAlpha,
       routing: captureRouting,
     });
+    // Disk-headroom degradation (see shouldDegradeDiskCaptureToStreaming):
+    // rebuild the plan as single-worker streaming BEFORE capture and
+    // telemetry read it, so the degraded plan is indistinguishable from one
+    // the streaming gate chose up front.
+    if (
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: capturePlan.kind,
+        workerCount: capturePlan.workerCount,
+        diskHeadroomAvailable: inspectDiskCaptureHeadroom(
+          framesDir,
+          totalFrames,
+          buildCaptureOptions(),
+        ).available,
+        streamingEligible: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      })
+    ) {
+      log.info(
+        `[Render] Disk capture lacks headroom for ~${totalFrames} frames at ${framesDir}; ` +
+          `degrading ${capturePlan.workerCount}-worker disk capture to single-worker streaming encode.`,
+      );
+      capturePlan = createCapturePlan({
+        ...capturePlan,
+        workerCount: 1,
+        useStreamingEncode: true,
+        useLayeredComposite: false,
+        forceParallelStream: false,
+      });
+    }
     const syncCapturePlan = (): void => {
       // Every route the render can end up on passes through here, including the ones a
       // replan lands on, so this is where motion blur's one supported-route answer belongs.
