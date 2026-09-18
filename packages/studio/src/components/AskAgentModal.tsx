@@ -25,19 +25,21 @@ function getAgentModalPositionStyle(
   return { left, top, transform: "translateX(-50%)" };
 }
 
+export interface AskAgentModalProps {
+  selectionLabel: string;
+  contextPreview?: string;
+  anchorPoint?: AgentModalAnchorPoint | null;
+  onSubmit: (instruction: string) => void;
+  onClose: () => void;
+}
+
 export function AskAgentModal({
   selectionLabel,
   contextPreview,
   anchorPoint = null,
   onSubmit,
   onClose,
-}: {
-  selectionLabel: string;
-  contextPreview?: string;
-  anchorPoint?: AgentModalAnchorPoint | null;
-  onSubmit: (instruction: string) => void;
-  onClose: () => void;
-}) {
+}: AskAgentModalProps) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
