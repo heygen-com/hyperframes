@@ -1,5 +1,3 @@
-import { parseProjectIdFromHash } from "./projectRouting";
-
 export interface StoredPreviewZoomState {
   zoomPercent: number;
   panX: number;
@@ -62,11 +60,6 @@ function getBrowserStorage(): Storage | null {
   } catch {
     return null;
   }
-}
-
-function getActiveProjectId(): string | null {
-  if (typeof window === "undefined") return null;
-  return parseProjectIdFromHash(window.location.hash);
 }
 
 function storageKeyFor(projectId: string | null): string {
@@ -174,11 +167,12 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
   }
 }
 
-/** Scoped per project; falls back once to the pre-scoping global entry so
- *  an existing project's first load doesn't look reset. */
+/** `projectId` opts a caller into a per-project entry (falls back once to the
+ *  shared entry so a project's first read isn't blank). Defaults to `null`:
+ *  most callers read once at mount, never on a live project switch. */
 export function readStudioUiPreferences(
   storage: Storage | null = getBrowserStorage(),
-  projectId: string | null = getActiveProjectId(),
+  projectId: string | null = null,
 ): StudioUiPreferences {
   const scoped = readStorage(storage, storageKeyFor(projectId));
   if (!projectId || Object.keys(scoped).length > 0) return scoped;
@@ -188,7 +182,7 @@ export function readStudioUiPreferences(
 export function writeStudioUiPreferences(
   patch: StudioUiPreferences,
   storage: Storage | null = getBrowserStorage(),
-  projectId: string | null = getActiveProjectId(),
+  projectId: string | null = null,
 ) {
   if (!storage) return;
   try {
