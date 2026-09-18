@@ -21,22 +21,28 @@ function docWithFakeWindow(renderReady = false): {
   doc: Document;
   win: { __renderReady: boolean };
   fireFrame: (ts: number) => void;
+  pendingFrameCount: () => number;
 } {
-  let queue: Array<(ts: number) => void> = [];
+  let queue = new Map<number, (ts: number) => void>();
+  let nextId = 1;
   const win = {
     __renderReady: renderReady,
     requestAnimationFrame: (cb: (ts: number) => void) => {
-      queue.push(cb);
-      return queue.length;
+      const id = nextId++;
+      queue.set(id, cb);
+      return id;
+    },
+    cancelAnimationFrame: (id: number) => {
+      queue.delete(id);
     },
   };
   const fireFrame = (ts: number) => {
-    const callbacks = queue;
-    queue = [];
+    const callbacks = Array.from(queue.values());
+    queue.clear();
     callbacks.forEach((cb) => cb(ts));
   };
   const doc = { defaultView: win } as unknown as Document;
-  return { doc, win, fireFrame };
+  return { doc, win, fireFrame, pendingFrameCount: () => queue.size };
 }
 
 async function flushMicrotasks(): Promise<void> {
@@ -57,25 +63,25 @@ describe("scanPendingCompositionAssets", () => {
 
 describe("mediaReadinessInput", () => {
   it("returns null when there is nothing to wait on", () => {
-    expect(mediaReadinessInput(docWith(""))).toBeNull();
+    expect(mediaReadinessInput(docWith(""), new AbortController().signal)).toBeNull();
   });
 });
 
 describe("computeReadinessInput", () => {
   it("returns null when the runtime already published __renderReady", () => {
     const { doc } = docWithFakeWindow(true);
-    expect(computeReadinessInput(doc)).toBeNull();
+    expect(computeReadinessInput(doc, new AbortController().signal)).toBeNull();
   });
 
   it("returns null for a document with no view (nothing to poll)", () => {
-    expect(computeReadinessInput(docWith(""))).toBeNull();
+    expect(computeReadinessInput(docWith(""), new AbortController().signal)).toBeNull();
   });
 
   it("resolves once __renderReady flips true", async () => {
     vi.useFakeTimers();
     const { doc, win } = docWithFakeWindow(false);
     let resolved = false;
-    computeReadinessInput(doc)!.then(() => {
+    computeReadinessInput(doc, new AbortController().signal)!.then(() => {
       resolved = true;
     });
     await vi.advanceTimersByTimeAsync(50);
@@ -85,23 +91,43 @@ describe("computeReadinessInput", () => {
     expect(resolved).toBe(true);
     vi.useRealTimers();
   });
+
+  it("stops polling once aborted, and resolves without __renderReady ever flipping", async () => {
+    vi.useFakeTimers();
+    const { doc } = docWithFakeWindow(false);
+    const controller = new AbortController();
+    let resolved = false;
+    computeReadinessInput(doc, controller.signal)!.then(() => {
+      resolved = true;
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(resolved).toBe(false);
+    const pendingBefore = vi.getTimerCount();
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resolved).toBe(true);
+    // The poll's own timer is cleared on abort, not just left to fire once more.
+    expect(vi.getTimerCount()).toBe(pendingBefore - 1);
+    vi.useRealTimers();
+  });
 });
 
-function startPaintAndIdleTracking(): {
+function startPaintAndIdleTracking(signal: AbortSignal = new AbortController().signal): {
   fireFrame: (ts: number) => void;
   isResolved: () => boolean;
+  pendingFrameCount: () => number;
 } {
-  const { doc, fireFrame } = docWithFakeWindow();
+  const { doc, fireFrame, pendingFrameCount } = docWithFakeWindow();
   let resolved = false;
-  paintAndIdleReadinessInput(doc)!.then(() => {
+  paintAndIdleReadinessInput(doc, signal)!.then(() => {
     resolved = true;
   });
-  return { fireFrame, isResolved: () => resolved };
+  return { fireFrame, isResolved: () => resolved, pendingFrameCount };
 }
 
 describe("paintAndIdleReadinessInput", () => {
   it("returns null for a document with no view (nothing to observe)", () => {
-    expect(paintAndIdleReadinessInput(docWith(""))).toBeNull();
+    expect(paintAndIdleReadinessInput(docWith(""), new AbortController().signal)).toBeNull();
   });
 
   it("waits for first paint, then two consecutive quiet frame gaps", async () => {
@@ -145,6 +171,22 @@ describe("paintAndIdleReadinessInput", () => {
     fireFrame(646); // quiet gap 2 — now it settles
     await flushMicrotasks();
     expect(isResolved()).toBe(true);
+  });
+
+  it("cancels its pending rAF and resolves once aborted mid-wait", async () => {
+    const controller = new AbortController();
+    const { fireFrame, isResolved, pendingFrameCount } = startPaintAndIdleTracking(
+      controller.signal,
+    );
+
+    fireFrame(0); // first paint scheduled
+    await flushMicrotasks();
+    expect(pendingFrameCount()).toBe(1); // second first-paint frame in flight
+
+    controller.abort();
+    await flushMicrotasks();
+    expect(isResolved()).toBe(true);
+    expect(pendingFrameCount()).toBe(0); // the in-flight rAF was cancelled, not left pending
   });
 });
 

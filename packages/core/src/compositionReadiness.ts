@@ -1,7 +1,12 @@
 /** A composition is "ready" once every declared input settles, not just once
  * its duration is known. Each input returns null (nothing to wait on) or a
- * promise that resolves once it settles. */
-export type CompositionReadinessInput = (doc: Document) => Promise<void> | null;
+ * promise that resolves once it settles, and must stop its own pending work
+ * (timer, rAF, listener) once `signal` aborts — settleCompositionReadiness
+ * aborts it the moment the race settles, win or timeout. */
+export type CompositionReadinessInput = (
+  doc: Document,
+  signal: AbortSignal,
+) => Promise<void> | null;
 
 export interface PendingCompositionAssets {
   pendingMedia: HTMLMediaElement[];
@@ -45,6 +50,7 @@ export function scanPendingCompositionAssets(doc: Document): PendingCompositionA
 function collectPendingCompositionAssets(
   doc: Document,
   { pendingMedia, pendingImages, fontsLoading }: PendingCompositionAssets,
+  signal: AbortSignal,
 ): Promise<void> {
   const mediaReady = pendingMedia.map(
     (el) =>
@@ -52,10 +58,12 @@ function collectPendingCompositionAssets(
         const onSettled = () => {
           el.removeEventListener("canplay", onSettled);
           el.removeEventListener("error", onSettled);
+          signal.removeEventListener("abort", onSettled);
           resolve();
         };
         el.addEventListener("canplay", onSettled);
         el.addEventListener("error", onSettled);
+        signal.addEventListener("abort", onSettled, { once: true });
       }),
   );
   const imagesReady = pendingImages.map((img) =>
@@ -67,12 +75,12 @@ function collectPendingCompositionAssets(
 
 /** Declared-media readiness input: waits on the composition's own video,
  * audio, image and font-face loads. */
-export function mediaReadinessInput(doc: Document): Promise<void> | null {
+export function mediaReadinessInput(doc: Document, signal: AbortSignal): Promise<void> | null {
   const scan = scanPendingCompositionAssets(doc);
   if (scan.pendingMedia.length === 0 && scan.pendingImages.length === 0 && !scan.fontsLoading) {
     return null;
   }
-  return collectPendingCompositionAssets(doc, scan);
+  return collectPendingCompositionAssets(doc, scan, signal);
 }
 
 const RENDER_READY_POLL_MS = 50;
@@ -89,17 +97,28 @@ interface RuntimeReadinessWindow extends Window {
  * init.ts already gates on every adapter's `getReadyPromise()` and on
  * `window.__hf.buildReady` (a piece's own declared-compute hold). Same
  * signal the render/capture path trusts for "safe to look at this frame". */
-export function computeReadinessInput(doc: Document): Promise<void> | null {
+export function computeReadinessInput(doc: Document, signal: AbortSignal): Promise<void> | null {
   const win = doc.defaultView as RuntimeReadinessWindow | null;
   if (!win) return null;
   if (win.__renderReady) return null;
   return new Promise<void>((resolve) => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    if (signal.aborted) {
+      finish();
+      return;
+    }
+    signal.addEventListener("abort", finish, { once: true });
     const poll = () => {
       if (win.__renderReady) {
-        resolve();
+        finish();
         return;
       }
-      setTimeout(poll, RENDER_READY_POLL_MS);
+      timeoutId = setTimeout(poll, RENDER_READY_POLL_MS);
     };
     poll();
   });
@@ -114,22 +133,44 @@ const IDLE_FRAME_GAP_MS = 50;
 // whether the next frame is also free.
 const IDLE_FRAMES_REQUIRED = 2;
 
-function nextAnimationFrame(win: Window): Promise<number> {
-  return new Promise((resolve) => win.requestAnimationFrame(resolve));
+// Resolves with -1 on abort instead of rejecting: every caller already
+// re-checks `signal.aborted` right after awaiting this, so a sentinel value
+// is enough and keeps the abort path a plain early-return, not a try/catch.
+function nextAnimationFrame(win: Window, signal: AbortSignal): Promise<number> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve(-1);
+      return;
+    }
+    const id = win.requestAnimationFrame((ts) => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(ts);
+    });
+    const onAbort = () => {
+      win.cancelAnimationFrame?.(id);
+      resolve(-1);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /** Composition-agnostic readiness input: waits for a frame to paint (two
  * nested rAFs), then for two consecutive quiet frame gaps. Needs no
  * composition code. Bounded by settleCompositionReadiness's shared timeout. */
-export function paintAndIdleReadinessInput(doc: Document): Promise<void> | null {
+export function paintAndIdleReadinessInput(
+  doc: Document,
+  signal: AbortSignal,
+): Promise<void> | null {
   const win = doc.defaultView;
   if (!win) return null;
   return (async () => {
-    await nextAnimationFrame(win);
-    let lastTs = await nextAnimationFrame(win);
+    await nextAnimationFrame(win, signal);
+    if (signal.aborted) return;
+    let lastTs = await nextAnimationFrame(win, signal);
     let quietStreak = 0;
-    while (quietStreak < IDLE_FRAMES_REQUIRED) {
-      const ts = await nextAnimationFrame(win);
+    while (!signal.aborted && quietStreak < IDLE_FRAMES_REQUIRED) {
+      const ts = await nextAnimationFrame(win, signal);
+      if (signal.aborted) return;
       quietStreak = ts - lastTs < IDLE_FRAME_GAP_MS ? quietStreak + 1 : 0;
       lastTs = ts;
     }
@@ -156,7 +197,10 @@ export function settleCompositionReadiness(
     computeReadinessInput,
     paintAndIdleReadinessInput,
   ];
-  const pending = inputs.map((input) => input(doc)).filter((p): p is Promise<void> => p !== null);
+  const controller = new AbortController();
+  const pending = inputs
+    .map((input) => input(doc, controller.signal))
+    .filter((p): p is Promise<void> => p !== null);
   if (pending.length === 0) {
     onSettled({ timedOut: false });
     return;
@@ -167,8 +211,13 @@ export function settleCompositionReadiness(
   const timeout = new Promise<"timed-out">((resolve) => {
     timeoutId = setTimeout(() => resolve("timed-out"), timeoutMs);
   });
+  // A timeout win leaves the losing inputs' promises pending forever unless
+  // told to stop: this abort is what lets computeReadinessInput clear its
+  // poll timer and paintAndIdleReadinessInput cancel its rAF chain instead
+  // of running for the life of the page.
   Promise.race([Promise.all(pending).then(() => "done" as const), timeout]).then((result) => {
     clearTimeout(timeoutId);
+    controller.abort();
     onSettled({ timedOut: result === "timed-out" });
   });
 }
