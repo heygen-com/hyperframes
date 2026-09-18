@@ -9,6 +9,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     const REST_SECONDS = 3;
     const MAX_DOM_PLAYERS = 6;
     const MAX_WEBGL_PLAYERS = 1;
+    const READY_TIMEOUT_MS = 6000;
     async function ensurePlayerDefined() {
         if (customElements.get('hyperframes-player'))
             return;
@@ -268,13 +269,15 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             return;
         const tierFor = (item) => item.preview.heavy ? 'webgl' : 'dom';
         const capFor = (tier) => tier === 'webgl' ? MAX_WEBGL_PLAYERS : MAX_DOM_PLAYERS;
-        const unmount = (host) => {
-            const state = mountsRef.current.get(host);
+        const unmount = (host, item) => {
+            // Keyed by item.href, same as mount() below -- setHover() only ever has the
+            // item, never the host node, so the map has to be addressable by href.
+            const state = mountsRef.current.get(item.href);
             if (!state)
                 return;
             state.player?.remove();
             capsRef.current[state.tier] -= 1;
-            mountsRef.current.delete(host);
+            mountsRef.current.delete(item.href);
             delete host.dataset.ready;
         };
         const mount = async (host, item) => {
@@ -306,11 +309,23 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 player.setAttribute('inert', '');
                 player.setAttribute('tabindex', '-1');
                 player.setAttribute('aria-hidden', 'true');
-                player.addEventListener('error', () => {
+                // A player that neither errors nor reaches "ready" (a stalled fetch inside its
+                // own srcdoc, a composition script that never resolves) must fall back the same
+                // as an explicit error -- the placeholder is the safe state, a bare mounted
+                // element with nothing painted is not.
+                const fail = () => {
+                    clearTimeout(readyTimer);
                     console.error(`[catalog] preview failed to load: ${item.id}`);
                     host.dataset.state = 'unavailable';
-                }, { once: true });
+                    delete host.dataset.ready;
+                    player.remove();
+                    capsRef.current[tier] -= 1;
+                    mountsRef.current.delete(item.href);
+                };
+                const readyTimer = setTimeout(fail, READY_TIMEOUT_MS);
+                player.addEventListener('error', fail, { once: true });
                 player.addEventListener('ready', () => {
+                    clearTimeout(readyTimer);
                     player.seek(REST_SECONDS);
                     host.dataset.ready = 'true';
                     if (state.hover)
@@ -338,7 +353,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 if (entry.isIntersecting)
                     mount(host, item);
                 else
-                    unmount(host);
+                    unmount(host, item);
             }
         }, { rootMargin: '200px' });
         hosts.forEach((host) => observer.observe(host));
