@@ -407,7 +407,7 @@ function FormatExportButton({
           trackStudioEvent("render_start", { format, quality, resolution: outputResolution, fps });
           void onStartRender(format, quality, outputResolution, fps);
         }}
-        className="w-full text-[11px] font-semibold"
+        className="w-full font-semibold"
       >
         {isRendering ? "Rendering…" : "Export"}
       </Button>

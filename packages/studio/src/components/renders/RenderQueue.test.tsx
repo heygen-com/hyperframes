@@ -81,6 +81,13 @@ function exportButtonIn(host: HTMLElement): HTMLButtonElement {
   return button;
 }
 
+describe("RenderQueue Export button", () => {
+  it("leaves the font size to the shared Button", () => {
+    const host = mountRenderQueue(vi.fn());
+    expect(exportButtonIn(host).className).not.toMatch(/text-\[/);
+  });
+});
+
 describe("RenderQueue FFmpeg gate", () => {
   it("refuses Export and shows the install command when the server reports no FFmpeg", () => {
     ffmpegStatus = {
