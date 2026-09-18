@@ -1372,23 +1372,17 @@ function main(): void {
     // catalog landing page from the sidebar entirely.
     const isGeneratedPage = (p: unknown): boolean =>
       typeof p === "string" && /^catalog\/(blocks|components)\//.test(p);
-    // Has to recurse: a section holds groups rather than pages, so a check that
-    // only reads `pages` finds nothing generated in one, keeps it as if a human
-    // had written it, and appends a fresh copy on every run.
-    const holdsGeneratedPages = (node: unknown): boolean => {
-      if (isGeneratedPage(node)) return true;
-      if (!node || typeof node !== "object") return false;
+    // Recurses because a section holds groups, not pages. Keeps hand-written pages
+    // (catalog/index) even when they share a group with generated ones.
+    const withoutGeneratedPages = (node: unknown): unknown[] => {
+      if (isGeneratedPage(node)) return [];
+      if (!node || typeof node !== "object") return [node];
       const g = node as { pages?: unknown[] };
-      return (g.pages ?? []).some(holdsGeneratedPages);
+      if (!g.pages) return [node];
+      const pages = g.pages.flatMap(withoutGeneratedPages);
+      return pages.length > 0 ? [{ ...g, pages }] : [];
     };
-    const handAddedGroups: unknown[] = (existing?.groups ?? []).filter(
-      (g: unknown) => !holdsGeneratedPages(g),
-    );
-
-    // The wrapper group holds generated pages, so the filter above drops it and
-    // catalog/index with it; sync-docs-catalog re-wraps groups around an Overview.
-    const keepsIndex = handAddedGroups.some((g) => JSON.stringify(g).includes('"catalog/index"'));
-    if (!keepsIndex) handAddedGroups.unshift({ group: "Overview", pages: ["catalog/index"] });
+    const handAddedGroups = (existing?.groups ?? []).flatMap(withoutGeneratedPages);
 
     const catalogTab = {
       tab: "Catalog",
