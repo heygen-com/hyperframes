@@ -134,7 +134,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
         if (!active || reduced || document.hidden)
             return;
         const item = catalog.items.find(item => item.href === active);
-        if (!item || !item.preview || item.preview.mode === 'still' || item.preview.mode === 'player' || item.preview.mode === 'unsupported')
+        if (item?.preview?.mode !== 'video')
             return;
         const host = resultsRef.current?.querySelector(`[data-preview-host="${CSS.escape(active)}"]`);
         if (!host)
@@ -175,58 +175,13 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             host.dataset.state = 'loading';
             timeout = setTimeout(fail, 12000);
             try {
-                if (item.preview.mode === 'video') {
-                    element = document.createElement('video');
-                    element.muted = true;
-                    element.loop = true;
-                    element.playsInline = true;
-                    element.addEventListener('error', fail, { once: true });
-                    element.addEventListener('playing', show, { once: true });
-                    element.src = item.video;
-                }
-                else {
-                    // Share the pinned runtime with the detail page, loading it only on demand.
-                    if (!customElements.get('hyperframes-player')) {
-                        if (!window.__hfDocsPlayerLoading) {
-                            window.__hfDocsPlayerLoading = new Promise((resolve, reject) => {
-                                const script = document.createElement('script');
-                                script.src = 'https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js';
-                                script.onload = resolve;
-                                script.onerror = () => { script.remove(); delete window.__hfDocsPlayerLoading; reject(new Error('Player unavailable')); };
-                                document.head.appendChild(script);
-                            });
-                        }
-                        await window.__hfDocsPlayerLoading;
-                        await customElements.whenDefined('hyperframes-player');
-                    }
-                    if (cancelled)
-                        return;
-                    const response = await fetch(item.preview.source, { signal: abort.signal });
-                    if (!response.ok)
-                        throw new Error('Preview unavailable');
-                    let html = await response.text();
-                    if (cancelled)
-                        return;
-                    if (!/<base\b/i.test(html)) {
-                        const base = new URL(item.preview.base, window.location.href).href;
-                        html = html.replace(/<head([^>]*)>/i, '<head$1><base href="' + base + '">');
-                    }
-                    element = document.createElement('hyperframes-player');
-                    element.setAttribute('muted', '');
-                    element.setAttribute('audio-locked', '');
-                    element.setAttribute('loop', '');
-                    element.setAttribute('width', String(item.preview.width));
-                    element.setAttribute('height', String(item.preview.height));
-                    // Omitting controls removes all playback UI. The card owns pointer/focus input.
-                    element.addEventListener('error', fail, { once: true });
-                    element.addEventListener('ready', () => {
-                        if (cancelled || !element)
-                            return;
-                        element.play();
-                        show();
-                    }, { once: true });
-                    element.setAttribute('srcdoc', html);
-                }
+                element = document.createElement('video');
+                element.muted = true;
+                element.loop = true;
+                element.playsInline = true;
+                element.addEventListener('error', fail, { once: true });
+                element.addEventListener('playing', show, { once: true });
+                element.src = item.video;
                 if (cancelled) {
                     release();
                     return;
@@ -235,8 +190,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 element.setAttribute('tabindex', '-1');
                 element.setAttribute('aria-hidden', 'true');
                 host.appendChild(element);
-                if (item.preview.mode === 'video')
-                    element.play().catch(fail);
+                element.play().catch(fail);
             }
             catch {
                 if (!cancelled)

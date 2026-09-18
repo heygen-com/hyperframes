@@ -80,8 +80,7 @@ function payloadPath(kind: ItemKind, name: string): string {
 
 /** Has a real, playable preview payload been built for this item? */
 function hasPayload(kind: ItemKind, name: string): boolean {
-  const path = payloadPath(kind, name);
-  return existsSync(path) && !("unsupported" in JSON.parse(readFileSync(path, "utf-8")));
+  return existsSync(payloadPath(kind, name)) && unsupportedFlag(kind, name) === null;
 }
 
 /** The Chrome flag this item's payload needs to render live, if any. */
