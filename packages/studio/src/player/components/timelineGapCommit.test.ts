@@ -187,9 +187,31 @@ describe("resolveMainTrackDeleteRippleShifts", () => {
   it("closes the gap left by a deleted main-track clip", () => {
     const deleted = [el("b", 2, 2)];
     const survivors = [el("a", 0, 2), el("c", 8, 1)]; // "b" already removed from this set
+    // "c" shifts left by exactly "b"'s 2s duration (8 -> 6), not all the way
+    // to 2: the 4-6..8 span was already an open gap before the delete, and
+    // ripple must not also swallow it.
     expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, true)).toEqual([
-      { key: "c", newStart: 2 },
+      { key: "c", newStart: 6 },
     ]);
+  });
+
+  it("does not also close a pre-existing gap the delete never touched", () => {
+    // a(0-2), b(2-4)[deleted], GAP(4-6), c(6-7): deleting b should slide c
+    // left by b's 2s only, landing at 4 — flush against a, the pre-existing
+    // gap collapsed only because it's now adjacent, not doubly-counted.
+    const deleted = [el("b", 2, 2)];
+    const survivors = [el("a", 0, 2), el("c", 6, 1)];
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, true)).toEqual([
+      { key: "c", newStart: 4 },
+    ]);
+  });
+
+  it("leaves an untouched clip before the delete point exactly where it was", () => {
+    // a(0-2), GAP(2-5), b(5-7)[deleted]: nothing follows b, so nothing
+    // shifts — a keeps its own leading position, ripple included.
+    const deleted = [el("b", 5, 2)];
+    const survivors = [el("a", 0, 2)];
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, true)).toBeNull();
   });
 
   it("returns null when ripple is off", () => {
@@ -220,6 +242,6 @@ describe("resolveMainTrackDeleteRippleShifts", () => {
     const deleted = [el("b", 2, 2)];
     const survivors = [el("a", 0, 2), el("c", 8, 1), el("overlay", 3, 1, 1)];
     const shifts = resolveMainTrackDeleteRippleShifts(survivors, deleted, true);
-    expect(shifts).toEqual([{ key: "c", newStart: 2 }]); // "overlay" (track 1) untouched
+    expect(shifts).toEqual([{ key: "c", newStart: 6 }]); // "overlay" (track 1) untouched
   });
 });

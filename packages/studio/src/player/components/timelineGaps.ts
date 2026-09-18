@@ -13,7 +13,7 @@ import type { TimelineElement } from "../store/playerStore";
  * - Computed starts are rounded to millisecond precision, matching the drag
  *   commit's `round3`.
  */
-const TRACK_GAP_EPSILON_S = 1e-3;
+export const TRACK_GAP_EPSILON_S = 1e-3;
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 
@@ -28,7 +28,7 @@ const keyOf = (e: TimelineElement) => e.key ?? e.id;
 export function laneGapFloor(elements: readonly TimelineElement[]): number {
   return Math.max(0, ...elements.map((e) => e.expandedParentStart ?? 0));
 }
-const round3 = (v: number) => Math.round(v * 1000) / 1000;
+export const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const endOf = (e: TimelineElement) => e.start + e.duration;
 
 /** Lane clips sorted by start (key as a deterministic tie-break). */
