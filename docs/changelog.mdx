@@ -9,6 +9,44 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.48"
+  description="Released - 2026-09-18"
+  tags={["Release", "CLI", "Studio", "Registry"]}
+>
+Studio's main track now snaps clips together and closes gaps on delete, and host apps can open the ask-agent flow straight from a picked element. The rest is CLI and editor stability fixes, plus one catalog timing tweak.
+
+## Features
+
+- **Studio:** Operators get a magnetic main track that closes gaps on delete ([8fe480c0a](https://github.com/heygen-com/hyperframes/commit/8fe480c0a0a4796ebc4b12f05f45ac1329707bb9), [#4069](https://github.com/heygen-com/hyperframes/pull/4069)).
+- **Studio:** The segment ease control is discoverable at rest ([5ef5419a9](https://github.com/heygen-com/hyperframes/commit/5ef5419a9e9be11855f76f7dc4b6b947fdccd6f2), [#4074](https://github.com/heygen-com/hyperframes/pull/4074)).
+- **Studio:** Host apps can open the ask-agent flow from a picked element ([e174b1715](https://github.com/heygen-com/hyperframes/commit/e174b1715b6ef0897693a0d278c72343d11f2a1d), [#4075](https://github.com/heygen-com/hyperframes/pull/4075)).
+- **Studio:** Open a project's root composition automatically on load ([b0e4316a2](https://github.com/heygen-com/hyperframes/commit/b0e4316a2042f22f7df757d50840997edbf4bb55), [#4057](https://github.com/heygen-com/hyperframes/pull/4057)).
+
+## Fixes
+
+- **CLI:** Stop the cancellable-process test reading a pid file mid-write ([2a9912ec9](https://github.com/heygen-com/hyperframes/commit/2a9912ec995d84efdd48f78c10ce4b02c4afc6cd), [#4080](https://github.com/heygen-com/hyperframes/pull/4080)).
+- **Studio:** Keep the volume slider editable while automation owns the level ([3306dbcdc](https://github.com/heygen-com/hyperframes/commit/3306dbcdc0201d636d3fa4b5715c76907540e932), [#4066](https://github.com/heygen-com/hyperframes/pull/4066)).
+- **CLI:** Stop the preflight cancel test reading a pid file mid-write ([a7cc1d2cf](https://github.com/heygen-com/hyperframes/commit/a7cc1d2cffc9bd31fcb0f19c4b30e95dadacf55d), [#4077](https://github.com/heygen-com/hyperframes/pull/4077)).
+- **CLI:** Detect a missing or stale studio build before it crashes ([de9206e0f](https://github.com/heygen-com/hyperframes/commit/de9206e0f8512ea6fca539c981c1688db6771045), [#4076](https://github.com/heygen-com/hyperframes/pull/4076)).
+- **Studio:** Keep clips on their row through group, ungroup, and composition recovery ([a8d44b259](https://github.com/heygen-com/hyperframes/commit/a8d44b25963bb92ddb7f07da5e0fc30641922573), [#4068](https://github.com/heygen-com/hyperframes/pull/4068)).
+- **CLI:** Distinguish agent and execution harness telemetry ([2a559714e](https://github.com/heygen-com/hyperframes/commit/2a559714ee5b455e9dbd21a399f01afb178d9265), [#4071](https://github.com/heygen-com/hyperframes/pull/4071)).
+- **Studio:** Dropped timeline assets land where you drop them ([bf39a7278](https://github.com/heygen-com/hyperframes/commit/bf39a727876eb4529584c836e66a0c7cd571c399), [#4062](https://github.com/heygen-com/hyperframes/pull/4062)).
+- **CLI:** Collapse startup lint output to a one-line summary ([096459e76](https://github.com/heygen-com/hyperframes/commit/096459e76d74d61e8ad7340d5e57672ef493b085), [#4052](https://github.com/heygen-com/hyperframes/pull/4052)).
+
+## Catalog
+
+- **Registry:** Corner brackets fade in on cue in north-korea-locked-down ([2679ebdd0](https://github.com/heygen-com/hyperframes/commit/2679ebdd0d2c896273be333ec4504b0ea57ceaf1), [#4081](https://github.com/heygen-com/hyperframes/pull/4081)).
+
+## Internal
+
+- **Engine:** Time the bun --eval spawn in resolveHeadlessShellPath tests ([856ac34c5](https://github.com/heygen-com/hyperframes/commit/856ac34c53d381ca8202c5918096e5ce0892383f), [#4078](https://github.com/heygen-com/hyperframes/pull/4078)).
+- **Studio:** Extract hotkey dispatch out of useAppHotkeys ([700b94834](https://github.com/heygen-com/hyperframes/commit/700b94834de9689cd68ed10703d1143cc636de3f), [#4079](https://github.com/heygen-com/hyperframes/pull/4079)).
+- **CLI:** Time each native Sharp call in the flaky Windows contact-sheet test ([3867d8da5](https://github.com/heygen-com/hyperframes/commit/3867d8da5d10804bb886bf50a9e9f4db3eecdaf9), [#4070](https://github.com/heygen-com/hyperframes/pull/4070)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.47...v0.8.48).
+</Update>
+
+<Update
   label="HyperFrames v0.8.47"
   description="Released - 2026-09-18"
   tags={["Release", "Studio", "Player", "Studio Server"]}
