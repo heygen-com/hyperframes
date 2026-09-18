@@ -28,3 +28,7 @@ broader Node.js ecosystem.
 - **[mediabunny](https://github.com/Vanilagy/mediabunny)** — media toolkit used
   in the studio for fast metadata extraction from file headers. Licensed under
   the [Mozilla Public License 2.0 (MPL-2.0)](https://mozilla.org/MPL/2.0/).
+- The seven 3D-motion catalog pieces (`canopy-part-title`, `glass-shard-title`,
+  `code-slice-hero`, `frost-sequence-camera-orbit`, `cuboid-carousel`,
+  `orbit-card`, `wireframe-portal-title`) are contributed with their author's
+  permission under this repository's license.

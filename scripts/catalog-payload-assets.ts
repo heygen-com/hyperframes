@@ -44,6 +44,7 @@ export const MIME_TYPES: Record<string, string> = {
   ".json": "application/json",
   ".glb": "model/gltf-binary",
   ".gltf": "model/gltf+json",
+  ".hdr": "image/vnd.radiance",
   ".wav": "audio/wav",
   ".mp3": "audio/mpeg",
   ".mp4": "video/mp4",
@@ -248,7 +249,12 @@ function cacheAsset(bytes: Buffer<ArrayBuffer>, ext: string, target: AssetTarget
  * Types the host will not publish still travel as data URIs, because a link to
  * a file that 404s is worse than a larger payload.
  */
-export function processAssets(html: string, projectDir: string, target: AssetTarget): AssetResult {
+export function processAssets(
+  html: string,
+  projectDir: string,
+  target: AssetTarget,
+  scriptsInlinedByCaller = false,
+): AssetResult {
   const root = resolve(projectDir);
   let out = html;
   let hosted = 0;
@@ -277,6 +283,13 @@ export function processAssets(html: string, projectDir: string, target: AssetTar
     const ext = extname(source).toLowerCase();
     const mime = MIME_TYPES[ext];
     if (!mime) {
+      unresolved.push(ref);
+      continue;
+    }
+
+    // The caller's inliner matches these script tags by their original src, so
+    // they must stay untouched; every other item embeds its scripts as data: URIs.
+    if (scriptsInlinedByCaller && (ext === ".js" || ext === ".mjs")) {
       unresolved.push(ref);
       continue;
     }
@@ -338,10 +351,12 @@ export function externalizeDataUris(
   return { html: out, externalized };
 }
 
-/** Enumerate publishable paths without using pathname sizes to authorize reads. */
+/** Enumerates publishable paths without using pathname sizes to authorize reads. `.js`/`.mjs`/
+ * `.hdr` are never hosted (see catalog-script-inlining.ts); `source/` (pre-compile input) is skipped. */
 function* hostedPaths(from: string, rel = ""): Generator<string> {
   for (const entry of readdirSync(from, { withFileTypes: true })) {
     if (entry.isSymbolicLink()) continue;
+    if (!rel && entry.name === "source") continue;
     const childRel = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       yield* hostedPaths(join(from, entry.name), childRel);
@@ -361,6 +376,29 @@ function downloadMirrorPrefix(projectDir: string): string | null {
     return rel ? `${rel}/` : "";
   } catch (error) {
     if (isMissingFile(error)) return null;
+    throw error;
+  }
+}
+
+function isMirrorPair(file: {
+  path?: string;
+  target?: string;
+}): file is { path: string; target: string } {
+  return Boolean(file.path && file.target && file.path !== file.target);
+}
+
+// target -> path for every pair mirrorRegistryTargets already copied, so a
+// target's bytes can be reused instead of re-read and re-charged.
+function installMirrorTargets(projectDir: string): Map<string, string> {
+  try {
+    const manifest = JSON.parse(readFileSync(join(projectDir, "registry-item.json"), "utf-8")) as {
+      files?: { path?: string; target?: string }[];
+    };
+    return new Map(
+      (manifest.files ?? []).filter(isMirrorPair).map((file) => [file.target, file.path]),
+    );
+  } catch (error) {
+    if (isMissingFile(error)) return new Map();
     throw error;
   }
 }
@@ -387,6 +425,17 @@ function downloadMirrorPrefix(projectDir: string): string | null {
  */
 export const MAX_HOSTED_DIRECTORY_BYTES = 2_000_000;
 
+/**
+ * Named, reviewed exceptions to the cap above, each measured and one line why.
+ * Anything not listed here keeps the 2 MB default and falls back to its video.
+ */
+export const HOSTED_DIRECTORY_BYTE_ALLOWANCE: Record<string, number> = {
+  // Textures/fonts only, frost.js now travels in-payload. Measured 2026-09-18: 7,708,493 B.
+  "frost-sequence-camera-orbit": 8_500_000,
+  // Fonts + matcap only, glass-main.js/HDR now travel in-payload. Measured 2026-09-18: 3,387,474 B.
+  "glass-shard-title": 4_000_000,
+};
+
 // "not-needed" and "over-budget" both leave nothing published, but the caller
 // must not treat them alike: an over-budget item still needs the directory,
 // so it has to fall back to its recorded video instead of shipping with dead
@@ -396,25 +445,83 @@ export type HostItemDirectoryResult =
   | { readonly status: "hosted"; readonly baseHref: string }
   | { readonly status: "over-budget" };
 
+interface ChargeState {
+  files: Map<string, Buffer<ArrayBuffer>>;
+  total: number;
+}
+
+// Reads one path against the remaining budget, charging its bytes toward
+// `state.total`. Returns false only when adding it would overflow the
+// budget, so the caller can abort before that file is ever recorded.
+function chargeRead(
+  projectDir: string,
+  path: string,
+  maxBytes: number,
+  state: ChargeState,
+): boolean {
+  const bytes = readProjectFile(projectDir, join(projectDir, path), maxBytes - state.total);
+  if (bytes === null) return true;
+  state.total += bytes.length;
+  if (state.total > maxBytes) return false;
+  state.files.set(path, bytes);
+  return true;
+}
+
+function readDirect(
+  projectDir: string,
+  paths: string[],
+  maxBytes: number,
+  state: ChargeState,
+): boolean {
+  for (const path of paths) {
+    if (!chargeRead(projectDir, path, maxBytes, state)) return false;
+  }
+  return true;
+}
+
+// A mirrored path's source may already be in `state.files` (reuse, no re-read
+// or re-charge) or may itself have been dropped as too large or unreadable,
+// in which case it falls back to reading and charging the target directly.
+function readMirrored(
+  projectDir: string,
+  paths: string[],
+  installTargets: Map<string, string>,
+  maxBytes: number,
+  state: ChargeState,
+): boolean {
+  for (const path of paths) {
+    const source = state.files.get(installTargets.get(path) as string);
+    if (source !== undefined) {
+      state.files.set(path, source);
+      continue;
+    }
+    if (!chargeRead(projectDir, path, maxBytes, state)) return false;
+  }
+  return true;
+}
+
 export function hostItemDirectory(
   projectDir: string,
   destDir: string,
   urlBase: string,
+  maxBytes: number = MAX_HOSTED_DIRECTORY_BYTES,
 ): HostItemDirectoryResult {
   const mirrorPrefix = downloadMirrorPrefix(projectDir);
-  const files = new Map<string, Buffer<ArrayBuffer>>();
-  let total = 0;
-  for (const path of hostedPaths(projectDir)) {
-    const bytes = readProjectFile(
-      projectDir,
-      join(projectDir, path),
-      MAX_HOSTED_DIRECTORY_BYTES - total,
-    );
-    if (bytes === null) continue;
-    total += bytes.length;
-    if (total > MAX_HOSTED_DIRECTORY_BYTES) return { status: "over-budget" };
-    files.set(path, bytes);
-  }
+  const installTargets = installMirrorTargets(projectDir);
+  const state: ChargeState = { files: new Map(), total: 0 };
+
+  // Read every path that is not a known install-layout duplicate first, so a
+  // target's source is always already in `state.files` by the time the target
+  // is handled below, regardless of the order the filesystem yields entries in.
+  const allPaths = [...hostedPaths(projectDir)];
+  const [mirrored, direct] = [
+    allPaths.filter((path) => installTargets.has(path)),
+    allPaths.filter((path) => !installTargets.has(path)),
+  ];
+  if (!readDirect(projectDir, direct, maxBytes, state)) return { status: "over-budget" };
+  if (!readMirrored(projectDir, mirrored, installTargets, maxBytes, state))
+    return { status: "over-budget" };
+  const { files } = state;
 
   // Charge each source once, as before. Publish only after the entire item fits,
   // and reuse the collected bytes for both registry and install-path layouts.
