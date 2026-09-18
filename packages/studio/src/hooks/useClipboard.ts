@@ -115,7 +115,11 @@ export function pasteTimelineClips(
   for (const clip of clips) {
     // data-hf-id is pinned once minted (hfIdAssignment.ts never repairs an
     // existing one), so a raw clone would keep the source's id forever.
-    const stripped = clip.html.replace(/\sdata-hf-id="[^"]*"/g, "");
+    // Scoped to tag brackets so a clip's visible text content can't be
+    // mistaken for the attribute if it happens to contain the same string.
+    const stripped = clip.html.replace(/<[^>]+>/g, (tag) =>
+      tag.replace(/\sdata-hf-id="[^"]*"/g, ""),
+    );
     const deduped = deduplicateIds(stripped, existingIds);
     existingIds = existingIds.concat(collectHtmlIds(deduped));
     const newStart = anchorTime + (clip.start - groupMinStart);

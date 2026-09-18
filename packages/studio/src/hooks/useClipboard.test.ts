@@ -86,7 +86,10 @@ describe("pasteTimelineClips", () => {
     expect(content).not.toContain("data-hf-id");
   });
 
-  it("only strips the root's own data-hf-id, not one on a nested descendant", () => {
+  it("strips a nested descendant's data-hf-id too, not just the root's", () => {
+    // A composition-instance clip's descendants carry their own hf-ids; a
+    // clone must remint all of them, not just the root, or the descendants
+    // collide with their originals the same way the root would.
     const nested: TimelineClipboardClip = {
       html: '<div data-hf-id="hf-root" id="comp-1" data-start="7.8" data-duration="0.57" data-track-index="109"><span data-hf-id="hf-child"></span></div>',
       start: 7.8,
@@ -94,7 +97,20 @@ describe("pasteTimelineClips", () => {
       track: 109,
     };
     const { content } = pasteTimelineClips(ROOT, [nested], 40, []);
+    expect(content).not.toContain("hf-root");
+    expect(content).not.toContain("hf-child");
     expect(content).not.toContain("data-hf-id");
+  });
+
+  it("does not strip text content that happens to contain the data-hf-id string", () => {
+    const withText: TimelineClipboardClip = {
+      html: '<div id="cap-1" data-start="7.8" data-duration="0.57" data-track-index="109"><span>talking about data-hf-id="hf-xyz" in my video</span></div>',
+      start: 7.8,
+      duration: 0.57,
+      track: 109,
+    };
+    const { content } = pasteTimelineClips(ROOT, [withText], 40, []);
+    expect(content).toContain('talking about data-hf-id="hf-xyz" in my video');
   });
 
   it("bumps the second clip in a batch off the first clip's own new track when their offsets collide", () => {
