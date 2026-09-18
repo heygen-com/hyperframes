@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 interface ExecFileCall {
   file: string;
   args: readonly string[];
+  options: unknown;
 }
 
 type ExecFileOutcome =
@@ -31,8 +32,9 @@ function createExecFileSpy(outcome: ExecFileOutcome): {
   async function run(
     file: string,
     args: readonly string[],
+    options: unknown,
   ): Promise<{ stdout: string; stderr: string }> {
-    calls.push({ file, args });
+    calls.push({ file, args, options });
     if (outcome.kind === "enoent") {
       const err = new Error("spawn ffmpeg ENOENT") as NodeJS.ErrnoException;
       err.code = "ENOENT";
@@ -55,10 +57,10 @@ function createExecFileSpy(outcome: ExecFileOutcome): {
   const execFile = ((
     file: string,
     args: readonly string[],
-    _options: unknown,
+    options: unknown,
     callback: (err: Error | null, stdout?: string, stderr?: string) => void,
   ) => {
-    run(file, args).then(
+    run(file, args, options).then(
       ({ stdout, stderr }) => process.nextTick(() => callback(null, stdout, stderr)),
       (err: Error) => process.nextTick(() => callback(err)),
     );
@@ -71,7 +73,8 @@ function createExecFileSpy(outcome: ExecFileOutcome): {
   (execFile as { [k: symbol]: unknown })[promisify.custom] = (
     file: string,
     args: readonly string[],
-  ) => run(file, args);
+    options: unknown,
+  ) => run(file, args, options);
 
   return { execFile, calls };
 }
@@ -154,6 +157,16 @@ describe("isPsnrFilterAvailable", () => {
     resetPsnrFilterAvailabilityCache();
     await isPsnrFilterAvailable();
     expect(calls.length).toBe(2);
+  });
+
+  it("probes ffmpeg with windowsHide so no console window flashes on Windows", async () => {
+    const { execFile, calls } = createExecFileSpy({ kind: "ok", stdout: "psnr" });
+    vi.doMock("node:child_process", () => ({ execFile }));
+
+    const { isPsnrFilterAvailable } = await import("./psnrFilterAvailability.js");
+    await isPsnrFilterAvailable();
+
+    expect(calls[0]?.options).toEqual(expect.objectContaining({ windowsHide: true }));
   });
 
   it("does not treat a whole-string 'psnr' inside another word as the filter", async () => {

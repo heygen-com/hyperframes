@@ -183,7 +183,7 @@ function isWebCompatible(codec: string): boolean {
 
 // hasFFmpeg is imported from whisper/manager.ts to avoid duplication
 
-function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean> {
+export function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean> {
   return new Promise((resolvePromise) => {
     const ffmpegPath = findFFmpeg();
     if (!ffmpegPath) {
@@ -208,7 +208,7 @@ function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean>
         "-y",
         outputPath,
       ],
-      { stdio: "pipe" },
+      { stdio: "pipe", windowsHide: true },
     );
 
     child.on("close", (code) => resolvePromise(code === 0));

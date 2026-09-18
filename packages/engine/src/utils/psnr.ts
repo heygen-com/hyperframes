@@ -24,7 +24,7 @@ export async function psnrDb(a: Buffer, b: Buffer): Promise<number> {
     const { stderr } = await execFileP(
       getFfmpegBinary(),
       ["-hide_banner", "-i", pa, "-i", pb, "-lavfi", "psnr", "-f", "null", "-"],
-      { maxBuffer: 4 * 1024 * 1024 },
+      { maxBuffer: 4 * 1024 * 1024, windowsHide: true },
     );
     const m = /average:(inf|[\d.]+)/.exec(stderr);
     if (!m) throw new Error(`psnr parse failed: ${stderr.slice(-300)}`);
