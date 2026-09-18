@@ -1,3 +1,4 @@
+import { PreviewGuides } from "../editor/PreviewGuides";
 import { useCallback, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { PlayerControls } from "../../player";
 import type { TimelineElement } from "../../player";
@@ -142,6 +143,7 @@ export function PreviewPane({
           )}
           <AssetPreviewOverlay />
         </div>
+        <PreviewGuides iframeRef={iframeRef} />
         {!isFullscreen && previewOverlay}
       </div>
       {/* Transport row: no own background or border — the controls sit flat on

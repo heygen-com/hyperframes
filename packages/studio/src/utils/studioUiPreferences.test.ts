@@ -37,6 +37,21 @@ describe("studio UI preferences", () => {
     });
   });
 
+  it("remembers the ruler and safe-margin toggles and drops non-boolean values", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ rulerVisible: true, safeMarginsVisible: false }, storage);
+    expect(readStudioUiPreferences(storage)).toEqual({
+      rulerVisible: true,
+      safeMarginsVisible: false,
+    });
+
+    storage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({ rulerVisible: "yes", safeMarginsVisible: 1 }),
+    );
+    expect(readStudioUiPreferences(storage)).toEqual({});
+  });
+
   it("ignores malformed stored values", () => {
     const storage = createStorage();
     storage.setItem(

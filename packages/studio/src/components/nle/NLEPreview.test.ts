@@ -134,6 +134,19 @@ describe("getPreviewPlayerKey", () => {
 });
 
 describe("resolvePreviewStageSize", () => {
+  it("reserves the ruler gutter on both sides of both axes", () => {
+    const wide = { width: 1920, height: 1080 };
+    const tall = { width: 1080, height: 1920 };
+    expect(resolvePreviewStageSize(512, 402, wide, undefined, 16)).toEqual({
+      width: 464,
+      height: 261,
+    });
+    expect(resolvePreviewStageSize(512, 402, tall, undefined, 16)).toEqual({
+      width: 199.125,
+      height: 354,
+    });
+  });
+
   it("fits portrait composition dimensions by height in a narrow viewport", () => {
     expect(resolvePreviewStageSize(512, 402, { width: 1080, height: 1920 }, undefined)).toEqual({
       width: 217.125,
