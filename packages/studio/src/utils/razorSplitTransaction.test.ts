@@ -42,9 +42,9 @@ describe("buildAtomicCutIntents", () => {
     expect(intents[0].targets[0].track).toBe(2);
   });
 
-  it("omits track when the element has no resolved authoredTrack", () => {
-    const intents = buildAtomicCutIntents([element()], 2, "index.html");
-    expect(intents[0].targets[0].track).toBeUndefined();
+  it("falls back to the resolved track when the element has no authoredTrack", () => {
+    const intents = buildAtomicCutIntents([element({ track: 3 })], 2, "index.html");
+    expect(intents[0].targets[0].track).toBe(3);
   });
 
   it("rebases each nested target into its own source-file coordinates", () => {
