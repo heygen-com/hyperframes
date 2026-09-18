@@ -56,6 +56,12 @@
       "types": "./dist/mediaTiming.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./composition-readiness": {
+      "source": "./src/compositionReadiness.ts",
+      "runtime": "./dist/compositionReadiness.js",
+      "types": "./dist/compositionReadiness.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./editing": {
       "source": "./src/editing/affordances.ts",
       "runtime": "./dist/editing/affordances.js",

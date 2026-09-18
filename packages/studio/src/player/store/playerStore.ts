@@ -19,6 +19,7 @@ import {
 import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
+import { createPlaybackReadinessSlice, type PlaybackReadinessSlice } from "./readinessSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -54,12 +55,15 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState
-  extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice, EditingModeSlice {
+type PlayerStoreSlices = KeyframeSlice &
+  AutomationSelectionSlice &
+  ThumbnailSlice &
+  EditingModeSlice &
+  PlaybackReadinessSlice;
+interface PlayerState extends PlayerStoreSlices {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
-  timelineReady: boolean;
   /** Increments exactly once when the Studio switches to a different project. */
   timelineSessionEpoch: number;
   /** Project owning the current timeline session; null outside a project-scoped reset. */
@@ -129,7 +133,6 @@ interface PlayerState
   setAudioMuted: (muted: boolean) => void;
   setAudioVolume: (volume: number) => void;
   setLoopEnabled: (enabled: boolean) => void;
-  setTimelineReady: (ready: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
@@ -304,7 +307,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
   duration: 0,
-  timelineReady: false,
   timelineSessionEpoch: 0,
   timelineProjectId: null,
   beatDragging: false,
@@ -333,6 +335,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   ...createAutomationSelectionSlice(set),
   ...createEditingModeSlice(set),
+  ...createPlaybackReadinessSlice(set),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
@@ -521,7 +524,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   bumpZEditVersion: () => set((state) => ({ zEditVersion: state.zEditVersion + 1 })),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
-  setTimelineReady: (ready) => set({ timelineReady: ready }),
   setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
   // A genuine single selection: always collapse the set to just this element. User

@@ -42,7 +42,7 @@ interface UseTimelineSyncCallbacksParams {
   syncTimelineElements: (elements: TimelineElement[], nextDuration?: number) => void;
   setDuration: (v: number) => void;
   setCurrentTime: (v: number) => void;
-  setTimelineReady: (v: boolean) => void;
+  requestTimelineReady: (doc: Document | null) => void;
   setIsPlaying: (v: boolean) => void;
   attachIframeShortcutListeners: () => void;
   applyPreviewAudioState: () => void;
@@ -106,7 +106,7 @@ export function useTimelineSyncCallbacks({
   syncTimelineElements,
   setDuration,
   setCurrentTime,
-  setTimelineReady,
+  requestTimelineReady,
   setIsPlaying,
   attachIframeShortcutListeners,
   applyPreviewAudioState,
@@ -204,7 +204,10 @@ export function useTimelineSyncCallbacks({
     syncAdapterDuration(adapter, setDuration);
     setCurrentTime(startTime);
     if (!isRefreshingRef.current) {
-      setTimelineReady(true);
+      // Enables Play from actual play-readiness, not just a known duration —
+      // a click before this resolves used to start the timeline with media,
+      // images or fonts still loading and never recover.
+      requestTimelineReady(safeContentDocument(iframeRef.current));
     }
     isRefreshingRef.current = false;
     setIsPlaying(false);
@@ -223,7 +226,7 @@ export function useTimelineSyncCallbacks({
     getAdapter,
     setDuration,
     setCurrentTime,
-    setTimelineReady,
+    requestTimelineReady,
     setIsPlaying,
     processTimelineMessage,
     enrichMissingCompositions,

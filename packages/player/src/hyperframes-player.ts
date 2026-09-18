@@ -20,6 +20,10 @@ import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import {
+  scanPendingCompositionAssets,
+  settleCompositionReadiness,
+} from "@hyperframes/core/composition-readiness";
 
 // Playback-rate bounds mirror the runtime clamp in
 // packages/core/src/runtime/init.ts (applyPlaybackRate) and media.ts so the
@@ -37,12 +41,6 @@ const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // playback forever.
 const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
-// HTMLMediaElement.HAVE_FUTURE_DATA per spec — used as a literal because not
-// every DOM implementation defines the named static (e.g. happy-dom leaves
-// it undefined, which would make `readyState < HTMLMediaElement.HAVE_FUTURE_DATA`
-// silently always false).
-const HAVE_FUTURE_DATA = 3;
-const ASSETS_TIMED_OUT = Symbol("assets-ready-timeout");
 
 export type ColorGradingTarget =
   | string
@@ -383,6 +381,12 @@ class HyperframesPlayer extends HTMLElement {
       // is called before the probe has resolved.
       if (this._ready && !this._directTimelineAdapter) {
         this._startParentTickClock();
+      } else if (!this._ready) {
+        // Bridge path but probe hasn't resolved: the control message above
+        // has nothing to land on yet and no tick clock started, so without
+        // this the click is silently dropped. Retried from _onProbeReady /
+        // _onRuntimeTimelineReady once ready.
+        this._pendingPlay = true;
       }
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
@@ -980,7 +984,7 @@ class HyperframesPlayer extends HTMLElement {
     this._replayBridgeState();
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc);
-    if (this.hasAttribute("autoplay")) this.play();
+    if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
   }
 
   private _onProbeReady({ duration, adapter, compositionSize }: ProbeResult) {
@@ -998,61 +1002,43 @@ class HyperframesPlayer extends HTMLElement {
     if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc);
-    if (this.hasAttribute("autoplay")) this.play();
+    if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
   }
 
-  /** Gates play() on the composition's media/images/fonts, bounded by
-   *  ASSETS_READY_TIMEOUT_MS. Settles synchronously when there's nothing to
-   *  wait on, so the common case keeps today's immediate-autoplay behavior. */
+  /** Gates play() on composition readiness (media/images/fonts), bounded by
+   * ASSETS_READY_TIMEOUT_MS; settles synchronously when nothing is pending. */
   private _waitForAssetsReady(doc: Document | null): void {
     this._assetsReady = false;
     // Invalidates any earlier wait still in flight (a composition swap, or
     // disconnect, mid-wait) — its eventual settle checks this and no-ops
     // rather than resolving a since-superseded generation.
     const generation = ++this._assetsGeneration;
-
-    const scan = doc && this._scanPendingAssets(doc);
-    if (
-      !doc ||
-      !scan ||
-      (scan.pendingMedia.length === 0 && scan.pendingImages.length === 0 && !scan.fontsLoading)
-    ) {
+    if (!doc) {
       this._settleAssetsReady(generation);
       return;
     }
-
-    this.setAttribute(ASSETS_LOADING_ATTR, "");
-    this.shaderLoader.showAssetsLoading();
-
-    const timeout = new Promise<typeof ASSETS_TIMED_OUT>((resolve) =>
-      setTimeout(() => resolve(ASSETS_TIMED_OUT), ASSETS_READY_TIMEOUT_MS),
+    settleCompositionReadiness(
+      doc,
+      ({ timedOut }) => {
+        if (generation !== this._assetsGeneration) return;
+        if (timedOut) this._warnStuckAssets(doc);
+        this._settleAssetsReady(generation);
+      },
+      { timeoutMs: ASSETS_READY_TIMEOUT_MS },
     );
-    Promise.race([this._collectAssetPromises(doc, scan), timeout]).then((result) => {
-      if (generation !== this._assetsGeneration) return;
-      if (result === ASSETS_TIMED_OUT) this._warnStuckAssets(doc);
-      this._settleAssetsReady(generation);
-    });
-  }
-
-  /** One DOM pass for everything not yet ready — shared by the up-front
-   *  already-loaded check and the promise-collection path below it. */
-  private _scanPendingAssets(doc: Document): {
-    pendingMedia: HTMLMediaElement[];
-    pendingImages: HTMLImageElement[];
-    fontsLoading: boolean;
-  } {
-    const pendingMedia = Array.from(doc.querySelectorAll("video, audio"))
-      .filter(isRealmHtmlMediaElement)
-      .filter((el) => el.readyState < HAVE_FUTURE_DATA);
-    const pendingImages = Array.from(doc.querySelectorAll("img")).filter((img) => !img.complete);
-    const fontsLoading = doc.fonts?.status === "loading";
-    return { pendingMedia, pendingImages, fontsLoading };
+    // settleCompositionReadiness calls back synchronously when nothing was
+    // pending, so _assetsReady is already true here in the common case — the
+    // loading overlay only shows for the genuinely-waiting case.
+    if (!this._assetsReady) {
+      this.setAttribute(ASSETS_LOADING_ATTR, "");
+      this.shaderLoader.showAssetsLoading();
+    }
   }
 
   /** Timeout diagnostic. Re-scans (rather than reusing the original scan)
    *  since some assets may have resolved in the 8s since. */
   private _warnStuckAssets(doc: Document): void {
-    const { pendingMedia, pendingImages, fontsLoading } = this._scanPendingAssets(doc);
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc);
     console.warn(
       `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms — playing anyway`,
       {
@@ -1084,33 +1070,6 @@ class HyperframesPlayer extends HTMLElement {
     this._assetsGeneration++;
     this.removeAttribute(ASSETS_LOADING_ATTR);
     this.shaderLoader.hide();
-  }
-
-  private _collectAssetPromises(
-    doc: Document,
-    { pendingMedia, pendingImages, fontsLoading }: ReturnType<typeof this._scanPendingAssets>,
-  ): Promise<void> {
-    const mediaReady = pendingMedia.map(
-      (el) =>
-        new Promise<void>((resolve) => {
-          const onSettled = () => {
-            el.removeEventListener("canplay", onSettled);
-            el.removeEventListener("error", onSettled);
-            resolve();
-          };
-          el.addEventListener("canplay", onSettled);
-          el.addEventListener("error", onSettled);
-        }),
-    );
-
-    const imagesReady = pendingImages.map((img) =>
-      img.decode ? img.decode().catch(() => {}) : Promise.resolve(),
-    );
-
-    const fontsReady =
-      fontsLoading && doc.fonts ? doc.fonts.ready.then(() => {}) : Promise.resolve();
-
-    return Promise.all([...mediaReady, ...imagesReady, fontsReady]).then(() => {});
   }
 
   private _rescale() {
