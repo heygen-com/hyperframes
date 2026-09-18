@@ -55,13 +55,7 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
       })
       .catch(() => {
         if (!cancelled) {
-          setFetched({
-            projectId,
-            loaded: true,
-            fileTree: [],
-            compositionPaths: [],
-            projectDir: null,
-          });
+          setFetched((prev) => (prev?.projectId === projectId ? { ...prev, loaded: true } : prev));
         }
       });
     return () => {
