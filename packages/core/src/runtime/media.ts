@@ -1,11 +1,22 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
-import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
+import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
+import {
+  rateAt,
+  readPreservePitch,
+  sourceTimeAt,
+  timeAtSourceTime,
+  type RateSpec,
+} from "../speedRamp.js";
 import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
-export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
+export {
+  readElementPlaybackRate,
+  readElementRateSpec,
+  resolveNaturalMediaTimelineDuration,
+} from "./playbackRate.js";
 
 export function readElementPlaybackStart(el: Element): number {
   return readMediaStart(el);
@@ -43,6 +54,8 @@ export type RuntimeMediaClip = {
   end: number;
   volume: number | null;
   playbackRate: number;
+  /** The rate lane when the clip has one; otherwise `playbackRate`. */
+  rate?: RateSpec;
   loop: boolean;
   /** Source media duration in seconds (from el.duration). Used for loop wrapping. */
   sourceDuration: number | null;
@@ -94,6 +107,7 @@ export function refreshRuntimeMediaCache(params?: {
     if (!Number.isFinite(start)) continue;
     const mediaStart = readElementPlaybackStart(el);
     const playbackRate = readElementPlaybackRate(el);
+    const rate = readElementRateSpec(el);
     const loop = el.loop;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
     let duration =
@@ -101,7 +115,7 @@ export function refreshRuntimeMediaCache(params?: {
     if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {
       // Effective duration accounts for playback rate:
       // at 0.5x, a 10s source plays for 20s on the timeline
-      duration = Math.max(0, (sourceDuration - mediaStart) / playbackRate);
+      duration = Math.max(0, timeAtSourceTime(rate, sourceDuration - mediaStart));
     }
     const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
     const end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
@@ -114,6 +128,7 @@ export function refreshRuntimeMediaCache(params?: {
       end,
       volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       playbackRate,
+      rate,
       loop,
       sourceDuration,
     };
@@ -243,7 +258,8 @@ export function syncRuntimeMedia(params: {
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
-    let relTime = (params.timeSeconds - clip.start) * clip.playbackRate + clip.mediaStart;
+    const clipRate = clip.rate ?? clip.playbackRate;
+    let relTime = sourceTimeAt(clipRate, params.timeSeconds - clip.start) + clip.mediaStart;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
     const isHeldVideoTail =
       isNonLoopVideo &&
@@ -369,7 +385,8 @@ export function syncRuntimeMedia(params: {
       if (el.preload !== "auto") el.preload = "auto";
       try {
         // Per-element rate × global transport rate
-        el.playbackRate = clip.playbackRate * params.playbackRate;
+        el.playbackRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
+        el.preservesPitch = readPreservePitch(el);
       } catch (err) {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);

@@ -6,8 +6,9 @@ import { resolveAuthoredTimingWindow } from "./authoredTiming";
 // would be an import cycle.
 import {
   parseStrictFiniteTimingNumber,
-  readElementPlaybackRate,
+  readElementRateSpec,
   readMediaStart,
+  resolveNaturalMediaTimelineDurationFromValues,
 } from "./playbackRate";
 import { isMediaElement } from "./domRealm";
 import { parseStartExpression } from "./startExpression";
@@ -73,7 +74,12 @@ export function createRuntimeStartTimeResolver(params: {
     if ((resolved == null || resolved <= 0) && isMediaElement(element)) {
       const playbackStart = readMediaStart(element);
       if (Number.isFinite(element.duration) && element.duration > playbackStart) {
-        resolved = (element.duration - playbackStart) / readElementPlaybackRate(element);
+        resolved =
+          resolveNaturalMediaTimelineDurationFromValues(
+            element.duration,
+            playbackStart,
+            readElementRateSpec(element),
+          ) ?? 0;
       }
     }
     if (resolved == null || resolved <= 0) {

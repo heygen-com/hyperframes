@@ -18,9 +18,11 @@ import {
   patchWebGLVideoTextureCompat,
 } from "./adapters/video-texture-compat";
 import { forceDispatchSeekEvent, waitForSeekCompletion } from "./adapters/seek-dispatch";
+import { sourceTimeAt } from "../speedRamp";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
   readElementPlaybackRate,
+  readElementRateSpec,
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
@@ -1068,6 +1070,7 @@ export function initSandboxRuntimeModular(): void {
     "data-hf-auto-start",
     MEDIA_START_BASIS_ATTR,
     "data-playback-rate",
+    "data-automation",
     "data-playback-start",
     "data-media-start",
     // `data-start` may be an expression referencing another element by id, and
@@ -3366,7 +3369,7 @@ export function initSandboxRuntimeModular(): void {
       const timelineDuration = getTimelineDurationSeconds(timeline);
       const sourceTime =
         readElementPlaybackStart(node) +
-        Math.max(0, timeSeconds - start) * readElementPlaybackRate(node);
+        sourceTimeAt(readElementRateSpec(node), Math.max(0, timeSeconds - start));
       const localTime = Math.max(
         0,
         timelineDuration != null && timelineDuration > 0
@@ -3800,7 +3803,12 @@ export function initSandboxRuntimeModular(): void {
             const mediaStart = readElementPlaybackStart(rawEl);
             if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
               if (!rawEl.paused) {
-                clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
+                clock.attachAudioSource({
+                  el: rawEl,
+                  compositionStart: start,
+                  mediaStart,
+                  rate: readElementRateSpec(rawEl),
+                });
                 foundActive = true;
               } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
                 // Audio is buffering — freeze visuals at last known position
@@ -3953,6 +3961,8 @@ export function initSandboxRuntimeModular(): void {
       // that existed before (#3458).
       const route = classifyWebAudioMediaRoute(rawEl);
       reportWebAudioMediaRoute(rawEl, route);
+      // Decoded buffers cannot follow a rate curve without shifting pitch; the media element can.
+      if (typeof readElementRateSpec(rawEl) !== "number") continue;
       // The cross-origin verdict's BEST outcome is decode, since a CDN that
       // sends `Access-Control-Allow-Origin` (the author just never wrote the
       // `crossorigin` attribute) decodes fine and keeps the whole FX graph.

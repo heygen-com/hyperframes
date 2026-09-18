@@ -42,12 +42,12 @@ describe("readElementPlaybackRate", () => {
     expect(readElementPlaybackRate(el)).toBe(1);
   });
 
-  it("clamps to [0.1, 5]", () => {
+  it("clamps to [0.1, 10]", () => {
     const el = document.createElement("video");
     Object.defineProperty(el, "defaultPlaybackRate", { value: 0.01, writable: true });
     expect(readElementPlaybackRate(el)).toBe(0.1);
-    Object.defineProperty(el, "defaultPlaybackRate", { value: 10, writable: true });
-    expect(readElementPlaybackRate(el)).toBe(5);
+    Object.defineProperty(el, "defaultPlaybackRate", { value: 20, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(10);
   });
 
   it("defaults to 1 for NaN/negative/zero", () => {
@@ -165,16 +165,16 @@ describe("refreshRuntimeMediaCache", () => {
     expect(result.mediaClips[0].playbackRate).toBe(1);
   });
 
-  it("clamps playback rate to [0.1, 5]", () => {
+  it("clamps playback rate to [0.1, 10]", () => {
     const el1 = createVideo({ "data-start": "0", "data-duration": "5" });
     Object.defineProperty(el1, "defaultPlaybackRate", { value: 0.01, writable: true });
     const r1 = refreshRuntimeMediaCache();
     expect(r1.mediaClips[0].playbackRate).toBe(0.1);
     document.body.innerHTML = "";
     const el2 = createVideo({ "data-start": "0", "data-duration": "5" });
-    Object.defineProperty(el2, "defaultPlaybackRate", { value: 10, writable: true });
+    Object.defineProperty(el2, "defaultPlaybackRate", { value: 20, writable: true });
     const r2 = refreshRuntimeMediaCache();
-    expect(r2.mediaClips[0].playbackRate).toBe(5);
+    expect(r2.mediaClips[0].playbackRate).toBe(10);
   });
 
   it("adjusts fallback duration by playback rate", () => {
@@ -363,6 +363,25 @@ describe("syncRuntimeMedia", () => {
 
   afterEach(() => {
     document.body.innerHTML = "";
+  });
+
+  describe("speed ramp", () => {
+    it("seeks to the integrated source time and plays at the instantaneous rate", () => {
+      const rate = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 3 },
+        ],
+      };
+      const clip = createMockClip({ start: 1, end: 5, rate });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 3, playing: false, playbackRate: 1 });
+      expect(clip.el.currentTime).toBeCloseTo(3.6410, 2);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 3, playing: true, playbackRate: 1 });
+      expect(clip.el.playbackRate).toBeCloseTo(3, 5);
+      expect(clip.el.preservesPitch).toBe(true);
+    });
   });
 
   describe("volume automation lane", () => {

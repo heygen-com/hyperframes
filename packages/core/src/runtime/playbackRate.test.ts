@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import {
+  resolveNaturalMediaTimelineDuration,
+  resolveNaturalMediaTimelineDurationFromValues,
+} from "./playbackRate";
 
 function elementWith(attributes: Record<string, string>): Pick<Element, "getAttribute"> {
   return {
@@ -27,5 +30,13 @@ describe("resolveNaturalMediaTimelineDuration", () => {
 
   it("returns null only when source duration is unknown", () => {
     expect(resolveNaturalMediaTimelineDuration(elementWith({}), Number.NaN)).toBeNull();
+  });
+});
+
+describe("rate lane duration", () => {
+  it("resolves natural media duration through the lane", () => {
+    const lane = { target: "rate", points: [{ t: 0, v: 1 }, { t: 2, v: 3 }] };
+    expect(resolveNaturalMediaTimelineDurationFromValues(4, 0, lane)).toBeCloseTo(2 + (4 - 3.6410) / 3, 2);
+    expect(resolveNaturalMediaTimelineDurationFromValues(10, 0, lane)).toBeCloseTo(2 + (10 - 3.6410) / 3, 2);
   });
 });

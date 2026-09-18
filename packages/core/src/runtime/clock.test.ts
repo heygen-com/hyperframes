@@ -272,6 +272,15 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("monotonic");
     });
 
+    it("maps audio position back to composition time through a rate lane", () => {
+      const { clock } = createClock({ duration: 20 });
+      const rate = { target: "rate", points: [{ t: 0, v: 1 }, { t: 2, v: 3 }] };
+      const audioEl = createMockAudioEl(4, false);
+      clock.play();
+      clock.attachAudioSource({ el: audioEl, compositionStart: 1, mediaStart: 0, rate });
+      expect(clock.now()).toBeCloseTo(1 + 2 + (4 - 3.6410) / 3, 2);
+    });
+
     it("accounts for compositionStart offset", () => {
       const { clock } = createClock({ duration: 20 });
       const audioEl = createMockAudioEl(2.0, false);

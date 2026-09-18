@@ -4171,6 +4171,20 @@ describe("derived duration floor recomputation", () => {
       expect(await runFrames(1)).toBe(25);
     });
 
+    it("re-derives when a speed-ramp lane is edited", async () => {
+      mountComposition(`<video data-start="0"></video>`);
+      const video = document.querySelector("video")!;
+      setNativeDuration(video, 10);
+      initSandboxRuntimeModular();
+      expect(await runFrames(2)).toBe(10);
+
+      video.setAttribute(
+        "data-automation",
+        JSON.stringify({ version: 1, lanes: [{ target: "rate", points: [{ t: 0, v: 2 }] }] }),
+      );
+      expect(await runFrames(1)).toBe(5);
+    });
+
     it("re-derives when a clip is moved later on the timeline", async () => {
       mountComposition(`<video data-start="0" data-duration="10"></video>`);
       initSandboxRuntimeModular();

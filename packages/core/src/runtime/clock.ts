@@ -1,3 +1,5 @@
+import { timeAtSourceTime, type RateSpec } from "../speedRamp.js";
+
 export type TransportClockSnapshot = {
   time: number;
   playing: boolean;
@@ -11,6 +13,8 @@ export type AudioClockSource =
       el: HTMLMediaElement;
       compositionStart: number;
       mediaStart: number;
+      /** The clip's rate lane; a constant rate is read from `el.playbackRate`. */
+      rate?: RateSpec;
     }
   | {
       currentTimeSeconds: number;
@@ -54,12 +58,14 @@ export class TransportClock {
       if ("currentTimeSeconds" in this._audioSource) {
         audioTime = this._audioSource.currentTimeSeconds;
       } else {
-        const { el, compositionStart, mediaStart } = this._audioSource;
+        const { el, compositionStart, mediaStart, rate } = this._audioSource;
         if (!el.paused && Number.isFinite(el.currentTime)) {
           audioTime =
-            ((el.currentTime - mediaStart) / (el.playbackRate > 0 ? el.playbackRate : 1)) *
-              this._rate +
-            compositionStart;
+            typeof rate === "object"
+              ? timeAtSourceTime(rate, el.currentTime - mediaStart) + compositionStart
+              : ((el.currentTime - mediaStart) / (el.playbackRate > 0 ? el.playbackRate : 1)) *
+                  this._rate +
+                compositionStart;
         }
       }
       if (audioTime !== null) {

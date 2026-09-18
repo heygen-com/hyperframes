@@ -369,7 +369,7 @@ describe("collectRuntimeTimelinePayload", () => {
     [0, 2, 5],
     [2, 2, 4],
     [2, 0.01, 80],
-    [2, 20, 1.6],
+    [2, 20, 0.8],
     [0, "2x", 5],
     [0, "0x2", 10],
   ])("rate-scales natural media duration (start=%s rate=%s)", (mediaStart, rate, expected) => {

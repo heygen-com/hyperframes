@@ -1,7 +1,11 @@
+import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE } from "../playbackRateBounds";
+import { resolveRateSpec, timeAtSourceTime, type RateSpec } from "../speedRamp";
 import { isMediaElement } from "./domRealm";
 
 export function normalizePlaybackRate(raw: number): number {
-  return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
+  return Number.isFinite(raw) && raw > 0
+    ? Math.max(MIN_PLAYBACK_RATE, Math.min(MAX_PLAYBACK_RATE, raw))
+    : 1;
 }
 
 /** Parse a literal numeric timing attribute without accepting trailing units or garbage. */
@@ -18,6 +22,11 @@ export function readElementPlaybackRate(el: Pick<Element, "getAttribute">): numb
         ? el.defaultPlaybackRate
         : 1;
   return normalizePlaybackRate(raw);
+}
+
+/** The clip's rate: its `rate` lane when present, otherwise the constant rate. */
+export function readElementRateSpec(el: Pick<Element, "getAttribute">): RateSpec {
+  return resolveRateSpec(el.getAttribute("data-automation"), readElementPlaybackRate(el));
 }
 
 export function readMediaStart(el: Pick<Element, "getAttribute">): number {
@@ -37,7 +46,7 @@ export function resolveNaturalMediaTimelineDuration(
   return resolveNaturalMediaTimelineDurationFromValues(
     sourceDuration,
     readMediaStart(el),
-    readElementPlaybackRate(el),
+    readElementRateSpec(el),
   );
 }
 
@@ -61,10 +70,13 @@ export function resolveMediaElementDurationSeconds(
 export function resolveNaturalMediaTimelineDurationFromValues(
   sourceDuration: number,
   mediaStart: number,
-  playbackRate: number,
+  playbackRate: RateSpec,
 ): number | null {
   if (!Number.isFinite(sourceDuration)) return null;
   const remaining = Math.max(0, sourceDuration - mediaStart);
-  return remaining / normalizePlaybackRate(playbackRate);
+  return timeAtSourceTime(
+    typeof playbackRate === "number" ? normalizePlaybackRate(playbackRate) : playbackRate,
+    remaining,
+  );
 }
 import { parseNumeric } from "./startExpression";
