@@ -295,6 +295,7 @@ export function StudioApp() {
     sdkSession: editFlowSdkSession,
     publishSdkSession: sdkHandle.publish,
     forceReloadSdkSession: sdkHandle.forceReload,
+    handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
   handleDomZIndexReorderCommitRef.current = domEditSession.handleDomZIndexReorderCommit;

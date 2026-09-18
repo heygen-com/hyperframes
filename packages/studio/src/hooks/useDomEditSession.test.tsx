@@ -97,6 +97,7 @@ function createSessionParams(
     syncPreviewHotkeys: vi.fn(),
     reloadPreview: vi.fn(),
     setRefreshKey: vi.fn(),
+    handleTimelineElementsDelete: vi.fn(),
     ...overrides,
   };
 }
