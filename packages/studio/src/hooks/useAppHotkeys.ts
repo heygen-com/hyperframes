@@ -114,6 +114,7 @@ interface UseAppHotkeysParams {
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
   handleCut: () => Promise<boolean>;
+  handleDuplicate: () => Promise<boolean>;
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onAfterUndoRedo?: () => void;
@@ -150,6 +151,7 @@ export function useAppHotkeys({
   handleCopy,
   handlePaste,
   handleCut,
+  handleDuplicate,
   onResetKeyframes,
   onDeleteSelectedKeyframes,
   onAfterUndoRedo,
@@ -255,6 +257,7 @@ export function useAppHotkeys({
     handleCopy,
     handlePaste,
     handleCut,
+    handleDuplicate,
     onResetKeyframes,
     onDeleteSelectedKeyframes,
     onToggleRecording,

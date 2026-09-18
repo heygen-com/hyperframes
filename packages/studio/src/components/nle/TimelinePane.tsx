@@ -102,6 +102,12 @@ export interface TimelinePaneProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  /** Copy/paste/duplicate act on the store's own selection, not a passed
+   *  element, so unlike onDeleteElement they need no composition-basis wrapper. */
+  onCopyClip?: () => boolean;
+  onPasteClip?: () => Promise<void>;
+  onDuplicateClip?: () => Promise<boolean>;
+  canPasteClip?: () => boolean;
 }
 
 // fallow-ignore-next-line complexity
@@ -116,6 +122,10 @@ export function TimelinePane({
   onCompositionDrop,
   onBlockedEditAttempt,
   onSelectTimelineElement,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
 }: TimelinePaneProps) {
   const {
     seek,
@@ -288,6 +298,10 @@ export function TimelinePane({
             onBlockedEditAttempt={onBlockedEditAttempt}
             onSplitElement={handleSplitElement}
             onSelectElement={onSelectTimelineElement}
+            onCopyClip={onCopyClip}
+            onPasteClip={onPasteClip}
+            onDuplicateClip={onDuplicateClip}
+            canPasteClip={canPasteClip}
           />
         </div>
         {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

@@ -46,6 +46,7 @@ export interface HotkeyCallbacks {
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
   handleCut: () => Promise<boolean>;
+  handleDuplicate: () => Promise<boolean>;
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onToggleRecording?: () => void;
@@ -124,6 +125,16 @@ export function dispatchModifierKey(
         event.preventDefault();
         trackStudioEvent("keyboard_shortcut", { action: "cut" });
         void cb.handleCut();
+      }
+      return true;
+    }
+    if (key === "d") {
+      // Always own this key here, even with nothing selected — otherwise the
+      // browser's own Cmd+D (bookmark this page) fires over the editor.
+      event.preventDefault();
+      if (usePlayerStore.getState().selectedElementId) {
+        trackStudioEvent("keyboard_shortcut", { action: "duplicate" });
+        void cb.handleDuplicate();
       }
       return true;
     }

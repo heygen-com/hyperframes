@@ -211,7 +211,7 @@ export function StudioApp() {
   const domEditDeleteBridge: DomEditDelete = (s, o) => handleDomEditElementDeleteRef.current(s, o);
   const resetKeyframesRef = useRef<() => boolean>(() => false);
   const deleteSelectedKeyframesRef = useRef<() => void>(() => {});
-  const { handleCopy, handlePaste, handleCut } = useClipboard({
+  const { handleCopy, handlePaste, handleCut, handleDuplicate, canPaste } = useClipboard({
     projectId,
     activeCompPath,
     domEditSelectionRef: domEditSelectionBridgeRef,
@@ -240,6 +240,7 @@ export function StudioApp() {
     handleCopy,
     handlePaste,
     handleCut,
+    handleDuplicate,
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
     onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
@@ -537,6 +538,10 @@ export function StudioApp() {
                     handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                     handleRazorSplit={timelineEditing.handleRazorSplit}
                     handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
+                    onCopyClip={handleCopy}
+                    onPasteClip={handlePaste}
+                    onDuplicateClip={handleDuplicate}
+                    canPasteClip={canPaste}
                     setCompIdToSrc={setCompIdToSrc}
                     setCompositionLoading={setCompositionLoading}
                     shouldShowMotionPath={shouldShowMotionPath}

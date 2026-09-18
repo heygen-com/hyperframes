@@ -93,6 +93,7 @@ function Harness() {
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(async () => undefined),
     handleCut: vi.fn(async () => false),
+    handleDuplicate: vi.fn(async () => false),
     onResetKeyframes: vi.fn(() => false),
     onDeleteSelectedKeyframes: keyframeDelete,
   });
