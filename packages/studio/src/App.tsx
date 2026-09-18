@@ -107,8 +107,8 @@ export function StudioApp() {
     setRefreshKey,
   });
   const masterCompPath = useMemo(
-    () => resolveMasterCompositionPath(fileManager.fileTree),
-    [fileManager.fileTree],
+    () => resolveMasterCompositionPath(fileManager.compositions),
+    [fileManager.compositions],
   );
   const { activeCompPath, activeCompPathHydrated, setActiveCompPath, handleSelectComposition } =
     useActiveComposition({

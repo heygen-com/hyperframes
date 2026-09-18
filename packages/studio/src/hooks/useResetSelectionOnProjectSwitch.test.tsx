@@ -149,16 +149,19 @@ describe("project switch integration (mirrors App.tsx's wiring)", () => {
 });
 
 describe("full stack: useFileTree -> useActiveComposition (masterCompPath staleness)", () => {
-  const FILES_BY_PROJECT: Record<string, string[]> = {
-    "project-a": ["index.html"],
-    "project-b": ["hero.html"],
+  const PROJECT_DATA: Record<string, { files: string[]; compositions: string[] }> = {
+    "project-a": { files: ["index.html"], compositions: ["index.html"] },
+    "project-b": { files: ["hero.html"], compositions: ["hero.html"] },
+    // A preset/vendor .html can be in `files` without being a real composition —
+    // this is the exact shape a review found auto-open mis-targeting.
+    "project-c": { files: ["preset.html", "hero.html"], compositions: ["hero.html"] },
   };
 
   function mockFetch(url: string): Promise<Response> {
     const match = /^\/api\/projects\/([^/]+)$/.exec(url);
     if (match) {
-      const files = FILES_BY_PROJECT[decodeURIComponent(match[1])] ?? [];
-      return Promise.resolve(new Response(JSON.stringify({ files }), { status: 200 }));
+      const data = PROJECT_DATA[decodeURIComponent(match[1])] ?? { files: [], compositions: [] };
+      return Promise.resolve(new Response(JSON.stringify(data), { status: 200 }));
     }
     return Promise.resolve(new Response(null, { status: 404 }));
   }
@@ -167,8 +170,11 @@ describe("full stack: useFileTree -> useActiveComposition (masterCompPath stalen
     const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
-    const { fileTree, fileTreeLoaded } = useFileTree({ projectId, projectIdRef });
-    const masterCompPath = useMemo(() => resolveMasterCompositionPath(fileTree), [fileTree]);
+    const { fileTree, fileTreeLoaded, compositions } = useFileTree({ projectId, projectIdRef });
+    const masterCompPath = useMemo(
+      () => resolveMasterCompositionPath(compositions),
+      [compositions],
+    );
     const { activeCompPath } = useActiveComposition({
       projectId,
       initialUrlStateRef,
@@ -204,6 +210,23 @@ describe("full stack: useFileTree -> useActiveComposition (masterCompPath stalen
       await Promise.resolve();
     });
     el = host.firstElementChild as HTMLElement;
+    expect(el.dataset.activeCompPath).toBe("hero.html");
+
+    fetchSpy.mockRestore();
+  });
+
+  it("auto-opens the real composition, not a non-composition .html earlier in the file list", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(mockFetch as typeof fetch);
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<FullStackHarness projectId="project-c" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const el = host.firstElementChild as HTMLElement;
     expect(el.dataset.activeCompPath).toBe("hero.html");
 
     fetchSpy.mockRestore();
