@@ -223,11 +223,16 @@ function applyInteractiveMount(html: string, projectDir: string, interactive: bo
   return clearPinnedVariableValues(inlineMountedComposition(html, projectDir));
 }
 
-/** inlineCatalogScripts already resolved every .js/.mjs/.hdr for the items it covers;
- * drop those from processAssets's unresolved list so the caller's fatal check ignores them. */
-function dropInlinedScriptRefs(itemName: string, unresolved: string[]): string[] {
+const SCRIPT_REF = /\.(js|mjs|hdr)(?:[?#].*)?$/i;
+
+/** For an item whose scripts are inlined, a script ref is resolved once no src/href attribute
+ * still points at it (import-map keys are specifiers, not fetches). One still fetched stays
+ * unresolved: the docs host never serves script files, so no base URL can rescue it. */
+function dropInlinedScriptRefs(itemName: string, html: string, unresolved: string[]): string[] {
   if (!needsScriptInlining(itemName)) return unresolved;
-  return unresolved.filter((ref) => !/\.(js|mjs|hdr)(?:[?#].*)?$/i.test(ref));
+  const fetched = (ref: string) =>
+    [`"${ref}"`, `'${ref}'`].some((q) => html.includes(`src=${q}`) || html.includes(`href=${q}`));
+  return unresolved.filter((ref) => !SCRIPT_REF.test(ref) || fetched(ref));
 }
 
 /** Turns a compiled composition's HTML into the final payload markup: resolves/inlines
@@ -267,7 +272,7 @@ function composePayloadHtml(
     hosted,
     inlined,
     externalized,
-    unresolved: dropInlinedScriptRefs(item.name, unresolved),
+    unresolved: dropInlinedScriptRefs(item.name, withInlineScripts, unresolved),
   };
 }
 
@@ -334,8 +339,9 @@ export async function buildPayload(
 
     // A reference we could not inline is only fatal when the item's directory is
     // not being served either; with a base URL in place the browser can still
-    // fetch it by its own relative path.
-    if (unresolved.length > 0 && !hostsOwnDirectory(projectDir)) {
+    // fetch it by its own relative path. A script the inliner missed is always fatal.
+    const deadScript = needsScriptInlining(item.name) && unresolved.some((r) => SCRIPT_REF.test(r));
+    if (unresolved.length > 0 && (deadScript || !hostsOwnDirectory(projectDir))) {
       console.log(`  – ${item.name}: cannot inline ${unresolved.slice(0, 3).join(", ")}`);
       dropStalePayload();
       return "skipped";
