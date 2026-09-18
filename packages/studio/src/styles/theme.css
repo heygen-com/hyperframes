@@ -1,16 +1,7 @@
-/*
- * Studio's design tokens. This file is the only place a design value is
- * decided: Tailwind turns every entry below into both a utility class and a
- * real CSS custom property, so markup (`bg-accent`), plain CSS and canvas code
- * (`var(--color-accent)`) all read the same number.
- *
- * `@theme static` keeps every variable in the emitted `:root` block. The
- * default (tree-shaken) behavior would drop the tokens that no utility class
- * happens to reference, and Studio reads several of them from CSS and from
- * JavaScript rather than through a class.
- *
- * Published as `@hyperframes/studio/theme.css`.
- */
+/* Studio's design tokens, the only place a design value is decided. Tailwind
+ * turns each entry into a utility class and a real CSS custom property, so
+ * markup, plain CSS and canvas code all read the same number. `@theme static`
+ * keeps every token in `:root` even when no utility class references it. */
 
 @theme static {
   /* Clear Tailwind's stock palette so a colour that is not a Studio token
@@ -152,11 +143,10 @@
 
   /* ------------------------------------------- deprecated: Tailwind palette */
 
-  /* Verbatim copies of the Tailwind 4.3.3 defaults for the stock colours
-   * Studio's markup still names. Without them `--color-*: initial` above would
-   * blank roughly 1500 class usages in one commit. The sweep replaces each with
-   * a semantic token and U12 deletes this block; `theme.test.ts` fails if one
-   * of these values drifts away from the Tailwind default it was copied from. */
+  /* Verbatim copies of Tailwind 4.3.3's defaults for the stock colours
+   * Studio's markup still names, so `--color-*: initial` above doesn't blank
+   * them. The sweep replaces each with a semantic token and U12 deletes this
+   * block; `theme.test.ts` fails if a value drifts from its Tailwind default. */
   --color-amber-50: oklch(98.7% 0.022 95.277);
   --color-amber-100: oklch(96.2% 0.059 95.617);
   --color-amber-200: oklch(92.4% 0.12 95.746);
