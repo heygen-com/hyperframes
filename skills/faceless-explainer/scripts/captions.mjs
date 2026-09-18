@@ -38,6 +38,14 @@ import { fileURLToPath } from "node:url";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { captionBand, parseFormat } from "./lib/dimensions.mjs";
 import { parseColors, parseFonts, semanticColors } from "./lib/tokens.mjs";
+import {
+  FONT_FORMAT,
+  fontExtOf,
+  fontStyleOf,
+  fontWeightInfo,
+  normFontName,
+  rankFontFamilies,
+} from "./lib/font-faces.mjs";
 
 const flag = (argv, name, def) => {
   const i = argv.indexOf(`--${name}`);
@@ -300,58 +308,19 @@ function brandFontFaces(framePath, hyperframesDir) {
     { abs: join(hyperframesDir, "assets/fonts"), rel: "assets/fonts" },
     { abs: join(hyperframesDir, "capture/assets/fonts"), rel: "capture/assets/fonts" },
   ].filter((d) => existsSync(d.abs));
-  const weightOf = (n) => {
-    const s = n.toLowerCase();
-    // A numeric axis is the font's own answer, so it beats the word heuristic. Fontsource
-    // names every face this way ("inter-latin-500-normal.woff2") and carries no weight
-    // WORD at all, so word-only parsing collapsed a whole family onto 400 and shipped
-    // exactly one of its faces.
-    //
-    // A weight token must not be buried inside a longer run: capture/assets/fonts holds
-    // hash-named files, and "Newsreader-a1b200c3.woff2" is not a 200-weight face. Hence a
-    // non-digit before (which also stops "2100" reading as 100) and no alphanumeric after.
-    // "Roboto900.ttf" still parses — requiring separators on both sides would have lost it.
-    const numeric = /(?:^|[^0-9])([1-9]00)(?![0-9a-z])/.exec(s);
-    if (numeric) return Number(numeric[1]);
-    if (/black|heavy|ultra|extrabold/.test(s)) return 800;
-    if (/semibold|demibold/.test(s)) return 600; // before /bold/ — "demibold" contains "bold"
-    if (/bold/.test(s)) return 700;
-    if (/medium/.test(s)) return 500;
-    if (/light|thin/.test(s)) return 300;
-    return 400; // book / regular / roman
-  };
-  // Weight is not the only axis in a filename. Google Fonts ships Newsreader as
-  // "Newsreader-Italic-VariableFont_opsz,wght.ttf" + "Newsreader-VariableFont_opsz,wght.ttf",
-  // and the italic sorts first — so without a style axis the italic file claimed the
-  // family's ONLY 400 slot, the upright file was dropped as a duplicate, and the face
-  // was declared with no `font-style`. @font-face is deliberately global (the composition
-  // CSS scoper exempts it, and it has to be), so the whole document then rendered that
-  // family in italics — captions italicizing every sibling composition.
-  const styleOf = (n) => (/italic|oblique/i.test(n) ? "italic" : "normal");
-  const fmtOf = (f) =>
-    /\.woff2$/i.test(f)
-      ? "woff2"
-      : /\.woff$/i.test(f)
-        ? "woff"
-        : /\.ttf$/i.test(f)
-          ? "truetype"
-          : "opentype";
-  // Normalize away ALL non-alphanumerics (spaces, underscores, hyphens) on BOTH the
-  // family name and the filename. Real font files use "_" / "-" as word separators
-  // ("TT_Norms_Pro_Bold.woff2"), so stripping only whitespace never matched them — the
-  // family key "ttnormspro" failed `startsWith` against "tt_norms_pro_bold", and the
-  // function silently returned "" → captions shipped with NO @font-face for any
-  // underscore/hyphen-named brand font (e.g. TT Norms Pro), which is exactly the
-  // font_family_without_font_face bug.
-  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Weight, style, format and the family-name key all come from lib/font-faces.mjs — the same
+  // helpers build-frame.mjs stages with — so a file staged under that naming contract parses
+  // back to the face it was staged as. Two axes matter: a numeric weight beats the word
+  // heuristic (Fontsource names carry no weight word), and style is read too, or the italic
+  // file of a weight would claim its only slot and @font-face (global by design) would
+  // italicise every sibling composition. The key strips ALL non-alphanumerics on both sides,
+  // since real files separate words with "_" / "-" ("TT_Norms_Pro_Bold.woff2").
   const faces = [];
   const seen = new Set();
   const claimed = new Set(); // each file is claimed by the MOST SPECIFIC family only
   // Match the longest family key first so "TT Norms Pro" can't swallow the files that
   // belong to "TT Norms Pro Mono" (its key is a prefix of the longer one's).
-  const ranked = [...families].sort((a, b) => norm(b).length - norm(a).length);
-  for (const fam of ranked) {
-    const key = norm(fam);
+  for (const { family: fam, key } of rankFontFamilies(families)) {
     for (const d of dirs) {
       let files = [];
       try {
@@ -360,17 +329,18 @@ function brandFontFaces(framePath, hyperframesDir) {
         continue;
       }
       for (const f of files.sort()) {
-        if (!/\.(woff2|woff|ttf|otf)$/i.test(f)) continue;
+        const ext = fontExtOf(f);
+        if (!ext) continue;
         if (claimed.has(f)) continue; // a more specific family already took this file
-        if (!norm(f.replace(/\.(woff2|woff|ttf|otf)$/i, "")).startsWith(key)) continue;
-        const w = weightOf(f);
-        const style = styleOf(f);
+        if (!normFontName(f.slice(0, -(ext.length + 1))).startsWith(key)) continue;
+        const { n: w } = fontWeightInfo(f);
+        const style = fontStyleOf(f);
         const dedup = `${fam}-${w}-${style}`;
         if (seen.has(dedup)) continue; // one src per face; assets/fonts wins over capture
         seen.add(dedup);
         claimed.add(f);
         faces.push(
-          `      @font-face { font-family: '${fam}'; src: url('${d.rel}/${f}') format('${fmtOf(f)}'); font-weight: ${w}; font-style: ${style}; font-display: block; }`,
+          `      @font-face { font-family: '${fam}'; src: url('${d.rel}/${f}') format('${FONT_FORMAT[ext]}'); font-weight: ${w}; font-style: ${style}; font-display: block; }`,
         );
       }
     }
