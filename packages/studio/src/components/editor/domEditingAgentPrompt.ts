@@ -96,6 +96,7 @@ export function buildElementAgentPrompt({
   selectionContext,
   userInstruction,
   sourceFilePath,
+  timeline,
 }: {
   selection: DomEditSelection;
   currentTime: number;
@@ -103,6 +104,8 @@ export function buildElementAgentPrompt({
   selectionContext?: string;
   userInstruction?: string;
   sourceFilePath?: string;
+  /** The `formatTimelineBlock` text; omitted or empty when the timeline has no clips. */
+  timeline?: string;
 }): string {
   const displayedSourceFile = sourceFilePath?.trim() || selection.sourceFile;
   const info: AgentPromptElementInfo = {
@@ -135,6 +138,8 @@ export function buildElementAgentPrompt({
   }
 
   lines.push(...buildElementDetailLines(info));
+
+  if (timeline) lines.push("", timeline);
 
   if (tagSnippet) {
     lines.push("", "Target HTML:", tagSnippet);
