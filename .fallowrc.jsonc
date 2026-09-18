@@ -967,13 +967,9 @@
       // unchanged line numbers.
       "packages/core/src/runtime/picker.ts",
       // generate-catalog-payloads.ts: hostsOwnDirectory, parseArgs and main are
-      // untouched by this branch. buildPayload did gain a real change — the
-      // canvas-draw-element branch now writes an { unsupported } marker via a
-      // small writePayload helper instead of dropping the payload — but that
-      // swaps two lines for three at the same branch count, so it does not move
-      // buildPayload's flagged CRAP score; the function's 14-branch complexity
-      // predates this PR. Newly flagged only because retargeting this branch
-      // onto main made fallow diff the file against main for the first time.
+      // untouched. buildPayload's canvas-draw-element branch now writes a marker
+      // via a small writePayload helper instead of dropping the payload, but at
+      // the same branch count — its flagged 14-branch CRAP score predates this PR.
       "scripts/generate-catalog-payloads.ts",
     ],
   },

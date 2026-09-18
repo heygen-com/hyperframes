@@ -78,13 +78,3 @@
 .hfc-gallery .mw .sq path{stroke-dasharray:220;stroke-dashoffset:220;}
 @media(prefers-reduced-motion:reduce){.hfc-gallery .mw .sq path{stroke-dashoffset:0;}}
 @media(max-width:600px){.hfc-gallery{padding:0 18px;}.hfc-gallery .hfc-hero{padding:28px 0;}}
-
-/* Related-topics footer. This page renders in Mintlify's "frame" mode, which drops the
-   normal prose styling, so plain markdown links below the gallery rendered unstyled. */
-.hfc-related{padding:0 32px 48px;max-width:1400px;margin:0 auto;}
-.hfc-related h2{font-size:20px;font-weight:600;line-height:1.3;margin:0 0 16px;color:var(--hf-heading);}
-.hfc-related-links{display:flex;flex-wrap:wrap;gap:12px;}
-.hfc-related-links a{padding:14px 18px;border:1px solid var(--hf-border-color);border-radius:10px;color:var(--hf-text);background:var(--hf-background-light);font-size:13px;text-decoration:none;transition:border-color .15s ease;}
-.hfc-related-links a:hover,.hfc-related-links a:focus-visible{border-color:var(--hf-brand);}
-.hfc-related-links a:focus-visible{outline:2px solid var(--hf-brand);outline-offset:4px;}
-@media(max-width:600px){.hfc-related{padding:0 18px 28px;}}
