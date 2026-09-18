@@ -244,4 +244,16 @@ describe("resolveMainTrackDeleteRippleShifts", () => {
     const shifts = resolveMainTrackDeleteRippleShifts(survivors, deleted, true);
     expect(shifts).toEqual([{ key: "c", newStart: 6 }]); // "overlay" (track 1) untouched
   });
+
+  it("sums only the deleted spans that precede each survivor, for a multi-select delete", () => {
+    // a(0-2), b(2-4)[deleted], c(4-6), d(6-8)[deleted], e(8-9): a marquee
+    // delete of b and d in one batch. "c" sits before d, so it shifts by
+    // b's 2s alone; "e" sits after both, so it shifts by their 4s combined.
+    const deleted = [el("b", 2, 2), el("d", 6, 2)];
+    const survivors = [el("a", 0, 2), el("c", 4, 2), el("e", 8, 1)];
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, true)).toEqual([
+      { key: "c", newStart: 2 },
+      { key: "e", newStart: 4 },
+    ]);
+  });
 });
