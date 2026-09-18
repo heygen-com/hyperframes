@@ -24,9 +24,7 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
-  /** Drives the magnetic-main-track snap (a brand-new clip landing on an
-   *  empty main track always commits at start=0), same convention as the
-   *  existing-clip drag path. */
+  /** Drives the magnetic main-track snap for brand-new clips. */
   elements: readonly TimelineElement[];
 }
 
@@ -87,9 +85,7 @@ function applyFileDrop(
 ): boolean {
   const files = Array.from(transfer.files);
   if (!onFileDrop || files.length === 0) return false;
-  // The batch sequences end-to-end from ONE start (buildTimelineFileDropPlacements),
-  // so the snap is decided once, off the whole batch — ALL-audio, not just the
-  // first file, so a Finder selection's order can't flip the result.
+  // The batch sequences from ONE start, so snap once; audio only if ALL files are audio.
   const isAudio = files.every((file) => getTimelineAssetKind(file.name) === "audio");
   invokeDropCallback(() =>
     onFileDrop(files, snapPlacementToEmptyMainTrack(placement, elements, isAudio)),

@@ -432,12 +432,10 @@ function buildTrackInsertEdits(
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (!src || !canMoveElement(src)) continue;
-    const start =
-      keyOf(norm) === editKey
-        ? snappedStart
-        : multi?.keys.has(keyOf(norm))
-          ? multi.movedStart(src)
-          : src.start;
+    const normKey = keyOf(norm);
+    let start = src.start;
+    if (normKey === editKey) start = snappedStart;
+    else if (multi?.keys.has(normKey)) start = multi.movedStart(src);
     edits.push({ element: src, updates: { start, track: norm.track } });
   }
   return { candidate, edits };

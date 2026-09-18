@@ -204,10 +204,8 @@ export function computeDragPreview(
     nextMove.track,
     ctx,
   );
-  // Magnetic snap only applies to a plain, solo placement: a track insert
-  // lands on a fresh lane resolved at commit time (never track 0), and a
-  // multi-selection's other clips derive their shift from this previewStart
-  // (resolveMultiSelection), so snapping it would retime clips the user never touched.
+  // Snap only plain solo placements: an insert row lands on a fresh lane, and a
+  // multi-selection derives its other clips' shift from previewStart.
   const isSoloDrag = selectedKeys.size <= 1 || !selectedKeys.has(dragKey);
   const snappedStart =
     insertRow == null && isSoloDrag
