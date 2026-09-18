@@ -1,3 +1,4 @@
+import { inlineScriptRuns } from "./scriptRuns";
 import {
   ensureExternalScriptTag,
   readExternalScriptAttributes,
@@ -668,20 +669,18 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     }
   }
 
-  const bodyInlineScripts = [...document.querySelectorAll("body script")].filter((el) => {
-    if (el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute("src")) return false;
-    const type = (el.getAttribute("type") || "").trim().toLowerCase();
-    return !type || type === "text/javascript" || type === "application/javascript";
-  });
-  if (bodyInlineScripts.length > 0) {
-    const mergedJs = joinJsChunks(bodyInlineScripts.map((el) => el.textContent || ""));
-    for (const el of bodyInlineScripts) el.remove();
-    if (mergedJs) {
-      const stripped = stripJsCommentsParserSafe(mergedJs);
-      const inlineScript = document.createElement("script");
-      inlineScript.textContent = stripped;
-      document.body.appendChild(inlineScript);
-    }
+  const isPinned = (el: Element) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR);
+  for (const { members, anchor } of inlineScriptRuns(
+    [...document.querySelectorAll("body script")],
+    isPinned,
+  )) {
+    const mergedJs = joinJsChunks(members.map((el) => el.textContent || ""));
+    for (const el of members) el.remove();
+    if (!mergedJs) continue;
+    const inlineScript = document.createElement("script");
+    inlineScript.textContent = stripJsCommentsParserSafe(mergedJs);
+    if (anchor) anchor.before(inlineScript);
+    else document.body.appendChild(inlineScript);
   }
 }
 
