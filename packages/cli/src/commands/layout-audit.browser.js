@@ -268,10 +268,24 @@
     });
   }
 
-  function visibleTextClientRects(element, directOnly) {
-    // Range rects stay geometrically present outside an overflow clip. Reduce
-    // them in viewport coordinates so overlap measures only paintable text.
-    let rects = textClientRects(element, directOnly).map(toRect);
+  // Intersect each rect with `clip` along the requested axes, dropping slivers.
+  // Only the edges on a clamped axis are read from `clip`.
+  function clampRectsTo(rects, clip, clampX, clampY) {
+    return rects
+      .map((rect) => {
+        const left = clampX ? Math.max(rect.left, clip.left) : rect.left;
+        const right = clampX ? Math.min(rect.right, clip.right) : rect.right;
+        const top = clampY ? Math.max(rect.top, clip.top) : rect.top;
+        const bottom = clampY ? Math.min(rect.bottom, clip.bottom) : rect.bottom;
+        if (right - left <= 0.5 || bottom - top <= 0.5) return null;
+        return rectFromOrigin(left, top, right - left, bottom - top);
+      })
+      .filter(Boolean);
+  }
+
+  // Client rects stay geometrically present outside an ancestor's overflow clip.
+  // Reduce them in viewport coordinates so overlap measures only paintable area.
+  function clipRectsToOverflowAncestors(element, rects) {
     for (
       let ancestor = element.parentElement;
       ancestor && rects.length > 0;
@@ -281,19 +295,79 @@
       const clipX = clipsOverflowValue(style.overflowX || style.overflow);
       const clipY = clipsOverflowValue(style.overflowY || style.overflow);
       if (!clipX && !clipY) continue;
-      const clip = toRect(ancestor.getBoundingClientRect());
-      rects = rects
-        .map((rect) => {
-          const left = clipX ? Math.max(rect.left, clip.left) : rect.left;
-          const right = clipX ? Math.min(rect.right, clip.right) : rect.right;
-          const top = clipY ? Math.max(rect.top, clip.top) : rect.top;
-          const bottom = clipY ? Math.min(rect.bottom, clip.bottom) : rect.bottom;
-          if (right - left <= 0.5 || bottom - top <= 0.5) return null;
-          return toRect({ left, right, top, bottom, width: right - left, height: bottom - top });
-        })
-        .filter(Boolean);
+      rects = clampRectsTo(rects, toRect(ancestor.getBoundingClientRect()), clipX, clipY);
     }
     return rects;
+  }
+
+  // Geometry rule for content-overlap, decided once here and applied to every
+  // block so any pair compares like with like: glyph (Range) rects, with
+  // font-metric bleed past the element's own content box clamped back to it,
+  // then clipped by overflow ancestors.
+  //
+  // Range rects follow the font's ascent/descent (the content area), not the CSS
+  // box: a large font-size with a tight line-height keeps the range-rect height
+  // while the real box shrinks around it, so a block can measure as colliding
+  // with a neighbour its box never touches. The bare box overshoots the other
+  // way: a box wider or taller than the text it holds would register collisions
+  // its glyphs never make. So the box only trims glyph spill that is sparse ink.
+  // With negative leading (line-height below the content area) the line spills
+  // (content-area - line-height) / 2 past each box edge. While that is at most a
+  // fifth of the line's rect height — line-height at least 60% of the content
+  // area, roughly 0.7em for a typical 1.2em content area — the box still encloses
+  // the cap band and only ascender/descender tips lie outside, so a neighbour set
+  // against the box edge shares ~1% of its ink with them. Any tighter and the box
+  // sits inside the cap band: the spill is dense glyph ink that a neighbour at
+  // the box edge collides with for real (over 20% shared ink from about 0.4em
+  // down), so it is kept. A further wrapped line spills (line-height +
+  // content-area) / 2, always more, and is kept too. Measuring the bound from the
+  // rect itself keeps it valid under any transform scale.
+  //
+  // The spill is measured against the content box, not the border box
+  // getBoundingClientRect() reports: line boxes are laid out inside the content
+  // box, so the tips spill into the padding band first and past the border edge
+  // only once they outgrow it. Against the border box, any bleed narrower than
+  // the padding reads as spill <= 0 and stays as ink for a neighbour set at the
+  // content edge to collide with. Padding must not change the answer, so the
+  // vertical padding and border widths come off the border box first and the
+  // clamp lands on the content edges. The computed widths are local px while the
+  // client rect is post-transform, so they are scaled by the ratio of the
+  // rendered border-box height to offsetHeight (the same box in local px) —
+  // otherwise a scaled-down block would subtract too much and read its own
+  // padding band as spill, or vanish entirely once the band outgrew the box.
+  //
+  // In horizontal writing the spill is vertical by nature — glyph advances never
+  // exceed the box unless the text genuinely overflows — so the horizontal extent
+  // is never trimmed; vertical writing modes swap the axes, so they are left
+  // untrimmed entirely rather than trimming real overflow. The clamp does not
+  // help text wrapped in a bare inline element (a span): its own box already
+  // follows the font's content area, so the bleed is measured as inside the box.
+  function overlapTextRects(element) {
+    const glyphRects = textClientRects(element, true).map(toRect);
+    if (glyphRects.length === 0) return [];
+    const style = getComputedStyle(element);
+    if (style.writingMode !== "horizontal-tb") {
+      return clipRectsToOverflowAncestors(element, glyphRects);
+    }
+    const box = toRect(element.getBoundingClientRect());
+    const localHeight = element.offsetHeight;
+    const scale = localHeight > 0 ? box.height / localHeight : 1;
+    const contentTop =
+      box.top + (parsePx(style.borderTopWidth) + parsePx(style.paddingTop)) * scale;
+    const contentBottom =
+      box.bottom - (parsePx(style.borderBottomWidth) + parsePx(style.paddingBottom)) * scale;
+    const topLine = glyphRects.reduce((top, rect) => (rect.top < top.top ? rect : top));
+    const bottomLine = glyphRects.reduce((bottom, rect) =>
+      rect.bottom > bottom.bottom ? rect : bottom,
+    );
+    const topSpill = contentTop - topLine.top;
+    const bottomSpill = bottomLine.bottom - contentBottom;
+    const isBleed = (spill, line) => spill > 0 && spill <= line.height / 5;
+    const clip = {
+      top: isBleed(topSpill, topLine) ? contentTop : topLine.top,
+      bottom: isBleed(bottomSpill, bottomLine) ? contentBottom : bottomLine.bottom,
+    };
+    return clipRectsToOverflowAncestors(element, clampRectsTo(glyphRects, clip, false, true));
   }
 
   function textRectFor(element, directOnly) {
@@ -627,7 +701,7 @@
     const blocks = [];
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isSolidTextBlock(element)) continue;
-      const rects = visibleTextClientRects(element, true);
+      const rects = overlapTextRects(element);
       const rect = unionRects(rects);
       if (rect) blocks.push({ element, rect, rects });
     }
@@ -685,9 +759,10 @@
     return !!container && container === nearestFlexGridAncestor(b);
   }
 
-  // Two solid text blocks whose boxes overlap by more than a fifth of the
-  // smaller block read as a collision — unreadable, and invisible to the
-  // overflow checks, which only compare an element against its container.
+  // Two solid text blocks whose measured text overlaps by more than a fifth of
+  // the smaller block's text area read as a collision — unreadable, and
+  // invisible to the overflow checks, which only compare an element against its
+  // container.
   function overlapIssue(a, b, time) {
     if (isNested(a.element, b.element)) return null;
     if (isManagedFlowOverlap(a.element, b.element)) return null;
