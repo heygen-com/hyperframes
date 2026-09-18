@@ -120,7 +120,7 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
         level: "error",
         title: "FFmpeg cannot start",
         detail: version.detail,
-        hint: "Install a working 64-bit FFmpeg build with all required runtime DLLs.",
+        hint: getFFmpegInstallHint(),
         path,
       };
     }
