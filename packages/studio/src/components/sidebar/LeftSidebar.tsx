@@ -123,8 +123,8 @@ export const LeftSidebar = memo(
     tabRef.current = tab;
     const tablistRef = useRef<HTMLDivElement>(null);
     const masterCompositionPath = useMemo(
-      () => resolveMasterCompositionPath(fileProp ?? []),
-      [fileProp],
+      () => resolveMasterCompositionPath(compositions),
+      [compositions],
     );
 
     const selectTab = useCallback((t: SidebarTab) => {

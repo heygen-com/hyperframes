@@ -31,16 +31,19 @@ export interface StudioUrlState {
 const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders", "slideshow", "variables"];
 
 /**
- * The composition a schema-level panel (Variables / Slideshow) targets on the
- * master view, where there is no explicit `activeCompPath`. Prefer the
- * `index.html` convention, but fall back to the first `.html` in the file tree
+ * The composition auto-open and a schema-level panel (Variables / Slideshow)
+ * target on the master view, where there is no explicit `activeCompPath`.
+ * Prefer the `index.html` convention, but fall back to the first entry
  * (composition-browser order) so projects whose entry file is `card.html`,
  * `hero.html`, etc. don't silently mis-target a non-existent `index.html`.
- * Returns null when the project carries no composition file at all.
+ * Takes the server's filtered composition list, never the raw file tree —
+ * a non-composition `.html` (a vendored preset, one with no
+ * `data-composition-id`) must never become the target. Returns null when the
+ * project carries no composition file at all.
  */
-export function resolveMasterCompositionPath(fileTree: string[]): string | null {
-  if (fileTree.includes("index.html")) return "index.html";
-  return fileTree.find((p) => p.endsWith(".html")) ?? null;
+export function resolveMasterCompositionPath(compositions: string[]): string | null {
+  if (compositions.includes("index.html")) return "index.html";
+  return compositions.find((p) => p.endsWith(".html")) ?? null;
 }
 
 /** A URL with no `activeCompPath` needs no hydration step — there's nothing to apply. */
