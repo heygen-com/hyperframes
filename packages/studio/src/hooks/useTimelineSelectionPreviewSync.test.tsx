@@ -391,4 +391,57 @@ describe("useTimelineSelectionPreviewSync", () => {
     expect(onSelectionNotFound).toHaveBeenCalledTimes(2);
     harness.cleanup();
   });
+
+  it("resolves every member of a large selection concurrently, not one network round trip at a time", async () => {
+    const elementCount = 30;
+    const timelineElements: TimelineElement[] = Array.from({ length: elementCount }, (_, i) => ({
+      id: `clip-${i}`,
+      domId: `clip-${i}`,
+      tag: "div",
+      start: i,
+      duration: 1,
+      track: i % 4,
+    }));
+    const selectionById = new Map(
+      timelineElements.map((el) => {
+        const domEl = document.createElement("div");
+        domEl.id = el.id;
+        return [el.id, makeSelection(el.id, domEl)];
+      }),
+    );
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const buildDomSelectionForTimelineElement = vi.fn(async (element: TimelineElement) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      // Stands in for the network round trip: yields once so every member's
+      // call has a chance to start before any of them finish.
+      await Promise.resolve();
+      inFlight -= 1;
+      return selectionById.get(element.id) ?? null;
+    });
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: timelineElements[0].id,
+      selectedElementIds: new Set(timelineElements.map((el) => el.id)),
+      timelineElements,
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
+    });
+
+    expect(buildDomSelectionForTimelineElement).toHaveBeenCalledTimes(elementCount);
+    // A sequential loop never has more than one call in flight at once; this
+    // asserts every member's probe started before any of them resolved.
+    expect(maxInFlight).toBe(elementCount);
+    expect(applyMarqueeSelection).toHaveBeenCalledOnce();
+    expect(applyMarqueeSelection.mock.calls[0]?.[0]).toHaveLength(elementCount);
+    harness.cleanup();
+  });
 });

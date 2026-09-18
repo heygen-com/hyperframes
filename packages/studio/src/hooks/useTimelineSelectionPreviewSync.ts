@@ -75,14 +75,15 @@ async function resolveSelectionsForIds(
   timelineElements: TimelineElement[],
   buildDomSelectionForTimelineElement: UseTimelineSelectionPreviewSyncParams["buildDomSelectionForTimelineElement"],
 ): Promise<DomEditSelection[]> {
-  const selections: DomEditSelection[] = [];
-  for (const id of ids) {
-    const element = timelineElements.find((item) => (item.key ?? item.id) === id);
-    if (!element) continue;
-    const selection = await buildDomSelectionForTimelineElement(element);
-    if (selection) selections.push(selection);
-  }
-  return selections;
+  // Each element's resolution fires its own network probe; a selection of N
+  // members used to pay N sequential round trips here instead of one.
+  const elements = ids
+    .map((id) => timelineElements.find((item) => (item.key ?? item.id) === id))
+    .filter((element): element is TimelineElement => Boolean(element));
+  const resolved = await Promise.all(
+    elements.map((element) => buildDomSelectionForTimelineElement(element)),
+  );
+  return resolved.filter((selection): selection is DomEditSelection => Boolean(selection));
 }
 
 function applyResolvedSelections(
