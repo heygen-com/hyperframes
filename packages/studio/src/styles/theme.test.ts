@@ -133,7 +133,7 @@ describe("studio theme", () => {
 
     expect(legacy.length).toBeGreaterThan(0);
     for (const [, name, value] of legacy) {
-      if (!upstream.has(name)) continue;
+      expect(upstream.has(name), `${name} is not a Tailwind default`).toBe(true);
       expect(`${name}: ${value.trim()}`).toBe(`${name}: ${upstream.get(name)}`);
     }
   });
