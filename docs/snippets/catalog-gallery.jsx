@@ -1,6 +1,5 @@
-// Ported verbatim from kaolti/hyperframes-gallery @ 922e1737e31a65713194b3eae0ee71d50ecf919a
-// (docs/snippets/catalog-gallery.jsx). Consumes catalog-gallery-data.mdx from
-// scripts/sync-docs-catalog.mjs.
+// Ported verbatim from a reference implementation of this catalog UX. Consumes
+// catalog-gallery-data.mdx from scripts/sync-docs-catalog.mjs.
 export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = "" }) => {
     function MotionWord() {
         const root = useRef(null);

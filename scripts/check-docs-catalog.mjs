@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Proves the generated Catalog nav still lists exactly the same pages as before, on disk,
-// reachable, no duplicates. Adapted from kaolti/hyperframes-gallery's check-docs-catalog.mjs
-// @ 922e1737e31a65713194b3eae0ee71d50ecf919a, trimmed to this PR's scope.
+// reachable, no duplicates.
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";

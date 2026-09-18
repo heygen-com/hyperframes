@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Rebuilds the Catalog tab's sidebar from catalog-gallery-data.mdx, so counts and grouping
-// are generated, not hand-maintained — the transform kaolti's build-docs-gallery.mjs applies
-// to its own docs.json, ported and re-pointed at our file.
+// are generated, not hand-maintained.
 import fs from "node:fs";
 import path from "node:path";
 import {

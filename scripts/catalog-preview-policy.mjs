@@ -1,5 +1,4 @@
-// Ported from kaolti/hyperframes-gallery @ 922e1737e31a65713194b3eae0ee71d50ecf919a
-// (docs/scripts/catalog-preview-policy.mjs), unchanged.
+// Ported from a reference implementation of this catalog UX, unchanged.
 // Conservative gallery budget: GPU/shader scenes never execute on hover.
 // Detail pages still expose their full live compositions.
 // vendored, unchanged — not this repo's complexity to simplify
