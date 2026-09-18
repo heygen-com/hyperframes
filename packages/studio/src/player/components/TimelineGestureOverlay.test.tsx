@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
 import type { DraggedClipState } from "./timelineClipDragTypes";
@@ -62,6 +62,40 @@ describe("TimelineGestureOverlay", () => {
     expect(actor?.querySelector("[data-el-id]")).toBeNull();
     expect(actor?.querySelector("[data-clip]")).toBeNull();
     expect(host.querySelector("[data-source-row]")).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("asks for the same thumbnail frames as the clip at rest", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const renderClipContent = vi.fn(() => null);
+    act(() => {
+      root.render(
+        <TimelineGestureOverlay
+          drag={drag}
+          scrollRef={{
+            current: {
+              scrollLeft: 0,
+              scrollTop: 0,
+              getBoundingClientRect: () => ({ left: 0, top: 0 }),
+            } as HTMLDivElement,
+          }}
+          pixelsPerSecond={100}
+          rowHeight={42}
+          selectedElementId="hero"
+          currentTime={4}
+          theme={defaultTimelineTheme}
+          getTrackStyle={getTrackStyle}
+          renderClipContent={renderClipContent}
+        />,
+      );
+    });
+    expect(renderClipContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ rich: false }),
+    );
     act(() => root.unmount());
   });
 
