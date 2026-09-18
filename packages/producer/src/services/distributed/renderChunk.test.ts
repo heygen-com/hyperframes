@@ -22,11 +22,12 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compositionRequiresWebGpu } from "@hyperframes/engine";
+import type { CaptureOptions } from "@hyperframes/engine";
 import { HOST_CHROME_FAILURE_PATTERNS } from "./__test_utils__/hostChromeFailures.js";
 import { plan } from "./plan.js";
 import {
   CHUNK_INDEX_OUT_OF_RANGE,
+  distributedCaptureSessionDependencies,
   MISSING_PLAN_ARTIFACT,
   MISSING_RUNTIME_ENV_SNAPSHOT,
   PLAN_HASH_MISMATCH,
@@ -420,43 +421,67 @@ describe("renderChunk() — variables threading", () => {
 });
 
 describe("renderChunk() — requiresWebGpu wiring", () => {
-  // No Chrome needed — pins that plan() writes compiled/index.html at the
-  // exact path renderChunk() reads, and that compilation keeps the attribute.
-  it("reads requiresWebGpu from the exact path renderChunk() reads at render time", async () => {
-    const declaringDir = join(runRoot, "project-webgpu-declaring");
-    const plainDir = join(runRoot, "project-webgpu-plain");
-    mkdirSync(declaringDir, { recursive: true });
-    mkdirSync(plainDir, { recursive: true });
-    writeFileSync(
-      join(declaringDir, "index.html"),
-      FIXTURE_HTML.replace(
-        'data-composition-id="root"',
-        'data-composition-id="root" data-requires-webgpu',
-      ),
-      "utf-8",
-    );
-    writeFileSync(join(plainDir, "index.html"), FIXTURE_HTML, "utf-8");
+  const TIMEOUT_MS = 60_000;
 
-    const declaringPlanDir = join(runRoot, "plan-webgpu-declaring");
-    const plainPlanDir = join(runRoot, "plan-webgpu-plain");
-    mkdirSync(declaringPlanDir, { recursive: true });
-    mkdirSync(plainPlanDir, { recursive: true });
-    const baseConfig = {
-      fps: 30 as const,
-      width: 160,
-      height: 120,
-      format: "png-sequence" as const,
-    };
-    await plan(declaringDir, baseConfig, declaringPlanDir);
-    await plan(plainDir, baseConfig, plainPlanDir);
+  it(
+    "passes requiresWebGpu into the real CaptureOptions renderChunk() builds",
+    async () => {
+      if (!hasChrome) {
+        console.warn(
+          "[renderChunk.test] skipping requiresWebGpu wiring test — chrome-headless-shell not available on this host",
+        );
+        return;
+      }
 
-    // Exactly the read renderChunk.ts performs at the CaptureOptions build
-    // site — same join(compiledDir, "index.html") call.
-    const declaringHtml = readFileSync(join(declaringPlanDir, "compiled", "index.html"), "utf-8");
-    const plainHtml = readFileSync(join(plainPlanDir, "compiled", "index.html"), "utf-8");
-    expect(compositionRequiresWebGpu(declaringHtml)).toBe(true);
-    expect(compositionRequiresWebGpu(plainHtml)).toBe(false);
-  });
+      const declaringDir = join(runRoot, "project-webgpu-declaring");
+      mkdirSync(declaringDir, { recursive: true });
+      writeFileSync(
+        join(declaringDir, "index.html"),
+        FIXTURE_HTML.replace(
+          'data-composition-id="root"',
+          'data-composition-id="root" data-requires-webgpu',
+        ),
+        "utf-8",
+      );
+      const declaringPlanDir = join(runRoot, "plan-webgpu-declaring");
+      mkdirSync(declaringPlanDir, { recursive: true });
+      await plan(
+        declaringDir,
+        { fps: 30, width: 160, height: 120, format: "png-sequence" },
+        declaringPlanDir,
+      );
+
+      // Spy on the real dependency seam renderChunk() calls through — this
+      // observes the actual CaptureOptions object it builds, not a proxy
+      // for it, so a regression to the wiring line fails this directly.
+      const original = distributedCaptureSessionDependencies.createCaptureSession;
+      let capturedOptions: CaptureOptions | undefined;
+      distributedCaptureSessionDependencies.createCaptureSession = ((...args) => {
+        capturedOptions = args[2];
+        return original(...args);
+      }) as typeof original;
+
+      const out = join(runRoot, "chunk-webgpu-declaring");
+      try {
+        try {
+          await renderChunk(declaringPlanDir, 0, out);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!HOST_CHROME_FAILURE_PATTERNS.test(message)) throw err;
+          console.warn(
+            "[renderChunk.test] skipping requiresWebGpu wiring test — host Chrome stack can't render. Diagnostic:",
+            message.slice(0, 240),
+          );
+          return;
+        }
+      } finally {
+        distributedCaptureSessionDependencies.createCaptureSession = original;
+      }
+
+      expect(capturedOptions?.requiresWebGpu).toBe(true);
+    },
+    TIMEOUT_MS,
+  );
 });
 
 describe("resolvePresetForLockedEncoder", () => {

@@ -216,7 +216,8 @@ interface DistributedCaptureSessionDependencies {
   readWebGlVendorInfo: typeof readWebGlVendorInfoFromCanvas;
 }
 
-const distributedCaptureSessionDependencies: DistributedCaptureSessionDependencies = {
+/** Mutable so tests can substitute a spy without a real browser; renderChunk() always calls through it. */
+export const distributedCaptureSessionDependencies: DistributedCaptureSessionDependencies = {
   createCaptureSession,
   assertSwiftShader,
   initializeSession,
