@@ -128,6 +128,12 @@ export function unrollComputedTimeline(script: string): string {
     list.push(anim);
     byStatement.set(stmt, list);
   }
+  // A literal tween cannot encode an unknown start or duration, so leave that statement as authored.
+  for (const [stmt, anims] of byStatement) {
+    if (anims.some((a) => a.durationUnresolved || a.resolvedStart === undefined)) {
+      byStatement.delete(stmt);
+    }
+  }
   if (byStatement.size === 0) return script;
 
   const ms = new MagicString(script);

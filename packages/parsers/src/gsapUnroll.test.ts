@@ -59,4 +59,12 @@ describe("unrollComputedTimeline", () => {
 tl.from("#a", { opacity: 0, duration: 0.5 }, 0.1);`;
     expect(unrollComputedTimeline(script)).toBe(script);
   });
+
+  it("leaves a helper call as authored when a tween duration is not a static number", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { tl.to(sel, { opacity: 1, duration: LEN }, at); }
+fade("#a", 1);
+fade("#b", 2);`;
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
 });
