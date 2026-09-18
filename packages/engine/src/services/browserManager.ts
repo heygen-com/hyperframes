@@ -961,8 +961,8 @@ export function buildChromeArgs(
 
 /** Does the composition's root element declare `data-requires-webgpu`? */
 export function compositionRequiresWebGpu(html: string): boolean {
-  // Tags are scanned with [^<>]* so a run of '<' cannot backtrack polynomially.
-  for (const [tag] of html.matchAll(/<[^<>]*>/g)) {
+  // Quoted values are consumed whole, so '<' or '>' inside one stays in the tag; no nested quantifier overlaps.
+  for (const [tag] of html.matchAll(/<(?:[^<>"']|"[^"]*"|'[^']*')*>/g)) {
     if (/\bdata-composition-id\b/i.test(tag)) return /\bdata-requires-webgpu(?:\s|=|>)/i.test(tag);
   }
   return false;

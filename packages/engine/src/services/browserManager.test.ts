@@ -217,8 +217,12 @@ describe("compositionRequiresWebGpu", () => {
     expect(
       compositionRequiresWebGpu('<p data-requires-webgpu></p><div data-composition-id="a"></div>'),
     ).toBe(false);
+    expect(
+      compositionRequiresWebGpu('<div data-composition-id="a" title="x<y" data-requires-webgpu>'),
+    ).toBe(true);
     const started = performance.now();
     expect(compositionRequiresWebGpu("<".repeat(200_000))).toBe(false);
+    expect(compositionRequiresWebGpu("<a'".repeat(100_000))).toBe(false);
     expect(performance.now() - started).toBeLessThan(500);
   });
 });
