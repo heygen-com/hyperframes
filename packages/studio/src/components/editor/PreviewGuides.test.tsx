@@ -47,15 +47,15 @@ describe("PreviewGuides", () => {
     expect(host.querySelector('[data-testid="preview-safe-action"]')).toBeNull();
   });
 
-  it("draws the wide safe boxes and the caption band", () => {
+  it("draws the 90% and 80% boxes with edge-midpoint ticks and no labels or caption band", () => {
     const host = render(false, true);
-    expect(host.querySelector('[data-testid="preview-safe-action"]')?.textContent).toBe(
-      "Action-safe 93%",
-    );
-    expect(host.querySelector('[data-testid="preview-safe-title"]')?.textContent).toBe(
-      "Title-safe 90%",
-    );
-    expect(host.querySelector('[data-testid="preview-safe-captions"]')).not.toBeNull();
+    const box = (pct: number) =>
+      host.querySelector<HTMLElement>(`[data-testid="preview-safe-${pct}"]`);
+    expect([box(90)?.style.left, box(90)?.style.bottom]).toEqual(["5%", "5%"]);
+    expect([box(80)?.style.top, box(80)?.style.right]).toEqual(["10%", "10%"]);
+    expect(box(90)?.children.length).toBe(4);
+    expect(box(80)?.children.length).toBe(4);
+    expect(host.textContent).toBe("");
     expect(host.querySelector('[data-testid="preview-ruler-top"]')).toBeNull();
   });
 
@@ -71,32 +71,17 @@ describe("PreviewGuides", () => {
     ]);
   });
 
-  it("insets the wide boxes 3.5% and 5% and ends the caption band at the title-safe bottom", () => {
-    const host = render(false, true);
-    const box = (id: string) =>
-      host.querySelector<HTMLElement>(`[data-testid="preview-safe-${id}"]`)?.style;
-    expect([box("action")?.left, box("action")?.top]).toEqual(["3.5%", "3.5%"]);
-    expect([box("title")?.right, box("title")?.bottom]).toEqual(["5%", "5%"]);
-    const band = box("captions");
-    expect(band?.top).toBe("87%");
-    expect(band?.height).toBe("8%");
-    expect([band?.left, band?.right]).toEqual(["5%", "5%"]);
-  });
-
   it("draws nothing until the composition has a size", () => {
     compRect.current = { left: 0, top: 0, width: 0, height: 0, scaleX: 1, scaleY: 1 };
     const host = render(true, true);
     expect(host.querySelector("[data-testid]")).toBeNull();
   });
 
-  it("uses the vertical box on a portrait composition", () => {
+  it("draws the same boxes on a portrait composition", () => {
     compRect.current = { left: 20, top: 20, width: 225, height: 400, scaleX: 1, scaleY: 1 };
     const host = render(false, true);
-    const style = host.querySelector<HTMLElement>('[data-testid="preview-safe-vertical"]')?.style;
-    expect(style?.top).toBe("13.021%");
-    expect(host.querySelector('[data-testid="preview-safe-action"]')).toBeNull();
-    const band = host.querySelector<HTMLElement>('[data-testid="preview-safe-captions"]')?.style;
-    expect([band?.left, band?.right]).toEqual(["12.963%", "12.963%"]);
-    expect(band?.top).toBe("66.792%");
+    const box = host.querySelector<HTMLElement>('[data-testid="preview-safe-90"]');
+    expect([box?.style.left, box?.style.top]).toEqual(["5%", "5%"]);
+    expect(host.querySelector('[data-testid="preview-safe-80"]')).not.toBeNull();
   });
 });

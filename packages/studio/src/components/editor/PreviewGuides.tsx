@@ -1,18 +1,14 @@
 import { memo, useRef, type RefObject } from "react";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "./previewGuidesStore";
-import { CAPTION_BAND_HEIGHT, resolveSafeMargins } from "../../utils/previewSafeMargins";
+import { SAFE_BOX_PERCENTS, safeBoxInsetPercent } from "../../utils/previewSafeMargins";
 
 interface PreviewGuidesProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
 }
 
-/** Fraction to a CSS percent, rounded so float noise never reaches the style. */
-const pct = (fraction: number) => `${Number((fraction * 100).toFixed(3))}%`;
 const TICKS = Array.from({ length: 11 }, (_, i) => i * 10);
 const INK = "rgba(255,255,255,0.7)";
-const SAFE_COLOR = "rgba(250,204,21,0.9)";
-const CAPTION_COLOR = "rgba(56,189,248,0.9)";
 
 /** Ruler and safe-margin boxes drawn over the preview pane, never inside the composition. */
 export const PreviewGuides = memo(function PreviewGuides({ iframeRef }: PreviewGuidesProps) {
@@ -38,7 +34,6 @@ function ActiveGuides({ iframeRef, rulerVisible, safeMarginsVisible }: ActiveGui
   const paneRef = useRef<HTMLDivElement>(null);
   const rect = useDomEditCompositionRect({ iframeRef, overlayRef: paneRef });
   const ready = rect.width > 0 && rect.height > 0;
-  const safe = ready ? resolveSafeMargins(rect.width, rect.height) : null;
 
   return (
     <div ref={paneRef} aria-hidden="true" className="pointer-events-none absolute inset-0 z-20">
@@ -86,53 +81,46 @@ function ActiveGuides({ iframeRef, rulerVisible, safeMarginsVisible }: ActiveGui
           </div>
         </>
       )}
-      {safe && safeMarginsVisible && (
+      {ready && safeMarginsVisible && (
         <div
           className="absolute"
           style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
         >
-          {safe.boxes.map((box, index) => (
-            <div
-              key={box.kind}
-              data-testid={`preview-safe-${box.kind}`}
-              className="absolute border border-dashed"
-              style={{
-                left: pct(box.left),
-                top: pct(box.top),
-                right: pct(box.right),
-                bottom: pct(box.bottom),
-                borderColor: SAFE_COLOR,
-              }}
-            >
-              <span
-                className="absolute left-1 text-[10px] leading-none"
-                style={{ top: 2 + index * 12, color: SAFE_COLOR }}
-              >
-                {box.label}
-              </span>
-            </div>
+          {SAFE_BOX_PERCENTS.map((boxPercent) => (
+            <SafeBox key={boxPercent} boxPercent={boxPercent} />
           ))}
-          <div
-            data-testid="preview-safe-captions"
-            className="absolute border-y border-dashed"
-            style={{
-              left: pct(safe.captionBox.left),
-              right: pct(safe.captionBox.right),
-              top: pct(safe.captionBottom - CAPTION_BAND_HEIGHT),
-              height: pct(CAPTION_BAND_HEIGHT),
-              borderColor: CAPTION_COLOR,
-              backgroundColor: "rgba(56,189,248,0.08)",
-            }}
-          >
-            <span
-              className="absolute right-1 top-0.5 text-[10px] leading-none"
-              style={{ color: CAPTION_COLOR }}
-            >
-              Captions
-            </span>
-          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const TICK_PX = 7;
+const EDGE_MIDPOINTS = [
+  { edge: "top", style: { left: "50%", top: -TICK_PX / 2, width: 1, height: TICK_PX } },
+  { edge: "bottom", style: { left: "50%", bottom: -TICK_PX / 2, width: 1, height: TICK_PX } },
+  { edge: "left", style: { top: "50%", left: -TICK_PX / 2, width: TICK_PX, height: 1 } },
+  { edge: "right", style: { top: "50%", right: -TICK_PX / 2, width: TICK_PX, height: 1 } },
+] as const;
+
+/** One thin white box inset from every edge, with a tick at the midpoint of each edge. */
+function SafeBox({ boxPercent }: { boxPercent: number }) {
+  const inset = `${safeBoxInsetPercent(boxPercent)}%`;
+  return (
+    <div
+      data-testid={`preview-safe-${boxPercent}`}
+      className="absolute border border-white/90"
+      style={{
+        left: inset,
+        top: inset,
+        right: inset,
+        bottom: inset,
+        boxShadow: "0 0 0 1px rgba(0,0,0,0.25)",
+      }}
+    >
+      {EDGE_MIDPOINTS.map(({ edge, style }) => (
+        <span key={edge} className="absolute bg-white/90" style={style} />
+      ))}
     </div>
   );
 }
