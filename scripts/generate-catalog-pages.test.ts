@@ -65,7 +65,7 @@ function queryOf(url: string): string {
 
 /**
  * Hop 1: the explorer's first load. Mirrors the one expression in
- * docs/snippets/variables-explorer.jsx that builds it, which the last test in
+ * docs/snippets/catalog-detail.jsx that builds it, which the last test in
  * this file pins so the two cannot drift apart silently.
  */
 function explorerQuery(values: Record<string, string>): string {
@@ -196,12 +196,12 @@ describe("player src rewriting", () => {
 });
 
 describe("explorer producer", () => {
-  it("still encodes the first load with encodeURIComponent", () => {
+  it("still posts the values in the message the wrapper listens for", () => {
     const source = readFileSync(
-      join(here, "..", "docs", "snippets", "variables-explorer.jsx"),
+      join(here, "..", "docs", "snippets", "catalog-detail.jsx"),
       "utf-8",
     );
-    assert.match(source, /\?hfv=\$\{encodeURIComponent\(JSON\.stringify\(defaults\)\)\}/);
+    assert.match(source, /postMessage\(\{ hfVariables: values \}/);
   });
 });
 

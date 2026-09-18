@@ -55,11 +55,31 @@
  * other edit, so it reaches the preview by the same debounced post as the rest.
  */
 
-export const VariablesExplorer = ({
+/**
+ * A named region of a catalog page, filled from markdown or fences.
+ *
+ * MDX hands a component its children as one list, so the generator marks what
+ * each child is for (`code`, `install`, `docs`) and CatalogDetail
+ * shows it under the matching tab. Exported beside the component because MDX
+ * only carries a snippet's exports into a page.
+ */
+export const CatalogSlot = ({ slot, children }) => <div data-slot={slot}>{children}</div>;
+
+export const CatalogDetail = ({
   previewSrc,
   compositionId,
   compositionSrc,
-  variables,
+  variables = [],
+  title,
+  description,
+  meta = {},
+  about,
+  attribution,
+  rawUrl,
+  video,
+  poster,
+  needsFlag,
+  hasCode,
   children,
 }) => {
   /**
@@ -566,6 +586,115 @@ export const VariablesExplorer = ({
     border-color 100ms ease,
     color 100ms ease;
 }
+
+.hf-ve-head-title { margin: 8px 0 28px; }
+.hf-ve-head-title h1 { margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; color: var(--ve-fg); }
+.hf-ve-head-title p { margin: 12px 0 0; font-size: 18px; line-height: 1.5; color: var(--ve-muted); max-width: 70ch; }
+@media (max-width: 640px) { .hf-ve-head-title h1 { font-size: 32px; } }
+/* Item page anatomy: bar, stage beside Tune, tabs, tab body. */
+.hf-ve-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 16px;
+}
+.hf-ve-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  font-size: 14px;
+  color: var(--ve-muted);
+}
+.hf-ve-meta b { color: var(--ve-fg); font-weight: 600; }
+.hf-ve-badge {
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  background: var(--ve-hover);
+}
+.hf-ve-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.hf-ve-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ve-fg);
+  background: var(--ve-hover);
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+}
+.hf-ve-action:hover { background: var(--ve-line); }
+.hf-ve-action[data-primary="true"] { color: var(--ve-on-fg); background: var(--ve-on-bg); }
+.hf-ve-action[data-primary="true"]:hover { opacity: 0.88; }
+.hf-ve-main { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) {
+  .hf-ve-main[data-tune="true"] { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+.hf-ve-stage {
+  overflow: hidden;
+  border: 1px solid var(--ve-line);
+  border-radius: 14px;
+  background: var(--ve-surface);
+}
+.hf-ve-stage .hf-ve-preview { border: 0; border-radius: 0; }
+.hf-ve-caption { padding: 10px 16px; font-size: 13px; color: var(--ve-muted); }
+.hf-ve-caption span + span { margin-left: 16px; }
+.hf-ve-tune {
+  position: relative;
+  min-height: 320px;
+  border: 1px solid var(--ve-line);
+  border-radius: 14px;
+  background: var(--ve-surface);
+}
+.hf-ve-tune-inner { display: flex; flex-direction: column; max-height: 520px; }
+@media (min-width: 1024px) {
+  .hf-ve-tune-inner { position: absolute; inset: 0; max-height: none; }
+}
+.hf-ve-tune-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ve-line);
+  font-weight: 600;
+}
+.hf-ve-tune-head small { font-weight: 400; font-size: 13px; color: var(--ve-muted); }
+.hf-ve-tune-list { flex: 1; min-height: 0; overflow: auto; display: grid; gap: 14px; padding: 16px; align-content: start; }
+.hf-ve-tune-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ve-line);
+}
+.hf-ve-tabs-row { margin: 20px 0 12px; }
+.hf-ve-tabs-row .hf-ve-tab { padding: 6px 16px; font-size: 14px; }
+.hf-ve-tabs-row .hf-ve-tab small { margin-left: 6px; font-weight: 400; opacity: 0.7; }
+.hf-ve-body {
+  padding: 8px 4px;
+}
+.hf-ve-about h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.hf-ve-about p { margin: 0 0 12px; line-height: 1.6; max-width: 72ch; }
+.hf-ve-about .hf-ve-attr { font-size: 14px; color: var(--ve-muted); }
+.hf-ve-about .hf-ve-attr a { color: var(--ve-fg); text-decoration: underline; }
+.hf-ve-body-pane[hidden] { display: none; }
+.hf-ve-slots > [data-slot] { display: none; }
+.hf-ve-slots[data-tab="code"] > [data-slot="code"],
+.hf-ve-slots[data-tab="install"] > [data-slot="install"],
+.hf-ve-slots[data-tab="docs"] > [data-slot="docs"] { display: block; }
+.hf-ve-body-pane .code-block pre { max-height: 560px; overflow: auto; }
+@media (max-width: 640px) {
+  .hf-ve-actions { width: 100%; }
+  .hf-ve-action { flex: 1 1 calc(50% - 8px); justify-content: center; }
+}
+
 `;
 
   // >>> svg-import geometry
@@ -1651,7 +1780,6 @@ export const VariablesExplorer = ({
 
   /** What was last posted, so ending an edit that changed nothing is free. */
   const posted = useRef(null);
-  const [tab, setTab] = useState("preview");
   const frame = useRef(null);
 
   // The frame is a document we write, not a file we fetch.
@@ -1795,59 +1923,244 @@ export const VariablesExplorer = ({
     return `${base} --vars '${JSON.stringify(changed)}'`;
   })();
 
-  // "Code" is the composition's own source, handed in as a fenced block by the
-  // generator and highlighted by shiki at build time — the source never changes
-  // as a knob moves, so it needs none of the hand-colouring the snippet does.
-  // A source with a fence in it cannot be passed this way, and then there is
-  // simply no Code tab rather than an empty one.
+  const hasTune = variables.length > 0;
+  const [tab, setTab] = useState("preview");
+  const lines = meta.codeLines;
   const TABS = [
     ["preview", "Preview"],
-    ...(children ? [["code", "Code"]] : []),
-    ["snippet", "Snippet"],
+    ...(hasCode ? [["code", "Code", lines ? `${lines} ln` : ""]] : []),
+    ["install", "Install"],
+    ["docs", "Docs"],
   ];
+
+  const changedValues = () => {
+    const changed = {};
+    for (const v of variables) {
+      if (JSON.stringify(values[v.id]) !== JSON.stringify(defaults[v.id])) changed[v.id] = values[v.id];
+    }
+    return changed;
+  };
+  const renderCommand = (() => {
+    const changed = changedValues();
+    const vars = Object.keys(changed).length ? ` --variables '${JSON.stringify(changed).replace(/'/g, "'\\''")}'` : "";
+    return `# Run from the installed project's root.\nnpx hyperframes render --composition '${compositionSrc}'${vars}`;
+  })();
+  const agentRequest = (() => {
+    const changed = changedValues();
+    const base = `Install the HyperFrames catalog item "${compositionId}" (${title || compositionId}) into my project with \`npx hyperframes add ${compositionId}\`, mount it at the point of my composition where it should play, and verify with \`npx hyperframes check\`.`;
+    const set = Object.entries(changed).map(([id, value]) => `${id} = ${JSON.stringify(value)}`);
+    return set.length ? `${base} Set ${set.join(", ")}; keep the other variables at their defaults.` : `${base} Keep the default variables unless I say otherwise.`;
+  })();
+
+  const [copiedKey, setCopiedKey] = useState("");
+  const copy = async (key, text) => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.cssText = "position:fixed;opacity:0";
+      document.body.appendChild(area);
+      area.select();
+      ok = document.execCommand("copy");
+      area.remove();
+    }
+    if (!ok) return;
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey((current) => (current === key ? "" : current)), 1400);
+  };
+  const CopyAction = ({ id, label, text, primary }) => (
+    <button
+      type="button"
+      className="hf-ve-action"
+      data-primary={primary ? "true" : "false"}
+      onClick={() => copy(id, typeof text === "function" ? text() : text)}
+    >
+      {copiedKey === id ? "Copied" : label}
+    </button>
+  );
+  const wiring = snippetLines.map((tokens) => tokens.map(([, text]) => text).join("")).join("\n");
+  const mountText = `${wiring}\n`;
+
+  const flagNotice = needsFlag ? (
+    <div className="flex aspect-video w-full items-center justify-center text-sm text-zinc-500">
+      Needs <code>chrome://flags/#{needsFlag}</code> to render live
+    </div>
+  ) : null;
+  const player = (
+    <iframe
+      ref={frame}
+      srcDoc={bootstrap}
+      className="hf-ve-preview block aspect-video w-full"
+      title={`${compositionId} preview`}
+    />
+  );
+  const recorded = video ? (
+    <video className="block aspect-video w-full object-cover" src={video} poster={poster} autoPlay muted loop playsInline />
+  ) : null;
+  const stageNode = recorded ?? flagNotice ?? player;
+
+  const seconds = meta.duration ? `${meta.duration} s` : null;
+  const size = meta.width && meta.height ? `${meta.width}×${meta.height}` : null;
 
   return (
     <div className="hf-ve not-prose my-4">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
-      <div className="mb-3 flex items-center gap-3">
-        <div className="hf-ve-tabs">
-          {TABS.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              data-on={tab === id}
-              aria-pressed={tab === id}
-              onClick={() => setTab(id)}
-              className="hf-ve-tab hf-ve-tint"
-            >
-              {label}
-            </button>
-          ))}
+      <header className="hf-ve-head-title">
+        <h1>{title}</h1>
+        {description && <p>{description}</p>}
+      </header>
+
+      <div className="hf-ve-bar">
+        <div className="hf-ve-meta">
+          {seconds && (
+            <span>
+              <b>{seconds}</b> duration
+            </span>
+          )}
+          {size && <b>{size}</b>}
+          {hasTune && (
+            <span>
+              <b>{variables.length}</b> {variables.length === 1 ? "variable" : "variables"}
+            </span>
+          )}
+          {meta.category && <b>{meta.category}</b>}
+          {meta.badge && <span className="hf-ve-badge">{meta.badge}</span>}
+        </div>
+        <div className="hf-ve-actions">
+          <CopyAction id="agent" label="Copy agent request" text={agentRequest} primary />
+          <CopyAction id="wiring" label="Copy wiring" text={mountText} />
+          <CopyAction id="link" label="Copy link" text={() => window.location.href} />
+          {rawUrl && (
+            <a className="hf-ve-action" href={rawUrl} target="_blank" rel="noopener noreferrer">
+              Raw
+            </a>
+          )}
         </div>
       </div>
 
-      {/* One grid cell, two panes. Switching tabs must not unmount the iframe —
-          that reloads the composition and throws it back to frame zero. */}
-      <div className="hf-ve-frame">
-        <div className="hf-ve-cell" data-on={tab === "preview"}>
-          <iframe
-            ref={frame}
-            srcDoc={bootstrap}
-            className="hf-ve-preview block aspect-video w-full"
-            title={`${compositionId} preview`}
-          />
-        </div>
-        {children && (
-          <div className="hf-ve-cell" data-on={tab === "code"}>
-            {children}
+      <div className="hf-ve-main" data-tune={hasTune ? "true" : "false"}>
+        <div className="hf-ve-stage">
+          {stageNode}
+          <div className="hf-ve-caption">
+            {(seconds || size) && <span>{[seconds, size && `${size} preview`].filter(Boolean).join(" · ")}</span>}
+            <span>{video || needsFlag ? "Recorded preview" : "Live composition · HyperFrames Player"}</span>
           </div>
+        </div>
+
+        {hasTune && (
+          <aside className="hf-ve-tune" aria-label="Tune">
+            <div className="hf-ve-tune-inner">
+              <div className="hf-ve-tune-head">
+                Tune <small>{variables.length} {variables.length === 1 ? "variable" : "variables"}</small>
+              </div>
+              <div className="hf-ve-tune-list">
+                {variables.map((v) => (
+                  <div key={v.id}>
+                    <div className="hf-ve-row">
+                      <label className="hf-ve-label">{v.label ?? v.id}</label>
+                      <span className="hf-ve-value">{readout(v, values[v.id])}</span>
+                    </div>
+                    {control(
+                      v,
+                      values[v.id],
+                      (next) => setValues((prev) => ({ ...prev, [v.id]: next })),
+                      notes[v.id],
+                      (note) => setNotes((prev) => ({ ...prev, [v.id]: note })),
+                      setTyping,
+                    )}
+                    {v.description && <p className="hf-ve-desc">{v.description}</p>}
+                  </div>
+                ))}
+              </div>
+              <div className="hf-ve-tune-foot">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValues(defaults);
+                    setNotes({});
+                  }}
+                  disabled={!dirty}
+                  className="hf-ve-btn hf-ve-tint"
+                >
+                  Reset
+                </button>
+                <CopyAction
+                  id="json"
+                  label="Copy JSON"
+                  text={() => JSON.stringify(dirty ? changedValues() : defaults, null, 2)}
+                />
+                <CopyAction id="render" label="Copy render cmd" text={renderCommand} />
+              </div>
+            </div>
+          </aside>
         )}
-        <div className="hf-ve-cell hf-ve-snippet" data-on={tab === "snippet"}>
-          {/* The Install block above the preview is generated before anyone
-              touches a knob, so it can only ever offer the plain command. This
-              one is the panel's, and it carries what the reader actually chose:
-              copying it installs the piece already tuned. */}
+      </div>
+
+      <div className="hf-ve-tabs hf-ve-tabs-row" role="tablist">
+        {TABS.map(([id, label, note]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            data-on={tab === id}
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className="hf-ve-tab hf-ve-tint"
+          >
+            {label}
+            {note ? <small>{note}</small> : null}
+          </button>
+        ))}
+      </div>
+
+      <div className="hf-ve-body">
+        {/* The generator files each section under a named slot. They are shown by
+            CSS on the tab attribute rather than sorted here, because the shape MDX
+            hands a component's children is not something to introspect. */}
+        <div className="hf-ve-slots" data-tab={tab}>
+          {children}
+        </div>
+        <div className="hf-ve-body-pane hf-ve-about" hidden={tab !== "preview"}>
+          <h3>About</h3>
+          {about && <p>{about}</p>}
+          {attribution && (
+            <p className="hf-ve-attr">
+              {attribution.author ? (
+                <>
+                  Created by{" "}
+                  {attribution.authorUrl ? (
+                    <a href={attribution.authorUrl} target="_blank" rel="noopener noreferrer">
+                      {attribution.author}
+                    </a>
+                  ) : (
+                    attribution.author
+                  )}{" "}
+                  ·{" "}
+                </>
+              ) : null}
+              Registry item{" "}
+              <a
+                href={`https://github.com/heygen-com/hyperframes/tree/main/${attribution.path}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                heygen-com/hyperframes
+              </a>{" "}
+              · <code>{attribution.path}</code>
+              {attribution.tags.length > 0 ? ` · ${attribution.tags.join(", ")}` : ""}
+            </p>
+          )}
+        </div>
+        <div className="hf-ve-body-pane hf-ve-snippet" hidden={tab !== "install"}>
+          {/* The plain command above is generated before anyone touches a knob.
+              These two carry what the reader dialled in, so copying installs the
+              piece already tuned. Assembled token by token because there is no
+              build step to highlight them at. */}
           <CodeBlock filename="Terminal">
             <pre
               className="shiki shiki-themes github-light-default dark-plus"
@@ -1866,10 +2179,6 @@ export const VariablesExplorer = ({
               </code>
             </pre>
           </CodeBlock>
-          {/* Each line carries its own trailing newline rather than sitting
-              next to a bare one: MDX resolves a dotted JSX tag through the
-              page, so `<React.Fragment>` throws where a keyed element does
-              not. The text content is identical either way. */}
           <CodeBlock filename="index.html">
             <pre
               className="shiki shiki-themes github-light-default dark-plus"
@@ -1894,42 +2203,6 @@ export const VariablesExplorer = ({
               </code>
             </pre>
           </CodeBlock>
-        </div>
-      </div>
-
-      <div className="hf-ve-panel">
-        <div className="hf-ve-head">
-          <span className="hf-ve-title">Customize</span>
-          <button
-            type="button"
-            onClick={() => {
-              setValues(defaults);
-              setNotes({});
-            }}
-            disabled={!dirty}
-            className="hf-ve-btn hf-ve-tint"
-          >
-            Reset
-          </button>
-        </div>
-        <div className="hf-ve-grid">
-          {variables.map((v) => (
-            <div key={v.id}>
-              <div className="hf-ve-row">
-                <label className="hf-ve-label">{v.label ?? v.id}</label>
-                <span className="hf-ve-value">{readout(v, values[v.id])}</span>
-              </div>
-              {control(
-                v,
-                values[v.id],
-                (next) => setValues((prev) => ({ ...prev, [v.id]: next })),
-                notes[v.id],
-                (note) => setNotes((prev) => ({ ...prev, [v.id]: note })),
-                setTyping,
-              )}
-              {v.description && <p className="hf-ve-desc">{v.description}</p>}
-            </div>
-          ))}
         </div>
       </div>
     </div>

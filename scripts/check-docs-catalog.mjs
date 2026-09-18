@@ -8,12 +8,22 @@ import { execFileSync } from "node:child_process";
 import ts from "typescript";
 import {
   getCatalogTab,
+  previewGap,
   readCatalogGalleryData,
   readJson,
   resolveDocsRoot,
 } from "./docs-catalog-shared.mjs";
 
 const { root, docs } = resolveDocsRoot(process.argv[2]);
+
+// Items allowed without a live preview, each with the reason it has none.
+const NO_LIVE = new Map([
+  ["caption-blend-difference", "a style-only helper (a CSS class), so there is no scene to play"],
+  [
+    "heygen-avatar-promo-card",
+    "its source videos are not on the CDN yet; a maintainer runs host-registry-assets",
+  ],
+]);
 
 function leafPaths(tab) {
   const paths = [];
@@ -68,6 +78,11 @@ for (const item of data.items) {
     fs.existsSync(path.join(docs, item.href.slice(1) + ".mdx")),
     `Gallery item has no page on disk: ${item.href}`,
   );
+  assert.match(
+    fs.readFileSync(path.join(docs, item.href.slice(1) + ".mdx"), "utf8"),
+    /<CatalogDetail\b/,
+    `${item.href} does not render the shared item-page layout`,
+  );
   assert.equal(
     navSections.get(item.href),
     item.section,
@@ -77,7 +92,19 @@ for (const item of data.items) {
     ["still", "video", "player", "unsupported"].includes(item.preview?.mode),
     `Missing gallery preview policy for ${item.id}`,
   );
-  if (item.preview.mode === "video") assert.ok(item.video, `Missing hover video for ${item.id}`);
+  assert.ok(
+    item.preview.mode !== "still" || NO_LIVE.has(item.id),
+    `${item.id} has neither a live payload nor a Chrome-flag reason for its recorded video`,
+  );
+  if (item.preview.mode === "video" && !NO_LIVE.has(item.id)) {
+    assert.ok(item.video, `Missing hover video for ${item.id}`);
+    const file = path.join(docs, "public/catalog", `${item.kind}s`, `${item.id}.json`);
+    const payload = fs.existsSync(file) ? readJson(file) : {};
+    assert.ok(
+      payload.unsupported || previewGap(payload.html ?? "") === "webgpu",
+      `${item.id} shows its recorded video although its payload plays live`,
+    );
+  }
   if (item.preview.mode === "player") {
     assert.ok(
       fs.existsSync(path.join(docs, item.preview.source.slice(1))),

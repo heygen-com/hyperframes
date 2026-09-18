@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
  *
  * Importing it would be better and is not available. Mintlify compiles a
  * snippet as MDX and carries each exported binding into the page on its own, so
- * a second `export const` beside `VariablesExplorer` is not in scope inside it:
+ * a second `export const` beside `CatalogDetail` is not in scope inside it:
  * the panel throws `isSvgPathData is not defined` and the page loses the whole
  * explorer. Verified on the running site, not assumed.
  *
@@ -40,7 +40,7 @@ const geometry = (() => {
     "..",
     "docs",
     "snippets",
-    "variables-explorer.jsx",
+    "catalog-detail.jsx",
   );
   const source = readFileSync(snippet, "utf8");
   const open = source.indexOf("// >>> svg-import geometry");
