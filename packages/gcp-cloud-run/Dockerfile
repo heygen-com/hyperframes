@@ -112,11 +112,13 @@ RUN bun -e 'import { buildChromeArgs } from "./packages/engine/src/services/brow
       --executable-path /opt/chrome/chrome-headless-shell \
       --launch-args-json /tmp/hf-gcp-chrome-args.json
 
-# The default GPU mode here is "software", which never adds the WebGPU flag
-# on its own. Verify assertWebGpuAdapterAvailable actually gets a working
-# adapter through this exact pinned binary on this exact Linux image, rather
-# than assuming the flag alone is enough — fails the image build closed if not.
-RUN bun -e 'import { buildChromeArgs, assertWebGpuAdapterAvailable } from "./packages/engine/src/services/browserManager.ts"; import puppeteer from "puppeteer-core"; import { writeFileSync } from "node:fs"; const html = "<div data-composition-id=\"probe\" data-requires-webgpu></div>"; writeFileSync("/tmp/hf-gcp-webgpu-probe.html", html); const args = buildChromeArgs({ width: 800, height: 600, captureMode: "screenshot", platform: "linux", requiresWebGpu: true }, { browserGpuMode: "software" }); const browser = await puppeteer.launch({ executablePath: "/opt/chrome/chrome-headless-shell", headless: true, args }); const page = await browser.newPage(); await page.goto("file:///tmp/hf-gcp-webgpu-probe.html"); await assertWebGpuAdapterAvailable(page, true); await browser.close(); console.log("WebGPU adapter probe: OK");'
+# Fails the image build closed if this exact pinned binary can't get a WebGPU
+# adapter in software GPU mode. A real script file, not an inline `bun -e`
+# eval — the eval's synthetic `/app/[eval]` path can't resolve the
+# workspace-hoisted `puppeteer-core` dependency the way a real file can.
+COPY packages/aws-lambda/scripts/probe-webgpu-adapter.ts packages/aws-lambda/scripts/probe-webgpu-adapter.ts
+RUN bun packages/aws-lambda/scripts/probe-webgpu-adapter.ts \
+      --executable-path /opt/chrome/chrome-headless-shell
 
 # CI targets `beginframe-contract` directly, so pin/probe changes do not need
 # the full monorepo build merely to verify browser capability. The deployable
