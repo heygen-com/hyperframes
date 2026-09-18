@@ -43,6 +43,7 @@ export function runtimeProtocolFpsFromNumber(value: number): RuntimeProtocolFps 
   const safe = Number.isFinite(value) && value > 0 ? value : 30;
   const denominator = Number.isInteger(safe) ? 1 : 1_000_000;
   const numerator = Math.round(safe * denominator);
+  if (numerator === 0) return { numerator: safe, denominator: 1 };
   const divisor = greatestCommonDivisor(numerator, denominator);
   return { numerator: numerator / divisor, denominator: denominator / divisor };
 }
@@ -52,7 +53,8 @@ export function runtimeProtocolFpsToNumber(value: unknown): number | null {
   const fps = value as Partial<RuntimeProtocolFps>;
   if (!Number.isFinite(fps.numerator) || !Number.isFinite(fps.denominator)) return null;
   if ((fps.numerator ?? 0) <= 0 || (fps.denominator ?? 0) <= 0) return null;
-  return Number(fps.numerator) / Number(fps.denominator);
+  const rate = Number(fps.numerator) / Number(fps.denominator);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
 export function runtimeProtocolMetadata(fps: number): RuntimeProtocolV1 {

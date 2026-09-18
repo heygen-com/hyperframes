@@ -241,3 +241,37 @@ describe("handleRuntimeMessage timeline ready", () => {
     expect(callbacks.onRuntimeTimelineReady).not.toHaveBeenCalled();
   });
 });
+
+describe("handleRuntimeMessage invalid frame rates", () => {
+  it.each([
+    [Number.MAX_VALUE, Number.MIN_VALUE],
+    [Number.MIN_VALUE, Number.MAX_VALUE],
+  ])("rejects %s / %s before changing playback", (numerator, denominator) => {
+    const frameWindow = window;
+    const callbacks = makeCallbacks();
+    handleRuntimeMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: {
+          source: "hf-preview",
+          type: "state",
+          protocolVersion: 1,
+          capabilities: [],
+          fps: { numerator, denominator },
+          frame: 30,
+          isPlaying: true,
+        },
+      }),
+      frameWindow,
+      callbacks,
+    );
+    expect(callbacks.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "runtimeprotocolerror",
+        detail: { code: "invalid_protocol_metadata", receivedVersion: 1 },
+      }),
+    );
+    expect(callbacks.setRuntimeFps).not.toHaveBeenCalled();
+    expect(callbacks.setPlaybackState).not.toHaveBeenCalled();
+  });
+});
