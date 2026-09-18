@@ -899,6 +899,10 @@
       "packages/studio/src/components/ui/Tooltip.tsx",
       "packages/studio/src/components/ui/useDialogBehavior.ts",
       "packages/studio/src/hooks/useAppHotkeys.ts",
+      // dispatchModifierKey/dispatchPlainKey moved verbatim out of the
+      // already-suppressed useAppHotkeys.ts above, to keep that file under
+      // the 600-line cap. Same pre-existing complexity, new file path.
+      "packages/studio/src/hooks/appHotkeysDispatch.ts",
       "packages/studio/src/hooks/useCaptionDetection.ts",
       "packages/studio/src/hooks/useFileManager.ts",
       "packages/studio/src/hooks/useFrameCapture.ts",

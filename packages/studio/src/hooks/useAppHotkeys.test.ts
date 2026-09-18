@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchModifierKey, dispatchPlainKey } from "./useAppHotkeys";
+import { dispatchModifierKey, dispatchPlainKey } from "./appHotkeysDispatch";
 import { usePlayerStore } from "../player/store/playerStore";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
