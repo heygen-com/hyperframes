@@ -11,7 +11,7 @@ import { formatTimelineAttributeNumber } from "../player/components/timelineEdit
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
-import { deriveTimelineStoreKey } from "../player/lib/timelineElementHelpers";
+import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 
 function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
   try {
@@ -247,7 +247,7 @@ export async function addBlockToProject(
     return {
       block,
       compositionPath: compositionFile,
-      hostKey: deriveTimelineStoreKey({ domId: hostId, sourceFile: targetPath }) ?? hostId,
+      hostKey: deriveTimelineStoreKeyForDomId(hostId, targetPath),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to add block";

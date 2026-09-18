@@ -21,7 +21,7 @@ import { formatTimelineAttributeNumber } from "./timelineEditingHelpers";
 import { readFileContent } from "./timelineTimingSync";
 import { commitTimelineCompositionInsertion } from "../utils/timelineCompositionInsert";
 import { extendRootDurationInSource } from "../utils/rootDuration";
-import { deriveTimelineStoreKey } from "../player/lib/timelineElementHelpers";
+import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
 
 interface UseTimelineAssetDropOpsOptions {
@@ -122,9 +122,7 @@ export function useTimelineAssetDropOps({
           recordEdit,
         });
 
-        selectAndRevealTimelineElement(
-          deriveTimelineStoreKey({ domId: newId, sourceFile: targetPath }) ?? newId,
-        );
+        selectAndRevealTimelineElement(deriveTimelineStoreKeyForDomId(newId, targetPath));
         forceReloadSdkSession?.();
         reloadPreview();
       } catch (error) {

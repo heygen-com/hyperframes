@@ -207,8 +207,8 @@ describe("useTimelineSelectionPreviewSync", () => {
   it("does not shrink a pasted or duplicated group's selection when only some members have appeared yet", async () => {
     // Paste/duplicate of a group selects every new id up front; one member
     // (clip-1) is already in timelineElements, the other (a fresh paste/dup
-    // target, "clip-3") is not yet. The old code applied the one member it
-    // could resolve, silently dropping the rest of the group from the store.
+    // target, "clip-3") is not yet. Applying only the resolved member would
+    // silently drop the rest of the group from the store.
     const { firstSelection, timelineElements, selectionById } = makeSyncFixture();
     const applyDomSelection = vi.fn();
     const applyMarqueeSelection = vi.fn();

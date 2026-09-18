@@ -392,6 +392,14 @@ export function deriveTimelineStoreKey(params: {
   return buildTimelineElementKey({ id: "", fallbackIndex: 0, ...params });
 }
 
+/**
+ * {@link deriveTimelineStoreKey} for a caller that already has a DOM id in
+ * hand (e.g. one it just minted), so the undefined branch never applies.
+ */
+export function deriveTimelineStoreKeyForDomId(domId: string, sourceFile?: string): string {
+  return buildTimelineElementKey({ id: "", fallbackIndex: 0, domId, sourceFile });
+}
+
 // ---------------------------------------------------------------------------
 // DOM node querying
 // ---------------------------------------------------------------------------
