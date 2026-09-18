@@ -1,5 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 import { INSERT_BOUNDARY_BAND } from "./timelineLayout";
+import { isMainTrackElement } from "./timelineZones";
 
 /**
  * Keep a landing track inside the dragged clip's kind-zone: visual clips stay in
@@ -138,6 +139,24 @@ export function resolveZoneDropPlacement(input: {
     return { track: desired, insertRow };
   }
   return { track: placement.track, insertRow: null };
+}
+
+/** A clip newly LANDING on an empty main track always commits at start=0
+ *  (no leading gap by convention). No-op for a clip already resident there,
+ *  once the main track holds another clip, or off the main track. */
+export function resolveMainTrackDropStart(
+  elements: readonly TimelineElement[],
+  dragKey: string,
+  landingTrack: number,
+  draggedElement: TimelineElement,
+  desiredStart: number,
+): number {
+  if (landingTrack === draggedElement.track) return desiredStart;
+  if (!isMainTrackElement({ ...draggedElement, track: landingTrack })) return desiredStart;
+  const mainTrackHasOthers = elements.some(
+    (el) => (el.key ?? el.id) !== dragKey && isMainTrackElement(el),
+  );
+  return mainTrackHasOthers ? desiredStart : 0;
 }
 
 /**

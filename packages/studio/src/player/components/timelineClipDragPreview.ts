@@ -13,7 +13,11 @@ import {
   snapTimelineTime,
   type TimelineSnapTarget,
 } from "./timelineSnapping";
-import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
+import {
+  resolveInsertRow,
+  resolveMainTrackDropStart,
+  resolveZoneDropPlacement,
+} from "./timelineCollision";
 import {
   applyTimelineGroupResizePreview,
   type TimelineGroupResizeSession,
@@ -200,12 +204,18 @@ export function computeDragPreview(
     nextMove.track,
     ctx,
   );
+  // A track insert lands on a fresh fractional lane resolved at commit time,
+  // never track 0 — so the magnetic snap only applies to a plain placement.
+  const snappedStart =
+    insertRow == null
+      ? resolveMainTrackDropStart(elements, dragKey, previewTrack, drag.element, previewStart)
+      : previewStart;
   return {
     ...drag,
     started: true,
     pointerClientX: clientX,
     pointerClientY: clientY,
-    previewStart,
+    previewStart: snappedStart,
     previewTrack,
     // The lane the POINTER aims at (pre-collision): the commit reads it to tell a
     // deliberate vertical lane change from a horizontal drag merely bumped sideways.
