@@ -174,11 +174,8 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
   }
 }
 
-/**
- * Scoped per project, since each project's panel widths, zoom and timeline
- * settings are its own — falls back once to the pre-scoping global entry so
- * a project's first load after this shipped doesn't look reset.
- */
+/** Scoped per project; falls back once to the pre-scoping global entry so
+ *  an existing project's first load doesn't look reset. */
 export function readStudioUiPreferences(
   storage: Storage | null = getBrowserStorage(),
   projectId: string | null = getActiveProjectId(),
