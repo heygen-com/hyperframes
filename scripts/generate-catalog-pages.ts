@@ -914,7 +914,8 @@ function previewSection(
   if (textureGroups.length > 0) return generateTexturePreview(manifest, textureGroups);
 
   const flag = unsupportedFlag(kind, manifest.name);
-  if (flag) {
+  // A recorded video still plays without the flag, so it wins over the notice.
+  if (flag && !manifest.preview?.video) {
     return [
       `<div className="w-full aspect-video rounded-xl border border-dashed flex items-center justify-center text-sm text-zinc-500">`,
       `  Needs <code>chrome://flags/#${flag}</code> to render live`,
@@ -1383,6 +1384,11 @@ function main(): void {
     const handAddedGroups: unknown[] = (existing?.groups ?? []).filter(
       (g: unknown) => !holdsGeneratedPages(g),
     );
+
+    // The wrapper group holds generated pages, so the filter above drops it and
+    // catalog/index with it; sync-docs-catalog re-wraps groups around an Overview.
+    const keepsIndex = handAddedGroups.some((g) => JSON.stringify(g).includes('"catalog/index"'));
+    if (!keepsIndex) handAddedGroups.unshift({ group: "Overview", pages: ["catalog/index"] });
 
     const catalogTab = {
       tab: "Catalog",

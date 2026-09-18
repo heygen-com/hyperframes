@@ -33,6 +33,7 @@
     "lint:fix": "oxlint --fix .",
     "check:tracked-artifacts": "node scripts/check-tracked-artifacts.mjs",
     "check:docs-snippet-motion": "node scripts/check-docs-snippet-motion.mjs",
+    "check:docs-catalog": "node scripts/check-docs-catalog.mjs",
     "check:workspace-contracts": "node scripts/check-workspace-contracts.mjs",
     "check:package-cycles": "node scripts/check-package-cycles.mjs",
     "check:cli-process-ownership": "node scripts/check-cli-process-ownership.mjs",

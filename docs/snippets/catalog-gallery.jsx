@@ -230,6 +230,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             const state = mountsRef.current.get(item.href);
             if (!state)
                 return;
+            clearTimeout(state.readyTimer);
             state.player?.remove();
             capsRef.current[state.tier] -= 1;
             mountsRef.current.delete(item.href);
@@ -247,7 +248,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 if (capsRef.current[tier] >= capFor(tier))
                     return; // over budget for this tier; stays on the neutral tile until a slot frees
                 capsRef.current[tier] += 1;
-                const state = { player: null, tier, hover: false };
+                const state = { player: null, tier, hover: false, readyTimer: 0 };
                 mountsRef.current.set(item.href, state);
                 await ensurePlayerDefined();
                 const response = await fetch(item.preview.source);
@@ -277,7 +278,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                     capsRef.current[tier] -= 1;
                     mountsRef.current.delete(item.href);
                 };
-                const readyTimer = setTimeout(fail, READY_TIMEOUT_MS);
+                const readyTimer = state.readyTimer = setTimeout(fail, READY_TIMEOUT_MS);
                 player.addEventListener('error', fail, { once: true });
                 player.addEventListener('ready', () => {
                     clearTimeout(readyTimer);
@@ -315,7 +316,10 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
         const mounts = mountsRef.current;
         return () => {
             observer.disconnect();
-            mounts.forEach((state) => state.player?.remove());
+            mounts.forEach((state) => {
+                clearTimeout(state.readyTimer);
+                state.player?.remove();
+            });
             mounts.clear();
             capsRef.current = { dom: 0, webgl: 0 };
         };
