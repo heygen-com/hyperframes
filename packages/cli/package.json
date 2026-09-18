@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.0.5",
-    "@puppeteer/browsers": "^3.2.1",
+    "@puppeteer/browsers": "^3.2.2",
     "adm-zip": "^0.6.0",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
@@ -46,7 +46,7 @@
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
-    "puppeteer-core": "^25.8.0",
+    "puppeteer-core": "^25.10.0",
     "sharp": "^0.35.0"
   },
   "devDependencies": {
