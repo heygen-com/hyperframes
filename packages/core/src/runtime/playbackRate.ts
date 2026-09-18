@@ -24,6 +24,11 @@ export function readElementPlaybackRate(el: Pick<Element, "getAttribute">): numb
   return normalizePlaybackRate(raw);
 }
 
+/** A constant rate clamped to the shared range; a lane is already normalised by its parser. */
+export function normalizeRateSpec(spec: RateSpec | undefined): RateSpec {
+  return typeof spec === "object" ? spec : normalizePlaybackRate(spec ?? 1);
+}
+
 /** The clip's rate: its `rate` lane when present, otherwise the constant rate. */
 export function readElementRateSpec(el: Pick<Element, "getAttribute">): RateSpec {
   return resolveRateSpec(el.getAttribute("data-automation"), readElementPlaybackRate(el));

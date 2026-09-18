@@ -45,7 +45,13 @@
  */
 
 import { parseHTML } from "linkedom";
-import { fpsToNumber, normalizePlaybackRate, toFps, type FpsInput } from "@hyperframes/core";
+import {
+  fpsToNumber,
+  normalizeRateSpec,
+  sourceTimeAt,
+  toFps,
+  type FpsInput,
+} from "@hyperframes/core";
 import {
   extractionFrameCountForDuration,
   resolvePlayableVideoDuration,
@@ -166,8 +172,10 @@ function expectedFramesForVideo(
   fps: FpsInput,
 ): number {
   const rounding = entry && !entry.metadata.isVFR ? "nearest" : "ceil";
-  const playbackRate = normalizePlaybackRate(video.playbackRate ?? 1);
-  const slotSourceDuration = Math.max(0, video.end - video.start) * playbackRate;
+  const slotSourceDuration = sourceTimeAt(
+    normalizeRateSpec(video.playbackRate),
+    Math.max(0, video.end - video.start),
+  );
   const slotFrames = expectedFramesForClip(0, slotSourceDuration, fps, rounding);
   if (!entry) return slotFrames;
 

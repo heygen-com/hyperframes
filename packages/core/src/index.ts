@@ -321,12 +321,15 @@ export {
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 export {
   normalizePlaybackRate,
+  normalizeRateSpec,
   parseStrictFiniteTimingNumber,
   readElementPlaybackRate,
+  readElementRateSpec,
   readMediaStart,
   resolveNaturalMediaTimelineDuration,
   resolveNaturalMediaTimelineDurationFromValues,
 } from "./runtime/playbackRate.js";
+export { shiftRateLane, sourceTimeAt, timeAtSourceTime, type RateSpec } from "./speedRamp.js";
 
 // Variable validation (CLI / tooling-side)
 export {

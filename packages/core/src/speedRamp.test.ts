@@ -6,6 +6,7 @@ import {
   rateAt,
   readPreservePitch,
   resolveRateSpec,
+  shiftRateLane,
   sourceTimeAt,
   speedPresetLane,
   timeAtSourceTime,
@@ -68,6 +69,31 @@ describe("rateAt", () => {
         1,
       ),
     ).toBeCloseTo(Math.sqrt(3), 5);
+  });
+});
+
+describe("shiftRateLane", () => {
+  it("sees the lane from dt seconds in: integrating from 1s of a 4s 1x to 3x ramp", () => {
+    const lane = ramp([
+      [0, 1],
+      [4, 3],
+    ]);
+    // source(3) - source(1) = 4.6586 - 1.1508
+    expect(sourceTimeAt(shiftRateLane(lane, 1), 2)).toBeCloseTo(3.5078, 2);
+  });
+});
+
+describe("shiftRateLane with a shaped segment", () => {
+  it("keeps the curve of a segment cut in the middle: shifted integral equals the original's difference", () => {
+    const lane: HfAutomationLane = {
+      target: RATE_TARGET,
+      points: [
+        { t: 0, v: 1, curve: 0.8 },
+        { t: 4, v: 3 },
+      ],
+    };
+    const expected = sourceTimeAt(lane, 4) - sourceTimeAt(lane, 1);
+    expect(sourceTimeAt(shiftRateLane(lane, 1), 3)).toBeCloseTo(expected, 2);
   });
 });
 

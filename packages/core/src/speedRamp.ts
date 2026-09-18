@@ -9,6 +9,26 @@ export type RateSpec = number | HfAutomationLane;
 
 const PRESERVE_PITCH_ATTR = "data-preserve-pitch";
 
+const SHIFT_RESAMPLES = 16;
+
+/**
+ * The lane as seen from `dt` seconds into the clip: what a renderer sees after it trims the clip's start.
+ * A shaped segment (`curve`, `viaX`) cut in the middle is resampled, since its shape belongs to its left point.
+ */
+export function shiftRateLane(spec: RateSpec, dt: number): RateSpec {
+  if (typeof spec === "number" || dt === 0) return spec;
+  const next = spec.points.findIndex((p) => p.t > dt);
+  const later = next < 0 ? [] : spec.points.slice(next).map((p) => ({ ...p, t: p.t - dt }));
+  const left = next > 0 ? spec.points[next - 1] : undefined;
+  const shaped = left !== undefined && (left.curve || left.viaX !== undefined);
+  const cut = shaped && next > 0 ? spec.points[next]!.t - dt : 0;
+  const samples = Array.from({ length: shaped ? SHIFT_RESAMPLES - 1 : 0 }, (_, k) => {
+    const t = ((k + 1) * cut) / SHIFT_RESAMPLES;
+    return { t, v: rateAt(spec, dt + t) };
+  });
+  return { ...spec, points: [{ t: 0, v: rateAt(spec, dt) }, ...samples, ...later] };
+}
+
 const CELLS_PER_SEGMENT = 48;
 
 interface RateTable {

@@ -390,6 +390,95 @@ describe("processCompositionAudio", () => {
     expect(runFfmpegMock.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(["-af", filter]));
   });
 
+  it("bakes a rate lane as concatenated source slices whose tempo is the mean rate over each slice", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "timecode.wav"), "stub");
+    const rate = {
+      target: "rate",
+      points: [
+        { t: 0, v: 2 },
+        { t: 1, v: 2 },
+      ],
+    };
+
+    await processCompositionAudio(
+      [
+        {
+          id: "timecode",
+          src: "timecode.wav",
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          playbackRate: rate,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      1,
+    );
+
+    const args: string[] = runFfmpegMock.mock.calls[0]?.[0] ?? [];
+    const graph = args[args.indexOf("-filter_complex") + 1] ?? "";
+    // a constant 2x lane: 1s of composition consumes 2s of source, in 4 quarter-second slices
+    expect(args).toEqual(expect.arrayContaining(["-t", "2", "-map", "[out]"]));
+    expect(graph).toContain("asplit=4");
+    expect(graph).toContain(
+      "[s0]atrim=start=0:end=0.5,asetpts=PTS-STARTPTS,atempo=2,apad,asetpts=N/SR/TB,atrim=0:0.25[t0]",
+    );
+    expect(graph).toContain(
+      "[s3]atrim=start=1.5:end=2,asetpts=PTS-STARTPTS,atempo=2,apad,asetpts=N/SR/TB,atrim=0:0.25[t3]",
+    );
+    expect(graph).toContain("concat=n=4:v=0:a=1");
+  });
+
+  it("stretches each slice of a non-constant lane by its mean rate, and trims a video's audio to the consumed span", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "clip.mp4"), "stub");
+    const rate = {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 1, v: 3 },
+      ],
+    };
+
+    await processCompositionAudio(
+      [
+        {
+          id: "clip",
+          src: "clip.mp4",
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          playbackRate: rate,
+          layer: 0,
+          volume: 1,
+          type: "video",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      1,
+    );
+
+    const args: string[] = runFfmpegMock.mock.calls[0]?.[0] ?? [];
+    const graph = args[args.indexOf("-filter_complex") + 1] ?? "";
+    // geometric 1x to 3x over 1s consumes (3-1)/ln 3 = 1.8205 source seconds; quarter-second 0 has mean tempo 1.1508
+    expect(Number(args[args.indexOf("-t") + 1])).toBeCloseTo(1.8205, 2);
+    expect(
+      Number(graph.match(/\[s0\]atrim=[^,]*,asetpts=PTS-STARTPTS,atempo=([\d.]+)/)?.[1]),
+    ).toBeCloseTo(1.1508, 2);
+  });
+
   it("keeps automation on authored timeline time after constant retiming", async () => {
     const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
     const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));

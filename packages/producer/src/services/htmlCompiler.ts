@@ -29,6 +29,7 @@ import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
+  type RateSpec,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -425,7 +426,7 @@ export function detectShaderTransitionUsage(html: string): boolean {
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
-  playbackRate: number,
+  playbackRate: RateSpec,
   baseDir: string,
   downloadDir: string,
   tagName: string,

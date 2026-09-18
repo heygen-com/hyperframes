@@ -21,6 +21,8 @@ import {
   extractVideoFramesRange,
   extractionFrameCountForDuration,
   createFrameLookupTable,
+  FrameLookupTable,
+  rebaseVideoToWindow,
   resolveProjectRelativeSrc,
   resolveFrameFormat,
   codecMayHaveAlpha,
@@ -57,7 +59,7 @@ import {
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.js";
 import { resolveRuntimeMediaClipDuration } from "../../../core/src/runtime/media.js";
-import { compileTimingAttrs } from "@hyperframes/core";
+import { compileTimingAttrs, sourceTimeAt } from "@hyperframes/core";
 import { RATE_RANGE } from "@hyperframes/core/audio-automation";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
@@ -124,6 +126,72 @@ describe("resolveVideoExtractionDuration", () => {
     ).toMatchObject({
       compositionStart: 0,
       mediaStart: 1,
+      durationSeconds: 4,
+      timelineDurationSeconds: 2,
+    });
+  });
+
+  it("extracts the source span a ramped slot consumes: 2s of 1x to 3x reads 2*(3-1)/ln 3 source seconds", () => {
+    const rate = {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 2, v: 3 },
+      ],
+    };
+    expect(
+      resolveVideoExtractionWindow(video({ end: 2, playbackRate: rate }), metadata(8), 2),
+    ).toMatchObject({ compositionStart: 0, mediaStart: 0, timelineDurationSeconds: 2 });
+    const { durationSeconds } = resolveVideoExtractionWindow(
+      video({ end: 2, playbackRate: rate }),
+      metadata(8),
+      2,
+    );
+    expect(durationSeconds).toBeCloseTo(3.6411, 3);
+  });
+
+  const RAMP = {
+    target: "rate",
+    points: [
+      { t: 0, v: 1 },
+      { t: 4, v: 3 },
+    ],
+  };
+
+  it("starts a ramped clip that begins before the timeline at the integrated source time of the trimmed part", () => {
+    // geometric 1x to 3x over 4s: source(t) = 4(3^(t/4)-1)/ln 3; 1s trimmed reads 1.1508, all 4s read 7.2819
+    const window = resolveVideoExtractionWindow(
+      video({ start: -1, end: 3, playbackRate: RAMP }),
+      metadata(20),
+      3,
+    );
+    expect(window.mediaStart).toBeCloseTo(1.1508, 3);
+    expect(window.durationSeconds).toBeCloseTo(6.1311, 3);
+  });
+
+  it("rebases a ramped clip so lookup reads the same source second the untrimmed lane would", () => {
+    const clip = video({ start: -1, end: 3, playbackRate: RAMP });
+    rebaseVideoToWindow(clip, resolveVideoExtractionWindow(clip, metadata(20), 3));
+    // composition second 2 is 3s into the authored lane: source 4.6586
+    const seconds = clip.mediaStart + sourceTimeAt(clip.playbackRate ?? 1, 2 - clip.start);
+    expect(seconds).toBeCloseTo(4.6586, 3);
+  });
+
+  it("snaps a float-noise composition start to the timeline origin so the first frame is kept", () => {
+    const clip = video({ start: -1, end: 8, playbackRate: 0.7 });
+    rebaseVideoToWindow(clip, { compositionStart: 2.2e-16, mediaStart: 0.7, durationSeconds: 5 });
+    expect(clip.start).toBe(0);
+  });
+
+  it("reports the natural timeline duration of a ramped clip through the lane", () => {
+    const flat = {
+      target: "rate",
+      points: [
+        { t: 0, v: 2 },
+        { t: 1, v: 2 },
+      ],
+    };
+    expect(resolveVideoExtractionWindow(video({ playbackRate: flat }), metadata(4))).toMatchObject({
       durationSeconds: 4,
       timelineDurationSeconds: 2,
     });
@@ -775,6 +843,26 @@ describe("parseVideoElements", () => {
     expect(low?.playbackRate).toBe(RATE_RANGE.min);
     expect(high?.playbackRate).toBe(RATE_RANGE.max);
     expect(invalid?.playbackRate).toBe(1);
+  });
+
+  it("parses a rate lane from data-automation into the clip's rate", () => {
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 3 },
+          ],
+        },
+      ],
+    });
+    const [ramped] = parseVideoElements(
+      `<video id="ramped" src="clip.mp4" data-automation='${automation}'></video>`,
+    );
+
+    expect(ramped?.playbackRate).toMatchObject({ target: "rate" });
   });
 
   it("parses videos without an id or data-start attribute", () => {
@@ -2837,6 +2925,37 @@ describe("getFrameAtTime — IEEE 754 boundary precision", () => {
       },
     } as ExtractedFrames;
   }
+
+  it("indexes frames by integrated source time for a rate lane", () => {
+    const extracted = { ...makeExtracted(25, 351), videoId: "ramped" } as ExtractedFrames;
+    const rate = {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 2, v: 3 },
+      ],
+    };
+    const table = new FrameLookupTable();
+    table.addVideo(extracted, 0, 10, 0, false, rate);
+    // 2s * (3-1)/ln 3 = 3.6411 source seconds * 25 fps = frame 91
+    expect(table.getFrame("ramped", 2)).toBe("frame-91.jpg");
+    expect(table.getFrame("ramped", 0)).toBe("frame-0.jpg");
+  });
+
+  it("wraps a ramped loop in source space so the lane keeps running across cycles", () => {
+    const extracted = { ...makeExtracted(25, 100), videoId: "looped" } as ExtractedFrames;
+    const rate = {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 4, v: 3 },
+      ],
+    };
+    const table = new FrameLookupTable();
+    table.addVideo(extracted, 0, 10, 0, true, rate);
+    // source(3) = 4.6586 on a 4s source wraps to 0.6586 * 25 fps = frame 16
+    expect(table.getFrame("looped", 3)).toBe("frame-16.jpg");
+  });
 
   it("does not produce duplicate frames when data-start is grid-aligned", () => {
     const extracted = makeExtracted(25, 351);
