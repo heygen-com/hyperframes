@@ -167,20 +167,6 @@ export function resolveMainTrackDropStart(
   return others.some(isMainTrackElement) ? desiredStart : 0;
 }
 
-/** A brand-new clip (file/asset drop) on the main track lands at 0 when it is
- *  empty, else right after the last main clip so the track stays gapless. */
-export function resolveNewClipMainTrackStart(
-  mainElements: readonly TimelineElement[],
-  landingTrack: number,
-  isAudio: boolean,
-  desiredStart: number,
-): number {
-  if (!landsOnMainTrack(landingTrack, isAudio)) return desiredStart;
-  return mainElements
-    .filter(isMainTrackElement)
-    .reduce((end, el) => Math.max(end, el.start + el.duration), 0);
-}
-
 /**
  * Decide whether a vertical drag is inserting a new track at a lane boundary.
  * `rowFloat` is the pointer's position in track-height units from the top of the

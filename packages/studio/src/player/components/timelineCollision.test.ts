@@ -6,7 +6,6 @@ import {
   isLaneFree,
   resolveInsertRow,
   resolveMainTrackDropStart,
-  resolveNewClipMainTrackStart,
   resolvePlacement,
   resolveZoneDropPlacement,
   timeRangesOverlap,
@@ -515,25 +514,5 @@ describe("resolveMainTrackDropStart (magnetic first clip on an empty main track)
 
   it("an audio clip landing on track 0 is not the main track (visual zone only)", () => {
     expect(resolveMainTrackDropStart([], 1, 0, true, 7)).toBe(7);
-  });
-});
-
-describe("resolveNewClipMainTrackStart (file and asset drops)", () => {
-  it("lands at 0 on an empty main track", () => {
-    expect(resolveNewClipMainTrackStart([], 0, false, 7)).toBe(0);
-  });
-
-  it("lands after the last main clip once the main track is filled", () => {
-    const main = [el("a", 0, 0, 3), el("b", 0, 3, 4)];
-    expect(resolveNewClipMainTrackStart(main, 0, false, 1)).toBe(7);
-  });
-
-  it("ignores clips on other tracks and leaves off-main drops at the pointer", () => {
-    expect(resolveNewClipMainTrackStart([el("x", 1, 0, 9)], 0, false, 7)).toBe(0);
-    expect(resolveNewClipMainTrackStart([el("a", 0, 0, 3)], 2, false, 7)).toBe(7);
-  });
-
-  it("an audio drop onto track 0 is not the main track", () => {
-    expect(resolveNewClipMainTrackStart([el("a", 0, 0, 3)], 0, true, 7)).toBe(7);
   });
 });

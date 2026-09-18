@@ -1,17 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import {
-  getTimelineAssetKind,
-  TIMELINE_ASSET_MIME,
-  TIMELINE_BLOCK_MIME,
-} from "../../utils/timelineAssetDrop";
+import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import {
   parseTimelineCompositionPayload,
   TIMELINE_COMPOSITION_MIME,
 } from "../../utils/timelineCompositionDrop";
 import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
-import type { TimelineElement } from "../store/playerStore";
-import { resolveNewClipMainTrackStart } from "./timelineCollision";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -24,21 +18,9 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
-  /** Drives the magnetic main-track placement for brand-new clips. */
-  elements: readonly TimelineElement[];
 }
 
 type TimelinePlacement = { start: number; track: number };
-
-/** A brand-new clip on the main track lands at 0 when empty, else after the last clip. */
-function snapPlacementToMainTrack(
-  placement: TimelinePlacement,
-  elements: readonly TimelineElement[],
-  isAudio: boolean,
-): TimelinePlacement {
-  const start = resolveNewClipMainTrackStart(elements, placement.track, isAudio, placement.start);
-  return start === placement.start ? placement : { ...placement, start };
-}
 
 /**
  * Parse a JSON drag payload and, if it yields a value, forward it to the drop
@@ -73,15 +55,9 @@ function applyFileDrop(
   transfer: DataTransfer,
   onFileDrop: TimelineDropCallbacks["onFileDrop"],
   placement: TimelinePlacement,
-  elements: readonly TimelineElement[],
 ): boolean {
-  const files = Array.from(transfer.files);
-  if (!onFileDrop || files.length === 0) return false;
-  // The batch sequences from ONE start, so snap once; audio only if ALL files are audio.
-  const isAudio = files.every((file) => getTimelineAssetKind(file.name) === "audio");
-  invokeDropCallback(() =>
-    onFileDrop(files, snapPlacementToMainTrack(placement, elements, isAudio)),
-  );
+  if (!onFileDrop || transfer.files.length === 0) return false;
+  invokeDropCallback(() => onFileDrop(Array.from(transfer.files), placement));
   return true;
 }
 
@@ -120,7 +96,6 @@ export function useTimelineAssetDrop({
   onBlockDrop,
   onCompositionDrop,
   sessionEpoch,
-  elements,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
   const dragPointerRef = useRef<{ clientX: number; clientY: number; sessionEpoch: number } | null>(
@@ -237,28 +212,14 @@ export function useTimelineAssetDrop({
         return;
       }
 
-      if (applyFileDrop(e.dataTransfer, onFileDrop, placement, elements)) return;
-      const snapAssetDrop = onAssetDrop
-        ? (path: string, nextPlacement: TimelinePlacement) =>
-            onAssetDrop(
-              path,
-              snapPlacementToMainTrack(
-                nextPlacement,
-                elements,
-                getTimelineAssetKind(path) === "audio",
-              ),
-            )
-        : undefined;
-      if (
-        applyTypedJsonDrop(e.dataTransfer, TIMELINE_ASSET_MIME, "path", snapAssetDrop, placement)
-      ) {
+      if (applyFileDrop(e.dataTransfer, onFileDrop, placement)) return;
+      if (applyTypedJsonDrop(e.dataTransfer, TIMELINE_ASSET_MIME, "path", onAssetDrop, placement)) {
         return;
       }
       applyTypedJsonDrop(e.dataTransfer, TIMELINE_BLOCK_MIME, "name", onBlockDrop, placement);
     },
     [
       clearDropPreview,
-      elements,
       onAssetDrop,
       onBlockDrop,
       onCompositionDrop,
