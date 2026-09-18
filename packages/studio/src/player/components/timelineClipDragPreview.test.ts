@@ -201,40 +201,10 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
 describe("computeDragPreview — magnetic first clip on an empty main track (AD96)", () => {
   // v-lower sits alone on lane 1; lane 0 (the main track) is empty.
   const vLower = clip("v-lower", 1, 10, 4, 5);
-  const elements = [vLower];
 
-  it("dragging straight up onto the empty main track snaps the preview start to 0", () => {
-    const originClientY = yForRow(1.5); // grabbed mid-body of lane 1
-    const drag: DraggedClipState = {
-      pointerId: 0,
-      element: vLower,
-      originClientX: 800,
-      originClientY,
-      originScrollLeft: 0,
-      originScrollTop: 0,
-      pointerClientX: 800,
-      pointerClientY: originClientY,
-      pointerOffsetX: 0,
-      pointerOffsetY: 0,
-      previewStart: vLower.start,
-      previewTrack: vLower.track,
-      insertRow: null,
-      snapTime: null,
-      snapType: null,
-      started: true,
-    };
-    // Same x (no horizontal move); aim at lane 0's mid-body.
-    const next = computeDragPreview(drag, 800, yForRow(0.5), {
-      ...ctx(undefined, elements),
-      trackOrder: [0, 1],
-    });
-    expect(next.previewTrack).toBe(0);
-    expect(next.insertRow).toBeNull();
-    expect(next.previewStart).toBe(0);
-  });
-
-  it("does not touch the start once the main track already holds a clip", () => {
-    const vMain = clip("v-main", 0, 0, 3, 5);
+  // Grab v-lower mid-body on lane 1, aim straight up at lane 0's mid-body
+  // (same x — no horizontal move), against the given sibling elements.
+  function dragUpToMainTrack(elements: TimelineElement[]) {
     const originClientY = yForRow(1.5);
     const drag: DraggedClipState = {
       pointerId: 0,
@@ -254,10 +224,22 @@ describe("computeDragPreview — magnetic first clip on an empty main track (AD9
       snapType: null,
       started: true,
     };
-    const next = computeDragPreview(drag, 800, yForRow(0.5), {
-      ...ctx(undefined, [vLower, vMain]),
+    return computeDragPreview(drag, 800, yForRow(0.5), {
+      ...ctx(undefined, elements),
       trackOrder: [0, 1],
     });
+  }
+
+  it("dragging straight up onto the empty main track snaps the preview start to 0", () => {
+    const next = dragUpToMainTrack([vLower]);
+    expect(next.previewTrack).toBe(0);
+    expect(next.insertRow).toBeNull();
+    expect(next.previewStart).toBe(0);
+  });
+
+  it("does not touch the start once the main track already holds a clip", () => {
+    const vMain = clip("v-main", 0, 0, 3, 5);
+    const next = dragUpToMainTrack([vLower, vMain]);
     expect(next.previewStart).toBe(10); // unchanged — main track wasn't empty
   });
 });
