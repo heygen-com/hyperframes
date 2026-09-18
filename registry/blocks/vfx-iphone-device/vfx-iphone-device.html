@@ -646,7 +646,7 @@
       }
 
       function onReady() {
-        waitForPaint(capLapCvs).then(function () {
+        Promise.all([waitForPaint(capPhoneCvs), waitForPaint(capLapCvs)]).then(function () {
           paintReady = true;
           captureScreens();
           window.__timelines = window.__timelines || {};
