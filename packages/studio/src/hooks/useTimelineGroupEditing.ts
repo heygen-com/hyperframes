@@ -52,6 +52,10 @@ export interface TimelineGroupCommitOptions {
    *  move folded into another gesture's coalesceKey (e.g. the ripple after a
    *  delete) should carry that gesture's own label, not its own. */
   label?: string;
+  /** Skips this call's own generic failure toast (the error is still logged
+   *  to the console) — for a caller that shows its own more specific message
+   *  on the same failure, so the user isn't told about one action twice. */
+  suppressFailureToast?: boolean;
 }
 
 interface UseTimelineGroupEditingOptions {
@@ -342,7 +346,11 @@ export function useTimelineGroupEditing({
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
         rollbackDuration();
-        showToast(getStudioSaveErrorMessage(error), "error");
+        if (options?.suppressFailureToast) {
+          console.error("[Timeline] group move failed to persist", error);
+        } else {
+          showToast(getStudioSaveErrorMessage(error), "error");
+        }
         throw error;
       });
     },

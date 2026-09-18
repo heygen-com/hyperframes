@@ -185,6 +185,7 @@ export function useTimelineDeleteOps({
           usePlayerStore.getState().rippleEditEnabled,
         );
         let rippleApplied: TimelineGroupMoveChange[] | null = null;
+        let rippleFailed = false;
         if (rippleShifts) {
           const rippleChanges = resolveShiftedElements(survivors, rippleShifts);
           try {
@@ -195,12 +196,16 @@ export function useTimelineDeleteOps({
               // toast reads "Undid Move timeline clips" after a delete, naming
               // the ripple's mechanics instead of what the user actually did.
               label: deleteHistoryLabel,
+              // This call gets its own, more specific failure toast below —
+              // the generic one would tell the user about one action twice.
+              suppressFailureToast: true,
             });
             rippleApplied = rippleChanges;
           } catch (error) {
             // The delete already committed; a failed ripple leaves the gap the
             // toggle-off behaviour would have left anyway — not worth undoing
             // an otherwise-successful delete over.
+            rippleFailed = true;
             console.error("[Timeline] ripple-edit failed to persist after delete", error);
             showToast("Clip deleted, but the gap could not be closed.", "error");
           }
@@ -211,10 +216,14 @@ export function useTimelineDeleteOps({
         usePlayerStore.getState().setSelectedElementIds(new Set());
         forceReloadSdkSession?.();
         reloadPreview();
-        showToast(
-          `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
-          "info",
-        );
+        // A failed ripple already showed its own toast above; the user did one
+        // thing (delete), so they get one message, not this generic follow-up too.
+        if (!rippleFailed) {
+          showToast(
+            `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+            "info",
+          );
+        }
         if (rippleApplied && !rippleNoticeShownRef.current) {
           rippleNoticeShownRef.current = true;
           showToast(

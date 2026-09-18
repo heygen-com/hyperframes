@@ -95,7 +95,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     );
   });
 
-  it("tells the user when a ripple fails to persist after a committed delete", async () => {
+  it("shows exactly one toast when a ripple fails to persist after a committed delete", async () => {
     const handleTimelineGroupMove = vi.fn().mockRejectedValue(new Error("persist failed"));
     const showToast = vi.fn();
     const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, showToast });
@@ -104,9 +104,16 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       await getHook().handleTimelineElementDelete(b);
     });
 
+    // The user did one thing (delete); the generic move-failure toast is
+    // suppressed on this call so only the specific message reaches them.
+    expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith(
       "Clip deleted, but the gap could not be closed.",
       "error",
+    );
+    expect(handleTimelineGroupMove).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ suppressFailureToast: true }),
     );
   });
 });
