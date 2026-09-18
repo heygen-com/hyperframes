@@ -176,12 +176,10 @@ export function withHostedRefs(text: string, projectDir: string, assetCall?: str
   ) as RegistryItem;
   let out = text;
   for (const [ref, url] of hostedUrlByReference(manifest)) {
-    const names = new Set([ref, ref.replace(/^assets\//, "")]);
-    for (const name of names) {
-      if (assetCall) out = out.split(`${assetCall}("${name}")`).join(`"${url}"`);
-      out = out.split(`"${name}"`).join(`"${url}"`);
-    }
-    if (ref.startsWith("assets/") && out.includes(`"${ref.slice("assets/".length)}"`)) {
+    out = out.split(`"${ref}"`).join(`"${url}"`);
+    const bare = ref.replace(/^assets\//, "");
+    if (assetCall) out = out.split(`${assetCall}("${bare}")`).join(`"${url}"`);
+    if (bare !== ref && out.includes(`"${bare}"`)) {
       throw new Error(`catalog-script-inlining: "${ref}" is still loaded by its local name.`);
     }
   }
