@@ -54,9 +54,8 @@ import {
 } from "../../htmlCompiler.js";
 import {
   closeFileServerSafely,
-  createFileServer,
+  createRenderFileServer,
   type FileServerHandle,
-  VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
@@ -320,13 +319,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       reasons,
     });
 
-    fileServer = await createFileServer({
-      projectDir,
-      compiledDir: join(workDir, "compiled"),
-      port: 0,
-      preHeadScripts: [VIRTUAL_TIME_SHIM],
-      fps: job.config.fps,
-    });
+    fileServer = await createRenderFileServer({ projectDir, workDir, fps: job.config.fps });
     assertNotAborted();
 
     // Motion blur averages the sub-frame samples pixel by pixel, so the frames have to be

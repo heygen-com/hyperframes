@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -859,6 +859,355 @@ describe("processCompositionAudio", () => {
         retryable: false,
       }),
     ]);
+  });
+
+  it("preserves an external interruption from a group sub-mix", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice-a.wav"), "stub");
+    writeFileSync(join(baseDir, "voice-b.wav"), "stub");
+
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      if (String(args.at(-1)).includes("group-voiceover")) {
+        return {
+          success: false,
+          durationMs: 1,
+          stderr: "normalize: Option not found\nffmpeg exited after signal 15",
+          exitCode: 0,
+          terminationReason: "signal" as const,
+          failureReason: "external_interruption" as const,
+        };
+      }
+      return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice-a",
+          src: "voice-a.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          volumeKeyframes: [
+            { time: 0, volume: 1 },
+            { time: 2, volume: 0.5 },
+          ],
+          groupId: "voiceover",
+          type: "audio",
+        },
+        {
+          id: "voice-b",
+          src: "voice-b.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          groupId: "voiceover",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "mix",
+        reason: "external_interruption",
+        owner: "system",
+        retryable: true,
+        elementId: "voiceover",
+      }),
+    ]);
+    expect(
+      runFfmpegMock.mock.calls.filter(([args]) => String(args.at(-1)).includes("group-voiceover")),
+    ).toHaveLength(1);
+    expect(existsSync(workDir)).toBe(false);
+  });
+
+  it("reports a cancelled group sub-mix with the canonical cancellation classification", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice-a.wav"), "stub");
+    writeFileSync(join(baseDir, "voice-b.wav"), "stub");
+    const controller = new AbortController();
+
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      if (String(args.at(-1)).includes("group-voiceover")) {
+        // The user cancels while the sub-mix is running.
+        controller.abort();
+        return {
+          success: false,
+          durationMs: 1,
+          stderr: "",
+          exitCode: null,
+          terminationReason: "abort" as const,
+        };
+      }
+      return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice-a",
+          src: "voice-a.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          groupId: "voiceover",
+          type: "audio",
+        },
+        {
+          id: "voice-b",
+          src: "voice-b.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          groupId: "voiceover",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+      controller.signal,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        stage: "cancelled",
+        reason: "cancelled",
+        owner: "user",
+        retryable: false,
+        elementId: "voiceover",
+      }),
+    );
+    expect(result.failures.map((failure) => failure.reason)).not.toContain("ffmpeg_failed");
+    expect(result.failures.map((failure) => failure.owner)).not.toContain("system");
+  });
+
+  it("surfaces an external interruption that lands on the group automation rerun", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice-a.wav"), "stub");
+    writeFileSync(join(baseDir, "voice-b.wav"), "stub");
+
+    let groupMixCalls = 0;
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      if (String(args.at(-1)).includes("group-voiceover")) {
+        groupMixCalls += 1;
+        // First run: the automation expression is rejected (a local fallback
+        // is allowed). Second run, without automation: SIGTERM arrives.
+        return groupMixCalls === 1
+          ? {
+              success: false,
+              durationMs: 1,
+              stderr: "Error initializing filters",
+              exitCode: 234,
+              terminationReason: "exit" as const,
+            }
+          : {
+              success: false,
+              durationMs: 1,
+              stderr: "ffmpeg exited after signal 15",
+              exitCode: null,
+              terminationReason: "signal" as const,
+              failureReason: "external_interruption" as const,
+            };
+      }
+      return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice-a",
+          src: "voice-a.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          volumeKeyframes: [
+            { time: 0, volume: 1 },
+            { time: 2, volume: 0.5 },
+          ],
+          groupId: "voiceover",
+          type: "audio",
+        },
+        {
+          id: "voice-b",
+          src: "voice-b.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          groupId: "voiceover",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(groupMixCalls).toBe(2);
+    expect(result.success).toBe(false);
+    // The interruption that ended the rerun is what the caller retries on —
+    // not the automation error the rerun was trying to work around.
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "mix",
+        reason: "external_interruption",
+        owner: "system",
+        retryable: true,
+        elementId: "voiceover",
+      }),
+    ]);
+  });
+
+  it("does not rerun an ungrouped automated mix after a managed deadline", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bgm.wav"), "stub");
+
+    // prepare = call 0, automated mix = call 1 (hits its deadline). A
+    // static-volume rerun would spend a second full ffmpegProcessTimeout on a
+    // failure the caller is going to retry anyway.
+    runFfmpegMock
+      .mockImplementationOnce(async () => ({
+        success: true,
+        durationMs: 1,
+        stderr: "",
+        exitCode: 0,
+      }))
+      .mockImplementationOnce(async () => ({
+        success: false,
+        durationMs: 300_000,
+        stderr: "managed deadline reached",
+        exitCode: null,
+        terminationReason: "deadline" as const,
+      }));
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "bgm",
+          src: "bgm.wav",
+          start: 0,
+          end: 5,
+          mediaStart: 0,
+          layer: 0,
+          volume: 0.8,
+          volumeKeyframes: [
+            { time: 0, volume: 0.8 },
+            { time: 5, volume: 0 },
+          ],
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      5,
+    );
+
+    expect(result.success).toBe(false);
+    expect(runFfmpegMock).toHaveBeenCalledTimes(2);
+    expect(result.failures).toEqual([
+      expect.objectContaining({ stage: "mix", reason: "ffmpeg_timeout", retryable: true }),
+    ]);
+  });
+
+  it("preserves a managed deadline from a group sub-mix without degradation retries", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "sfx-a.wav"), "stub");
+    writeFileSync(join(baseDir, "sfx-b.wav"), "stub");
+
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      if (String(args.at(-1)).includes("group-sfx")) {
+        return {
+          success: false,
+          durationMs: 300_000,
+          stderr: "managed deadline reached",
+          exitCode: null,
+          terminationReason: "deadline" as const,
+        };
+      }
+      return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "sfx-a",
+          src: "sfx-a.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          volumeKeyframes: [
+            { time: 0, volume: 1 },
+            { time: 2, volume: 0.5 },
+          ],
+          groupId: "sfx",
+          type: "audio",
+        },
+        {
+          id: "sfx-b",
+          src: "sfx-b.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          groupId: "sfx",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "mix",
+        reason: "ffmpeg_timeout",
+        owner: "system",
+        retryable: true,
+        elementId: "sfx",
+      }),
+    ]);
+    expect(
+      runFfmpegMock.mock.calls.filter(([args]) => String(args.at(-1)).includes("group-sfx")),
+    ).toHaveLength(1);
+    expect(existsSync(workDir)).toBe(false);
   });
 
   it("bounds per-cause details and the aggregate error across many authored IDs", async () => {

@@ -15,16 +15,23 @@ export interface CaptureWorkerDiagnostic {
   lines: readonly string[];
 }
 
+export interface CaptureEndpointDiagnostic {
+  host: string;
+  port: number;
+}
+
 export class CaptureFailure extends Error {
   readonly kind: CaptureFailureKind;
   readonly cause: unknown;
   readonly workerDiagnostics: readonly CaptureWorkerDiagnostic[];
+  readonly endpoint?: Readonly<CaptureEndpointDiagnostic>;
 
   constructor(input: {
     kind: CaptureFailureKind;
     message: string;
     cause?: unknown;
     workerDiagnostics?: readonly CaptureWorkerDiagnostic[];
+    endpoint?: CaptureEndpointDiagnostic;
   }) {
     super(input.message);
     this.name = "CaptureFailure";
@@ -35,6 +42,7 @@ export class CaptureFailure extends Error {
         Object.freeze({ ...diagnostic, lines: Object.freeze([...diagnostic.lines]) }),
       ),
     );
+    this.endpoint = input.endpoint ? Object.freeze({ ...input.endpoint }) : undefined;
     if (input.cause instanceof Error && input.cause.stack) this.stack = input.cause.stack;
   }
 }
@@ -107,6 +115,65 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const CAUSE_CHAIN_DEPTH = 5;
+
+/**
+ * Every message reachable from `error` through `.cause` (and the members of
+ * an `AggregateError`), top-level first. undici flattens a failed connect to
+ * a top-level `"fetch failed"` whose `.cause` carries the errno message, and a
+ * `localhost` connect that tried both address families surfaces as an
+ * `AggregateError` with an empty own message, so classification must read the
+ * whole chain — the same walk `isDrawElementVerificationError` performs.
+ */
+function collectMessages(error: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = error;
+  for (
+    let depth = 0;
+    depth < CAUSE_CHAIN_DEPTH && current !== undefined && current !== null;
+    depth++
+  ) {
+    const message = messageOf(current);
+    if (message) messages.push(message);
+    if (current instanceof AggregateError) {
+      for (const member of current.errors) {
+        const memberMessage = messageOf(member);
+        if (memberMessage) messages.push(memberMessage);
+      }
+    }
+    current = typeof current === "object" ? (current as { cause?: unknown }).cause : undefined;
+  }
+  return messages;
+}
+
+// Node/Bun errno text is unbracketed (`connect ETIMEDOUT ::1:49152`); Chrome
+// URLs bracket IPv6 (`http://[::1]:49152/`). Both name the same loopback.
+const LOOPBACK_HOST = String.raw`(127\.0\.0\.1|localhost|\[::1\]|::1)`;
+const LOOPBACK_CONNECTION_LOSS_PATTERNS = [
+  new RegExp(String.raw`connect (?:ETIMEDOUT|ECONNREFUSED|ECONNRESET) ${LOOPBACK_HOST}:(\d+)`, "i"),
+  new RegExp(
+    String.raw`net::ERR_(?:TIMED_OUT|CONNECTION_TIMED_OUT|CONNECTION_REFUSED|CONNECTION_RESET|CONNECTION_CLOSED|EMPTY_RESPONSE) at https?://${LOOPBACK_HOST}:(\d+)`,
+    "i",
+  ),
+];
+
+/**
+ * The loopback endpoint a connection-loss error names, when it names one.
+ * Only loopback hosts qualify: the render's file server and Chrome's DevTools
+ * endpoint both live there, so a lost loopback connection is the signal the
+ * pre-frame recovery acts on. A remote host that times out stays fatal.
+ */
+function loopbackConnectionLossEndpoint(text: string): CaptureEndpointDiagnostic | undefined {
+  for (const pattern of LOOPBACK_CONNECTION_LOSS_PATTERNS) {
+    const match = pattern.exec(text);
+    if (!match?.[1] || !match[2]) continue;
+    const port = Number(match[2]);
+    if (!Number.isInteger(port) || port <= 0 || port > 65_535) continue;
+    return { host: match[1] === "[::1]" ? "::1" : match[1], port };
+  }
+  return undefined;
+}
+
 function matchesAny(message: string, patterns: readonly RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(message));
 }
@@ -133,6 +200,47 @@ function ioError(error: unknown, message: string): boolean {
   );
 }
 
+function isMemoryExhaustionText(message: string, chainText: string): boolean {
+  return (
+    BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE.test(message.trim()) ||
+    BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE.test(chainText) ||
+    matchesAny(chainText, MEMORY_EXHAUSTION_ERROR_PATTERNS)
+  );
+}
+
+interface CaptureFailureKindInput {
+  error: unknown;
+  message: string;
+  chainText: string;
+  aborted: boolean;
+  loopbackLoss: boolean;
+}
+
+const CANCELLATION_PATTERN = /(?:render|capture)?_?cancelled|AbortError/i;
+
+// Order matters: cancellation and memory exhaustion outrank everything, a
+// protocol timeout outranks a loopback host mentioned in the same text, and
+// authoring/io are the fall-through.
+const ORDERED_KIND_MATCHERS: ReadonlyArray<
+  readonly [CaptureFailureKind, (input: CaptureFailureKindInput) => boolean]
+> = [
+  ["cancelled", (input) => input.aborted || CANCELLATION_PATTERN.test(input.chainText)],
+  ["memory_exhaustion", (input) => isMemoryExhaustionText(input.message, input.chainText)],
+  ["verification", (input) => matchesAny(input.chainText, VERIFICATION_ERROR_PATTERNS)],
+  ["protocol_timeout", (input) => matchesAny(input.chainText, PROTOCOL_TIMEOUT_PATTERNS)],
+  [
+    "transient_browser",
+    (input) => input.loopbackLoss || matchesAny(input.chainText, TRANSIENT_BROWSER_ERROR_PATTERNS),
+  ],
+  ["authoring", (input) => matchesAny(input.chainText, AUTHORING_ERROR_PATTERNS)],
+];
+
+function resolveCaptureFailureKind(input: CaptureFailureKindInput): CaptureFailureKind {
+  const matched = ORDERED_KIND_MATCHERS.find(([, matches]) => matches(input));
+  if (matched) return matched[0];
+  return ioError(input.error, input.chainText) ? "io" : "authoring";
+}
+
 export function classifyCaptureFailure(
   error: unknown,
   options: {
@@ -143,39 +251,49 @@ export function classifyCaptureFailure(
   if (error instanceof CaptureFailure && !options.workerDiagnostics && !options.signal?.aborted) {
     return error;
   }
-  const message = messageOf(error);
-  let kind: CaptureFailureKind;
-  if (options.signal?.aborted || /(?:render|capture)?_?cancelled|AbortError/i.test(message)) {
-    kind = "cancelled";
-  } else if (
-    BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE.test(message.trim()) ||
-    BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE.test(message) ||
-    matchesAny(message, MEMORY_EXHAUSTION_ERROR_PATTERNS)
-  ) {
-    kind = "memory_exhaustion";
-  } else if (matchesAny(message, VERIFICATION_ERROR_PATTERNS)) {
-    kind = "verification";
-  } else if (matchesAny(message, PROTOCOL_TIMEOUT_PATTERNS)) {
-    kind = "protocol_timeout";
-  } else if (matchesAny(message, TRANSIENT_BROWSER_ERROR_PATTERNS)) {
-    kind = "transient_browser";
-  } else if (matchesAny(message, AUTHORING_ERROR_PATTERNS)) {
-    kind = "authoring";
-  } else {
-    kind = ioError(error, message) ? "io" : "authoring";
-  }
+  const messages = collectMessages(error);
+  const message = messages[0] ?? messageOf(error);
+  // Patterns match against the whole cause chain so a wrapped connect failure
+  // classifies by the errno it carries, not by the wrapper's generic text.
+  const chainText = messages.join("\n");
+  const lossEndpoint = loopbackConnectionLossEndpoint(chainText);
+  const endpoint = error instanceof CaptureFailure ? error.endpoint : lossEndpoint;
   return new CaptureFailure({
-    kind,
+    kind: resolveCaptureFailureKind({
+      error,
+      message,
+      chainText,
+      aborted: options.signal?.aborted === true,
+      loopbackLoss: lossEndpoint !== undefined,
+    }),
     message,
     cause: error,
     workerDiagnostics:
       options.workerDiagnostics ??
       (error instanceof CaptureFailure ? error.workerDiagnostics : undefined),
+    endpoint,
   });
 }
 
 export function isTransientBrowserError(error: unknown): boolean {
   return classifyCaptureFailure(error).kind === "transient_browser";
+}
+
+/**
+ * A transient failure that names the loopback endpoint whose connection was
+ * lost — the file server or Chrome's DevTools port. This is the only
+ * transient shape the producer's pre-frame recovery retries on an ordinary
+ * one-worker stream; a bare `Target closed` (Chrome killed by SIGTERM) carries
+ * no endpoint and stays outside it.
+ */
+export type LoopbackConnectionLoss = CaptureFailure & {
+  endpoint: Readonly<CaptureEndpointDiagnostic>;
+};
+
+export function isLoopbackConnectionLoss(
+  failure: CaptureFailure,
+): failure is LoopbackConnectionLoss {
+  return failure.kind === "transient_browser" && failure.endpoint !== undefined;
 }
 
 export function isMemoryExhaustionError(error: unknown): boolean {

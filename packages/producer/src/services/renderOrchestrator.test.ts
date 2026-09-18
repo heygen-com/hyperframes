@@ -6,6 +6,7 @@ import type { CaptureOptions, EngineConfig, ExtractedFrames } from "@hyperframes
 import {
   DEFAULT_CONFIG,
   DrawElementCaptureError,
+  classifyCaptureFailure,
   executeParallelCapture,
   mergeWorkerFrames,
 } from "@hyperframes/engine";
@@ -58,6 +59,8 @@ import {
   createCaptureObservabilityUpdater,
 } from "./renderOrchestrator.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
+import { wrapCaptureStageError } from "./render/captureStageError.js";
+import { resolvePreFrameLoopbackLoss } from "./render/preFrameRecovery.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
 import { resolveCompositeTransfer, shouldUseLayeredComposite } from "./hdrCompositor.js";
 import {
@@ -3053,6 +3056,70 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
     ).toBe(false);
   });
 
+  it("retries a pre-frame loopback connection loss on an ordinary one-worker streaming route", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isPreFrameLoopbackConnectionLoss: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not widen the loopback retry to an unpinned route that did not qualify", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isPreFrameLoopbackConnectionLoss: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("never qualifies a SIGTERM-killed Chrome (`Target closed`) for the loopback recovery path", () => {
+    // Host shutdown: Chrome dies before the encoder notices, so the error is a
+    // plain `Target closed`, not an EncoderInterruptedError. It names no
+    // loopback endpoint, so the pre-frame gate alone never retries it; only
+    // isTransientCaptureError (routing-independent transient retry) can.
+    const failure = classifyCaptureFailure(wrapCaptureStageError(new Error("Target closed"), []));
+    const preFrameLoopbackLoss = resolvePreFrameLoopbackLoss({
+      failure,
+      workerCount: 1,
+      framesRendered: 0,
+    });
+    expect(failure.kind).toBe("transient_browser");
+    expect(preFrameLoopbackLoss).toBeUndefined();
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isEncoderInterrupted: false,
+        isPreFrameLoopbackConnectionLoss: preFrameLoopbackLoss !== undefined,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps a pre-frame loopback loss non-retryable once cancellation or an encoder interruption is present", () => {
+    for (const overrides of [{ isCancellation: true }, { isEncoderInterrupted: true }]) {
+      expect(
+        shouldRetryViaPinnedFallback({
+          isVerifyError: false,
+          isCancellation: false,
+          isPreFrameLoopbackConnectionLoss: true,
+          deWorkerInversion: undefined,
+          deParallelRouter: undefined,
+          ...overrides,
+        }),
+      ).toBe(false);
+    }
+  });
+
   it("retries OOM too when the router pinned the worker count (fallback's Chrome processes are already dead by the time this runs, and the fallback is pooled/lighter than the pinned path)", () => {
     expect(
       shouldRetryViaPinnedFallback({
@@ -3110,6 +3177,15 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
       shouldRetryViaPinnedFallback({
         isVerifyError: true,
         isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        isPreFrameLoopbackConnectionLoss: true,
         deWorkerInversion: undefined,
         deParallelRouter: undefined,
       }),
