@@ -854,8 +854,8 @@ class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentit
 
 /**
  * Merge all `<head>` `<style>` blocks into a single tag with `@import` rules
- * at the top, and merge all inline `<body>` `<script>` blocks into one at the
- * end of `<body>`.
+ * at the top, and merge each run of adjacent inline `<body>` `<script>` blocks
+ * into one, without moving any of them past a `<script src>` or module script.
  *
  * Mirrors the bundler's `coalesceHeadStylesAndBodyScripts` to guarantee
  * identical CSS cascade order and script execution order between preview and
