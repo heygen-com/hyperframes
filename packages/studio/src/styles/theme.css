@@ -1,7 +1,6 @@
-/* Studio's design tokens, the only place a design value is decided. Tailwind
- * turns each entry into a utility class and a real CSS custom property, so
- * markup, plain CSS and canvas code all read the same number. `@theme static`
- * keeps every token in `:root` even when no utility class references it. */
+/* Studio's design tokens, the one place a design value is decided. Tailwind emits
+ * each as a utility and a CSS custom property; `@theme static` keeps unused
+ * tokens in `:root` so plain CSS and canvas code can still read them. */
 
 @theme static {
   /* Clear Tailwind's stock palette so a colour that is not a Studio token
@@ -61,9 +60,8 @@
 
   /* ------------------------------------------------------------------ type */
 
-  /* Studio's dense UI type sizes, named by their pixel value. `step` is in the
-   * key because `--text-11` would collide with Tailwind's own size scale;
-   * `text-xs`, `text-sm` and `text-lg` keep their Tailwind values. */
+  /* Dense UI type sizes named by pixel value. `step` avoids a clash with
+   * Tailwind's own `--text-*` scale, whose `xs`, `sm` and `lg` are unchanged. */
   --text-step-7: 7px;
   --text-step-8: 8px;
   --text-step-9: 9px;
@@ -112,10 +110,9 @@
 
   /* ------------------------------------------------- deprecated: old names */
 
-  /* The `studio.*` and `panel.*` colour scales, kept so existing markup keeps
-   * working while the sweep runs. They alias the semantic tokens above and
-   * carry no value of their own. Removed from Studio's source by U12; the
-   * published JS preset keeps them one more major for v3 consumers. */
+  /* The `studio.*` and `panel.*` scales, aliases of the tokens above so existing
+   * markup keeps working during the sweep. U12 removes them from Studio's
+   * source; the published JS preset keeps them one more major. */
   --color-studio-bg: var(--color-bg-0);
   --color-studio-surface: var(--color-surface-alt);
   --color-studio-border: var(--color-border-strong);
@@ -143,10 +140,9 @@
 
   /* ------------------------------------------- deprecated: Tailwind palette */
 
-  /* Verbatim copies of Tailwind 4.3.3's defaults for the stock colours
-   * Studio's markup still names, so `--color-*: initial` above doesn't blank
-   * them. The sweep replaces each with a semantic token and U12 deletes this
-   * block; `theme.test.ts` fails if a value drifts from its Tailwind default. */
+  /* Verbatim Tailwind 4.3.3 defaults for stock colours markup still names, so
+   * `--color-*: initial` does not blank them. U12 deletes this block;
+   * `theme.test.ts` fails if a value drifts from upstream. */
   --color-amber-50: oklch(98.7% 0.022 95.277);
   --color-amber-100: oklch(96.2% 0.059 95.617);
   --color-amber-200: oklch(92.4% 0.12 95.746);
