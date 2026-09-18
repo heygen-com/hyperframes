@@ -43,6 +43,23 @@
 
 #navigation-items a[href^="/catalog/"][aria-current="page"] { color:var(--hf-brand); background:color-mix(in oklab,var(--hf-brand) 10%,transparent) !important; }
 
+/* Mintlify's group schema has no description field, so each group's blurb is a CSS
+   ::after keyed by the sidebar's own data-title/data-group-tag. Reset stops it inheriting
+   onto nested subgroups. Keep labels in sync with sync-docs-catalog.mjs. */
+
+#navigation-items li[data-group-tag] { --catalog-desc:""; }
+#navigation-items li[data-group-tag]::after { content:var(--catalog-desc); display:block; padding:0 12px 8px 40px; font-size:11px; line-height:1.5; color:var(--hf-text-secondary); }
+#navigation-items li[data-title="3D motion"][data-group-tag] { --catalog-desc:"Three.js scenes: orbiting cards, particle fields, and depth-lit product shots."; }
+#navigation-items li[data-title="Carousels"][data-group-tag] { --catalog-desc:"Image cards that circle, orbit, or sweep a path across the frame."; }
+#navigation-items li[data-title="Text & captions"][data-group-tag] { --catalog-desc:"Word-by-word caption reveals, highlights, and kinetic type."; }
+#navigation-items li[data-title="Code"][data-group-tag] { --catalog-desc:"Code snippets that type, diff, highlight, and morph on screen."; }
+#navigation-items li[data-title="Transitions"][data-group-tag] { --catalog-desc:"Cuts between shots: zooms, warps, glitches, light leaks."; }
+#navigation-items li[data-title="Data & charts"][data-group-tag] { --catalog-desc:"Bar, line, and progress charts that animate their own data in."; }
+#navigation-items li[data-title="Scenes & demos"][data-group-tag] { --catalog-desc:"Full scenes: app showcases, chat exchanges, product demos."; }
+#navigation-items li[data-title="Motion & effects"][data-group-tag] { --catalog-desc:"General-purpose motion: hovers, pops, blurs, grids, paths."; }
+#navigation-items li[data-title="Surfaces"][data-group-tag] { --catalog-desc:"Background textures and screen treatments: grain, halftone, glass."; }
+#navigation-items li[data-title="Blocks"][data-group-tag] { --catalog-desc:"Flowcharts, sketched frames, speech bubbles, and outro cards."; }
+
 /* Animated headline. */
 .hfc-gallery .mw { display: inline-block; position: relative; white-space: nowrap; --phase: 0; --period: 6; --bl: .87em; }
 .hfc-gallery .mw .ch { display: inline-block; position: relative; transform-origin: 50% 70%; background-image: var(--grad); background-size: calc(var(--period) * 1em) 100%; background-position: calc((var(--phase) * var(--period) - var(--x, 0)) * 1em) 0; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }

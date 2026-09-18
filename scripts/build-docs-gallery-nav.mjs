@@ -34,10 +34,9 @@ export function buildNav(docs) {
               pages: selected.map((i) => i.href.slice(1)),
             };
           });
-    // Expanded by default so the landing sidebar isn't nine collapsed rows over an empty
-    // column; subsections stay collapsed one level down, matching the reference site's own
-    // depth (it never auto-expands more than the page currently open needs).
-    return { group: g.label, tag: String(items.length), expanded: true, pages };
+    // Collapsed by default; catalog-gallery.css fills the column with a one-line
+    // description per group instead (Mintlify's group schema has no description field).
+    return { group: g.label, tag: String(items.length), expanded: false, pages };
   });
   tab.groups = [{ group: "Catalog", pages: ["catalog/index", ...groups] }];
   fs.writeFileSync(path.join(docs, "docs.json"), JSON.stringify(config, null, 2) + "\n");
