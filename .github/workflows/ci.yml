@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
       catalog_index: ${{ steps.filter.outputs.catalog_index }}
@@ -57,6 +58,12 @@ jobs:
               - "registry/registry.json"
               - "registry/catalog-artifact/**"
               - "scripts/catalog/check-artifact-coverage.ts"
+            docs_catalog:
+              - "docs/**"
+              - "registry/**"
+              - "scripts/*docs-catalog*"
+              - "package.json"
+              - ".github/workflows/ci.yml"
             code:
               - "packages/**"
               - "scripts/**"
@@ -144,7 +151,7 @@ jobs:
   lint:
     name: Lint
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.docs_catalog == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

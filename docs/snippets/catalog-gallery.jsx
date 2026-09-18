@@ -224,16 +224,23 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             return;
         const tierFor = (item) => item.preview.heavy ? 'webgl' : 'dom';
         const capFor = (tier) => tier === 'webgl' ? MAX_WEBGL_PLAYERS : MAX_DOM_PLAYERS;
+        // The one place a slot is given back. It only acts while the map still holds this exact
+        // state, so a late error, a timeout after unmount, or the catch below cannot release twice.
+        const release = (item, state) => {
+            if (mountsRef.current.get(item.href) !== state)
+                return;
+            clearTimeout(state.readyTimer);
+            state.player?.remove();
+            capsRef.current[state.tier] -= 1;
+            mountsRef.current.delete(item.href);
+        };
         const unmount = (host, item) => {
             // Keyed by item.href, same as mount() below -- setHover() only ever has the
             // item, never the host node, so the map has to be addressable by href.
             const state = mountsRef.current.get(item.href);
             if (!state)
                 return;
-            clearTimeout(state.readyTimer);
-            state.player?.remove();
-            capsRef.current[state.tier] -= 1;
-            mountsRef.current.delete(item.href);
+            release(item, state);
             delete host.dataset.ready;
         };
         const mount = async (host, item) => {
@@ -242,13 +249,13 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             // The whole body is one try: a throw anywhere here (a bad tier, a missing cap
             // constant, a network failure) must log once and leave the titled placeholder in
             // place, never an empty box -- this is the exact shape of the bug that shipped.
-            let tier;
+            let state;
             try {
-                tier = tierFor(item);
+                const tier = tierFor(item);
                 if (capsRef.current[tier] >= capFor(tier))
                     return; // over budget for this tier; stays on the neutral tile until a slot frees
                 capsRef.current[tier] += 1;
-                const state = { player: null, tier, hover: false, readyTimer: 0 };
+                state = { player: null, tier, hover: false, readyTimer: 0 };
                 mountsRef.current.set(item.href, state);
                 await ensurePlayerDefined();
                 const response = await fetch(item.preview.source);
@@ -270,13 +277,12 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 // as an explicit error -- the placeholder is the safe state, a bare mounted
                 // element with nothing painted is not.
                 const fail = () => {
-                    clearTimeout(readyTimer);
+                    if (mountsRef.current.get(item.href) !== state)
+                        return; // already released
                     console.error(`[catalog] preview failed to load: ${item.id}`);
                     host.dataset.state = 'unavailable';
                     delete host.dataset.ready;
-                    player.remove();
-                    capsRef.current[tier] -= 1;
-                    mountsRef.current.delete(item.href);
+                    release(item, state);
                 };
                 const readyTimer = state.readyTimer = setTimeout(fail, READY_TIMEOUT_MS);
                 player.addEventListener('error', fail, { once: true });
@@ -294,9 +300,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             catch (err) {
                 console.error(`[catalog] preview failed to load: ${item.id}`, err);
                 host.dataset.state = 'unavailable';
-                mountsRef.current.delete(item.href);
-                if (tier)
-                    capsRef.current[tier] -= 1;
+                if (state)
+                    release(item, state);
             }
         };
         const hosts = resultsRef.current?.querySelectorAll('a[data-preview-mode="player"] [data-preview-host]') ?? [];
