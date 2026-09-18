@@ -74,9 +74,22 @@ export function mdxStringAttribute(name: string, value: string): string {
   return `${name}="${escaped}"`;
 }
 
-/** Has a preview payload been built for this item? */
+function payloadPath(kind: ItemKind, name: string): string {
+  return join(payloadRoot, typeDir(kind), `${name}.json`);
+}
+
+/** Has a real, playable preview payload been built for this item? */
 function hasPayload(kind: ItemKind, name: string): boolean {
-  return existsSync(join(payloadRoot, typeDir(kind), `${name}.json`));
+  const path = payloadPath(kind, name);
+  return existsSync(path) && !("unsupported" in JSON.parse(readFileSync(path, "utf-8")));
+}
+
+/** The Chrome flag this item's payload needs to render live, if any. */
+function unsupportedFlag(kind: ItemKind, name: string): string | null {
+  const path = payloadPath(kind, name);
+  if (!existsSync(path)) return null;
+  const payload = JSON.parse(readFileSync(path, "utf-8")) as { unsupported?: string };
+  return payload.unsupported ?? null;
 }
 
 /**
@@ -895,6 +908,16 @@ function previewSection(
   textureGroups: ReturnType<typeof textureGroupsFor>,
 ): string[] {
   if (textureGroups.length > 0) return generateTexturePreview(manifest, textureGroups);
+
+  const flag = unsupportedFlag(kind, manifest.name);
+  if (flag) {
+    return [
+      `<div className="w-full aspect-video rounded-xl border border-dashed flex items-center justify-center text-sm text-zinc-500">`,
+      `  Needs <code>chrome://flags/#${flag}</code> to render live`,
+      `</div>`,
+      "",
+    ];
+  }
 
   // A built payload plays the real composition, and takes precedence over both
   // iframe paths below. The variables explorer is parked rather than wired up:

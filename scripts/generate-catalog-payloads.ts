@@ -188,6 +188,10 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   // generator keeps finding one on disk and emits a player for a preview this
   // run just decided it cannot build.
   const dropStalePayload = () => rmSync(outPath, { force: true });
+  const writePayload = (body: object) => {
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, JSON.stringify(body), "utf-8");
+  };
 
   // A composition whose variables are meant to be changed has to reach the
   // reader uncompiled, or its values are already resolved into the markup.
@@ -221,8 +225,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     if (needsCanvasDrawElement(html)) {
       // A marker file, not an absence: the catalog card reads this to show an honest
       // "needs this flag" tile instead of silently falling back to nothing.
-      mkdirSync(dirname(outPath), { recursive: true });
-      writeFileSync(outPath, JSON.stringify({ unsupported: "canvas-draw-element" }), "utf-8");
+      writePayload({ unsupported: "canvas-draw-element" });
       console.log(`  – ${item.name}: needs canvas drawElement, marked unsupported`);
       return "skipped";
     }
@@ -272,8 +275,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
       return "skipped";
     }
 
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, JSON.stringify({ html: withBase }), "utf-8");
+    writePayload({ html: withBase });
 
     const counts = [
       hosted + externalized > 0 ? `${hosted + externalized} hosted` : "",

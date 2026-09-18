@@ -1,5 +1,26 @@
 // Ported verbatim from a reference implementation of this catalog UX. Consumes
 // catalog-gallery-data.mdx from scripts/sync-docs-catalog.mjs.
+const PLAYER_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js';
+const REST_SECONDS = 3;
+const MAX_DOM_PLAYERS = 6;
+const MAX_WEBGL_PLAYERS = 1;
+
+async function ensurePlayerDefined() {
+    if (customElements.get('hyperframes-player'))
+        return;
+    if (!window.__hfDocsPlayerLoading) {
+        window.__hfDocsPlayerLoading = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = PLAYER_SCRIPT_URL;
+            script.onload = resolve;
+            script.onerror = () => { script.remove(); delete window.__hfDocsPlayerLoading; reject(new Error('Player unavailable')); };
+            document.head.appendChild(script);
+        });
+    }
+    await window.__hfDocsPlayerLoading;
+    await customElements.whenDefined('hyperframes-player');
+}
+
 export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = "" }) => {
     function MotionWord() {
         const root = useRef(null);
@@ -109,7 +130,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
         if (!active || reduced || document.hidden)
             return;
         const item = catalog.items.find(item => item.href === active);
-        if (!item || !item.preview || item.preview.mode === 'still')
+        if (!item || !item.preview || item.preview.mode === 'still' || item.preview.mode === 'player' || item.preview.mode === 'unsupported')
             return;
         const host = resultsRef.current?.querySelector(`[data-preview-host="${CSS.escape(active)}"]`);
         if (!host)
@@ -234,6 +255,113 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             delete host.dataset.state;
         };
     }, [active, reduced, catalog]);
+    // Player-mode cards mount whichever ones are near the viewport, rest paused at
+    // REST_SECONDS, and only start playing on hover — unlike the single-active effect
+    // above, several can be mounted at once, capped per tier so a WebGL-heavy row can't
+    // blow the page's GPU memory budget.
+    const capsRef = useRef({ dom: 0, webgl: 0 });
+    const mountsRef = useRef(new Map());
+    useEffect(() => {
+        if (reduced)
+            return;
+        const tierFor = (item) => item.preview.heavy ? 'webgl' : 'dom';
+        const capFor = (tier) => tier === 'webgl' ? MAX_WEBGL_PLAYERS : MAX_DOM_PLAYERS;
+        const unmount = (host) => {
+            const state = mountsRef.current.get(host);
+            if (!state)
+                return;
+            state.player?.remove();
+            capsRef.current[state.tier] -= 1;
+            mountsRef.current.delete(host);
+            delete host.dataset.ready;
+        };
+        const mount = async (host, item) => {
+            if (mountsRef.current.has(item.href))
+                return;
+            const tier = tierFor(item);
+            if (capsRef.current[tier] >= capFor(tier))
+                return; // over budget for this tier; stays on the neutral tile until a slot frees
+            capsRef.current[tier] += 1;
+            const state = { player: null, tier, hover: false };
+            mountsRef.current.set(item.href, state);
+            try {
+                await ensurePlayerDefined();
+                const response = await fetch(item.preview.source);
+                if (!response.ok)
+                    throw new Error(`preview fetch failed: ${response.status}`);
+                const { html } = await response.json();
+                if (mountsRef.current.get(item.href) !== state)
+                    return; // unmounted while loading
+                const player = document.createElement('hyperframes-player');
+                player.setAttribute('muted', '');
+                player.setAttribute('audio-locked', '');
+                player.setAttribute('width', String(item.preview.width));
+                player.setAttribute('height', String(item.preview.height));
+                player.setAttribute('inert', '');
+                player.setAttribute('tabindex', '-1');
+                player.setAttribute('aria-hidden', 'true');
+                player.addEventListener('error', () => {
+                    console.error(`[catalog] preview failed to load: ${item.id}`);
+                    host.dataset.state = 'unavailable';
+                }, { once: true });
+                player.addEventListener('ready', () => {
+                    player.seek(REST_SECONDS);
+                    host.dataset.ready = 'true';
+                    if (state.hover)
+                        player.play();
+                }, { once: true });
+                player.setAttribute('srcdoc', html);
+                state.player = player;
+                host.appendChild(player);
+            }
+            catch (err) {
+                console.error(`[catalog] preview failed to load: ${item.id}`, err);
+                host.dataset.state = 'unavailable';
+                mountsRef.current.delete(item.href);
+                capsRef.current[tier] -= 1;
+            }
+        };
+        const hosts = resultsRef.current?.querySelectorAll('a[data-preview-mode="player"] [data-preview-host]') ?? [];
+        const observer = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                const host = entry.target;
+                const item = catalog.items.find((i) => i.href === host.dataset.previewHost);
+                if (!item)
+                    continue;
+                if (entry.isIntersecting)
+                    mount(host, item);
+                else
+                    unmount(host);
+            }
+        }, { rootMargin: '200px' });
+        hosts.forEach((host) => observer.observe(host));
+        const mounts = mountsRef.current;
+        return () => {
+            observer.disconnect();
+            mounts.forEach((state) => state.player?.remove());
+            mounts.clear();
+            capsRef.current = { dom: 0, webgl: 0 };
+        };
+    }, [filters, limit, expandedGroups, reduced, catalog]);
+    const setHover = (item, hovering) => {
+        if (reduced)
+            return;
+        if (item.preview?.mode === 'player') {
+            const state = mountsRef.current.get(item.href);
+            if (!state)
+                return;
+            state.hover = hovering;
+            if (state.player) {
+                if (hovering)
+                    state.player.play();
+                else
+                    state.player.seek(REST_SECONDS);
+            }
+        }
+        else if (item.preview?.mode !== 'still' && item.preview?.mode !== 'unsupported') {
+            setActive(hovering ? item.href : null);
+        }
+    };
     const update = (patch) => {
         const next = { ...filters, ...patch };
         setFilters(next);
@@ -260,15 +388,17 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     }));
     const caret = React.createElement("svg", { className: "hfc-caret", width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
         React.createElement("path", { d: "m6 9 6 6 6-6" }));
-    const card = (item) => (React.createElement("a", { className: "hfc-card", href: item.href, key: item.href, "data-preview-mode": item.preview?.mode || "still", onMouseEnter: () => { if (!reduced && item.preview?.mode !== "still")
-            setActive(item.href); }, onMouseLeave: () => setActive(null), onFocus: () => { if (!reduced)
-            setActive(item.href); }, onBlur: () => setActive(null) },
+    const card = (item) => (React.createElement("a", { className: "hfc-card", href: item.href, key: item.href, "data-preview-mode": item.preview?.mode || "still", onMouseEnter: () => setHover(item, true), onMouseLeave: () => setHover(item, false), onFocus: () => setHover(item, true), onBlur: () => setHover(item, false) },
         React.createElement("div", { className: "hfc-media" },
-            React.createElement("div", { className: "hfc-fallback", "aria-hidden": "true", style: { display: item.poster ? "none" : undefined } },
-                React.createElement("span", null, item.section),
-                React.createElement("strong", null, item.title)),
+            item.preview?.mode === "unsupported"
+                ? React.createElement("div", { className: "hfc-fallback hfc-unsupported", "aria-hidden": "true" },
+                    React.createElement("span", null, "Needs a browser flag"),
+                    React.createElement("code", null, `chrome://flags/#${item.preview.flag}`))
+                : item.preview?.mode !== "player" && React.createElement("div", { className: "hfc-fallback", "aria-hidden": "true", style: { display: item.poster ? "none" : undefined } },
+                    React.createElement("span", null, item.section),
+                    React.createElement("strong", null, item.title)),
             item.poster && React.createElement("img", { src: item.poster, alt: `${item.title} preview`, loading: "lazy", decoding: "async", width: "640", height: "360", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.previousElementSibling.style.display = "flex"; } }),
-            React.createElement("div", { className: "hfc-preview-host", "data-preview-host": item.href, "aria-hidden": "true" })),
+            item.preview?.mode !== "still" && item.preview?.mode !== "unsupported" && React.createElement("div", { className: "hfc-preview-host", "data-preview-host": item.href, "aria-hidden": "true" })),
         React.createElement("div", { className: "hfc-card-body" },
             React.createElement("div", { className: "hfc-card-title" },
                 React.createElement("h3", null, item.title),

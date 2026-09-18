@@ -4,7 +4,6 @@
 // snapshot). Usage: node scripts/sync-docs-catalog.mjs [path/to/docs]
 import fs from "node:fs";
 import path from "node:path";
-import { galleryPreview } from "./catalog-preview-policy.mjs";
 import { buildNav } from "./build-docs-gallery-nav.mjs";
 import { getCatalogTab, readJson, resolveDocsRoot, slug } from "./docs-catalog-shared.mjs";
 
@@ -31,22 +30,19 @@ function isHeavy(html) {
   return /getContext\(\s*["']webgl2?["']|THREE\.|navigator\.gpu|WebGPURenderer/.test(html);
 }
 
-// catalog-gallery.jsx fetches the hover source as plain text; this writes the HTML this repo
-// already renders at the item's own doc page out as a sidecar file for that fetch to hit.
-// fallow-ignore-next-line complexity
-function livePreviewFor(dir, id, docsDir, width, height) {
+// The gallery card fetches this same JSON payload the detail page already serves in
+// production (previewSrc) — no separate sidecar file, so nothing new to publish or drop.
+function previewFor(dir, id, docsDir, width, height) {
   const payloadPath = path.join(docsDir, "public/catalog", dir, `${id}.json`);
   if (!fs.existsSync(payloadPath)) return null;
-  const { html } = readJson(payloadPath);
-  if (!html || !isLiveSupported(html) || isHeavy(html)) return null;
-  const base = `/public/catalog/gallery-live/${dir}/`;
-  const target = path.join(docsDir, "public/catalog/gallery-live", dir, `${id}.html`);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, html);
+  const payload = readJson(payloadPath);
+  if (payload.unsupported) return { mode: "unsupported", flag: payload.unsupported };
+  const { html } = payload;
+  if (!html || !isLiveSupported(html)) return null;
   return {
-    mode: "live",
-    source: `${base}${id}.html`,
-    base,
+    mode: "player",
+    source: `/public/catalog/${dir}/${id}.json`,
+    heavy: isHeavy(html),
     width: width || 1920,
     height: height || 1080,
   };
@@ -104,18 +100,13 @@ function walk(node, pathLabels) {
     }
     const man = readJson(manifestPath);
     const { item, groupLabel } = itemFrom(node, dir, id, man, pathLabels);
-    const live = livePreviewFor(dir, id, docs, man.dimensions?.width, man.dimensions?.height);
-    item.preview = live
-      ? galleryPreview(item, {
-          webgpu: false,
-          tech: [],
-          previewMode: "live",
-          base: live.base,
-          entry: `${item.id}.html`,
-          previewWidth: live.width,
-          previewHeight: live.height,
-        })
-      : { mode: item.video ? "video" : "still" };
+    // A CDN poster/video already renders a real resting frame; only items without one need
+    // the repo-served player (this is the class that was showing as a grey placeholder).
+    const hasCdnMedia = Boolean(man.preview?.poster || man.preview?.video);
+    const preview = hasCdnMedia
+      ? null
+      : previewFor(dir, id, docs, man.dimensions?.width, man.dimensions?.height);
+    item.preview = preview || { mode: item.video ? "video" : "still" };
     if (!groupsOrder.includes(item.group)) {
       groupsOrder.push(item.group);
       groupLabels.set(item.group, groupLabel);

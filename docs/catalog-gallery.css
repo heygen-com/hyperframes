@@ -21,6 +21,9 @@
 .hfc-gallery .hfc-fallback { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px; height:100%; text-align:center; color:#ccc; background:#141414; }
 .hfc-gallery .hfc-fallback span { color:#999; font-size:10px; }
 .hfc-gallery .hfc-fallback strong { font-size:18px; line-height:1.2; }
+.hfc-gallery .hfc-unsupported { gap:6px; padding:20px; }
+.hfc-gallery .hfc-unsupported span { font-size:11px; }
+.hfc-gallery .hfc-unsupported code { font-size:11px; padding:2px 6px; border-radius:6px; background:#0006; color:#ccc; }
 .hfc-gallery .hfc-card-body { padding:12px 2px 0; }
 .hfc-gallery .hfc-card-title { display:flex; align-items:start; justify-content:space-between; gap:10px; }
 .hfc-gallery .hfc-card-title h3 { font-size:15px; font-weight:500; line-height:1.4; margin:0; color:var(--hf-heading); }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Proves the generated Catalog nav still lists exactly the same pages as before, on disk,
-// reachable, no duplicates. Adapted from a reference implementation of this same check.
+// Proves the generated Catalog nav lists every page on disk and reachable, with no page
+// lost and no duplicates. Adapted from a reference implementation of this same check.
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -73,21 +73,20 @@ for (const item of data.items) {
     `Section mismatch for ${item.href}: nav says "${navSections.get(item.href)}", gallery data says "${item.section}"`,
   );
   assert.ok(
-    ["still", "video", "live"].includes(item.preview?.mode),
+    ["still", "video", "player", "unsupported"].includes(item.preview?.mode),
     `Missing gallery preview policy for ${item.id}`,
   );
   if (item.preview.mode === "video") assert.ok(item.video, `Missing hover video for ${item.id}`);
-  if (item.preview.mode === "live") {
+  if (item.preview.mode === "player") {
     assert.ok(
       fs.existsSync(path.join(docs, item.preview.source.slice(1))),
-      `Missing hover composition file for ${item.id}: ${item.preview.source}`,
+      `Missing preview payload for ${item.id}: ${item.preview.source}`,
     );
   }
 }
 
-// The identical-page-list proof: diff against the pre-PR1 docs.json at the merge base.
-// This is the one check that proves no catalog page was lost; a checkout that can't compute
-// it (shallow clone, missing origin/main) must fail loudly, not skip the proof and exit 0.
+// The no-page-lost proof: diff against docs.json at the merge base. A checkout that can't
+// compute it (shallow clone, missing origin/main) must fail loudly, not skip and exit 0.
 const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: root })
   .toString()
   .trim();
@@ -108,3 +107,16 @@ console.log(
 console.log(
   `PASS ${data.items.length} gallery items, all present in the sidebar and on disk; no duplicate sidebar entries.`,
 );
+
+// Mintlify's build drops .html/.js/.css from docs/public with no error; a file there 404s
+// in production while its page still serves. Catches this before a card fetches a ghost.
+const publicRoot = path.join(docs, "public");
+const badExtensions = fs
+  .readdirSync(publicRoot, { recursive: true })
+  .filter((f) => /\.(html|js|css)$/i.test(f));
+assert.equal(
+  badExtensions.length,
+  0,
+  `docs/public serves only JSON and images in production; drop or rename: ${badExtensions.join(", ")}`,
+);
+console.log(`PASS no .html/.js/.css under docs/public (Mintlify would drop it from the build).`);
