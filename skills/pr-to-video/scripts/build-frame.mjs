@@ -40,6 +40,13 @@ import {
   STATUS_ROLE_KEY,
   UA_DEFAULT_COLORS,
 } from "./lib/tokens.mjs";
+import {
+  fontExtOf,
+  fontFamiliesNamed,
+  normFontName,
+  stageFontFile,
+  stagePresetFonts,
+} from "./lib/font-faces.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -258,10 +265,8 @@ if (brandColors.length && presetColors.length) {
       // MUST precede the accent checks: a preset's red "negative" is often its 2nd-most-chromatic
       // color and would otherwise be claimed as accent2 and recolored to the brand hue.
       next = val;
-    else if (val === pr.accent)
-      next = br.accent; // primary accent → the EXACT brand color
-    else if (pr.accent2 !== pr.accent && val === pr.accent2)
-      next = br.accent2; // exact 2nd accent
+    else if (val === pr.accent) next = br.accent; // primary accent → the EXACT brand color
+    else if (pr.accent2 !== pr.accent && val === pr.accent2) next = br.accent2; // exact 2nd accent
     else if (!ph) {
       // rgba()/rgb() tint → repaint its rgb with the brand accent, keep alpha (a neutral
       // overlay is kept). A non-color non-hex value (var(), named) falls through unchanged.
@@ -358,41 +363,6 @@ if (brandFonts.length) {
   summary.push("fonts: no brand fonts — preset fonts kept");
 }
 
-// ── stage preset-owned offline font faces ────────────────────────────────────
-// PR ingestion has no captured brand fonts. Presets that own a type system must
-// therefore carry their own licensed files instead of depending on a first-run
-// Google Fonts fetch or a renderer-only embedding path that Studio workers cannot see.
-const presetFontsDir = join(presetDir, presetName, "fonts");
-if (existsSync(presetFontsDir)) {
-  const fontSpecs = [
-    ["EB Garamond", "EBGaramond", 400],
-    ["EB Garamond", "EBGaramond", 700],
-    ["Inter", "Inter", 400],
-    ["Inter", "Inter", 700],
-    ["JetBrains Mono", "JetBrainsMono", 400],
-    ["JetBrains Mono", "JetBrainsMono", 700],
-  ];
-  const outDir = join(hyperframesDir, "assets/fonts");
-  const faces = [];
-  for (const [family, stem, weight] of fontSpecs) {
-    const file = `${stem}-${weight}.woff2`;
-    const source = join(presetFontsDir, file);
-    if (!existsSync(source)) die(`preset font is missing: ${source}`);
-    mkdirSync(outDir, { recursive: true });
-    copyFileSync(source, join(outDir, file));
-    faces.push(
-      `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;font-display:block;src:url("assets/fonts/${file}") format("woff2");}`,
-    );
-  }
-  md +=
-    `\n\n## Font loading (preset-owned, offline)\n\n` +
-    `These licensed faces are staged in \`assets/fonts/\`. Paste this block inside every frame template; do not link Google Fonts:\n\n` +
-    "```html\n<style>\n" +
-    faces.join("\n") +
-    "\n</style>\n```\n";
-  summary.push(`fonts: staged ${fontSpecs.length} preset face(s) for offline preview/render`);
-}
-
 // ── cap type weights to the brand font's available faces ──────────────────────
 // The remix swaps the font FAMILY but keeps the preset's weights; a brand font that ships
 // only e.g. 400/500 would faux-bold every 600/700 heading. Clamp each `typography:` weight
@@ -463,45 +433,24 @@ if (brandFonts.length || (brandColors.length && presetColors.length)) {
   summary.push("brand-adaptation note prepended");
 }
 
-// ── stage brand font files + emit @font-face ──────────────────────────────────
-// A brand font is rarely a Google font, so renaming the family in frame.md is not enough:
-// nothing loads the actual face. If the capture downloaded font files, copy them to
-// assets/fonts/ under CLEAN, face-named names (so captions.mjs' family-prefix matcher
-// finds them too) and append a ready-to-paste, ROOT-RELATIVE @font-face block to frame.md.
-//
-// The staged NAME is a contract, not cosmetics: captions.mjs derives each face's weight and
-// style back out of it. So the name has to carry every axis that distinguishes one face from
-// another, and the dedup key has to be the whole face. Naming on weight alone made Google's
-// two-file Newsreader download (upright + italic, both scoring "Regular") collide on one
-// slot: the italic sorts first, took the name, the upright was never staged, and the block
-// below then asserted font-style:normal over italic bytes.
+// ── stage font files + emit @font-face ────────────────────────────────────────
+// Two sources feed assets/fonts/, in this order:
+//   1. captured BRAND font files — a brand font is rarely a Google font, so renaming the
+//      family in frame.md is not enough: nothing loads the actual face. If the capture
+//      downloaded font files, stage them.
+//   2. the PRESET's own fonts/ folder — a preset that ships licensed files (code-editorial)
+//      stages every face whose family the remixed frame.md still names, so Studio,
+//      snapshots, and renders resolve its type system offline instead of depending on a
+//      first-run Google Fonts fetch. A face for a family the brand remix replaced is dead
+//      weight and is skipped; a face the brand already staged is not staged twice.
+// Files land under CLEAN, face-named names (so captions.mjs' family-prefix matcher finds
+// them too — the name is a contract, see lib/font-faces.mjs) and ONE ready-to-paste,
+// ROOT-RELATIVE @font-face block covering both sources is appended to frame.md.
+const fontOutDir = join(hyperframesDir, "assets/fonts");
+const stagedFontNames = new Set();
+const fontFaces = [];
+const fontSources = [];
 if (brandFonts.length) {
-  const norm = (s) =>
-    String(s)
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-  const extOf = (f) => (f.match(/\.(woff2|woff|ttf|otf)$/i)?.[1] ?? "").toLowerCase();
-  const FMT = { woff2: "woff2", woff: "woff", ttf: "truetype", otf: "opentype" };
-  const weightInfo = (name) => {
-    const s = name.toLowerCase();
-    // A numeric axis is the font's own answer, so it beats the word heuristic. Fontsource
-    // names every face that way and carries no weight WORD at all, so word-only parsing
-    // scored a whole family "Regular" and staged exactly one of its faces.
-    //
-    // A weight token must not be buried inside a longer run: this reads capture files,
-    // which are commonly hash-named, and "Newsreader-a1b200c3.woff2" is not a 200-weight
-    // face. Hence a non-digit before (which also stops "2100" reading as 100) and no
-    // alphanumeric after. "Roboto900.ttf" still parses.
-    const numeric = /(?:^|[^0-9])([1-9]00)(?![0-9a-z])/.exec(s);
-    if (numeric) return { n: Number(numeric[1]), w: numeric[1] };
-    if (/black|heavy|ultra|extrabold/.test(s)) return { n: 800, w: "ExtraBold" };
-    if (/semibold|demibold/.test(s)) return { n: 600, w: "SemiBold" };
-    if (/bold/.test(s)) return { n: 700, w: "Bold" };
-    if (/medium/.test(s)) return { n: 500, w: "Medium" };
-    if (/light|thin/.test(s)) return { n: 300, w: "Light" };
-    return { n: 400, w: "Regular" };
-  };
-  const styleOf = (name) => (/italic|oblique/i.test(name) ? "italic" : "normal");
   const fams = [...new Set(brandFonts)];
   const srcDirs = [
     join(hyperframesDir, "capture/assets/fonts"),
@@ -509,42 +458,62 @@ if (brandFonts.length) {
   ].filter((d) => existsSync(d));
   const files = [];
   for (const d of srcDirs)
-    for (const f of readdirSync(d).sort()) if (extOf(f)) files.push({ d, f });
+    for (const f of readdirSync(d).sort()) if (fontExtOf(f)) files.push({ d, f });
   // Single family → all font files belong to it (the common captured case, hash-named files
   // included). Multiple families → assign each file to the longest family key its name contains.
-  const ranked = [...fams].sort((a, b) => norm(b).length - norm(a).length);
+  const ranked = [...fams].sort((a, b) => normFontName(b).length - normFontName(a).length);
   const famOf = (f) =>
-    fams.length === 1 ? fams[0] : ranked.find((x) => norm(f).includes(norm(x)));
-  const outDir = join(hyperframesDir, "assets/fonts");
-  const faces = [];
-  const stagedNames = new Set();
+    fams.length === 1 ? fams[0] : ranked.find((x) => normFontName(f).includes(normFontName(x)));
+  let staged = 0;
   for (const { d, f } of files) {
     const fam = famOf(f);
     if (!fam) continue;
-    const { n, w } = weightInfo(f);
-    const style = styleOf(f);
-    const clean = `${fam.replace(/[^A-Za-z0-9]/g, "")}-${w}${style === "italic" ? "-Italic" : ""}.${extOf(f)}`;
-    if (stagedNames.has(clean)) continue;
-    mkdirSync(outDir, { recursive: true });
-    if (!existsSync(join(outDir, clean))) copyFileSync(join(d, f), join(outDir, clean));
-    stagedNames.add(clean);
-    faces.push(
-      `@font-face{font-family:"${fam}";font-weight:${n};font-style:${style};font-display:block;src:url("assets/fonts/${clean}") format("${FMT[extOf(f)]}");}`,
-    );
+    const face = stageFontFile({
+      family: fam,
+      srcPath: join(d, f),
+      outDir: fontOutDir,
+      stagedNames: stagedFontNames,
+    });
+    if (!face) continue;
+    fontFaces.push(face.rule);
+    staged++;
   }
-  if (faces.length) {
-    md +=
-      `\n\n## Font loading (auto-generated)\n\n` +
-      `The brand font ships as local files in \`assets/fonts/\` — do NOT link Google Fonts for it. ` +
-      `Paste this \`<style>\` into every frame's \`<head>\`/\`<template>\` (captions use the same files) ` +
-      `so \`font-family\` resolves in preview, snapshot, and render alike:\n\n` +
-      "```html\n<style>\n" +
-      faces.join("\n") +
-      "\n</style>\n```\n";
+  if (staged) {
+    fontSources.push("the captured brand font");
+    summary.push(`fonts: staged ${staged} brand face(s) → assets/fonts/`);
+  }
+}
+{
+  const preset = stagePresetFonts({
+    presetFontsDir: join(presetDir, presetName, "fonts"),
+    outDir: fontOutDir,
+    families: fontFamiliesNamed(md),
+    stagedNames: stagedFontNames,
+  });
+  if (preset.staged.length) {
+    fontFaces.push(...preset.faces);
+    fontSources.push(`the ${presetName} preset`);
     summary.push(
-      `fonts: staged ${stagedNames.size} face(s) → assets/fonts/ + @font-face in frame.md`,
+      `fonts: staged ${preset.staged.length} preset face(s) → assets/fonts/` +
+        (preset.licenses.length ? ` (+ ${preset.licenses.join(", ")})` : ""),
     );
   }
+  if (preset.skipped.length) {
+    summary.push(
+      `fonts: skipped ${preset.skipped.length} preset file(s) whose family frame.md no longer names: ${preset.skipped.join(", ")}`,
+    );
+  }
+}
+if (fontFaces.length) {
+  md +=
+    `\n\n## Font loading (auto-generated)\n\n` +
+    `These faces ship as local files in \`assets/fonts/\` (from ${fontSources.join(" and ")}) — do NOT link Google Fonts for them. ` +
+    `Paste this \`<style>\` into every frame's \`<head>\`/\`<template>\` (captions use the same files) ` +
+    `so \`font-family\` resolves in preview, snapshot, and render alike:\n\n` +
+    "```html\n<style>\n" +
+    fontFaces.join("\n") +
+    "\n</style>\n```\n";
+  summary.push(`fonts: @font-face block for ${fontFaces.length} face(s) appended to frame.md`);
 }
 
 // ── write frame.md ────────────────────────────────────────────────────────────
