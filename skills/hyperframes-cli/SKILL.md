@@ -3,7 +3,7 @@ name: hyperframes-cli
 description: >
   Use the HyperFrames CLI development loop: init, add, catalog, capture, lint, check, snapshot,
   compare, grade-compare, preview, play, present, beats, keyframes, single or batch render, publish,
-  cloud, cloudrun, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, docs,
+  cloud, cloudrun, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, timeline, docs,
   benchmark, telemetry, transcribe, auth, tts, and remove-background. Also use when diagnosing build
   or render failures. validate, inspect, and layout are deprecated aliases; use check. Covers local,
   HeyGen-hosted cloud, AWS Lambda, and Google Cloud Run rendering.
@@ -140,7 +140,7 @@ The following references and owning skills are mandatory command contracts, not 
 | `auth`, HeyGen-hosted cloud rendering, and template variables                          | `references/cloud.md`                 |
 | AWS Lambda deployment and rendering                                                    | `references/lambda.md`                |
 | Google Cloud Run deployment and rendering                                              | `references/cloudrun.md`              |
-| `info`, `upgrade`, `compositions`, `docs`, `benchmark`, telemetry, media preprocessing | `references/upgrade-info-misc.md`     |
+| `info`, `upgrade`, `compositions`, `timeline`, `docs`, `benchmark`, telemetry, media preprocessing | `references/upgrade-info-misc.md`     |
 
 For composition variables, also read `/hyperframes-core` → `references/variables-and-media.md`. For `hyperframes add` and `hyperframes catalog`, use `/hyperframes-registry`. Before `hyperframes present`, read `/slideshow`; before `hyperframes keyframes`, read `/hyperframes-keyframes`. For TTS, transcription, captions, or background removal choices, use `/media-use`.
 

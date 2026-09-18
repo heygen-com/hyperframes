@@ -5,10 +5,11 @@ const n = (v: number) => String(Math.round(v * 100) / 100);
 
 function bar(row: TimelineRow, total: number): string {
   if (total <= 0) return " ".repeat(BAR_WIDTH);
+  const known = row.durationAuthored || row.duration > 0;
   const from = Math.min(BAR_WIDTH - 1, Math.floor((row.start / total) * BAR_WIDTH));
-  const to = row.durationAuthored || row.duration > 0 ? (row.end / total) * BAR_WIDTH : BAR_WIDTH;
+  const to = known ? (row.end / total) * BAR_WIDTH : BAR_WIDTH;
   const width = Math.max(1, Math.min(BAR_WIDTH, Math.ceil(to)) - from);
-  const fill = row.durationAuthored || row.duration > 0 ? "█" : "░";
+  const fill = known ? "█" : "░";
   return " ".repeat(from) + fill.repeat(width) + " ".repeat(BAR_WIDTH - from - width);
 }
 
@@ -22,6 +23,7 @@ function details(row: TimelineRow): string {
     row.playbackRate !== null && `rate=${n(row.playbackRate)}`,
     row.audioGroup && `group=${row.audioGroup}`,
     !row.durationAuthored && "duration=unauthored",
+    row.laneError && `lanes unreadable: ${row.laneError}`,
     ...lanes,
   ]
     .filter(Boolean)
