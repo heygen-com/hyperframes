@@ -56,15 +56,15 @@ function livePreviewFor(dir, id, docsDir, width, height) {
 // fallow-ignore-next-line complexity
 function itemFrom(node, dir, id, man, pathLabels) {
   const section = pathLabels[pathLabels.length - 1];
-  const group = pathLabels[pathLabels.length - 2] || section;
-  return {
+  const groupLabel = pathLabels[pathLabels.length - 2] || section;
+  const item = {
     id,
     kind: dir === "blocks" ? "block" : "component",
     href: `/${node}`,
     title: man.title || id,
     tagline: man.description || "",
     description: man.description || "",
-    group: slug(group),
+    group: slug(groupLabel),
     section,
     tags: man.tags || [],
     tech: [],
@@ -76,6 +76,7 @@ function itemFrom(node, dir, id, man, pathLabels) {
     poster: man.preview?.poster || null,
     video: man.preview?.video || null,
   };
+  return { item, groupLabel };
 }
 
 // Walk the existing hand-authored nav so group/section order and labels stay ours.
@@ -102,11 +103,22 @@ function walk(node, pathLabels) {
       return;
     }
     const man = readJson(manifestPath);
-    const item = itemFrom(node, dir, id, man, pathLabels);
-    item.live = livePreviewFor(dir, id, docs, man.dimensions?.width, man.dimensions?.height);
+    const { item, groupLabel } = itemFrom(node, dir, id, man, pathLabels);
+    const live = livePreviewFor(dir, id, docs, man.dimensions?.width, man.dimensions?.height);
+    item.preview = live
+      ? galleryPreview(item, {
+          webgpu: false,
+          tech: [],
+          previewMode: "live",
+          base: live.base,
+          entry: `${item.id}.html`,
+          previewWidth: live.width,
+          previewHeight: live.height,
+        })
+      : { mode: item.video ? "video" : "still" };
     if (!groupsOrder.includes(item.group)) {
       groupsOrder.push(item.group);
-      groupLabels.set(item.group, pathLabels[pathLabels.length - 2] || item.section);
+      groupLabels.set(item.group, groupLabel);
     }
     items.push(item);
     return;
@@ -120,22 +132,6 @@ function walk(node, pathLabels) {
   }
 }
 for (const g of tab.groups) walk(g, []);
-
-for (const item of items) {
-  const live = item.live;
-  item.preview = live
-    ? galleryPreview(item, {
-        webgpu: false,
-        tech: [],
-        previewMode: "live",
-        base: live.base,
-        entry: `${item.id}.html`,
-        previewWidth: live.width,
-        previewHeight: live.height,
-      })
-    : { mode: item.video ? "video" : "still" };
-  delete item.live;
-}
 
 // Landing order: 3D motion first (once it exists — a separate initiative brings the
 // items in), Carousels second, everything else keeping the order the hand-authored nav
