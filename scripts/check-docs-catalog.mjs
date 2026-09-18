@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import ts from "typescript";
 import {
   getCatalogTab,
   readCatalogGalleryData,
@@ -120,3 +121,27 @@ assert.equal(
   `docs/public serves only JSON and images in production; drop or rename: ${badExtensions.join(", ")}`,
 );
 console.log(`PASS no .html/.js/.css under docs/public (Mintlify would drop it from the build).`);
+
+// Mintlify's snippet bundler only preserves the exported binding's own closure; a sibling
+// top-level const/function in the same file silently vanishes from the deployed build
+// (ReferenceError at runtime, no build-time error). Catch it here instead of live.
+function assertNoBareTopLevelBindings(snippetPath) {
+  const source = fs.readFileSync(snippetPath, "utf-8");
+  const sourceFile = ts.createSourceFile(snippetPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+  const isExported = (node) =>
+    ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+  const bare = sourceFile.statements.filter(
+    (s) =>
+      (ts.isVariableStatement(s) || ts.isFunctionDeclaration(s)) && !isExported(s),
+  );
+  assert.equal(
+    bare.length,
+    0,
+    `${path.relative(root, snippetPath)}: top-level declaration(s) outside the exported ` +
+      `binding are dropped by Mintlify's snippet bundler on deploy: ${bare
+        .map((s) => s.getText(sourceFile).split("\n")[0])
+        .join(" | ")}`,
+  );
+}
+assertNoBareTopLevelBindings(path.join(docs, "snippets/catalog-gallery.jsx"));
+console.log(`PASS catalog-gallery.jsx has no top-level binding outside the exported component.`);

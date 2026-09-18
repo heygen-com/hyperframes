@@ -280,13 +280,17 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
         const mount = async (host, item) => {
             if (mountsRef.current.has(item.href))
                 return;
-            const tier = tierFor(item);
-            if (capsRef.current[tier] >= capFor(tier))
-                return; // over budget for this tier; stays on the neutral tile until a slot frees
-            capsRef.current[tier] += 1;
-            const state = { player: null, tier, hover: false };
-            mountsRef.current.set(item.href, state);
+            // The whole body is one try: a throw anywhere here (a bad tier, a missing cap
+            // constant, a network failure) must log once and leave the titled placeholder in
+            // place, never an empty box -- this is the exact shape of the bug that shipped.
+            let tier;
             try {
+                tier = tierFor(item);
+                if (capsRef.current[tier] >= capFor(tier))
+                    return; // over budget for this tier; stays on the neutral tile until a slot frees
+                capsRef.current[tier] += 1;
+                const state = { player: null, tier, hover: false };
+                mountsRef.current.set(item.href, state);
                 await ensurePlayerDefined();
                 const response = await fetch(item.preview.source);
                 if (!response.ok)
@@ -320,7 +324,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 console.error(`[catalog] preview failed to load: ${item.id}`, err);
                 host.dataset.state = 'unavailable';
                 mountsRef.current.delete(item.href);
-                capsRef.current[tier] -= 1;
+                if (tier)
+                    capsRef.current[tier] -= 1;
             }
         };
         const hosts = resultsRef.current?.querySelectorAll('a[data-preview-mode="player"] [data-preview-host]') ?? [];
