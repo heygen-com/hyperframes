@@ -384,6 +384,46 @@ window.__timelines.scene = tl;
     expect(gsapTargets).toEqual([["Scene"], ["Scene"]]);
   });
 
+  it("scopes each selector in a GSAP target array to the composition root", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene">
+        <h1 class="title">Scene title</h1>
+        <p class="subtitle">Scene subtitle</p>
+      </div>
+      <div data-composition-id="other">
+        <h1 class="title">Other title</h1>
+        <p class="subtitle">Other subtitle</p>
+      </div>
+    `);
+    const targetCompositions: Array<string | null> = [];
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      gsap: {
+        to(targets: Array<string | Element>) {
+          const resolvedTargets = targets.flatMap((target) =>
+            typeof target === "string" ? Array.from(document.querySelectorAll(target)) : [target],
+          );
+          targetCompositions.push(
+            ...resolvedTargets.map(
+              (target) =>
+                target.closest("[data-composition-id]")?.getAttribute("data-composition-id") ??
+                null,
+            ),
+          );
+        },
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `gsap.to(['.title', '.subtitle'], { opacity: 1 });`,
+      "scene",
+    );
+
+    new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+
+    expect(targetCompositions).toEqual(["scene", "scene"]);
+  });
+
   it("scopes getElementById when duplicate IDs exist across composition roots", () => {
     const { document } = parseHTML(`
       <div data-composition-id="scene-a"><canvas id="gl-canvas"></canvas></div>
