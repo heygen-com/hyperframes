@@ -1,45 +1,23 @@
-import {
-  useEffect,
-  useRef,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
-} from "react";
-import { useResetSelectionOnProjectSwitch } from "./useResetSelectionOnProjectSwitch";
-import type { StudioUrlState } from "../utils/studioUrlState";
+import { useEffect, useRef } from "react";
 
 /**
  * Opens the root composition once hydration settles on no selection; fires at most once per
- * `projectId`. Also resets the selection on an in-session project switch (via
- * `useResetSelectionOnProjectSwitch`) — without that, a stale selection from the previous
- * project reads as "already open" and this hook settles without ever firing for the new one.
+ * `projectId`. Relies on the caller resetting selection on an in-session project switch
+ * (see `useResetSelectionOnProjectSwitch`) or a stale selection reads as "already open".
  */
 export function useAutoOpenRootComposition({
   projectId,
   activeCompPath,
   activeCompPathHydrated,
   masterCompPath,
-  initialUrlStateRef,
-  setActiveCompPath,
-  setActiveCompPathHydrated,
   onSelectComposition,
 }: {
   projectId: string | null;
   activeCompPath: string | null;
   activeCompPathHydrated: boolean;
   masterCompPath: string | null;
-  initialUrlStateRef: MutableRefObject<StudioUrlState>;
-  setActiveCompPath: Dispatch<SetStateAction<string | null>>;
-  setActiveCompPathHydrated: Dispatch<SetStateAction<boolean>>;
   onSelectComposition: (comp: string) => void;
 }): void {
-  useResetSelectionOnProjectSwitch({
-    projectId,
-    initialUrlStateRef,
-    setActiveCompPath,
-    setActiveCompPathHydrated,
-  });
-
   const settledForProjectRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {

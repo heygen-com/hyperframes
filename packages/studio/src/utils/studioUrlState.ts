@@ -43,6 +43,11 @@ export function resolveMasterCompositionPath(fileTree: string[]): string | null 
   return fileTree.find((p) => p.endsWith(".html")) ?? null;
 }
 
+/** A URL with no `activeCompPath` needs no hydration step — there's nothing to apply. */
+export function isHydratedFromUrlState(urlState: StudioUrlState): boolean {
+  return urlState.activeCompPath == null;
+}
+
 export function normalizeStudioUrlPanelTab(tab: RightPanelTab | null): RightPanelTab | null {
   if (!tab) return null;
   if (!VALID_TABS.includes(tab)) return null;

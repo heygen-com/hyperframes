@@ -4,7 +4,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoOpenRootComposition } from "./useAutoOpenRootComposition";
-import { readStudioUrlStateFromWindow } from "../utils/studioUrlState";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,12 +24,7 @@ afterEach(() => {
 });
 
 function Harness(props: Props) {
-  useAutoOpenRootComposition({
-    ...props,
-    initialUrlStateRef: { current: readStudioUrlStateFromWindow() },
-    setActiveCompPath: vi.fn(),
-    setActiveCompPathHydrated: vi.fn(),
-  });
+  useAutoOpenRootComposition(props);
   return null;
 }
 

@@ -2,7 +2,9 @@ import { useState, type Dispatch, type MutableRefObject, type SetStateAction } f
 import { useHydrateActiveCompPathFromUrl } from "./useHydrateActiveCompPathFromUrl";
 import { useAutoOpenRootComposition } from "./useAutoOpenRootComposition";
 import { useCompositionContentLoader } from "./useCompositionContentLoader";
-import type { StudioUrlState } from "../utils/studioUrlState";
+import { useResetSelectionOnProjectSwitch } from "./useResetSelectionOnProjectSwitch";
+import { isHydratedFromUrlState, type StudioUrlState } from "../utils/studioUrlState";
+import type { AppToast, EditingFile } from "../utils/studioHelpers";
 
 /** Owns which composition is open: state, URL hydration, auto-open and content loading. */
 export function useActiveComposition({
@@ -19,8 +21,8 @@ export function useActiveComposition({
   fileTree: string[];
   fileTreeLoaded: boolean;
   masterCompPath: string | null;
-  setEditingFile: (file: { path: string; content: string | null }) => void;
-  showToast: (message: string, tone?: "error" | "info") => void;
+  setEditingFile: (file: EditingFile) => void;
+  showToast: (message: string, tone?: AppToast["tone"]) => void;
 }): {
   activeCompPath: string | null;
   activeCompPathHydrated: boolean;
@@ -28,9 +30,16 @@ export function useActiveComposition({
   handleSelectComposition: (comp: string) => void;
 } {
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
-  const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
-    () => initialUrlStateRef.current.activeCompPath == null,
+  const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(() =>
+    isHydratedFromUrlState(initialUrlStateRef.current),
   );
+
+  useResetSelectionOnProjectSwitch({
+    projectId,
+    initialUrlStateRef,
+    setActiveCompPath,
+    setActiveCompPathHydrated,
+  });
 
   useHydrateActiveCompPathFromUrl({
     hydrated: activeCompPathHydrated,
@@ -53,9 +62,6 @@ export function useActiveComposition({
     activeCompPath,
     activeCompPathHydrated,
     masterCompPath,
-    initialUrlStateRef,
-    setActiveCompPath,
-    setActiveCompPathHydrated,
     onSelectComposition: handleSelectComposition,
   });
 

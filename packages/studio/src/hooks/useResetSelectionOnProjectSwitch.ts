@@ -1,9 +1,13 @@
 import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
-import { readStudioUrlStateFromWindow, type StudioUrlState } from "../utils/studioUrlState";
+import {
+  isHydratedFromUrlState,
+  readStudioUrlStateFromWindow,
+  type StudioUrlState,
+} from "../utils/studioUrlState";
 
 /**
  * Resets selection when `projectId` switches in-session. Runs during render, not an
- * effect, so useAutoOpenRootComposition never sees a stale activeCompPath in that commit.
+ * effect, so the caller never sees a stale activeCompPath in the same commit.
  */
 export function useResetSelectionOnProjectSwitch({
   projectId,
@@ -24,7 +28,7 @@ export function useResetSelectionOnProjectSwitch({
     if (isSwitch) {
       initialUrlStateRef.current = readStudioUrlStateFromWindow();
       setActiveCompPath(null);
-      setActiveCompPathHydrated(initialUrlStateRef.current.activeCompPath == null);
+      setActiveCompPathHydrated(isHydratedFromUrlState(initialUrlStateRef.current));
     }
   }
 }

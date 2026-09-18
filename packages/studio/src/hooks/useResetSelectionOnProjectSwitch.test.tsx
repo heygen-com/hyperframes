@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useResetSelectionOnProjectSwitch } from "./useResetSelectionOnProjectSwitch";
 import { useAutoOpenRootComposition } from "./useAutoOpenRootComposition";
-import { readStudioUrlStateFromWindow } from "../utils/studioUrlState";
+import { isHydratedFromUrlState, readStudioUrlStateFromWindow } from "../utils/studioUrlState";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -79,8 +79,8 @@ describe("project switch integration (mirrors App.tsx's wiring)", () => {
   }) {
     const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
     const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
-    const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
-      () => initialUrlStateRef.current.activeCompPath == null,
+    const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(() =>
+      isHydratedFromUrlState(initialUrlStateRef.current),
     );
     // Mirrors handleSelectComposition (useCompositionContentLoader): selecting a composition
     // also updates activeCompPath, which is exactly the state that must be reset on switch.
@@ -88,14 +88,18 @@ describe("project switch integration (mirrors App.tsx's wiring)", () => {
       setActiveCompPath(comp);
       onSelectComposition(comp);
     };
+    // Mirrors useActiveComposition's wiring: reset as a sibling call, before auto-open.
+    useResetSelectionOnProjectSwitch({
+      projectId,
+      initialUrlStateRef,
+      setActiveCompPath,
+      setActiveCompPathHydrated,
+    });
     useAutoOpenRootComposition({
       projectId,
       activeCompPath,
       activeCompPathHydrated,
       masterCompPath,
-      initialUrlStateRef,
-      setActiveCompPath,
-      setActiveCompPathHydrated,
       onSelectComposition: handleSelect,
     });
     return null;
