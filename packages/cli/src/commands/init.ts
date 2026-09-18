@@ -611,7 +611,7 @@ async function scaffoldProject(
 
   writeDefaultPackageJson(destDir, name);
 
-  // Copy shared files (CLAUDE.md, AGENTS.md) for AI agent context
+  // Copy AGENTS.md for AI agent context
   const sharedDir = getSharedTemplateDir();
   if (existsSync(sharedDir)) {
     for (const entry of readdirSync(sharedDir, { withFileTypes: true })) {

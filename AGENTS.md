@@ -4,27 +4,57 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** — the `/hyperframes` router installs each creation workflow on demand; install everything only when the user explicitly asks for the full set.
+This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 20 only when the user explicitly asks for the full set.
 
 ```bash
-npx hyperframes skills update           # default: installs/refreshes the core set — workflows install on demand
-npx hyperframes skills                  # all 20 published skills at once
-npx skills add heygen-com/hyperframes   # interactive picker (terminal only; repo-internal skills are excluded by default)
+npx hyperframes skills update                         # default: installs/refreshes the core set — workflows install on demand
+npx hyperframes skills                                # all 20 published skills at once — only on explicit request
+npx skills add heygen-com/hyperframes                 # interactive picker (terminal only; --all also pulls the 6 repo-internal skills under .claude/skills)
+npx skills add heygen-com/hyperframes --skill <name>  # just one (bare name, no leading slash)
 ```
 
-**Creation workflows** route through one entry skill — read `/hyperframes` first: it orients you to the whole surface, confirms the brief up front (the intent layer), and maps "make me a…" intent — usually a video, but also a navigable deck (`/slideshow`) or a composition port (`/remotion-to-hyperframes`) — to a concrete workflow. Consult it before invoking a specific workflow:
+`skills add` resolves the skills.sh registry blob, which can lag `main` by hours, so a freshly added skill may be a little behind. `npx hyperframes skills update` installs from the current `main`; prefer it when freshness matters.
+
+**`/hyperframes` is the entry skill — read it first.** It's the capability map for the domain skills below, the intent layer that confirms every creation brief up front, AND the intent router for the creation workflows. The full README skills section mirrors this list; keep them in sync (see "Skill catalog maintenance" below).
+
+### Creation workflows
 
 - `/product-launch-video` — any **website** URL (or a pre-written script / text brief in no-capture mode) → a product launch / promo video, or a site tour / showcase featuring the site's own captured screens; up to ~3 min (sweet spot ~30-90s).
 - `/faceless-explainer` — arbitrary text, **no URL and no website capture** → faceless explainer, up to ~3 min (sweet spot ~30-90s); every visual is LLM-invented (typography / abstract graphics / diagram / data-viz).
-- `/embedded-captions` — an existing talking-head video (MP4) → the same footage with captions / subtitles added (verbatim rail + embedded climax, or pure-cinematic embed); the footage itself is untouched (no NLE-style editing).
-- `/talking-head-recut` — an existing talking-head / interview / podcast video (MP4) → the same footage packaged with designed **graphic overlays** (kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, pip) synced to the transcript; the clip plays unchanged underneath, footage untouched. For plain captions/subtitles → `/embedded-captions`.
 - `/pr-to-video` — a GitHub PR (URL / `owner/repo#N` / "this PR") → code-change explainer, up to ~3 min (changelog / feature reveal / fix / refactor). A PR link, not a product website.
+- `/embedded-captions` — an existing talking-head video (MP4) → the same footage with captions / subtitles added (verbatim rail + embedded climax, or pure-cinematic embed); the footage itself is untouched (no NLE-style editing).
+- `/talking-head-recut` — an existing talking-head / interview / podcast video (MP4) → the same footage packaged with designed **graphic overlays** (kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, PiP) synced to the transcript; the clip plays unchanged underneath, footage untouched. For plain captions/subtitles → `/embedded-captions`.
 - `/motion-graphics` — a short (typically under 10s) design-led **motion graphic**, motion-is-the-message, no narration: kinetic type, a stat / number count-up, a chart, a logo sting, a lower-third / overlay, or an animated tweet / headline / captured-page highlight; rendered to MP4 or a transparent overlay. Longer / narrated / custom → `/general-video`.
 - `/music-to-video` — a **music track** (audio file, video to pull audio from, or one generated from a mood brief) → beat-synced video (lyric / slideshow / kinetic promo). Music drives pacing; user-supplied images / videos are cut onto the same beat grid.
 - `/slideshow` — a **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video.
 - `/general-video` — fallback for any other video creation (title card, longer brand / sizzle reel, multi-scene montage, static loop, custom composition) and the home of **companion mode** — co-create with the full HyperFrames toolbox; the original hyperframes flow — design → plan → layout → build → validate, any length.
+- `/remotion-to-hyperframes` — port an existing Remotion (React) composition to HyperFrames HTML. One-way migration, not creation.
 
-**Porting an existing composition?** `/remotion-to-hyperframes` translates a Remotion (React) video composition into HyperFrames HTML — a source migration, separate from the creation workflows above.
+### Domain skills (loaded on demand)
+
+Atomic capabilities the creation workflows compose against — pull one when you need that specific layer:
+
+- `/hyperframes-core` — the composition contract: `data-*` timing attributes, `class="clip"`, tracks, sub-compositions, variables, framework-owned media playback, determinism rules. Read before writing composition HTML.
+- `/hyperframes-animation` — all animation knowledge: atomic motion rules, scene blueprints, transitions, runtime adapters (GSAP default, plus Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU).
+- `/hyperframes-keyframes` — seek-safe keyframe authoring across runtimes: GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, text trails, 3D depth; plus `hyperframes keyframes` diagnostics for surfacing and verifying rendered motion.
+- `/hyperframes-creative` — non-animation creative direction: `frame.md` / `design.md` handling, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns.
+- `/media-use` — the media OS: resolve any media need (BGM, SFX, image, icon, logo, voice, color grade, LUT) into a frozen local file or paste-ready block + ledger record; generate via TTS / music / image models when the catalog misses; transcribe, caption, remove backgrounds, and reuse assets across projects. One shared `scripts/audio.mjs` engine + manifest tracking; keeps search noise on disk.
+- `/hyperframes-audio` — mix the audio already placed in a composition: voiceover carve (dip a music bed only in the bands the voice occupies, static or dynamic, level match included), the effect chain (EQ, compressor, limiter, gate, saturation, delay, reverb, chorus, phaser, bitcrush), automation envelopes on volume or any effect parameter, and submix buses (`<hf-audio-group>`) that carry one chain, fader and automation clock for several tracks at once. Sourcing the audio is `/media-use`; this is what happens to it afterwards.
+- `/hyperframes-cli` — CLI dev loop: `init`, `add`, `lint`, `check`, `snapshot`, `preview`, `render`, `publish`, `doctor`, `lambda` (AWS Lambda cloud rendering).
+- `/hyperframes-registry` — search, install and wire registry blocks and components into compositions via `hyperframes catalog` / `hyperframes add`. Load it before hand-building any named look, effect, treatment or transition: the search ranks the whole hosted registry with nothing installed. Covers authoring a new block or component to contribute upstream.
+- `/figma` — import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations (MCP) and shaders (MCP source / native export) into a composition.
+
+## Skill catalog maintenance
+
+When adding a new skill, or substantially renaming / repurposing an existing one, update all agent-facing discoverability surfaces in lockstep:
+
+1. The skill list above AND the `## Skills` section in `README.md` AND `docs/guides/skills.mdx` (rendered at [hyperframes.heygen.com/guides/skills](https://hyperframes.heygen.com/guides/skills)) AND the two setup tables that compress the same descriptions — `docs/prompting/overview.mdx` ("One-time setup") and `docs/quickstart.mdx`. Out-of-date entries silently kill discovery. This list is also the sync set for a **changed contract**, not just an added or renamed skill: a reworded `description:` has to be pushed to every surface or the compressed copies start asserting the opposite of the skill.
+2. The scaffolded project template `packages/cli/src/templates/_shared/AGENTS.md` — written into every `hyperframes init` project, so a stale entry there ships to users. Keep this template synchronized with the root guidance.
+3. If the skill changes the routing surface for "make a video" requests, also update the routing table + intent layer in `skills/hyperframes/SKILL.md` AND that workflow's own route file, `skills/hyperframes/references/routes/<workflow>.md`. One file carries both halves: the input/output/trigger contract the router reads before the workflow is installed, and its interview entry (must-haves, conditionals, deferred asks, run-shape). The older `references/workflow-catalog.md` and `references/route-briefs.md` are now "moved" stubs pointing at `routes/` — don't edit them.
+4. Mirror the Router / Creation workflows / Domain skills grouping across all surfaces so a skill always lives in the same column.
+5. Skill count appears in the README and AGENTS.md intro lines ("20 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
+
+The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.
 
 ## Build & Test
 

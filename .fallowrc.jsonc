@@ -220,7 +220,7 @@
       ],
     },
     // CLI command files: every command exports a const `examples` per the
-    // convention documented in CLAUDE.md. This is a namespace barrel, not a
+    // convention documented in AGENTS.md. This is a namespace barrel, not a
     // collision.
     { "file": "packages/cli/src/commands/*.ts", "exports": ["examples"] },
     // Options type for the render-queue hook's public startRender callback —

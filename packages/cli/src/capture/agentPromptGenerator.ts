@@ -1,9 +1,8 @@
 /**
- * Generate AGENTS.md and CLAUDE.md for captured website projects.
+ * Generate AGENTS.md for captured website projects.
  *
- * Writes the same content to both filenames so any AI agent auto-discovers it:
- *   - AGENTS.md  — universal convention (Cursor, Codex, Gemini CLI, Windsurf, Aider, Jules)
- *   - CLAUDE.md  — Claude Code convention
+ * Uses the cross-agent AGENTS.md convention so every supported coding agent
+ * discovers one canonical instruction file.
  *
  * This file generates a DATA INVENTORY that tells the AI agent what files
  * exist and what they contain. The actual workflow lives in the
@@ -53,7 +52,6 @@ export function generateAgentPrompt(
 ): void {
   const prompt = buildPrompt(outputDir, url, tokens, hasScreenshot, hasLottie, hasShaders);
   writeFileSync(join(outputDir, "AGENTS.md"), prompt, "utf-8");
-  writeFileSync(join(outputDir, "CLAUDE.md"), prompt, "utf-8");
   writeFileSync(join(outputDir, ".cursorrules"), prompt, "utf-8");
 }
 

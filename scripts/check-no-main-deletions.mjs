@@ -38,6 +38,14 @@ const BASE_FLAG = "--base";
  */
 export const ALLOWED_DELETIONS = new Map([
   [
+    "CLAUDE.md",
+    "canonical agent guidance migrated to AGENTS.md; the legacy compatibility file is intentionally removed",
+  ],
+  [
+    "packages/cli/src/templates/_shared/CLAUDE.md",
+    "project scaffolding now emits AGENTS.md as its only canonical agent-guidance file",
+  ],
+  [
     "docs/snippets/catalog-overview-player.jsx",
     "#4051 removes the Catalog overview's only consumer of this snippet (replaced by the browse-grid mount); confirmed unreferenced repo-wide before deleting",
   ],

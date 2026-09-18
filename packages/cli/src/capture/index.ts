@@ -881,7 +881,7 @@ export async function captureWebsite(
       phase("contact-sheets", "degraded", "budget-exhausted");
     }
 
-    // Generate project scaffold (index.html, meta.json, CLAUDE.md)
+    // Generate project scaffold (index.html, meta.json, AGENTS.md)
     phase("scaffold", "started");
     await generateProjectScaffold(
       outputDir,
