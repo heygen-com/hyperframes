@@ -138,6 +138,7 @@ export function useTimelineSyncCallbacks({
           .getState()
           .setSubCompositionHostState(collectSubCompositionHostState(iframeDoc, data.clips));
       } catch {
+        usePlayerStore.getState().setTopLevelIds(null);
         // cross-origin or __clipTree not available — maps stay empty
       }
 
