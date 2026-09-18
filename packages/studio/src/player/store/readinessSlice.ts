@@ -1,7 +1,8 @@
 /** Gates `timelineReady` on the composition's declared readiness inputs
- * (media, for now) instead of just a known duration. The generation counter
- * is module-scope, not store state: it guards an in-flight settlement, not
- * something a component reads, so bumping it shouldn't trigger a render. */
+ * (media, compute, and the paint-and-idle default) instead of just a known
+ * duration. The generation counter is module-scope, not store state: it
+ * guards an in-flight settlement, not something a component reads, so
+ * bumping it shouldn't trigger a render. */
 import type { StoreApi } from "zustand";
 import { settleCompositionReadiness } from "@hyperframes/core/composition-readiness";
 

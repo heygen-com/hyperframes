@@ -36,9 +36,9 @@ const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
-// Bounds how long the player waits for a same-origin composition's media,
-// images and fonts before playing anyway — a stuck asset must not block
-// playback forever.
+// Bounds how long the player waits on a same-origin composition's readiness
+// inputs (media, compute, paint-and-idle) before playing anyway — a stuck
+// asset or a composition that never goes quiet must not block playback forever.
 const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
 
@@ -519,8 +519,8 @@ class HyperframesPlayer extends HTMLElement {
     return this._ready;
   }
 
-  /** True once the composition's media, images and fonts have loaded (or the
-   *  8s wait timed out) — mirrors the `assetsready` event. Always true for
+  /** True once every readiness input (media, compute, paint-and-idle) has
+   *  settled or the wait timed out. Mirrors `assetsready`. Always true for
    *  cross-origin compositions, which the player has no DOM access to wait on. */
   get assetsReady() {
     return this._assetsReady;

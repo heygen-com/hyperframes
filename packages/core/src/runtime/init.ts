@@ -2877,6 +2877,52 @@ export function initSandboxRuntimeModular(): void {
     return trackedAdapterReadySettled;
   };
 
+  // window.__hf.buildReady[key]: a piece registers a promise for setup no
+  // adapter can observe (mesh building, shader compiles). Waited the same
+  // way as adapter readiness, so render and preview both hold on it.
+  let trackedBuildReadyPromise: PromiseLike<unknown> | null = null;
+  let trackedBuildReadySettled = true;
+
+  const collectBuildReadyPromises = (): PromiseLike<unknown>[] => {
+    const registry = window.__hf?.buildReady;
+    if (!registry) return [];
+    return Object.values(registry).filter(
+      (p): p is PromiseLike<unknown> =>
+        p != null && typeof (p as PromiseLike<unknown>).then === "function",
+    );
+  };
+
+  const isBuildReadinessSettled = (): boolean => {
+    const promises = collectBuildReadyPromises();
+    if (promises.length === 0) {
+      trackedBuildReadyPromise = null;
+      trackedBuildReadySettled = true;
+      return true;
+    }
+    const firstPromise = promises[0];
+    if (!firstPromise) return true;
+    const combined: PromiseLike<unknown> =
+      promises.length === 1 ? firstPromise : Promise.all(promises);
+    if (combined !== trackedBuildReadyPromise) {
+      trackedBuildReadyPromise = combined;
+      trackedBuildReadySettled = false;
+      void Promise.resolve(combined).then(
+        () => {
+          if (trackedBuildReadyPromise !== combined) return;
+          trackedBuildReadySettled = true;
+          maybePublishRenderReady();
+        },
+        (err) => {
+          if (trackedBuildReadyPromise !== combined) return;
+          trackedBuildReadySettled = true;
+          swallow("runtime.init.buildReady", err);
+          maybePublishRenderReady();
+        },
+      );
+    }
+    return trackedBuildReadySettled;
+  };
+
   if (!externalCompositionsReady) {
     const compositionLoaderParams = {
       injectedStyles: state.injectedCompStyles,
@@ -3251,6 +3297,10 @@ export function initSandboxRuntimeModular(): void {
     // second call here is cheap.
     runAdapters("discover", state.currentTime);
     if (!isAdapterReadinessSettled()) {
+      window.__renderReady = false;
+      return;
+    }
+    if (!isBuildReadinessSettled()) {
       window.__renderReady = false;
       return;
     }

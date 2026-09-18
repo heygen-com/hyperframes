@@ -12,6 +12,19 @@ function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document): vo
   });
 }
 
+// These bare test documents never run a real runtime bootstrap, so
+// window.__renderReady would never flip; set it directly, then drain real
+// rAF frames past paint-and-idle's quiet-frame minimum on the given window
+// (the composition iframe's own window, not the test's global one).
+async function awaitPaintAndIdle(win: Window = window): Promise<void> {
+  (win as Window & { __renderReady?: boolean }).__renderReady = true;
+  // computeReadinessInput polls a real 50ms setTimeout; wait it out.
+  await new Promise<void>((resolve) => setTimeout(resolve, 60));
+  for (let i = 0; i < 6; i++) {
+    await new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
+  }
+}
+
 function createForeignFrameMediaDocument(): {
   doc: Document;
   video: HTMLMediaElement & { pause: ReturnType<typeof vi.fn> };
@@ -2196,11 +2209,22 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     expect(readyEvents).toEqual([{ duration: 4 }]);
   });
 
-  it("honors autoplay after cross-origin runtime timeline readiness", () => {
+  it("honors autoplay after cross-origin runtime timeline readiness", async () => {
+    // A bare iframe fires its own async `load` a few ms after append, which
+    // resets pending-play state (see createConnectedPlayer's comment below) —
+    // await it first so it can't land mid-test during the readiness wait.
+    await new Promise<void>((resolve) => {
+      player.iframe.addEventListener("load", () => resolve(), { once: true });
+    });
     player.setAttribute("autoplay", "");
     postSpy.mockClear();
 
     player._onMessage(timelineMessage(120));
+    // The same-origin doc under test has no pending media, but play() is now
+    // gated on paint-and-idle too — it queues until that settles. The gate
+    // polls the real (unstubbed) iframe document's own window, not the
+    // stubbed contentWindow used for postMessage.
+    await awaitPaintAndIdle(player.iframe.contentDocument!.defaultView!);
 
     expect(player.paused).toBe(false);
     expect(findControlCalls("play")).toHaveLength(1);
@@ -3034,6 +3058,9 @@ describe("HyperframesPlayer asset-ready gate", () => {
       adapter: { kind: "runtime", getDuration: () => 5 },
       compositionSize: null,
     });
+    // The blank iframe doc has no pending media, but play() also queues on
+    // the paint-and-idle default now — it fires once that settles.
+    await awaitPaintAndIdle(player.iframe.contentDocument!.defaultView!);
 
     expect(playSpy).toHaveBeenCalledTimes(1);
 

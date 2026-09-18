@@ -75,6 +75,67 @@ export function mediaReadinessInput(doc: Document): Promise<void> | null {
   return collectPendingCompositionAssets(doc, scan);
 }
 
+const RENDER_READY_POLL_MS = 50;
+
+// `window.__renderReady` is declared globally in runtime/window.d.ts, but that
+// file lives under src/runtime — excluded from this package's own build
+// program (see tsconfig.json) — so it isn't visible here. Same flag, declared
+// locally instead of depending on a global merge from outside this file's scope.
+interface RuntimeReadinessWindow extends Window {
+  __renderReady?: boolean;
+}
+
+/** Declared-compute readiness input: waits on `window.__renderReady`, which
+ * init.ts already gates on every adapter's `getReadyPromise()` and on
+ * `window.__hf.buildReady` (a piece's own declared-compute hold). Same
+ * signal the render/capture path trusts for "safe to look at this frame". */
+export function computeReadinessInput(doc: Document): Promise<void> | null {
+  const win = doc.defaultView as RuntimeReadinessWindow | null;
+  if (!win) return null;
+  if (win.__renderReady) return null;
+  return new Promise<void>((resolve) => {
+    const poll = () => {
+      if (win.__renderReady) {
+        resolve();
+        return;
+      }
+      setTimeout(poll, RENDER_READY_POLL_MS);
+    };
+    poll();
+  });
+}
+
+// Frame-to-frame gap under which the main thread counts as free. Generous
+// relative to a 16.7ms (60fps) frame budget — this detects a busy stretch
+// (a mesh build, a shader compile), not ordinary frame-time variance.
+const IDLE_FRAME_GAP_MS = 50;
+// Two consecutive quiet frames, not one: a single fast gap can follow
+// directly after the busy work finishes mid-frame and says nothing about
+// whether the next frame is also free.
+const IDLE_FRAMES_REQUIRED = 2;
+
+function nextAnimationFrame(win: Window): Promise<number> {
+  return new Promise((resolve) => win.requestAnimationFrame(resolve));
+}
+
+/** Composition-agnostic readiness input: waits for a frame to paint (two
+ * nested rAFs), then for two consecutive quiet frame gaps. Needs no
+ * composition code. Bounded by settleCompositionReadiness's shared timeout. */
+export function paintAndIdleReadinessInput(doc: Document): Promise<void> | null {
+  const win = doc.defaultView;
+  if (!win) return null;
+  return (async () => {
+    await nextAnimationFrame(win);
+    let lastTs = await nextAnimationFrame(win);
+    let quietStreak = 0;
+    while (quietStreak < IDLE_FRAMES_REQUIRED) {
+      const ts = await nextAnimationFrame(win);
+      quietStreak = ts - lastTs < IDLE_FRAME_GAP_MS ? quietStreak + 1 : 0;
+      lastTs = ts;
+    }
+  })();
+}
+
 const DEFAULT_TIMEOUT_MS = 8_000;
 
 export interface CompositionReadinessResult {
@@ -90,7 +151,11 @@ export function settleCompositionReadiness(
   onSettled: (result: CompositionReadinessResult) => void,
   opts: { inputs?: CompositionReadinessInput[]; timeoutMs?: number } = {},
 ): void {
-  const inputs = opts.inputs ?? [mediaReadinessInput];
+  const inputs = opts.inputs ?? [
+    mediaReadinessInput,
+    computeReadinessInput,
+    paintAndIdleReadinessInput,
+  ];
   const pending = inputs.map((input) => input(doc)).filter((p): p is Promise<void> => p !== null);
   if (pending.length === 0) {
     onSettled({ timedOut: false });

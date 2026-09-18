@@ -196,6 +196,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
+    delete window.__hf;
     delete window.gsap;
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -2824,6 +2825,41 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(window.__renderReady).toBe(true);
     expect(window.__player?.getDuration()).toBe(10);
+  });
+
+  it("waits for window.__hf.buildReady before publishing render readiness", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+    };
+
+    // Same registration shape a composition uses: a promise it resolves once
+    // its own heavy setup (mesh build, shader compile) is actually drawable.
+    let resolveBuild: () => void = () => {};
+    const buildPromise = new Promise<void>((resolve) => {
+      resolveBuild = resolve;
+    });
+    window.__hf = window.__hf || {};
+    window.__hf.buildReady = { frost: buildPromise };
+
+    initSandboxRuntimeModular();
+
+    // Player ready, render NOT ready because the declared build is pending.
+    expect(window.__playerReady).toBe(true);
+    expect(window.__renderReady).toBe(false);
+
+    resolveBuild();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(window.__renderReady).toBe(true);
   });
 
   it("sets __renderReady even without a GSAP timeline (CSS/WAAPI compositions)", () => {
