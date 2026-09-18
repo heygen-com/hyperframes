@@ -2861,6 +2861,24 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 
+  it("stays ready when a late iframe load follows a settled opaque-origin wait", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    post(player, { type: "assets-ready", timedOut: false });
+    expect(player._ready).toBe(true);
+
+    player._onIframeLoad();
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(true);
+    player.play();
+    expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
   it("does not wait on an opaque-origin runtime that already settled its assets", async () => {
     const player = await createConnectedPlayer();
     player._ready = false;

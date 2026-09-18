@@ -1145,10 +1145,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
-    // The runtime posts its timeline at DOMContentLoaded, so a wait that is
-    // still open on `load` belongs to this same document. Resetting here would
-    // drop the wait and any queued play, and a paused runtime never posts again.
-    if (this._runtimeAssetsReadyGeneration === this._assetsGeneration && !this._assetsReady) return;
+    // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
+    // host-initiated navigation clears `_ready` first. So a ready opaque-origin player already
+    // holds this document's handshake; a paused runtime would never post it again.
+    if (this._ready && this._getSameOriginIframeDocument() === null) return;
 
     this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
