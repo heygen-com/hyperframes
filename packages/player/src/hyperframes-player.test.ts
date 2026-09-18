@@ -12,14 +12,10 @@ function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document): vo
   });
 }
 
-// These bare test documents never run a real runtime bootstrap, so
-// window.__renderReady would never flip; set it directly, then drain real
-// rAF frames past paint-and-idle's quiet-frame minimum on the given window
-// (the composition iframe's own window, not the test's global one).
+// Bare test docs never run a runtime, so only paintAndIdleReadinessInput
+// is ever pending — drain real rAF frames past its quiet-frame minimum
+// on the given window (the iframe's own, not the test's global one).
 async function awaitPaintAndIdle(win: Window = window): Promise<void> {
-  (win as Window & { __renderReady?: boolean }).__renderReady = true;
-  // computeReadinessInput polls a real 50ms setTimeout; wait it out.
-  await new Promise<void>((resolve) => setTimeout(resolve, 60));
   for (let i = 0; i < 6; i++) {
     await new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
   }
@@ -2798,6 +2794,7 @@ describe("HyperframesPlayer asset-ready gate", () => {
     play(): void;
     pause(): void;
     seek(timeInSeconds: number): void;
+    shaderLoader: { showAssetsLoading(): void };
   };
 
   beforeEach(async () => {
@@ -2837,6 +2834,25 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 
+  it("debounces the loading overlay so a fast, nothing-pending wait never shows it", async () => {
+    const player = await createConnectedPlayer();
+    const doc = player.iframe.contentDocument!;
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+
+    player._waitForAssetsReady(doc);
+    expect(player.assetsReady).toBe(false);
+
+    // Only paint-and-idle is pending on this blank iframe doc (no runtime,
+    // no media) — it settles well under ASSETS_LOADING_SHOW_DELAY_MS.
+    await awaitPaintAndIdle(doc.defaultView!);
+
+    expect(player.assetsReady).toBe(true);
+    expect(player.hasAttribute("assets-loading")).toBe(false);
+    expect(showSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
   it("defers play() until a pending video settles, then plays and clears the overlay attribute", async () => {
     const player = await createConnectedPlayer();
 
@@ -2848,6 +2864,10 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     player._waitForAssetsReady(doc);
     expect(player.assetsReady).toBe(false);
+    // The loading overlay is debounced (ASSETS_LOADING_SHOW_DELAY_MS) so a
+    // wait that resolves fast never flashes it — advance past the debounce
+    // to exercise the shown state, since this video is still genuinely stuck.
+    await new Promise((resolve) => setTimeout(resolve, 160));
     expect(player.hasAttribute("assets-loading")).toBe(true);
 
     player.play();
@@ -2967,6 +2987,9 @@ describe("HyperframesPlayer asset-ready gate", () => {
       expect(player._pendingPlay).toBe(false);
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy.mock.calls[0]?.[0]).toContain("assets-loading timed out");
+      // computeReady is reported alongside the media/image/font scan, since
+      // compute (window.__renderReady) can also be why the timeout fired.
+      expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({ computeReady: false });
 
       player.remove();
     } finally {

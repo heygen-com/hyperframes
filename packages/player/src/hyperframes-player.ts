@@ -41,6 +41,10 @@ const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // asset or a composition that never goes quiet must not block playback forever.
 const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
+// paint-and-idle now always has a frame to wait on, so the overlay would
+// flash on every single Play without this debounce. ponytail: 150ms is
+// unmeasured, retune once there's production data on paint-and-idle timing.
+const ASSETS_LOADING_SHOW_DELAY_MS = 150;
 
 export type ColorGradingTarget =
   | string
@@ -107,6 +111,7 @@ class HyperframesPlayer extends HTMLElement {
   private _assetsReady = false;
   private _pendingPlay = false;
   private _assetsGeneration = 0;
+  private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentTime = 0;
   private _duration = 0;
   private _paused = true;
@@ -1014,9 +1019,11 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   /** Gates play() on composition readiness (media, compute, paint-and-idle),
-   * bounded by ASSETS_READY_TIMEOUT_MS; settles synchronously when nothing
-   * is pending. */
+   * bounded by ASSETS_READY_TIMEOUT_MS. The overlay is debounced by
+   * ASSETS_LOADING_SHOW_DELAY_MS rather than shown the instant a wait
+   * starts, since one is now pending on nearly every Play. */
   private _waitForAssetsReady(doc: Document | null): void {
+    this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
     // Invalidates any earlier wait still in flight (a composition swap, or
     // disconnect, mid-wait) — its eventual settle checks this and no-ops
@@ -1035,19 +1042,22 @@ class HyperframesPlayer extends HTMLElement {
       },
       { timeoutMs: ASSETS_READY_TIMEOUT_MS },
     );
-    // settleCompositionReadiness calls back synchronously when nothing was
-    // pending, so _assetsReady is already true here in the common case — the
-    // loading overlay only shows for the genuinely-waiting case.
     if (!this._assetsReady) {
-      this.setAttribute(ASSETS_LOADING_ATTR, "");
-      this.shaderLoader.showAssetsLoading();
+      this._assetsLoadingShowTimer = setTimeout(() => {
+        this._assetsLoadingShowTimer = null;
+        if (generation !== this._assetsGeneration || this._assetsReady) return;
+        this.setAttribute(ASSETS_LOADING_ATTR, "");
+        this.shaderLoader.showAssetsLoading();
+      }, ASSETS_LOADING_SHOW_DELAY_MS);
     }
   }
 
-  /** Timeout diagnostic. Re-scans (rather than reusing the original scan)
-   *  since some assets may have resolved in the 8s since. */
+  /** Timeout diagnostic. Re-scans since some assets may have resolved by
+   *  now. Compute can also cause the timeout, so it's reported too;
+   *  paint-and-idle isn't — MAX_PAINT_WAIT_MS bounds it well under 8s. */
   private _warnStuckAssets(doc: Document): void {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc);
+    const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
     console.warn(
       `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms — playing anyway`,
       {
@@ -1058,12 +1068,14 @@ class HyperframesPlayer extends HTMLElement {
           (img) => img.currentSrc || img.getAttribute("src") || "<img>",
         ),
         fontsLoading,
+        computeReady: win?.__renderReady === true,
       },
     );
   }
 
   private _settleAssetsReady(generation: number): void {
     if (generation !== this._assetsGeneration || this._assetsReady) return;
+    this._clearAssetsLoadingShowTimer();
     this._assetsReady = true;
     this.removeAttribute(ASSETS_LOADING_ATTR);
     this.shaderLoader.hide();
@@ -1074,11 +1086,18 @@ class HyperframesPlayer extends HTMLElement {
   /** Abandons any in-flight asset wait — every `_ready = false` site calls
    *  this first, so a stale wait's settle can't apply to what comes next. */
   private _invalidateAssetsWait(): void {
+    this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
     this._pendingPlay = false;
     this._assetsGeneration++;
     this.removeAttribute(ASSETS_LOADING_ATTR);
     this.shaderLoader.hide();
+  }
+
+  private _clearAssetsLoadingShowTimer(): void {
+    if (this._assetsLoadingShowTimer === null) return;
+    clearTimeout(this._assetsLoadingShowTimer);
+    this._assetsLoadingShowTimer = null;
   }
 
   private _rescale() {
