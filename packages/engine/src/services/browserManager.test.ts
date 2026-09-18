@@ -534,6 +534,8 @@ describe("resolveHeadlessShellPath", () => {
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+        const label = `execFileSync(bun --eval) ${hostPlatform}/${hostArch} [compatible]`;
+        console.time(label);
         const stdout = execFileSync(
           "bun",
           [
@@ -542,6 +544,7 @@ describe("resolveHeadlessShellPath", () => {
           ],
           { encoding: "utf8", env },
         );
+        console.timeEnd(label);
 
         expect(stdout).toBe(expectedBinary);
       } finally {
@@ -578,6 +581,8 @@ describe("resolveHeadlessShellPath", () => {
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+        const label = `execFileSync(bun --eval) ${hostPlatform}/${hostArch} [unsupported]`;
+        console.time(label);
         const stdout = execFileSync(
           "bun",
           [
@@ -586,6 +591,7 @@ describe("resolveHeadlessShellPath", () => {
           ],
           { encoding: "utf8", env },
         );
+        console.timeEnd(label);
 
         expect(stdout).toBe("");
       } finally {
@@ -618,6 +624,7 @@ describe("resolveHeadlessShellPath", () => {
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+      console.time("execFileSync(bun --eval) reuse-cache");
       const stdout = execFileSync(
         "bun",
         [
@@ -626,6 +633,7 @@ describe("resolveHeadlessShellPath", () => {
         ],
         { encoding: "utf8", env },
       );
+      console.timeEnd("execFileSync(bun --eval) reuse-cache");
 
       expect(stdout).toBe(binary);
     } finally {
