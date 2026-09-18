@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { compositionRequiresWebGpu } from "@hyperframes/engine";
 import { HOST_CHROME_FAILURE_PATTERNS } from "./__test_utils__/hostChromeFailures.js";
 import { plan } from "./plan.js";
 import {
@@ -416,6 +417,46 @@ describe("renderChunk() — variables threading", () => {
     },
     TIMEOUT_MS,
   );
+});
+
+describe("renderChunk() — requiresWebGpu wiring", () => {
+  // No Chrome needed — pins that plan() writes compiled/index.html at the
+  // exact path renderChunk() reads, and that compilation keeps the attribute.
+  it("reads requiresWebGpu from the exact path renderChunk() reads at render time", async () => {
+    const declaringDir = join(runRoot, "project-webgpu-declaring");
+    const plainDir = join(runRoot, "project-webgpu-plain");
+    mkdirSync(declaringDir, { recursive: true });
+    mkdirSync(plainDir, { recursive: true });
+    writeFileSync(
+      join(declaringDir, "index.html"),
+      FIXTURE_HTML.replace(
+        'data-composition-id="root"',
+        'data-composition-id="root" data-requires-webgpu',
+      ),
+      "utf-8",
+    );
+    writeFileSync(join(plainDir, "index.html"), FIXTURE_HTML, "utf-8");
+
+    const declaringPlanDir = join(runRoot, "plan-webgpu-declaring");
+    const plainPlanDir = join(runRoot, "plan-webgpu-plain");
+    mkdirSync(declaringPlanDir, { recursive: true });
+    mkdirSync(plainPlanDir, { recursive: true });
+    const baseConfig = {
+      fps: 30 as const,
+      width: 160,
+      height: 120,
+      format: "png-sequence" as const,
+    };
+    await plan(declaringDir, baseConfig, declaringPlanDir);
+    await plan(plainDir, baseConfig, plainPlanDir);
+
+    // Exactly the read renderChunk.ts performs at the CaptureOptions build
+    // site — same join(compiledDir, "index.html") call.
+    const declaringHtml = readFileSync(join(declaringPlanDir, "compiled", "index.html"), "utf-8");
+    const plainHtml = readFileSync(join(plainPlanDir, "compiled", "index.html"), "utf-8");
+    expect(compositionRequiresWebGpu(declaringHtml)).toBe(true);
+    expect(compositionRequiresWebGpu(plainHtml)).toBe(false);
+  });
 });
 
 describe("resolvePresetForLockedEncoder", () => {

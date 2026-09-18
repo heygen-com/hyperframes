@@ -43,6 +43,7 @@ import {
   BROWSER_GPU_NOT_SOFTWARE,
   calculateOptimalWorkers,
   classifyCaptureFailure,
+  compositionRequiresWebGpu,
   type CaptureOptions,
   type CaptureMode,
   type CapturePerfSummary,
@@ -728,6 +729,9 @@ export async function renderChunk(
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,
+      requiresWebGpu: compositionRequiresWebGpu(
+        readFileSync(join(compiledDir, "index.html"), "utf-8"),
+      ),
     };
 
     // Resolve worker count up-front. Sequential capture reuses the initialized
