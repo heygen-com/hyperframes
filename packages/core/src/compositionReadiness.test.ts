@@ -87,42 +87,46 @@ describe("computeReadinessInput", () => {
   });
 });
 
+function startPaintAndIdleTracking(): {
+  fireFrame: (ts: number) => void;
+  isResolved: () => boolean;
+} {
+  const { doc, fireFrame } = docWithFakeWindow();
+  let resolved = false;
+  paintAndIdleReadinessInput(doc)!.then(() => {
+    resolved = true;
+  });
+  return { fireFrame, isResolved: () => resolved };
+}
+
 describe("paintAndIdleReadinessInput", () => {
   it("returns null for a document with no view (nothing to observe)", () => {
     expect(paintAndIdleReadinessInput(docWith(""))).toBeNull();
   });
 
   it("waits for first paint, then two consecutive quiet frame gaps", async () => {
-    const { doc, fireFrame } = docWithFakeWindow();
-    let resolved = false;
-    paintAndIdleReadinessInput(doc)!.then(() => {
-      resolved = true;
-    });
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
 
     // First paint: two nested frames.
     fireFrame(0);
     await flushMicrotasks();
     fireFrame(16);
     await flushMicrotasks();
-    expect(resolved).toBe(false);
+    expect(isResolved()).toBe(false);
 
     // First quiet gap (10ms < 50ms threshold) — one is not enough.
     fireFrame(26);
     await flushMicrotasks();
-    expect(resolved).toBe(false);
+    expect(isResolved()).toBe(false);
 
     // Second consecutive quiet gap settles it.
     fireFrame(36);
     await flushMicrotasks();
-    expect(resolved).toBe(true);
+    expect(isResolved()).toBe(true);
   });
 
   it("resets the quiet streak on a slow frame gap (the busy stretch itself)", async () => {
-    const { doc, fireFrame } = docWithFakeWindow();
-    let resolved = false;
-    paintAndIdleReadinessInput(doc)!.then(() => {
-      resolved = true;
-    });
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
 
     fireFrame(0); // first paint scheduled
     await flushMicrotasks();
@@ -133,14 +137,14 @@ describe("paintAndIdleReadinessInput", () => {
     await flushMicrotasks();
     fireFrame(626); // a 600ms stall — the busy stretch — resets the streak
     await flushMicrotasks();
-    expect(resolved).toBe(false);
+    expect(isResolved()).toBe(false);
 
     fireFrame(636); // quiet gap 1 again
     await flushMicrotasks();
-    expect(resolved).toBe(false);
+    expect(isResolved()).toBe(false);
     fireFrame(646); // quiet gap 2 — now it settles
     await flushMicrotasks();
-    expect(resolved).toBe(true);
+    expect(isResolved()).toBe(true);
   });
 });
 
