@@ -24,6 +24,9 @@ export interface StudioUiPreferences {
   snapToGrid?: boolean;
   /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
   timelineSnapEnabled?: boolean;
+  /** Keeps the main track gapless: deleting a clip closes the gap. Distinct
+   *  from `timelineSnapEnabled` ("Magnet", drag/trim snapping). */
+  rippleEditEnabled?: boolean;
   /** Transport + ruler readout mode: timecode or frame number. */
   timeDisplayMode?: TimelineTimeDisplayMode;
   /**
@@ -135,6 +138,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.timelineSnapEnabled === "boolean") {
       preferences.timelineSnapEnabled = parsed.timelineSnapEnabled;
+    }
+    if (typeof parsed.rippleEditEnabled === "boolean") {
+      preferences.rippleEditEnabled = parsed.rippleEditEnabled;
     }
     if (parsed.timeDisplayMode === "time" || parsed.timeDisplayMode === "frame") {
       preferences.timeDisplayMode = parsed.timeDisplayMode;

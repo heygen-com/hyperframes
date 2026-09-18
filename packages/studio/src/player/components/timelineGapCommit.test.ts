@@ -5,6 +5,7 @@ import {
   canShiftTrackGapClips,
   commitCloseAllTrackGaps,
   commitCloseTrackGap,
+  resolveMainTrackDeleteRippleShifts,
 } from "./timelineGapCommit";
 import { resolveAllTrackGaps } from "./timelineGaps";
 
@@ -159,5 +160,46 @@ describe("canShiftTrackGapClips", () => {
 
   it("is false for unknown keys", () => {
     expect(canShiftTrackGapClips([el("a", 0, 1)], [{ key: "ghost", newStart: 0 }])).toBe(false);
+  });
+});
+
+describe("resolveMainTrackDeleteRippleShifts", () => {
+  it("closes the gap left by a deleted main-track clip", () => {
+    const deleted = [el("b", 2, 2)];
+    const survivors = [el("a", 0, 2), el("c", 8, 1)]; // "b" already removed from this set
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, true)).toEqual([
+      { key: "c", newStart: 2 },
+    ]);
+  });
+
+  it("returns null when ripple is off", () => {
+    const deleted = [el("b", 2, 2)];
+    const survivors = [el("a", 0, 2), el("c", 8, 1)];
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, false)).toBeNull();
+  });
+
+  it("returns null when nothing deleted was on the main track", () => {
+    const deletedOverlay = [el("o", 2, 2, 1)]; // track 1, not main
+    const survivors = [el("a", 0, 2), el("c", 8, 1)];
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deletedOverlay, true)).toBeNull();
+  });
+
+  it("returns null when the survivors are already gapless", () => {
+    const deleted = [el("b", 100, 1)]; // deleted from far off the end
+    const survivors = [el("a", 0, 2), el("c", 2, 1)]; // already contiguous
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, true)).toBeNull();
+  });
+
+  it("refuses the whole ripple (not a partial one) when a shifting survivor is locked", () => {
+    const deleted = [el("b", 2, 2)];
+    const survivors = [el("a", 0, 2), lockedEl("c", 8, 1)];
+    expect(resolveMainTrackDeleteRippleShifts(survivors, deleted, true)).toBeNull();
+  });
+
+  it("ignores audio and non-main-track survivors even when a main-track clip was deleted", () => {
+    const deleted = [el("b", 2, 2)];
+    const survivors = [el("a", 0, 2), el("c", 8, 1), el("overlay", 3, 1, 1)];
+    const shifts = resolveMainTrackDeleteRippleShifts(survivors, deleted, true);
+    expect(shifts).toEqual([{ key: "c", newStart: 2 }]); // "overlay" (track 1) untouched
   });
 });

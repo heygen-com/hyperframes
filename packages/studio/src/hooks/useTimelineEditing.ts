@@ -413,6 +413,7 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
     previewIframeRef,
+    handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
   });
 
   const { handleTimelineAssetDrop, handleTimelineFileDrop, handleTimelineCompositionDrop } =

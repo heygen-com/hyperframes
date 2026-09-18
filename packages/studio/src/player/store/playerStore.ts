@@ -108,14 +108,14 @@ interface PlayerState extends PlayerStoreSlices {
   /** Timeline magnet toggle — when false, clip drags/trims/drops never snap. */
   timelineSnapEnabled: boolean;
   setTimelineSnapEnabled: (enabled: boolean) => void;
+  /** Keeps the main track gapless on delete; distinct from the magnet above. */
+  rippleEditEnabled: boolean;
+  setRippleEditEnabled: (enabled: boolean) => void;
   /** Transport + ruler readout: timecode ("time") or frame number ("frame"). */
   timeDisplayMode: TimelineTimeDisplayMode;
   setTimeDisplayMode: (mode: TimelineTimeDisplayMode) => void;
-  /**
-   * Pin the timeline zoom to its current visual scale before a duration-changing
-   * edit, so a subsequent duration change (which recomputes fit-pps) stops
-   * rescaling every clip. No-op once already pinned (mode is "manual").
-   */
+  /** Pin the timeline zoom to its current scale before a duration change, so
+   *  it stops rescaling every clip. No-op once already pinned. */
   pinTimelineZoom: (currentPixelsPerSecond: number, fitPixelsPerSecond: number) => void;
   /** The timeline's live pixels-per-second + fit basis, published by <Timeline>. */
   timelinePps: number;
@@ -149,10 +149,8 @@ interface PlayerState extends PlayerStoreSlices {
   /** Clears project data without creating a new hard-project session. */
   reset: () => void;
 
-  /**
-   * Request a seek from outside the player loop (e.g. Layers panel).
-   * useTimelinePlayer subscribes and calls adapter.seek() + liveTime.notify().
-   */
+  /** Request a seek from outside the player loop (e.g. Layers panel);
+   *  useTimelinePlayer subscribes and calls adapter.seek() + liveTime.notify(). */
   requestedSeekTime: number | null;
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
@@ -164,7 +162,6 @@ interface PlayerState extends PlayerStoreSlices {
    * silent while the transport is paused — so hovering one has to start
    * playback, and leaving has to put the playhead back where it was. Hovering is
    * not an edit and must not cost the author their place.
-   *
    * A nonce rather than a bare boolean: two hovers in a row both want play, and
    * without it the second request is indistinguishable from the first having
    * already been served.
@@ -474,6 +471,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setTimelineSnapEnabled: (enabled) => {
     writeStudioUiPreferences({ timelineSnapEnabled: enabled });
     set({ timelineSnapEnabled: enabled });
+  },
+  rippleEditEnabled: readStudioUiPreferences().rippleEditEnabled ?? true, // default on
+  setRippleEditEnabled: (enabled) => {
+    writeStudioUiPreferences({ rippleEditEnabled: enabled });
+    set({ rippleEditEnabled: enabled });
   },
   timeDisplayMode: readStudioUiPreferences().timeDisplayMode ?? "time",
   setTimeDisplayMode: (mode) => {

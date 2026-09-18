@@ -12,6 +12,7 @@ import {
   resolveTrackGapAt,
   type TrackGapShift,
 } from "./timelineGaps";
+import { isMainTrackElement } from "./timelineZones";
 
 /**
  * Commit layer for the track-gap context menu ("Close gap" / "Close all gaps").
@@ -100,4 +101,20 @@ export function commitCloseAllTrackGaps(
     resolveAllTrackGaps(laneElements, undefined, laneGapFloor(laneElements)),
     deps,
   );
+}
+
+/** What a ripple-edit delete must additionally shift on the main track. Pure
+ *  — no IO; the caller persists the shifts itself. Null means nothing to
+ *  ripple: off, nothing deleted was on the main track, already gapless, or a
+ *  shifting clip is locked (same whole-action refusal as the gap-close menu). */
+export function resolveMainTrackDeleteRippleShifts(
+  survivingElements: readonly TimelineElement[],
+  deletedElements: readonly TimelineElement[],
+  rippleEnabled: boolean,
+): TrackGapShift[] | null {
+  if (!rippleEnabled || !deletedElements.some(isMainTrackElement)) return null;
+  const survivors = survivingElements.filter(isMainTrackElement);
+  const shifts = resolveAllTrackGaps(survivors, undefined, 0);
+  if (shifts.length === 0 || !canShiftTrackGapClips(survivors, shifts)) return null;
+  return shifts;
 }
