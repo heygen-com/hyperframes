@@ -8,6 +8,8 @@ import {
   stripJsComments,
   stripJsCode,
   truncateSnippet,
+  TIMELINE_REGISTRY_ASSIGN_PATTERN,
+  TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
@@ -631,7 +633,15 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // Can't scan external script files for timeline registration; skip to avoid
     // false positives on compositions that register via a bundled JS file.
     if (/<script\b[^>]*\bsrc\s*=/i.test(rawSource)) return [];
-    const registersTimeline = scripts.some((s) => s.content.includes("window.__timelines["));
+    const registersTimeline = scripts.some((script) => {
+      const source = stripJsComments(script.content);
+      return (
+        // Computed keys and logical assignments may not match the shared patterns.
+        source.includes("window.__timelines[") ||
+        TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) ||
+        TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source)
+      );
+    });
     if (registersTimeline) return [];
     return [
       {

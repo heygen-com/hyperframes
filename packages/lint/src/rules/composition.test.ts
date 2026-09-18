@@ -912,16 +912,39 @@ describe("composition rules", () => {
       expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
     });
 
-    it("does not warn when a script registers window.__timelines[id]", async () => {
+    it.each([
+      'window.__timelines["c1"] = gsap.timeline({ paused: true });',
+      "window.__timelines.c1 = gsap.timeline({ paused: true });",
+      "window.__timelines = { c1: gsap.timeline({ paused: true }) };",
+      'window.__timelines = { "c1": gsap.timeline({ paused: true }) };',
+      'const spec = { id: "c1" }; window.__timelines[spec.id] = gsap.timeline({ paused: true });',
+      'window.__timelines["c1"] ??= gsap.timeline({ paused: true });',
+      'window.__timelines["c1"] ||= gsap.timeline({ paused: true });',
+      'const ids = ["c1"]; window.__timelines[ids[0]] = gsap.timeline({ paused: true });',
+    ])("does not warn when a script registers a timeline: %s", async (registration) => {
       const html = `<!DOCTYPE html><html><body>
   <div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div>
   <script>
     window.__timelines = window.__timelines || {};
-    window.__timelines["c1"] = gsap.timeline({ paused: true });
+    ${registration}
   </script>
 </body></html>`;
       const result = await lintHyperframeHtml(html);
       expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it.each([
+      "window.__timelines = {};",
+      '// window.__timelines["c1"] = gsap.timeline({ paused: true });',
+    ])("still warns when a script does not register a timeline: %s", async (script) => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div>
+  <script>${script}</script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toMatchObject({
+        severity: "warning",
+      });
     });
 
     it("does not warn when there is no root composition-id", async () => {
