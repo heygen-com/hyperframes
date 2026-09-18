@@ -27,6 +27,7 @@ describe("createContactSheet", () => {
       const a = join(dir, "a.png");
       const b = join(dir, "b.png");
       const out = join(dir, "sheet.png");
+      console.time("sharp.toFile(a)");
       await sharp({
         create: {
           width: 16,
@@ -37,6 +38,8 @@ describe("createContactSheet", () => {
       })
         .png()
         .toFile(a);
+      console.timeEnd("sharp.toFile(a)");
+      console.time("sharp.toFile(b)");
       await sharp({
         create: {
           width: 16,
@@ -47,7 +50,9 @@ describe("createContactSheet", () => {
       })
         .png()
         .toFile(b);
+      console.timeEnd("sharp.toFile(b)");
 
+      console.time("createContactSheet");
       await createContactSheet([a, b], out, {
         cols: 2,
         cellWidth: 16,
@@ -55,8 +60,11 @@ describe("createContactSheet", () => {
         labels: ["A", "B"],
         maxImages: 2,
       });
+      console.timeEnd("createContactSheet");
 
+      console.time("sharp(out).metadata()");
       await expect(sharp(out).metadata()).resolves.toMatchObject({ format: "png" });
+      console.timeEnd("sharp(out).metadata()");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
