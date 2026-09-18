@@ -155,17 +155,10 @@ interface PlayerState extends PlayerStoreSlices {
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
 
-  /**
-   * Request the transport start or stop from outside the player loop.
-   *
-   * The FX rack auditions a preset by writing it to the running graph, which is
-   * silent while the transport is paused — so hovering one has to start
-   * playback, and leaving has to put the playhead back where it was. Hovering is
-   * not an edit and must not cost the author their place.
-   * A nonce rather than a bare boolean: two hovers in a row both want play, and
-   * without it the second request is indistinguishable from the first having
-   * already been served.
-   */
+  /** Request the transport start or stop from outside the player loop: the FX
+   *  rack starts playback to audition a preset (silent while paused) and
+   *  restores the playhead on leave, without costing the author their place.
+   *  A nonce, not a bare boolean, so two hovers in a row both register. */
   playbackRequest: { playing: boolean; returnTo: number | null; nonce: number } | null;
   requestPlayback: (playing: boolean, returnTo?: number | null) => void;
   clearPlaybackRequest: () => void;
