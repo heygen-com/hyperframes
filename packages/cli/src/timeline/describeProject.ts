@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
   parseAutomation,
@@ -49,12 +49,21 @@ function toNode(el: Element): DomNode {
   return { tag: el.tagName, attrs, children: Array.from(el.children).map(toNode), el };
 }
 
+/** An unreadable chain drops only the fx lanes; the clip's own `volume` lane still shows. */
+function safeChain(raw: string): ReturnType<typeof parseAudioFxChain> | undefined {
+  try {
+    return parseAudioFxChain(raw);
+  } catch {
+    return undefined;
+  }
+}
+
 function readLanes(el: Element): { lanes: ClipLane[]; laneError: string | null } {
   const raw = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
   if (!raw) return { lanes: [], laneError: null };
   try {
     const fx = el.getAttribute(HF_AUDIO_FX_ATTR);
-    const chain = fx ? parseAudioFxChain(fx) : undefined;
+    const chain = fx ? safeChain(fx) : undefined;
     const lanes = resolveAutomation(parseAutomation(raw), chain).lanes.map((lane) => ({
       target: lane.target,
       points: lane.points.map(({ t, v }) => ({ t, v })),
@@ -65,13 +74,22 @@ function readLanes(el: Element): { lanes: ClipLane[]; laneError: string | null }
   }
 }
 
-function describeRow(doc: Document, node: DomNode, baseDir: string, depth: number): TimelineRow {
+/** One per document: `startCache` memoises `data-start` references across all its rows. */
+interface DocScope {
+  doc: Document;
+  dir: string;
+  startCache: Map<Element, number>;
+  /** Sub-composition files must stay inside the project. */
+  projectDir: string;
+}
+
+function describeRow(scope: DocScope, node: DomNode, depth: number): TimelineRow {
   const { el } = node;
-  const startCache = new Map<Element, number>();
+  const { doc, startCache } = scope;
   const start = resolveStart(doc, el, startCache, new Set());
   const authored = resolveReferencedDuration(doc, el, startCache, new Set());
   const host = el.getAttribute("data-composition-src");
-  const children = host && depth === 0 ? readSubComposition(host, baseDir) : [];
+  const children = host && depth === 0 ? readSubComposition(host, scope) : [];
   const inner = children.reduce((max, c) => Math.max(max, c.end), 0);
   const duration = authored ?? inner;
   const rate = parseNumeric(el.getAttribute("data-playback-rate"));
@@ -97,25 +115,41 @@ function describeRow(doc: Document, node: DomNode, baseDir: string, depth: numbe
   };
 }
 
-function readSubComposition(src: string, baseDir: string): TimelineRow[] {
-  const file = resolve(baseDir, src);
-  if (!existsSync(file)) return [];
+function readSubComposition(src: string, parent: DocScope): TimelineRow[] {
+  const file = resolve(parent.dir, src);
+  const inside = relative(parent.projectDir, file);
+  if (inside.startsWith("..") || !isFile(file)) return [];
   const doc = new DOMParser().parseFromString(readFileSync(file, "utf-8"), "text/html");
   const template = doc.querySelector("template");
-  const scope = template?.content ?? doc;
-  const root = scope.querySelector("[data-composition-id]");
+  const root = (template?.content ?? doc).querySelector("[data-composition-id]");
   if (!root) return [];
+  const scope: DocScope = {
+    doc,
+    dir: dirname(file),
+    startCache: new Map(),
+    projectDir: parent.projectDir,
+  };
   return topLevelElements(toNode(root))
-    .map((node) => describeRow(doc, node, dirname(file), 1))
+    .map((node) => describeRow(scope, node, 1))
     .sort(byStart);
+}
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /** Needs a global DOMParser (`ensureDOMParser`). Reads `index.html` and one level of sub-compositions. */
 export function describeProject(indexPath: string): ProjectTimeline {
   const doc = new DOMParser().parseFromString(readFileSync(indexPath, "utf-8"), "text/html");
   const root = doc.querySelector("[data-composition-id]") ?? doc.body;
+  const dir = dirname(indexPath);
+  const scope: DocScope = { doc, dir, startCache: new Map(), projectDir: dir };
   const rows = topLevelElements(toNode(root))
-    .map((node) => describeRow(doc, node, dirname(indexPath), 0))
+    .map((node) => describeRow(scope, node, 0))
     .sort(byStart);
   const declared = parseNumeric(root.getAttribute("data-duration"));
   return {

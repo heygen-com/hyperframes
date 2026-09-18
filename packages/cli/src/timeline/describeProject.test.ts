@@ -75,15 +75,59 @@ describe("describeProject", () => {
     expect(formatTimeline(describeProject(project()))).toContain("lanes unreadable:");
   });
 
+  it("does not read a sub-composition outside the project or a directory", () => {
+    const index = project();
+    writeFileSync(join(dir, "..", "hf-outside.html"), TITLE);
+    writeFileSync(
+      index,
+      `<div data-composition-id="m"><div id="o" data-composition-src="../hf-outside.html" data-start="0" data-duration="1"></div><div id="d" data-composition-src="compositions" data-start="0" data-duration="1"></div></div>`,
+    );
+    const rows = describeProject(index).tracks.flatMap((t) => t.rows);
+    expect(rows.map((r) => [r.id, r.children.length])).toEqual([
+      ["o", 0],
+      ["d", 0],
+    ]);
+    rmSync(join(dir, "..", "hf-outside.html"));
+  });
+
   it("marks a clip without an authored duration instead of reporting 0 as a fact", () => {
     const logo = describeProject(project())
       .tracks.flatMap((t) => t.rows)
       .find((r) => r.id === "logo")!;
     expect(logo.durationAuthored).toBe(false);
+    expect(formatTimeline(describeProject(project()))).toContain(
+      "logo 0-0s src=logo.png duration=unauthored",
+    );
   });
 });
 
 describe("formatTimeline", () => {
+  it("treats playback rate 1 as unset and does not expand a host nested inside a sub-composition", () => {
+    const index = project();
+    writeFileSync(
+      join(dir, "compositions", "title.html"),
+      `<template><div data-composition-id="t"><video id="v" src="v.mp4" data-start="0" data-duration="1" data-playback-rate="1"></video><div id="deep" data-composition-src="title.html" data-start="0" data-duration="1"></div></div></template>`,
+    );
+    const title = describeProject(index)
+      .tracks.flatMap((t) => t.rows)
+      .find((r) => r.id === "title")!;
+    expect(title.children.map((c) => [c.id, c.playbackRate, c.children.length])).toEqual([
+      ["v", null, 0],
+      ["deep", null, 0],
+    ]);
+  });
+
+  it("prints a small volume unrounded to two decimals", () => {
+    const index = project();
+    writeFileSync(
+      index,
+      `<div data-composition-id="m"><audio id="q" src="q.mp3" data-start="2.317" data-duration="1" data-volume="0.009772"></audio></div>`,
+    );
+    const text = formatTimeline(describeProject(index));
+    expect(text).toContain("vol=0.009772");
+    expect(text).toContain("2.317-3.317s");
+  });
+
   it("prints one bar per row under its track heading", () => {
     const text = formatTimeline(describeProject(project()));
     expect(text).toMatch(/^timeline 10s\n\nvideo \(1\)\n  \|█{16}/);

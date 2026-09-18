@@ -1,7 +1,7 @@
 import type { ProjectTimeline, TimelineRow } from "./describeProject.js";
 
 const BAR_WIDTH = 40;
-const n = (v: number) => String(Math.round(v * 100) / 100);
+const n = (v: number) => String(Math.round(v * 1000) / 1000);
 
 function bar(row: TimelineRow, total: number): string {
   if (total <= 0) return " ".repeat(BAR_WIDTH);
@@ -19,7 +19,7 @@ function details(row: TimelineRow): string {
   );
   return [
     row.src && `src=${row.src}`,
-    row.volume !== null && `vol=${n(row.volume)}`,
+    row.volume !== null && `vol=${row.volume}`,
     row.playbackRate !== null && `rate=${n(row.playbackRate)}`,
     row.audioGroup && `group=${row.audioGroup}`,
     !row.durationAuthored && "duration=unauthored",
