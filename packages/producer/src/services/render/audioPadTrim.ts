@@ -585,7 +585,7 @@ async function defaultProbeAudioInfo(
   audioPath: string,
   signal?: AbortSignal,
 ): Promise<AudioProbeInfo> {
-  // The shared ffprobe wrapper derives AAC-LC duration from packet count so
+  // The shared ffprobe wrapper corrects for a lying container duration so
   // every consumer sees the same VBR-safe metadata while preserving cancellation.
   const metadata: AudioMetadata = await extractAudioMetadata(audioPath, { signal });
   return {
