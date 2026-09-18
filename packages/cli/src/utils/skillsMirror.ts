@@ -42,16 +42,17 @@ import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
  * in ADDITION to their own agent-specific directory. Mirroring into their own
  * dir makes every skill discoverable twice.
  *
- * Pi is the known case (earendil-works/pi): it reads both `~/.pi/agent/skills/`
+ * Pi and Codex are known cases. Pi (earendil-works/pi) reads both `~/.pi/agent/skills/`
  * and `~/.agents/skills/` as global locations (pi's packages/coding-agent/docs/
  * skills.md#locations), so a mirrored entry collides with the universal copy
- * and Pi skips the universal one on name conflict (#3294).
+ * and Pi skips the universal one on name conflict (#3294). Codex likewise
+ * discovers the user-level `~/.agents/skills/` store.
  *
  * The generated table cannot carry this capability — it is a plain
  * (agent, base, sub) list synced from vercel-labs/skills — so the set lives
  * here next to the mirror logic that needs it.
  */
-const UNIVERSAL_STORE_READERS = new Set(["pi"]);
+const UNIVERSAL_STORE_READERS = new Set(["pi", "codex"]);
 
 export interface MirrorResult {
   /** The store mirrored from, or null when no global Claude store was found. */
