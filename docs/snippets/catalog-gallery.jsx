@@ -1,27 +1,29 @@
 // Ported verbatim from a reference implementation of this catalog UX. Consumes
 // catalog-gallery-data.mdx from scripts/sync-docs-catalog.mjs.
-const PLAYER_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js';
-const REST_SECONDS = 3;
-const MAX_DOM_PLAYERS = 6;
-const MAX_WEBGL_PLAYERS = 1;
-
-async function ensurePlayerDefined() {
-    if (customElements.get('hyperframes-player'))
-        return;
-    if (!window.__hfDocsPlayerLoading) {
-        window.__hfDocsPlayerLoading = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = PLAYER_SCRIPT_URL;
-            script.onload = resolve;
-            script.onerror = () => { script.remove(); delete window.__hfDocsPlayerLoading; reject(new Error('Player unavailable')); };
-            document.head.appendChild(script);
-        });
-    }
-    await window.__hfDocsPlayerLoading;
-    await customElements.whenDefined('hyperframes-player');
-}
-
 export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = "" }) => {
+    // Mintlify's snippet bundler only preserves the exported binding's own closure;
+    // sibling top-level const/function declarations in this file are dropped from the
+    // deployed build, so these must live inside the component (window.__hfDocsPlayerLoading
+    // still dedupes the actual script load across every instance).
+    const PLAYER_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js';
+    const REST_SECONDS = 3;
+    const MAX_DOM_PLAYERS = 6;
+    const MAX_WEBGL_PLAYERS = 1;
+    async function ensurePlayerDefined() {
+        if (customElements.get('hyperframes-player'))
+            return;
+        if (!window.__hfDocsPlayerLoading) {
+            window.__hfDocsPlayerLoading = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = PLAYER_SCRIPT_URL;
+                script.onload = resolve;
+                script.onerror = () => { script.remove(); delete window.__hfDocsPlayerLoading; reject(new Error('Player unavailable')); };
+                document.head.appendChild(script);
+            });
+        }
+        await window.__hfDocsPlayerLoading;
+        await customElements.whenDefined('hyperframes-player');
+    }
     function MotionWord() {
         const root = useRef(null);
         useEffect(() => {
@@ -394,7 +396,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 ? React.createElement("div", { className: "hfc-fallback hfc-unsupported", "aria-hidden": "true" },
                     React.createElement("span", null, "Needs a browser flag"),
                     React.createElement("code", null, `chrome://flags/#${item.preview.flag}`))
-                : item.preview?.mode !== "player" && React.createElement("div", { className: "hfc-fallback", "aria-hidden": "true", style: { display: item.poster ? "none" : undefined } },
+                : React.createElement("div", { className: "hfc-fallback", "aria-hidden": "true", style: { display: item.poster ? "none" : undefined } },
                     React.createElement("span", null, item.section),
                     React.createElement("strong", null, item.title)),
             item.poster && React.createElement("img", { src: item.poster, alt: `${item.title} preview`, loading: "lazy", decoding: "async", width: "640", height: "360", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.previousElementSibling.style.display = "flex"; } }),
