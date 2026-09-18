@@ -58,11 +58,6 @@ async function loadStylesheet(id: string, base: string) {
   return { path: file, base: path.dirname(file), content: readFileSync(file, "utf8") };
 }
 
-/** How Tailwind escapes a candidate into a selector: `\` before each symbol. */
-function asSelector(candidate: string): string {
-  return candidate.replace(/[^a-zA-Z0-9-]/g, (char) => `\\${char}`);
-}
-
 let compileStudioCss: (candidates: string[]) => string;
 
 beforeAll(async () => {
@@ -75,7 +70,7 @@ beforeAll(async () => {
 
 function unresolved(candidates: string[]): string[] {
   const css = compileStudioCss(candidates);
-  return candidates.filter((candidate) => !css.includes(asSelector(candidate)));
+  return candidates.filter((candidate) => !css.includes(CSS.escape(candidate)));
 }
 
 describe("Button classes", () => {
