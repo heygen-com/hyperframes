@@ -22,6 +22,7 @@ import {
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
 import { parseAudioFxChain, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
+import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
 import type { TimelineElement } from "../store/playerStore";
 
 const EMPTY: HfAutomation = { version: 1, lanes: [] };
@@ -244,14 +245,14 @@ export interface AutomationLaneGroup {
  * spectrum, top down), so the first clip to carry a property fixes its row and
  * later clips only append properties nobody has shown yet.
  *
- * An element with no lanes contributes nothing, matching `automationLaneCountOf`
- * — the row's reserved height and its drawn lanes have to count the same clips.
- * Not gated on audio tag: a video's volume can be automated too, and its (empty)
- * FX chain draws no lane on its own.
+ * Gated on `isAudioOrVideoTimelineElement`, the same predicate `automationLaneCountOf`
+ * and `TimelineAutomationLaneSlot`'s clip filter use — the row's reserved height
+ * and its drawn lanes have to count the same clips.
  */
 export function groupAutomationLanes(elements: readonly TimelineElement[]): AutomationLaneGroup[] {
   const groups = new Map<string, AutomationLaneGroup>();
   for (const element of elements) {
+    if (!isAudioOrVideoTimelineElement(element)) continue;
     const chain = elementFxChain(element);
     for (const lane of elementAutomationLanes(element)) {
       const key = laneGroupKey(lane.target, chain);

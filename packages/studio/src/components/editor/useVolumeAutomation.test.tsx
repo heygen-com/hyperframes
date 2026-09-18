@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { useVolumeAutomation, type VolumeAutomationBinding } from "./useVolumeAutomation";
 import type { DomEditSelection } from "./domEditingTypes";
-import { usePlayerStore } from "../../player";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -13,10 +12,10 @@ import { usePlayerStore } from "../../player";
 function bind(dataAttributes: Record<string, string>, currentTime = 0) {
   const onSetAttributeQuiet = vi.fn();
   const captured: { current: VolumeAutomationBinding | null } = { current: null };
-  act(() => usePlayerStore.setState({ currentTime }));
   function Probe() {
     captured.current = useVolumeAutomation(
       { dataAttributes } as unknown as DomEditSelection,
+      currentTime,
       onSetAttributeQuiet,
     );
     return null;

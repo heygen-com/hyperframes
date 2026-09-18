@@ -11,7 +11,6 @@ import {
   sampleAutomationLane,
   VOLUME_TARGET,
 } from "@hyperframes/core/audio-automation";
-import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
 import type { DomEditSelection } from "./domEditingTypes";
 import {
   automationAttrValue,
@@ -22,6 +21,7 @@ import {
   withSeededLane,
 } from "./propertyPanelAutomation";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
+import { clampNumber } from "../../utils/studioHelpers";
 
 export interface VolumeAutomationBinding {
   volumeAutomated: boolean;
@@ -35,6 +35,7 @@ export interface VolumeAutomationBinding {
 
 export function useVolumeAutomation(
   element: DomEditSelection,
+  currentTime: number,
   onSetAttributeQuiet: (attr: string, value: string | null) => void | Promise<void>,
 ): VolumeAutomationBinding {
   // The chain is not needed to resolve a volume lane — volume is always a valid
@@ -45,12 +46,10 @@ export function useVolumeAutomation(
   );
   // ponytail: no GSAP animations passed — a media clip always carries an
   // explicit data-duration, so `deriveElementTiming` never infers from animations here.
-  // useLivePlayheadTime (not the store) because the RAF loop writes the store
-  // only once, at playback's end; the store alone would stale the write.
-  const playheadTime = useLivePlayheadTime();
+  // `currentTime` comes from the caller's own `useLivePlayheadTime()` — a second
+  // subscription here would race the same re-render the caller already triggers.
   const { start: elStart, duration: elDuration } = deriveElementTiming(element);
-  const elapsed = Math.max(0, playheadTime - elStart);
-  const clipTimeSec = elDuration > 0 ? Math.min(elDuration, elapsed) : elapsed;
+  const clipTimeSec = clampNumber(currentTime - elStart, 0, elDuration > 0 ? elDuration : Infinity);
   const write = (next: Parameters<typeof automationAttrValue>[0]): void => {
     // Quiet: clicking the toggle used to reload the preview and restart every
     // playing track, while the same click on an effect parameter did not.
