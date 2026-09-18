@@ -47,6 +47,11 @@ export interface TimelineGroupCommitOptions {
   coalesceKey?: string;
   /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
   coalesceMs?: number;
+  /** Overrides the default "Move timeline clips" undo-history label. Coalescing
+   *  keeps the LAST entry's label (editHistory.ts), so a mechanical follow-up
+   *  move folded into another gesture's coalesceKey (e.g. the ripple after a
+   *  delete) should carry that gesture's own label, not its own. */
+  label?: string;
 }
 
 interface UseTimelineGroupEditingOptions {
@@ -272,21 +277,22 @@ export function useTimelineGroupEditing({
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
       const coalesceMs = options?.coalesceMs;
-      return enqueueGroupOperation("Move timeline clips", async (projectId) => {
+      const label = options?.label ?? "Move timeline clips";
+      return enqueueGroupOperation(label, async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({ start: change.start })),
           eligible: changes.every((change) => change.track == null),
           needsExtension,
-          label: "Move timeline clips",
+          label,
           coalesceKey,
           coalesceMs,
         });
         if (!handledBySdk) {
           await persistServerBatch(
             projectId,
-            "Move timeline clips",
+            label,
             changes.map((change) => ({
               element: change.element,
               buildPatches: (original, target) =>
@@ -315,7 +321,7 @@ export function useTimelineGroupEditing({
             projectId,
             iframe: previewIframeRef.current,
             reloadPreview,
-            label: "Move timeline clips",
+            label,
             errorLabel: "Failed to shift GSAP positions",
             coalesceKey,
             recordEdit,
