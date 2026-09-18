@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { createTimelineRowGeometry } from "./timelineLayout";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { configureTimelineTestViewport } from "./timelineTestViewport";
@@ -36,10 +36,19 @@ function assetTransfer(payload: string): DropTransfer {
   };
 }
 
+function fileTransfer(files: File[]): DropTransfer {
+  return { types: ["Files"], files, dropEffect: "none", getData: () => "" };
+}
+
 function renderHarness(
   onAssetDrop: Mock,
   sessionEpoch = 1,
-  options: { onBlockDrop?: Mock; strict?: boolean } = {},
+  options: {
+    onBlockDrop?: Mock;
+    onFileDrop?: Mock;
+    strict?: boolean;
+    elements?: TimelineElement[];
+  } = {},
 ) {
   const tracks = Array.from({ length: 100 }, (_, index) => index);
   const geometry = createTimelineRowGeometry(
@@ -62,6 +71,8 @@ function renderHarness(
       sessionEpoch: epoch,
       onAssetDrop,
       onBlockDrop: options.onBlockDrop,
+      onFileDrop: options.onFileDrop,
+      elements: options.elements ?? [],
     });
     return null;
   }
@@ -154,7 +165,10 @@ describe("useTimelineAssetDrop", () => {
 
   it("places the drop at the pointer x, ignoring the playhead", () => {
     const onAssetDrop = vi.fn();
-    const view = renderHarness(onAssetDrop);
+    // A clip already on the main track — the AD96 empty-main-track snap must
+    // not interfere with this test's actual subject (pointer x vs. playhead).
+    const seed: TimelineElement = { id: "seed", tag: "video", start: 0, duration: 3, track: 0 };
+    const view = renderHarness(onAssetDrop, 1, { elements: [seed] });
     usePlayerStore.getState().setCurrentTime(50);
     const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
 
@@ -219,5 +233,52 @@ describe("useTimelineAssetDrop", () => {
     act(() => window.dispatchEvent(new Event("dragend")));
     expect(view.api.isDragOver).toBe(false);
     act(() => view.root.unmount());
+  });
+
+  describe("magnetic first clip on an empty main track (AD96)", () => {
+    it("an asset dropped onto an empty main track snaps to start 0", () => {
+      const onAssetDrop = vi.fn();
+      const view = renderHarness(onAssetDrop);
+      const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
+
+      act(() => {
+        view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
+        view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
+      });
+
+      // clientX=80 would normally place it at 2s (see the playhead test); the
+      // empty main track (track 0) overrides that to 0.
+      expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 0, track: 0 });
+      act(() => view.root.unmount());
+    });
+
+    it("an audio asset dropped onto an empty track 0 is not snapped (not the main track)", () => {
+      const onAssetDrop = vi.fn();
+      const view = renderHarness(onAssetDrop);
+      const transfer = assetTransfer(JSON.stringify({ path: "/media/song.mp3" }));
+
+      act(() => {
+        view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
+        view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
+      });
+
+      expect(onAssetDrop).toHaveBeenCalledWith("/media/song.mp3", { start: 2, track: 0 });
+      act(() => view.root.unmount());
+    });
+
+    it("a file dropped onto an empty main track snaps the batch's start to 0", () => {
+      const onFileDrop = vi.fn();
+      const view = renderHarness(vi.fn(), 1, { onFileDrop });
+      const file = new File(["data"], "clip.mp4", { type: "video/mp4" });
+      const transfer = fileTransfer([file]);
+
+      act(() => {
+        view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
+        view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
+      });
+
+      expect(onFileDrop).toHaveBeenCalledWith([file], { start: 0, track: 0 });
+      act(() => view.root.unmount());
+    });
   });
 });

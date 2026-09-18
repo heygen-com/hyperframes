@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+import {
+  getTimelineAssetKind,
+  TIMELINE_ASSET_MIME,
+  TIMELINE_BLOCK_MIME,
+} from "../../utils/timelineAssetDrop";
 import {
   parseTimelineCompositionPayload,
   TIMELINE_COMPOSITION_MIME,
 } from "../../utils/timelineCompositionDrop";
 import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
+import type { TimelineElement } from "../store/playerStore";
+import { resolveMainTrackDropStart } from "./timelineCollision";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -18,9 +24,31 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
+  /** Drives the magnetic-main-track snap (a brand-new clip landing on an
+   *  empty main track always commits at start=0), same convention as the
+   *  existing-clip drag path. */
+  elements: readonly TimelineElement[];
 }
 
 type TimelinePlacement = { start: number; track: number };
+
+/** A brand-new clip (no origin track) landing on an empty main track always
+ *  commits at start=0 — same magnetic convention as the clip-drag path. */
+function snapPlacementToEmptyMainTrack(
+  placement: TimelinePlacement,
+  elements: readonly TimelineElement[],
+  isAudio: boolean,
+): TimelinePlacement {
+  const start = resolveMainTrackDropStart(
+    elements,
+    null,
+    null,
+    placement.track,
+    isAudio,
+    placement.start,
+  );
+  return start === placement.start ? placement : { ...placement, start };
+}
 
 /**
  * Parse a JSON drag payload and, if it yields a value, forward it to the drop
@@ -55,9 +83,18 @@ function applyFileDrop(
   transfer: DataTransfer,
   onFileDrop: TimelineDropCallbacks["onFileDrop"],
   placement: TimelinePlacement,
+  elements: readonly TimelineElement[],
 ): boolean {
   if (!onFileDrop || transfer.files.length === 0) return false;
-  invokeDropCallback(() => onFileDrop(Array.from(transfer.files), placement));
+  // The batch sequences end-to-end from ONE start (buildTimelineFileDropPlacements),
+  // so the snap is decided once, off the first file's kind.
+  const isAudio = getTimelineAssetKind(transfer.files[0].name) === "audio";
+  invokeDropCallback(() =>
+    onFileDrop(
+      Array.from(transfer.files),
+      snapPlacementToEmptyMainTrack(placement, elements, isAudio),
+    ),
+  );
   return true;
 }
 
@@ -96,6 +133,7 @@ export function useTimelineAssetDrop({
   onBlockDrop,
   onCompositionDrop,
   sessionEpoch,
+  elements,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
   const dragPointerRef = useRef<{ clientX: number; clientY: number; sessionEpoch: number } | null>(
@@ -212,14 +250,28 @@ export function useTimelineAssetDrop({
         return;
       }
 
-      if (applyFileDrop(e.dataTransfer, onFileDrop, placement)) return;
-      if (applyTypedJsonDrop(e.dataTransfer, TIMELINE_ASSET_MIME, "path", onAssetDrop, placement)) {
+      if (applyFileDrop(e.dataTransfer, onFileDrop, placement, elements)) return;
+      const snapAssetDrop = onAssetDrop
+        ? (path: string, nextPlacement: TimelinePlacement) =>
+            onAssetDrop(
+              path,
+              snapPlacementToEmptyMainTrack(
+                nextPlacement,
+                elements,
+                getTimelineAssetKind(path) === "audio",
+              ),
+            )
+        : undefined;
+      if (
+        applyTypedJsonDrop(e.dataTransfer, TIMELINE_ASSET_MIME, "path", snapAssetDrop, placement)
+      ) {
         return;
       }
       applyTypedJsonDrop(e.dataTransfer, TIMELINE_BLOCK_MIME, "name", onBlockDrop, placement);
     },
     [
       clearDropPreview,
+      elements,
       onAssetDrop,
       onBlockDrop,
       onCompositionDrop,

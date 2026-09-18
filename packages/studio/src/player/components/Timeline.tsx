@@ -246,6 +246,7 @@ export const Timeline = memo(function Timeline({
     onBlockDrop: pinnedOnBlockDrop,
     onCompositionDrop: pinnedOnCompositionDrop,
     sessionEpoch,
+    elements: expandedElements,
   });
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
   const resizingElementIds =
