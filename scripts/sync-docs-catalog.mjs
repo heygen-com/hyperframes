@@ -56,7 +56,7 @@ function walk(node, pathLabels) {
 for (const g of tab.groups) walk(g, []);
 
 // Preview policy needs a detail-shaped record; the real one (catalog-detail-data/*.mdx,
-// D-765's next PR) isn't built yet, so every item stays conservative (poster/video, never
+// a follow-up) isn't built yet, so every item stays conservative (poster/video, never
 // live-on-hover) until that data exists — matches the policy's own default for "not live".
 for (const item of items) {
   item.preview = galleryPreview(item, { webgpu: false, tech: [], previewMode: "still" });
