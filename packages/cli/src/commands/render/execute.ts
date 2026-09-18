@@ -218,9 +218,10 @@ export async function runRenderLint(
       ? await runRenderLintInOwnedProcess(plan.project.dir, explicitEntry, signal)
       : await runLint(plan.project.dir, explicitEntry);
   if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
-  presentRenderLintFindings(lintResult, plan.effectiveQuiet, plan.lintVerbose);
   const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
-  if (renderLintShouldAbort(plan.strictErrors, plan.strictAll, lintResult)) {
+  const willAbort = renderLintShouldAbort(plan.strictErrors, plan.strictAll, lintResult);
+  presentRenderLintFindings(lintResult, plan.effectiveQuiet, plan.lintVerbose || willAbort);
+  if (willAbort) {
     presentRenderLintAbort(plan, definitiveEntryMismatch);
     failCommand();
   }
