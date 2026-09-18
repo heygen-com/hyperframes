@@ -16,6 +16,7 @@ vi.mock("./useDomEditCompositionRect", () => ({
 }));
 
 afterEach(() => {
+  compRect.current = { left: 20, top: 20, width: 400, height: 225, scaleX: 1, scaleY: 1 };
   document.body.innerHTML = "";
   window.localStorage.clear();
 });
@@ -79,13 +80,13 @@ describe("PreviewGuides", () => {
     const band = box("captions");
     expect(band?.top).toBe("87%");
     expect(band?.height).toBe("8%");
+    expect([band?.left, band?.right]).toEqual(["5%", "5%"]);
   });
 
   it("draws nothing until the composition has a size", () => {
     compRect.current = { left: 0, top: 0, width: 0, height: 0, scaleX: 1, scaleY: 1 };
     const host = render(true, true);
     expect(host.querySelector("[data-testid]")).toBeNull();
-    compRect.current = { left: 20, top: 20, width: 400, height: 225, scaleX: 1, scaleY: 1 };
   });
 
   it("uses the vertical box on a portrait composition", () => {
@@ -94,6 +95,8 @@ describe("PreviewGuides", () => {
     const style = host.querySelector<HTMLElement>('[data-testid="preview-safe-vertical"]')?.style;
     expect(style?.top).toBe("13.021%");
     expect(host.querySelector('[data-testid="preview-safe-action"]')).toBeNull();
-    compRect.current = { left: 20, top: 20, width: 400, height: 225, scaleX: 1, scaleY: 1 };
+    const band = host.querySelector<HTMLElement>('[data-testid="preview-safe-captions"]')?.style;
+    expect([band?.left, band?.right]).toEqual(["12.963%", "12.963%"]);
+    expect(band?.top).toBe("66.792%");
   });
 });

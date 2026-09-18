@@ -1,4 +1,3 @@
-import { PreviewGuides } from "../editor/PreviewGuides";
 import { useCallback, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { PlayerControls } from "../../player";
 import type { TimelineElement } from "../../player";
@@ -7,6 +6,7 @@ import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
+import { PreviewGuides } from "../editor/PreviewGuides";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
