@@ -187,7 +187,9 @@ export function useBlockHandlers({
           previewIframe: previewIframeRef.current,
           currentTime: usePlayerStore.getState().currentTime,
         }),
-      );
+      ).then((result) => {
+        if (result) selectAndRevealTimelineElement(result.hostKey);
+      });
     },
     [projectId, blockCtx, previewIframeRef, runBlockInstall],
   );
