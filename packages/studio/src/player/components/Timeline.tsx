@@ -1,7 +1,7 @@
 import { useRef, useMemo, useCallback, useState, memo } from "react";
 import { useAdjustedBeatAnalysis, useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
+import { useTimelineRowElements } from "../hooks/useTimelineRowElements";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
@@ -111,7 +111,7 @@ export const Timeline = memo(function Timeline({
   const refreshAfterLaneMove = useTimelineLaneMoveRefresh();
   useMusicBeatAnalysis();
   const rawElements = usePlayerStore((s) => s.elements);
-  const expandedElements = useExpandedTimelineElements();
+  const expandedElements = useTimelineRowElements();
   const adjustedBeatAnalysis = useAdjustedBeatAnalysis();
   const duration = usePlayerStore((s) => s.duration);
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);

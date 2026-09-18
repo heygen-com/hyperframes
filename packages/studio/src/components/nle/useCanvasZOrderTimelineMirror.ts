@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import { usePlayerStore } from "../../player";
-import { useExpandedTimelineElements } from "../../player/hooks/useExpandedTimelineElements";
+import { useTimelineRowElements } from "../../player/hooks/useTimelineRowElements";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
   displayTrackOrder,
@@ -41,7 +41,7 @@ export interface MirrorZOrderInput {
  * commitZMirrorLaneMove) — the shared key is unique per gesture
  * (zReorderCoalesceKey's gesture seq), so the fold stays gesture-scoped.
  *
- * Element source: `useExpandedTimelineElements()` — the same expanded display
+ * Element source: `useTimelineRowElements()` — the same expanded display
  * set the Timeline renders and the resolver expects (post-normalizeToZones
  * lanes, expanded sub-comp children on their synthetic rows). No new expansion
  * is built here.
@@ -141,7 +141,7 @@ function useMirrorLaneMoveCommit(): (
   coalesceKey: string,
   resolveMove: (element: TimelineElement, elements: TimelineElement[]) => ZMirrorLaneMove,
 ) => Promise<boolean> {
-  const elements = useExpandedTimelineElements();
+  const elements = useTimelineRowElements();
   const elementsRef = useRef(elements);
   elementsRef.current = elements;
   const { onMoveElements } = useTimelineEditContextOptional();

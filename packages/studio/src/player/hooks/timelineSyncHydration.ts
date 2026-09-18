@@ -14,6 +14,7 @@ import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import type { ClipTree } from "@hyperframes/core/runtime/clipTree";
+import { topLevelElements, type StructureNode } from "@hyperframes/parsers/top-level-elements";
 import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import { groupInfoFor } from "../lib/timelineGroupInfo";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
@@ -135,6 +136,28 @@ export function collectSubCompositionDomChildren(
     collectHostDomChildren(clip.id, innerRoot, clip.id, parentMap, out);
   }
   return out;
+}
+
+interface DomStructureNode extends StructureNode<DomStructureNode> {
+  id: string;
+}
+
+function toStructureNode(el: Element): DomStructureNode {
+  const attrs: Record<string, string> = {};
+  for (const attr of Array.from(el.attributes)) attrs[attr.name] = attr.value;
+  return {
+    tag: el.tagName,
+    attrs,
+    id: el.id,
+    children: Array.from(el.children).map(toStructureNode),
+  };
+}
+
+/** DOM ids of the timeline's rows, by the definition the structure lint shares; null when there is no readable root. */
+export function collectTopLevelElementIds(doc: Document | null): Set<string> | null {
+  const root = doc?.querySelector("[data-composition-id]");
+  if (!root) return null;
+  return new Set(topLevelElements(toStructureNode(root)).flatMap((n) => (n.id ? [n.id] : [])));
 }
 
 /** The host-element `data-*` state one element carries, or null when it has none. */

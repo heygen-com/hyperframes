@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { reseekPreviewAtTime } from "../player/hooks/timelineSyncHydration";
-import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
+import { useTimelineRowElements } from "../player/hooks/useTimelineRowElements";
 import { applySoftReloadFinalization } from "../utils/gsapSoftReload";
 import {
   timelineTrackOrder,
@@ -295,7 +295,7 @@ export function useTimelineTrackVisibilityEditing({
   // virtual sub-comp children carry their own (display.track + idx) track numbers,
   // so filtering the raw store list by a virtual track number would hide the wrong
   // outer-scene sibling sharing that index.
-  const expandedElements = useExpandedTimelineElements();
+  const expandedElements = useTimelineRowElements();
   return useCallback(
     async (track: number, hidden: boolean, displayNumber?: number | null) => {
       if (isRecordingRef?.current) {
@@ -362,7 +362,7 @@ export function useTimelineElementVisibilityEditing({
   // silently no-op for it. The expanded list synthesizes a real, patchable
   // TimelineElement (with matching key/domId/sourceFile) for each visible
   // child whenever its host is currently expanded.
-  const expandedElements = useExpandedTimelineElements();
+  const expandedElements = useTimelineRowElements();
   return useCallback(
     async (elementKey: string | readonly string[], hidden: boolean) => {
       if (isRecordingRef?.current) {

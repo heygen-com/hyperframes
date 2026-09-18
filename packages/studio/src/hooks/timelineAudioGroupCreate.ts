@@ -8,7 +8,7 @@
 
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
+import { useTimelineRowElements } from "../player/hooks/useTimelineRowElements";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { runtimeAudioId } from "../player/lib/timelineElementHelpers";
@@ -272,7 +272,7 @@ export function useAudioGroupCarveAssignment({
   groupId: string,
   groupLabel?: string,
 ) => Promise<void> {
-  const expandedElements = useExpandedTimelineElements();
+  const expandedElements = useTimelineRowElements();
   return useCallback(
     async (clipIds: readonly string[], groupId: string, groupLabel?: string) => {
       if (isRecordingRef?.current) {

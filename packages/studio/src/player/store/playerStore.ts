@@ -200,6 +200,8 @@ interface PlayerState extends PlayerStoreSlices {
   clipManifest: ClipManifestClip[] | null;
   setClipManifest: (clips: ClipManifestClip[] | null) => void;
   clipParentMap: Map<string, string>;
+  topLevelIds: ReadonlySet<string> | null;
+  setTopLevelIds: (ids: ReadonlySet<string> | null) => void;
   setClipParentMap: (map: Map<string, string>) => void;
   /**
    * Sub-composition DOM descendants (groups + their children) that have no
@@ -288,6 +290,7 @@ export function createTimelineResetState() {
     beatPersist: null,
     clipManifest: null,
     clipParentMap: new Map<string, string>(),
+    topLevelIds: null,
     domClipChildren: [],
     subCompositionHostState: new Map<string, SubCompositionHostState>(),
   };
@@ -434,6 +437,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setClipManifest: (clips) => set({ clipManifest: clips }),
   clipParentMap: new Map(),
   setClipParentMap: (map) => set({ clipParentMap: map }),
+  topLevelIds: null,
+  setTopLevelIds: (ids) => set({ topLevelIds: ids }),
   domClipChildren: [],
   setDomClipChildren: (children) => set({ domClipChildren: children }),
   subCompositionHostState: new Map(),

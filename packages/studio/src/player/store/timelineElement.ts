@@ -79,7 +79,7 @@ export interface TimelineElement {
   audioGroupFxChain?: string;
   audioGroupAutomation?: string;
   /**
-   * Set by useExpandedTimelineElements on an inline-expanded sub-composition
+   * Set by useTimelineRowElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child
    * lives in. Presence marks the element as expanded; edits subtract it to get
    * the child's local (sourceFile-relative) time. Works at any nesting depth.
