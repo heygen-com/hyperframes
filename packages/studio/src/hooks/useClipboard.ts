@@ -10,6 +10,7 @@ import {
 } from "../utils/clipboardPayload";
 import { collectHtmlIds } from "../utils/studioHelpers";
 import { insertTimelineAssetIntoSource } from "../utils/timelineAssetDrop";
+import { extendRootDurationInSource } from "../utils/rootDuration";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
@@ -32,7 +33,7 @@ interface UseClipboardOptions {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
-  handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
+  handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
 }
@@ -94,15 +95,27 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
   return maxTrack + 1;
 }
 
+/** Strips data-hf-id from the root and every descendant so a clone re-mints
+ *  its own. DOMParser, not a bracket-scoped regex, so a `>` inside an earlier
+ *  attribute value or a single-quoted id can't defeat the strip. */
+function stripHfIds(html: string): string {
+  const root = new DOMParser().parseFromString(html, "text/html").body.firstElementChild;
+  if (!root) return html;
+  root.querySelectorAll("[data-hf-id]").forEach((el) => el.removeAttribute("data-hf-id"));
+  root.removeAttribute("data-hf-id");
+  return root.outerHTML;
+}
+
 /** Shared insertion path for paste and duplicate, anchored at the playhead or
  *  the selection's end respectively. Returns the final ids so the caller can
- *  select what it just placed. */
+ *  select what it just placed, and the furthest end any clip lands at so the
+ *  caller can grow the root composition's duration to cover it. */
 export function pasteTimelineClips(
   content: string,
   clips: readonly TimelineClipboardClip[],
   anchorTime: number,
   liveElements: readonly TimelineElement[],
-): { content: string; ids: string[] } {
+): { content: string; ids: string[]; requiredEnd: number } {
   const groupMinStart = Math.min(...clips.map((c) => c.start));
   let existingIds = collectHtmlIds(content);
   const taken: PlacedClip[] = liveElements.map((el) => ({
@@ -112,14 +125,9 @@ export function pasteTimelineClips(
   }));
   const ids: string[] = [];
   let result = content;
+  let requiredEnd = 0;
   for (const clip of clips) {
-    // data-hf-id is pinned once minted (hfIdAssignment.ts never repairs an
-    // existing one), so a raw clone would keep the source's id forever.
-    // Scoped to tag brackets so a clip's visible text content can't be
-    // mistaken for the attribute if it happens to contain the same string.
-    const stripped = clip.html.replace(/<[^>]+>/g, (tag) =>
-      tag.replace(/\sdata-hf-id="[^"]*"/g, ""),
-    );
+    const stripped = stripHfIds(clip.html);
     const deduped = deduplicateIds(stripped, existingIds);
     existingIds = existingIds.concat(collectHtmlIds(deduped));
     const newStart = anchorTime + (clip.start - groupMinStart);
@@ -128,6 +136,7 @@ export function pasteTimelineClips(
       taken,
     );
     taken.push({ track: newTrack, start: newStart, duration: clip.duration });
+    requiredEnd = Math.max(requiredEnd, newStart + clip.duration);
 
     // Only rewrite the outermost opening tag. The non-global regex matches
     // the first occurrence, which is always in the root tag since outerHTML
@@ -140,10 +149,13 @@ export function pasteTimelineClips(
     const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
     result = insertTimelineAssetIntoSource(result, withPatched);
 
-    const id = patchedRootTag.match(/\bid="([^"]+)"/)?.[1];
+    // Lookbehind requires the attribute to start at a word boundary preceded
+    // by whitespace, same pattern deduplicateIds uses above, so `id="x"`
+    // matches but the `id` inside `data-id="x"` does not.
+    const id = patchedRootTag.match(/(?<=\s)id="([^"]+)"/)?.[1];
     if (id) ids.push(id);
   }
-  return { content: result, ids };
+  return { content: result, ids, requiredEnd };
 }
 
 export function useClipboard({
@@ -154,7 +166,7 @@ export function useClipboard({
   writeProjectFile,
   recordEdit,
   reloadPreview,
-  handleTimelineElementDelete,
+  handleTimelineElementsDelete,
   handleDomEditElementDelete,
   previewIframeRef,
 }: UseClipboardOptions) {
@@ -253,7 +265,10 @@ export function useClipboard({
       if (payload.kind === "timeline-clip") {
         const { currentTime, elements } = usePlayerStore.getState();
         const pasted = pasteTimelineClips(originalContent, payload.clips, currentTime, elements);
-        patchedContent = pasted.content;
+        // A clip pasted past the current composition end would exist in the
+        // file but never appear on the timeline or in playback/export (the
+        // root's data-duration is what actually bounds the render).
+        patchedContent = extendRootDurationInSource(pasted.content, pasted.requiredEnd);
         pastedIds = pasted.ids;
       } else {
         const deduped = deduplicateIds(payload.html, collectHtmlIds(originalContent));
@@ -317,12 +332,9 @@ export function useClipboard({
     try {
       const originalContent = await readFileContent(pid, targetPath);
       const liveElements = usePlayerStore.getState().elements;
-      const { content: patchedContent, ids } = pasteTimelineClips(
-        originalContent,
-        clips,
-        anchorTime,
-        liveElements,
-      );
+      const pasted = pasteTimelineClips(originalContent, clips, anchorTime, liveElements);
+      const patchedContent = extendRootDurationInSource(pasted.content, pasted.requiredEnd);
+      const ids = pasted.ids;
 
       await saveProjectFilesWithHistory({
         projectId: pid,
@@ -364,9 +376,10 @@ export function useClipboard({
     if (!copied) return false;
 
     if (selected.length > 0) {
-      for (const element of selected) {
-        await handleTimelineElementDelete(element);
-      }
+      // One call for the whole selection, not one per element: the batched
+      // delete writes and records history once, so a multi-clip Cmd+X undoes
+      // in a single Cmd+Z instead of needing one per clip.
+      await handleTimelineElementsDelete(selected);
       return true;
     }
 
@@ -376,7 +389,7 @@ export function useClipboard({
       return true;
     }
     return true;
-  }, [handleCopy, domEditSelectionRef, handleTimelineElementDelete, handleDomEditElementDelete]);
+  }, [handleCopy, domEditSelectionRef, handleTimelineElementsDelete, handleDomEditElementDelete]);
 
   const canPaste = useCallback(() => clipboardRef.current !== null, []);
 

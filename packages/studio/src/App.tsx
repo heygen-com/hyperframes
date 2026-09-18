@@ -219,7 +219,7 @@ export function StudioApp() {
     writeProjectFile: fileManager.writeProjectFile,
     recordEdit: editHistory.recordEdit,
     reloadPreview,
-    handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
+    handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     handleDomEditElementDelete: domEditDeleteBridge,
     previewIframeRef,
   });
