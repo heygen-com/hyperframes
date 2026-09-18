@@ -298,6 +298,9 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 host.appendChild(player);
             }
             catch (err) {
+                // A mount that was already released and superseded must not mark the new card.
+                if (state && mountsRef.current.get(item.href) !== state)
+                    return;
                 console.error(`[catalog] preview failed to load: ${item.id}`, err);
                 host.dataset.state = 'unavailable';
                 if (state)
