@@ -35,6 +35,7 @@ import {
   type CaptureSession,
   type EngineConfig,
   closeCaptureSession,
+  compositionRequiresWebGpu,
   createCaptureSession,
   deriveBeginFrameProbeTimeTicks,
   getCompositionDuration,
@@ -344,6 +345,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       variables: job.config.variables,
       deviceScaleFactor,
       motionBlur,
+      requiresWebGpu: compositionRequiresWebGpu(compiled.html),
     };
 
     const PROBE_MAX_ATTEMPTS = 2;

@@ -52,6 +52,10 @@ interface TimelineOverlaysProps {
   onSplitElement: TimelineEditCallbacks["onSplitElement"];
   pinZoomBeforeEdit: () => void;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
+  onCopyClip?: () => boolean;
+  onPasteClip?: () => Promise<void>;
+  onDuplicateClip?: () => Promise<boolean>;
+  canPasteClip?: () => boolean;
   gapContextMenu: TrackGapContextMenuState | null;
   onDismissGapContextMenu: () => void;
   onCloseTrackGap: () => void;
@@ -119,6 +123,10 @@ export function TimelineOverlays({
   onSplitElement,
   pinZoomBeforeEdit,
   onDeleteElement,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
   gapContextMenu,
   onDismissGapContextMenu,
   onCloseTrackGap,
@@ -249,6 +257,10 @@ export function TimelineOverlays({
             pinZoomBeforeEdit();
             onDeleteElement?.(element);
           }}
+          onCopy={onCopyClip}
+          onPaste={onPasteClip}
+          onDuplicate={onDuplicateClip}
+          canPaste={canPasteClip?.() ?? false}
         />
       )}
 

@@ -60,7 +60,7 @@ describe("Studio thumbnail GPU capture plumbing", () => {
     const source = readFileSync(new URL("./studioServer.ts", import.meta.url), "utf8");
     expect(source).toContain("resolveCaptureBrowserGpuMode");
     expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
-    expect(source).toContain("assertWebGpuRequirement");
+    expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu)");
     expect(source).toContain("await seekCompositionTimeline(page, opts.seekTime");
   });
 });

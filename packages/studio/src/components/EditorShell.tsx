@@ -55,6 +55,10 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
     files: File[],
     placement?: TimelineDropPlacement,
   ) => Promise<void> | void;
+  onCopyClip: () => boolean;
+  onPasteClip: () => Promise<void>;
+  onDuplicateClip: () => Promise<boolean>;
+  canPasteClip: () => boolean;
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowMotionPath: boolean;
@@ -93,6 +97,10 @@ export function EditorShell({
   handleTimelineElementSplit,
   handleRazorSplit,
   handleRazorSplitAll,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowMotionPath,
@@ -181,6 +189,10 @@ export function EditorShell({
             onBlockDrop={handleTimelineBlockDrop}
             onCompositionDrop={handleTimelineCompositionDrop}
             onDeleteElement={handleTimelineElementDelete}
+            onCopyClip={onCopyClip}
+            onPasteClip={onPasteClip}
+            onDuplicateClip={onDuplicateClip}
+            canPasteClip={canPasteClip}
             previewOverlay={
               <PreviewOverlays
                 shouldShowMotionPath={shouldShowMotionPath}
@@ -219,6 +231,10 @@ interface EditorShellBodyProps {
     placement: TimelineDropPlacement,
   ) => Promise<void> | void;
   onDeleteElement: (element: TimelineElement) => Promise<void> | void;
+  onCopyClip: () => boolean;
+  onPasteClip: () => Promise<void>;
+  onDuplicateClip: () => Promise<boolean>;
+  canPasteClip: () => boolean;
 }
 
 function EditorShellBody({
@@ -235,6 +251,10 @@ function EditorShellBody({
   onBlockDrop,
   onCompositionDrop,
   onDeleteElement,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
 }: EditorShellBodyProps) {
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
 
@@ -289,6 +309,10 @@ function EditorShellBody({
         onBlockDrop={onBlockDrop}
         onCompositionDrop={onCompositionDrop}
         onDeleteElement={onDeleteElement}
+        onCopyClip={onCopyClip}
+        onPasteClip={onPasteClip}
+        onDuplicateClip={onDuplicateClip}
+        canPasteClip={canPasteClip}
         onSelectTimelineElement={onSelectTimelineElement}
         timelineFooter={
           captionEditMode ? (

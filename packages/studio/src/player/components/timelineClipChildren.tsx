@@ -9,7 +9,8 @@ export function resolveClipRenderContext(
   visibleTimeRange: TimelineTimeRange,
   interactive: boolean,
 ): TimelineClipRenderContext {
-  if (interactive) return { priority: "interaction", rich: true };
+  // Interaction only reorders loading; `rich` would swap the frames under the pointer.
+  if (interactive) return { priority: "interaction", rich: false };
   const visible =
     element.start < visibleTimeRange.end &&
     element.start + element.duration > visibleTimeRange.start;

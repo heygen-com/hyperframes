@@ -80,6 +80,12 @@
       "types": "./dist/compositionContract.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./top-level-elements": {
+      "source": "./src/topLevelElements.ts",
+      "runtime": "./dist/topLevelElements.js",
+      "types": "./dist/topLevelElements.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading-contract": {
       "source": "./src/colorGradingContract.ts",
       "runtime": "./dist/colorGradingContract.js",
