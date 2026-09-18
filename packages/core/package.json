@@ -190,6 +190,12 @@
       "import": "./src/audioAutomation.ts",
       "types": "./src/audioAutomation.ts"
     },
+    "./clip-facts": {
+      "bun": "./src/clipFacts.ts",
+      "node": "./dist/clipFacts.js",
+      "import": "./src/clipFacts.ts",
+      "types": "./src/clipFacts.ts"
+    },
     "./audio-gain": {
       "bun": "./src/audioGain.ts",
       "node": "./dist/audioGain.js",
@@ -519,6 +525,10 @@
       "./audio-automation": {
         "import": "./dist/audioAutomation.js",
         "types": "./dist/audioAutomation.d.ts"
+      },
+      "./clip-facts": {
+        "import": "./dist/clipFacts.js",
+        "types": "./dist/clipFacts.d.ts"
       },
       "./audio-gain": {
         "import": "./dist/audioGain.js",
