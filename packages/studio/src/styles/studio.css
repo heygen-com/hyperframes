@@ -1,13 +1,13 @@
 @import "tailwindcss" source(none);
 
-/*
- * Explicit sources: Studio's own TypeScript and its shell HTML. Automatic
- * detection would walk up to the repository root and scan `data/projects`,
- * which is gitignored user content, not Studio's markup.
- */
+/* Explicit sources: Studio's own TypeScript and its shell HTML. Automatic
+ * detection would walk up to the repo root and scan `data/projects`, gitignored user content. */
 @source "../**/*.{ts,tsx}";
 @source "../../index.html";
 
+/* Same palette as tailwind-preset.shared.js's studio/panel exports (kept for
+ * the published ./tailwind-preset subpath). A later unit merges these into
+ * one source; until then, update both when a value changes. */
 @theme {
   --color-studio-bg: #0a0a0a;
   --color-studio-surface: #141414;
