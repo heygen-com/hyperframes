@@ -11,7 +11,7 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
-import { findMatchingTimelineElementId } from "../utils/studioHelpers";
+import { findMatchingTimelineElementId, type ElementMatchSelection } from "../utils/studioHelpers";
 import type { TimelineElement } from "../player";
 
 interface UseGroupCommitsParams extends DomEditCommitBaseParams {
@@ -38,14 +38,7 @@ interface GroupGeometry {
 // index fallback). Threaded through so the server can stamp it explicitly —
 // same hazard and fix as the razor split.
 function resolveAuthoredTrack(
-  selection: {
-    id?: string | null;
-    selector?: string;
-    selectorIndex?: number;
-    sourceFile: string;
-    compositionSrc?: string;
-    isCompositionHost: boolean;
-  },
+  selection: ElementMatchSelection,
   timelineElements: TimelineElement[],
 ): number | undefined {
   const id = findMatchingTimelineElementId(selection, timelineElements);
@@ -101,17 +94,10 @@ export function resolveGroupChildTracks(
     const hfId = readHfId(child);
     if (!id && !hfId) continue;
     const track = resolveAuthoredTrack(
-      {
-        id,
-        selector: undefined,
-        selectorIndex: undefined,
-        sourceFile,
-        compositionSrc: undefined,
-        isCompositionHost: false,
-      },
+      { id, sourceFile, isCompositionHost: false },
       timelineElements,
     );
-    result.push({ target: { id, hfId }, track });
+    result.push({ target: buildDomEditPatchTarget({ id, hfId }), track });
   }
   return result;
 }

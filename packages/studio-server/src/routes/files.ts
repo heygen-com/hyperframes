@@ -210,6 +210,10 @@ interface AtomicCutFileRequest {
   targets: AtomicCutTarget[];
 }
 
+function isOptionalInteger(value: unknown): value is number | undefined {
+  return value === undefined || Number.isInteger(value);
+}
+
 function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
   if (!value || typeof value !== "object") return false;
   const target = value as Partial<AtomicCutTarget>;
@@ -220,7 +224,7 @@ function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
     Number.isFinite(target.elementStart) &&
     Number.isFinite(target.elementDuration) &&
     Number(target.elementDuration) > 0 &&
-    (target.track === undefined || Number.isInteger(target.track))
+    isOptionalInteger(target.track)
   );
 }
 
@@ -2942,7 +2946,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           Number.isFinite(r.left) &&
           typeof r?.top === "number" &&
           Number.isFinite(r.top) &&
-          (r?.track === undefined || Number.isInteger(r.track)),
+          isOptionalInteger(r?.track),
       );
     if (!allNumeric) {
       return c.json({ error: "bbox and rebase coordinates must be finite numbers" }, 400);
@@ -3003,9 +3007,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in parsed) return parsed.error;
 
     const rawChildTracks = parsed.body.childTracks ?? [];
-    if (
-      !rawChildTracks.every((entry) => entry?.track === undefined || Number.isInteger(entry.track))
-    ) {
+    if (!rawChildTracks.every((entry) => isOptionalInteger(entry?.track))) {
       return c.json({ error: "childTracks track must be a finite integer" }, 400);
     }
     const childTracks = rawChildTracks

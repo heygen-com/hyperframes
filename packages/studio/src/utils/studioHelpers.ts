@@ -126,7 +126,7 @@ export function getHistoryShortcutLabel(action: "undo" | "redo"): string {
   return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
 }
 
-type ElementMatchSelection = Pick<
+export type ElementMatchSelection = Pick<
   DomEditSelection,
   "id" | "selector" | "selectorIndex" | "sourceFile" | "compositionSrc" | "isCompositionHost"
 >;
