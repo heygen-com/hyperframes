@@ -202,7 +202,7 @@ music-to-video/
   references/   frame-skeleton.md · planning.md · storyboard-format.md
                 template-catalog.md · motion-primitive-catalog.md · montage.md
                 templates/<id>/          { index.html (+ assets/ · program.json) }  ← L1 catalog impls
-                motion-primitives/<id>/  { index.html } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
+                motion-primitives/<id>/  { index.html (mounts the scene), scene.html (the sub-composition) } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
   scripts/      analyze-beatgrid.py · assemble-index.mjs · validate-plan.mjs · stage-assets.mjs · lib/storyboard.mjs
   sub-agents/   frame-worker.md   ← the one subagent (one per frame)
 ```

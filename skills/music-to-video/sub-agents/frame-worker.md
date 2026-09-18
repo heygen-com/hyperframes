@@ -16,7 +16,7 @@ Your job: **follow the manual, fetch the materials, assemble.** The storyboard t
   - **asset** — `asset:{treatment, clips, anchors?, overlay_copy?}` (see `montage.md`).
 - `audiomap.json` — timing truth; use the seconds you're given.
 - `frame.md` — the brand (palette + type). Pull every visual token from here.
-- **Materials** — `references/templates/<id>/index.html` (its `data-composition-variables` give the param semantics) for template groups; `references/motion-primitives/<id>/index.html` for free groups; staged `assets/…` for asset groups.
+- **Materials** — `references/templates/<id>/index.html` (its `data-composition-variables` give the param semantics) for template groups; `references/motion-primitives/<id>/scene.html` (the sub-composition; `index.html` only mounts it) for free groups; staged `assets/…` for asset groups.
 - Canvas `<width>×<height>` and the frame's `pacing`.
 
 If your dispatch carries `lint` / `check` feedback from a prior pass, address each finding.
