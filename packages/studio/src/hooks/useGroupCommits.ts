@@ -44,7 +44,11 @@ function resolveAuthoredTrack(
   const id = findMatchingTimelineElementId(selection, timelineElements);
   if (!id) return undefined;
   const match = timelineElements.find((el) => (el.key ?? el.id) === id);
-  return match && Number.isFinite(match.authoredTrack) ? match.authoredTrack : undefined;
+  if (!match) return undefined;
+  // track is the runtime's always-resolved value (authored, or its own
+  // positional-index fallback) — exactly what an unauthored implicit layer
+  // or an ungroup child with no authoredTrack needs stamped through.
+  return Number.isFinite(match.authoredTrack) ? match.authoredTrack : match.track;
 }
 
 // Wrapper sits at the members' bounding box top-left; each member is rebased so

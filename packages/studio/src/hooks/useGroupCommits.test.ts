@@ -31,7 +31,7 @@ describe("computeGroupGeometry — track threading", () => {
     const { rebases } = computeGroupGeometry(members, timelineElements);
 
     expect(rebases[0]?.track).toBe(2);
-    expect(rebases[1]?.track).toBeUndefined();
+    expect(rebases[1]?.track).toBe(0);
   });
 });
 
@@ -54,7 +54,7 @@ describe("resolveGroupChildTracks", () => {
 
     expect(result).toEqual([
       { target: { id: "child-a", hfId: undefined }, track: 1 },
-      { target: { id: "child-b", hfId: undefined }, track: undefined },
+      { target: { id: "child-b", hfId: undefined }, track: 0 },
     ]);
   });
 
@@ -80,5 +80,19 @@ describe("resolveGroupChildTracks", () => {
     const result = resolveGroupChildTracks(makeSelection("Group 1", group), []);
 
     expect(result).toEqual([]);
+  });
+
+  it("falls back to the runtime's resolved track for an implicit child with no authoredTrack", () => {
+    const group = document.createElement("div");
+    group.id = "group-1";
+    const child = document.createElement("div");
+    child.id = "child-a";
+    group.append(child);
+
+    const timelineElements = [timelineElement({ id: "child-a", domId: "child-a", track: 3 })];
+
+    const result = resolveGroupChildTracks(makeSelection("Group 1", group), timelineElements);
+
+    expect(result).toEqual([{ target: { id: "child-a", hfId: undefined }, track: 3 }]);
   });
 });
