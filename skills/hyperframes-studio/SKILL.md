@@ -33,7 +33,7 @@ as an error, the CLI as a warning. Author as if both are errors.
 ## 2. One caption track
 
 - All captions live on one track: a single sub-composition host (one `data-track-index`)
-  that carries every caption group in order.
+  marked `data-track-kind="captions"` that carries every caption group in order.
 - Never one row per caption group, and never captions mixed onto a track with
   another kind.
 - Word-timing rules are unchanged: see `/embedded-captions` and the `caption_*` lint rules.
@@ -49,7 +49,9 @@ Group by kind so each row is one thing the user can select, mute or drag as a se
 | Captions                                | 10                             |
 | Audio (voiceover, music, sound effects) | 100 and up, one kind per index |
 
-Track index is display only; it never changes what renders on top. Use CSS for
+Mark a host's kind with `data-track-kind`: `captions` on the caption host, `graphics` on scene
+and overlay hosts. Video and audio kinds come from the tag, so `<video>` and `<audio>` need no
+attribute. Track index is display only; it never changes what renders on top. Use CSS for
 layering.
 
 ## 4. Safe zones
