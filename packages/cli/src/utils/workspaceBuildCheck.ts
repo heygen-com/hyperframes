@@ -74,6 +74,27 @@ function missingDistExportTargets(packageDir: string): string[] {
     .map((entry) => `${entry.subpath} (${entry.target})`);
 }
 
+// A malformed package.json must produce the same friendly message as any
+// other build problem, not an uncaught SyntaxError.
+function exportProblemsFor(packageDir: string, pkg: string, fix: string): WorkspaceBuildProblem[] {
+  let missingExports: string[];
+  try {
+    missingExports = missingDistExportTargets(packageDir);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [{ package: pkg, kind: "missing", detail: `package.json is invalid: ${message}`, fix }];
+  }
+  if (missingExports.length === 0) return [];
+  return [
+    {
+      package: pkg,
+      kind: "missing",
+      detail: `dist is missing exported file(s): ${missingExports.join(", ")}`,
+      fix,
+    },
+  ];
+}
+
 // Checks parsers/lint/studio-server/core/player in build order. Missing
 // files always report; a stale src skips via HYPERFRAMES_SKIP_BUILD_STALE_CHECK=1.
 export function checkStudioWorkspaceBuild(repoRoot: string): WorkspaceBuildProblem[] {
@@ -104,14 +125,9 @@ export function checkStudioWorkspaceBuild(repoRoot: string): WorkspaceBuildProbl
       }
     }
 
-    const missingExports = missingDistExportTargets(packageDir);
-    if (missingExports.length > 0) {
-      problems.push({
-        package: pkg,
-        kind: "missing",
-        detail: `dist is missing exported file(s): ${missingExports.join(", ")}`,
-        fix,
-      });
+    const exportProblems = exportProblemsFor(packageDir, pkg, fix);
+    if (exportProblems.length > 0) {
+      problems.push(...exportProblems);
       continue;
     }
 

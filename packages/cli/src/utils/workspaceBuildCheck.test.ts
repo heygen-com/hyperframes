@@ -113,4 +113,15 @@ describe("checkStudioWorkspaceBuild", () => {
 
     expect(checkStudioWorkspaceBuild(repoRoot)).toEqual([]);
   });
+
+  it("reports a broken package.json instead of throwing", () => {
+    const repoRoot = tmpRepoRoot();
+    writeAllBuilt(repoRoot);
+    writeFileSync(join(repoRoot, "packages", "parsers", "package.json"), "{not json");
+
+    const problems = checkStudioWorkspaceBuild(repoRoot);
+
+    expect(problems).toEqual([expect.objectContaining({ package: "parsers", kind: "missing" })]);
+    expect(problems[0]?.detail).toContain("package.json is invalid");
+  });
 });
