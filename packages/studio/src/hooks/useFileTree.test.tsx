@@ -71,4 +71,128 @@ describe("useFileTree.refreshFileTree", () => {
 
     fetchSpy.mockRestore();
   });
+
+  it("keeps the most-recently-issued refresh's data when an earlier one resolves later", async () => {
+    let call = 0;
+    const deferred: Array<(value: Response) => void> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify({ files: ["index.html"], compositions: ["index.html"] }),
+          {
+            status: 200,
+          },
+        );
+      }
+      return new Promise<Response>((resolve) => {
+        deferred.push(resolve);
+      });
+    });
+
+    const handleRef = { current: null as Handle | null };
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(
+        <Harness
+          ref={(h) => {
+            handleRef.current = h;
+          }}
+          projectId="project-a"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    let firstDone = false;
+    let secondDone = false;
+    act(() => {
+      void handleRef.current?.refresh().then(() => {
+        firstDone = true;
+      });
+      void handleRef.current?.refresh().then(() => {
+        secondDone = true;
+      });
+    });
+
+    // The second (later-issued) request resolves first, with its own data.
+    await act(async () => {
+      deferred[1](
+        new Response(
+          JSON.stringify({
+            files: ["index.html", "second.html"],
+            compositions: ["index.html", "second.html"],
+          }),
+          {
+            status: 200,
+          },
+        ),
+      );
+      await vi.waitFor(() => secondDone);
+    });
+    expect(handleRef.current?.compositions).toEqual(["index.html", "second.html"]);
+
+    // The first (earlier-issued, now stale) request resolves after — it must not win.
+    await act(async () => {
+      deferred[0](
+        new Response(
+          JSON.stringify({
+            files: ["index.html", "stale.html"],
+            compositions: ["index.html", "stale.html"],
+          }),
+          {
+            status: 200,
+          },
+        ),
+      );
+      await vi.waitFor(() => firstDone);
+    });
+    expect(handleRef.current?.compositions).toEqual(["index.html", "second.html"]);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("keeps the prior compositions list when a refresh response omits the field", async () => {
+    let call = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      call += 1;
+      const body =
+        call === 1
+          ? { files: ["index.html"], compositions: ["index.html"] }
+          : { files: ["index.html", "hero.html"] };
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+
+    const handleRef = { current: null as Handle | null };
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(
+        <Harness
+          ref={(h) => {
+            handleRef.current = h;
+          }}
+          projectId="project-a"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(handleRef.current?.compositions).toEqual(["index.html"]);
+
+    await act(async () => {
+      await handleRef.current?.refresh();
+    });
+    // `files` grew but the response carried no `compositions` field — the known-good
+    // list must survive, not collapse to empty.
+    expect(handleRef.current?.compositions).toEqual(["index.html"]);
+
+    fetchSpy.mockRestore();
+  });
 });

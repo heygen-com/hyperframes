@@ -1,5 +1,5 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { FONT_EXT } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import { captureProjectProvenance } from "../components/feedback/projectProvenance";
@@ -63,15 +63,26 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     };
   }, [projectId]);
 
+  const refreshRequestRef = useRef(0);
+
   const refreshFileTree = useCallback(async () => {
     const pid = projectIdRef.current;
     if (!pid) return;
+    const requestId = ++refreshRequestRef.current;
     const res = await fetch(buildProjectApiPath(pid));
     const data: { files?: string[]; compositions?: string[] } = await res.json();
-    if (data.files) {
+    // Drop this response if a later refresh was already issued — otherwise a slow
+    // response can overwrite a faster, more recent one out of order.
+    if (data.files && requestId === refreshRequestRef.current) {
       setFetched((prev) =>
         prev?.projectId === pid
-          ? { ...prev, fileTree: data.files ?? [], compositionPaths: data.compositions ?? [] }
+          ? {
+              ...prev,
+              fileTree: data.files ?? prev.fileTree,
+              // A response that omits `compositions` must not wipe out a
+              // known-good list — only replace it when the field is present.
+              compositionPaths: data.compositions ?? prev.compositionPaths,
+            }
           : prev,
       );
     }
