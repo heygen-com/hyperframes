@@ -339,6 +339,14 @@ export {
   FFMPEG_PATH_ENV,
   FFPROBE_PATH_ENV,
 } from "./utils/ffmpegBinaries.js";
+export {
+  withTransientSpawnRetry,
+  isTransientSpawnErrno,
+  fileLockRetryDelayMs,
+  describeSpawnFailure,
+  TRANSIENT_SPAWN_ERRNOS,
+  type TransientSpawnRetryOptions,
+} from "./utils/ffSpawnRetry.js";
 
 export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
 
