@@ -35,12 +35,16 @@ function Harness({
   mountedId,
   logicalRows = rows,
   projectId = "project-a",
+  lastScrollLeftRef: sharedLastScrollLeftRef,
 }: {
   mountedId?: string;
   logicalRows?: readonly TimelineLogicalRow[];
   projectId?: string;
+  lastScrollLeftRef?: React.RefObject<number>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ownLastScrollLeftRef = useRef(0);
+  const lastScrollLeftRef = sharedLastScrollLeftRef ?? ownLastScrollLeftRef;
   const rowGeometry = useMemo(() => {
     const rowKeys = [...new Set(logicalRows.map((row) => row.physicalTrackKey))];
     return createTimelineRowGeometry(
@@ -60,6 +64,7 @@ function Harness({
     projectId,
     sessionEpoch: 1,
     syncScrollViewport,
+    lastScrollLeftRef,
   });
   return (
     <div
@@ -197,5 +202,17 @@ describe("useTimelineFocusCoordinator", () => {
       await act(async () => root.render(<Harness logicalRows={neverRows} />));
     }
     expect(usePlayerStore.getState().timelineFocus).toBeNull();
+  });
+
+  it("keeps lastScrollLeftRef in sync with a reveal so a sibling restore effect doesn't undo it", async () => {
+    // Timeline.tsx's own "restore scroll after an edit re-derives the elements"
+    // effect reads this ref to decide what to scroll back to. A reveal that
+    // doesn't update it looks, to that effect, like scroll drift to undo.
+    const lastScrollLeftRef = { current: 999 };
+    usePlayerStore.getState().requestTimelineFocus(clipId);
+    await act(async () => root.render(<Harness lastScrollLeftRef={lastScrollLeftRef} />));
+    const scroll = host.firstElementChild as HTMLDivElement;
+
+    expect(lastScrollLeftRef.current).toBe(scroll.scrollLeft);
   });
 });

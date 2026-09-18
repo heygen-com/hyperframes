@@ -25,6 +25,7 @@ interface TimelineFocusCoordinatorInput {
   projectId: string | null;
   sessionEpoch: number;
   syncScrollViewport: (element: HTMLDivElement) => void;
+  lastScrollLeftRef: RefObject<number>;
 }
 
 export interface TimelineFocusCoordinatorState {
@@ -78,6 +79,7 @@ function scrollToTarget(
   pixelsPerSecond: number,
   contentOrigin: number,
   allowHorizontal: boolean,
+  lastScrollLeftRef: RefObject<number>,
 ): boolean {
   const rowIndex = rowGeometry.getRowIndex(resolution.row.physicalTrackKey);
   if (rowIndex < 0) return false;
@@ -104,7 +106,13 @@ function scrollToTarget(
     stickyTop: RULER_H,
     allowHorizontal: allowHorizontal && left !== null,
   });
-  if (target.left !== null) container.scrollLeft = target.left;
+  if (target.left !== null) {
+    container.scrollLeft = target.left;
+    // Keep the geometry effect's "restore scroll after an edit re-derives the
+    // elements" in sync, or it reads the pre-reveal position on the next tick
+    // and scrolls the freshly-revealed clip back out of view.
+    lastScrollLeftRef.current = target.left;
+  }
   if (target.top !== null) container.scrollTop = target.top;
   return target.left !== null || target.top !== null;
 }
@@ -128,6 +136,7 @@ export function useTimelineFocusCoordinator({
   projectId,
   sessionEpoch,
   syncScrollViewport,
+  lastScrollLeftRef,
 }: TimelineFocusCoordinatorInput): TimelineFocusCoordinatorState {
   const request = usePlayerStore((state) => state.timelineFocus);
   const previousRowsRef = useRef(logicalRows);
@@ -206,6 +215,7 @@ export function useTimelineFocusCoordinator({
         pixelsPerSecond,
         contentOrigin,
         allowHorizontal,
+        lastScrollLeftRef,
       )
     ) {
       syncScrollViewport(container);
@@ -216,6 +226,7 @@ export function useTimelineFocusCoordinator({
     allowHorizontal,
     contentOrigin,
     elements,
+    lastScrollLeftRef,
     pixelsPerSecond,
     projectId,
     request,
