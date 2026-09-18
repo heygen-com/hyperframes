@@ -784,6 +784,22 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
 }
 
 /**
+ * Normalized span of a video stream (not of its container), plus the cache key
+ * that identifies it. Both live here so the consumers below cannot normalize —
+ * or key their caches — differently.
+ */
+function resolveStreamWindow(
+  filePath: string,
+  metadata: Pick<VideoMetadata, "videoStreamDurationSeconds" | "videoStreamStartSeconds">,
+): { videoStreamStartSeconds: number; videoStreamDurationSeconds: number; cacheKey: string } {
+  const videoStreamDurationSeconds = metadata.videoStreamDurationSeconds;
+  const candidateStart = metadata.videoStreamStartSeconds ?? 0;
+  const videoStreamStartSeconds = Number.isFinite(candidateStart) ? candidateStart : 0;
+  const cacheKey = `${filePath}\0${String(videoStreamStartSeconds)}\0${String(videoStreamDurationSeconds)}`;
+  return { videoStreamStartSeconds, videoStreamDurationSeconds, cacheKey };
+}
+
+/**
  * Return the FFmpeg input-seek position of the final decoded video frame.
  *
  * A fixed seek window near EOF is not sufficient: sub-1fps and sparse VFR
@@ -802,10 +818,11 @@ export async function extractFinalVideoFrameTimestamp(
   metadata: Pick<VideoMetadata, "videoStreamDurationSeconds" | "videoStreamStartSeconds">,
   signal?: AbortSignal,
 ): Promise<number> {
-  const videoDurationSeconds = metadata.videoStreamDurationSeconds;
-  const candidateStreamStart = metadata.videoStreamStartSeconds ?? 0;
-  const videoStreamStartSeconds = Number.isFinite(candidateStreamStart) ? candidateStreamStart : 0;
-  const cacheKey = `${filePath}\0${String(videoStreamStartSeconds)}\0${String(videoDurationSeconds)}`;
+  const {
+    videoStreamStartSeconds,
+    videoStreamDurationSeconds: videoDurationSeconds,
+    cacheKey,
+  } = resolveStreamWindow(filePath, metadata);
   // A caller-owned abort signal cannot safely own a globally shared process
   // promise: aborting one render would fail unrelated consumers. Calls in the
   // SAME cancellation scope should still share the expensive interval +
@@ -982,26 +999,55 @@ export interface KeyframeAnalysis {
 
 const keyframeCache = new Map<string, Promise<KeyframeAnalysis>>();
 
+/** Intervals beyond this cause seeking issues in the headless renderer and
+ *  audio/video desync — the sole threshold for `isProblematic` below. */
+const PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS = 2;
+
 /**
- * Check keyframe intervals in a video file. Intervals > 2s cause seeking
- * issues in the headless renderer and audio/video desync. Videos from
- * yt-dlp --download-sections or screen recordings often have sparse keyframes.
+ * Check keyframe intervals in a video file. Intervals over the threshold
+ * above cause seeking issues in the headless renderer and audio/video
+ * desync. Videos from yt-dlp --download-sections or screen recordings often
+ * have sparse keyframes.
+ *
+ * Pass the `videoStreamDurationSeconds`/`videoStreamStartSeconds` pair from
+ * `extractMediaMetadata`'s `VideoMetadata`, not a container duration: a
+ * container whose audio outlasts its video would overstate the GOP span of
+ * a single-keyframe file below. `videoStreamStartSeconds` matters for the
+ * same reason `extractFinalVideoFrameTimestamp` normalizes by it: ffprobe's
+ * `pts_time` is an absolute presentation timestamp, not relative to stream
+ * start, so a nonzero start (a re-muxed or trimmed clip) must be subtracted
+ * back out before comparing it against a duration.
  */
-export async function analyzeKeyframeIntervals(filePath: string): Promise<KeyframeAnalysis> {
-  const cached = keyframeCache.get(filePath);
+export async function analyzeKeyframeIntervals(
+  filePath: string,
+  metadata: Pick<VideoMetadata, "videoStreamDurationSeconds" | "videoStreamStartSeconds">,
+): Promise<KeyframeAnalysis> {
+  const { videoStreamStartSeconds, videoStreamDurationSeconds, cacheKey } = resolveStreamWindow(
+    filePath,
+    metadata,
+  );
+  const cached = keyframeCache.get(cacheKey);
   if (cached) return cached;
 
-  const promise = analyzeKeyframeIntervalsUncached(filePath);
-  keyframeCache.set(filePath, promise);
+  const promise = analyzeKeyframeIntervalsUncached(
+    filePath,
+    videoStreamStartSeconds,
+    videoStreamDurationSeconds,
+  );
+  keyframeCache.set(cacheKey, promise);
   promise.catch(() => {
-    if (keyframeCache.get(filePath) === promise) {
-      keyframeCache.delete(filePath);
+    if (keyframeCache.get(cacheKey) === promise) {
+      keyframeCache.delete(cacheKey);
     }
   });
   return promise;
 }
 
-async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<KeyframeAnalysis> {
+async function analyzeKeyframeIntervalsUncached(
+  filePath: string,
+  videoStreamStartSeconds: number,
+  videoStreamDurationSeconds: number,
+): Promise<KeyframeAnalysis> {
   const stdout = await runFfprobe(filePath, [
     "-select_streams",
     "v:0",
@@ -1018,12 +1064,34 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .map((line) => parseFloat(line.trim()))
     .filter((t) => Number.isFinite(t));
 
-  if (timestamps.length < 2) {
+  if (timestamps.length === 0) {
     return {
       avgIntervalSeconds: 0,
       maxIntervalSeconds: 0,
-      keyframeCount: timestamps.length,
+      keyframeCount: 0,
       isProblematic: false,
+    };
+  }
+
+  if (timestamps.length === 1) {
+    // One keyframe for the whole stream is the worst case this check exists to
+    // catch, not the healthy one — every seek past it decodes the entire file.
+    // The rest of the stream is a single uninterrupted GOP, so measure that
+    // instead of reporting "healthy" for lack of a second data point.
+    // `timestamps[0]` is an absolute pts, so compare it against the stream's
+    // absolute end (start + duration), not against duration alone — see the
+    // docstring above.
+    const streamEnd = videoStreamStartSeconds + videoStreamDurationSeconds;
+    // The fallback is unreachable (length === 1); it only satisfies
+    // noUncheckedIndexedAccess.
+    const rawInterval = streamEnd - (timestamps[0] ?? videoStreamStartSeconds);
+    const singleGopInterval = Number.isFinite(rawInterval) ? Math.max(rawInterval, 0) : 0;
+    const roundedInterval = Math.round(singleGopInterval * 100) / 100;
+    return {
+      avgIntervalSeconds: roundedInterval,
+      maxIntervalSeconds: roundedInterval,
+      keyframeCount: 1,
+      isProblematic: singleGopInterval > PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS,
     };
   }
 
@@ -1040,6 +1108,6 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     avgIntervalSeconds: Math.round(avgInterval * 100) / 100,
     maxIntervalSeconds: Math.round(maxInterval * 100) / 100,
     keyframeCount: timestamps.length,
-    isProblematic: maxInterval > 2,
+    isProblematic: maxInterval > PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS,
   };
 }
