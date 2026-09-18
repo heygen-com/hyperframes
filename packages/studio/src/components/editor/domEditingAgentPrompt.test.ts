@@ -168,6 +168,22 @@ describe("buildPickerAgentPrompt", () => {
     expect(domPrompt.endsWith(guardrails)).toBe(true);
     expect(pickerPrompt.endsWith(guardrails)).toBe(true);
   });
+
+  it("surfaces the picker's label and media src — a host app has no DOM to read them from otherwise", () => {
+    const prompt = buildPickerAgentPrompt({
+      selection: { ...PICKER_SELECTION, tagName: "img", src: "assets/hero.png" },
+    });
+    expect(prompt).toContain("Label: Headline");
+    expect(prompt).toContain("Source (media): assets/hero.png");
+  });
+
+  it("omits the label and source lines when the picker didn't report them", () => {
+    const prompt = buildPickerAgentPrompt({
+      selection: { ...PICKER_SELECTION, label: "", src: null },
+    });
+    expect(prompt).not.toContain("Label:");
+    expect(prompt).not.toContain("Source (media):");
+  });
 });
 
 describe("buildPickerAgentContextPreview", () => {

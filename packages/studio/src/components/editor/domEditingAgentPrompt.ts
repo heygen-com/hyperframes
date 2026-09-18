@@ -17,8 +17,10 @@ export interface AgentPromptElementInfo {
    *  a picker-built prompt always prints index 0 — expected, not a gap. */
   selectorIndex?: number;
   tagName: string;
+  label?: string;
   boundingBox: { x: number; y: number; width: number; height: number };
   textContent: string | null;
+  src?: string | null;
   textFields?: DomEditTextField[];
   inlineStyles?: Record<string, string>;
   computedStyles?: Record<string, string>;
@@ -67,8 +69,10 @@ function buildElementInfoLines(info: AgentPromptElementInfo): string[] {
     `Selector: ${info.selector ?? "(none)"}`,
     `Selector index: ${info.selectorIndex ?? 0}`,
     `Tag: <${info.tagName}>`,
-    `Bounds: ${formatBoundingBox(info.boundingBox)}`,
   ];
+  if (info.label) lines.push(`Label: ${info.label}`);
+  lines.push(`Bounds: ${formatBoundingBox(info.boundingBox)}`);
+  if (info.src) lines.push(`Source (media): ${info.src}`);
   if (info.textContent) lines.push(`Text: ${info.textContent}`);
   return lines;
 }
@@ -184,8 +188,10 @@ export function buildPickerAgentPrompt({
     id: selection.id,
     selector: selection.selector,
     tagName: selection.tagName,
+    label: selection.label,
     boundingBox: selection.boundingBox,
     textContent: selection.textContent,
+    src: selection.src,
   };
 
   lines.push(
