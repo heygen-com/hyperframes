@@ -197,9 +197,7 @@ export function useTimelineFocusCoordinator({
       }
       const nonce = request.nonce;
       const timeout = setTimeout(() => {
-        if (usePlayerStore.getState().timelineFocus?.nonce === nonce) {
-          usePlayerStore.getState().clearTimelineFocus(nonce);
-        }
+        usePlayerStore.getState().clearTimelineFocus(nonce);
       }, UNRESOLVED_FOCUS_TIMEOUT_MS);
       return () => clearTimeout(timeout);
     }
