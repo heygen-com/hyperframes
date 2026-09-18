@@ -2,15 +2,18 @@
 // Loads every generated docs-catalog payload in real headless Chrome and
 // fails on any 404 or page error a static markup scan can't see.
 //
-// Usage: npx tsx scripts/verify-catalog-payloads.ts [--only <item>]
+// Usage: npx tsx scripts/verify-catalog-payloads.ts [--only <item>] [--changed <git-ref>]
+//   --changed limits the check to payloads that differ from <git-ref>, which is what CI runs.
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
+import { execFileSync } from "node:child_process";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import { launchVerifyBrowser, checkPageLoads } from "../packages/producer/src/verifyStaticPage.js";
 import { HOSTED_EXTENSIONS, MIME_TYPES } from "./catalog-payload-assets.js";
+import { runAsCommand } from "./entrypoint.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 // The generator writes every asset URL as "/public/catalog/...", matching
@@ -20,21 +23,55 @@ const siteRoot = join(scriptDir, "..", "docs");
 const docsPublic = join(siteRoot, "public");
 const payloadRoot = join(docsPublic, "catalog");
 
-function parseArgs(): { only: string | null } {
+function parseArgs(): { only: string | null; changed: string | null } {
   const argv = process.argv.slice(2);
-  const at = argv.indexOf("--only");
-  return { only: at !== -1 ? (argv[at + 1] ?? null) : null };
+  const valueOf = (flag: string) => {
+    const at = argv.indexOf(flag);
+    return at !== -1 ? (argv[at + 1] ?? null) : null;
+  };
+  return { only: valueOf("--only"), changed: valueOf("--changed") };
 }
 
-function payloadFiles(only: string | null): { item: string; path: string }[] {
+const PAYLOAD_PATH = /^docs\/public\/catalog\/(?:blocks|components)\/([^/]+)\.json$/;
+
+/** Item names whose payload file appears in `git diff --name-only` output. */
+export function itemsFromDiff(diffOutput: string): Set<string> {
+  const items = new Set<string>();
+  for (const line of diffOutput.split("\n")) {
+    const item = PAYLOAD_PATH.exec(line.trim())?.[1];
+    if (item) items.add(item);
+  }
+  return items;
+}
+
+function changedItems(ref: string): Set<string> {
+  const out = execFileSync(
+    "git",
+    ["diff", "--name-only", "--diff-filter=ACMR", `${ref}...HEAD`, "--", "docs/public/catalog"],
+    { encoding: "utf-8", cwd: join(scriptDir, "..") },
+  );
+  return itemsFromDiff(out);
+}
+
+function payloadFiles(
+  only: string | null,
+  changed: Set<string> | null,
+): { item: string; path: string }[] {
   return ["blocks", "components"].flatMap((kind) => {
     const dir = join(payloadRoot, kind);
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
       .filter((name) => name.endsWith(".json"))
       .map((name) => ({ item: name.slice(0, -5), path: join(dir, name) }))
-      .filter(({ item }) => !only || item === only);
+      .filter(({ item }) => (!only || item === only) && (!changed || changed.has(item)));
   });
+}
+
+/** A WebGPU piece cannot draw in a CI browser that has no adapter; that one error is the
+ * environment, not the payload. Every other failure of such a piece still counts. */
+export function withoutMissingAdapter(html: string, failures: string[]): string[] {
+  if (!html.includes("navigator.gpu")) return failures;
+  return failures.filter((failure) => !/no WebGPU adapter/i.test(failure));
 }
 
 // "/" is the bootstrap navigation target before setContent() replaces the
@@ -99,7 +136,8 @@ async function checkAll(
   let failed = 0;
   for (const { item, path } of items) {
     const { html } = JSON.parse(readFileSync(path, "utf-8")) as { html: string };
-    const { failures } = await checkPageLoads(browser, origin, html);
+    const checked = await checkPageLoads(browser, origin, html);
+    const failures = withoutMissingAdapter(html, checked.failures);
     if (failures.length > 0) {
       failed += 1;
       console.log(`✗ ${item}`);
@@ -112,8 +150,12 @@ async function checkAll(
 }
 
 async function main(): Promise<void> {
-  const { only } = parseArgs();
-  const items = payloadFiles(only);
+  const { only, changed } = parseArgs();
+  const items = payloadFiles(only, changed ? changedItems(changed) : null);
+  if (items.length === 0 && changed) {
+    console.log(`No catalog payload differs from ${changed}; nothing to verify.`);
+    return;
+  }
   if (items.length === 0) {
     console.error(only ? `No payload found for "${only}".` : "No payloads found.");
     process.exit(1);
@@ -137,4 +179,4 @@ async function main(): Promise<void> {
   console.log("\nAll payloads load without a failed request or page error.");
 }
 
-main();
+runAsCommand(import.meta.url, main);
