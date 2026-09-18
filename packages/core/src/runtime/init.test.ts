@@ -2862,6 +2862,31 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  it("settles window.__hf.buildReady with two or more registered keys", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(10) };
+
+    // A multi-key registry rebuilds a fresh Promise.all on every poll; a
+    // settled-tracker that compares that combined promise's identity (rather
+    // than the source promises) never observes "settled" and hangs forever.
+    window.__hf = window.__hf || {};
+    window.__hf.buildReady = { a: Promise.resolve(), b: Promise.resolve() };
+
+    initSandboxRuntimeModular();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(window.__renderReady).toBe(true);
+  });
+
   it("sets __renderReady even without a GSAP timeline (CSS/WAAPI compositions)", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
