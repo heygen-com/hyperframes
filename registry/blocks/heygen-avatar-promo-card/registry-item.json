@@ -92,5 +92,9 @@
       "target": "TEMPLATE.md",
       "type": "hyperframes:asset"
     }
-  ]
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/heygen-avatar-promo-card.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/heygen-avatar-promo-card.png"
+  }
 }
