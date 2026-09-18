@@ -3,9 +3,8 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 // Type-only: erased at runtime, so the timelineZMirror → timelineClipDragCommit
 // value-import edge stays acyclic.
 import type { ZMirrorLaneMove } from "./timelineZMirror";
-import { classifyZone, normalizeToZones } from "./timelineZones";
-import { resolveMainTrackDropStart } from "./timelineCollision";
-import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { classifyZone } from "./timelineZones";
+import { layoutAfterTrackInsert, resolveDragLandingStart } from "./timelineDragLanding";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import {
   canMoveTimelineElement as canMoveElement,
@@ -18,7 +17,7 @@ import {
 } from "./timelineOptimisticRevision";
 import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
-import { authoredTrackForLane, sameSourceFile } from "./timelineAuthoredTrack";
+import { authoredTrackForLane } from "./timelineAuthoredTrack";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -175,19 +174,6 @@ export function persistMoveEdits(
 }
 
 /**
- * A fractional track value for a NEW lane inserted at boundary `insertRow` in
- * `trackOrder` (0 = above the top, `length` = below the bottom). normalizeToZones
- * then compacts it to a distinct integer lane between its neighbours, and the
- * clips at/below the insert shift down by one — the sanctioned index-renumber.
- */
-function insertTrackValue(trackOrder: number[], insertRow: number): number {
-  if (trackOrder.length === 0) return 0;
-  if (insertRow <= 0) return trackOrder[0] - 0.5;
-  if (insertRow >= trackOrder.length) return trackOrder[trackOrder.length - 1] + 0.5;
-  return (trackOrder[insertRow - 1] + trackOrder[insertRow]) / 2;
-}
-
-/**
  * Build the time-shift resolver for a multi-selection drag: every member of the
  * selection moves by the dragged clip's delta (clamped ≥ 0); non-members are
  * untouched. Returns null when this is not a multi-selection drag. A locked /
@@ -233,7 +219,8 @@ function resolveMultiSelection(
  *   permitted multi-clip write) via a whole-set re-normalize; persisted atomically.
  */
 // fallow-ignore-next-line complexity
-export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
+export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommitDeps): void {
+  const drag = { ...rawDrag, previewStart: resolveDragLandingStart(rawDrag, deps) };
   const hostAlias = resolveExpandedHostAlias(drag, deps);
   if (hostAlias) {
     commitDraggedClipMove(hostAlias.drag, { ...deps, selectedKeys: hostAlias.selectedKeys });
@@ -355,31 +342,11 @@ function buildTrackInsertEdits(
   } | null,
   deps: DragCommitDeps,
 ): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
-  const { elements, trackOrder } = deps;
+  const { elements } = deps;
   const editKey = keyOf(element);
-  // Expanded-child rows are synthetic host lanes, not source-file topology.
-  if (element.expandedParentStart != null) return null;
-  const targetTrack = insertTrackValue(trackOrder, insertRow);
-  // Foreign display rows and the opposite zone must not affect this topology.
-  const writableZone = classifyZone(element);
-  const writable = (src: TimelineElement): boolean =>
-    sameSourceFile(src, element) &&
-    classifyZone(src) === writableZone &&
-    src.expandedParentStart == null;
-  const topologyOrder = [...new Set(elements.filter(writable).map((e) => e.track))].sort(
-    (a, b) => a - b,
-  );
-  const topologyInsertRow = topologyOrder.filter((track) => track < targetTrack).length;
-  const topologyTargetTrack = insertTrackValue(topologyOrder, topologyInsertRow);
-  const normalized = normalizeToZones(
-    elements.filter(writable).map((e) => {
-      if (keyOf(e) === editKey) {
-        return { ...e, start: previewStart, track: topologyTargetTrack };
-      }
-      if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
-      return e;
-    }),
-  );
+  const layout = layoutAfterTrackInsert(element, previewStart, insertRow, multi, deps);
+  if (!layout) return null;
+  const { normalized, targetTrack, writable } = layout;
   const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
   // A partial zone renumber creates collisions; refuse a shifted locked row.
   for (const norm of normalized) {
@@ -396,23 +363,8 @@ function buildTrackInsertEdits(
       return null;
     }
   }
-  // insertTrackValue's fractional aim is never literal track 0, but this renumber
-  // can still land the dragged clip there (the topmost visual lane was non-zero)
-  // — the real main track. Resolve the snap once, from the FINAL literal track,
-  // and reuse it below for both the persisted edit and the z-sync candidate.
-  const finalDragTrack = normalized.find((norm) => keyOf(norm) === editKey)?.track ?? targetTrack;
-  const snappedStart = multi
-    ? previewStart
-    : resolveMainTrackDropStart(
-        elements,
-        editKey,
-        element.track,
-        finalDragTrack,
-        isAudioTimelineElement(element),
-        previewStart,
-      );
   const candidate = elements.map((e) => {
-    if (keyOf(e) === editKey) return { ...e, start: snappedStart, track: targetTrack };
+    if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
     if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
     return e;
   });
@@ -434,7 +386,7 @@ function buildTrackInsertEdits(
     if (!src || !canMoveElement(src)) continue;
     const normKey = keyOf(norm);
     let start = src.start;
-    if (normKey === editKey) start = snappedStart;
+    if (normKey === editKey) start = previewStart;
     else if (multi?.keys.has(normKey)) start = multi.movedStart(src);
     edits.push({ element: src, updates: { start, track: norm.track } });
   }

@@ -141,31 +141,44 @@ export function resolveZoneDropPlacement(input: {
   return { track: placement.track, insertRow: null };
 }
 
-/** A clip newly landing on an empty main track always commits at start=0.
- *  No-op once the main track holds another clip, off the main track, or for
- *  a clip already resident there. `originTrack` is null for a brand-new
- *  clip (file/asset drop), which is never "already resident" anywhere. */
-export function resolveMainTrackDropStart(
-  elements: readonly TimelineElement[],
-  excludeKey: string | null,
-  originTrack: number | null,
-  landingTrack: number,
-  isAudio: boolean,
-  desiredStart: number,
-): number {
-  if (originTrack === landingTrack) return desiredStart;
-  const landing: TimelineElement = {
+function landsOnMainTrack(landingTrack: number, isAudio: boolean): boolean {
+  return isMainTrackElement({
     id: "",
     tag: isAudio ? "audio" : "video",
     start: 0,
     duration: 0,
     track: landingTrack,
-  };
-  if (!isMainTrackElement(landing)) return desiredStart;
-  const mainTrackHasOthers = elements.some(
-    (el) => (el.key ?? el.id) !== excludeKey && isMainTrackElement(el),
-  );
-  return mainTrackHasOthers ? desiredStart : 0;
+  });
+}
+
+/** An existing clip newly landing on an empty main track commits at start=0.
+ *  No-op once the main track holds another clip, off the main track, or for
+ *  a clip already resident there. `others` excludes the landing clip itself. */
+export function resolveMainTrackDropStart(
+  others: readonly TimelineElement[],
+  originTrack: number,
+  landingTrack: number,
+  isAudio: boolean,
+  desiredStart: number,
+): number {
+  if (originTrack === landingTrack || !landsOnMainTrack(landingTrack, isAudio)) {
+    return desiredStart;
+  }
+  return others.some(isMainTrackElement) ? desiredStart : 0;
+}
+
+/** A brand-new clip (file/asset drop) on the main track lands at 0 when it is
+ *  empty, else right after the last main clip so the track stays gapless. */
+export function resolveNewClipMainTrackStart(
+  mainElements: readonly TimelineElement[],
+  landingTrack: number,
+  isAudio: boolean,
+  desiredStart: number,
+): number {
+  if (!landsOnMainTrack(landingTrack, isAudio)) return desiredStart;
+  return mainElements
+    .filter(isMainTrackElement)
+    .reduce((end, el) => Math.max(end, el.start + el.duration), 0);
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   isLaneFree,
   resolveInsertRow,
   resolveMainTrackDropStart,
+  resolveNewClipMainTrackStart,
   resolvePlacement,
   resolveZoneDropPlacement,
   timeRangesOverlap,
@@ -497,27 +498,42 @@ describe("resolveZoneDropPlacement (the whole drop decision, no same-track overl
 
 describe("resolveMainTrackDropStart (magnetic first clip on an empty main track)", () => {
   it("snaps to 0 when landing on an empty main track", () => {
-    expect(resolveMainTrackDropStart([], "dragged", 1, 0, false, 7)).toBe(0);
+    expect(resolveMainTrackDropStart([], 1, 0, false, 7)).toBe(0);
   });
 
   it("leaves the drop start alone once the main track already holds another clip", () => {
-    const elements = [el("other", 0, 0, 3)];
-    expect(resolveMainTrackDropStart(elements, "dragged", 1, 0, false, 7)).toBe(7);
+    expect(resolveMainTrackDropStart([el("other", 0, 0, 3)], 1, 0, false, 7)).toBe(7);
   });
 
   it("leaves the drop start alone when landing off the main track", () => {
-    expect(resolveMainTrackDropStart([], "dragged", 1, 2, false, 7)).toBe(7);
+    expect(resolveMainTrackDropStart([], 1, 2, false, 7)).toBe(7);
   });
 
   it("a clip already resident on the main track doing a horizontal move is a no-op", () => {
-    expect(resolveMainTrackDropStart([], "dragged", 0, 0, false, 7)).toBe(7);
+    expect(resolveMainTrackDropStart([], 0, 0, false, 7)).toBe(7);
   });
 
   it("an audio clip landing on track 0 is not the main track (visual zone only)", () => {
-    expect(resolveMainTrackDropStart([], "song", 1, 0, true, 7)).toBe(7);
+    expect(resolveMainTrackDropStart([], 1, 0, true, 7)).toBe(7);
+  });
+});
+
+describe("resolveNewClipMainTrackStart (file and asset drops)", () => {
+  it("lands at 0 on an empty main track", () => {
+    expect(resolveNewClipMainTrackStart([], 0, false, 7)).toBe(0);
   });
 
-  it("a brand-new clip (no origin track) landing on an empty main track snaps to 0", () => {
-    expect(resolveMainTrackDropStart([], null, null, 0, false, 7)).toBe(0);
+  it("lands after the last main clip once the main track is filled", () => {
+    const main = [el("a", 0, 0, 3), el("b", 0, 3, 4)];
+    expect(resolveNewClipMainTrackStart(main, 0, false, 1)).toBe(7);
+  });
+
+  it("ignores clips on other tracks and leaves off-main drops at the pointer", () => {
+    expect(resolveNewClipMainTrackStart([el("x", 1, 0, 9)], 0, false, 7)).toBe(0);
+    expect(resolveNewClipMainTrackStart([el("a", 0, 0, 3)], 2, false, 7)).toBe(7);
+  });
+
+  it("an audio drop onto track 0 is not the main track", () => {
+    expect(resolveNewClipMainTrackStart([el("a", 0, 0, 3)], 0, true, 7)).toBe(7);
   });
 });

@@ -11,7 +11,7 @@ import {
 import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 import type { TimelineElement } from "../store/playerStore";
-import { resolveMainTrackDropStart } from "./timelineCollision";
+import { resolveNewClipMainTrackStart } from "./timelineCollision";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -24,27 +24,19 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
-  /** Drives the magnetic main-track snap for brand-new clips. */
+  /** Drives the magnetic main-track placement for brand-new clips. */
   elements: readonly TimelineElement[];
 }
 
 type TimelinePlacement = { start: number; track: number };
 
-/** A brand-new clip (no origin track) landing on an empty main track always
- *  commits at start=0 — same magnetic convention as the clip-drag path. */
-function snapPlacementToEmptyMainTrack(
+/** A brand-new clip on the main track lands at 0 when empty, else after the last clip. */
+function snapPlacementToMainTrack(
   placement: TimelinePlacement,
   elements: readonly TimelineElement[],
   isAudio: boolean,
 ): TimelinePlacement {
-  const start = resolveMainTrackDropStart(
-    elements,
-    null,
-    null,
-    placement.track,
-    isAudio,
-    placement.start,
-  );
+  const start = resolveNewClipMainTrackStart(elements, placement.track, isAudio, placement.start);
   return start === placement.start ? placement : { ...placement, start };
 }
 
@@ -88,7 +80,7 @@ function applyFileDrop(
   // The batch sequences from ONE start, so snap once; audio only if ALL files are audio.
   const isAudio = files.every((file) => getTimelineAssetKind(file.name) === "audio");
   invokeDropCallback(() =>
-    onFileDrop(files, snapPlacementToEmptyMainTrack(placement, elements, isAudio)),
+    onFileDrop(files, snapPlacementToMainTrack(placement, elements, isAudio)),
   );
   return true;
 }
@@ -250,7 +242,7 @@ export function useTimelineAssetDrop({
         ? (path: string, nextPlacement: TimelinePlacement) =>
             onAssetDrop(
               path,
-              snapPlacementToEmptyMainTrack(
+              snapPlacementToMainTrack(
                 nextPlacement,
                 elements,
                 getTimelineAssetKind(path) === "audio",

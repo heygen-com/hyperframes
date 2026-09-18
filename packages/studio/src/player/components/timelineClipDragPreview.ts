@@ -13,17 +13,14 @@ import {
   snapTimelineTime,
   type TimelineSnapTarget,
 } from "./timelineSnapping";
-import {
-  resolveInsertRow,
-  resolveMainTrackDropStart,
-  resolveZoneDropPlacement,
-} from "./timelineCollision";
+import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
 import {
   applyTimelineGroupResizePreview,
   type TimelineGroupResizeSession,
 } from "./timelineGroupEditing";
 import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
+import { resolveDragLandingStart } from "./timelineDragLanding";
 
 /** Snap-target builder closure supplied by the hook (closes over refs + store). */
 type BuildSnapTargets = (
@@ -204,20 +201,12 @@ export function computeDragPreview(
     nextMove.track,
     ctx,
   );
-  // Snap only plain solo placements: an insert row lands on a fresh lane, and a
-  // multi-selection derives its other clips' shift from previewStart.
-  const isSoloDrag = selectedKeys.size <= 1 || !selectedKeys.has(dragKey);
-  const snappedStart =
-    insertRow == null && isSoloDrag
-      ? resolveMainTrackDropStart(
-          elements,
-          dragKey,
-          drag.element.track,
-          previewTrack,
-          isAudioTimelineElement(drag.element),
-          previewStart,
-        )
-      : previewStart;
+  const placed = { ...drag, previewStart, previewTrack, insertRow };
+  const snappedStart = resolveDragLandingStart(placed, {
+    elements,
+    trackOrder,
+    selectedKeys,
+  });
   return {
     ...drag,
     started: true,

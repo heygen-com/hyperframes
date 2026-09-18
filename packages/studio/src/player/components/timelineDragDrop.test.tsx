@@ -175,18 +175,16 @@ describe("useTimelineAssetDrop", () => {
 
   it("places the drop at the pointer x, ignoring the playhead", () => {
     const onAssetDrop = vi.fn();
-    // A clip already on the main track — the empty-main-track snap must
-    // not interfere with this test's actual subject (pointer x vs. playhead).
-    const seed: TimelineElement = { id: "seed", tag: "video", start: 0, duration: 3, track: 0 };
-    const view = renderHarness(onAssetDrop, 1, { elements: [seed] });
+    // An audio asset: the main-track rule does not apply, so pointer x decides.
+    const view = renderHarness(onAssetDrop);
     usePlayerStore.getState().setCurrentTime(50);
-    const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
+    const transfer = assetTransfer(JSON.stringify({ path: "/media/song.mp3" }));
 
     dropAt(view.api, transfer, 80, 100);
 
     // pps=40, clientX=80 -> 2s, far from the 50s playhead: proves start tracks
     // the drop position, not usePlayerStore.currentTime.
-    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 2, track: 0 });
+    expect(onAssetDrop).toHaveBeenCalledWith("/media/song.mp3", { start: 2, track: 0 });
     act(() => view.root.unmount());
   });
 
@@ -240,6 +238,33 @@ describe("useTimelineAssetDrop", () => {
   });
 
   describe("magnetic first clip on an empty main track", () => {
+    it("an asset dropped onto a filled main track lands after its last clip", () => {
+      const onAssetDrop = vi.fn();
+      const main: TimelineElement[] = [
+        { id: "a", tag: "video", start: 0, duration: 3, track: 0 },
+        { id: "b", tag: "video", start: 3, duration: 4, track: 0 },
+      ];
+      const view = renderHarness(onAssetDrop, 1, { elements: main });
+      const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
+
+      dropAt(view.api, transfer, 80, 100);
+
+      expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 7, track: 0 });
+      act(() => view.root.unmount());
+    });
+
+    it("a file dropped onto a filled main track lands after its last clip", () => {
+      const onFileDrop = vi.fn();
+      const main: TimelineElement[] = [{ id: "a", tag: "video", start: 0, duration: 5, track: 0 }];
+      const view = renderHarness(vi.fn(), 1, { onFileDrop, elements: main });
+      const file = new File(["data"], "clip.mp4", { type: "video/mp4" });
+
+      dropAt(view.api, fileTransfer([file]), 80, 100);
+
+      expect(onFileDrop).toHaveBeenCalledWith([file], { start: 5, track: 0 });
+      act(() => view.root.unmount());
+    });
+
     it("an asset dropped onto an empty main track snaps to start 0", () => {
       const onAssetDrop = vi.fn();
       const view = renderHarness(onAssetDrop);

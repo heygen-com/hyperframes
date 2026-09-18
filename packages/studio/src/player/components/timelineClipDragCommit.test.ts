@@ -1263,6 +1263,41 @@ describe("commitDraggedClipMove", () => {
       expect(onStackingPatches).toHaveBeenCalledTimes(1);
     });
 
+    it("a top-gutter insert that pushes the old track-0 clip down snaps to the new track 0", () => {
+      const oldMain = el("old", 0, 0, 3);
+      const dragged = el("v1", 2, 0, 5);
+      const { onMoveElements } = runClipMove(
+        drag(dragged, { previewStart: 8, previewTrack: 2, insertRow: 0 }),
+        { elements: [oldMain, dragged], trackOrder: [0, 2] },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.old.track).toBe(1);
+      expect(map.v1).toEqual({ start: 0, track: 0 });
+    });
+
+    it("an expanded child dragged with its host commits the HOST at 0", () => {
+      for (const [hostStart, childStart] of [
+        [30, 32],
+        [20, 22],
+      ]) {
+        const host = el("host", 1, hostStart, 10);
+        const child: TimelineElement = {
+          ...el("child", 2, childStart, 4),
+          expandedHostKey: "host",
+          expandedParentStart: hostStart,
+        };
+        const { onMoveElements } = runClipMove(
+          drag(child, { previewStart: childStart, previewTrack: 0 }),
+          {
+            elements: [host, child],
+            trackOrder: [0, 1, 2],
+            selectedKeys: new Set(["host", "child"]),
+          },
+        );
+        expect(editMap(onMoveElements.mock.calls[0][0]).host).toEqual({ start: 0, track: 0 });
+      }
+    });
+
     it("a multi-selection top-gutter insert does NOT snap (siblings key off the unsnapped start)", () => {
       const dragged = el("v1", 1, 0, 5);
       const sibling = el("v2", 1, 10, 5);
