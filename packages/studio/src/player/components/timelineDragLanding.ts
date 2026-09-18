@@ -6,9 +6,9 @@ import { resolveMainTrackDropStart } from "./timelineCollision";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { resolveExpandedHostAlias } from "./timelineAuthoredMoveTarget";
 import { sameSourceFile } from "./timelineAuthoredTrack";
+import { round3 } from "./timelineGaps";
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
-const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 /** A fractional track for a new lane at boundary `insertRow` (0 = above the top);
  *  normalizeToZones compacts it to an integer lane and shifts the clips below. */
