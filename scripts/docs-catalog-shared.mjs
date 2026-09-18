@@ -22,7 +22,7 @@ export function getCatalogTab(config) {
 
 // A composition is eligible for live preview the same way the gallery's own inventory
 // decides it: a paused GSAP timeline registered for seeking, not itself mounting a further
-// sub-composition. The one place that names the real cause instead of going silent.
+// sub-composition. Callers that only need the yes/no can ignore which reason came back.
 export function previewGap(html) {
   if (/navigator\.gpu/.test(html)) return "webgpu";
   if (/data-composition-src=/.test(html)) return "nested-composition";
