@@ -141,11 +141,10 @@ export function resolveZoneDropPlacement(input: {
   return { track: placement.track, insertRow: null };
 }
 
-/** A clip newly LANDING on an empty main track always commits at start=0
- *  (no leading gap by convention). No-op for a clip already resident there,
- *  once the main track holds another clip, or off the main track.
- *  `originTrack` is the clip's current track (null for a brand-new clip —
- *  a file/asset drop, which is never "already resident" anywhere). */
+/** A clip newly landing on an empty main track always commits at start=0.
+ *  No-op once the main track holds another clip, off the main track, or for
+ *  a clip already resident there. `originTrack` is null for a brand-new
+ *  clip (file/asset drop), which is never "already resident" anywhere. */
 export function resolveMainTrackDropStart(
   elements: readonly TimelineElement[],
   excludeKey: string | null,
