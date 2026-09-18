@@ -1,47 +1,28 @@
 ---
 title: "Code Slice Hero"
 description: "A tiled headline surface flips cell by cell under a sweeping depth field to reveal the rear headline."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/code-slice-hero.json"
+  compositionId="code-slice-hero"
+  compositionSrc="compositions/code-slice-hero/code-slice-hero.html"
+  title="Code Slice Hero"
+  description="A tiled headline surface flips cell by cell under a sweeping depth field to reveal the rear headline."
+  variables={[]}
+  meta={{"duration":8,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":532}}
+  attribution={{"path":"registry/blocks/code-slice-hero","tags":["3d-motion","transition","typography","tiles","flip","webgl2","shadows","two-headlines"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/code-slice-hero/code-slice-hero.html"
+>
 
-<InstallCommand command="npx hyperframes add code-slice-hero" item="code-slice-hero" />
+<CatalogSlot slot="code">
 
-That writes `compositions/code-slice-hero/code-slice-hero.html`, plus 7 supporting files under `compositions/code-slice-hero/assets/` and `compositions/code-slice-hero/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="code-slice-hero preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/code-slice-hero.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-slice-hero.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 8 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="code-slice-hero"
-  data-composition-src="compositions/code-slice-hero/code-slice-hero.html"
-  data-start="0"
-  data-duration="8"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="code-slice-hero.html">
-
-```html
+```html code-slice-hero.html
 <!doctype html>
 <html
   lang="en"
@@ -576,7 +557,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add code-slice-hero" item="code-slice-hero" />
+
+That writes `compositions/code-slice-hero/code-slice-hero.html`, plus 7 supporting files under `compositions/code-slice-hero/assets/` and `compositions/code-slice-hero/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 8 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="code-slice-hero"
+  data-composition-src="compositions/code-slice-hero/code-slice-hero.html"
+  data-start="0"
+  data-duration="8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -587,3 +597,7 @@ Tagged `3d-motion` `transition` `typography` `tiles` `flip` `webgl2` `shadows` `
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

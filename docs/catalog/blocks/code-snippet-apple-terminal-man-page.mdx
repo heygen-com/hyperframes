@@ -1,28 +1,28 @@
 ---
 title: "Code Snippet - Apple Terminal Man Page"
 description: "Apple Terminal Man Page profile: pale yellow background with black text, per-character typing animation of a shell session."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/code-snippet-apple-terminal-man-page.json"
+  compositionId="code-snippet-apple-terminal-man-page"
+  compositionSrc="compositions/code-snippet-apple-terminal-man-page.html"
+  title="Code Snippet - Apple Terminal Man Page"
+  description="Apple Terminal Man Page profile: pale yellow background with black text, per-character typing animation of a shell session."
+  variables={[]}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"Code Snippets","badge":"Stable","codeLines":248}}
+  attribution={{"path":"registry/blocks/code-snippet-apple-terminal-man-page","tags":["code","developer","showcase","terminal","apple","apple-terminal"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/code-snippet-apple-terminal-man-page/code-snippet-apple-terminal-man-page.html"
+>
 
-<InstallCommand command="npx hyperframes add code-snippet-apple-terminal-man-page" item="code-snippet-apple-terminal-man-page" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/code-snippet-apple-terminal-man-page.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="code-snippet-apple-terminal-man-page preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/code-snippet-apple-terminal-man-page.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-man-page.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="code-snippet-apple-terminal-man-page.html">
-
-```html
+```html code-snippet-apple-terminal-man-page.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -273,7 +273,17 @@ That writes one file: `compositions/code-snippet-apple-terminal-man-page.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add code-snippet-apple-terminal-man-page" item="code-snippet-apple-terminal-man-page" />
+
+That writes one file: `compositions/code-snippet-apple-terminal-man-page.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
 
 ## Usage
 
@@ -309,3 +319,7 @@ Tagged `code` `developer` `showcase` `terminal` `apple` `apple-terminal`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

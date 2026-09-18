@@ -1,47 +1,28 @@
 ---
 title: "Slack Notification Ad"
 description: "A portrait lock screen fills with escalating Slack video requests before HeyGen delivers the payoff"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/slack-notification-ad.json"
+  compositionId="slack-notification-ad"
+  compositionSrc="compositions/slack-notification-ad.html"
+  title="Slack Notification Ad"
+  description="A portrait lock screen fills with escalating Slack video requests before HeyGen delivers the payoff"
+  variables={[]}
+  meta={{"duration":12,"width":1080,"height":1920,"category":"Showcases","badge":"Stable","codeLines":710}}
+  attribution={{"author":"HeyGen","path":"registry/blocks/slack-notification-ad","tags":["showcase","mock-ui","notification","vertical","ad-template"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/slack-notification-ad/slack-notification-ad.html"
+>
 
-<InstallCommand command="npx hyperframes add slack-notification-ad" item="slack-notification-ad" />
+<CatalogSlot slot="code">
 
-That writes `compositions/slack-notification-ad.html`, plus 7 supporting files under `assets/img/` and `assets/fonts/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="slack-notification-ad preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/slack-notification-ad.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/slack-notification-ad.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 12 seconds at 1080×1920. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="slack-notification-ad"
-  data-composition-src="compositions/slack-notification-ad.html"
-  data-start="0"
-  data-duration="12"
-  data-track-index="1"
-  data-width="1080"
-  data-height="1920"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="slack-notification-ad.html">
-
-```html
+```html slack-notification-ad.html
 <!doctype html>
 <html
   lang="en"
@@ -754,7 +735,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add slack-notification-ad" item="slack-notification-ad" />
+
+That writes `compositions/slack-notification-ad.html`, plus 7 supporting files under `assets/img/` and `assets/fonts/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 12 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="slack-notification-ad"
+  data-composition-src="compositions/slack-notification-ad.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -767,3 +777,7 @@ Created by HeyGen.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

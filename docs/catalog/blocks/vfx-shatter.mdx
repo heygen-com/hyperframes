@@ -1,29 +1,29 @@
 ---
 title: "Shatter"
 description: "VFX composition block"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="vfx-shatter"
+  compositionSrc="compositions/vfx-shatter.html"
+  title="Shatter"
+  description="VFX composition block"
+  variables={[]}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":1156}}
+  attribution={{"path":"registry/blocks/vfx-shatter","tags":["html-in-canvas","webgl"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-shatter.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-shatter.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/vfx-shatter/vfx-shatter.html"
+>
 
-<InstallCommand command="npx hyperframes add vfx-shatter" item="vfx-shatter" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/vfx-shatter.html`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-shatter.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-shatter.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title="vfx-shatter.html">
-
-```html
+```html vfx-shatter.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -1182,7 +1182,23 @@ That writes one file: `compositions/vfx-shatter.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add vfx-shatter" item="vfx-shatter" />
+
+That writes one file: `compositions/vfx-shatter.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
 
 ## Usage
 
@@ -1201,3 +1217,7 @@ Tagged `html-in-canvas` `webgl`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

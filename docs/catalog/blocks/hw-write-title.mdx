@@ -1,47 +1,28 @@
 ---
 title: "Handwritten Write-On Title"
 description: "True glyph write-on: filled Caveat letterforms revealed by baked per-glyph centerline strokes traced in real stroke order with a curvature-adaptive pen-velocity ease (fast on straights, slow into curves, inter-stroke pen lifts); optional squiggle underline; boils"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/hw-write-title.json"
+  compositionId="hw-write-title"
+  compositionSrc="compositions/hw-write-title.html"
+  title="Handwritten Write-On Title"
+  description="True glyph write-on: filled Caveat letterforms revealed by baked per-glyph centerline strokes traced in real stroke order with a curvature-adaptive pen-velocity ease (fast on straights, slow into curves, inter-stroke pen lifts); optional squiggle underline; boils"
+  variables={[]}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"Typography & Text","badge":"Stable","codeLines":500}}
+  attribution={{"path":"registry/blocks/hw-write-title","tags":["handwritten","typography","title-card","write-on","overlay"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/hw-write-title/hw-write-title.html"
+>
 
-<InstallCommand command="npx hyperframes add hw-write-title" item="hw-write-title" />
+<CatalogSlot slot="code">
 
-That writes `compositions/hw-write-title.html`, plus 2 supporting files under `assets/baked/` and `assets/fonts/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="hw-write-title preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/hw-write-title.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/hw-write-title.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 6 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="hw-write-title"
-  data-composition-src="compositions/hw-write-title.html"
-  data-start="0"
-  data-duration="6"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="hw-write-title.html">
-
-```html
+```html hw-write-title.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -544,7 +525,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add hw-write-title" item="hw-write-title" />
+
+That writes `compositions/hw-write-title.html`, plus 2 supporting files under `assets/baked/` and `assets/fonts/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="hw-write-title"
+  data-composition-src="compositions/hw-write-title.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -555,3 +565,7 @@ Tagged `handwritten` `typography` `title-card` `write-on` `overlay`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -1,28 +1,28 @@
 ---
 title: "Signup Flow"
 description: "A composed signup flow with social action, email field, password field, and submit button"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/signup-flow.json"
+  compositionId="signup-flow"
+  compositionSrc="compositions/components/signup-flow.html"
+  title="Signup Flow"
+  description="A composed signup flow with social action, email field, password field, and submit button"
+  variables={[]}
+  meta={{"category":"Effects","badge":"Stable","codeLines":80}}
+  attribution={{"path":"registry/components/signup-flow","tags":["ui-flow","signup","form"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/signup-flow/signup-flow.html"
+>
 
-<InstallCommand command="npx hyperframes add signup-flow" item="signup-flow" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/signup-flow.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="signup-flow preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/signup-flow.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/signup-flow.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="signup-flow.html">
-
-```html
+```html signup-flow.html
 <!--
   Signup Flow - Composed UI flow for HyperFrames.
 
@@ -105,7 +105,17 @@ That writes one file: `compositions/components/signup-flow.html`.
 -->
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add signup-flow" item="signup-flow" />
+
+That writes one file: `compositions/components/signup-flow.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
 
 ## Usage
 
@@ -120,3 +130,7 @@ Tagged `ui-flow` `signup` `form`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

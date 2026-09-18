@@ -1,28 +1,28 @@
 ---
 title: "Other Transitions"
 description: "Showcase of miscellaneous creative transitions"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/transitions-other.json"
+  compositionId="transitions-other"
+  compositionSrc="compositions/transitions-other.html"
+  title="Other Transitions"
+  description="Showcase of miscellaneous creative transitions"
+  variables={[]}
+  meta={{"duration":20,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":392}}
+  attribution={{"path":"registry/blocks/transitions-other","tags":["transition","showcase"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/transitions-other/transitions-other.html"
+>
 
-<InstallCommand command="npx hyperframes add transitions-other" item="transitions-other" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/transitions-other.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="transitions-other preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/transitions-other.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-other.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="transitions-other.html">
-
-```html
+```html transitions-other.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -417,7 +417,17 @@ That writes one file: `compositions/transitions-other.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add transitions-other" item="transitions-other" />
+
+That writes one file: `compositions/transitions-other.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
 
 ## Usage
 
@@ -436,3 +446,7 @@ Tagged `transition` `showcase`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

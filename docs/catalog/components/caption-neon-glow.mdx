@@ -1,28 +1,28 @@
 ---
 title: "Neon Glow"
 description: "Cyan and magenta neon glow with keyword accent colors"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/caption-neon-glow.json"
+  compositionId="caption-neon-glow"
+  compositionSrc="compositions/components/caption-neon-glow.html"
+  title="Neon Glow"
+  description="Cyan and magenta neon glow with keyword accent colors"
+  variables={[]}
+  meta={{"category":"Captions","badge":"Stable","codeLines":216}}
+  attribution={{"path":"registry/components/caption-neon-glow","tags":["captions","caption-style","neon","glow","gaming"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/caption-neon-glow/caption-neon-glow.html"
+>
 
-<InstallCommand command="npx hyperframes add caption-neon-glow" item="caption-neon-glow" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/caption-neon-glow.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="caption-neon-glow preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/caption-neon-glow.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-neon-glow.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="caption-neon-glow.html">
-
-```html
+```html caption-neon-glow.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -241,7 +241,17 @@ That writes one file: `compositions/components/caption-neon-glow.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add caption-neon-glow" item="caption-neon-glow" />
+
+That writes one file: `compositions/components/caption-neon-glow.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
 
 ## Usage
 
@@ -256,3 +266,7 @@ Tagged `captions` `caption-style` `neon` `glow` `gaming`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -1,36 +1,29 @@
 ---
 title: "Magnetic"
 description: "VFX composition block"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="vfx-magnetic"
+  compositionSrc="compositions/vfx-magnetic.html"
+  title="Magnetic"
+  description="VFX composition block"
+  variables={[]}
+  meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":464}}
+  attribution={{"path":"registry/blocks/vfx-magnetic","tags":["html-in-canvas","webgl"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/vfx-magnetic/vfx-magnetic.html"
+>
 
-<InstallCommand command="npx hyperframes add vfx-magnetic" item="vfx-magnetic" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/vfx-magnetic.html`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Change the colors
-
-Set these CSS variables on the block:
-
-- `--bg-color` — Background. Defaults to `#0c0c0c`.
-- `--text-color` — Text color. Defaults to `#e8e8e8`.
-
-## Source
-
-<Accordion title="vfx-magnetic.html">
-
-```html
+```html vfx-magnetic.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -497,7 +490,30 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add vfx-magnetic" item="vfx-magnetic" />
+
+That writes one file: `compositions/vfx-magnetic.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
+
+## Change the colors
+
+Set these CSS variables on the block:
+
+- `--bg-color` — Background. Defaults to `#0c0c0c`.
+- `--text-color` — Text color. Defaults to `#e8e8e8`.
 
 ## Usage
 
@@ -516,3 +532,7 @@ Tagged `html-in-canvas` `webgl`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

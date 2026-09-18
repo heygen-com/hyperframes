@@ -1,34 +1,28 @@
 ---
 title: "VFX Text Cursor"
 description: "Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/vfx-text-cursor.json"
+  compositionId="vfx-text-cursor"
+  compositionSrc="compositions/vfx-text-cursor.html"
+  title="VFX Text Cursor"
+  description="Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges."
+  variables={[]}
+  meta={{"duration":8,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":855}}
+  attribution={{"path":"registry/blocks/vfx-text-cursor","tags":["html-in-canvas","text","shader","cursor","chromatic"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/vfx-text-cursor/vfx-text-cursor.html"
+>
 
-<InstallCommand command="npx hyperframes add vfx-text-cursor" item="vfx-text-cursor" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/vfx-text-cursor.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="vfx-text-cursor preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/vfx-text-cursor.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-text-cursor.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title="vfx-text-cursor.html">
-
-```html
+```html vfx-text-cursor.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -886,7 +880,23 @@ That writes one file: `compositions/vfx-text-cursor.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add vfx-text-cursor" item="vfx-text-cursor" />
+
+That writes one file: `compositions/vfx-text-cursor.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
 
 ## Usage
 
@@ -905,3 +915,7 @@ Tagged `html-in-canvas` `text` `shader` `cursor` `chromatic`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -1,47 +1,28 @@
 ---
 title: "Cuboid Carousel"
 description: "A chain of bevelled cuboids rides a travelling wave as a content carousel."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/cuboid-carousel.json"
+  compositionId="cuboid-carousel"
+  compositionSrc="compositions/cuboid-carousel/cuboid-carousel.html"
+  title="Cuboid Carousel"
+  description="A chain of bevelled cuboids rides a travelling wave as a content carousel."
+  variables={[]}
+  meta={{"duration":6.67,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":860}}
+  attribution={{"path":"registry/blocks/cuboid-carousel","tags":["3d-motion","carousel","cards","travelling-wave","pbr","shadows","room-environment"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/cuboid-carousel/cuboid-carousel.html"
+>
 
-<InstallCommand command="npx hyperframes add cuboid-carousel" item="cuboid-carousel" />
+<CatalogSlot slot="code">
 
-That writes `compositions/cuboid-carousel/cuboid-carousel.html`, plus 9 supporting files under `compositions/cuboid-carousel/assets/`, `compositions/cuboid-carousel/assets/addons/environments/`, `compositions/cuboid-carousel/assets/addons/utils/`, and `compositions/cuboid-carousel/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="cuboid-carousel preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/cuboid-carousel.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cuboid-carousel.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 6.67 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="cuboid-carousel"
-  data-composition-src="compositions/cuboid-carousel/cuboid-carousel.html"
-  data-start="0"
-  data-duration="6.67"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="cuboid-carousel.html">
-
-```html
+```html cuboid-carousel.html
 <!doctype html>
 <html
   lang="en"
@@ -904,7 +885,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add cuboid-carousel" item="cuboid-carousel" />
+
+That writes `compositions/cuboid-carousel/cuboid-carousel.html`, plus 9 supporting files under `compositions/cuboid-carousel/assets/`, `compositions/cuboid-carousel/assets/addons/environments/`, `compositions/cuboid-carousel/assets/addons/utils/`, and `compositions/cuboid-carousel/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6.67 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="cuboid-carousel"
+  data-composition-src="compositions/cuboid-carousel/cuboid-carousel.html"
+  data-start="0"
+  data-duration="6.67"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -915,3 +925,7 @@ Tagged `3d-motion` `carousel` `cards` `travelling-wave` `pbr` `shadows` `room-en
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
