@@ -27,6 +27,16 @@ export { FileTree } from "./components/editor/FileTree";
 // App
 export { StudioApp } from "./App";
 
+// Ask-agent flow
+export { AskAgentModal } from "./components/AskAgentModal";
+export type { AskAgentModalProps } from "./components/AskAgentModal";
+export type { AgentModalAnchorPoint } from "./utils/studioHelpers";
+export {
+  buildPickerAgentPrompt,
+  buildPickerAgentContextPreview,
+} from "./components/editor/domEditingAgentPrompt";
+export type { AgentPromptElementInfo } from "./components/editor/domEditingAgentPrompt";
+
 // Hooks
 export { useElementPicker } from "./hooks/useElementPicker";
 export type { PickedElement } from "./hooks/useElementPicker";

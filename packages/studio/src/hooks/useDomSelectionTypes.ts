@@ -20,10 +20,11 @@ export interface ResolveDomSelectionOptions {
   exactTarget?: boolean;
 }
 
-export interface UseDomSelectionParams {
+// Shared by every hook that needs the project/timeline/panel context a DOM
+// edit session is built around — useDomEditSession has its own superset.
+export interface DomEditTimelineParams {
   projectId: string | null;
   activeCompPath: string | null;
-  isMasterView: boolean;
   compIdToSrc: Map<string, string>;
   captionEditMode: boolean;
   previewIframeRef: MutableRefObject<HTMLIFrameElement | null>;
@@ -34,6 +35,10 @@ export interface UseDomSelectionParams {
   setTimelineSelectionSet: (ids: Set<string>) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
+}
+
+export interface UseDomSelectionParams extends DomEditTimelineParams {
+  isMasterView: boolean;
   previewIframe: HTMLIFrameElement | null;
   refreshKey: number;
   rightPanelTab: RightPanelTab;

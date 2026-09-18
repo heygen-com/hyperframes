@@ -67,7 +67,6 @@ export function useFileManager({
   const {
     projectDir,
     fileTree,
-    setFileTree,
     fileTreeLoaded,
     refreshFileTree,
     compositions,
@@ -501,7 +500,6 @@ export function useFileManager({
     projectDir,
     fileTree,
     fileTreeLoaded,
-    setFileTree,
 
     // Refs
     editingPathRef,

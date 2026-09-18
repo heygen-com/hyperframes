@@ -37,6 +37,16 @@ describe("buildAtomicCutIntents", () => {
     expect(intents[0].targets.map((target) => target.originalId)).toEqual(["host-a", "host-b"]);
   });
 
+  it("carries the element's authored track onto the cut target, so both split halves stay pinned to it server-side", () => {
+    const intents = buildAtomicCutIntents([element({ authoredTrack: 2 })], 2, "index.html");
+    expect(intents[0].targets[0].track).toBe(2);
+  });
+
+  it("falls back to the resolved track when the element has no authoredTrack", () => {
+    const intents = buildAtomicCutIntents([element({ track: 3 })], 2, "index.html");
+    expect(intents[0].targets[0].track).toBe(3);
+  });
+
   it("rebases each nested target into its own source-file coordinates", () => {
     const intents = buildAtomicCutIntents(
       [element({ start: 8, duration: 4, expandedParentStart: 6, sourceFile: "scene.html" })],

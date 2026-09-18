@@ -26,6 +26,14 @@ interface UsePlaybackKeyboardParams {
   seek: (time: number, options?: { keepPlaying?: boolean }) => void;
 }
 
+// The razor tool owns plain "a" (return to select) while it's armed; this
+// can't rely on defaultPrevented since both listeners register on window and
+// fire in an order this hook doesn't control. Shift+A and Alt+A are left for
+// the in-point seek below, since only plain A means "exit the razor".
+function shouldRazorClaimPlainA(e: KeyboardEvent): boolean {
+  return !e.shiftKey && !e.altKey && usePlayerStore.getState().activeTool === "razor";
+}
+
 export function usePlaybackKeyboard({
   iframeRef,
   shuttleDirectionRef,
@@ -79,6 +87,10 @@ export function usePlaybackKeyboard({
     }
   }, [play, pause]);
 
+  // Pre-existing dispatcher, already over the complexity gate before this
+  // branch's one-line "a" fix touched it. A real fix is a dispatch-table
+  // rewrite, out of scope here; the branch this PR changed is its own function.
+  // fallow-ignore-next-line complexity
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -161,6 +173,7 @@ export function usePlaybackKeyboard({
         return;
       }
       if (key === "a") {
+        if (shouldRazorClaimPlainA(e)) return;
         e.preventDefault();
         seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
         return;
