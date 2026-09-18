@@ -293,4 +293,39 @@ describe("useTimelineSelectionPreviewSync", () => {
     expect(applyDomSelection).toHaveBeenCalledWith(secondSelection);
     harness.cleanup();
   });
+
+  it("degrades to the resolvable subset once a group member never resolves", async () => {
+    // clip-2 is a permanent hold-out (deleted out of band, a stale id, or
+    // anything else that will never build a selection). Retrying forever
+    // would leave the whole group's selection stuck; after a few attempts,
+    // apply the members that did resolve instead.
+    const { firstSelection, timelineElements } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const onSelectionNotFound = vi.fn();
+    const buildDomSelectionForTimelineElement = vi.fn(async (element: TimelineElement) =>
+      element.id === "clip-1" ? firstSelection : null,
+    );
+    const selectedElementIds = new Set(["clip-1", "clip-2"]);
+    const harness = renderHarness();
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await harness.rerender({
+        selectedElementId: "clip-1",
+        selectedElementIds,
+        timelineElements: [...timelineElements],
+        domEditSelection: null,
+        domEditGroupSelections: [],
+        buildDomSelectionForTimelineElement,
+        applyDomSelection,
+        applyMarqueeSelection,
+        onSelectionNotFound,
+      });
+    }
+
+    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    expect(applyDomSelection).toHaveBeenCalledWith(firstSelection);
+    expect(applyMarqueeSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
 });

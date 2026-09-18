@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
@@ -26,6 +26,12 @@ interface UseTimelineSelectionPreviewSyncParams {
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
   onSelectionNotFound: () => void;
 }
+
+// A member still resolving (a just-dropped/pasted/duplicated clip, or a preview
+// still reloading) heals within a few retries. One that never will (deleted out
+// of band, a stale id) would otherwise bail forever; past this cap, apply
+// whatever did resolve instead of leaving the group selection stuck.
+const MAX_UNRESOLVED_SYNC_RETRIES = 3;
 
 function orderSelectedIds(ids: Set<string>, anchor: string | null): string[] {
   const ordered = [...ids];
@@ -63,6 +69,49 @@ function anchorIsOutsideSelection(anchor: string | null, selectedIds: string[]):
   return anchor !== null && !selectedIds.includes(anchor);
 }
 
+/**
+ * Tracks retries per selection (a new selectedKey starts a fresh budget).
+ * Returns whether this attempt is still within budget to bail and retry.
+ */
+function shouldRetryUnresolvedSelection(
+  attemptsRef: MutableRefObject<{ key: string; count: number }>,
+  selectedKey: string,
+): boolean {
+  const previous = attemptsRef.current;
+  const count = previous.key === selectedKey ? previous.count + 1 : 1;
+  attemptsRef.current = { key: selectedKey, count };
+  return count <= MAX_UNRESOLVED_SYNC_RETRIES;
+}
+
+async function resolveSelectionsForIds(
+  ids: string[],
+  timelineElements: TimelineElement[],
+  buildDomSelectionForTimelineElement: UseTimelineSelectionPreviewSyncParams["buildDomSelectionForTimelineElement"],
+): Promise<DomEditSelection[]> {
+  const selections: DomEditSelection[] = [];
+  for (const id of ids) {
+    const element = timelineElements.find((item) => (item.key ?? item.id) === id);
+    if (!element) continue;
+    const selection = await buildDomSelectionForTimelineElement(element);
+    if (selection) selections.push(selection);
+  }
+  return selections;
+}
+
+function applyResolvedSelections(
+  selections: DomEditSelection[],
+  applyDomSelection: UseTimelineSelectionPreviewSyncParams["applyDomSelection"],
+  applyMarqueeSelection: UseTimelineSelectionPreviewSyncParams["applyMarqueeSelection"],
+): void {
+  if (selections.length === 0) {
+    applyDomSelection(null, { revealPanel: false });
+  } else if (selections.length === 1) {
+    applyDomSelection(selections[0]);
+  } else {
+    applyMarqueeSelection(selections, false);
+  }
+}
+
 export function useTimelineSelectionPreviewSync({
   selectedElementId,
   selectedElementIds,
@@ -84,6 +133,7 @@ export function useTimelineSelectionPreviewSync({
   const domEditGroupSelectionsRef = useRef(domEditGroupSelections);
   const lastSyncedSelectedKeyRef = useRef("");
   const missingSelectionKeyRef = useRef("");
+  const unresolvedAttemptsRef = useRef<{ key: string; count: number }>({ key: "", count: 0 });
   domEditSelectionRef.current = domEditSelection;
   domEditGroupSelectionsRef.current = domEditGroupSelections;
 
@@ -134,27 +184,25 @@ export function useTimelineSelectionPreviewSync({
       onSelectionNotFound();
     };
     const syncSelection = async () => {
-      const selections: DomEditSelection[] = [];
-      for (const id of selectedIds) {
-        const element = timelineElements.find((item) => (item.key ?? item.id) === id);
-        if (!element) continue;
-        const selection = await buildDomSelectionForTimelineElement(element);
-        if (selection) selections.push(selection);
-      }
+      const selections = await resolveSelectionsForIds(
+        selectedIds,
+        timelineElements,
+        buildDomSelectionForTimelineElement,
+      );
       if (cancelled) return;
-      // The store is the source of truth: applying a partial set would silently drop
-      // members not yet resolvable, whether their DOM node isn't ready or they aren't
-      // in timelineElements yet (a just-created clip, still mid-reload). Bail instead;
-      // a later effect run applies the full set once every member has a live node.
       if (selections.length < selectedIds.length) {
-        warnSelectionMissingOnce();
-        // Delete acts on the canvas first, so only an anchor OUTSIDE this selection
-        // (an element the user isn't looking at) is cleared here, quietly — a member
-        // still resolving has no anchor yet and is left for the later run.
-        if (anchorIsOutsideSelection(currentAnchor, selectedIds)) {
-          applyDomSelection(null, { revealPanel: false, announce: false });
+        if (shouldRetryUnresolvedSelection(unresolvedAttemptsRef, selectedKey)) {
+          warnSelectionMissingOnce();
+          // Delete acts on the canvas first, so only an anchor OUTSIDE this selection
+          // (an element the user isn't looking at) is cleared here, quietly — a member
+          // still resolving has no anchor yet and is left for the later run.
+          if (anchorIsOutsideSelection(currentAnchor, selectedIds)) {
+            applyDomSelection(null, { revealPanel: false, announce: false });
+          }
+          return;
         }
-        return;
+      } else {
+        unresolvedAttemptsRef.current = { key: "", count: 0 };
       }
       missingSelectionKeyRef.current = "";
       logSelect("timeline-sync", {
@@ -162,13 +210,7 @@ export function useTimelineSelectionPreviewSync({
         had: currentIds.length,
         resolved: selections.length,
       });
-      if (selections.length === 0) {
-        applyDomSelection(null, { revealPanel: false });
-      } else if (selections.length === 1) {
-        applyDomSelection(selections[0]);
-      } else {
-        applyMarqueeSelection(selections, false);
-      }
+      applyResolvedSelections(selections, applyDomSelection, applyMarqueeSelection);
     };
 
     void syncSelection();
