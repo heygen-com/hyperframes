@@ -75,11 +75,9 @@ function formatLintCounts(
   return parts.join(", ");
 }
 
-/**
- * Full findings in verbose mode, a one-line summary otherwise. `pointer` (summary mode
- * only) picks where full output lives: "cli" (no Studio open) names --lint-verbose;
- * "studio" also names the lint command, since preview's stdout may be read by an agent.
- */
+/** Full findings in verbose mode, a one-line summary otherwise. `pointer` (summary
+ * mode) picks the hint: "cli" names --lint-verbose, "studio" also names the lint
+ * command, since preview's stdout may be read by an agent. */
 export type LintMessageMode =
   | { kind: "verbose"; options?: LintFormatOptions }
   | { kind: "summary"; pointer?: "cli" | "studio" };
