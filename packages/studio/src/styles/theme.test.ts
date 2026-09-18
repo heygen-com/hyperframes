@@ -27,13 +27,16 @@ function loadStylesheet(id: string, base: string) {
   return { path: file, base: path.dirname(file), content: readFileSync(file, "utf8") };
 }
 
-async function build(entry: string, candidates: string[]): Promise<string> {
-  const compiled = await compile(readFileSync(path.join(STYLES_DIR, entry), "utf8"), {
+async function buildSource(source: string, candidates: string[]): Promise<string> {
+  const compiled = await compile(source, {
     base: STYLES_DIR,
     loadStylesheet,
   });
   return compiled.build(candidates);
 }
+
+const build = (entry: string, candidates: string[]) =>
+  buildSource(readFileSync(path.join(STYLES_DIR, entry), "utf8"), candidates);
 
 function rootVariables(css: string): Map<string, string> {
   const block = css.match(/:root, :host \{([\s\S]*?)\n {2}\}/);
@@ -74,7 +77,7 @@ describe("studio theme", () => {
   });
 
   it("drops every Tailwind default color Studio does not use", async () => {
-    // `--color-*: initial` clears the stock palette. The entries Studio's
+    // `palette-reset.css` clears the stock palette. The entries Studio's
     // markup still references are re-declared as deprecated aliases (U12
     // removes them); anything outside that set must no longer resolve.
     const css = await build("studio.css", ["bg-neutral-750", "text-teal-500", "bg-neutral-800"]);
@@ -82,6 +85,16 @@ describe("studio theme", () => {
     expect(css).not.toContain("bg-neutral-750");
     expect(css).not.toContain("text-teal-500");
     expect(css).toContain(".bg-neutral-800 {");
+  });
+
+  it("leaves a host's stock Tailwind colors alone when only theme.css is imported", async () => {
+    const css = await buildSource('@import "tailwindcss";\n@import "./theme.css";', [
+      "bg-teal-500",
+      "text-accent",
+    ]);
+
+    expect(css).toContain(".bg-teal-500 {");
+    expect(css).toContain(".text-accent {");
   });
 
   it("keeps selection, playhead and accent as three distinct colors", () => {
