@@ -2814,6 +2814,7 @@ export function initSandboxRuntimeModular(): void {
     if (!assetsReadyStarted) {
       assetsReadyStarted = true;
       settleCompositionReadiness(document, ({ timedOut }) => {
+        if (state.tornDown) return;
         assetsSettled = true;
         postRuntimeMessage({ source: "hf-preview", type: "assets-ready", timedOut });
       });

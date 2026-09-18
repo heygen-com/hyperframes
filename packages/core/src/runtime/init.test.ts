@@ -3108,8 +3108,6 @@ describe("initSandboxRuntimeModular", () => {
     root.appendChild(img);
     document.body.appendChild(root);
     window.__timelines = { root: createMockTimeline(5) };
-    // Earlier tests' runtimes post their own assets-ready on a timer; let them drain first.
-    await new Promise((r) => setTimeout(r, 300));
     const outbound: Array<Record<string, unknown>> = [];
     vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
       if (typeof message === "object" && message !== null) {
