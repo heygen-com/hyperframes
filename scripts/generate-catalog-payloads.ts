@@ -13,6 +13,9 @@
  * composition as a `srcdoc` string, so JSON is the delivery format that both
  * survives the deploy and matches what the player wants.
  *
+ * An item needing `chrome://flags/#canvas-draw-element` gets
+ * `{ unsupported: "canvas-draw-element" }` at the same path instead of `{ html }`.
+ *
  * Usage:
  *   npx tsx scripts/generate-catalog-payloads.ts                    # all items
  *   npx tsx scripts/generate-catalog-payloads.ts --only data-chart  # single item
@@ -216,8 +219,11 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
 
     if (needsCanvasDrawElement(html)) {
-      console.log(`  – ${item.name}: needs canvas drawElement, keeping the recorded video`);
-      dropStalePayload();
+      // A marker file, not an absence: the catalog card reads this to show an honest
+      // "needs this flag" tile instead of silently falling back to nothing.
+      mkdirSync(dirname(outPath), { recursive: true });
+      writeFileSync(outPath, JSON.stringify({ unsupported: "canvas-draw-element" }), "utf-8");
+      console.log(`  – ${item.name}: needs canvas drawElement, marked unsupported`);
       return "skipped";
     }
     const assetTarget = { dir: join(payloadRoot, "assets"), urlBase: "/public/catalog/assets" };
