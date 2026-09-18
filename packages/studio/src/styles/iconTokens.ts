@@ -6,16 +6,9 @@ function asWeight(value: string): IconWeight | null {
   return (WEIGHTS as readonly string[]).includes(value) ? (value as IconWeight) : null;
 }
 
-/**
- * Studio's Phosphor defaults, read off `theme.css` so the icon size and weight
- * have one owner instead of a CSS variable and a JavaScript constant that drift
- * apart. Both are SVG attributes, not styles, so `var()` cannot be handed to
- * Phosphor directly and the values are resolved once at the app root.
- *
- * A missing or unrecognized value means the stylesheet has not loaded (or the
- * token was renamed); Phosphor's own defaults are used rather than a second
- * copy of the token values.
- */
+/** Studio's Phosphor defaults, read off `theme.css` so size and weight have one
+ * owner instead of a CSS variable and a JS constant that drift. A missing or
+ * unrecognized value falls back to Phosphor's own default. */
 export function readIconTokens(root: Element = document.documentElement): {
   size: string;
   weight: IconWeight;

@@ -1,19 +1,9 @@
 // @vitest-environment happy-dom
 
 /**
- * The theme file is the single source of every design value in Studio, so the
- * things that can silently break it are checked here rather than by eye:
- *
- *  - a token that stops being emitted as a CSS custom property (direct CSS and
- *    canvas code read `var(--color-accent)`, not a utility class),
- *  - a utility that stops compiling,
- *  - the default Tailwind palette leaking back in,
- *  - the published JS preset drifting away from the CSS it shadows,
- *  - the legacy palette entries Studio's markup still uses drifting away from
- *    the Tailwind defaults they were copied from.
- *
- * Studio's real entry stylesheet is compiled, not a fixture, so the assertions
- * cover the `@import` wiring in `studio.css` as well as `theme.css` itself.
+ * Guards the ways `theme.css` can silently break: a token dropped as a CSS
+ * custom property, a utility that stops compiling, the stock Tailwind palette
+ * leaking back in, or the JS preset / legacy colours drifting from what they copy.
  */
 
 import { createRequire } from "node:module";
