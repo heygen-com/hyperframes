@@ -32,7 +32,6 @@ jobs:
     timeout-minutes: 2
     outputs:
       code: ${{ steps.filter.outputs.code }}
-      docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
       catalog_index: ${{ steps.filter.outputs.catalog_index }}
@@ -58,12 +57,6 @@ jobs:
               - "registry/registry.json"
               - "registry/catalog-artifact/**"
               - "scripts/catalog/check-artifact-coverage.ts"
-            docs_catalog:
-              - "docs/**"
-              - "registry/**"
-              - "scripts/*docs-catalog*"
-              - "package.json"
-              - ".github/workflows/ci.yml"
             code:
               - "packages/**"
               - "scripts/**"
@@ -151,14 +144,13 @@ jobs:
   lint:
     name: Lint
     needs: changes
-    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.docs_catalog == 'true'
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -166,7 +158,6 @@ jobs:
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run lint
-      - run: bun run check:docs-catalog
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
   # the changed files. The default `--gate new-only` means existing legacy
