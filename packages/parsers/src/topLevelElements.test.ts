@@ -17,9 +17,14 @@ describe("topLevelElements", () => {
         n("div", { "data-start": "1", id: "inner" }),
       ]),
       n("div", { "data-start": "2", id: "t" }, [n("span", { "data-start": "3", id: "nested" })]),
-      n("script"),
+      n("script", { "data-start": "9", id: "s" }),
+      n("NOSCRIPT", { "data-start": "9", id: "ns" }),
+      n("div", { "data-track-index": "2", id: "lane" }, [n("div", { id: "deep" })]),
+      n("IMG", { id: "pic" }),
+      n("div", { class: "clip", id: "classOnly" }),
+      n("div", { "data-duration": "4", id: "durOnly" }),
     ]);
-    expect(topLevelElements(root).map((e) => e.id)).toEqual(["v", "host", "t"]);
+    expect(topLevelElements(root).map((e) => e.id)).toEqual(["v", "host", "t", "lane", "pic"]);
   });
 });
 
@@ -27,6 +32,12 @@ describe("trackKindOf", () => {
   it.each([
     [n("div", { "data-track-kind": "Captions" }), "captions", "attribute"],
     [n("audio"), "audio", "tag"],
+    [n("VIDEO"), "video", "tag"],
+    [
+      n("div", { class: "x caption-line", "data-composition-src": "a.html" }),
+      "captions",
+      "legacy-captions",
+    ],
     [n("div", { "data-composition-src": "a.html" }), "graphics", "sub-composition"],
     [n("div", { "data-composition-id": "captions" }), "captions", "legacy-captions"],
     [

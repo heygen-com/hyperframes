@@ -8,7 +8,8 @@ export type StructureNode<N = unknown> = {
 export type TrackKind = "video" | "audio" | "captions" | "graphics";
 export type TrackKindSource = "attribute" | "tag" | "legacy-captions" | "sub-composition";
 
-const NON_RENDERED_TAGS = new Set(["script", "style", "template", "link", "meta"]);
+const NON_RENDERED_TAGS = new Set(["script", "style", "template", "noscript", "link", "meta"]);
+const MEDIA_TAGS = new Set(["video", "audio", "img"]);
 const TRACK_KINDS: readonly string[] = ["video", "audio", "captions", "graphics"];
 
 export function isSubCompositionHost(node: StructureNode): boolean {
@@ -18,14 +19,13 @@ export function isSubCompositionHost(node: StructureNode): boolean {
   );
 }
 
+/** Mirrors the runtime's clip selector: [data-start], [data-track-index], video, audio, img. */
 export function isTimedElement(node: StructureNode): boolean {
-  const { attrs, tag } = node;
+  const { attrs } = node;
   return (
     attrs["data-start"] !== undefined ||
-    attrs["data-duration"] !== undefined ||
-    tag === "video" ||
-    tag === "audio" ||
-    /(?:^|\s)clip(?:\s|$)/.test(attrs.class ?? "")
+    attrs["data-track-index"] !== undefined ||
+    MEDIA_TAGS.has(node.tag.toLowerCase())
   );
 }
 
@@ -36,7 +36,7 @@ export function isTimedElement(node: StructureNode): boolean {
 export function topLevelElements<N extends StructureNode<N>>(root: N): N[] {
   const rows: N[] = [];
   const visit = (node: N): void => {
-    if (NON_RENDERED_TAGS.has(node.tag)) return;
+    if (NON_RENDERED_TAGS.has(node.tag.toLowerCase())) return;
     if (isSubCompositionHost(node) || isTimedElement(node)) rows.push(node);
     else node.children.forEach(visit);
   };
@@ -48,7 +48,8 @@ export function trackKindOf(node: StructureNode): { kind: TrackKind; source: Tra
   const explicit = node.attrs["data-track-kind"]?.trim().toLowerCase();
   if (explicit && TRACK_KINDS.includes(explicit))
     return { kind: explicit as TrackKind, source: "attribute" };
-  if (node.tag === "video" || node.tag === "audio") return { kind: node.tag, source: "tag" };
+  const tag = node.tag.toLowerCase();
+  if (tag === "video" || tag === "audio") return { kind: tag, source: "tag" };
   if (isSubCompositionHost(node)) {
     const legacy =
       node.attrs["data-composition-id"] === "captions" ||
