@@ -1319,6 +1319,17 @@ describe("TimelineClipDiamonds", () => {
     act(() => root.unmount());
   });
 
+  it("keeps the ease button hover-only on a segment too narrow to show it at rest", () => {
+    // Same narrow clip as above: showing the button at rest here would sit on
+    // top of both diamonds instead of clear of them.
+    const { host, root } = renderSegmentLane(false, 40);
+    const ease = host.querySelector<HTMLButtonElement>("[data-keyframe-ease-button]");
+
+    expect(ease?.classList.contains("opacity-0")).toBe(true);
+    expect(ease?.classList.contains("opacity-40")).toBe(false);
+    act(() => root.unmount());
+  });
+
   it("hides the inline ease button on a segment with no source animation id", () => {
     // A runtime-scanned keyframe has no animationId, so there is no tween to
     // target; the segment ending on it must not render a (dead) ease button.
