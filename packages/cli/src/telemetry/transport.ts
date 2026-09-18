@@ -155,7 +155,7 @@ export function flushSync(): void {
         "-e",
         `fetch(${JSON.stringify(`${POSTHOG_HOST}/batch/`)},{method:"POST",headers:{"Content-Type":"application/json"},body:${JSON.stringify(payload)},signal:AbortSignal.timeout(${FLUSH_TIMEOUT_MS})}).catch(()=>{})`,
       ],
-      { detached: true, stdio: "ignore" },
+      { detached: true, stdio: "ignore", windowsHide: true },
     );
     // Let the parent exit without waiting for the child
     child.unref();
