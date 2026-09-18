@@ -49,7 +49,7 @@ import {
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const payloadRoot = resolve(repoRoot, "docs/public/catalog");
+export const payloadRoot = resolve(repoRoot, "docs/public/catalog");
 
 /**
  * Inlining budget for a single payload. A payload is fetched when the reader
@@ -179,7 +179,7 @@ function renderEntry(
   return { entry, fromSnippet: true };
 }
 
-async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
+export async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
 
   // An item that stops qualifying has to lose its payload, or the page
