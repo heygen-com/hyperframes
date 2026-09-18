@@ -87,8 +87,11 @@ function applyFileDrop(
 ): boolean {
   if (!onFileDrop || transfer.files.length === 0) return false;
   // The batch sequences end-to-end from ONE start (buildTimelineFileDropPlacements),
-  // so the snap is decided once, off the first file's kind.
-  const isAudio = getTimelineAssetKind(transfer.files[0].name) === "audio";
+  // so the snap is decided once, off the whole batch — ALL-audio, not just the
+  // first file, so a Finder selection's order can't flip the result.
+  const isAudio = Array.from(transfer.files).every(
+    (file) => getTimelineAssetKind(file.name) === "audio",
+  );
   invokeDropCallback(() =>
     onFileDrop(
       Array.from(transfer.files),

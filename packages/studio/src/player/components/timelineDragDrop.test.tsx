@@ -275,5 +275,34 @@ describe("useTimelineAssetDrop", () => {
       expect(onFileDrop).toHaveBeenCalledWith([file], { start: 0, track: 0 });
       act(() => view.root.unmount());
     });
+
+    it("an all-audio file batch dropped onto an empty track 0 is not snapped", () => {
+      const onFileDrop = vi.fn();
+      const view = renderHarness(vi.fn(), 1, { onFileDrop });
+      const file = new File(["data"], "song.mp3", { type: "audio/mpeg" });
+      const transfer = fileTransfer([file]);
+
+      dropAt(view.api, transfer, 80, 100);
+
+      expect(onFileDrop).toHaveBeenCalledWith([file], { start: 2, track: 0 });
+      act(() => view.root.unmount());
+    });
+
+    it("a mixed audio+video file batch still snaps, regardless of drop order", () => {
+      const video = new File(["data"], "clip.mp4", { type: "video/mp4" });
+      const audio = new File(["data"], "song.mp3", { type: "audio/mpeg" });
+
+      const audioFirst = vi.fn();
+      const audioFirstView = renderHarness(vi.fn(), 1, { onFileDrop: audioFirst });
+      dropAt(audioFirstView.api, fileTransfer([audio, video]), 80, 100);
+      expect(audioFirst).toHaveBeenCalledWith([audio, video], { start: 0, track: 0 });
+      act(() => audioFirstView.root.unmount());
+
+      const videoFirst = vi.fn();
+      const videoFirstView = renderHarness(vi.fn(), 1, { onFileDrop: videoFirst });
+      dropAt(videoFirstView.api, fileTransfer([video, audio]), 80, 100);
+      expect(videoFirst).toHaveBeenCalledWith([video, audio], { start: 0, track: 0 });
+      act(() => videoFirstView.root.unmount());
+    });
   });
 });
