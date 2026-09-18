@@ -1,47 +1,28 @@
 ---
 title: "Glass Shard Title"
 description: "Glass shards fly in through fog and tile themselves into the headline."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/glass-shard-title.json"
+  compositionId="glass-shard-title"
+  compositionSrc="compositions/glass-shard-title/glass-shard-title.html"
+  title="Glass Shard Title"
+  description="Glass shards fly in through fog and tile themselves into the headline."
+  variables={[]}
+  meta={{"duration":12.16,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":348}}
+  attribution={{"path":"registry/blocks/glass-shard-title","tags":["3d-motion","title-card","glass","voronoi","shards","fog","hdr"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/glass-shard-title/glass-shard-title.html"
+>
 
-<InstallCommand command="npx hyperframes add glass-shard-title" item="glass-shard-title" />
+<CatalogSlot slot="code">
 
-That writes `compositions/glass-shard-title/glass-shard-title.html`, plus 10 supporting files under `compositions/glass-shard-title/assets/`, `compositions/glass-shard-title/assets/fonts/`, and `compositions/glass-shard-title/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="glass-shard-title preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/glass-shard-title.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glass-shard-title.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 12.16 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="glass-shard-title"
-  data-composition-src="compositions/glass-shard-title/glass-shard-title.html"
-  data-start="0"
-  data-duration="12.16"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="glass-shard-title.html">
-
-```html
+```html glass-shard-title.html
 <!doctype html>
 <html
   lang="en"
@@ -392,7 +373,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add glass-shard-title" item="glass-shard-title" />
+
+That writes `compositions/glass-shard-title/glass-shard-title.html`, plus 11 supporting files under `compositions/glass-shard-title/assets/`, `compositions/glass-shard-title/assets/fonts/`, and `compositions/glass-shard-title/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 12.16 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="glass-shard-title"
+  data-composition-src="compositions/glass-shard-title/glass-shard-title.html"
+  data-start="0"
+  data-duration="12.16"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -403,3 +413,7 @@ Tagged `3d-motion` `title-card` `glass` `voronoi` `shards` `fog` `hdr`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

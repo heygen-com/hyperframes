@@ -1,28 +1,28 @@
 ---
 title: "World Map"
 description: "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/world-map.json"
+  compositionId="world-map"
+  compositionSrc="compositions/world-map.html"
+  title="World Map"
+  description="Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection"
+  variables={[]}
+  meta={{"duration":14,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":435}}
+  attribution={{"path":"registry/blocks/world-map","tags":["data","map","geography","world","choropleth"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/world-map/world-map.html"
+>
 
-<InstallCommand command="npx hyperframes add world-map" item="world-map" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/world-map.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="world-map preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/world-map.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/world-map.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="world-map.html">
-
-```html
+```html world-map.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -460,7 +460,17 @@ That writes one file: `compositions/world-map.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add world-map" item="world-map" />
+
+That writes one file: `compositions/world-map.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
 
 ## Usage
 
@@ -479,3 +489,7 @@ Tagged `data` `map` `geography` `world` `choropleth`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

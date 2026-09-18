@@ -1,34 +1,28 @@
 ---
 title: "Liquid Glass Widgets"
 description: "Frosted glass stat cards, showcase panel and pill chips over an aurora shader background"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/liquid-glass-widgets.json"
+  compositionId="liquid-glass-widgets"
+  compositionSrc="compositions/liquid-glass-widgets.html"
+  title="Liquid Glass Widgets"
+  description="Frosted glass stat cards, showcase panel and pill chips over an aurora shader background"
+  variables={[]}
+  meta={{"duration":8,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":763}}
+  attribution={{"path":"registry/blocks/liquid-glass-widgets","tags":["html-in-canvas","liquid-glass-html-in-canvas","webgpu"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/liquid-glass-widgets/liquid-glass-widgets.html"
+>
 
-<InstallCommand command="npx hyperframes add liquid-glass-widgets" item="liquid-glass-widgets" />
+<CatalogSlot slot="code">
 
-That writes `compositions/liquid-glass-widgets.html`, plus 2 supporting files under `compositions/assets/` and `compositions/lib/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="liquid-glass-widgets preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/liquid-glass-widgets.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-widgets.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title="liquid-glass-widgets.html">
-
-```html
+```html liquid-glass-widgets.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -794,7 +788,23 @@ That writes `compositions/liquid-glass-widgets.html`, plus 2 supporting files un
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add liquid-glass-widgets" item="liquid-glass-widgets" />
+
+That writes `compositions/liquid-glass-widgets.html`, plus 2 supporting files under `compositions/assets/` and `compositions/lib/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
 
 ## Usage
 
@@ -813,3 +823,7 @@ Tagged `html-in-canvas` `liquid-glass-html-in-canvas` `webgpu`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

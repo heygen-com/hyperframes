@@ -1,28 +1,28 @@
 ---
 title: "US Bubble Map"
 description: "Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/us-map-bubble.json"
+  compositionId="us-map-bubble"
+  compositionSrc="compositions/us-map-bubble.html"
+  title="US Bubble Map"
+  description="Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map"
+  variables={[]}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":477}}
+  attribution={{"path":"registry/blocks/us-map-bubble","tags":["data","map","geography","usa","bubble","cities"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/us-map-bubble/us-map-bubble.html"
+>
 
-<InstallCommand command="npx hyperframes add us-map-bubble" item="us-map-bubble" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/us-map-bubble.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="us-map-bubble preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/us-map-bubble.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-bubble.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="us-map-bubble.html">
-
-```html
+```html us-map-bubble.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -502,7 +502,17 @@ That writes one file: `compositions/us-map-bubble.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add us-map-bubble" item="us-map-bubble" />
+
+That writes one file: `compositions/us-map-bubble.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
 
 ## Usage
 
@@ -521,3 +531,7 @@ Tagged `data` `map` `geography` `usa` `bubble` `cities`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

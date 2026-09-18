@@ -1,29 +1,29 @@
 ---
 title: "iPhone & MacBook 3D Showcase"
 description: "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="vfx-iphone-device"
+  compositionSrc="compositions/vfx-iphone-device.html"
+  title="iPhone & MacBook 3D Showcase"
+  description="Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable."
+  variables={[]}
+  meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":849}}
+  attribution={{"path":"registry/blocks/vfx-iphone-device","tags":["html-in-canvas","3d","device","iphone","macbook","gltf"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/vfx-iphone-device/vfx-iphone-device.html"
+>
 
-<InstallCommand command="npx hyperframes add vfx-iphone-device" item="vfx-iphone-device" />
+<CatalogSlot slot="code">
 
-That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under `models/`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title="vfx-iphone-device.html">
-
-```html
+```html vfx-iphone-device.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -875,7 +875,23 @@ That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add vfx-iphone-device" item="vfx-iphone-device" />
+
+That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under `models/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
 
 ## Usage
 
@@ -894,3 +910,7 @@ Tagged `html-in-canvas` `3d` `device` `iphone` `macbook` `gltf`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

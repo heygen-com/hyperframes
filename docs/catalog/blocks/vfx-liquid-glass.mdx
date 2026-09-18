@@ -1,36 +1,29 @@
 ---
 title: "Liquid Glass"
 description: "VFX composition block"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="vfx-liquid-glass"
+  compositionSrc="compositions/vfx-liquid-glass.html"
+  title="Liquid Glass"
+  description="VFX composition block"
+  variables={[]}
+  meta={{"duration":20,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":752}}
+  attribution={{"path":"registry/blocks/vfx-liquid-glass","tags":["html-in-canvas","webgl"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/vfx-liquid-glass/vfx-liquid-glass.html"
+>
 
-<InstallCommand command="npx hyperframes add vfx-liquid-glass" item="vfx-liquid-glass" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/vfx-liquid-glass.html`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Change the colors
-
-Set these CSS variables on the block:
-
-- `--bg-color` — Background. Defaults to `#030407`.
-- `--accent-color` — Accent. Defaults to `#00d4ff`.
-
-## Source
-
-<Accordion title="vfx-liquid-glass.html">
-
-```html
+```html vfx-liquid-glass.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -785,7 +778,30 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add vfx-liquid-glass" item="vfx-liquid-glass" />
+
+That writes one file: `compositions/vfx-liquid-glass.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
+
+## Change the colors
+
+Set these CSS variables on the block:
+
+- `--bg-color` — Background. Defaults to `#030407`.
+- `--accent-color` — Accent. Defaults to `#00d4ff`.
 
 ## Usage
 
@@ -804,3 +820,7 @@ Tagged `html-in-canvas` `webgl`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

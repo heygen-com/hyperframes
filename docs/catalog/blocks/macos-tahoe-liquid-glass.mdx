@@ -1,29 +1,29 @@
 ---
 title: "macOS Tahoe Liquid Glass Desktop"
 description: "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="macos-tahoe-liquid-glass"
+  compositionSrc="compositions/macos-tahoe-liquid-glass.html"
+  title="macOS Tahoe Liquid Glass Desktop"
+  description="3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move."
+  variables={[]}
+  meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":1461}}
+  attribution={{"path":"registry/blocks/macos-tahoe-liquid-glass","tags":["html-in-canvas","3d","macos","tahoe","gltf"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/macos-tahoe-liquid-glass/macos-tahoe-liquid-glass.html"
+>
 
-<InstallCommand command="npx hyperframes add macos-tahoe-liquid-glass" item="macos-tahoe-liquid-glass" />
+<CatalogSlot slot="code">
 
-That writes `compositions/macos-tahoe-liquid-glass.html`, plus 18 supporting files under `models/`, `assets/wallpapers/`, and `assets/icons/`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title="macos-tahoe-liquid-glass.html">
-
-```html
+```html macos-tahoe-liquid-glass.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -1487,7 +1487,23 @@ That writes `compositions/macos-tahoe-liquid-glass.html`, plus 18 supporting fil
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add macos-tahoe-liquid-glass" item="macos-tahoe-liquid-glass" />
+
+That writes `compositions/macos-tahoe-liquid-glass.html`, plus 18 supporting files under `models/`, `assets/wallpapers/`, and `assets/icons/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
 
 ## Usage
 
@@ -1506,3 +1522,7 @@ Tagged `html-in-canvas` `3d` `macos` `tahoe` `gltf`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
