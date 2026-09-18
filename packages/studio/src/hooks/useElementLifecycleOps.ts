@@ -389,15 +389,7 @@ export function useElementLifecycleOps({
     [commitDomEditPatchBatches, onReorderShadow],
   );
 
-  const handleDomEditElementDelete = useCallback(
-    async (selection: DomEditSelection) => {
-      await handleDomEditElementsDelete([selection]);
-    },
-    [handleDomEditElementsDelete],
-  );
-
   return {
-    handleDomEditElementDelete,
     handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   };

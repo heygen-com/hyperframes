@@ -649,6 +649,57 @@ window.__timelines = { main: tl };</script></div>
     for (const candidate of published) candidate.dispose();
   });
 
+  it("does not resurrect an element a prior REST write already deleted, even with a stale live session", async () => {
+    // A delete persists via the server REST path, then a same-gesture ripple
+    // move reaches an SDK-eligible batch persist while `live` was never
+    // reloaded. Prove the candidate rebases on the post-delete disk bytes.
+    const twoElementHtml = `<!DOCTYPE html><html data-composition-variables='[]'><body>
+<div data-hf-id="hf-stage" data-hf-root>
+<div data-hf-id="hf-a" data-start="0" data-duration="2"></div>
+<div data-hf-id="hf-b" data-start="5" data-duration="2"></div>
+</div>
+</body></html>`;
+    const live = await openComposition(twoElementHtml, { history: false });
+
+    // Disk already reflects hf-b's deletion — a separate write that completed
+    // before this persist started, exactly like the delete's own REST call
+    // that `handleTimelineElementsDelete` awaits before the ripple begins.
+    const postDelete = await openComposition(twoElementHtml, { history: false });
+    postDelete.removeElement("hf-b");
+    let disk = postDelete.serialize();
+    postDelete.dispose();
+    expect(disk).not.toContain("hf-b");
+
+    const writeProjectFile = vi.fn(async (_path: string, content: string) => {
+      disk = content;
+    });
+    const deps = {
+      editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+      writeProjectFile,
+      readProjectFile: vi.fn(async () => disk),
+      reloadPreview: vi.fn(),
+      publishSession: vi.fn().mockReturnValue("published"),
+    };
+
+    // The ripple: only survivors move, mirroring resolveShiftedElements — this
+    // never touches hf-b, which `live` (unlike disk) still believes exists.
+    const result = await persistSdkCandidateMutation(
+      live,
+      "/comp.html",
+      twoElementHtml,
+      deps,
+      (candidate) => candidate.setTiming("hf-a", { start: 3 }),
+    );
+
+    expect(result.status).toBe("committed");
+    expect(disk).not.toContain("hf-b");
+    const written = await openComposition(disk, { history: false });
+    expect(written.getElement("hf-a")?.start).toBe(3);
+    expect(written.getElement("hf-b")).toBeNull();
+    written.dispose();
+    live.dispose();
+  });
+
   it("fails instead of cloning stale bytes when the authoritative queued read rejects", async () => {
     const live = await openComposition(html, { history: false });
     let disk = html;
