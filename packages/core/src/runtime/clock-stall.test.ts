@@ -139,6 +139,24 @@ describe("TransportClock stall policy — interactive playback", () => {
     expect(reported).toBeCloseTo(2, 1);
   });
 
+  it("a real unread gap while audio was tracking correctly is not mistaken for a stall once audio drops", () => {
+    const { clock, advance } = createClock({ duration: 30 });
+    const audioEl = { currentTime: 0, paused: false } as HTMLMediaElement;
+    clock.play();
+    clock.attachAudioSource({ el: audioEl, compositionStart: 0, mediaStart: 0 });
+    expect(clock.now()).toBe(0);
+    advance(100);
+    audioEl.currentTime = 0.1;
+    expect(clock.now()).toBeCloseTo(0.1, 5); // audio-authoritative, last confirmed position
+    // Nothing reads the clock for 5 real seconds — audio itself was still
+    // playing the whole time (native audio isn't gated by JS scheduling),
+    // there was no render stall here, and the composition should read as
+    // if 5s of real playback happened, not ~33ms of corrected "stall".
+    advance(5000);
+    Object.assign(audioEl, { paused: true }); // audio becomes unavailable right as reads resume
+    expect(clock.now()).toBeCloseTo(5.1, 1);
+  });
+
   it("a long real gap while genuinely paused is not a stall — resuming play() does not inherit it", () => {
     const { clock, advance } = createClock();
     clock.play();

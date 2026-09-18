@@ -46,12 +46,14 @@ export class TransportClock {
     if (this._playStartMs === null) return this._baseTime;
 
     // Audio-master: when an audio source is attached, derive time from it.
-    // Drift is impossible because audio IS the clock. `_lastReadMs` still
-    // has to move on every one of these reads (see the PR body): without
-    // that, a monotonic read from before audio took over stays the
-    // comparison point for however long audio stays authoritative, and
-    // whenever this later falls back to monotonic the whole audio-answered
-    // stretch reads as one giant stall.
+    // Drift is impossible because audio IS the clock — and because a gap
+    // since the last read says nothing about whether audio was quietly
+    // tracking correctly the whole time, this can never be evidence of a
+    // stall (see the PR body). Clearing `_lastReadMs` here, the same as a
+    // seek, means the NEXT monotonic read starts fresh from `_playStartMs`
+    // (untouched since play()/seek()/setRate(), so still an accurate real-
+    // time anchor) instead of being compared against a timestamp that can
+    // no longer mean anything once audio stops answering.
     if (this._audioSource) {
       let audioTime: number | null = null;
       if ("currentTimeSeconds" in this._audioSource) {
@@ -66,7 +68,7 @@ export class TransportClock {
         }
       }
       if (audioTime !== null) {
-        this._lastReadMs = this._nowMs();
+        this._lastReadMs = null;
         if (Number.isFinite(this._duration) && audioTime >= this._duration) {
           return this._duration;
         }
