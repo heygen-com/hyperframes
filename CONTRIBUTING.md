@@ -97,7 +97,7 @@ before merge, listed at the end.
 
 1. Create `registry/<blocks|components>/<name>/registry-item.json` following the [schema](packages/core/schemas/registry-item.json)
 2. For components: include a `demo.html`
-3. Run `npx hyperframes lint` and `npx hyperframes validate` on your HTML
+3. Run `npx hyperframes lint` and `npx hyperframes validate` on your HTML. Compositions must not fetch data at render time — inline it. Geographic blocks bake their projected geometry with `bun scripts/catalog/bake-map-geometry.ts` (add the block there rather than fetching an atlas in the page)
 4. Test the install flow: `hyperframes add <name> --dir /tmp/test-project`
 5. Regenerate the manifest: `npx tsx scripts/generate-registry-items.ts`
 

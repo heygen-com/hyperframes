@@ -3569,3 +3569,88 @@ describe("SVG draw-on rules", () => {
     });
   });
 });
+
+describe("gsap_timeline_registered_behind_network_fetch", () => {
+  const CODE = "gsap_timeline_registered_behind_network_fetch";
+  const host = (script: string) => `
+<html><body>
+  <div data-composition-id="map" data-width="1920" data-height="1080"><svg><g class="states"></g></svg></div>
+  <script>${script}</script>
+</body></html>`;
+  const TWEEN = `tl.to(".states", { opacity: 1, duration: 1 }, 0);`;
+  const REGISTER = `window.__timelines = window.__timelines || {}; window.__timelines["map"] = tl;`;
+  const flags = async (script: string) =>
+    (await lintHyperframeHtml(host(script))).findings.filter((f) => f.code === CODE);
+
+  it("flags a timeline registered inside a fetch().then() chain", async () => {
+    const found = await flags(`
+      const tl = gsap.timeline({ paused: true });
+      fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json")
+        .then((r) => r.json())
+        .then((us) => { ${TWEEN} ${REGISTER} });`);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "error", snippet: "fetch(" });
+  });
+
+  it("flags d3.json(...).then, an awaited fetch, and an object-literal registration", async () => {
+    for (const script of [
+      `var tl = gsap.timeline({ paused: true });
+       d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(function (w) {
+         ${TWEEN} ${REGISTER}
+       });`,
+      `(async () => {
+         const tl = gsap.timeline({ paused: true });
+         const data = await (await fetch("data.json")).json();
+         ${TWEEN} window.__timelines = window.__timelines || {}; window.__timelines.map = tl;
+       })();`,
+      `const tl = gsap.timeline({ paused: true });
+       fetch("data.json").then((r) => r.json()).then((d) => { ${TWEEN} window.__timelines = { map: tl }; });`,
+      `function load() {
+         const tl = gsap.timeline({ paused: true });
+         fetch("data.json").then((d) => { ${TWEEN} ${REGISTER} });
+       }
+       load();`,
+    ]) {
+      expect(await flags(script), script).toHaveLength(1);
+    }
+  });
+
+  it("does not flag a synchronous registration, whatever requests surround it", async () => {
+    for (const script of [
+      // inline data, no request at all
+      `const MAP_GEOMETRY = { features: [{ id: "01", d: "M0,0L1,1Z" }] };
+       const tl = gsap.timeline({ paused: true }); ${TWEEN} ${REGISTER}`,
+      // fire-and-forget telemetry with its own .then, registration after the chain
+      `fetch("/telemetry").then((r) => r.ok);
+       const tl = gsap.timeline({ paused: true }); ${TWEEN} ${REGISTER}`,
+      // a request inside a helper; the registration is outside it
+      `function warm() { fetch("/ping").then((r) => r.json()); }
+       const tl = gsap.timeline({ paused: true }); ${TWEEN} ${REGISTER}`,
+      // an awaited non-network readiness gate, then a request, then a sync registration
+      `(async () => {
+         await document.fonts.ready;
+         fetch("/ping");
+         const tl = gsap.timeline({ paused: true }); ${TWEEN} ${REGISTER}
+       })();`,
+      // a .then chain that starts only AFTER the registration
+      `const tl = gsap.timeline({ paused: true }); ${TWEEN} ${REGISTER}
+       fetch("/after").then((r) => r.json()).then((d) => console.log(d));`,
+      // a request that only appears in a comment
+      `// fetch(url).then(() => { window.__timelines["map"] = tl; })
+       const tl = gsap.timeline({ paused: true }); ${TWEEN} ${REGISTER}`,
+      // a string that looks like a request
+      `const tl = gsap.timeline({ paused: true });
+       const note = "fetch(x).then(() => { window.__timelines['map'] = tl })";
+       ${TWEEN} ${REGISTER}`,
+    ]) {
+      expect(await flags(script), script).toHaveLength(0);
+    }
+  });
+
+  it("reports once per script even when several requests feed the registration", async () => {
+    const found = await flags(`
+      const tl = gsap.timeline({ paused: true });
+      fetch("a.json").then((a) => fetch("b.json").then((b) => { ${TWEEN} ${REGISTER} }));`);
+    expect(found).toHaveLength(1);
+  });
+});
