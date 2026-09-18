@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Pendulum Swing - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 40px;
+        /* ponytail: scale on non-GSAP wrapper — safe, GSAP only animates
+           --hf-swing-angle on the pendulum root below. */
+        transform: scale(1.4);
+        transform-origin: center center;
+      }
+      /* The hook the sign hangs from, drawn above the pivot for context. */
+      .swing-rig {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .swing-hook {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #a1a1aa;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+      }
+      .swing-label {
+        margin-top: 8px;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .hf-catalog-pendulum-swing {
+        display: inline-block;
+        transform-origin: var(--hf-swing-origin, 50% 0%);
+        transform: rotate(
+          calc(
+            var(--hf-swing-angle, 0) * var(--hf-swing-dir, 1) *
+              var(--hf-swing-max, 34deg)
+          )
+        );
+      }
+      .hf-catalog-pendulum-swing__body {
+        display: inline-block;
+        padding: 22px 40px;
+        border-radius: 14px;
+        background: var(--hf-swing-bg, #18181b);
+        color: var(--hf-swing-fg, #fafafa);
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 800;
+        font-size: 54px;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="pendulum-swing-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="swing-label">Pendulum Swing</div>
+        <div class="swing-rig">
+          <div class="swing-hook"></div>
+          <div
+            class="hf-catalog-pendulum-swing"
+            data-composition-variables='[
+    { "id": "pivot", "type": "enum", "role": "layout", "label": "Pivot", "description": "Where the content hangs from. The swing rotates about this point, so the top edge stays pinned.", "default": "top-center", "options": [{ "value": "top-center", "label": "Top center" }, { "value": "top-left", "label": "Top left" }, { "value": "top-right", "label": "Top right" }] },
+    { "id": "amplitude", "type": "enum", "role": "motion", "label": "Amplitude", "description": "How far the first swing reaches before it settles. Every later swing scales with it, so the pendulum still comes to rest upright.", "default": "standard", "options": [{ "value": "gentle", "label": "Gentle" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side the pendulum swings in from: right lifts the first swing clockwise, left mirrors it.", "default": "right", "options": [{ "value": "right", "label": "Right" }, { "value": "left", "label": "Left" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Content colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+          >
+            <span class="hf-catalog-pendulum-swing__body">Hanging&nbsp;Sign</span>
+          </div>
+        </div>
+      </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var pivots = {
+            "top-center": "50% 0%",
+            "top-left": "0% 0%",
+            "top-right": "100% 0%",
+          };
+          var amplitudes = { gentle: "18deg", standard: "34deg", wide: "52deg" };
+          var directions = { right: 1, left: -1 };
+          // Each tone is a fill/text pair so the sign keeps AA contrast.
+          var tones = {
+            ink: { bg: "#18181b", fg: "#fafafa" },
+            paper: { bg: "#fafafa", fg: "#18181b" },
+            accent: { bg: "var(--brand, #34d399)", fg: "#0b0b0c" },
+          };
+
+          var origin = pivots[pick(pivots, vars.pivot, "top-center")];
+          var maxAngle = amplitudes[pick(amplitudes, vars.amplitude, "standard")];
+          var dir = directions[pick(directions, vars.direction, "right")];
+          var tone = tones[pick(tones, vars.tone, "ink")];
+
+          var roots = document.querySelectorAll(".hf-catalog-pendulum-swing");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-swing-origin", origin);
+            root.style.setProperty("--hf-swing-max", maxAngle);
+            root.style.setProperty("--hf-swing-dir", String(dir));
+            root.style.setProperty("--hf-swing-bg", tone.bg);
+            root.style.setProperty("--hf-swing-fg", tone.fg);
+          }
+        })();
+      </script>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.4;
+        // A pendulum does not snap upright in a single overshoot; it swings
+        // through the rest point several times, each pass smaller, until
+        // friction stills it. This ease is that motion: a cosine (the swings)
+        // inside an exponential decay (the damping). It is normalised so the
+        // tween still lands exactly upright (angle 0) at the end, and rotation
+        // stays sub-pixel under the seek-by-frame capture engine.
+        const swingSettle = (p) =>
+          1 - Math.exp(-2.3 * p) * Math.cos(3.5 * Math.PI * p);
+        tl.fromTo(
+          ".hf-catalog-pendulum-swing",
+          { "--hf-swing-angle": 1 },
+          {
+            "--hf-swing-angle": 0,
+            duration: 2.9,
+            ease: swingSettle,
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["pendulum-swing-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

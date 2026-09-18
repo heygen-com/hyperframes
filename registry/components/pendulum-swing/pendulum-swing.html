@@ -1,0 +1,133 @@
+<!--
+  Pendulum Swing - motion primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe stays untouched by them: it keeps
+  easing one unitless swing value from 1 down to 0, and these decide where the
+  content hangs from, how far the first swing reaches, which way it enters and
+  what colour it is.
+
+    - pivot (top-center | top-left | top-right, default top-center): where the
+      content hangs from. The swing rotates about this point, so the pinned top
+      edge never drifts.
+    - amplitude (gentle | standard | wide, default standard): how far the first
+      swing reaches, 18deg, 34deg or 52deg. Every later swing scales with it, so
+      whatever the reach the pendulum still comes to rest upright.
+    - direction (right | left, default right): which side the pendulum swings in
+      from. right lifts the first swing clockwise, left mirrors it.
+    - tone (ink | paper | accent, default ink): content colour. ink is
+      near-black for light frames, paper near-white for dark ones, accent rides
+      --brand.
+
+  On every default the result is identical to the original: a near-black sign
+  hanging from its top centre, entering from the right through a 34deg swing.
+
+  Motion note. The swing is a damped oscillation about the pivot: the content
+  passes through upright several times, each pass smaller, until it settles.
+  It rides a single unitless custom property (--hf-swing-angle) that the recipe
+  eases 1 -> 0, so rotation interpolates sub-pixel and stays smooth under the
+  seek-by-frame capture engine; nothing here animates a layout or reflow
+  property.
+-->
+
+<div
+  class="hf-catalog-pendulum-swing"
+  data-composition-variables='[
+    { "id": "pivot", "type": "enum", "role": "layout", "label": "Pivot", "description": "Where the content hangs from. The swing rotates about this point, so the top edge stays pinned.", "default": "top-center", "options": [{ "value": "top-center", "label": "Top center" }, { "value": "top-left", "label": "Top left" }, { "value": "top-right", "label": "Top right" }] },
+    { "id": "amplitude", "type": "enum", "role": "motion", "label": "Amplitude", "description": "How far the first swing reaches before it settles. Every later swing scales with it, so the pendulum still comes to rest upright.", "default": "standard", "options": [{ "value": "gentle", "label": "Gentle" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side the pendulum swings in from: right lifts the first swing clockwise, left mirrors it.", "default": "right", "options": [{ "value": "right", "label": "Right" }, { "value": "left", "label": "Left" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Content colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+>
+  <span class="hf-catalog-pendulum-swing__body">Hanging&nbsp;Sign</span>
+</div>
+
+<style>
+  .hf-catalog-pendulum-swing {
+    display: inline-block;
+    /* The pendulum swings about the hanging pivot. The angle stays a unitless
+       factor so the timeline can ease it 1 -> 0 (a damped oscillation through
+       upright) while amplitude and direction, set once from the variables,
+       decide the reach and the side. */
+    transform-origin: var(--hf-swing-origin, 50% 0%);
+    transform: rotate(
+      calc(
+        var(--hf-swing-angle, 0) * var(--hf-swing-dir, 1) *
+          var(--hf-swing-max, 34deg)
+      )
+    );
+  }
+  .hf-catalog-pendulum-swing__body {
+    display: inline-block;
+    padding: 22px 40px;
+    border-radius: 14px;
+    /* Tone sets a background/foreground pair so the sign stays legible whatever
+       the frame: the fill is the tone colour, the text its paired contrast. */
+    background: var(--hf-swing-bg, #18181b);
+    color: var(--hf-swing-fg, #fafafa);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 54px;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var pivots = {
+      "top-center": "50% 0%",
+      "top-left": "0% 0%",
+      "top-right": "100% 0%",
+    };
+    var amplitudes = { gentle: "18deg", standard: "34deg", wide: "52deg" };
+    var directions = { right: 1, left: -1 };
+    // Each tone is a fill/text pair so the sign keeps AA contrast on any frame.
+    var tones = {
+      ink: { bg: "#18181b", fg: "#fafafa" },
+      paper: { bg: "#fafafa", fg: "#18181b" },
+      accent: { bg: "var(--brand, #34d399)", fg: "#0b0b0c" },
+    };
+
+    var origin = pivots[pick(pivots, vars.pivot, "top-center")];
+    var maxAngle = amplitudes[pick(amplitudes, vars.amplitude, "standard")];
+    var dir = directions[pick(directions, vars.direction, "right")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+
+    var roots = document.querySelectorAll(".hf-catalog-pendulum-swing");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-swing-origin", origin);
+      root.style.setProperty("--hf-swing-max", maxAngle);
+      root.style.setProperty("--hf-swing-dir", String(dir));
+      root.style.setProperty("--hf-swing-bg", tone.bg);
+      root.style.setProperty("--hf-swing-fg", tone.fg);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration. The swing settles like a real pendulum: it passes
+  through upright several times, each pass smaller, until it comes to rest. That
+  is a cosine (the swings) inside an exponential decay (the damping), normalised
+  so the tween still lands exactly upright at the end.
+
+    const swingSettle = (p) => 1 - Math.exp(-2.3 * p) * Math.cos(3.5 * Math.PI * p);
+    tl.fromTo('.hf-catalog-pendulum-swing', { '--hf-swing-angle': 1 }, { '--hf-swing-angle': 0, duration: 2.9, ease: swingSettle }, startTime);
+-->

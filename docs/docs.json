@@ -571,6 +571,7 @@
                   "catalog/components/outline-draw",
                   "catalog/components/oversized-cursor",
                   "catalog/components/particle-image-reveal",
+                  "catalog/components/pendulum-swing",
                   "catalog/components/physical-exit",
                   "catalog/components/radial-surround",
                   "catalog/components/scroll-feed",
