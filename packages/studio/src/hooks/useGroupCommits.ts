@@ -11,7 +11,11 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
-import { findMatchingTimelineElementId, type ElementMatchSelection } from "../utils/studioHelpers";
+import {
+  findMatchingTimelineElementId,
+  resolveElementTrack,
+  type ElementMatchSelection,
+} from "../utils/studioHelpers";
 import type { TimelineElement } from "../player";
 
 interface UseGroupCommitsParams extends DomEditCommitBaseParams {
@@ -45,10 +49,7 @@ function resolveAuthoredTrack(
   if (!id) return undefined;
   const match = timelineElements.find((el) => (el.key ?? el.id) === id);
   if (!match) return undefined;
-  // track is the runtime's always-resolved value (authored, or its own
-  // positional-index fallback) — exactly what an unauthored implicit layer
-  // or an ungroup child with no authoredTrack needs stamped through.
-  return Number.isFinite(match.authoredTrack) ? match.authoredTrack : match.track;
+  return resolveElementTrack(match);
 }
 
 // Wrapper sits at the members' bounding box top-left; each member is rebased so

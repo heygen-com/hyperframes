@@ -4,6 +4,7 @@ import { buildPatchTarget } from "./timelineElementSplit";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
 import { buildProjectApiPath } from "./projectRouting";
 import { markStudioWriteToken } from "./studioFileVersion";
+import { resolveElementTrack } from "./studioHelpers";
 
 type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
 
@@ -70,12 +71,9 @@ function buildCutTarget(
     ...(element.playbackStart != null ? { playbackStart: element.playbackStart } : {}),
     ...(element.playbackRate != null ? { playbackRate: element.playbackRate } : {}),
     ...(element.kind === "composition" ? { isComposition: true } : {}),
-    // Pin both halves to the current track (authored, or the runtime's already-
-    // resolved track): unstamped, the runtime's positional fallback
-    // (parseAuthoredTrack) renumbers the new sibling onto a new row.
-    track: Number.isFinite(element.authoredTrack)
-      ? Math.round(element.authoredTrack as number)
-      : element.track,
+    // Pin both halves to the current track: unstamped, the runtime's positional
+    // fallback (parseAuthoredTrack) renumbers the new sibling onto a new row.
+    track: resolveElementTrack(element),
   };
 }
 

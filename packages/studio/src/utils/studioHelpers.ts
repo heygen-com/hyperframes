@@ -223,6 +223,17 @@ export function findMatchingTimelineElementId(
   return null;
 }
 
+// The element's track: authored if given, else the runtime's already-resolved
+// fallback — always rounded to an integer index either way. Shared by the
+// group/ungroup and razor-split flows so they can't drift out of sync again.
+export function resolveElementTrack(
+  element: Pick<TimelineElement, "authoredTrack" | "track">,
+): number {
+  return Math.round(
+    Number.isFinite(element.authoredTrack) ? (element.authoredTrack as number) : element.track,
+  );
+}
+
 /**
  * A selected DOM node may be a static descendant of a clip (e.g. the `.num` text
  * inside a `#stat1` card) — not a timeline element itself. Walk up to the nearest

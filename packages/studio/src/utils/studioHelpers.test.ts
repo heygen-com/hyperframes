@@ -5,6 +5,7 @@ import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
   resolveDroppedAssetDimensions,
+  resolveElementTrack,
   resolveTimelineIdForSelection,
   resolveTimelineSelectionSeekTime,
 } from "./studioHelpers";
@@ -204,5 +205,15 @@ describe("resolveDroppedAssetDimensions", () => {
     await expect(result).resolves.toBeNull();
     expect(video.getAttribute("src")).toBe("");
     expect(load).toHaveBeenCalledOnce();
+  });
+});
+
+describe("resolveElementTrack", () => {
+  it("rounds an authored track", () => {
+    expect(resolveElementTrack({ authoredTrack: 2.4, track: 0 })).toBe(2);
+  });
+
+  it("falls back to the resolved track, rounded, when nothing was authored", () => {
+    expect(resolveElementTrack({ authoredTrack: undefined, track: 3.6 })).toBe(4);
   });
 });
