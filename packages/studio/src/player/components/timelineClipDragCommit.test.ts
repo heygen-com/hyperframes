@@ -1263,6 +1263,33 @@ describe("commitDraggedClipMove", () => {
       expect(onStackingPatches).toHaveBeenCalledTimes(1);
     });
 
+    it("a plain lane change onto the empty main track snaps its committed start to 0", () => {
+      const elements = [el("v1", 1, 0, 5)];
+      const spies = runClipMove(drag(elements[0], { previewStart: 8, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0, 1],
+      });
+      expect(expectAtomicMoveMap(spies).v1).toEqual({ start: 0, track: 0 });
+    });
+
+    it("the z-sync candidate of a plain lane change carries the snapped start", async () => {
+      // The sibling [2, 5) overlaps v1 only at the snapped [0, 5), never at the raw [8, 13).
+      const v1 = el("v1", 2, 0, 5);
+      const sibling = el("s", 1, 2, 3);
+      const onStackingPatches = vi.fn();
+      commitDraggedClipMove(drag(v1, { previewStart: 8, previewTrack: 0 }), {
+        elements: [v1, sibling],
+        trackOrder: [0, 1, 2],
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        onMoveElements: vi.fn(),
+        readZIndex: (element) => (element.key === "v1" ? 1 : 10),
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+    });
+
     it("a top-gutter insert that pushes the old track-0 clip down snaps to the new track 0", () => {
       const oldMain = el("old", 0, 0, 3);
       const dragged = el("v1", 2, 0, 5);
