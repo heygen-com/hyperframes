@@ -86,6 +86,26 @@ describe("TransportClock stall policy — interactive playback", () => {
     expect(readByB).toBeCloseTo(0.049, 10); // 0.016 + 0.033, corrected regardless of who asks
   });
 
+  it("a long gap between reads while audio is authoritative does not corrupt the later monotonic fallback", () => {
+    const { clock, advance } = createClock({ duration: 30 });
+    const audioEl = { currentTime: 2, paused: false } as HTMLMediaElement;
+    clock.play();
+    clock.attachAudioSource({ el: audioEl, compositionStart: 0, mediaStart: 0 });
+    expect(clock.now()).toBe(2); // audio-authoritative, correct
+    advance(5000); // audio itself doesn't stall; nothing here reads the monotonic side
+    audioEl.currentTime = 5;
+    expect(clock.now()).toBe(5); // still audio-authoritative, still correct
+    // Audio becomes unavailable without a formal detachAudioSource() call —
+    // now() falls through to monotonic within the same read.
+    Object.assign(audioEl, { paused: true });
+    // The fallback must read as if no stall correction ever ran: this is the
+    // first monotonic-branch read, so it must not be held back by the 5s gap
+    // that only ever applied to audio-authoritative reads. Real elapsed time
+    // since play() is exactly 5s (the one advance() call above); a corrupted
+    // `_playStartMs` would report roughly 33ms instead.
+    expect(clock.now()).toBeCloseTo(5, 2);
+  });
+
   it("a long real gap while genuinely paused is not a stall — resuming play() does not inherit it", () => {
     const { clock, advance } = createClock();
     clock.play();

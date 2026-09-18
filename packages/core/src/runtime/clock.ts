@@ -45,10 +45,12 @@ export class TransportClock {
   now(): number {
     if (this._playStartMs === null) return this._baseTime;
 
-    this._applyStallCorrection();
-
-    // Audio-master: when an audio source is attached, derive time
-    // from it. Drift is impossible because audio IS the clock.
+    // Audio-master: when an audio source is attached, derive time from it.
+    // Drift is impossible because audio IS the clock — and because audio
+    // keeps playing through a JS-thread stall, a gap since the last read
+    // here is not a stall and must not reach `_applyStallCorrection`, or
+    // it corrupts `_playStartMs` for whenever this later falls back to
+    // monotonic (see the PR body).
     if (this._audioSource) {
       let audioTime: number | null = null;
       if ("currentTimeSeconds" in this._audioSource) {
@@ -71,6 +73,7 @@ export class TransportClock {
     }
 
     // Monotonic fallback
+    this._applyStallCorrection();
     const elapsed = (this._nowMs() - this._playStartMs) / 1000;
     const t = this._baseTime + elapsed * this._rate;
     if (Number.isFinite(this._duration) && t >= this._duration) {
