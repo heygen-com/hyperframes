@@ -67,9 +67,13 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     const pid = projectIdRef.current;
     if (!pid) return;
     const res = await fetch(buildProjectApiPath(pid));
-    const data = await res.json();
+    const data: { files?: string[]; compositions?: string[] } = await res.json();
     if (data.files) {
-      setFetched((prev) => (prev?.projectId === pid ? { ...prev, fileTree: data.files } : prev));
+      setFetched((prev) =>
+        prev?.projectId === pid
+          ? { ...prev, fileTree: data.files ?? [], compositionPaths: data.compositions ?? [] }
+          : prev,
+      );
     }
   }, [projectIdRef]);
 
