@@ -451,23 +451,30 @@
               {
                 "group": "Data",
                 "pages": [
-                  "catalog/components/animated-bar-chart",
-                  "catalog/components/ascii-render-pass",
-                  "catalog/components/ascii-trail-reveal",
-                  "catalog/blocks/bar-chart-race",
-                  "catalog/components/chart-story",
-                  "catalog/components/conic-progress-ring",
-                  "catalog/blocks/data-chart",
-                  "catalog/components/decline-chart",
-                  "catalog/components/logo-wall",
-                  "catalog/blocks/mk-line-graph",
-                  "catalog/blocks/spain-map",
-                  "catalog/components/star-rating-fill",
-                  "catalog/blocks/us-map",
-                  "catalog/blocks/us-map-bubble",
-                  "catalog/blocks/us-map-flow",
-                  "catalog/blocks/us-map-hex",
-                  "catalog/blocks/world-map"
+                  {
+                    "group": "Data",
+                    "tag": "17",
+                    "expanded": false,
+                    "pages": [
+                      "catalog/components/animated-bar-chart",
+                      "catalog/components/ascii-render-pass",
+                      "catalog/components/ascii-trail-reveal",
+                      "catalog/blocks/bar-chart-race",
+                      "catalog/components/chart-story",
+                      "catalog/components/conic-progress-ring",
+                      "catalog/blocks/data-chart",
+                      "catalog/components/decline-chart",
+                      "catalog/components/logo-wall",
+                      "catalog/blocks/mk-line-graph",
+                      "catalog/blocks/spain-map",
+                      "catalog/components/star-rating-fill",
+                      "catalog/blocks/us-map",
+                      "catalog/blocks/us-map-bubble",
+                      "catalog/blocks/us-map-flow",
+                      "catalog/blocks/us-map-hex",
+                      "catalog/blocks/world-map"
+                    ]
+                  }
                 ]
               }
             ]

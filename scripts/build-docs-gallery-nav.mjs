@@ -14,7 +14,10 @@ export function buildNav(docs) {
   const groups = data.groups.map((g) => {
     const items = data.items.filter((i) => i.group === g.id);
     const sections = [...new Set(items.map((i) => i.section))];
-    const pages = sections.length === 1
+    // Flattening a single section into the group's own page list loses that section's label
+    // (sync-docs-catalog.mjs's walk() re-derives it from nav depth); only safe when the label
+    // is the same as the group's, so nothing is lost.
+    const pages = sections.length === 1 && sections[0] === g.label
       ? items.map((i) => i.href.slice(1))
       : sections.map((section) => {
           const selected = items.filter((i) => i.section === section);

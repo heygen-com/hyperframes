@@ -22,6 +22,21 @@ function leafPaths(tab) {
   return paths;
 }
 
+// Same derivation as sync-docs-catalog.mjs's walk(): the innermost real label is the section,
+// the one above it the group; "Catalog"/"Overview" are transparent wrappers, not labels.
+function hrefSections(tab) {
+  const sections = new Map();
+  const walk = (node, labels) => {
+    if (Array.isArray(node)) { for (const n of node) walk(n, labels); return; }
+    if (typeof node === "string") { sections.set("/" + node, labels[labels.length - 1] ?? null); return; }
+    if (node.group === "Overview") return;
+    const next = node.group === "Catalog" ? labels : [...labels, node.group];
+    walk(node.pages || [], next);
+  };
+  for (const g of tab.groups) walk(g, []);
+  return sections;
+}
+
 const config = readJson(path.join(docs, "docs.json"));
 const tab = getCatalogTab(config);
 const after = leafPaths(tab);
@@ -29,9 +44,11 @@ assert.equal(after.length, new Set(after).size, "Duplicate sidebar item");
 
 const data = readCatalogGalleryData(docs);
 assert.equal(data.items.length, after.filter((p) => p !== "/catalog/index").length, "Gallery data item count does not match the nav's leaf page count");
+const navSections = hrefSections(tab);
 for (const item of data.items) {
   assert.ok(after.includes(item.href), `Gallery item missing from the sidebar: ${item.href}`);
   assert.ok(fs.existsSync(path.join(docs, item.href.slice(1) + ".mdx")), `Gallery item has no page on disk: ${item.href}`);
+  assert.equal(navSections.get(item.href), item.section, `Section mismatch for ${item.href}: nav says "${navSections.get(item.href)}", gallery data says "${item.section}"`);
 }
 
 // The identical-page-list proof: diff against the pre-PR1 docs.json at the merge base.
