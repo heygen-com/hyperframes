@@ -216,36 +216,8 @@
  * namespace. Each one zeroes itself under `prefers-reduced-motion`, so a
  * caller cannot forget the reduced-motion case. */
 
-@utility duration-focus {
-  transition-duration: var(--duration-focus);
-  @media (prefers-reduced-motion: reduce) {
-    transition-duration: 0ms;
-  }
-}
-
-@utility duration-press {
-  transition-duration: var(--duration-press);
-  @media (prefers-reduced-motion: reduce) {
-    transition-duration: 0ms;
-  }
-}
-
-@utility duration-hover {
-  transition-duration: var(--duration-hover);
-  @media (prefers-reduced-motion: reduce) {
-    transition-duration: 0ms;
-  }
-}
-
-@utility duration-expand {
-  transition-duration: var(--duration-expand);
-  @media (prefers-reduced-motion: reduce) {
-    transition-duration: 0ms;
-  }
-}
-
-@utility duration-open {
-  transition-duration: var(--duration-open);
+@utility duration-* {
+  transition-duration: --value(--duration-*);
   @media (prefers-reduced-motion: reduce) {
     transition-duration: 0ms;
   }
