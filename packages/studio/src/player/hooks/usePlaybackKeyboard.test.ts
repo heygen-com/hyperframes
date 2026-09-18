@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+// fallow-ignore-file code-duplication
 
 import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -189,6 +190,17 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
 
     act(() => {
       dispatch(keydown({ code: "KeyA", key: "a" }));
+    });
+
+    expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });
+  });
+
+  it("Shift+A still seeks to the in-point while the razor is armed, since only plain A exits the razor", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ inPoint: 1.5, activeTool: "razor" });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyA", key: "a", shiftKey: true }));
     });
 
     expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });

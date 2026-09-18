@@ -27,6 +27,7 @@ import type { RecordEditInput } from "./domEditDeleteMembers";
 // own test) have always imported it from here.
 export { membersForDelete };
 
+// fallow-ignore-next-line code-duplication
 export interface UseDomEditSessionParams {
   projectId: string | null;
   activeCompPath: string | null;
@@ -326,6 +327,7 @@ export function useDomEditSession({
     reloadPreview,
     clearDomSelection,
     forceReloadSdkSession,
+    timelineElements,
   });
 
   const handleDomEditElementDelete = useCallback(

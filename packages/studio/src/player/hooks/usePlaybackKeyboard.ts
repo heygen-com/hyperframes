@@ -79,6 +79,7 @@ export function usePlaybackKeyboard({
     }
   }, [play, pause]);
 
+  // fallow-ignore-next-line complexity
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -164,7 +165,7 @@ export function usePlaybackKeyboard({
       // can't rely on defaultPrevented since both listeners register on
       // window and fire in an order this hook doesn't control.
       if (key === "a") {
-        if (usePlayerStore.getState().activeTool === "razor") return;
+        if (!e.shiftKey && !e.altKey && usePlayerStore.getState().activeTool === "razor") return;
         e.preventDefault();
         seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
         return;

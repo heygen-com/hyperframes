@@ -2941,7 +2941,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           typeof r?.left === "number" &&
           Number.isFinite(r.left) &&
           typeof r?.top === "number" &&
-          Number.isFinite(r.top),
+          Number.isFinite(r.top) &&
+          (r?.track === undefined || Number.isInteger(r.track)),
       );
     if (!allNumeric) {
       return c.json({ error: "bbox and rebase coordinates must be finite numbers" }, 400);
@@ -2995,8 +2996,23 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const ctx = await resolveFileMutationContext(c, adapter, "unwrap-elements");
     if ("error" in ctx) return ctx.error;
 
-    const parsed = await parseMutationBody<{ target?: MutationTarget }>(c);
+    const parsed = await parseMutationBody<{
+      target?: MutationTarget;
+      childTracks?: Array<{ target?: MutationTarget; track?: number }>;
+    }>(c);
     if ("error" in parsed) return parsed.error;
+
+    const rawChildTracks = parsed.body.childTracks ?? [];
+    if (
+      !rawChildTracks.every((entry) => entry?.track === undefined || Number.isInteger(entry.track))
+    ) {
+      return c.json({ error: "childTracks track must be a finite integer" }, 400);
+    }
+    const childTracks = rawChildTracks
+      .filter((entry): entry is { target: MutationTarget; track?: number } =>
+        Boolean(entry?.target),
+      )
+      .map((entry) => ({ target: entry.target, track: entry.track }));
 
     let originalContent: string;
     try {
@@ -3004,7 +3020,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     } catch {
       return c.json({ error: "not found" }, 404);
     }
-    const result = unwrapElementsFromHtml(originalContent, parsed.target);
+    const result = unwrapElementsFromHtml(originalContent, parsed.target, childTracks);
     if (!result.unwrapped) {
       return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
     }

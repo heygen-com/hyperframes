@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import {
@@ -267,6 +268,19 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     );
   });
 
+  it("stamps each member's resolved track so grouping an unauthored clip can't drift it to a new row", () => {
+    const rebasesWithTrack = [
+      { target: { id: "title" }, left: 0, top: 50, track: 1 },
+      { target: { id: "logo" }, left: 40, top: 150, track: 3 },
+      { target: { id: "badge" }, left: 140, top: 0 },
+    ];
+    const { html } = wrapElementsInHtml(FIXTURE, TARGETS, "Group 1", BBOX, rebasesWithTrack);
+    const { document } = parseHTML(html);
+    expect(requireElement(document, "#title").getAttribute("data-track-index")).toBe("1");
+    expect(requireElement(document, "#logo").getAttribute("data-track-index")).toBe("3");
+    expect(requireElement(document, "#badge").hasAttribute("data-track-index")).toBe(false);
+  });
+
   it("round-trips: unwrap restores original structure and coordinates", () => {
     const wrapped = wrapElementsInHtml(FIXTURE, TARGETS, "Group 1", BBOX, REBASES).html;
     const { html, unwrapped } = unwrapElementsFromHtml(wrapped, {
@@ -293,6 +307,23 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     expect(requireElement(document, "#badge").getAttribute("style")).toContain(
       "--hf-studio-offset: 12px",
     );
+  });
+
+  it("stamps each child's resolved track on ungroup so it can't drift to a new row when it moves back out of the wrapper", () => {
+    const wrapped = wrapElementsInHtml(FIXTURE, TARGETS, "Group 1", BBOX, REBASES).html;
+    const childTracks = [
+      { target: { id: "title" }, track: 1 },
+      { target: { id: "logo" }, track: 3 },
+    ];
+    const { html } = unwrapElementsFromHtml(
+      wrapped,
+      { selector: '[data-hf-group="Group 1"]' },
+      childTracks,
+    );
+    const { document } = parseHTML(html);
+    expect(requireElement(document, "#title").getAttribute("data-track-index")).toBe("1");
+    expect(requireElement(document, "#logo").getAttribute("data-track-index")).toBe("3");
+    expect(requireElement(document, "#badge").hasAttribute("data-track-index")).toBe(false);
   });
 
   it("rejects members that do not share a single parent", () => {
