@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { buildNav } from "./build-docs-gallery-nav.mjs";
-import { getCatalogTab, readJson, resolveDocsRoot, slug } from "./docs-catalog-shared.mjs";
+import { getCatalogTab, previewGap, readJson, resolveDocsRoot, slug } from "./docs-catalog-shared.mjs";
 
 const { root, docs } = resolveDocsRoot(process.argv[2]);
 const config = readJson(path.join(docs, "docs.json"));
@@ -13,17 +13,6 @@ const tab = getCatalogTab(config);
 
 function statusOf(man) {
   return man.stability === "experimental" ? "experimental" : "published";
-}
-
-// A composition is a candidate for live-hover-preview the same way the gallery's own
-// inventory.mjs decides it: a paused GSAP timeline registered for seeking, not itself
-// mounting a further sub-composition, and not asking for WebGPU (no software fallback).
-function isLiveSupported(html) {
-  return (
-    /__timelines\[/.test(html) &&
-    !/data-composition-src=/.test(html) &&
-    !/navigator\.gpu/.test(html)
-  );
 }
 
 function isHeavy(html) {
@@ -38,7 +27,10 @@ function previewFor(dir, id, docsDir, width, height) {
   const payload = readJson(payloadPath);
   if (payload.unsupported) return { mode: "unsupported", flag: payload.unsupported };
   const { html } = payload;
-  if (!html || !isLiveSupported(html)) return null;
+  if (!html) return null;
+  // Any gap (WebGPU, a sub-composition, a missing timeline) means the live player can't
+  // run here; fall through silently to the item's own video/poster instead of a message.
+  if (previewGap(html)) return null;
   return {
     mode: "player",
     source: `/public/catalog/${dir}/${id}.json`,

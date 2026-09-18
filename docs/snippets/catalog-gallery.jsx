@@ -25,7 +25,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
         await window.__hfDocsPlayerLoading;
         await customElements.whenDefined('hyperframes-player');
     }
-    function MotionWord() {
+    // Keep the child component type stable when gallery hover state changes.
+    const MotionWord = useMemo(() => function MotionWord() {
         const root = useRef(null);
         useEffect(() => {
             const node = root.current;
@@ -101,7 +102,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                         React.createElement("path", { className: "dot", d: "M0 -10C5.52 -10 10 -5.52 10 0C10 5.52 5.52 10 0 10C-5.52 10 -10 5.52 -10 0C-10 -5.52 -5.52 -10 0 -10Z", fill: "#7cc4ff" }))))),
             React.createElement("svg", { className: "sq", viewBox: "0 0 196 12", "aria-hidden": "true" },
                 React.createElement("path", { d: "M2 6Q18 -2 34 6T66 6T98 6T130 6T162 6T194 6", fill: "none", stroke: "#7cc4ff", strokeWidth: "2.4", strokeLinecap: "round" })));
-    }
+    }, []);
     const [filters, setFilters] = useState({ q: "", group: initialGroup, section: initialSection, kind: "", sort: "featured" });
     const [active, setActive] = useState(null);
     const [reduced, setReduced] = useState(true);
