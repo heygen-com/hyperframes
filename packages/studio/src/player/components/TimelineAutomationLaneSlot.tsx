@@ -174,7 +174,12 @@ export function TimelineAutomationLaneSlot({
   currentTime,
   beatTimes,
 }: TimelineAutomationLaneSlotProps) {
-  const clips = elements.filter(isAudioTimelineElement);
+  // Audio or video: the two tags the property panel lets you automate a volume
+  // on. Broader than a raw-attribute check — a clip mid-edit (see the stale-
+  // selection test) has lanes in its live binding before the attribute commits.
+  const clips = elements.filter(
+    (element) => isAudioTimelineElement(element) || element.tag.toLowerCase() === "video",
+  );
   const rowsByClip = new Map<string, ClipLaneRow[]>();
   groupAutomationLanes(clips).forEach((group, rowIndex) => {
     for (const entry of group.entries) {

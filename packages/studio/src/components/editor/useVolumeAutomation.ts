@@ -11,7 +11,7 @@ import {
   sampleAutomationLane,
   VOLUME_TARGET,
 } from "@hyperframes/core/audio-automation";
-import { usePlayerStore } from "../../player";
+import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
 import type { DomEditSelection } from "./domEditingTypes";
 import {
   automationAttrValue,
@@ -44,12 +44,13 @@ export function useVolumeAutomation(
     undefined,
   );
   // ponytail: no GSAP animations passed — a media clip always carries an
-  // explicit data-duration (set on drop by timelineAssetDrop.ts, or by the
-  // compiler's media-duration probe for authored HTML), so `deriveElementTiming`
-  // never falls through to its animations-inferred branch here regardless.
-  const playheadTime = usePlayerStore((s) => s.currentTime);
+  // explicit data-duration, so `deriveElementTiming` never infers from animations here.
+  // useLivePlayheadTime (not the store) because the RAF loop writes the store
+  // only once, at playback's end; the store alone would stale the write.
+  const playheadTime = useLivePlayheadTime();
   const { start: elStart, duration: elDuration } = deriveElementTiming(element);
-  const clipTimeSec = Math.min(elDuration, Math.max(0, playheadTime - elStart));
+  const elapsed = Math.max(0, playheadTime - elStart);
+  const clipTimeSec = elDuration > 0 ? Math.min(elDuration, elapsed) : elapsed;
   const write = (next: Parameters<typeof automationAttrValue>[0]): void => {
     // Quiet: clicking the toggle used to reload the preview and restart every
     // playing track, while the same click on an effect parameter did not.
