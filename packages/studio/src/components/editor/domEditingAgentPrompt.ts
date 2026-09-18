@@ -14,6 +14,9 @@ import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
 export interface AgentPromptElementInfo {
   id: string | null;
   selector?: string | null;
+  /** Disambiguates duplicate selectors in `DomEditSelection`. The picker
+   *  payload has no such concept (one picked node, not a candidate list), so
+   *  a picker-built prompt always prints index 0 — expected, not a gap. */
   selectorIndex?: number;
   tagName: string;
   boundingBox: { x: number; y: number; width: number; height: number };
@@ -59,7 +62,7 @@ function formatTextLine(textContent: string | null): string {
   return textContent ? `Text: ${textContent}` : "";
 }
 
-/** DOM id, selector, tag and bounds — always present, in every caller. */
+/** Core identity fields, plus the text line when the element has text content. */
 function buildElementInfoLines(info: AgentPromptElementInfo): string[] {
   const lines = [
     `DOM id: ${info.id ?? "(none)"}`,
