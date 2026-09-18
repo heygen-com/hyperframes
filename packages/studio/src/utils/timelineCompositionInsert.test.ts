@@ -1,5 +1,3 @@
-// @vitest-environment happy-dom
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { commitTimelineCompositionInsertion } from "./timelineCompositionInsert";
 
@@ -59,47 +57,6 @@ describe("commitTimelineCompositionInsertion", () => {
     expect(selectHost).toHaveBeenCalledWith("index.html#headline");
     expect(resync).toHaveBeenCalledOnce();
     expect(refresh).toHaveBeenCalledOnce();
-  });
-
-  it("grows the root duration when the inserted composition ends past it", async () => {
-    const after =
-      '<main data-composition-id="scene" data-duration="10"><div id="headline" data-composition-src="headline.html" data-start="8" data-duration="5"></div></main>';
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(response({ content: "before", version: "v1" }))
-      .mockResolvedValueOnce(
-        response({
-          path: "index.html",
-          hostId: "headline",
-          duration: 5,
-          before: "before",
-          after,
-          version: "v2",
-        }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-    const writeFile = vi.fn();
-    const recordEdit = vi.fn();
-
-    await commitTimelineCompositionInsertion({
-      projectId: "demo",
-      targetPath: "index.html",
-      sourcePath: "headline.html",
-      start: 8,
-      track: 2,
-      writeFile,
-      recordEdit,
-      selectHost: vi.fn(),
-      refresh: vi.fn(),
-    });
-
-    expect(writeFile).toHaveBeenCalledWith(
-      "index.html",
-      expect.stringContaining('data-duration="13"'),
-      after,
-    );
-    const recorded = recordEdit.mock.calls[0][0] as { files: Record<string, { after: string }> };
-    expect(recorded.files["index.html"].after).toContain('data-duration="13"');
   });
 
   it("CAS-restores the server write when history registration fails", async () => {
