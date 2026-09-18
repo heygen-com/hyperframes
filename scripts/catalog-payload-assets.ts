@@ -422,17 +422,6 @@ function installMirrorTargets(projectDir: string): Map<string, string> {
  */
 export const MAX_HOSTED_DIRECTORY_BYTES = 2_000_000;
 
-/**
- * Named, reviewed exceptions to the cap above, each measured and one line why.
- * Anything not listed here keeps the 2 MB default and falls back to its video.
- */
-export const HOSTED_DIRECTORY_BYTE_ALLOWANCE: Record<string, number> = {
-  // Textures/fonts only, frost.js now travels in-payload. Measured 2026-09-18: 7,708,493 B.
-  "frost-sequence-camera-orbit": 8_500_000,
-  // Fonts + matcap only, glass-main.js/HDR now travel in-payload. Measured 2026-09-18: 3,387,474 B.
-  "glass-shard-title": 4_000_000,
-};
-
 // "not-needed" and "over-budget" both leave nothing published, but the caller
 // must not treat them alike: an over-budget item still needs the directory,
 // so it has to fall back to its recorded video instead of shipping with dead
@@ -501,8 +490,8 @@ export function hostItemDirectory(
   projectDir: string,
   destDir: string,
   urlBase: string,
-  maxBytes: number = MAX_HOSTED_DIRECTORY_BYTES,
 ): HostItemDirectoryResult {
+  const maxBytes = MAX_HOSTED_DIRECTORY_BYTES;
   const mirrorPrefix = downloadMirrorPrefix(projectDir);
   const installTargets = installMirrorTargets(projectDir);
   const state: ChargeState = { files: new Map(), total: 0 };

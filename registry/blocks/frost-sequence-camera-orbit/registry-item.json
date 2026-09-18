@@ -91,6 +91,12 @@
       "type": "hyperframes:asset"
     },
     {
+      "path": "assets/shards-atlas.png",
+      "target": "compositions/frost-sequence-camera-orbit/assets/shards-atlas.png",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/122961c82d240e47.png"
+    },
+    {
       "path": "assets/test-mark.svg",
       "target": "compositions/frost-sequence-camera-orbit/assets/test-mark.svg",
       "type": "hyperframes:asset"
@@ -99,6 +105,12 @@
       "path": "assets/textures/bluenoise64.png",
       "target": "compositions/frost-sequence-camera-orbit/assets/textures/bluenoise64.png",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/textures/ice-inclusions-generated.png",
+      "target": "compositions/frost-sequence-camera-orbit/assets/textures/ice-inclusions-generated.png",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/4bea3a8ab90c9527.png"
     },
     {
       "path": "SKILL.md",

@@ -62,6 +62,12 @@
       "type": "hyperframes:asset"
     },
     {
+      "path": "assets/matcap-1.png",
+      "target": "compositions/glass-shard-title/assets/matcap-1.png",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/8a4ba0deaf2bafb4.png"
+    },
+    {
       "path": "SKILL.md",
       "target": "compositions/glass-shard-title/SKILL.md",
       "type": "hyperframes:asset"
