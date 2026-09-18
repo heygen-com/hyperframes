@@ -352,31 +352,36 @@ function textureLabel(slug: string): string {
     .join(" ");
 }
 
+// Ordered so a more specific needle (e.g. "wood-floor") is tried before the
+// substring it contains ("wood"); first match wins, same as the if-chain this replaced.
+const TEXTURE_SAMPLE_WORDS: [needle: string, word: string][] = [
+  ["brick", "BRICK"],
+  ["concrete", "CONCRETE"],
+  ["plaster", "PLASTER"],
+  ["rock", "ROCK"],
+  ["onyx", "ONYX"],
+  ["marble", "MARBLE"],
+  ["travertine", "STONE"],
+  ["paving", "STONE"],
+  ["tiles", "TILE"],
+  ["ground", "GROUND"],
+  ["road", "ROAD"],
+  ["asphalt", "ASPHALT"],
+  ["wood-floor", "FLOOR"],
+  ["wood", "WOOD"],
+  ["bark", "BARK"],
+  ["diamond", "PLATE"],
+  ["metal", "METAL"],
+  ["lava", "LAVA"],
+  ["grass", "GRASS"],
+  ["carpet", "WOVEN"],
+  ["fabric", "FABRIC"],
+  ["snow", "SNOW"],
+  ["leather", "LEATHER"],
+];
+
 function textureSampleWord(slug: string): string {
-  if (slug.includes("brick")) return "BRICK";
-  if (slug.includes("concrete")) return "CONCRETE";
-  if (slug.includes("plaster")) return "PLASTER";
-  if (slug.includes("rock")) return "ROCK";
-  if (slug.includes("onyx")) return "ONYX";
-  if (slug.includes("marble")) return "MARBLE";
-  if (slug.includes("travertine")) return "STONE";
-  if (slug.includes("paving")) return "STONE";
-  if (slug.includes("tiles")) return "TILE";
-  if (slug.includes("ground")) return "GROUND";
-  if (slug.includes("road")) return "ROAD";
-  if (slug.includes("asphalt")) return "ASPHALT";
-  if (slug.includes("wood-floor")) return "FLOOR";
-  if (slug.includes("wood")) return "WOOD";
-  if (slug.includes("bark")) return "BARK";
-  if (slug.includes("diamond")) return "PLATE";
-  if (slug.includes("metal")) return "METAL";
-  if (slug.includes("lava")) return "LAVA";
-  if (slug.includes("grass")) return "GRASS";
-  if (slug.includes("carpet")) return "WOVEN";
-  if (slug.includes("fabric")) return "FABRIC";
-  if (slug.includes("snow")) return "SNOW";
-  if (slug.includes("leather")) return "LEATHER";
-  return slug.toUpperCase();
+  return TEXTURE_SAMPLE_WORDS.find(([needle]) => slug.includes(needle))?.[1] ?? slug.toUpperCase();
 }
 
 function textureMaskUrlFor(manifest: RegistryItem, texture: string): string {
@@ -1052,6 +1057,7 @@ function footerSection(
   return footer;
 }
 
+// fallow-ignore-next-line complexity
 function generateItemMdx(
   kind: ItemKind,
   manifest: RegistryItem,

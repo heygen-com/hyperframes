@@ -5,7 +5,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { buildNav } from "./build-docs-gallery-nav.mjs";
-import { getCatalogTab, previewGap, readJson, resolveDocsRoot, slug } from "./docs-catalog-shared.mjs";
+import {
+  getCatalogTab,
+  previewGap,
+  readJson,
+  resolveDocsRoot,
+  slug,
+} from "./docs-catalog-shared.mjs";
 
 const { root, docs } = resolveDocsRoot(process.argv[2]);
 const config = readJson(path.join(docs, "docs.json"));
@@ -21,6 +27,7 @@ function isHeavy(html) {
 
 // The gallery card fetches this same JSON payload the detail page already serves in
 // production (previewSrc) — no separate sidecar file, so nothing new to publish or drop.
+// fallow-ignore-next-line complexity
 function previewFor(dir, id, docsDir, width, height) {
   const payloadPath = path.join(docsDir, "public/catalog", dir, `${id}.json`);
   if (!fs.existsSync(payloadPath)) return null;

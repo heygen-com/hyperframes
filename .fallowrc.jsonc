@@ -966,6 +966,12 @@
       // file-level fingerprint invalidation re-flags the inherited findings even at
       // unchanged line numbers.
       "packages/core/src/runtime/picker.ts",
+      // generate-catalog-payloads.ts: pre-existing payload-build pipeline
+      // (hostsOwnDirectory, buildPayload, parseArgs, main), unmodified by the
+      // catalog-gallery UX work. Only newly flagged because this branch was
+      // retargeted from an in-progress sibling branch directly onto main, making
+      // fallow diff the file against main for the first time; no logic changed.
+      "scripts/generate-catalog-payloads.ts",
     ],
   },
 }

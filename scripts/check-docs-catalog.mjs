@@ -127,12 +127,18 @@ console.log(`PASS no .html/.js/.css under docs/public (Mintlify would drop it fr
 // (ReferenceError at runtime, no build-time error). Catch it here instead of live.
 function assertNoBareTopLevelBindings(snippetPath) {
   const source = fs.readFileSync(snippetPath, "utf-8");
-  const sourceFile = ts.createSourceFile(snippetPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+  const sourceFile = ts.createSourceFile(
+    snippetPath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JSX,
+  );
   const isExported = (node) =>
-    ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+    ts.canHaveModifiers(node) &&
+    ts.getModifiers(node)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
   const bare = sourceFile.statements.filter(
-    (s) =>
-      (ts.isVariableStatement(s) || ts.isFunctionDeclaration(s)) && !isExported(s),
+    (s) => (ts.isVariableStatement(s) || ts.isFunctionDeclaration(s)) && !isExported(s),
   );
   assert.equal(
     bare.length,
