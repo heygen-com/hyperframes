@@ -386,6 +386,32 @@ describe("createImplicitTimelineLayersFromDOM — hfId from data-hf-id", () => {
 
     expect(layers).toEqual([]);
   });
+
+  it("emits a row for a clip's untimed children, scoped to that clip's own window", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div id="ground"></div>
+        <div id="u04" class="clip" data-start="8.53" data-duration="4.77">
+          <canvas id="u04-mosaic"></canvas>
+          <img id="u04-mosaicsrc" src="assets/mosaic.png" />
+        </div>
+      </div>
+    `);
+
+    const layers = createImplicitTimelineLayersFromDOM(doc, 50.37);
+    const ground = layers.find((l) => l.domId === "ground");
+    const mosaicsrc = layers.find((l) => l.domId === "u04-mosaicsrc");
+    const mosaic = layers.find((l) => l.domId === "u04-mosaic");
+
+    // A root-level orphan with no enclosing clip still falls back to the
+    // full timeline — there is no narrower scope to give it.
+    expect(ground).toMatchObject({ start: 0, duration: 50.37 });
+
+    // Children of an authored clip inherit ITS window: they can only ever
+    // be on screen while u04 is, so their row must not claim the whole film.
+    expect(mosaicsrc).toMatchObject({ start: 8.53, duration: 4.77 });
+    expect(mosaic).toMatchObject({ start: 8.53, duration: 4.77 });
+  });
 });
 
 describe("mergeTimelineElementsPreservingDowngrades — genuine removal vs transient downgrade", () => {
