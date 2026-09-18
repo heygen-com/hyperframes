@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
+import type { GsapAnimation } from "./gsapSerialize.js";
 import { isSubCompositionHost, topLevelElements } from "./topLevelElements.js";
 import type { StructureNode } from "./topLevelElements.js";
 
@@ -41,8 +42,8 @@ const toNode = (el: Element): DomNode => ({
   el,
 });
 
-const numeric = (value: string | undefined): number | null => {
-  if (value === undefined || value.trim() === "") return null;
+const numeric = (value: string | null | undefined): number | null => {
+  if (value == null || value.trim() === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
@@ -55,7 +56,7 @@ function queryAll(root: Element, selector: string): Element[] {
   }
 }
 
-type Anim = ReturnType<typeof parseGsapScriptAcorn>["animations"][number];
+type Anim = GsapAnimation;
 
 const unresolvedReason = (anim: Anim): UnresolvedTiming["reason"] | null => {
   if (anim.durationUnresolved) return "duration";
@@ -63,8 +64,13 @@ const unresolvedReason = (anim: Anim): UnresolvedTiming["reason"] | null => {
   return anim.extras?.stagger === undefined ? null : "stagger";
 };
 
+interface Layout {
+  rowEls: Set<Element>;
+  insideRow: Set<Element>;
+}
+
 /** Where each element sits: inside a timeline row (timed clip or sub-composition), or loose. */
-function rowMembership(root: Element): { rowEls: Set<Element>; insideRow: Set<Element> } {
+function rowMembership(root: Element): Layout {
   const rows = topLevelElements(toNode(root));
   const rowEls = new Set(rows.map((r) => r.el));
   const insideRow = new Set<Element>();
@@ -75,8 +81,7 @@ function rowMembership(root: Element): { rowEls: Set<Element>; insideRow: Set<El
   return { rowEls, insideRow };
 }
 
-const attrNumber = (el: Element, name: string): number | null =>
-  numeric(el.getAttribute(name) ?? undefined);
+const attrNumber = (el: Element, name: string): number | null => numeric(el.getAttribute(name));
 
 function windowFinding(
   el: Element,
@@ -102,11 +107,6 @@ function windowFinding(
     tweenStart: start,
     tweenEnd: end,
   };
-}
-
-interface Layout {
-  rowEls: Set<Element>;
-  insideRow: Set<Element>;
 }
 
 const tweenEnd = (anim: Anim): number =>

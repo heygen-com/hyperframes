@@ -790,8 +790,10 @@ function extractTimelineDefaults(
     const key = propKeyName(prop);
     const val = resolveNode(prop.value, scope);
     if (key === "ease" && typeof val === "string") result.ease = val;
-    if (key === "duration" && typeof val === "number") result.duration = val;
-    if (key === "duration" && typeof val !== "number") result.durationUnresolved = true;
+    if (key === "duration") {
+      if (typeof val === "number") result.duration = val;
+      else result.durationUnresolved = true;
+    }
   }
   return Object.keys(result).length > 0 ? result : undefined;
 }
@@ -1336,9 +1338,9 @@ function tweenCallToAnimation(
     duration = computeKeyframesTotalDuration(call.varsArg, scope, source);
   }
   const durationUnresolved =
-    duration === undefined && call.varsArg?.type === "ObjectExpression"
-      ? hasNonLiteralDuration(call.varsArg, scope)
-      : false;
+    duration === undefined &&
+    call.varsArg?.type === "ObjectExpression" &&
+    hasNonLiteralDuration(call.varsArg, scope);
 
   // Relabel object-proxy / empty-target tweens so they don't read as bare
   // __unresolved__: a dwell/hold spacer or an onUpdate-driven DOM channel (#5/#11).
@@ -1615,14 +1617,9 @@ function applyTimelineDefaults(
   if (!defaults) return;
   for (const anim of anims) {
     if (anim.method === "set") continue;
-    if (anim.duration === undefined && defaults.duration !== undefined) {
-      anim.duration = defaults.duration;
-    } else if (
-      anim.duration === undefined &&
-      !anim.durationUnresolved &&
-      defaults.durationUnresolved
-    ) {
-      anim.durationUnresolved = true;
+    if (anim.duration === undefined) {
+      if (defaults.duration !== undefined) anim.duration = defaults.duration;
+      else if (defaults.durationUnresolved) anim.durationUnresolved = true;
     }
     if (anim.ease === undefined && defaults.ease !== undefined) {
       anim.ease = defaults.ease;
