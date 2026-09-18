@@ -478,9 +478,11 @@ describe("handleDomEditElementDelete routing", () => {
   async function deleteViaSession(
     selection: DomEditSelection,
     timelineElements: TimelineElement[],
+    options?: { expandGroup?: boolean; group?: DomEditSelection[] },
   ) {
     const { useDomEditSession } = await import("./useDomEditSession");
     handleDomEditElementsDeleteMock.mockClear();
+    domEditGroupSelectionsRef.current = options?.group ?? [];
     const handleTimelineElementsDelete = vi.fn(async () => {});
     const captured: {
       fn?: (selection: DomEditSelection, options?: { expandGroup?: boolean }) => Promise<void>;
@@ -493,8 +495,9 @@ describe("handleDomEditElementDelete routing", () => {
     }
     const root = createRoot(document.createElement("div"));
     act(() => root.render(<Probe />));
-    await act(async () => captured.fn?.(selection));
+    await act(async () => captured.fn?.(selection, { expandGroup: options?.expandGroup }));
     act(() => root.unmount());
+    domEditGroupSelectionsRef.current = [];
     return { handleTimelineElementsDelete };
   }
 
@@ -517,5 +520,33 @@ describe("handleDomEditElementDelete routing", () => {
     const { handleTimelineElementsDelete } = await deleteViaSession(domSel("nested-child"), []);
     expect(handleTimelineElementsDelete).not.toHaveBeenCalled();
     expect(handleDomEditElementsDeleteMock).toHaveBeenCalledWith([domSel("nested-child")]);
+  });
+
+  it("expands a multi-member marquee group to the timeline op when every member resolves", async () => {
+    const clipA = {
+      id: "clip-a",
+      domId: "clip-a",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 0,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const clipB = {
+      id: "clip-b",
+      domId: "clip-b",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 2,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const group = [domSel("clip-a"), domSel("clip-b")];
+    const { handleTimelineElementsDelete } = await deleteViaSession(group[0], [clipA, clipB], {
+      expandGroup: true,
+      group,
+    });
+    expect(handleTimelineElementsDelete).toHaveBeenCalledWith([clipA, clipB]);
+    expect(handleDomEditElementsDeleteMock).not.toHaveBeenCalled();
   });
 });
