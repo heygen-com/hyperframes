@@ -10,6 +10,14 @@ function createClock(opts?: ConstructorParameters<typeof TransportClock>[0]) {
   return { clock, advance, getMs: () => ms };
 }
 
+/** Advances `totalMs` in sub-threshold steps, reading `now()` each time (AD91 stall policy, clock.ts). */
+function advancePolled(clock: TransportClock, advance: (deltaMs: number) => void, totalMs: number) {
+  for (let remaining = totalMs; remaining > 0; remaining -= 250) {
+    advance(Math.min(250, remaining));
+    clock.now();
+  }
+}
+
 describe("TransportClock", () => {
   describe("initial state", () => {
     it("starts paused at time 0", () => {
@@ -108,8 +116,8 @@ describe("TransportClock", () => {
       clock.seek(10);
       expect(clock.isPlaying()).toBe(true);
       expect(clock.now()).toBe(10);
-      advance(1000);
-      expect(clock.now()).toBe(11);
+      advancePolled(clock, advance, 1000);
+      expect(clock.now()).toBeCloseTo(11, 5);
     });
 
     it("clamps to 0", () => {
@@ -235,8 +243,8 @@ describe("TransportClock", () => {
       advance(5000);
       clock.seek(0);
       expect(clock.now()).toBe(0);
-      advance(1000);
-      expect(clock.now()).toBe(1);
+      advancePolled(clock, advance, 1000);
+      expect(clock.now()).toBeCloseTo(1, 5);
     });
   });
 
@@ -288,7 +296,7 @@ describe("TransportClock", () => {
       expect(clock.now()).toBe(5);
       clock.detachAudioSource();
       expect(clock.now()).toBeCloseTo(5, 1);
-      advance(1000);
+      advancePolled(clock, advance, 1000);
       expect(clock.now()).toBeCloseTo(6, 1);
       expect(clock.getSource()).toBe("monotonic");
     });
