@@ -196,7 +196,6 @@
           inset: 0;
           background: #f72585;
           z-index: 50;
-          transform: translateX(-1920px);
         "
       ></div>
       <div
@@ -206,7 +205,6 @@
           inset: 0;
           background: #7209b7;
           z-index: 49;
-          transform: translateX(-1920px);
         "
       ></div>
 
@@ -280,6 +278,10 @@
         var tl = gsap.timeline({ paused: false });
         window.__timelines = window.__timelines || {};
         window.__timelines["main"] = tl;
+
+        // Own the full transform via GSAP from the start (not CSS), so the
+        // later x tweens below don't clobber a value GSAP never tracked.
+        gsap.set(["#wipe-a", "#wipe-b"], { x: -1920 });
 
         // Transition demos config
         var demos = [
