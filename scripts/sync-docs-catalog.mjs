@@ -25,25 +25,26 @@ function isHeavy(html) {
   return /getContext\(\s*["']webgl2?["']|THREE\.|navigator\.gpu|WebGPURenderer/.test(html);
 }
 
-// The gallery card fetches this same JSON payload the detail page already serves in
-// production (previewSrc) — no separate sidecar file, so nothing new to publish or drop.
+// The one preview rule: a composition that needs a Chrome flag shows its recorded video, every
+// other one plays live from the same JSON payload the detail page serves. Poster art is only
+// the still before the player mounts, so it never decides the mode.
 // fallow-ignore-next-line complexity
-function previewFor(dir, id, docsDir, width, height) {
+function previewFor(dir, id, docsDir, man) {
+  const recorded = man.preview?.video ? { mode: "video" } : { mode: "still" };
   const payloadPath = path.join(docsDir, "public/catalog", dir, `${id}.json`);
-  if (!fs.existsSync(payloadPath)) return null;
+  if (!fs.existsSync(payloadPath)) return recorded;
   const payload = readJson(payloadPath);
-  if (payload.unsupported) return { mode: "unsupported", flag: payload.unsupported };
+  if (payload.unsupported) {
+    return recorded.mode === "video" ? recorded : { mode: "unsupported", flag: payload.unsupported };
+  }
   const { html } = payload;
-  if (!html) return null;
-  // Any gap (WebGPU, a sub-composition, a missing timeline) means the live player can't
-  // run here; fall through silently to the item's own video/poster instead of a message.
-  if (previewGap(html)) return null;
+  if (!html || previewGap(html)) return recorded;
   return {
     mode: "player",
     source: `/public/catalog/${dir}/${id}.json`,
     heavy: isHeavy(html),
-    width: width || 1920,
-    height: height || 1080,
+    width: man.dimensions?.width || 1920,
+    height: man.dimensions?.height || 1080,
   };
 }
 
@@ -99,13 +100,7 @@ function walk(node, pathLabels) {
     }
     const man = readJson(manifestPath);
     const { item, groupLabel } = itemFrom(node, dir, id, man, pathLabels);
-    // A CDN poster/video already renders a real resting frame; only items without one need
-    // the repo-served player (this is the class that was showing as a grey placeholder).
-    const hasCdnMedia = Boolean(man.preview?.poster || man.preview?.video);
-    const preview = hasCdnMedia
-      ? null
-      : previewFor(dir, id, docs, man.dimensions?.width, man.dimensions?.height);
-    item.preview = preview || { mode: item.video ? "video" : "still" };
+    item.preview = previewFor(dir, id, docs, man);
     if (!groupsOrder.includes(item.group)) {
       groupsOrder.push(item.group);
       groupLabels.set(item.group, groupLabel);
