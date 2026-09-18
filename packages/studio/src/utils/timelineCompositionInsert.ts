@@ -3,10 +3,12 @@ import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 import type { RecordEditInput } from "./studioFileHistory";
 import { buildProjectApiPath } from "./projectRouting";
 import { studioWriteHeaders } from "./studioFileVersion";
+import { extendRootDurationInSource } from "./rootDuration";
 
 interface TimelineCompositionInsertionResult {
   path: string;
   hostId: string;
+  duration: number;
   before: string;
   after: string;
   version: string;
@@ -66,14 +68,22 @@ export async function commitTimelineCompositionInsertion(input: {
   await serializeStudioFileMutation(input.writeFile, input.targetPath, async () => {
     const result = await insertTimelineComposition(input);
     input.observeVersion?.(input.targetPath, result.version);
+    // The server never grows the root composition's duration (it only knows the
+    // one file it patched); a drop past the end would render truncated, same gap
+    // the asset/file drop path had. Extend here, the same grow-only helper, and
+    // fold it into the same edit-history entry so it's one undo step.
+    const finalAfter = extendRootDurationInSource(result.after, input.start + result.duration);
     try {
+      if (finalAfter !== result.after) {
+        await input.writeFile(input.targetPath, finalAfter, result.after);
+      }
       await input.recordEdit({
         label: "Add composition to timeline",
         kind: "timeline",
-        files: { [input.targetPath]: { before: result.before, after: result.after } },
+        files: { [input.targetPath]: { before: result.before, after: finalAfter } },
       });
     } catch (error) {
-      await input.writeFile(input.targetPath, result.before, result.after);
+      await input.writeFile(input.targetPath, result.before, finalAfter);
       throw error;
     }
     input.selectHost(`${input.targetPath}#${result.hostId}`);

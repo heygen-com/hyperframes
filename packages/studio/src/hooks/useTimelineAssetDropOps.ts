@@ -20,6 +20,7 @@ import { collectHtmlIds, resolveDroppedAssetDuration } from "../utils/studioHelp
 import { formatTimelineAttributeNumber } from "./timelineEditingHelpers";
 import { readFileContent } from "./timelineTimingSync";
 import { commitTimelineCompositionInsertion } from "../utils/timelineCompositionInsert";
+import { extendRootDurationInSource } from "../utils/rootDuration";
 import { usePlayerStore } from "../player";
 
 interface UseTimelineAssetDropOpsOptions {
@@ -89,22 +90,25 @@ export function useTimelineAssetDropOps({
         );
         const newElementZIndex = Math.max(1, relevantElements.length + 1);
 
-        const patchedContent = insertTimelineAssetIntoSource(
-          originalContent,
-          buildTimelineAssetInsertHtml({
-            id: newId,
-            hfId: `hf-${generateId()}`,
-            assetPath: resolvedAssetSrc,
-            kind,
-            start: normalizedStart,
-            duration: normalizedDuration,
-            track: placement.track,
-            zIndex: newElementZIndex,
-            geometry: fitTimelineAssetGeometry(
-              null,
-              resolveTimelineAssetCompositionSize(originalContent),
-            ),
-          }),
+        const patchedContent = extendRootDurationInSource(
+          insertTimelineAssetIntoSource(
+            originalContent,
+            buildTimelineAssetInsertHtml({
+              id: newId,
+              hfId: `hf-${generateId()}`,
+              assetPath: resolvedAssetSrc,
+              kind,
+              start: normalizedStart,
+              duration: normalizedDuration,
+              track: placement.track,
+              zIndex: newElementZIndex,
+              geometry: fitTimelineAssetGeometry(
+                null,
+                resolveTimelineAssetCompositionSize(originalContent),
+              ),
+            }),
+          ),
+          normalizedStart + normalizedDuration,
         );
 
         await saveProjectFilesWithHistory({

@@ -569,6 +569,7 @@ export function resolveTimelineAssetDrop(
     contentOrigin: number;
     pixelsPerSecond: number;
     duration: number;
+    // Production always passes false; the clamp branch is exercised only by this file's own tests.
     clampStartToDuration?: boolean;
     rowHeights?: readonly number[];
     trackOrder: number[];
