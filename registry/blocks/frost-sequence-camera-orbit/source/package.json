@@ -1,0 +1,15 @@
+{
+  "name": "frost-sequence-camera-orbit-source",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "opentype.js": "^2.0.0",
+    "three": "0.185.1",
+    "three-mesh-bvh": "0.9.14",
+    "typescript": "5.7"
+  }
+}

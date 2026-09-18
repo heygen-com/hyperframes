@@ -1227,6 +1227,7 @@ function main(): void {
   // Items with the same first tag are grouped together. Items without tags
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
+    "3D motion": -1,
     "Code Animations": 0,
     Captions: 1,
     "HTML-in-Canvas": 2,
@@ -1255,6 +1256,9 @@ function main(): void {
     // the tag a human puts on an item to put it on the primitives shelf, and it
     // must not be overridden by whatever else the item happens to be tagged.
     if (tags.includes("video-primitive")) return "Motion Primitives";
+    // Same precedence rule: `3d-motion` is a declared shelf, checked before any
+    // inferred tag (e.g. `transition`, `carousel`) that a 3D-motion piece also carries.
+    if (tags[0] === "3d-motion") return "3D motion";
     // Two-tag combos for specific grouping
     if (tags.includes("transition") && tags.includes("shader")) return "Shader Transitions";
     if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
@@ -1323,6 +1327,7 @@ function main(): void {
   // Collapsing them under what a reader came here to make turns it into eight
   // openable sections, and keeps every existing shelf name intact underneath.
   const SECTIONS: { section: string; groups: string[] }[] = [
+    { section: "3D motion", groups: ["3D motion"] },
     { section: "Text & captions", groups: ["Captions", "Typography & Text", "Lower Thirds"] },
     { section: "Code", groups: ["Code Animations", "Code Snippets"] },
     { section: "Transitions", groups: ["Shader Transitions", "CSS Transitions"] },
