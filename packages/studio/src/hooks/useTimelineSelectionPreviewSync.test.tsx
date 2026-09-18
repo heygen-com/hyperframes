@@ -328,4 +328,62 @@ describe("useTimelineSelectionPreviewSync", () => {
     expect(applyMarqueeSelection).not.toHaveBeenCalled();
     harness.cleanup();
   });
+
+  it("gives a fresh retry budget after deselecting a permanently-unresolvable selection", async () => {
+    // Same permanent hold-out as the test above, but the user deselects and
+    // reselects the exact same group afterward. Without resetting the retry
+    // budget on deselect, reselecting the same key resumes an already-
+    // exhausted count and degrades on the very first attempt with no warning.
+    const { firstSelection, timelineElements } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const onSelectionNotFound = vi.fn();
+    const buildDomSelectionForTimelineElement = vi.fn(async (element: TimelineElement) =>
+      element.id === "clip-1" ? firstSelection : null,
+    );
+    const selectedElementIds = new Set(["clip-1", "clip-2"]);
+    const harness = renderHarness();
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await harness.rerender({
+        selectedElementId: "clip-1",
+        selectedElementIds,
+        timelineElements: [...timelineElements],
+        domEditSelection: null,
+        domEditGroupSelections: [],
+        buildDomSelectionForTimelineElement,
+        applyDomSelection,
+        applyMarqueeSelection,
+        onSelectionNotFound,
+      });
+    }
+    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+
+    await harness.rerender({
+      selectedElementId: null,
+      selectedElementIds: new Set(),
+      timelineElements: [...timelineElements],
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound,
+    });
+
+    await harness.rerender({
+      selectedElementId: "clip-1",
+      selectedElementIds,
+      timelineElements: [...timelineElements],
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound,
+    });
+
+    expect(onSelectionNotFound).toHaveBeenCalledTimes(2);
+    harness.cleanup();
+  });
 });

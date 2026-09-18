@@ -4,12 +4,14 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
 import { mountReactHarness } from "./domSelectionTestHarness";
+import { usePlayerStore } from "../player/store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
   document.body.innerHTML = "";
   vi.unstubAllGlobals();
+  usePlayerStore.getState().reset();
 });
 
 type DropFn = ReturnType<typeof useTimelineAssetDropOps>["handleTimelineAssetDrop"];
@@ -68,5 +70,18 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
 
     const [, written] = writeProjectFile.mock.calls[0] as [string, string];
     expect(written).toContain('data-duration="10"');
+  });
+
+  it("selects and reveals the newly dropped clip", async () => {
+    const source =
+      '<main data-composition-id="scene" data-duration="10" data-width="1920" data-height="1080"></main>';
+    const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const getDrop = renderDropHook(source, writeProjectFile);
+
+    await act(async () => {
+      await getDrop()("clip.mp4", { start: 1, track: 0 }, 2);
+    });
+
+    expect(usePlayerStore.getState().selectedElementId).toBe("index.html#clip");
   });
 });

@@ -70,10 +70,11 @@ function anchorIsOutsideSelection(anchor: string | null, selectedIds: string[]):
 }
 
 /**
- * Tracks retries per selection (a new selectedKey starts a fresh budget).
- * Returns whether this attempt is still within budget to bail and retry.
+ * Records this attempt against the per-selection retry budget (a new
+ * selectedKey starts a fresh count) and reports whether it's still within
+ * budget to bail and retry.
  */
-function shouldRetryUnresolvedSelection(
+function recordUnresolvedSelectionAttempt(
   attemptsRef: MutableRefObject<{ key: string; count: number }>,
   selectedKey: string,
 ): boolean {
@@ -159,6 +160,10 @@ export function useTimelineSelectionPreviewSync({
 
     if (selectedIds.length === 0) {
       missingSelectionKeyRef.current = "";
+      // A deselect is the one unambiguous "new attempt" signal: without it, reselecting the
+      // same permanently-unresolvable id later picks up an already-exhausted retry budget
+      // and skips straight to the degraded fallback instead of getting a fresh grace window.
+      unresolvedAttemptsRef.current = { key: "", count: 0 };
       // The timeline holds nothing, so the canvas is about to hold nothing either.
       // This is the path that silently drops a selection the user can still see.
       logSelect("timeline-empty", {
@@ -191,7 +196,7 @@ export function useTimelineSelectionPreviewSync({
       );
       if (cancelled) return;
       if (selections.length < selectedIds.length) {
-        if (shouldRetryUnresolvedSelection(unresolvedAttemptsRef, selectedKey)) {
+        if (recordUnresolvedSelectionAttempt(unresolvedAttemptsRef, selectedKey)) {
           warnSelectionMissingOnce();
           // Delete acts on the canvas first, so only an anchor OUTSIDE this selection
           // (an element the user isn't looking at) is cleared here, quietly — a member

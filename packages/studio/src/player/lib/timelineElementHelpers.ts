@@ -397,7 +397,7 @@ export function deriveTimelineStoreKey(params: {
  * hand (e.g. one it just minted), so the undefined branch never applies.
  */
 export function deriveTimelineStoreKeyForDomId(domId: string, sourceFile?: string): string {
-  return buildTimelineElementKey({ id: "", fallbackIndex: 0, domId, sourceFile });
+  return deriveTimelineStoreKey({ domId, sourceFile })!;
 }
 
 // ---------------------------------------------------------------------------
