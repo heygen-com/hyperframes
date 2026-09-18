@@ -157,6 +157,10 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/store/groupLevels.ts",
     "#3454 deliberately removes group level-meter state",
   ],
+  [
+    "docs/public/catalog/components/texture-mask-text.json",
+    "the item's directory exceeds the host budget and now falls back to its recorded video; the stale payload had no <base href> and dead relative asset references, so removing it is the fix, not the regression",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {
