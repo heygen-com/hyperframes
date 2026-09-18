@@ -12,6 +12,7 @@ const VENDOR_ENV_KEYS = [
   "CODEX_CI",
   "CODEX_SANDBOX_NETWORK_DISABLED",
   "TERM_PROGRAM",
+  "CURSOR_AGENT",
   "GITHUB_ACTIONS",
   "COPILOT_AGENT_ID",
   "RUNNER_NAME",
@@ -53,6 +54,35 @@ describe("detectAgentRuntime — base behavior", () => {
     process.env["CODEX_THREAD_ID"] = "thread-1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("claude_code");
+  });
+
+  it("detects Cursor Agent without an IDE terminal marker", async () => {
+    process.env["CURSOR_AGENT"] = "1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("cursor");
+    process.env["CURSOR_AGENT"] = "";
+    expect(detectAgentRuntime()).toBeNull();
+  });
+
+  it.each([
+    ["CLAUDECODE", "claude_code"],
+    ["CODEX_THREAD_ID", "codex"],
+  ])("keeps child-agent attribution for %s inside Cursor", async (key, runtime) => {
+    process.env["CURSOR_AGENT"] = "1";
+    process.env[key] = "1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe(runtime);
+  });
+
+  it("keeps the Harbor marker separate from agent attribution and never emits its value", async () => {
+    const { detectExecutionHarnessHint, detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectExecutionHarnessHint()).toBeNull();
+    process.env["HARBOR_AGENT"] = "private-harness-value";
+    expect(detectExecutionHarnessHint()).toBe("harbor");
+    expect(detectAgentRuntime()).toBeNull();
+    process.env["CLAUDECODE"] = "1";
+    expect(detectAgentRuntime()).toBe("claude_code");
+    expect(detectExecutionHarnessHint()).toBe("harbor");
   });
 
   it("never reads env-var values — even API-key-shaped values stay unread", async () => {
@@ -397,6 +427,29 @@ describe("detectAgentHints — new-agent discovery signals", () => {
     process.env["FOO_AGENT_SESSION_ID"] = "whatever-value";
     const { detectAgentHints } = await import("./agent_runtime.js");
     expect(detectAgentHints().agent_env_hints).toContain("FOO_AGENT_SESSION_ID");
+  });
+
+  it("keeps specific markers when infrastructure keys exceed the discovery cap", async () => {
+    for (let i = 0; i < 20; i++) process.env[`AAA_AGENT_${i}_SERVICE_HOST`] = "private-host";
+    process.env["ANTIGRAVITY_AGENT"] = "private-value";
+    process.env["CODEBUDDY_SESSION_ID"] = "private-session";
+    process.env["HARBOR_AGENT"] = "private-harness";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    const hints = detectAgentHints().agent_env_hints ?? "";
+    expect(hints.split(",")).toHaveLength(16);
+    expect(hints).toContain("ANTIGRAVITY_AGENT");
+    expect(hints).toContain("CODEBUDDY_SESSION_ID");
+    expect(hints).toContain("HARBOR_AGENT");
+    expect(hints).not.toContain("private");
+    expect(hints.split(",")).toEqual(hints.split(",").sort());
+  });
+
+  it("excludes generic npm and login-session keys", async () => {
+    process.env["NPM_CONFIG_USER_AGENT"] = "npm/10";
+    process.env["TERM_SESSION_ID"] = "terminal";
+    process.env["XDG_SESSION_ID"] = "login";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_env_hints).toBeNull();
   });
 
   it("clears a full 16-key ambient cap so a fixture key still fits", async () => {
