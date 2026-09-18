@@ -277,3 +277,25 @@ describe("dispatchModifierKey — Cmd+C/Cmd+V arbitration", () => {
     expect(e.defaultPrevented).toBe(false);
   });
 });
+
+describe('dispatchPlainKey — "A" returns to select while the razor is armed', () => {
+  afterEach(() => {
+    usePlayerStore.setState({ activeTool: "select" });
+  });
+
+  it("returns to the select tool, matching CapCut's keybinding", () => {
+    usePlayerStore.setState({ activeTool: "razor" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("does not intercept plain \"a\" when the razor isn't armed, leaving playback's seek-to-in-point live", () => {
+    usePlayerStore.setState({ activeTool: "select" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    expect(e.defaultPrevented).toBe(false);
+  });
+});

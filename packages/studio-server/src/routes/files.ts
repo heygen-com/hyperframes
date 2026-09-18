@@ -201,6 +201,7 @@ interface AtomicCutTarget {
   playbackStart?: number;
   playbackRate?: number;
   isComposition?: boolean;
+  track?: number;
 }
 
 interface AtomicCutFileRequest {
@@ -218,7 +219,8 @@ function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
     Number.isFinite(target.splitTime) &&
     Number.isFinite(target.elementStart) &&
     Number.isFinite(target.elementDuration) &&
-    Number(target.elementDuration) > 0
+    Number(target.elementDuration) > 0 &&
+    (target.track === undefined || Number.isInteger(target.track))
   );
 }
 
@@ -2106,6 +2108,7 @@ async function foldAtomicCutFile(
       playbackStart: cut.playbackStart,
       playbackRate: cut.playbackRate,
       stampPlaybackStart: cut.isComposition,
+      track: cut.track,
     });
     if (!split.matched || !split.newId) {
       return c.json(

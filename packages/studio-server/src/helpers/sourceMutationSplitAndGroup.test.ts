@@ -32,6 +32,20 @@ describe("splitElementInHtml", () => {
     expect(result.html).toContain('data-duration="4"');
   });
 
+  it("pins both halves to the caller-supplied track so an unauthored clip's split half can't drift to a new row", () => {
+    // #box has no data-track-index/data-layer — this is the common, unauthored
+    // case that relies on the runtime's positional-index fallback. Without an
+    // explicit stamp, splitting only the clone changes DOM sibling order and
+    // the runtime resolves the clone to a different fallback track.
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split", {
+      start: 1,
+      duration: 6,
+      track: 2,
+    });
+    expect(result.matched).toBe(true);
+    expect(result.html.match(/data-track-index="2"/g)).toHaveLength(2);
+  });
+
   it("canonicalizes legacy timing attributes on both split halves", () => {
     const legacy = source.replace(
       'data-start="1" data-duration="6"',

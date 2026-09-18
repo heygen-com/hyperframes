@@ -293,10 +293,16 @@ function resolveElementTiming(el: Element): {
   return { start: timing.start ?? 0, duration: timing.duration ?? 0 };
 }
 
-function setElementDuration(el: Element, start: number, duration: number): void {
+function setElementDuration(
+  el: Element,
+  start: number,
+  duration: number,
+  trackIndex?: number,
+): void {
   writeClipTiming(el, {
     start: Math.round(start * 1000) / 1000,
     duration: Math.round(duration * 1000) / 1000,
+    ...(trackIndex != null ? { trackIndex } : {}),
   });
 }
 
@@ -312,6 +318,11 @@ export function splitElementInHtml(
     playbackStart?: number;
     playbackRate?: number;
     stampPlaybackStart?: boolean;
+    // The element's current resolved track (authored, or the runtime's
+    // positional-index fallback when unauthored). Stamped onto both halves so
+    // inserting the clone can't shift either one to a different row — see
+    // parseAuthoredTrack's fallback in core/runtime/timeline.ts.
+    track?: number;
   },
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
@@ -363,7 +374,7 @@ export function splitElementInHtml(
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.
   for (const node of clone.querySelectorAll("[data-hf-id]")) node.removeAttribute("data-hf-id");
-  setElementDuration(clone, splitTime, secondDuration);
+  setElementDuration(clone, splitTime, secondDuration, fallbackTiming?.track);
 
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
@@ -401,7 +412,7 @@ export function splitElementInHtml(
 
   // Trim the original element's duration. A GSAP element had no data-start; stamp
   // it so the runtime windows the first half (visibility selects on [data-start]).
-  setElementDuration(el, start, firstDuration);
+  setElementDuration(el, start, firstDuration, fallbackTiming?.track);
 
   // Insert clone after original
   if (el.nextSibling) {
