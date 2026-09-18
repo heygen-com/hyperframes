@@ -1,4 +1,6 @@
-import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readTagCI } from "./ffprobe.js";
 
 /**
@@ -31,16 +33,61 @@ export const PROVENANCE_RENDERER_NAME = "hyperframes";
 
 const UNKNOWN_VERSION = "0.0.0-dev";
 
+/** `hyperframes` (the CLI) and the `@hyperframes/*` packages ship one locked version. */
+function isHyperframesPackage(name: unknown): boolean {
+  return name === "hyperframes" || (typeof name === "string" && name.startsWith("@hyperframes/"));
+}
+
+/**
+ * Walk up to the package that owns this file and read its version.
+ *
+ * Deliberately not a fixed relative path. This module is consumed at three
+ * different directory depths — `src/utils/` from source, `dist/utils/` from
+ * the published engine, and `dist/cli.js` once the CLI bundles the engine flat
+ * (tsup `noExternal`) — so any hardcoded `../..` is correct for at most two of
+ * them. A depth-2 path silently resolved to `node_modules/package.json` in the
+ * CLI bundle and every published CLI render was stamped `0.0.0-dev`.
+ *
+ * The nearest `package.json` is the package that owns this code; a non-
+ * HyperFrames one means the engine was bundled into someone else's package,
+ * where reporting *their* version under a `hyperframes_version` key would be
+ * worse than admitting we don't know.
+ *
+ * Exported so the depth behaviour is testable at a synthetic layout; the
+ * unreachability of this logic from a test is why the bundled case shipped
+ * broken. A failed read must never break a render, so the caller swallows.
+ */
+export function readPackageVersionFrom(startDir: string): string {
+  let dir = startDir;
+  for (;;) {
+    const pkg = readPackageJson(join(dir, "package.json"));
+    if (pkg) {
+      return isHyperframesPackage(pkg.name) && typeof pkg.version === "string" && pkg.version
+        ? pkg.version
+        : UNKNOWN_VERSION;
+    }
+    // `dirname` is a fixpoint at the filesystem root on every platform, which
+    // terminates the walk without hardcoding what a root looks like.
+    const parent = dirname(dir);
+    if (parent === dir) return UNKNOWN_VERSION;
+    dir = parent;
+  }
+}
+
 function readEngineVersion(): string {
   try {
-    // The engine ships as raw TS and exports "./package.json", so this
-    // resolves without a build-time define. A failed read must never break a
-    // render, hence the fallback rather than a throw.
-    const version = (createRequire(import.meta.url)("../../package.json") as { version?: string })
-      .version;
-    return typeof version === "string" && version.length > 0 ? version : UNKNOWN_VERSION;
+    return readPackageVersionFrom(dirname(fileURLToPath(import.meta.url)));
   } catch {
     return UNKNOWN_VERSION;
+  }
+}
+
+/** Null when there is no readable package.json here, so the walk continues. */
+function readPackageJson(path: string): { name?: unknown; version?: unknown } | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as { name?: unknown; version?: unknown };
+  } catch {
+    return null;
   }
 }
 
