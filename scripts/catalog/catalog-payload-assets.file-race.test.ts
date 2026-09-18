@@ -131,6 +131,12 @@ function file(name: string, bytes = "checked") {
   fs.writeFileSync(path, bytes);
   return path;
 }
+function expectHosted() {
+  expect(hostItemDirectory(project, out.dir, "/item/")).toEqual({
+    status: "hosted",
+    baseHref: "/item/",
+  });
+}
 function arm(path: string) {
   hooks.target = path;
   hooks.swap = () => {
@@ -162,10 +168,7 @@ describe("catalog source reads", () => {
     (mirror) => {
       arm(file(mirror ? "_downloads/font.woff2" : "font.woff2"));
 
-      expect(hostItemDirectory(project, out.dir, "/item/")).toEqual({
-        status: "hosted",
-        baseHref: "/item/",
-      });
+      expectHosted();
       expect(fs.readFileSync(join(out.dir, "font.woff2"), "utf8")).toBe("checked");
       expect(hooks.swap).toBeUndefined();
     },
@@ -202,10 +205,7 @@ describe("catalog source reads", () => {
     file("font.woff2");
     hooks.forbidUnbounded = true;
     hooks.maxReadSize = 2;
-    expect(hostItemDirectory(project, out.dir, "/item/")).toEqual({
-      status: "hosted",
-      baseHref: "/item/",
-    });
+    expectHosted();
     expect(fs.readFileSync(join(out.dir, "font.woff2"), "utf8")).toBe("checked");
     expect(hooks.bytesRead).toBe(7);
   });
@@ -228,10 +228,7 @@ describe("catalog source reads", () => {
   it("reuses budgeted bytes for download mirrors after sources change during publication", () => {
     const path = file("_downloads/font.woff2", "x".repeat(MAX_HOSTED_DIRECTORY_BYTES));
     hooks.beforeWrite = () => fs.writeFileSync(path, "unchecked");
-    expect(hostItemDirectory(project, out.dir, "/item/")).toEqual({
-      status: "hosted",
-      baseHref: "/item/",
-    });
+    expectHosted();
     expect(hooks.beforeWrite).toBeUndefined();
     const original = Buffer.alloc(MAX_HOSTED_DIRECTORY_BYTES, "x");
     expect(fs.readFileSync(join(out.dir, "_downloads/font.woff2")).equals(original)).toBe(true);
@@ -244,10 +241,7 @@ describe("catalog source reads", () => {
       join(project, "_downloads"),
       process.platform === "win32" ? "junction" : "dir",
     );
-    expect(hostItemDirectory(project, out.dir, "/item/")).toEqual({
-      status: "hosted",
-      baseHref: "/item/",
-    });
+    expectHosted();
     expect(fs.readFileSync(join(out.dir, "media/font.woff2"), "utf8")).toBe("checked");
     expect(fs.readFileSync(join(out.dir, "font.woff2"), "utf8")).toBe("checked");
     expect(fs.existsSync(join(out.dir, "_downloads"))).toBe(false);
@@ -256,10 +250,7 @@ describe("catalog source reads", () => {
   it("preserves download mirror precedence over a colliding root asset", () => {
     file("font.woff2", "root");
     file("_downloads/font.woff2", "download");
-    expect(hostItemDirectory(project, out.dir, "/item/")).toEqual({
-      status: "hosted",
-      baseHref: "/item/",
-    });
+    expectHosted();
     expect(fs.readFileSync(join(out.dir, "font.woff2"), "utf8")).toBe("download");
   });
   it.each(["png", "glb", "html"])("does not publish an external .%s symlink target", (ext) => {
