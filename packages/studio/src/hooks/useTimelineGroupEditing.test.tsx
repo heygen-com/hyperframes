@@ -41,10 +41,11 @@ describe("useTimelineGroupEditing: handleTimelineGroupMove suppressFailureToast"
     return () => hook!;
   }
 
+  const change = { element: el("a", 0, 2), start: 2 };
+
   it("shows no toast when suppressFailureToast is set on a failed move", async () => {
     const showToast = vi.fn();
     const getHook = mountFailingHarness(showToast);
-    const change = { element: el("a", 0, 2), start: 2 };
 
     await act(async () => {
       await expect(
@@ -58,7 +59,6 @@ describe("useTimelineGroupEditing: handleTimelineGroupMove suppressFailureToast"
   it("shows one toast when suppressFailureToast is not set on a failed move", async () => {
     const showToast = vi.fn();
     const getHook = mountFailingHarness(showToast);
-    const change = { element: el("a", 0, 2), start: 2 };
 
     await act(async () => {
       await expect(getHook().handleTimelineGroupMove([change])).rejects.toThrow();
