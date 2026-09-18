@@ -19,12 +19,22 @@ describe("topLevelElements", () => {
       n("div", { "data-start": "2", id: "t" }, [n("span", { "data-start": "3", id: "nested" })]),
       n("script", { "data-start": "9", id: "s" }),
       n("NOSCRIPT", { "data-start": "9", id: "ns" }),
-      n("div", { "data-track-index": "2", id: "lane" }, [n("div", { id: "deep" })]),
+      n("div", { "data-track-index": "2", id: "lane" }, [
+        n("div", { "data-start": "1", id: "inLane" }),
+      ]),
+      n("div", { "data-track-index": "3", "data-duration": "2", id: "laneTimed" }),
       n("IMG", { id: "pic" }),
       n("div", { class: "clip", id: "classOnly" }),
       n("div", { "data-duration": "4", id: "durOnly" }),
     ]);
-    expect(topLevelElements(root).map((e) => e.id)).toEqual(["v", "host", "t", "lane", "pic"]);
+    expect(topLevelElements(root).map((e) => e.id)).toEqual([
+      "v",
+      "host",
+      "t",
+      "inLane",
+      "laneTimed",
+      "pic",
+    ]);
   });
 });
 

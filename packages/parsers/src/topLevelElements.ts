@@ -19,12 +19,12 @@ export function isSubCompositionHost(node: StructureNode): boolean {
   );
 }
 
-/** Mirrors the runtime's clip selector: [data-start], [data-track-index], video, audio, img. */
+/** Mirrors the runtime's clip selector; a data-track-index layer container without a duration is not a clip. */
 export function isTimedElement(node: StructureNode): boolean {
   const { attrs } = node;
   return (
     attrs["data-start"] !== undefined ||
-    attrs["data-track-index"] !== undefined ||
+    (attrs["data-track-index"] !== undefined && attrs["data-duration"] !== undefined) ||
     MEDIA_TAGS.has(node.tag.toLowerCase())
   );
 }
