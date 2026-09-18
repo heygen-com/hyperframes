@@ -1,17 +1,20 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { parseArgs as parseCittyArgs, type ArgsDef } from "citty";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import {
+import addCommand, {
   AddError,
   buildSnippet,
   describeInstallFailure,
+  formatExtraPositionalsError,
   parseVariableValues,
   remapTarget,
   runAdd,
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
 // already false under test (dev mode / no PostHog key), so a real call would
@@ -260,6 +263,17 @@ describe("add command pure helpers", () => {
       expect(buildSnippet(EXAMPLE_ITEM, "index.html")).toBe("");
     });
   });
+
+  describe("formatExtraPositionalsError", () => {
+    it("names every extra argument, singular wording for one", () => {
+      expect(formatExtraPositionalsError(["b"])).toContain("extra argument: b");
+    });
+
+    it("names every extra argument, plural wording for more than one", () => {
+      const msg = formatExtraPositionalsError(["b", "c"]);
+      expect(msg).toContain("extra arguments: b, c");
+    });
+  });
 });
 
 describe("runAdd (integration, mocked registry)", () => {
@@ -467,6 +481,68 @@ describe("variable values in the snippet", () => {
     expect(() => parseVariableValues("not json")).toThrow(/JSON object/);
     expect(() => parseVariableValues("[1,2]")).toThrow(/JSON object/);
     expect(parseVariableValues(undefined)).toBeNull();
+  });
+});
+
+describe("add command run() — extra positional arguments", () => {
+  let dir: string;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    dir = tmp();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // citty binds only the first positional to `name`; `_` carries every
+  // positional token exactly as citty itself would populate it.
+  async function runCommand(args: Record<string, unknown>): Promise<void> {
+    await (addCommand.run as (ctx: { args: Record<string, unknown> }) => Promise<void>)({ args });
+  }
+
+  it("rejects `add <a> <b> <c>`, naming the dropped arguments and touching no registry", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(
+      runCommand({ name: "a", _: ["a", "b", "c"], dir, clipboard: true }),
+    ).rejects.toThrow(CliUsageError);
+
+    // Failing fast means no partial install either: `a` never touches the
+    // registry, so an invalid multi-name invocation can't half-succeed and
+    // leave the project in a state that depends on install order.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain("b, c");
+  });
+
+  it("rejects extra positionals under real citty parsing, with a flag interleaved", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    // `add a --dir <dir> b`: exercises citty's own parser rather than a
+    // hand-built args object, proving `_` really does exclude the `--dir`
+    // flag and its value while still keeping both positional tokens.
+    const parsed = parseCittyArgs(["a", "--dir", dir, "b"], addCommand.args as ArgsDef);
+    expect(parsed._).toEqual(["a", "b"]);
+
+    await expect(runCommand(parsed as unknown as Record<string, unknown>)).rejects.toThrow(
+      CliUsageError,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not fire on a normal single-item invocation", async () => {
+    mockFetch();
+    writeRegistryConfig(dir);
+
+    await expect(
+      runCommand({ name: "my-block", _: ["my-block"], dir, clipboard: false, json: true }),
+    ).resolves.toBeUndefined();
   });
 });
 
