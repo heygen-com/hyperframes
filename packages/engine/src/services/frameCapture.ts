@@ -1552,6 +1552,9 @@ export const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
     });
     await new Promise(function(r) { setTimeout(r, 0); });
   }
+  // A thenable resolving via its own setTimeout(0) can still misreport as
+  // pending here (macrotask registration order, not resolution order) — a
+  // narrow case that self-corrects on the next ~1s diagnostic tick.
   var pendingBuildReadyKeys = keys.filter(function(key) { return !settled[key]; });
   var rejectedBuildReadyKeys = keys.filter(function(key) { return settled[key] === "rejected"; });
   return {
