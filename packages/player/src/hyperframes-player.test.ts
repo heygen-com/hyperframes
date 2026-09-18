@@ -2767,10 +2767,13 @@ describe("HyperframesPlayer asset-ready gate", () => {
     iframe: HTMLIFrameElement;
     _ready: boolean;
     _pendingPlay: boolean;
+    _paused: boolean;
     assetsReady: boolean;
     _waitForAssetsReady(doc: Document | null): void;
     _onIframeLoad(): void;
     play(): void;
+    pause(): void;
+    seek(timeInSeconds: number): void;
   };
 
   beforeEach(async () => {
@@ -2835,6 +2838,85 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player.assetsReady).toBe(true);
     expect(player.hasAttribute("assets-loading")).toBe(false);
     expect(player._pendingPlay).toBe(false);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("cancels a queued play if the user pauses while assets are still buffering", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    player.pause();
+    expect(player._pendingPlay).toBe(false);
+    expect(player._paused).toBe(true);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(player._paused).toBe(true);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("cancels a queued play if the user seeks while assets are still buffering", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    player.seek(1.5);
+    expect(player._pendingPlay).toBe(false);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("settles a play() called twice while buffering into exactly one playback start (pre-existing idempotency, not the pause/seek cancel)", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    // Two queued play() calls settle into exactly one playback start, never two.
     expect(playSpy).toHaveBeenCalledTimes(1);
 
     player.remove();

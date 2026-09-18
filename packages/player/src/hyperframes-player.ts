@@ -403,6 +403,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   pause() {
+    // A play queued while assets were still buffering must not survive an
+    // explicit user pause — otherwise it fires once assets settle, seconds
+    // after the user stopped playback.
+    this._pendingPlay = false;
     if (!this._tryDirectTimelinePause()) this._sendControl("pause");
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -419,6 +423,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   seek(timeInSeconds: number) {
+    // seek()'s own contract is that it lands paused, so a play still queued
+    // from the asset-buffering window is cancelled here too — same reason as
+    // pause() above.
+    this._pendingPlay = false;
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
         timeSeconds: timeInSeconds,
