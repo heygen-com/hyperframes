@@ -1,0 +1,32 @@
+name: PR captures
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# Runs on every PR (no path filter) so it can be a required check; the script passes when neither package changed.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches: [main]
+
+concurrency:
+  group: pr-captures-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  captures:
+    name: Studio and player captures
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Require Before and After captures
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-pr-captures.mjs --base "origin/$BASE_REF" --head "$HEAD_SHA"
