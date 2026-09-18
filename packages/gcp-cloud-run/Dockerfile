@@ -112,10 +112,10 @@ RUN bun -e 'import { buildChromeArgs } from "./packages/engine/src/services/brow
       --executable-path /opt/chrome/chrome-headless-shell \
       --launch-args-json /tmp/hf-gcp-chrome-args.json
 
-# Fails the image build closed if this exact pinned binary can't get a WebGPU
-# adapter in software GPU mode. A real script file, not an inline `bun -e`
-# eval — the eval's synthetic `/app/[eval]` path can't resolve the
-# workspace-hoisted `puppeteer-core` dependency the way a real file can.
+# Reports whether this exact pinned binary gets a hardware WebGPU adapter. A software-only
+# host reports "no usable adapter" without failing the build; its WebGPU compositions refuse
+# to render at run time. A real script file, not an inline `bun -e` eval: the eval's
+# synthetic `/app/[eval]` path can't resolve the workspace-hoisted `puppeteer-core`.
 COPY packages/aws-lambda/scripts/probe-webgpu-adapter.ts packages/aws-lambda/scripts/probe-webgpu-adapter.ts
 RUN bun packages/aws-lambda/scripts/probe-webgpu-adapter.ts \
       --executable-path /opt/chrome/chrome-headless-shell

@@ -967,12 +967,24 @@ export function compositionRequiresWebGpu(html: string): boolean {
   return compositionRoot ? /\bdata-requires-webgpu(?:\s|=|>)/i.test(compositionRoot[0]) : false;
 }
 
-/**
- * Confirms the already-navigated page can obtain a WebGPU adapter; no-op otherwise.
- * `page` must be on a secure-context origin, or navigator.gpu always reads absent.
- */
+/** No hardware WebGPU adapter on this host; distinct from a browser or navigation failure. */
+export class WebGpuUnavailableError extends Error {
+  constructor() {
+    super(
+      "This composition declares data-requires-webgpu, but no hardware WebGPU adapter could be " +
+        "obtained on this browser launch (a software fallback adapter such as swiftshader reports " +
+        "one but cannot render it). Run on a host with a GPU, or remove data-requires-webgpu.",
+    );
+    this.name = "WebGpuUnavailableError";
+  }
+}
+
 const WEBGPU_ADAPTER_PROBE_TIMEOUT_MS = 10_000;
 
+/**
+ * Confirms the already-navigated page can obtain a hardware WebGPU adapter; no-op otherwise.
+ * `page` must be on a secure-context origin, or navigator.gpu always reads absent.
+ */
 export async function assertWebGpuAdapterAvailable(
   page: Page,
   requiresWebGpu: boolean,
@@ -980,26 +992,20 @@ export async function assertWebGpuAdapterAvailable(
   if (!requiresWebGpu) return;
   // requestAdapter() has no native timeout; a broken driver can hang it
   // indefinitely. Race it in-page so a stuck adapter reads as "unavailable"
-  // instead of hanging the caller (and, in the GCP image build, the build).
-  const hasAdapter = await page.evaluate(async (timeoutMs) => {
+  // instead of hanging the caller.
+  const hasUsableAdapter = await page.evaluate(async (timeoutMs) => {
     if (typeof navigator === "undefined" || !navigator.gpu) return false;
     try {
       const adapter = await Promise.race([
         navigator.gpu.requestAdapter(),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
       ]);
-      return !!adapter;
+      return !!adapter && !adapter.info.isFallbackAdapter;
     } catch {
       return false;
     }
   }, WEBGPU_ADAPTER_PROBE_TIMEOUT_MS);
-  if (!hasAdapter) {
-    throw new Error(
-      "This composition declares data-requires-webgpu, but no WebGPU adapter (hardware or " +
-        "software) could be obtained on this browser launch. Run on a WebGPU-capable host, or " +
-        "confirm this platform's Chrome ANGLE backend supports WebGPU.",
-    );
-  }
+  if (!hasUsableAdapter) throw new WebGpuUnavailableError();
 }
 
 function getBrowserGpuArgs(

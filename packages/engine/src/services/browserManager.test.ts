@@ -20,6 +20,7 @@ import {
   buildChromeArgs,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
+  WebGpuUnavailableError,
   drainBrowserPool,
   forceReleaseBrowser,
   releaseBrowser,
@@ -230,6 +231,34 @@ describe("assertWebGpuAdapterAvailable", () => {
   it("throws naming the requirement when no adapter is obtainable", async () => {
     const page = pageWithAdapter(false);
     await expect(assertWebGpuAdapterAvailable(page, true)).rejects.toThrow("data-requires-webgpu");
+  });
+
+  describe("in-page adapter check (real callback, stubbed navigator.gpu)", () => {
+    const runInPage = {
+      evaluate: (fn: (t: number) => unknown, t: number) => fn(t),
+    } as unknown as Page;
+    const stubAdapter = (adapter: unknown) =>
+      vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => adapter } });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("accepts a hardware adapter", async () => {
+      stubAdapter({ info: { isFallbackAdapter: false } });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).resolves.toBeUndefined();
+    });
+
+    it("refuses a software fallback adapter such as swiftshader", async () => {
+      stubAdapter({ info: { isFallbackAdapter: true } });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+    });
+
+    it("refuses a host with no navigator.gpu", async () => {
+      vi.stubGlobal("navigator", {});
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+    });
   });
 });
 

@@ -1,16 +1,17 @@
 #!/usr/bin/env tsx
-/** Fails closed if the pinned Linux Chromium can't get a WebGPU adapter in software GPU mode. */
+/** Reports whether the pinned Linux Chromium gets a hardware WebGPU adapter; a software-only host is reported, not a build failure. */
 // Dynamic `puppeteer-core` import from a real file, same as probe-beginframe.ts —
 // an inline `bun -e` eval's synthetic `/app/[eval]` path can't see the hoisted dep.
 // Usage: bun probe-webgpu-adapter.ts --executable-path /opt/chrome/chrome-headless-shell
 
-import { mkdtempSync, promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildChromeArgs,
   assertWebGpuAdapterAvailable,
+  WebGpuUnavailableError,
 } from "../../engine/src/services/browserManager.ts";
 
 const PROBE_HTML = '<div data-composition-id="probe" data-requires-webgpu></div>';
@@ -29,11 +30,10 @@ async function main(): Promise<void> {
   const executablePath = parseExecutablePath(process.argv.slice(2));
   const puppeteer = await import("puppeteer-core");
 
-  const tmpHtmlDir = mkdtempSync(join(tmpdir(), "hf-webgpu-probe-"));
-  const htmlPath = join(tmpHtmlDir, "probe.html");
+  // navigator.gpu only exists on a secure-context origin; file:// is not one, http://127.0.0.1 is.
+  const server = createServer((_req, res) => res.end(PROBE_HTML));
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   try {
-    await fs.writeFile(htmlPath, PROBE_HTML, "utf-8");
-
     const args = buildChromeArgs(
       {
         width: 800,
@@ -47,14 +47,19 @@ async function main(): Promise<void> {
     const browser = await puppeteer.launch({ executablePath, headless: true, args });
     try {
       const page = await browser.newPage();
-      await page.goto(`file://${htmlPath}`);
+      await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
       await assertWebGpuAdapterAvailable(page, true);
+      console.log("WebGPU adapter probe: hardware adapter available");
+    } catch (err) {
+      if (!(err instanceof WebGpuUnavailableError)) throw err;
+      console.log(
+        "WebGPU adapter probe: no usable adapter; data-requires-webgpu compositions will not render on this host",
+      );
     } finally {
       await browser.close();
     }
-    console.log("WebGPU adapter probe: OK");
   } finally {
-    await fs.rm(tmpHtmlDir, { recursive: true, force: true }).catch(() => {});
+    server.close();
   }
 }
 
