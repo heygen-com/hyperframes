@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Proves the generated Catalog nav still lists exactly the same pages as before, on disk,
-// reachable, no duplicates.
+// reachable, no duplicates. Adapted from a reference implementation of this same check.
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";

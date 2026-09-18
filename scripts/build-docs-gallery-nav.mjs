@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Rebuilds the Catalog tab's sidebar from catalog-gallery-data.mdx, so counts and grouping
-// are generated, not hand-maintained.
+// are generated, not hand-maintained. Adapted from a reference implementation of this same
+// transform, re-pointed at this repo's own docs.json.
 import fs from "node:fs";
 import path from "node:path";
 import {
