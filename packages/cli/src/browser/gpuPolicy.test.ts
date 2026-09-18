@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertWebGpuRequirement,
   compositionRequiresWebGpu,
+  compositionUsesColorGrading,
   resolveLocalBrowserGpuMode,
 } from "./gpuPolicy.js";
 
@@ -30,5 +31,16 @@ describe("local browser GPU policy", () => {
     );
     expect(() => assertWebGpuRequirement(html, "hardware", "hardware")).not.toThrow();
     expect(() => assertWebGpuRequirement(html, "software", "software")).not.toThrow();
+  });
+
+  it("detects data-color-grading on any element, not just the composition root", () => {
+    expect(
+      compositionUsesColorGrading(
+        '<div data-composition-id="main"><img data-color-grading=\'{"adjust":{"saturation":-1}}\' src="a.jpg" /></div>',
+      ),
+    ).toBe(true);
+    expect(
+      compositionUsesColorGrading('<div data-composition-id="main"><img src="a.jpg" /></div>'),
+    ).toBe(false);
   });
 });
