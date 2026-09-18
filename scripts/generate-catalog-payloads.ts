@@ -47,6 +47,7 @@ import {
   HOSTED_DIRECTORY_BYTE_ALLOWANCE,
   hostItemDirectory,
   type HostItemDirectoryResult,
+  localReferences,
   processAssets,
   withBaseHref,
 } from "./catalog-payload-assets.ts";
@@ -225,14 +226,13 @@ function applyInteractiveMount(html: string, projectDir: string, interactive: bo
 
 const SCRIPT_REF = /\.(js|mjs|hdr)(?:[?#].*)?$/i;
 
-/** For an item whose scripts are inlined, a script ref is resolved once no src/href attribute
- * still points at it (import-map keys are specifiers, not fetches). One still fetched stays
- * unresolved: the docs host never serves script files, so no base URL can rescue it. */
+/** For an item whose scripts are inlined, a script ref is resolved once the reference finder no
+ * longer sees it in the output. One still found stays unresolved: the docs host never serves
+ * script files, so no base URL can rescue it. */
 function dropInlinedScriptRefs(itemName: string, html: string, unresolved: string[]): string[] {
   if (!needsScriptInlining(itemName)) return unresolved;
-  const fetched = (ref: string) =>
-    [`"${ref}"`, `'${ref}'`].some((q) => html.includes(`src=${q}`) || html.includes(`href=${q}`));
-  return unresolved.filter((ref) => !SCRIPT_REF.test(ref) || fetched(ref));
+  const remaining = new Set(localReferences(html));
+  return unresolved.filter((ref) => !SCRIPT_REF.test(ref) || remaining.has(ref));
 }
 
 /** Turns a compiled composition's HTML into the final payload markup: resolves/inlines
