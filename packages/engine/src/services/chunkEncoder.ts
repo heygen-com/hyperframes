@@ -450,9 +450,13 @@ export function buildEncoderArgs(
     if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
       // odd dimensions before upload, so only prepend the range conversion.
+      // Same out_color_matrix gap and HDR caveat as the CPU branch below.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
-        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
+        const rangeFilter = options.hdr
+          ? "scale=in_range=pc:out_range=tv"
+          : "scale=in_range=pc:out_range=tv:out_color_matrix=bt709";
+        args[vfIdx + 1] = `${rangeFilter},${args[vfIdx + 1]}`;
       }
     } else if (shouldUseGpu) {
       // nvenc/videotoolbox/qsv/amf feed software frames straight to the HW
@@ -466,14 +470,20 @@ export function buildEncoderArgs(
       // The scale filter handles both 8-bit and 10-bit correctly. Pad odd
       // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
       // "height not divisible by 2" on an odd-sized composition canvas.
+      //
+      // out_color_matrix=bt709 drives the actual RGB→YUV conversion to match
+      // the bt709 tags pushed above. Without it libswscale picks its own
+      // default matrix while the bitstream still claims bt709, so any decoder
+      // honoring the tag applies the wrong inverse — a real color shift
+      // (authored rgb(74,203,221) decodes back as rgb(62,190,223)). The HDR
+      // branch tags bt2020 and has the same structural gap, left alone here
+      // because it is unverified against an HDR fixture.
+      const scaleFilter = options.hdr
+        ? "scale=in_range=pc:out_range=tv"
+        : "scale=in_range=pc:out_range=tv:out_color_matrix=bt709";
       args.push(
         "-vf",
-        withEvenDimensionPad(
-          "scale=in_range=pc:out_range=tv",
-          pixelFormat,
-          options.width,
-          options.height,
-        ),
+        withEvenDimensionPad(scaleFilter, pixelFormat, options.width, options.height),
       );
     }
 

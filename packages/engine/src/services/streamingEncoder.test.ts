@@ -167,13 +167,31 @@ describe("buildStreamingArgs", () => {
       expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt709");
       expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
       expect(args[args.indexOf("-color_range") + 1]).toBe("tv");
-      expect(args[args.indexOf("-vf") + 1]).toBe("scale=in_range=pc:out_range=tv");
+      expect(args[args.indexOf("-vf") + 1]).toBe(
+        "scale=in_range=pc:out_range=tv:out_color_matrix=bt709",
+      );
     });
 
     it("adds the pad after range conversion for odd SDR output dimensions", () => {
       const args = buildStreamingArgs({ ...baseSdr, height: 1081 }, "/tmp/out.mp4");
       expect(args[args.indexOf("-vf") + 1]).toBe(
-        "scale=in_range=pc:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+        "scale=in_range=pc:out_range=tv:out_color_matrix=bt709,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      );
+    });
+
+    it("still tags bt709 (and adds the bt709 matrix) when hdr is set without rawInputFormat", () => {
+      // Pins a combination with no real caller today (HDR always pairs with
+      // rawInputFormat — see captureHdrStage.ts), but the color-space tagging
+      // above keys off `rawInputFormat && hdr`, not `hdr` alone, so this
+      // branch is reachable in principle. A future refactor that "simplifies"
+      // the -vf selection to gate on `options.hdr` alone (matching
+      // chunkEncoder.ts's own ternary) would silently reintroduce the
+      // tag/matrix mismatch for exactly this combination — this test would
+      // catch that.
+      const args = buildStreamingArgs({ ...baseSdr, hdr: { transfer: "hlg" } }, "/tmp/out.mp4");
+      expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
+      expect(args[args.indexOf("-vf") + 1]).toBe(
+        "scale=in_range=pc:out_range=tv:out_color_matrix=bt709",
       );
     });
   });
@@ -357,10 +375,12 @@ describe("buildStreamingArgs", () => {
       expect(args).not.toContain("-vf");
     });
 
-    it("prepends range conversion to VAAPI chain (nv12 covers even-dim)", () => {
+    it("prepends range conversion with a bt709 matrix to VAAPI chain (nv12 covers even-dim)", () => {
       const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "vaapi");
       const vfIdx = args.indexOf("-vf");
-      expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,format=nv12,hwupload");
+      expect(args[vfIdx + 1]).toBe(
+        "scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=nv12,hwupload",
+      );
     });
   });
 

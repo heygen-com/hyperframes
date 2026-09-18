@@ -421,9 +421,13 @@ export function buildStreamingArgs(
     } else if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
       // odd dimensions before upload, so only prepend the range conversion.
+      // Reached only under bt709 tagging (the bt2020 tag above requires
+      // rawInputFormat, which takes the no-filter branch above), so no HDR
+      // conditional is needed — same invariant as the else branch below.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
-        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
+        args[vfIdx + 1] =
+          `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,${args[vfIdx + 1]}`;
       }
     } else if (shouldUseGpu) {
       // nvenc/videotoolbox/qsv/amf feed software frames straight to the HW
@@ -436,10 +440,17 @@ export function buildStreamingArgs(
       // Range conversion: Chrome screenshots are full-range RGB. Pad odd
       // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
       // "height not divisible by 2" on an odd-sized composition canvas.
+      //
+      // out_color_matrix=bt709 drives the actual RGB→YUV conversion to match
+      // the bt709 tags pushed above. Without it libswscale picks its own
+      // default matrix while the bitstream still claims bt709, so any decoder
+      // honoring the tag applies the wrong inverse — a real color shift.
+      // No HDR conditional is needed here: the bt2020 tagging above requires
+      // rawInputFormat, which takes the separate no-filter branch.
       args.push(
         "-vf",
         withEvenDimensionPad(
-          "scale=in_range=pc:out_range=tv",
+          "scale=in_range=pc:out_range=tv:out_color_matrix=bt709",
           pixelFormat,
           options.width,
           options.height,
