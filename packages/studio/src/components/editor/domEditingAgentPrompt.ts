@@ -6,10 +6,8 @@ import { formatTime } from "../../player/lib/time";
 import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
 
 /**
- * The subset of an element selection that both the Studio DOM editor
- * (`DomEditSelection`) and the runtime picker (`HyperframePickerElementInfo`,
- * used by host apps embedding only the player) can supply. A field absent
- * from a caller's source type is simply omitted from that caller's mapping.
+ * The subset of an element selection shared by the Studio DOM editor (`DomEditSelection`) and the
+ * runtime picker (`HyperframePickerElementInfo`); a field absent from a caller's type is simply omitted.
  */
 export interface AgentPromptElementInfo {
   id: string | null;
@@ -163,11 +161,8 @@ export function buildAgentContextPreview(
 }
 
 /**
- * Same convention as `buildElementAgentPrompt`, for a host app embedding only
- * the player (no Studio DOM access): built from the runtime picker's own
- * postMessage payload instead of Studio's richer `DomEditSelection`. A null
- * selection (nothing picked yet) yields a plain comment prompt with no
- * element section or element-scoped guardrails.
+ * Same convention as `buildElementAgentPrompt`, for a host app embedding only the player: built from
+ * the runtime picker's own payload, not `DomEditSelection`. Null selection yields a bare prompt, no guardrails.
  */
 export function buildPickerAgentPrompt({
   selection,
