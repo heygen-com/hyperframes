@@ -130,6 +130,7 @@ class HyperframesPlayer extends HTMLElement {
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
+  private _runtimeAssetsReadyGeneration = -1;
   private _runtimeData = new Map<string, unknown>();
   private _runtimeDataRequestId = 0;
   private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
@@ -955,11 +956,17 @@ class HyperframesPlayer extends HTMLElement {
         this._replayBridgeState();
         this._replayRuntimeData();
       },
+      onRuntimeAssetsReady: () => {
+        if (this._runtimeAssetsReadyGeneration === this._assetsGeneration) {
+          this._settleAssetsReady(this._assetsGeneration);
+        }
+      },
       onRuntimeDataApplied: (channel, requestId) =>
         this._resolveRuntimeDataDelivery(channel, requestId),
       onRuntimeDataError: (channel, requestId, message) =>
         this._rejectRuntimeDataDelivery(channel, requestId, message),
-      onRuntimeTimelineReady: (duration) => this._onRuntimeTimelineReady(duration),
+      onRuntimeTimelineReady: (duration, assetsReady) =>
+        this._onRuntimeTimelineReady(duration, assetsReady),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
       },
@@ -978,7 +985,7 @@ class HyperframesPlayer extends HTMLElement {
     });
   }
 
-  private _onRuntimeTimelineReady(duration: number) {
+  private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
     if (this._ready) return;
     this.probe.stop();
     this._duration = duration;
@@ -996,7 +1003,7 @@ class HyperframesPlayer extends HTMLElement {
 
     this._replayBridgeState();
     this._setIframeMediaMuted(this.muted);
-    this._waitForAssetsReady(doc);
+    this._waitForAssetsReady(doc, assetsReady);
     if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
   }
 
@@ -1022,7 +1029,7 @@ class HyperframesPlayer extends HTMLElement {
    * bounded by ASSETS_READY_TIMEOUT_MS. The overlay is debounced by
    * ASSETS_LOADING_SHOW_DELAY_MS rather than shown the instant a wait
    * starts, since one is now pending on nearly every Play. */
-  private _waitForAssetsReady(doc: Document | null): void {
+  private _waitForAssetsReady(doc: Document | null, runtimeAssetsReady?: boolean): void {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
     // Invalidates any earlier wait still in flight (a composition swap, or
@@ -1030,7 +1037,15 @@ class HyperframesPlayer extends HTMLElement {
     // rather than resolving a since-superseded generation.
     const generation = ++this._assetsGeneration;
     if (!doc) {
-      this._settleAssetsReady(generation);
+      // An opaque-origin iframe cannot be scanned from here; a runtime that
+      // reports `assetsReady: false` runs the same scan itself and posts the result.
+      if (runtimeAssetsReady === false) {
+        this._runtimeAssetsReadyGeneration = generation;
+        this._startAssetsLoadingOverlayTimer(generation);
+        setTimeout(() => this._settleAssetsReady(generation), ASSETS_READY_TIMEOUT_MS);
+      } else {
+        this._settleAssetsReady(generation);
+      }
       return;
     }
     settleCompositionReadiness(
@@ -1042,14 +1057,16 @@ class HyperframesPlayer extends HTMLElement {
       },
       { timeoutMs: ASSETS_READY_TIMEOUT_MS },
     );
-    if (!this._assetsReady) {
-      this._assetsLoadingShowTimer = setTimeout(() => {
-        this._assetsLoadingShowTimer = null;
-        if (generation !== this._assetsGeneration || this._assetsReady) return;
-        this.setAttribute(ASSETS_LOADING_ATTR, "");
-        this.shaderLoader.showAssetsLoading();
-      }, ASSETS_LOADING_SHOW_DELAY_MS);
-    }
+    if (!this._assetsReady) this._startAssetsLoadingOverlayTimer(generation);
+  }
+
+  private _startAssetsLoadingOverlayTimer(generation: number): void {
+    this._assetsLoadingShowTimer = setTimeout(() => {
+      this._assetsLoadingShowTimer = null;
+      if (generation !== this._assetsGeneration || this._assetsReady) return;
+      this.setAttribute(ASSETS_LOADING_ATTR, "");
+      this.shaderLoader.showAssetsLoading();
+    }, ASSETS_LOADING_SHOW_DELAY_MS);
   }
 
   /** Timeout diagnostic. Re-scans since some assets may have resolved by
@@ -1128,6 +1145,11 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
+    // The runtime posts its timeline at DOMContentLoaded, so a wait that is
+    // still open on `load` belongs to this same document. Resetting here would
+    // drop the wait and any queued play, and a paused runtime never posts again.
+    if (this._runtimeAssetsReadyGeneration === this._assetsGeneration && !this._assetsReady) return;
+
     this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
     // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands

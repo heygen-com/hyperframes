@@ -2823,6 +2823,66 @@ describe("HyperframesPlayer asset-ready gate", () => {
     return { doc, video };
   }
 
+  const post = (player: PlayerInternal, data: Record<string, unknown>) =>
+    (player as unknown as { _onMessage(e: MessageEvent): void })._onMessage({
+      source: player.iframe.contentWindow,
+      data: { source: "hf-preview", ...data },
+    } as unknown as MessageEvent);
+
+  it("holds an opaque-origin composition until its runtime posts assets-ready", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    expect(player.assetsReady).toBe(false);
+
+    post(player, { type: "assets-ready", timedOut: false });
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
+  it("keeps a queued play across the iframe load event while the runtime still reports assets pending", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    player._onIframeLoad();
+    post(player, { type: "assets-ready", timedOut: false });
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._ready).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
+  it("does not wait on an opaque-origin runtime that already settled its assets", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: true });
+
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
+  it("does not wait on an opaque-origin runtime that never announced the capability", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60 });
+
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
   it("settles immediately for a cross-origin composition (doc === null)", async () => {
     const player = await createConnectedPlayer();
 

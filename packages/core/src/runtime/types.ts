@@ -96,6 +96,10 @@ export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
   scenes: RuntimeTimelineScene[];
   compositionWidth: number;
   compositionHeight: number;
+  /** Present when this runtime will post `assets-ready`; the value is whether
+   * the composition's assets have settled yet. Absent on older runtimes, whose
+   * parents must not wait for a message that never comes. */
+  assetsReady?: boolean;
 };
 
 export type RuntimeDiagnosticMessage = {
@@ -171,6 +175,15 @@ export type RuntimeReadyMessage = {
   type: "ready";
 };
 
+/** Posted once per runtime instance, after the first timeline message, when
+ * the composition's media, images and fonts have settled (or timed out). It
+ * lets a parent that cannot read the iframe (opaque origin) gate playback. */
+export type RuntimeAssetsReadyMessage = {
+  source: "hf-preview";
+  type: "assets-ready";
+  timedOut: boolean;
+};
+
 export type RuntimeDataErrorMessage = {
   source: "hf-preview";
   type: "runtime-data-error";
@@ -236,6 +249,7 @@ export type RuntimeOutboundMessage =
   | RuntimeStageSizeMessage
   | RuntimeMediaAutoplayBlockedMessage
   | RuntimeReadyMessage
+  | RuntimeAssetsReadyMessage
   | RuntimeDataErrorMessage
   | RuntimeDataAppliedMessage
   | RuntimeAnalyticsMessage

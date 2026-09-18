@@ -160,15 +160,18 @@ function nextAnimationFrame(win: Window, signal: AbortSignal): Promise<number> {
       resolve(-1);
       return;
     }
-    const id = win.requestAnimationFrame((ts) => {
-      signal.removeEventListener("abort", onAbort);
-      resolve(ts);
-    });
+    let id = 0;
     const onAbort = () => {
       win.cancelAnimationFrame?.(id);
       resolve(-1);
     };
     signal.addEventListener("abort", onAbort, { once: true });
+    // A host whose rAF calls back synchronously reaches onAbort in the
+    // callback, so it must already be declared above.
+    id = win.requestAnimationFrame((ts) => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(ts);
+    });
   });
 }
 

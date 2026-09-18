@@ -3,6 +3,9 @@ import { initSandboxRuntimeModular } from "./init";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type { RuntimeTimelineLike } from "./types";
 
+// The readiness gate's 8s timeout is a one-shot timer these transport tests must not count.
+vi.mock("../compositionReadiness", () => ({ settleCompositionReadiness: vi.fn() }));
+
 /**
  * The transport parks itself when the editor is paused and settled. Everything
  * it used to discover by looking again on the next frame has to arrive by some

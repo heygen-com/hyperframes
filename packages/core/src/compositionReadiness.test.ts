@@ -170,6 +170,16 @@ describe("paintAndIdleReadinessInput", () => {
     expect(paintAndIdleReadinessInput(docWith(""), new AbortController().signal)).toBeNull();
   });
 
+  it("settles on a host whose requestAnimationFrame calls back synchronously", async () => {
+    let ts = 0;
+    const win = { requestAnimationFrame: (cb: (t: number) => void) => (cb((ts += 16)), 1) };
+    const doc = { defaultView: win } as unknown as Document;
+
+    await expect(
+      paintAndIdleReadinessInput(doc, new AbortController().signal),
+    ).resolves.toBeUndefined();
+  });
+
   it("waits for first paint, then two consecutive quiet frame gaps", async () => {
     const { fireFrame, isResolved } = startPaintAndIdleTracking();
 

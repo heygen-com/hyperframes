@@ -77,6 +77,7 @@ import {
 import { installStudioCustomEase } from "./customEase";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { MEDIA_START_BASIS_ATTR } from "../mediaTiming";
+import { settleCompositionReadiness } from "../compositionReadiness";
 import {
   clearRuntimeData,
   setRuntimeData,
@@ -2758,6 +2759,8 @@ export function initSandboxRuntimeModular(): void {
   // transport tick. A plain count misses same-count swaps (one sub-comp unloads
   // as another loads), so the signature keys on id+tag in document order.
   let clipTreeSignature = "";
+  let assetsReadyStarted = false;
+  let assetsSettled = false;
   let liveRootDurationOverrideSeconds = 0;
   const computeClipTreeSignature = (): string => {
     let sig = "";
@@ -2807,7 +2810,14 @@ export function initSandboxRuntimeModular(): void {
       clipTreeSignature = currentSignature;
     }
 
-    postRuntimeMessage(payload);
+    postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
+    if (!assetsReadyStarted) {
+      assetsReadyStarted = true;
+      settleCompositionReadiness(document, ({ timedOut }) => {
+        assetsSettled = true;
+        postRuntimeMessage({ source: "hf-preview", type: "assets-ready", timedOut });
+      });
+    }
     scheduleRootStageLayoutDiagnostics();
   };
 
