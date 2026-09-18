@@ -14,7 +14,6 @@ import {
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
   ppsRef: RefObject<number>;
-  durationRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
@@ -89,7 +88,6 @@ function applyTypedJsonDrop(
 export function useTimelineAssetDrop({
   scrollRef,
   ppsRef,
-  durationRef,
   trackOrderRef,
   rowGeometryRef,
   contentOrigin,
@@ -188,8 +186,6 @@ export function useTimelineAssetDrop({
           scrollTop: scroll?.scrollTop ?? 0,
           contentOrigin,
           pixelsPerSecond: ppsRef.current,
-          duration: durationRef.current,
-          clampStartToDuration: false,
           rowHeights: rowGeometryRef.current.rowHeights,
           trackOrder: trackOrderRef.current,
         },
@@ -197,7 +193,7 @@ export function useTimelineAssetDrop({
         clientY,
       );
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef, rowGeometryRef, contentOrigin],
+    [scrollRef, ppsRef, trackOrderRef, rowGeometryRef, contentOrigin],
   );
 
   const handleAssetDrop = useCallback(

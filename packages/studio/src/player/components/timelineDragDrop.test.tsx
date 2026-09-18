@@ -56,7 +56,6 @@ function renderHarness(
     api = useTimelineAssetDrop({
       scrollRef: { current: scroll },
       ppsRef: { current: 40 },
-      durationRef: { current: 120 },
       trackOrderRef: { current: tracks },
       rowGeometryRef: { current: geometry },
       contentOrigin: 0,

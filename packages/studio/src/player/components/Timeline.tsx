@@ -238,7 +238,6 @@ export const Timeline = memo(function Timeline({
   const assetDrop = useTimelineAssetDrop({
     scrollRef,
     ppsRef,
-    durationRef,
     trackOrderRef,
     rowGeometryRef,
     contentOrigin,

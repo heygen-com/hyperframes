@@ -568,9 +568,6 @@ export function resolveTimelineAssetDrop(
     scrollTop: number;
     contentOrigin: number;
     pixelsPerSecond: number;
-    duration: number;
-    // Production always passes false; the clamp branch is exercised only by this file's own tests.
-    clampStartToDuration?: boolean;
     rowHeights?: readonly number[];
     trackOrder: number[];
   },
@@ -585,10 +582,7 @@ export function resolveTimelineAssetDrop(
   });
   const contentY = clientY - input.rectTop + input.scrollTop;
   const pointerStart = Math.round((x / Math.max(input.pixelsPerSecond, 1)) * 100) / 100;
-  const start = Math.max(
-    0,
-    input.clampStartToDuration === false ? pointerStart : Math.min(input.duration, pointerStart),
-  );
+  const start = Math.max(0, pointerStart);
   // Row from the shared row→y inverse so the top pad is honoured; a drop in the
   // pad above the first lane floors to row 0, a drop in the bottom pad rounds
   // past the last lane (getDefaultDroppedTrack then appends a new track).
