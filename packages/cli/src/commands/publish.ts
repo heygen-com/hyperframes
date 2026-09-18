@@ -97,13 +97,18 @@ export default defineCommand({
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
       const lintResult = await lintProject(dir);
+      const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
-        for (const line of formatLintStartupMessage(lintResult, Boolean(args["lint-verbose"])))
+        const verbose = Boolean(args["lint-verbose"]) || definitiveEntryMismatch;
+        for (const line of formatLintStartupMessage(
+          lintResult,
+          verbose ? { kind: "verbose" } : { kind: "summary" },
+        ))
           console.log(line);
         console.log();
       }
-      if (hasDefinitiveEntryMismatch(lintResult)) {
+      if (definitiveEntryMismatch) {
         const candidate = definitiveEntryMismatchComposition(lintResult);
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
         if (candidate && posix.basename(candidate) === "index.html") {

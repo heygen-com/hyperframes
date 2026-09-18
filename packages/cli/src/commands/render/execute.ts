@@ -53,9 +53,10 @@ function renderLintShouldAbort(
   strictErrors: boolean,
   strictAll: boolean,
   lintResult: ProjectLintResult,
+  definitiveEntryMismatch: boolean,
 ): boolean {
   return (
-    hasDefinitiveEntryMismatch(lintResult) ||
+    definitiveEntryMismatch ||
     shouldBlockRender(strictErrors, strictAll, lintResult.totalErrors, lintResult.totalWarnings)
   );
 }
@@ -219,7 +220,12 @@ export async function runRenderLint(
       : await runLint(plan.project.dir, explicitEntry);
   if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
   const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
-  const willAbort = renderLintShouldAbort(plan.strictErrors, plan.strictAll, lintResult);
+  const willAbort = renderLintShouldAbort(
+    plan.strictErrors,
+    plan.strictAll,
+    lintResult,
+    definitiveEntryMismatch,
+  );
   presentRenderLintFindings(lintResult, plan.effectiveQuiet, plan.lintVerbose || willAbort);
   if (willAbort) {
     presentRenderLintAbort(plan, definitiveEntryMismatch);
@@ -250,7 +256,10 @@ function presentRenderLintFindings(
 ): void {
   if (quiet) return;
   console.log("");
-  for (const line of formatLintStartupMessage(lintResult, lintVerbose, { errorsFirst: true }))
+  for (const line of formatLintStartupMessage(
+    lintResult,
+    lintVerbose ? { kind: "verbose", options: { errorsFirst: true } } : { kind: "summary" },
+  ))
     console.log(line);
 }
 

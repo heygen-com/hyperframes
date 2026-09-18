@@ -214,21 +214,27 @@ describe("formatLintStartupMessage", () => {
     },
   ]);
 
-  it("collapses to a one-line summary by default", () => {
-    const lines = formatLintStartupMessage(result, false);
+  it("collapses to a one-line summary by default, pointing at --lint-verbose (no Studio open)", () => {
+    const lines = formatLintStartupMessage(result, { kind: "summary" });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("2 error(s), 1 warning(s)");
-    expect(lines[0]).toContain("Lint badge in Studio");
+    expect(lines[0]).not.toContain("Studio");
     expect(lines[0]).toContain("--lint-verbose");
   });
 
+  it("names the Studio badge and the lint command when pointer is 'studio'", () => {
+    const lines = formatLintStartupMessage(result, { kind: "summary", pointer: "studio" });
+    expect(lines[0]).toContain("Lint badge in Studio");
+    expect(lines[0]).toContain("hyperframes lint");
+  });
+
   it("does not print individual findings in the default summary", () => {
-    const lines = formatLintStartupMessage(result, false);
+    const lines = formatLintStartupMessage(result, { kind: "summary" });
     expect(lines.join("\n")).not.toContain("error-code");
   });
 
   it("prints full per-finding output when verbose", () => {
-    const lines = formatLintStartupMessage(result, true);
+    const lines = formatLintStartupMessage(result, { kind: "verbose" });
     expect(lines).toEqual(formatLintFindings(result));
     expect(lines.length).toBeGreaterThan(1);
   });

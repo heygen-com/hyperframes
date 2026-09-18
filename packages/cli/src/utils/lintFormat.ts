@@ -76,18 +76,23 @@ function formatLintCounts(
 }
 
 /**
- * One-line lint summary by default, full findings (via `formatLintFindings`) when `verbose`.
- * `verboseOptions` passes through to `formatLintFindings` for the verbose case only, so a
- * caller that wants `errorsFirst`-style grouping keeps it.
+ * Full findings in verbose mode, a one-line summary otherwise. `pointer` (summary mode
+ * only) picks where full output lives: "cli" (no Studio open) names --lint-verbose;
+ * "studio" also names the lint command, since preview's stdout may be read by an agent.
  */
+export type LintMessageMode =
+  | { kind: "verbose"; options?: LintFormatOptions }
+  | { kind: "summary"; pointer?: "cli" | "studio" };
+
 export function formatLintStartupMessage(
   lintResult: ProjectLintResult,
-  verbose: boolean,
-  verboseOptions?: LintFormatOptions,
+  mode: LintMessageMode,
 ): string[] {
-  if (verbose) return formatLintFindings(lintResult, verboseOptions);
+  if (mode.kind === "verbose") return formatLintFindings(lintResult, mode.options);
   const counts = formatLintCounts(lintResult.totalErrors, lintResult.totalWarnings, 0, false);
-  return [
-    `  Lint: ${counts} — see the Lint badge in Studio, or run with --lint-verbose for full output.`,
-  ];
+  const hint =
+    mode.pointer === "studio"
+      ? "see the Lint badge in Studio, or run `hyperframes lint` for full output"
+      : "run with --lint-verbose for full output";
+  return [`  Lint: ${counts} — ${hint}.`];
 }

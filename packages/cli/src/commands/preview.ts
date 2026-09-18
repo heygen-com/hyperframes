@@ -429,7 +429,11 @@ export default defineCommand({
     const lintResult = await lintProject(dir);
     if (!args.json && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
       console.log();
-      for (const line of formatLintStartupMessage(lintResult, Boolean(args["lint-verbose"])))
+      const verbose = Boolean(args["lint-verbose"]);
+      for (const line of formatLintStartupMessage(
+        lintResult,
+        verbose ? { kind: "verbose" } : { kind: "summary", pointer: "studio" },
+      ))
         console.log(line);
       console.log();
     }
