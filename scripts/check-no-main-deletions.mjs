@@ -38,6 +38,10 @@ const BASE_FLAG = "--base";
  */
 export const ALLOWED_DELETIONS = new Map([
   [
+    "docs/snippets/catalog-overview-player.jsx",
+    "#4051 removes the Catalog overview's only consumer of this snippet (replaced by the browse-grid mount); confirmed unreferenced repo-wide before deleting",
+  ],
+  [
     "packages/studio/src/hooks/useSdkSession.test.ts",
     "tests only shouldReloadSdkSession, a function with no production callers removed with the preview reload fix",
   ],
