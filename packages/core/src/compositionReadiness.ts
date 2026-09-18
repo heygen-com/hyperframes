@@ -138,10 +138,10 @@ const IDLE_FRAME_GAP_MS = 50;
 // directly after the busy work finishes mid-frame and says nothing about
 // whether the next frame is also free.
 const IDLE_FRAMES_REQUIRED = 2;
-// A composition painting steadily below 20fps never produces a sub-50ms
-// gap, so quietStreak never advances — this is the giving-up bound so that
-// doesn't ride the full shared timeout. ponytail: 1500ms is unmeasured,
-// retune once Frost-class pieces have production data.
+// Gives up on a doc that keeps producing frames below 20fps. Does NOT bound
+// a doc that stops painting entirely (backgrounded tab, or fewer than 3
+// frames total) — that still rides the full shared 8s timeout, same as
+// before this input existed. ponytail: 1500ms is unmeasured, retune later.
 const MAX_PAINT_WAIT_MS = 1_500;
 
 // Resolves with -1 on abort instead of rejecting: every caller already
@@ -167,8 +167,8 @@ function nextAnimationFrame(win: Window, signal: AbortSignal): Promise<number> {
 
 /** Composition-agnostic readiness input: waits for a frame to paint, then
  * two consecutive quiet frame gaps — an early-out once the main thread is
- * free, not a hold on steady sub-20fps painting. Gives up after
- * MAX_PAINT_WAIT_MS with no quiet gap and resolves anyway. */
+ * free, not a hold on steady sub-20fps painting. See MAX_PAINT_WAIT_MS for
+ * what this bound does and does not cover. */
 export function paintAndIdleReadinessInput(
   doc: Document,
   signal: AbortSignal,

@@ -1053,8 +1053,9 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   /** Timeout diagnostic. Re-scans since some assets may have resolved by
-   *  now. Compute can also cause the timeout, so it's reported too;
-   *  paint-and-idle isn't — MAX_PAINT_WAIT_MS bounds it well under 8s. */
+   *  now. Compute can cause the timeout, so it's reported too. A hidden
+   *  document can starve paint-and-idle of frames for the full 8s — that's
+   *  reported directly rather than inferred, since it can't be bounded. */
   private _warnStuckAssets(doc: Document): void {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc);
     const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
@@ -1069,6 +1070,7 @@ class HyperframesPlayer extends HTMLElement {
         ),
         fontsLoading,
         computeReady: win?.__renderReady === true,
+        documentHidden: doc.hidden === true,
       },
     );
   }

@@ -2973,6 +2973,10 @@ describe("HyperframesPlayer asset-ready gate", () => {
     vi.useFakeTimers();
     try {
       const { doc } = createStalledVideoDoc();
+      // A document with no browsing context (created via createHTMLDocument,
+      // as this fixture is) reports hidden=true per spec regardless of the
+      // real page — stub it visible so this test isn't about visibility.
+      Object.defineProperty(doc, "hidden", { value: false, configurable: true });
       stubIframeContentDocument(player.iframe, doc);
 
       player._waitForAssetsReady(doc);
@@ -2989,7 +2993,33 @@ describe("HyperframesPlayer asset-ready gate", () => {
       expect(warnSpy.mock.calls[0]?.[0]).toContain("assets-loading timed out");
       // computeReady is reported alongside the media/image/font scan, since
       // compute (window.__renderReady) can also be why the timeout fired.
-      expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({ computeReady: false });
+      expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({
+        computeReady: false,
+        documentHidden: false,
+      });
+      warnSpy.mockRestore();
+
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports documentHidden: true when the composition document is backgrounded", async () => {
+    const player = await createConnectedPlayer();
+    vi.useFakeTimers();
+    try {
+      const { doc } = createStalledVideoDoc();
+      Object.defineProperty(doc, "hidden", { value: true, configurable: true });
+      stubIframeContentDocument(player.iframe, doc);
+
+      player._waitForAssetsReady(doc);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      await vi.advanceTimersByTimeAsync(8_000);
+
+      expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({ documentHidden: true });
+      warnSpy.mockRestore();
 
       player.remove();
     } finally {
