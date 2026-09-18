@@ -170,9 +170,7 @@ describe("pasteTimelineClips", () => {
     expect(content).not.toContain("data-hf-id");
   });
 
-  it("leaves html unstripped when it has no parseable element root (documents the fallback)", () => {
-    // stripHfIds only strips when DOMParser finds an element; bare text has
-    // none, so this pins the fallback rather than a real safety guarantee.
+  it("still strips data-hf-id from bare text with no element root", () => {
     const noRoot: TimelineClipboardClip = {
       html: 'text mentioning data-hf-id="hf-leak" with no tag at all',
       start: 0,
@@ -180,7 +178,20 @@ describe("pasteTimelineClips", () => {
       track: 0,
     };
     const { content } = pasteTimelineClips(ROOT, [noRoot], 0, []);
-    expect(content).toContain('data-hf-id="hf-leak"');
+    expect(content).not.toContain("data-hf-id");
+  });
+
+  it("still strips data-hf-id from a tag the HTML parser hoists out of body (e.g. title)", () => {
+    // A <title> never reaches DOMParser's body, so stripHfIds's DOM walk sees
+    // no root element here -- this exercises the regex fallback, not the walk.
+    const hoisted: TimelineClipboardClip = {
+      html: '<title data-hf-id="hf-leak">x</title>',
+      start: 0,
+      duration: 1,
+      track: 0,
+    };
+    const { content } = pasteTimelineClips(ROOT, [hoisted], 0, []);
+    expect(content).not.toContain("data-hf-id");
   });
 
   it("captures the root's own id, not a data-id that happens to precede it", () => {

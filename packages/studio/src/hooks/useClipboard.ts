@@ -101,7 +101,13 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
  *  attribute value or a single-quoted id can't defeat the strip. */
 function stripHfIds(html: string, parser: DOMParser): string {
   const root = parser.parseFromString(html, "text/html").body.firstElementChild;
-  if (!root) return html;
+  if (!root) {
+    // A tag the HTML parser hoists out of <body> (title/meta/style/base/link)
+    // never reaches the walk above — fall back to a direct strip so
+    // data-hf-id still can't survive, even though no real clip root is one
+    // of these tags today.
+    return html.replace(/\sdata-hf-id=("[^"]*"|'[^']*')/g, "");
+  }
   root.querySelectorAll("[data-hf-id]").forEach((el) => el.removeAttribute("data-hf-id"));
   root.removeAttribute("data-hf-id");
   return root.outerHTML;
