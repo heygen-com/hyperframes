@@ -143,6 +143,12 @@ export function buildElementAgentPrompt({
   return lines.join("\n");
 }
 
+function buildSelectorAndTextLines(
+  info: Pick<AgentPromptElementInfo, "selector" | "tagName" | "textContent">,
+): string[] {
+  return [formatSelectorTagLine(info), formatTextLine(info.textContent)];
+}
+
 export function buildAgentContextPreview(
   selection: DomEditSelection,
   activeCompPath: string | null,
@@ -150,8 +156,7 @@ export function buildAgentContextPreview(
   return [
     `Composition: ${selection.compositionPath}`,
     `Source: ${selection.sourceFile || activeCompPath || "index.html"}`,
-    formatSelectorTagLine(selection),
-    formatTextLine(selection.textContent),
+    ...buildSelectorAndTextLines(selection),
   ]
     .filter(Boolean)
     .join("\n");
@@ -203,7 +208,5 @@ export function buildPickerAgentContextPreview(
   selection: HyperframePickerElementInfo | null,
 ): string {
   if (!selection) return "";
-  return [formatSelectorTagLine(selection), formatTextLine(selection.textContent)]
-    .filter(Boolean)
-    .join("\n");
+  return buildSelectorAndTextLines(selection).filter(Boolean).join("\n");
 }
