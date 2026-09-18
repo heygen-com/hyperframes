@@ -36,6 +36,14 @@
   --color-panel-container: #f5a623;
 }
 
+/* Tailwind v4 preflight no longer gives enabled buttons a pointer cursor. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 /*
  * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
  * browser-native chrome (scrollbars, form controls, focus rings) picks the
