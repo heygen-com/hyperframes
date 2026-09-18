@@ -84,6 +84,7 @@ import {
   type StaticVerificationOutcome,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
+  compositionRequiresWebGpu,
   applyConcreteGpuScreenshotClamp,
   explainDrawElementDisabled,
   scaleProtocolTimeoutForComposition,
@@ -3225,6 +3226,7 @@ async function executeRenderPipeline(input: {
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,
+      requiresWebGpu: compositionRequiresWebGpu(compiled.html),
     });
     // The URL-served frame path (PR #596) hands each injected `<img>` a
     // fileServer URL instead of a base64 data URI, on the theory that

@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { Browser, PuppeteerNode } from "puppeteer-core";
+import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 
 import type { CaptureMode } from "./browserLeasePool.js";
 
@@ -18,6 +18,8 @@ import {
   _setPuppeteerForTests,
   acquireBrowser,
   buildChromeArgs,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
   drainBrowserPool,
   forceReleaseBrowser,
   releaseBrowser,
@@ -187,6 +189,47 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).toContain("--disable-gpu");
     expect(args).toContain("--use-angle=swiftshader");
     expect(args).not.toContain("--use-angle=metal");
+  });
+
+  it("adds the WebGPU flag for a declaring composition even in software mode", () => {
+    const args = buildChromeArgs({ ...base, requiresWebGpu: true }, { browserGpuMode: "software" });
+    expect(args).toContain("--enable-unsafe-webgpu");
+    expect(args).toContain("--use-angle=swiftshader");
+  });
+
+  it("is byte-identical to the requiresWebGpu-absent case for a non-declaring composition", () => {
+    expect(buildChromeArgs({ ...base, requiresWebGpu: false })).toEqual(buildChromeArgs(base));
+  });
+});
+
+describe("compositionRequiresWebGpu", () => {
+  it("detects the explicit WebGPU capability marker on the composition root", () => {
+    expect(
+      compositionRequiresWebGpu(
+        '<div data-requires-webgpu data-composition-id="gpu" data-duration="2"></div>',
+      ),
+    ).toBe(true);
+    expect(compositionRequiresWebGpu('<div data-composition-id="dom"></div>')).toBe(false);
+  });
+});
+
+describe("assertWebGpuAdapterAvailable", () => {
+  const pageWithAdapter = (hasAdapter: boolean) =>
+    ({ evaluate: vi.fn().mockResolvedValue(hasAdapter) }) as unknown as Page;
+
+  it("no-ops for a composition that does not require WebGPU, regardless of adapter", () => {
+    const page = pageWithAdapter(false);
+    return expect(assertWebGpuAdapterAvailable(page, false)).resolves.toBeUndefined();
+  });
+
+  it("resolves when a WebGPU adapter is obtainable", () => {
+    const page = pageWithAdapter(true);
+    return expect(assertWebGpuAdapterAvailable(page, true)).resolves.toBeUndefined();
+  });
+
+  it("throws naming the requirement when no adapter is obtainable", async () => {
+    const page = pageWithAdapter(false);
+    await expect(assertWebGpuAdapterAvailable(page, true)).rejects.toThrow("data-requires-webgpu");
   });
 });
 

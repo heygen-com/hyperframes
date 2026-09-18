@@ -134,6 +134,8 @@ export interface CaptureOptions {
    * self-verification) MUST prefer this over `__hf.duration`.
    */
   compositionDurationSeconds?: number;
+  /** The composition declares `data-requires-webgpu`; skips createCaptureSession's own fetch. */
+  requiresWebGpu?: boolean;
   /**
    * Frame rate as an exact rational. Integer fps is `{ num: 30, den: 1 }`;
    * NTSC is `{ num: 30000, den: 1001 }`. Captures are scheduled by the

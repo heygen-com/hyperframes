@@ -1,3 +1,4 @@
+/// <reference types="@webgpu/types" />
 /**
  * Browser Manager
  *
@@ -5,7 +6,7 @@
  * launch args, pooled browser acquisition/release.
  */
 
-import type { Browser, PuppeteerNode } from "puppeteer-core";
+import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
@@ -843,6 +844,8 @@ export interface BuildChromeArgsOptions {
   height: number;
   captureMode?: CaptureMode;
   platform?: NodeJS.Platform;
+  /** The composition declares `data-requires-webgpu`; forces the WebGPU flag even in "software" mode. */
+  requiresWebGpu?: boolean;
 }
 
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
@@ -906,7 +909,7 @@ export function buildChromeArgs(
     "--autoplay-policy=no-user-gesture-required",
   ];
 
-  if (browserGpuMode !== "software") {
+  if (browserGpuMode !== "software" || options.requiresWebGpu) {
     chromeArgs.push(WEBGPU_FLAG);
   }
 
@@ -954,6 +957,40 @@ export function buildChromeArgs(
     chromeArgs.push("--disable-gpu");
   }
   return chromeArgs;
+}
+
+/** Does the composition's root element declare `data-requires-webgpu`? */
+export function compositionRequiresWebGpu(html: string): boolean {
+  const compositionRoot = html.match(
+    /<[^>]*\bdata-composition-id(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))?[^>]*>/i,
+  );
+  return compositionRoot ? /\bdata-requires-webgpu(?:\s|=|>)/i.test(compositionRoot[0]) : false;
+}
+
+/**
+ * Confirms the already-navigated page can obtain a WebGPU adapter; no-op otherwise.
+ * `page` must be on a secure-context origin, or navigator.gpu always reads absent.
+ */
+export async function assertWebGpuAdapterAvailable(
+  page: Page,
+  requiresWebGpu: boolean,
+): Promise<void> {
+  if (!requiresWebGpu) return;
+  const hasAdapter = await page.evaluate(async () => {
+    if (typeof navigator === "undefined" || !navigator.gpu) return false;
+    try {
+      return !!(await navigator.gpu.requestAdapter());
+    } catch {
+      return false;
+    }
+  });
+  if (!hasAdapter) {
+    throw new Error(
+      "This composition declares data-requires-webgpu, but no WebGPU adapter (hardware or " +
+        "software) could be obtained on this browser launch. Run on a WebGPU-capable host, or " +
+        "confirm this platform's Chrome ANGLE backend supports WebGPU.",
+    );
+  }
 }
 
 function getBrowserGpuArgs(
