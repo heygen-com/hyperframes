@@ -6,7 +6,6 @@ import { lintHyperframeHtml } from "../packages/lint/src/index.ts";
 const OWNER = "skills/hyperframes-core/references/creator-editing-recipes.md";
 const STUDIO_SKILL = "skills/hyperframes-studio/SKILL.md";
 const VOLUME_TWEEN = /\.(?:to|from|fromTo|set)\(\s*["'`]#[\w-]+["'`]\s*,\s*\{[^}]*\bvolume\s*:/;
-const TWEEN_ALLOWED = new Set([OWNER, "skills/media-use/references/operations.md"]);
 const TWEEN_SCANNED = [
   "skills/hyperframes-core/references/variables-and-media.md",
   "skills/hyperframes-core/references/data-attributes.md",
@@ -43,7 +42,6 @@ test("every html example in the owner doc lints with no errors and no volume dou
 
 test("no other doc teaches a timeline tween as the way to fade volume", async () => {
   for (const path of TWEEN_SCANNED) {
-    if (TWEEN_ALLOWED.has(path)) continue;
     const lines = (await read(path)).split("\n");
     const hit = lines.findIndex((l) => VOLUME_TWEEN.test(l));
     assert.equal(hit, -1, `${path}:${hit + 1} teaches a volume tween; point at ${OWNER}`);
