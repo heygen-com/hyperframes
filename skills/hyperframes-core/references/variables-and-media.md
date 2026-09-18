@@ -100,7 +100,7 @@ Video elements must be muted and inline. Audio must be a separate `<audio>` elem
 - **Never** add `crossorigin` to `<video>`/`<audio>`. `lint` rejects it unconditionally (`media_crossorigin_breaks_preview`, error) because a media host without `Access-Control-Allow-Origin` then fails silently in preview while renders still work, hiding the bug. There is no suppression, so this holds even for the canvas/WebGL/WebAudio readback case.
 - **Every `<audio>` needs an `id`.** The mixer selects `audio[id][src]`, so an id-less `<audio>` is never mixed and the render is **silent**. `lint` catches it as `media_missing_id`.
 - Audio always lives on a separate `<audio>` element — even if its source file is the same as a `<video>`. The `<video>` is muted; the `<audio>` carries sound.
-- For volume fades, ducking and ramps, write a `data-automation` volume lane on the `<audio>` (`data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0.1},{"t":10,"v":0.5}]}]}'`, `t` in seconds from the clip start; details in `hyperframes-audio`). Studio draws and edits that lane, and preview and render apply it identically. A GSAP `volume` tween on the same clip is ignored once a lane exists (`lint`: `audio_volume_double_automation`), so never author both; `data-volume` is the static baseline for a clip with no lane.
+- For volume fades and ducking, use the `data-automation` volume lane; the exact form is in `creator-editing-recipes.md`. `data-volume` is the static baseline. A timeline `volume` tween is ignored when a lane is present.
 
 For media duration: `<video>` and `<audio>` can omit `data-duration` if the media's intrinsic length is known and you want the full clip. Otherwise provide `data-duration` explicitly.
 

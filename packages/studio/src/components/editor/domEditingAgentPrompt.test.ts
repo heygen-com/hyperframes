@@ -80,7 +80,8 @@ describe("buildElementAgentPrompt", () => {
         "Guardrails:",
         "- Make a targeted change to this element only.",
         "- Preserve the rest of the composition and its timing.",
-        "- Do not modify other elements' data-* attributes or positioning.",
+        "- Do not modify other elements' data-* attributes or positioning, except where the requested timeline edit requires it (split, retime, reorder, copy a group, swap media).",
+        "- For timeline edits (trim, split, speed, volume, copy, swap), follow skills/hyperframes-core/references/creator-editing-recipes.md and use its exact attribute forms.",
         "- Prefer existing inline styles or existing CSS rules for this element over adding unrelated selectors.",
       ].join("\n"),
     );
@@ -162,7 +163,8 @@ describe("buildPickerAgentPrompt", () => {
       "Guardrails:",
       "- Make a targeted change to this element only.",
       "- Preserve the rest of the composition and its timing.",
-      "- Do not modify other elements' data-* attributes or positioning.",
+      "- Do not modify other elements' data-* attributes or positioning, except where the requested timeline edit requires it (split, retime, reorder, copy a group, swap media).",
+      "- For timeline edits (trim, split, speed, volume, copy, swap), follow skills/hyperframes-core/references/creator-editing-recipes.md and use its exact attribute forms.",
       "- Prefer existing inline styles or existing CSS rules for this element over adding unrelated selectors.",
     ].join("\n");
     expect(domPrompt.endsWith(guardrails)).toBe(true);

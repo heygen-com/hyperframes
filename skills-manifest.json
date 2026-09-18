@@ -18,11 +18,11 @@
       "files": 4
     },
     "hyperframes": {
-      "hash": "d0a114a8f894758e",
+      "hash": "ffacb7af2a96d788",
       "files": 26
     },
     "hyperframes-animation": {
-      "hash": "4225f299e6ff9a0e",
+      "hash": "492f6f39edf2a8e5",
       "files": 121
     },
     "hyperframes-audio": {
@@ -48,6 +48,10 @@
     "hyperframes-registry": {
       "hash": "51e6dba95a8dfb45",
       "files": 12
+    },
+    "hyperframes-studio": {
+      "hash": "de3ad0df0e318e0c",
+      "files": 1
     },
     "media-use": {
       "hash": "4531919cdbda573e",
