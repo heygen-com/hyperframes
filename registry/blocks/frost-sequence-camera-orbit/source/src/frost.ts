@@ -649,7 +649,9 @@ export function create(o: FrostOptions): FrostInstance {
         return tex;
       });
     const fractureDetail = await new THREE.TextureLoader()
-      .loadAsync(assetUrl("textures/ice-inclusions-generated.png"))
+      .loadAsync(
+        "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/assets/frost-sequence-camera-orbit/textures/ice-inclusions-generated.png",
+      )
       .then((tex) => {
         tex.wrapS = tex.wrapT = THREE.MirroredRepeatWrapping;
         tex.minFilter = THREE.LinearMipmapLinearFilter;

@@ -673,12 +673,15 @@ That writes one file: `compositions/code-snippet-flight.html`.
           var root = document.getElementById("root");
           window.__timelines = window.__timelines || {};
           var tl = gsap.timeline({ paused: true });
-          window.__timelines["code-snippet-flight"] = tl; // register synchronously
           document.fonts.ready.then(function () {
             tl.from("#editor", { opacity: 0, scale: 0.985, duration: 0.5, ease: "power2.out" }, 0);
             buildEffect(tl, surface, spec);
             var dur = parseFloat(root.dataset.duration) || tl.duration();
             tl.to({}, { duration: dur }, 0); // pad to full composition length
+            window.__timelines["code-snippet-flight"] = tl; // register AFTER setup completes
+            if (typeof window.__hfForceTimelineRebind === "function") {
+              window.__hfForceTimelineRebind(); // re-nest now that we are populated
+            }
           });
         }
 

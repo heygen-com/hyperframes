@@ -33,6 +33,7 @@ That writes `compositions/code-snippet-dark-2026.html`, plus 1 supporting file u
   <body>
     <template id="vscode-dark-2026-template">
       <div
+        id="root"
         class="vscode-theme-scene"
         data-composition-id="vscode-dark-2026"
         data-width="1920"
@@ -160,7 +161,7 @@ That writes `compositions/code-snippet-dark-2026.html`, plus 1 supporting file u
               sans-serif;
           }
 
-          .vscode-theme-scene {
+          #root {
             --activity-bg: #181818;
             --activity-fg: #d7d7d7;
             --activity-muted: #868686;
@@ -201,7 +202,7 @@ That writes `compositions/code-snippet-dark-2026.html`, plus 1 supporting file u
             overflow: hidden;
             background:
               linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.32)),
-              url("../assets/background.jpeg") center / cover no-repeat;
+              url("assets/background.jpeg") center / cover no-repeat;
             color: var(--editor-fg);
           }
 

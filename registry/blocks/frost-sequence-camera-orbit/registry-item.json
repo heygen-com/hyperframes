@@ -91,11 +91,6 @@
       "type": "hyperframes:asset"
     },
     {
-      "path": "assets/shards-atlas.png",
-      "target": "compositions/frost-sequence-camera-orbit/assets/shards-atlas.png",
-      "type": "hyperframes:asset"
-    },
-    {
       "path": "assets/test-mark.svg",
       "target": "compositions/frost-sequence-camera-orbit/assets/test-mark.svg",
       "type": "hyperframes:asset"
@@ -103,56 +98,6 @@
     {
       "path": "assets/textures/bluenoise64.png",
       "target": "compositions/frost-sequence-camera-orbit/assets/textures/bluenoise64.png",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/textures/ice-fracture-detail-v1.png",
-      "target": "compositions/frost-sequence-camera-orbit/assets/textures/ice-fracture-detail-v1.png",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/textures/ice-inclusions-generated.png",
-      "target": "compositions/frost-sequence-camera-orbit/assets/textures/ice-inclusions-generated.png",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/catalog.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/catalog.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/saved/FROST_FINAL.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/saved/FROST_FINAL.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/saved/cool-studio.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/saved/cool-studio.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/saved/ember-ice.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/saved/ember-ice.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/saved/ember-organic-assembly-05d4e2ee.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/saved/ember-organic-assembly-05d4e2ee.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/saved/ember-organic-assembly-38603cdb.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/saved/ember-organic-assembly-38603cdb.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/saved/ember-organic-assembly-917a363c.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/saved/ember-organic-assembly-917a363c.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "presets/saved/ember-organic.json",
-      "target": "compositions/frost-sequence-camera-orbit/presets/saved/ember-organic.json",
       "type": "hyperframes:asset"
     },
     {
