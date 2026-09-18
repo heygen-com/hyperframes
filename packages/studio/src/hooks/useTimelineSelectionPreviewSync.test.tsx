@@ -175,6 +175,67 @@ describe("useTimelineSelectionPreviewSync", () => {
     harness.cleanup();
   });
 
+  it("does not clear the selection when the selected clip is not in timelineElements yet", async () => {
+    // A freshly-dropped clip is selected before the reload that adds it to
+    // timelineElements has completed. Bailing quietly here (like the
+    // DOM-node-not-ready case above) lets the later effect run, once the
+    // element exists, apply the selection instead of wiping it.
+    const { timelineElements } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const onSelectionNotFound = vi.fn();
+    const buildDomSelectionForTimelineElement = vi.fn(async () => null);
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: "clip-3",
+      selectedElementIds: new Set(["clip-3"]),
+      timelineElements,
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound,
+    });
+
+    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    expect(applyDomSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
+  it("does not shrink a pasted or duplicated group's selection when only some members have appeared yet", async () => {
+    // Paste/duplicate of a group selects every new id up front; one member
+    // (clip-1) is already in timelineElements, the other (a fresh paste/dup
+    // target, "clip-3") is not yet. The old code applied the one member it
+    // could resolve, silently dropping the rest of the group from the store.
+    const { firstSelection, timelineElements, selectionById } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const onSelectionNotFound = vi.fn();
+    const buildDomSelectionForTimelineElement = vi.fn(async (element: TimelineElement) => {
+      return selectionById.get(element.id) ?? firstSelection;
+    });
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: "clip-1",
+      selectedElementIds: new Set(["clip-1", "clip-3"]),
+      timelineElements,
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound,
+    });
+
+    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    expect(applyDomSelection).not.toHaveBeenCalled();
+    expect(applyMarqueeSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
   it("warns once while retrying a timeline selection after preview refreshes", async () => {
     const { secondSelection, timelineElements } = makeSyncFixture();
     const applyDomSelection = vi.fn();

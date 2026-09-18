@@ -11,6 +11,7 @@ import { formatTimelineAttributeNumber } from "../player/components/timelineEdit
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
+import { deriveTimelineStoreKey } from "../player/lib/timelineElementHelpers";
 
 function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
   try {
@@ -174,7 +175,7 @@ function buildSubCompositionHtml({
 
 export async function addBlockToProject(
   opts: AddBlockOptions,
-): Promise<{ block: RegistryItem; compositionPath: string } | null> {
+): Promise<{ block: RegistryItem; compositionPath: string; hostKey: string } | null> {
   const {
     projectId,
     blockName,
@@ -213,8 +214,9 @@ export async function addBlockToProject(
       currentTime: opts.currentTime ?? 0,
     });
     const { width, height } = resolveTimelineAssetCompositionSize(originalContent);
+    const hostId = buildUniqueCompositionId(block.name, collectHtmlIds(originalContent));
     const subComposition = buildSubCompositionHtml({
-      id: buildUniqueCompositionId(block.name, collectHtmlIds(originalContent)),
+      id: hostId,
       compositionFile,
       start,
       duration,
@@ -242,7 +244,11 @@ export async function addBlockToProject(
     await refreshFileTree();
     reloadPreview();
 
-    return { block, compositionPath: compositionFile };
+    return {
+      block,
+      compositionPath: compositionFile,
+      hostKey: deriveTimelineStoreKey({ domId: hostId, sourceFile: targetPath }) ?? hostId,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to add block";
     showToast(message);

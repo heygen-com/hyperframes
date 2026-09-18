@@ -135,27 +135,22 @@ export function useTimelineSelectionPreviewSync({
     };
     const syncSelection = async () => {
       const selections: DomEditSelection[] = [];
-      let resolvableCount = 0;
       for (const id of selectedIds) {
         const element = timelineElements.find((item) => (item.key ?? item.id) === id);
         if (!element) continue;
-        resolvableCount += 1;
         const selection = await buildDomSelectionForTimelineElement(element);
         if (selection) selections.push(selection);
       }
       if (cancelled) return;
-      // The store is the source of truth: applying a partial set would write that
-      // shrunk set back and silently drop the members whose DOM node was not ready.
-      // Bail instead; a later effect run (on timelineElements/DOM change) applies the
-      // full set once every resolvable member has a live node.
-      if (selections.length < resolvableCount) {
+      // The store is the source of truth: applying a partial set would silently drop
+      // members not yet resolvable, whether their DOM node isn't ready or they aren't
+      // in timelineElements yet (a just-created clip, still mid-reload). Bail instead;
+      // a later effect run applies the full set once every member has a live node.
+      if (selections.length < selectedIds.length) {
         warnSelectionMissingOnce();
-        // Bailing keeps whatever the canvas already held, and Delete acts on the
-        // canvas first — so an anchor pointing OUTSIDE this selection is an
-        // element the user is no longer looking at, and deleting it is the
-        // damage. Only that goes: a member still resolving has no anchor of its
-        // own here and is left for the later run. Quietly, because announcing
-        // the clear would deselect the clip that was just picked.
+        // Delete acts on the canvas first, so only an anchor OUTSIDE this selection
+        // (an element the user isn't looking at) is cleared here, quietly — a member
+        // still resolving has no anchor yet and is left for the later run.
         if (anchorIsOutsideSelection(currentAnchor, selectedIds)) {
           applyDomSelection(null, { revealPanel: false, announce: false });
         }
