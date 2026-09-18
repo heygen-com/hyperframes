@@ -1798,3 +1798,50 @@ it.each(["root", "sibling", "template"])(
     }
   },
 );
+
+describe("bundleToSingleHtml script order", () => {
+  it("keeps an inline script before the src script that follows it, and one after it after", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.MARK_BEFORE = 1;</script>
+  <script src="https://cdn.example.com/needs-before.js"></script>
+  <script>window.MARK_AFTER = 1;</script>
+</body></html>`,
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const before = bundled.indexOf("MARK_BEFORE");
+      const lib = bundled.indexOf("cdn.example.com/needs-before.js");
+      const after = bundled.indexOf("MARK_AFTER");
+      expect(before).toBeGreaterThan(-1);
+      expect(before).toBeLessThan(lib);
+      expect(lib).toBeLessThan(after);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still merges adjacent inline scripts into one at the end of the body", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <script>window.MARK_ONE = 1;</script>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.MARK_TWO = 1;</script>
+</body></html>`,
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const { document } = parseHTML(bundled);
+      const merged = [...document.querySelectorAll("body script")].filter((el) =>
+        (el.textContent || "").includes("MARK_ONE"),
+      );
+      expect(merged).toHaveLength(1);
+      expect(merged[0]!.textContent).toContain("MARK_TWO");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

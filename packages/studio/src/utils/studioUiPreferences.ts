@@ -62,11 +62,15 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
+function storageKeyFor(projectId: string | null): string {
+  return projectId ? `${STUDIO_UI_PREFERENCES_KEY}:${projectId}` : STUDIO_UI_PREFERENCES_KEY;
+}
+
 // fallow-ignore-next-line complexity
-function readStorage(storage: Storage | null): StudioUiPreferences {
+function readStorage(storage: Storage | null, key: string): StudioUiPreferences {
   if (!storage) return {};
   try {
-    const raw = storage.getItem(STUDIO_UI_PREFERENCES_KEY);
+    const raw = storage.getItem(key);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return {};
@@ -163,21 +167,30 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
   }
 }
 
-export function readStudioUiPreferences(storage: Storage | null = getBrowserStorage()) {
-  return readStorage(storage);
+/** `projectId` opts a caller into a per-project entry (falls back once to the
+ *  shared entry so a project's first read isn't blank). Defaults to `null`:
+ *  most callers read once at mount, never on a live project switch. */
+export function readStudioUiPreferences(
+  storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = null,
+): StudioUiPreferences {
+  const scoped = readStorage(storage, storageKeyFor(projectId));
+  if (!projectId || Object.keys(scoped).length > 0) return scoped;
+  return readStorage(storage, STUDIO_UI_PREFERENCES_KEY);
 }
 
 export function writeStudioUiPreferences(
   patch: StudioUiPreferences,
   storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = null,
 ) {
   if (!storage) return;
   try {
     const next = {
-      ...readStorage(storage),
+      ...readStudioUiPreferences(storage, projectId),
       ...patch,
     };
-    storage.setItem(STUDIO_UI_PREFERENCES_KEY, JSON.stringify(next));
+    storage.setItem(storageKeyFor(projectId), JSON.stringify(next));
   } catch {
     /* localStorage may be unavailable or full */
   }

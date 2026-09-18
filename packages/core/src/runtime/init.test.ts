@@ -3094,6 +3094,42 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
   });
 
+  it("posts assets-ready once, after the timeline, and only once a pending image settles", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "5");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    const img = document.createElement("img");
+    const decodes: Array<() => void> = [];
+    Object.defineProperty(img, "complete", { value: false, configurable: true });
+    img.decode = () => new Promise<void>((resolve) => decodes.push(resolve));
+    root.appendChild(img);
+    document.body.appendChild(root);
+    window.__timelines = { root: createMockTimeline(5) };
+    const outbound: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message === "object" && message !== null) {
+        outbound.push(message as Record<string, unknown>);
+      }
+    });
+
+    initSandboxRuntimeModular();
+    const types = () => outbound.map((m) => m.type);
+    expect(outbound.find((m) => m.type === "timeline")?.assetsReady).toBe(false);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(types()).not.toContain("assets-ready");
+
+    decodes.forEach((resolve) => resolve());
+    await vi.waitFor(() => expect(types()).toContain("assets-ready"));
+    window.__player!.renderSeek(1);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(types().filter((t) => t === "assets-ready")).toHaveLength(1);
+    expect(decodes).toHaveLength(1);
+    expect(types().indexOf("assets-ready")).toBeGreaterThan(types().indexOf("timeline"));
+  });
+
   it("accepts replayed transport controls when the bridge announces ready without duplicate listeners", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "root");

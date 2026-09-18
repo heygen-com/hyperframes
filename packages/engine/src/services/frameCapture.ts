@@ -42,6 +42,8 @@ import {
   buildChromeArgs,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
   type BrowserLease,
   type CaptureMode,
 } from "./browserManager.js";
@@ -97,6 +99,8 @@ export interface CaptureSession {
   options: CaptureOptions;
   serverUrl: string;
   outputDir: string;
+  /** The composition served at `serverUrl` declares `data-requires-webgpu`. */
+  requiresWebGpu?: boolean;
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
   /**
@@ -1250,8 +1254,18 @@ export async function createCaptureSession(
     !drawElementTransparent
       ? "beginframe"
       : "screenshot";
+  // Callers that already have the HTML pass options.requiresWebGpu; others
+  // fall back to fetching the server about to be navigated to anyway. A
+  // fetch failure defaults to false — the real page.goto moments later
+  // still fails loudly if the server is actually down.
+  const requiresWebGpu =
+    options.requiresWebGpu ??
+    (await fetch(`${serverUrl}/index.html`, { signal: AbortSignal.timeout(5_000) })
+      .then((res) => res.text())
+      .then(compositionRequiresWebGpu)
+      .catch(() => false));
   const chromeArgs = buildChromeArgs(
-    { width: options.width, height: options.height, captureMode: preMode },
+    { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
     { ...config, browserGpuMode: resolvedGpuMode },
   );
 
@@ -1264,6 +1278,7 @@ export async function createCaptureSession(
     onBeforeCapture,
     config,
     useDrawElement,
+    requiresWebGpu,
   });
 }
 
@@ -1275,6 +1290,7 @@ interface CaptureSessionConstructionInput {
   onBeforeCapture: BeforeCaptureHook | null;
   config?: Partial<EngineConfig>;
   useDrawElement: boolean;
+  requiresWebGpu?: boolean;
 }
 
 async function constructCaptureSessionWithRollback(
@@ -1328,6 +1344,7 @@ async function constructCaptureSession(
     onBeforeCapture,
     config,
     useDrawElement,
+    requiresWebGpu,
     onPageCreated,
   } = input;
   const { browser, captureMode } = browserLease;
@@ -1452,6 +1469,7 @@ async function constructCaptureSession(
     serverUrl,
     outputDir,
     onBeforeCapture,
+    requiresWebGpu,
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
@@ -2243,6 +2261,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
       throw error;
     }
+    await assertWebGpuAdapterAvailable(page, session.requiresWebGpu ?? false);
   };
 
   if (session.captureMode === "screenshot") {

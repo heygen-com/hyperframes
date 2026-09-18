@@ -11,10 +11,10 @@ const clip: TimelineElement = {
 };
 
 describe("resolveClipRenderContext", () => {
-  it("prioritizes interactive clips and enables rich thumbnails", () => {
+  it("prioritizes interactive clips without changing their thumbnail frames", () => {
     expect(resolveClipRenderContext(clip, { start: 0, end: 1 }, true)).toEqual({
       priority: "interaction",
-      rich: true,
+      rich: false,
     });
   });
 

@@ -203,8 +203,12 @@ async function runLayoutAudit(
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
   const { buildChromeArgs } = await import("@hyperframes/engine");
-  const { assertWebGpuRequirement, resolveCaptureBrowserGpuMode, resolveLocalBrowserGpuMode } =
-    await import("../browser/gpuPolicy.js");
+  const {
+    assertWebGpuAdapterAvailable,
+    compositionRequiresWebGpu,
+    resolveCaptureBrowserGpuMode,
+    resolveLocalBrowserGpuMode,
+  } = await import("../browser/gpuPolicy.js");
   const html = await bundleProjectHtml(projectDir);
   const server = await serveStaticProjectHtml(
     projectDir,
@@ -220,12 +224,12 @@ async function runLayoutAudit(
       requestedGpuMode,
       browser.executablePath,
     );
-    assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
+    const requiresWebGpu = compositionRequiresWebGpu(html);
     chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(
-        { width: 1920, height: 1080, captureMode: "screenshot" },
+        { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
         { browserGpuMode: resolvedGpuMode },
       ),
     });
@@ -237,6 +241,7 @@ async function runLayoutAudit(
       waitUntil: "domcontentloaded",
       timeout: resolveDiagnosticNavigationTimeoutMs(),
     });
+    await assertWebGpuAdapterAvailable(page, requiresWebGpu);
     await alignViewportToComposition(page, server.url);
     await page
       .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {

@@ -43,6 +43,7 @@ import { useTimelineClipRenderWindow } from "./useTimelineClipRenderWindow";
 import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
+import { useClipContextMenu } from "./useTimelineClipContextMenu";
 
 export {
   shouldAutoScrollTimeline,
@@ -79,6 +80,10 @@ export const Timeline = memo(function Timeline({
   onBlockedEditAttempt: onBlockedEditAttemptOverride,
   onSplitElement: onSplitElementOverride,
   onSelectElement,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
   theme: themeOverrides,
   sessionEpoch = 0,
 }: TimelineProps = {}) {
@@ -208,6 +213,7 @@ export const Timeline = memo(function Timeline({
     onMoveElement: pinnedOnMoveElement,
     onMoveElements: pinnedOnMoveElements,
   });
+  const onContextMenuClip = useClipContextMenu(onSelectElement, dismissGapMenu, setClipContextMenu);
 
   const {
     draggedClip,
@@ -548,18 +554,7 @@ export const Timeline = memo(function Timeline({
           onShiftClickKeyframe={onShiftClickKeyframe}
           onMoveKeyframe={onMoveKeyframe}
           onContextMenuKeyframe={onContextMenuKeyframe}
-          onContextMenuClip={(e, el) => {
-            e.preventDefault();
-            setSelectedElementId(el.key ?? el.id);
-            onSelectElement?.(el);
-            dismissGapMenu();
-            setClipContextMenu({
-              x: e.clientX,
-              y: e.clientY,
-              element: el,
-              sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
-            });
-          }}
+          onContextMenuClip={onContextMenuClip}
           onContextMenuLane={(e, track, time) => {
             if (draggedClip?.started || resizingClip) return;
             setClipContextMenu(null);
@@ -588,6 +583,10 @@ export const Timeline = memo(function Timeline({
         onSplitElement={onSplitElement}
         pinZoomBeforeEdit={pinZoomBeforeEdit}
         onDeleteElement={_onDeleteElement}
+        onCopyClip={onCopyClip}
+        onPasteClip={onPasteClip}
+        onDuplicateClip={onDuplicateClip}
+        canPasteClip={canPasteClip}
         gapContextMenu={gapMenuModel}
         onDismissGapContextMenu={dismissGapMenu}
         onCloseTrackGap={closeTrackGap}

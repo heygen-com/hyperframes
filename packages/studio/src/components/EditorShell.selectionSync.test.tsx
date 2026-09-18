@@ -86,6 +86,10 @@ describe("EditorShell timeline selection sync", () => {
           handleTimelineElementSplit={vi.fn()}
           handleRazorSplit={vi.fn()}
           handleRazorSplitAll={vi.fn()}
+          onCopyClip={vi.fn(() => false)}
+          onPasteClip={vi.fn(async () => {})}
+          onDuplicateClip={vi.fn(async () => false)}
+          canPasteClip={vi.fn(() => false)}
           setCompIdToSrc={vi.fn()}
           setCompositionLoading={vi.fn()}
           shouldShowMotionPath={false}
