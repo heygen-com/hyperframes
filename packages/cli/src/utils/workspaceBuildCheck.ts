@@ -12,8 +12,9 @@ export const STUDIO_WORKSPACE_BUILD_ORDER = [
   "player",
 ] as const;
 
-// Gitignored, produced only by `core`'s own build script — absent on a fresh
-// clone even though `src/index.ts` imports them directly.
+// Gitignored, produced only by `core`'s own build script. `runtime-inline.ts`
+// is imported by `core/src/index.ts` directly; `audio-fx-runtime-inline.ts` is
+// only reached via core's own `./audio-fx-runtime` subpath, which engine imports.
 const CORE_REQUIRED_GENERATED_FILES = [
   "src/generated/runtime-inline.ts",
   "src/generated/audio-fx-runtime-inline.ts",
