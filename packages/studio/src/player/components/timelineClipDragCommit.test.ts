@@ -1223,6 +1223,34 @@ describe("commitDraggedClipMove", () => {
       expect(onStackingPatches).not.toHaveBeenCalled();
     });
   });
+
+  describe("magnetic main track on a track-insert (AD96)", () => {
+    it("a top-gutter insert that renumbers to literal track 0 snaps its start to 0", () => {
+      // Sole visual clip sits on track 1 — the real main track (0) is genuinely
+      // empty. Dragging it into the top insert-gutter creates a new lane that
+      // normalizeToZones renumbers to literal 0, so the AD96 rule must apply
+      // even though the preview never saw a literal-0 landing track.
+      const elements = [el("v1", 1, 0, 5)];
+      const { onMoveElements } = runClipMove(
+        drag(elements[0], { previewStart: 8, previewTrack: 1, insertRow: 0 }),
+        { elements, trackOrder: [1] },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.v1).toEqual({ start: 0, track: 0 });
+    });
+
+    it("a multi-selection top-gutter insert does NOT snap (siblings key off the unsnapped start)", () => {
+      const dragged = el("v1", 1, 0, 5);
+      const sibling = el("v2", 1, 10, 5);
+      const elements = [dragged, sibling];
+      const { onMoveElements } = runClipMove(
+        drag(dragged, { previewStart: 8, previewTrack: 1, insertRow: 0 }),
+        { elements, trackOrder: [1], selectedKeys: new Set(["v1", "v2"]) },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.v1.start).toBe(8); // unsnapped — multi-selection guard
+    });
+  });
 });
 
 describe("commitZMirrorLaneMove", () => {

@@ -4,6 +4,8 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 // value-import edge stays acyclic.
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone, normalizeToZones } from "./timelineZones";
+import { resolveMainTrackDropStart } from "./timelineCollision";
+import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import {
   canMoveTimelineElement as canMoveElement,
@@ -443,6 +445,24 @@ function commitTrackInsert(
   if (!built) return;
   const { candidate, edits } = built;
   if (edits.length === 0) return;
+
+  // insertTrackValue's fractional aim is never literal 0, but normalizeToZones can
+  // still renumber it there (e.g. the topmost visual lane was track 1). Snap that
+  // one edit the same way every other main-track landing does; skip for a
+  // multi-selection, whose other members key off the unsnapped previewStart.
+  if (!multi) {
+    const dragEdit = edits.find((e) => keyOf(e.element) === dragKey);
+    if (dragEdit) {
+      dragEdit.updates.start = resolveMainTrackDropStart(
+        deps.elements,
+        dragKey,
+        drag.element.track,
+        dragEdit.updates.track,
+        isAudioTimelineElement(drag.element),
+        dragEdit.updates.start,
+      );
+    }
+  }
 
   const coalesceKey = `clip-lane-move:${laneChangeGestureSeq++}`;
   if (!deps.readZIndex || !deps.onStackingPatches) {
