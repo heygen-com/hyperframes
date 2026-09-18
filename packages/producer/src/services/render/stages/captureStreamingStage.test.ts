@@ -30,6 +30,9 @@ let hangParallelUntilAbort = false;
 let hangSequentialUntilStall = false;
 let sessionWorkerEncodeEnabled = false;
 let captureSessionMode: "drawelement" | "screenshot" = "drawelement";
+let deVerifyFramesMap: Map<number, Buffer> | undefined;
+let psnrDbValue = Infinity;
+let regionShiftValue = 0;
 let failPrepareCaptureSessionForReuse = false;
 let initializeSessionErrorMessage = "initialize failed";
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
@@ -69,6 +72,7 @@ mock.module("@hyperframes/engine", () => ({
     options: { captureBeyondViewport: false },
     workerEncodeEnabled: sessionWorkerEncodeEnabled,
     captureMode: captureSessionMode,
+    deVerifyFrames: deVerifyFramesMap,
   }),
   createFrameReorderBuffer: () => ({
     waitForFrame: async () => {},
@@ -135,6 +139,8 @@ mock.module("@hyperframes/engine", () => ({
       throw new Error("prepare reuse failed: ENOSPC");
     }
   },
+  psnrDb: async () => psnrDbValue,
+  regionShift: async () => regionShiftValue,
   recaptureDrawElementFrameForVerify: async () => Buffer.from("frame"),
   spawnStreamingEncoder,
   writeCapturedFrame: async () => {},
@@ -480,6 +486,68 @@ describe("runCaptureStreamingStage", () => {
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).not.toContain("stalled");
     expect((caught as Error).message).toContain("aborted");
+  });
+
+  it("rejects a verified frame when the region-shift gate trips while PSNR passes", async () => {
+    // The #3345 failure shape: a low-contrast region is absent from the
+    // drawElement frame but the whole-frame PSNR still clears the 32dB floor.
+    sessionWorkerEncodeEnabled = true;
+    deVerifyFramesMap = new Map([[0, Buffer.from("truth")]]);
+    psnrDbValue = 44;
+    regionShiftValue = 13;
+    const prevBatch = process.env.HF_DE_BATCH;
+    process.env.HF_DE_BATCH = "1";
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const input = { ...createInput(cfg), totalFrames: 1, workerCount: 1 };
+
+    let caught: unknown;
+    try {
+      await runCaptureStreamingStage(input);
+    } catch (error) {
+      caught = error;
+    } finally {
+      sessionWorkerEncodeEnabled = false;
+      deVerifyFramesMap = undefined;
+      psnrDbValue = Infinity;
+      regionShiftValue = 0;
+      if (prevBatch === undefined) delete process.env.HF_DE_BATCH;
+      else process.env.HF_DE_BATCH = prevBatch;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain("drawElement self-verify failed at frame 0");
+    expect((caught as Error).message).toContain("region shift 13/255 > 3/255");
+  });
+
+  it("accepts a verified frame when both gates clear", async () => {
+    sessionWorkerEncodeEnabled = true;
+    deVerifyFramesMap = new Map([[0, Buffer.from("truth")]]);
+    psnrDbValue = 48;
+    regionShiftValue = 1;
+    const prevBatch = process.env.HF_DE_BATCH;
+    process.env.HF_DE_BATCH = "1";
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const input = { ...createInput(cfg), totalFrames: 1, workerCount: 1 };
+
+    let result: { success?: boolean } | undefined;
+    let caught: unknown;
+    try {
+      result = await runCaptureStreamingStage(input);
+    } catch (error) {
+      caught = error;
+    } finally {
+      sessionWorkerEncodeEnabled = false;
+      deVerifyFramesMap = undefined;
+      psnrDbValue = Infinity;
+      regionShiftValue = 0;
+      if (prevBatch === undefined) delete process.env.HF_DE_BATCH;
+      else process.env.HF_DE_BATCH = prevBatch;
+    }
+
+    expect(caught).toBeUndefined();
+    expect(result?.success).toBe(true);
   });
 });
 

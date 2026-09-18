@@ -599,7 +599,7 @@ export interface RenderPerfSummary {
      * `fallbackReason` being set is the "any fallback fired" signal.
      */
     selfVerifyFallback: boolean;
-    /** What tripped the fallback retry: psnr | blank | oom | de_renderer_stall | capture_error. */
+    /** What tripped the fallback retry: psnr | shift | blank | oom | de_renderer_stall | capture_error. */
     fallbackReason?: string;
     /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for every other reason (no score exists). */
     fallbackFailedDb?: number;
@@ -2477,7 +2477,7 @@ export function extractStandaloneEntryFromIndex(
  * cross-module-serialized error can't flip "blank" into "psnr".
  */
 function deVerifyFallbackTelemetry(err: unknown): {
-  reason: "psnr" | "blank";
+  reason: "psnr" | "blank" | "shift";
   failedDb?: number;
   frameIndex?: number;
   thresholdDb?: number;

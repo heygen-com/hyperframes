@@ -286,20 +286,27 @@ export interface CaptureSession {
  * exists to close — review finding: message wording, translation, or a
  * cross-module/serialized error must never be able to flip the reported
  * kind). All fields but `kind` are optional: a blank-frame trip has no PSNR
- * score, so `failedDb`/`verifyThresholdDb` are omitted for that throw site.
+ * score, so `failedDb`/`verifyThresholdDb` are omitted for that throw site;
+ * a region-shift trip carries `failedShift`/`verifyMaxShift` instead.
  */
 export interface DrawElementVerificationDetails {
-  kind: "blank" | "psnr";
+  kind: "blank" | "psnr" | "shift";
   frameIndex?: number;
   failedDb?: number;
   verifyThresholdDb?: number;
+  /** Worst-region mean signed shift observed (1/255 units), when kind="shift". */
+  failedShift?: number;
+  /** The HF_DE_VERIFY_MAX_SHIFT ceiling that shift breached, when kind="shift". */
+  verifyMaxShift?: number;
 }
 
 export class DrawElementVerificationError extends Error {
-  readonly kind: "blank" | "psnr";
+  readonly kind: "blank" | "psnr" | "shift";
   readonly frameIndex?: number;
   readonly failedDb?: number;
   readonly verifyThresholdDb?: number;
+  readonly failedShift?: number;
+  readonly verifyMaxShift?: number;
 
   constructor(message: string, details: DrawElementVerificationDetails) {
     super(message);
@@ -312,6 +319,8 @@ export class DrawElementVerificationError extends Error {
     this.frameIndex = details.frameIndex;
     this.failedDb = details.failedDb;
     this.verifyThresholdDb = details.verifyThresholdDb;
+    this.failedShift = details.failedShift;
+    this.verifyMaxShift = details.verifyMaxShift;
   }
 }
 
@@ -340,16 +349,18 @@ export function getDrawElementVerificationDetails(
     if (rec.deVerificationFailure === true) {
       // Every construction path sets `kind` (required on the constructor), so
       // this only defends against a malformed cross-module-instance shape —
-      // treat anything other than exactly "blank" as "psnr", the same
+      // treat anything other than exactly "blank"/"shift" as "psnr", the same
       // fallback polarity the old message regex had, but driven by a
       // structural field instead of parsing text.
       const details: DrawElementVerificationDetails = {
-        kind: rec.kind === "blank" ? "blank" : "psnr",
+        kind: rec.kind === "blank" ? "blank" : rec.kind === "shift" ? "shift" : "psnr",
       };
       if (typeof rec.frameIndex === "number") details.frameIndex = rec.frameIndex;
       if (typeof rec.failedDb === "number") details.failedDb = rec.failedDb;
       if (typeof rec.verifyThresholdDb === "number")
         details.verifyThresholdDb = rec.verifyThresholdDb;
+      if (typeof rec.failedShift === "number") details.failedShift = rec.failedShift;
+      if (typeof rec.verifyMaxShift === "number") details.verifyMaxShift = rec.verifyMaxShift;
       return details;
     }
     e = (e as { cause?: unknown }).cause;
