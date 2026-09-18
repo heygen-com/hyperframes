@@ -106,6 +106,7 @@ describe("Google Fonts CSS request caching", () => {
       const resultA = injectDeterministicFontFaces(htmlA, {
         fetchImpl,
         allowSystemFontCapture: false,
+        failClosedFontFetch: true,
         abortSignal: controllerA.signal,
       });
       while (!resolveCss) await new Promise((r) => setTimeout(r, 0));

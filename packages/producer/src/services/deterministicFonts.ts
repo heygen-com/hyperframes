@@ -1144,12 +1144,12 @@ function fetchGoogleFontCss(
   familyName: string,
   options: InternalFontFetchOptions,
 ): Promise<{ ok: true; body: string } | { ok: false }> {
-  let shared = googleFontCssCache.get(url);
+  // Fail-closed callers retry and throw where lenient ones don't, so they never share an entry.
+  const key = `${options.failClosedFontFetch ? "closed" : "open"}:${url}`;
+  let shared = googleFontCssCache.get(key);
   if (!shared) {
-    // Shared across every concurrent caller requesting this URL, so the
-    // underlying fetch must not carry any single caller's abortSignal — that
-    // caller cancelling would otherwise fail the lookup for every other
-    // caller reusing this cache entry.
+    // The shared fetch must not carry any one caller's abortSignal, or that
+    // caller cancelling would fail the lookup for every other waiter.
     shared = fetchFontResource(
       url,
       { headers: { "User-Agent": WOFF2_USER_AGENT } },
@@ -1157,11 +1157,14 @@ function fetchGoogleFontCss(
       familyName,
       "Google Fonts CSS",
       { ...options, abortSignal: undefined },
-    ).then((result) =>
-      result.ok ? { ok: true as const, body: result.body } : { ok: false as const },
-    );
-    googleFontCssCache.set(url, shared);
-    shared.catch(() => googleFontCssCache.delete(url));
+    ).then((result) => {
+      if (result.ok) return { ok: true as const, body: result.body };
+      // A transient status must not stick for the process lifetime.
+      if (isRetryableFontFetchStatus(result.response.status)) googleFontCssCache.delete(key);
+      return { ok: false as const };
+    });
+    googleFontCssCache.set(key, shared);
+    shared.catch(() => googleFontCssCache.delete(key));
   }
   return raceAgainstAbort(shared, options.abortSignal);
 }
