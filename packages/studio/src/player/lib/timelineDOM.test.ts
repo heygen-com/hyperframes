@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   createTimelineElementFromManifestClip,
   parseTimelineFromDOM,
-  createImplicitTimelineLayersFromDOM,
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
@@ -302,89 +301,10 @@ describe("createTimelineElementFromManifestClip — source-scoped selector ident
 // implicit-layer fallback happily gave it a track. Draggable and trimmable, and
 // writing timing onto a bus means nothing.
 describe("<hf-audio-group> is not a timeline layer", () => {
-  it("gets no implicit row of its own", () => {
-    const doc = makeDoc(`
-      <div data-composition-id="root">
-        <audio id="voice-1" data-start="0" data-duration="6" data-audio-group="voiceover"></audio>
-        <hf-audio-group id="voiceover" data-label="Voiceover"></hf-audio-group>
-      </div>
-    `);
-
-    const implicit = createImplicitTimelineLayersFromDOM(doc, 12, []);
-
-    expect(implicit.map((el) => el.domId)).not.toContain("voiceover");
-  });
-
   it("is excluded by the shared ignore predicate", () => {
     const doc = makeDoc(`<hf-audio-group id="vo"></hf-audio-group><div id="panel"></div>`);
     expect(isTimelineIgnoredElement(doc.getElementById("vo") as Element)).toBe(true);
     expect(isTimelineIgnoredElement(doc.getElementById("panel") as Element)).toBe(false);
-  });
-});
-
-describe("createImplicitTimelineLayersFromDOM — hfId from data-hf-id", () => {
-  it("uses the runtime root paint scope for implicit siblings of manifest clips", () => {
-    const doc = makeDoc(`
-      <div data-composition-id="root">
-        <div id="timed" data-start="0" data-duration="5"></div>
-        <div id="implicit"></div>
-      </div>
-    `);
-    const timedHost = doc.getElementById("timed");
-    const timed = createTimelineElementFromManifestClip({
-      clip: {
-        id: "timed",
-        label: "Timed",
-        start: 0,
-        duration: 5,
-        track: 0,
-        stackingContextId: "css:root",
-        kind: "element",
-        tagName: "div",
-        compositionId: null,
-        parentCompositionId: null,
-        compositionSrc: null,
-        assetUrl: null,
-      },
-      fallbackIndex: 0,
-      doc,
-      hostEl: timedHost,
-    });
-    const implicit = createImplicitTimelineLayersFromDOM(doc, 5, [timed])[0];
-
-    expect(implicit?.stackingContextId).toBe("css:root");
-    expect(implicit?.stackingContextId).toBe(timed.stackingContextId);
-  });
-
-  it("harvests hfId from an implicit layer child that has data-hf-id", () => {
-    const doc = makeDoc(`
-      <div data-composition-id="root">
-        <div id="layer" class="clip" data-hf-id="hf-xyz789"></div>
-      </div>
-    `);
-
-    const layers = createImplicitTimelineLayersFromDOM(doc, 10);
-    const layer = layers.find((el) => el.domId === "layer");
-
-    expect(layer).toBeDefined();
-    expect(layer?.hfId).toBe("hf-xyz789");
-  });
-
-  it("ignores runtime-owned color grading canvases as implicit layers", () => {
-    const doc = makeDoc(`
-      <div data-composition-id="root" data-duration="5">
-        <img id="photo" class="clip" data-start="0" data-duration="5" />
-        <canvas
-          class="__hf_color_grading_canvas__"
-          data-hf-color-grading-canvas="true"
-          data-hyperframes-ignore
-        ></canvas>
-      </div>
-    `);
-
-    const layers = createImplicitTimelineLayersFromDOM(doc, 5);
-
-    expect(layers).toEqual([]);
   });
 });
 

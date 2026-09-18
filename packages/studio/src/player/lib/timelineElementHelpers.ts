@@ -223,37 +223,6 @@ export function getTimelineElementDisplayLabel(input: {
   return tag ? `${tag} clip` : "Timeline clip";
 }
 
-const IMPLICIT_TIMELINE_LAYER_SKIP_TAGS = new Set([
-  "base",
-  "link",
-  "meta",
-  "noscript",
-  "script",
-  "style",
-  "template",
-]);
-
-function humanizeTimelineIdentifier(value: string): string {
-  return value
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
-}
-
-export function getImplicitTimelineLayerLabel(el: HTMLElement): string {
-  const explicitLabel =
-    el.getAttribute("data-timeline-label") ??
-    el.getAttribute("data-label") ??
-    el.getAttribute("aria-label");
-  if (explicitLabel?.trim()) return explicitLabel.trim();
-  if (el.id.trim()) return humanizeTimelineIdentifier(el.id);
-  const classes = el.className.split(/\s+/).filter(Boolean);
-  const className = classes.find((value) => value !== "clip") ?? classes[0];
-  if (className) return humanizeTimelineIdentifier(className);
-  return getTimelineElementDisplayLabel({ tag: el.tagName });
-}
-
 // ---------------------------------------------------------------------------
 // Selector / identity / key builders
 // ---------------------------------------------------------------------------
@@ -474,18 +443,4 @@ export function createTimelineDomNodeResolver(doc: Document) {
     if (node) usedNodes.add(node);
     return node;
   };
-}
-
-// ---------------------------------------------------------------------------
-// Implicit layer detection
-// ---------------------------------------------------------------------------
-
-export function isImplicitTimelineLayerCandidate(root: Element, el: Element): el is HTMLElement {
-  if (!isHtmlElement(el)) return false;
-  if (isTimelineIgnoredElement(el)) return false;
-  if (el.parentElement !== root) return false;
-  const tagName = el.tagName.toLowerCase();
-  if (IMPLICIT_TIMELINE_LAYER_SKIP_TAGS.has(tagName)) return false;
-  if (el.hasAttribute("data-start") || el.hasAttribute("data-track-index")) return false;
-  return Boolean(getTimelineElementSelector(el));
 }

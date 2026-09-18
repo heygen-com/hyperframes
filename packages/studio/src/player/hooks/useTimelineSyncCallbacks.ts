@@ -17,6 +17,7 @@ import { buildMissingCompositionElements } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
 import {
   buildTimelineElementsFromClips,
+  clampElementsToDuration,
   clipTreeParentMap,
   collectTopLevelElementIds,
   collectSubCompositionDomChildren,
@@ -27,7 +28,6 @@ import {
   sanitizeDurationSeconds,
   seekAdapterToRestorePoint,
   syncAdapterDuration,
-  withImplicitDomLayers,
   type RuntimeTimelineMessage,
 } from "./timelineSyncHydration";
 
@@ -153,9 +153,8 @@ export function useTimelineSyncCallbacks({
         manifestDurationSeconds: data.durationInFrames / acceptedRuntimeMessageFps(data),
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
       });
-      const timelineEls = withImplicitDomLayers(
+      const timelineEls = clampElementsToDuration(
         els,
-        iframeDoc,
         newDuration > 0 ? newDuration : usePlayerStore.getState().duration,
       );
       if (timelineEls.length > 0) {

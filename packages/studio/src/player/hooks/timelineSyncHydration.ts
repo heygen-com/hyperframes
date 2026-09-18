@@ -20,7 +20,6 @@ import { groupInfoFor } from "../lib/timelineGroupInfo";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   buildStandaloneRootTimelineElement,
-  createImplicitTimelineLayersFromDOM,
   createTimelineElementFromManifestClip,
   getTimelineElementSelector,
   parseTimelineFromDOM,
@@ -238,28 +237,11 @@ export function buildTimelineElementsFromClips(
 }
 
 /**
- * The clamped manifest elements plus the layers that exist only in the DOM.
- * Both halves need the same resolved duration, which is why they land together.
- */
-export function withImplicitDomLayers(
-  els: readonly TimelineElement[],
-  iframeDoc: Document | null,
-  effectiveDuration: number,
-): TimelineElement[] {
-  const clamped = clampElementsToDuration(els, effectiveDuration);
-  if (!iframeDoc || effectiveDuration <= 0) return clamped;
-  return [
-    ...clamped,
-    ...createImplicitTimelineLayersFromDOM(iframeDoc, effectiveDuration, clamped),
-  ];
-}
-
-/**
  * Drop elements that start past the composition's end and trim the ones that
  * straddle it. A non-positive duration means "not known yet" — pass through
  * untouched rather than clamping everything to nothing.
  */
-function clampElementsToDuration(
+export function clampElementsToDuration(
   els: readonly TimelineElement[],
   effectiveDuration: number,
 ): TimelineElement[] {

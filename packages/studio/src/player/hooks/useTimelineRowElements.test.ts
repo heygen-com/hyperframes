@@ -22,11 +22,6 @@ describe("selectTimelineRowElements", () => {
     expect(selectTimelineRowElements(all, null)).toBe(all);
   });
 
-  it("keeps an implicit layer that has an id", () => {
-    const layer: TimelineElement = { ...el("bg", "bg"), timingSource: "implicit" };
-    expect(selectTimelineRowElements([layer], new Set())).toHaveLength(1);
-  });
-
   it("keeps an element with no DOM id", () => {
     expect(selectTimelineRowElements([el("k")], new Set())).toHaveLength(1);
   });
