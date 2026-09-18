@@ -387,7 +387,20 @@ function downloadMirrorPrefix(projectDir: string): string | null {
  */
 export const MAX_HOSTED_DIRECTORY_BYTES = 2_000_000;
 
-export function hostItemDirectory(projectDir: string, destDir: string, urlBase: string): string {
+// "not-needed" and "over-budget" both leave nothing published, but the caller
+// must not treat them alike: an over-budget item still needs the directory,
+// so it has to fall back to its recorded video instead of shipping with dead
+// relative references and no <base> to resolve them against.
+export type HostItemDirectoryResult =
+  | { readonly status: "not-needed" }
+  | { readonly status: "hosted"; readonly baseHref: string }
+  | { readonly status: "over-budget" };
+
+export function hostItemDirectory(
+  projectDir: string,
+  destDir: string,
+  urlBase: string,
+): HostItemDirectoryResult {
   const mirrorPrefix = downloadMirrorPrefix(projectDir);
   const files = new Map<string, Buffer<ArrayBuffer>>();
   let total = 0;
@@ -399,7 +412,7 @@ export function hostItemDirectory(projectDir: string, destDir: string, urlBase: 
     );
     if (bytes === null) continue;
     total += bytes.length;
-    if (total > MAX_HOSTED_DIRECTORY_BYTES) return "";
+    if (total > MAX_HOSTED_DIRECTORY_BYTES) return { status: "over-budget" };
     files.set(path, bytes);
   }
 
@@ -418,7 +431,7 @@ export function hostItemDirectory(projectDir: string, destDir: string, urlBase: 
     if (mirrorPrefix !== null && path.startsWith(mirrorPrefix))
       publish(path.slice(mirrorPrefix.length), bytes);
   }
-  return files.size > 0 ? urlBase : "";
+  return files.size > 0 ? { status: "hosted", baseHref: urlBase } : { status: "not-needed" };
 }
 
 /**
