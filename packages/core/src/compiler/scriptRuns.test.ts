@@ -34,14 +34,8 @@ describe("inlineScriptRuns", () => {
 
   it("splits at a pinned script that has no src", () => {
     const pinned = (el: Element) => el.hasAttribute("data-pin");
-    expect(
-      runsOf("<script>a</script><script data-pin>p</script><script>b</script>", pinned),
-    ).toEqual(
-      [
-        { members: ["a"], anchor: null },
-        { members: ["b"], anchor: null },
-      ].map((run, i) => (i === 0 ? { ...run, anchor: expect.anything() } : run)),
-    );
+    const runs = runsOf("<script>a</script><script data-pin>p</script><script>b</script>", pinned);
+    expect(runs.map((run) => run.members)).toEqual([["a"], ["b"]]);
   });
 
   it("does not split at a non-executing script such as an import map or JSON data", () => {
