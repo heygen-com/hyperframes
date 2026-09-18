@@ -136,17 +136,17 @@ Keep clean-run feedback concise. For any bug or friction, capture a **reproducti
 
 The following references and owning skills are mandatory command contracts, not optional background reading. Before running a command in the table, read its matching row.
 
-| Need                                                                                   | Reference                             |
-| -------------------------------------------------------------------------------------- | ------------------------------------- |
-| `init`, `capture`, `skills`                                                            | `references/init-and-scaffold.md`     |
-| `lint`, `check`, motion sidecars, `snapshot`                                           | `references/lint-validate-inspect.md` |
-| `compare`, `grade-compare`, variable-driven `render --batch`                           | `references/compare-and-batch.md`     |
-| `beats` for an existing project's Studio beat grid                                     | `references/beats.md`                 |
-| `preview`, `play`, `render`, `publish`, Studio context, feedback                       | `references/preview-render.md`        |
-| `doctor`, browser management                                                           | `references/doctor-browser.md`        |
-| `auth`, HeyGen-hosted cloud rendering, and template variables                          | `references/cloud.md`                 |
-| AWS Lambda deployment and rendering                                                    | `references/lambda.md`                |
-| Google Cloud Run deployment and rendering                                              | `references/cloudrun.md`              |
+| Need                                                                                               | Reference                             |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `init`, `capture`, `skills`                                                                        | `references/init-and-scaffold.md`     |
+| `lint`, `check`, motion sidecars, `snapshot`                                                       | `references/lint-validate-inspect.md` |
+| `compare`, `grade-compare`, variable-driven `render --batch`                                       | `references/compare-and-batch.md`     |
+| `beats` for an existing project's Studio beat grid                                                 | `references/beats.md`                 |
+| `preview`, `play`, `render`, `publish`, Studio context, feedback                                   | `references/preview-render.md`        |
+| `doctor`, browser management                                                                       | `references/doctor-browser.md`        |
+| `auth`, HeyGen-hosted cloud rendering, and template variables                                      | `references/cloud.md`                 |
+| AWS Lambda deployment and rendering                                                                | `references/lambda.md`                |
+| Google Cloud Run deployment and rendering                                                          | `references/cloudrun.md`              |
 | `info`, `upgrade`, `compositions`, `timeline`, `docs`, `benchmark`, telemetry, media preprocessing | `references/upgrade-info-misc.md`     |
 
 For composition variables, also read `/hyperframes-core` → `references/variables-and-media.md`. For `hyperframes add` and `hyperframes catalog`, use `/hyperframes-registry`. Before `hyperframes present`, read `/slideshow`; before `hyperframes keyframes`, read `/hyperframes-keyframes`. For TTS, transcription, captions, or background removal choices, use `/media-use`.
