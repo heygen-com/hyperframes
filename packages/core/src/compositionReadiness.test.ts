@@ -69,6 +69,33 @@ describe("mediaReadinessInput", () => {
   it("returns null when there is nothing to wait on", () => {
     expect(mediaReadinessInput(docWith(""), new AbortController().signal)).toBeNull();
   });
+
+  // 80 elements already errored (a missing asset) before this input attaches
+  // its listeners — reproduces a real composition with many duplicate sfx tags.
+  it("resolves media whose error already fired before this input ran, without waiting for the shared timeout", async () => {
+    vi.useFakeTimers();
+    const doc = docWith(
+      Array.from({ length: 80 }, () => '<audio src="missing.mp3"></audio>').join(""),
+    );
+    for (const el of Array.from(doc.querySelectorAll("audio"))) {
+      Object.defineProperty(el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(el, "error", {
+        value: { code: 4, message: "MEDIA_ELEMENT_ERROR: Format error" },
+        configurable: true,
+      });
+    }
+
+    const result = await new Promise((resolve) =>
+      settleCompositionReadiness(doc, resolve, {
+        inputs: [mediaReadinessInput],
+        timeoutMs: 8000,
+      }),
+    );
+    // No fake-timer advance needed: already-errored elements resolve
+    // synchronously via the el.error check.
+    expect(result).toEqual({ timedOut: false });
+    vi.useRealTimers();
+  });
 });
 
 describe("computeReadinessInput", () => {

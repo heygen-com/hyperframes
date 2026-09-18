@@ -55,6 +55,13 @@ function collectPendingCompositionAssets(
   const mediaReady = pendingMedia.map(
     (el) =>
       new Promise<void>((resolve) => {
+        // init.ts's eager preload pass may have already errored this element
+        // before this input ran; a DOM error event doesn't refire, so a
+        // listener attached now would wait for the shared 8s timeout instead.
+        if (el.error) {
+          resolve();
+          return;
+        }
         const onSettled = () => {
           el.removeEventListener("canplay", onSettled);
           el.removeEventListener("error", onSettled);
