@@ -22,9 +22,9 @@ afterEach(() => {
 
 describe("LeftSidebar root badge source", () => {
   it("derives the root badge from the filtered compositions list, not the raw file tree", () => {
-    // `fileTree` still contains a non-composition index.html (a vendored preset)
-    // that the server's filtered `compositions` list excludes — the exact shape
-    // that mis-targeted the badge before this PR's fix.
+    // `fileTree` includes a non-composition index.html (a vendored preset) that the
+    // server's filtered `compositions` list excludes — the badge must source from
+    // `compositions`, not the raw file tree.
     const host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);

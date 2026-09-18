@@ -64,15 +64,25 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
   }, [projectId]);
 
   const refreshRequestRef = useRef(0);
+  const refreshAbortRef = useRef<AbortController | null>(null);
 
   const refreshFileTree = useCallback(async () => {
     const pid = projectIdRef.current;
     if (!pid) return;
+    // Same id+abort pair as useFileManager.ts's openSourceForSelection: cancel the
+    // superseded request instead of letting it complete and discarding the result.
+    refreshAbortRef.current?.abort();
     const requestId = ++refreshRequestRef.current;
-    const res = await fetch(buildProjectApiPath(pid));
-    const data: { files?: string[]; compositions?: string[] } = await res.json();
-    // Drop this response if a later refresh was already issued — otherwise a slow
-    // response can overwrite a faster, more recent one out of order.
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
+    let data: { files?: string[]; compositions?: string[] };
+    try {
+      const res = await fetch(buildProjectApiPath(pid), { signal: controller.signal });
+      data = await res.json();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      throw err;
+    }
     if (data.files && requestId === refreshRequestRef.current) {
       setFetched((prev) =>
         prev?.projectId === pid
