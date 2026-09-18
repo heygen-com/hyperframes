@@ -966,11 +966,14 @@
       // file-level fingerprint invalidation re-flags the inherited findings even at
       // unchanged line numbers.
       "packages/core/src/runtime/picker.ts",
-      // generate-catalog-payloads.ts: pre-existing payload-build pipeline
-      // (hostsOwnDirectory, buildPayload, parseArgs, main), unmodified by the
-      // catalog-gallery UX work. Only newly flagged because this branch was
-      // retargeted from an in-progress sibling branch directly onto main, making
-      // fallow diff the file against main for the first time; no logic changed.
+      // generate-catalog-payloads.ts: hostsOwnDirectory, parseArgs and main are
+      // untouched by this branch. buildPayload did gain a real change — the
+      // canvas-draw-element branch now writes an { unsupported } marker via a
+      // small writePayload helper instead of dropping the payload — but that
+      // swaps two lines for three at the same branch count, so it does not move
+      // buildPayload's flagged CRAP score; the function's 14-branch complexity
+      // predates this PR. Newly flagged only because retargeting this branch
+      // onto main made fallow diff the file against main for the first time.
       "scripts/generate-catalog-payloads.ts",
     ],
   },
