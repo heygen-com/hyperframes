@@ -262,7 +262,6 @@ export const Timeline = memo(function Timeline({
       expandedElements.length,
       displayLayout.totalH,
     ]);
-  // Order is load-bearing: must register before useTimelineLogicalFocus below.
   const { pps, fitPps, displayContentWidth, displayDuration, zoomModeRef, manualZoomPercentRef } =
     useTimelineGeometry({
       viewportWidth: viewport.clientWidth,

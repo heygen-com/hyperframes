@@ -121,6 +121,11 @@ function scrollToTarget(
 // a render or two; past this many misses on the same nonce it truly never will.
 const MAX_UNRESOLVED_FOCUS_RETRIES = 5;
 
+// Backstop for a request whose target never appears and nothing else ever
+// re-renders: the retry budget above can't advance without a rerun, so this
+// bounds it by wall time instead, independent of re-renders.
+const UNRESOLVED_FOCUS_TIMEOUT_MS = 4000;
+
 /** Model-first focus actor; mounting is a consequence of its returned pins. */
 // Resolution, fallback, reveal, and focus form one ordered state machine.
 // fallow-ignore-next-line complexity
@@ -188,8 +193,15 @@ export function useTimelineFocusCoordinator({
       );
       if (!withinBudget) {
         usePlayerStore.getState().clearTimelineFocus(request.nonce);
+        return;
       }
-      return;
+      const nonce = request.nonce;
+      const timeout = setTimeout(() => {
+        if (usePlayerStore.getState().timelineFocus?.nonce === nonce) {
+          usePlayerStore.getState().clearTimelineFocus(nonce);
+        }
+      }, UNRESOLVED_FOCUS_TIMEOUT_MS);
+      return () => clearTimeout(timeout);
     }
     if (unresolvedFocusAttemptsRef.current.count !== 0) {
       unresolvedFocusAttemptsRef.current = { id: -1, count: 0 };

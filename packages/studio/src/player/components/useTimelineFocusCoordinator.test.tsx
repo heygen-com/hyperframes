@@ -204,6 +204,28 @@ describe("useTimelineFocusCoordinator", () => {
     expect(usePlayerStore.getState().timelineFocus).toBeNull();
   });
 
+  it("clears an unresolved request on a timeout even if nothing else ever re-renders", async () => {
+    // The render-count retry budget can't advance without a rerun; if the
+    // target never lands and nothing else re-renders, only a wall-time
+    // backstop clears it — otherwise it sits forever, eligible to resolve
+    // against an unrelated element that later reuses its id.
+    vi.useFakeTimers();
+    try {
+      usePlayerStore.getState().requestTimelineFocus(clipId);
+      const neverRows: readonly TimelineLogicalRow[] = [{ ...rows[0]!, items: [] }];
+      await act(async () => root.render(<Harness logicalRows={neverRows} />));
+      expect(usePlayerStore.getState().timelineFocus?.id).toBe(clipId);
+
+      await act(async () => {
+        vi.advanceTimersByTime(4001);
+      });
+
+      expect(usePlayerStore.getState().timelineFocus).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps lastScrollLeftRef in sync with a reveal so a sibling restore effect doesn't undo it", async () => {
     // Timeline.tsx's own "restore scroll after an edit re-derives the elements"
     // effect reads this ref to decide what to scroll back to. A reveal that
