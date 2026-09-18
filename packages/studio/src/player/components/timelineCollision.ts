@@ -143,18 +143,28 @@ export function resolveZoneDropPlacement(input: {
 
 /** A clip newly LANDING on an empty main track always commits at start=0
  *  (no leading gap by convention). No-op for a clip already resident there,
- *  once the main track holds another clip, or off the main track. */
+ *  once the main track holds another clip, or off the main track.
+ *  `originTrack` is the clip's current track (null for a brand-new clip —
+ *  a file/asset drop, which is never "already resident" anywhere). */
 export function resolveMainTrackDropStart(
   elements: readonly TimelineElement[],
-  dragKey: string,
+  excludeKey: string | null,
+  originTrack: number | null,
   landingTrack: number,
-  draggedElement: TimelineElement,
+  isAudio: boolean,
   desiredStart: number,
 ): number {
-  if (landingTrack === draggedElement.track) return desiredStart;
-  if (!isMainTrackElement({ ...draggedElement, track: landingTrack })) return desiredStart;
+  if (originTrack === landingTrack) return desiredStart;
+  const landing: TimelineElement = {
+    id: "",
+    tag: isAudio ? "audio" : "video",
+    start: 0,
+    duration: 0,
+    track: landingTrack,
+  };
+  if (!isMainTrackElement(landing)) return desiredStart;
   const mainTrackHasOthers = elements.some(
-    (el) => (el.key ?? el.id) !== dragKey && isMainTrackElement(el),
+    (el) => (el.key ?? el.id) !== excludeKey && isMainTrackElement(el),
   );
   return mainTrackHasOthers ? desiredStart : 0;
 }

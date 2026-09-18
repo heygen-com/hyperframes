@@ -202,9 +202,13 @@ describe("computeDragPreview — magnetic first clip on an empty main track (AD9
   // v-lower sits alone on lane 1; lane 0 (the main track) is empty.
   const vLower = clip("v-lower", 1, 10, 4, 5);
 
-  // Grab v-lower mid-body on lane 1, aim straight up at lane 0's mid-body
-  // (same x — no horizontal move), against the given sibling elements.
-  function dragUpToMainTrack(elements: TimelineElement[]) {
+  // Grab v-lower mid-body on lane 1, aim at `targetRowFloat` (same x — no
+  // horizontal move), against the given sibling elements and selection.
+  function dragUpToMainTrack(
+    elements: TimelineElement[],
+    targetRowFloat = 0.5,
+    selectedKeys: ReadonlySet<string> = new Set(),
+  ) {
     const originClientY = yForRow(1.5);
     const drag: DraggedClipState = {
       pointerId: 0,
@@ -224,9 +228,10 @@ describe("computeDragPreview — magnetic first clip on an empty main track (AD9
       snapType: null,
       started: true,
     };
-    return computeDragPreview(drag, 800, yForRow(0.5), {
+    return computeDragPreview(drag, 800, yForRow(targetRowFloat), {
       ...ctx(undefined, elements),
       trackOrder: [0, 1],
+      selectedKeys,
     });
   }
 
@@ -241,6 +246,21 @@ describe("computeDragPreview — magnetic first clip on an empty main track (AD9
     const vMain = clip("v-main", 0, 0, 3, 5);
     const next = dragUpToMainTrack([vLower, vMain]);
     expect(next.previewStart).toBe(10); // unchanged — main track wasn't empty
+  });
+
+  it("aiming the top gutter (a track insert) over an empty main track leaves the start alone", () => {
+    const next = dragUpToMainTrack([vLower], -0.6);
+    expect(next.insertRow).toBe(0); // a genuine new-top-track insert, not a plain placement
+    expect(next.previewStart).toBe(10); // magnetic snap must not fire here
+  });
+
+  it("does not retime the rest of a multi-selection when the grabbed clip lands on the empty main track", () => {
+    const vOther = clip("v-other", 1, 15, 3, 5);
+    const next = dragUpToMainTrack([vLower, vOther], 0.5, new Set(["v-lower", "v-other"]));
+    expect(next.previewTrack).toBe(0);
+    // The grabbed clip's OWN vertical-only move must not force a horizontal
+    // shift that resolveMultiSelection would then apply to v-other.
+    expect(next.previewStart).toBe(10);
   });
 });
 

@@ -496,23 +496,28 @@ describe("resolveZoneDropPlacement (the whole drop decision, no same-track overl
 });
 
 describe("resolveMainTrackDropStart (magnetic first clip on an empty main track)", () => {
-  const dragged = el("dragged", 1, 10, 4);
-
   it("snaps to 0 when landing on an empty main track", () => {
-    expect(resolveMainTrackDropStart([dragged], "dragged", 0, dragged, 7)).toBe(0);
+    expect(resolveMainTrackDropStart([], "dragged", 1, 0, false, 7)).toBe(0);
   });
 
   it("leaves the drop start alone once the main track already holds another clip", () => {
-    const elements = [dragged, el("other", 0, 0, 3)];
-    expect(resolveMainTrackDropStart(elements, "dragged", 0, dragged, 7)).toBe(7);
+    const elements = [el("other", 0, 0, 3)];
+    expect(resolveMainTrackDropStart(elements, "dragged", 1, 0, false, 7)).toBe(7);
   });
 
   it("leaves the drop start alone when landing off the main track", () => {
-    expect(resolveMainTrackDropStart([dragged], "dragged", 1, dragged, 7)).toBe(7);
+    expect(resolveMainTrackDropStart([], "dragged", 1, 2, false, 7)).toBe(7);
+  });
+
+  it("a clip already resident on the main track doing a horizontal move is a no-op", () => {
+    expect(resolveMainTrackDropStart([], "dragged", 0, 0, false, 7)).toBe(7);
   });
 
   it("an audio clip landing on track 0 is not the main track (visual zone only)", () => {
-    const audio: TimelineElement = { id: "song", tag: "audio", start: 10, duration: 4, track: 1 };
-    expect(resolveMainTrackDropStart([audio], "song", 0, audio, 7)).toBe(7);
+    expect(resolveMainTrackDropStart([], "song", 1, 0, true, 7)).toBe(7);
+  });
+
+  it("a brand-new clip (no origin track) landing on an empty main track snaps to 0", () => {
+    expect(resolveMainTrackDropStart([], null, null, 0, false, 7)).toBe(0);
   });
 });
