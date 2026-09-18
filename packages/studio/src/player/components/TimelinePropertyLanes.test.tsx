@@ -406,7 +406,7 @@ describe("TimelinePropertyLanes", () => {
     expect(laneDiamonds(host, "position")).toHaveLength(3);
     const buttons = laneEaseButtons(host, "position");
     expect(buttons).toHaveLength(2);
-    expect(buttons.every((button) => button.classList.contains("opacity-0"))).toBe(true);
+    expect(buttons.every((button) => button.classList.contains("opacity-40"))).toBe(true);
     expect(buttons.every((button) => button.classList.contains("group-hover:opacity-100"))).toBe(
       true,
     );
