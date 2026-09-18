@@ -380,7 +380,7 @@ Timeline math: picture and sound share start/duration. Source math: both consume
 ></audio>
 ```
 
-Timeline math: an audio element's `data-start` is absolute time on the root timeline. An event inside a sub-composition happens at the host's `data-start` plus the event's local time in that sub-composition's own timeline, so `data-start = host start + local time`. Move only the audio's `data-start`; leave the picture alone. Source math: if the sound's transient is not at the file's first sample, subtract that lead-in from `data-start` (or trim it with `data-media-start`). Audio follows: nothing links audio to picture, so re-derive after every retime of the host. Owner: `/hyperframes-core`. Limit: no waveform auto-sync; for a beat grid use `hyperframes beats` and place each start on a beat time.
+Timeline math: an audio element in the root composition has `data-start` in absolute root time; audio inside a scene file uses scene-local time and the host's `data-start` is added for you. An event inside a sub-composition happens at the host's `data-start` plus the event's local time in that sub-composition's own timeline, so `data-start = host start + local time`. Move only the audio's `data-start`; leave the picture alone. Source math: if the sound's transient is not at the file's first sample, subtract that lead-in from `data-start` (or trim it with `data-media-start`). Audio follows: nothing links audio to picture, so re-derive after every retime of the host. Owner: `/hyperframes-core`. Limit: no waveform auto-sync; for a beat grid use `hyperframes beats` and place each start on a beat time.
 
 ## Copy a group of clips to another time
 

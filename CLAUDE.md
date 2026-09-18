@@ -4,7 +4,7 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 20 only when the user explicitly asks for the full set.
+This repo ships 21 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 21 only when the user explicitly asks for the full set.
 
 ```bash
 npx hyperframes skills update                         # default: installs/refreshes the core set — workflows install on demand

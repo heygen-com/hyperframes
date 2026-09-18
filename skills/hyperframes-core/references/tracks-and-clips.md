@@ -28,7 +28,7 @@ The one place the value carries meaning: two `<audio>` elements that share a tra
 
 ## Picking a Track Index
 
-Purely a readability choice for whoever opens the file in Studio. Common patterns, owned by `/hyperframes-studio` (base video 0, scenes 1 to 9, one caption track, audio 100 and up, one kind per track).
+Purely a readability choice for whoever opens the file in Studio. Common patterns, owned by `/hyperframes-studio` (one caption track, one element kind per track).
 
 When adding a clip to an existing composition, set its `data-start`/`data-duration` against the clips around it. You do not need to hunt for a free lane, and you never need to renumber tracks after a retime.
 

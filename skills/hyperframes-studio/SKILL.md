@@ -27,8 +27,7 @@ file loaded with `data-composition-src`, wiring in
 Nested markup left inside the root does not become a row of its own. It hides inside
 one opaque row that cannot be trimmed or moved part by part.
 
-Severity: the structure lint is one rule set with two severities. Studio reports it
-as an error, the CLI as a warning. Author as if both are errors.
+Author as if a structure lint rejects any violation.
 
 ## 2. One caption track
 
@@ -42,22 +41,22 @@ as an error, the CLI as a warning. Author as if both are errors.
 
 Group by kind so each row is one thing the user can select, mute or drag as a set.
 
-| Kind                                    | Track index                    |
-| --------------------------------------- | ------------------------------ |
-| Base video / A-roll                     | 0                              |
-| Scenes, overlays, graphics              | 1 to 9, one kind per index     |
-| Captions                                | 10                             |
-| Audio (voiceover, music, sound effects) | 100 and up, one kind per index |
+| Kind                                    | `data-track-kind`      |
+| --------------------------------------- | ---------------------- |
+| Base video / A-roll                     | `video` (from the tag) |
+| Scenes, overlays, graphics              | `graphics`             |
+| Captions                                | `captions`             |
+| Audio (voiceover, music, sound effects) | `audio` (from the tag) |
 
-Mark a host's kind with `data-track-kind`: `captions` on the caption host, `graphics` on scene
-and overlay hosts. Video and audio kinds come from the tag, so `<video>` and `<audio>` need no
-attribute. Track index is display only; it never changes what renders on top. Use CSS for
+Put `data-track-kind` on sub-composition hosts. Video and audio kinds come from the tag, so
+`<video>` and `<audio>` need no attribute. Give each kind its own `data-track-index`; the number
+is display only; it never changes what renders on top. Use CSS for
 layering.
 
 ## 4. Safe zones
 
-Studio's preview can draw a ruler and a safe box over the player. That overlay lives in
-the preview pane, never inside the composition, so do not add guide elements to the HTML.
+Any ruler or safe-box overlay lives in the preview pane, never inside the composition, so
+do not add guide elements to the HTML.
 Vertical and wide framings each have their own safe box.
 
 | Framing              | Safe box                                                                | Caption band                    |

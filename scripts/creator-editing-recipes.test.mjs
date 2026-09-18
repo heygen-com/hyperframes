@@ -12,6 +12,7 @@ const TWEEN_SCANNED = [
   "skills/hyperframes-animation/adapters/gsap.md",
   "skills/hyperframes-audio/SKILL.md",
   "skills/hyperframes-audio/references/attributes.md",
+  "skills/music-to-video/references/montage.md",
   "packages/cli/src/docs/data-attributes.md",
 ];
 
