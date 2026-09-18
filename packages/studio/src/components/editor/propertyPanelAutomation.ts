@@ -17,6 +17,7 @@ import {
   type HfAutomation,
 } from "@hyperframes/core/audio-automation";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
+import { POINT_MERGE_SEC } from "../../player/components/automationLaneGeometry";
 
 const EMPTY: HfAutomation = { version: 1, lanes: [] };
 
@@ -87,6 +88,24 @@ export function withLane(automation: HfAutomation, lane: HfAutomationLane): HfAu
     version: 1,
     lanes: [...automation.lanes.filter((l) => l.target !== lane.target), lane],
   };
+}
+
+/** Insert or replace the point nearest `t` on `target`'s lane — the timeline
+ * envelope's own double-click merge rule, so a panel control with no drag
+ * gesture of its own can still write into an automated parameter. */
+export function withPointAt(
+  automation: HfAutomation,
+  target: string,
+  t: number,
+  v: number,
+): HfAutomation {
+  const points = automation.lanes.find((lane) => lane.target === target)?.points ?? [];
+  const kept = points.filter((p) => Math.abs(p.t - t) > POINT_MERGE_SEC);
+  const seeded = points.length === 0 && t > POINT_MERGE_SEC ? [{ t: 0, v }] : [];
+  return withLane(automation, {
+    target,
+    points: [...seeded, ...kept, { t, v }].sort((a, b) => a.t - b.t),
+  });
 }
 
 /** The attribute value for an automation set; empty when nothing is automated. */
