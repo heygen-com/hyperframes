@@ -175,7 +175,7 @@ describe("useTimelineAssetDrop", () => {
 
   it("places the drop at the pointer x, ignoring the playhead", () => {
     const onAssetDrop = vi.fn();
-    // A clip already on the main track — the AD96 empty-main-track snap must
+    // A clip already on the main track — the empty-main-track snap must
     // not interfere with this test's actual subject (pointer x vs. playhead).
     const seed: TimelineElement = { id: "seed", tag: "video", start: 0, duration: 3, track: 0 };
     const view = renderHarness(onAssetDrop, 1, { elements: [seed] });
@@ -239,7 +239,7 @@ describe("useTimelineAssetDrop", () => {
     act(() => view.root.unmount());
   });
 
-  describe("magnetic first clip on an empty main track (AD96)", () => {
+  describe("magnetic first clip on an empty main track", () => {
     it("an asset dropped onto an empty main track snaps to start 0", () => {
       const onAssetDrop = vi.fn();
       const view = renderHarness(onAssetDrop);

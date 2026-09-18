@@ -1224,11 +1224,11 @@ describe("commitDraggedClipMove", () => {
     });
   });
 
-  describe("magnetic main track on a track-insert (AD96)", () => {
+  describe("magnetic main track on a track-insert", () => {
     it("a top-gutter insert that renumbers to literal track 0 snaps its start to 0", () => {
       // Sole visual clip sits on track 1 — the real main track (0) is genuinely
       // empty. Dragging it into the top insert-gutter creates a new lane that
-      // normalizeToZones renumbers to literal 0, so the AD96 rule must apply
+      // normalizeToZones renumbers to literal 0, so the main-track rule must apply
       // even though the preview never saw a literal-0 landing track.
       const elements = [el("v1", 1, 0, 5)];
       const { onMoveElements } = runClipMove(

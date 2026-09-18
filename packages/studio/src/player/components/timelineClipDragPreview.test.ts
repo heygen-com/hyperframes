@@ -198,7 +198,7 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
   });
 });
 
-describe("computeDragPreview — magnetic first clip on an empty main track (AD96)", () => {
+describe("computeDragPreview — magnetic first clip on an empty main track", () => {
   // v-lower sits alone on lane 1; lane 0 (the main track) is empty.
   const vLower = clip("v-lower", 1, 10, 4, 5);
 
