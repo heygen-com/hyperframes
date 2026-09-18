@@ -908,6 +908,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "caret-swap",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "char-slam-explode",
       "type": "hyperframes:component"
     },

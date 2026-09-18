@@ -290,6 +290,7 @@
                   "catalog/components/blur-out-up",
                   "catalog/components/bottom-up-letters",
                   "catalog/components/caption-blend-difference",
+                  "catalog/components/caret-swap",
                   "catalog/components/char-slam-explode",
                   "catalog/components/focus-blur-resolve",
                   "catalog/components/headline-slam",
