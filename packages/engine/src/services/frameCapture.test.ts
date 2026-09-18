@@ -450,4 +450,10 @@ describe("HF_READY_DIAGNOSTIC_EXPR (evaluated as real JS, not via a fake fixture
     expect(result.pendingBuildReadyKeys).toEqual(["heavy"]);
     expect(result.rejectedBuildReadyKeys).toEqual([]);
   });
+
+  it("returns empty arrays for a composition with no buildReady registrations", async () => {
+    const result = await runDiagnosticExpr({});
+    expect(result.pendingBuildReadyKeys).toEqual([]);
+    expect(result.rejectedBuildReadyKeys).toEqual([]);
+  });
 });

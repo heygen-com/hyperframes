@@ -1543,13 +1543,15 @@ export const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
   // and rejects the whole expression on a rejected entry. Settling each
   // key onto its own record and waiting one macrotask avoids both.
   var settled = {};
-  keys.forEach(function(key) {
-    Promise.resolve(registry[key]).then(
-      function() { settled[key] = "resolved"; },
-      function() { settled[key] = "rejected"; },
-    );
-  });
-  await new Promise(function(r) { setTimeout(r, 0); });
+  if (keys.length > 0) {
+    keys.forEach(function(key) {
+      Promise.resolve(registry[key]).then(
+        function() { settled[key] = "resolved"; },
+        function() { settled[key] = "rejected"; },
+      );
+    });
+    await new Promise(function(r) { setTimeout(r, 0); });
+  }
   var pendingBuildReadyKeys = keys.filter(function(key) { return !settled[key]; });
   var rejectedBuildReadyKeys = keys.filter(function(key) { return settled[key] === "rejected"; });
   return {
@@ -1565,8 +1567,7 @@ export const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
   };
 })()`;
 
-// fallow-ignore-next-line complexity
-export function buildZeroDurationDiagnostic(diag: {
+export interface HfDiagnostic {
   renderReady: boolean;
   hasHf: boolean;
   hasSeek: boolean;
@@ -1576,7 +1577,10 @@ export function buildZeroDurationDiagnostic(diag: {
   declaredDuration: number;
   pendingBuildReadyKeys: string[];
   rejectedBuildReadyKeys: string[];
-}): string {
+}
+
+// fallow-ignore-next-line complexity
+export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   const hints: string[] = [];
   if (diag.pendingBuildReadyKeys.length > 0) {
     hints.push(
@@ -1619,18 +1623,6 @@ export function buildZeroDurationDiagnostic(diag: {
     `data-duration: ${diag.declaredDuration > 0 ? diag.declaredDuration + "s" : "not set"}\n` +
     (hints.length > 0 ? hints.map((h) => `  → ${h}`).join("\n") : "")
   );
-}
-
-interface HfDiagnostic {
-  renderReady: boolean;
-  hasHf: boolean;
-  hasSeek: boolean;
-  hasPlayer: boolean;
-  duration: number;
-  hasTimeline: boolean;
-  declaredDuration: number;
-  pendingBuildReadyKeys: string[];
-  rejectedBuildReadyKeys: string[];
 }
 
 async function evaluateHfDiagnostic(page: Page): Promise<HfDiagnostic> {
