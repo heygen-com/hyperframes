@@ -2,6 +2,7 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Root } from "react-dom/client";
 import type { TimelineElement } from "../player";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
@@ -13,7 +14,11 @@ function el(id: string, start: number, duration: number, track = 0): TimelineEle
 }
 
 describe("useTimelineGroupEditing: handleTimelineGroupMove suppressFailureToast", () => {
+  let root: Root | null = null;
+
   afterEach(() => {
+    if (root) act(() => root!.unmount());
+    root = null;
     document.body.innerHTML = "";
   });
 
@@ -37,7 +42,7 @@ describe("useTimelineGroupEditing: handleTimelineGroupMove suppressFailureToast"
       });
       return null;
     }
-    mountReactHarness(<Harness />);
+    root = mountReactHarness(<Harness />);
     return () => hook!;
   }
 
