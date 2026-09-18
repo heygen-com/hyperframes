@@ -1,4 +1,4 @@
-// Adobe Premiere and SMPTE: the standard action and title-safe margins are 10% and 20% total (5% and 10% per edge).
+// Adobe Premiere default: action-safe and title-safe margins are 10% and 20% total (5% and 10% per edge).
 export const ACTION_SAFE_PERCENT = 90;
 export const TITLE_SAFE_PERCENT = 80;
 

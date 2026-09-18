@@ -44,7 +44,8 @@ describe("PreviewGuides", () => {
       Array.from({ length: 11 }, (_, i) => String(i * 10)),
     );
     expect(host.querySelector('[data-testid="preview-ruler-left"]')).not.toBeNull();
-    expect(host.querySelector('[data-testid="preview-safe-action"]')).toBeNull();
+    expect(host.querySelector('[data-testid="preview-safe-90"]')).toBeNull();
+    expect(host.querySelector('[data-testid="preview-safe-80"]')).toBeNull();
   });
 
   it("draws the 90% and 80% boxes with edge-midpoint ticks and no labels or caption band", () => {

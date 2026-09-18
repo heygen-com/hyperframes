@@ -19,12 +19,16 @@ describe("safe boxes", () => {
 
 // Skipped until the hyperframes-studio skill exists on this branch.
 describe.runIf(existsSync(SKILL_PATH))("hyperframes-studio skill matches the constants", () => {
-  it("names both safe box percentages on one safe-margins line", () => {
+  it("has a safe-margins line naming both percentages", () => {
     const skill = readFileSync(SKILL_PATH, "utf8");
     const line = skill
       .split("\n")
-      .find((l) => /safe/i.test(l) && l.includes(`${ACTION_SAFE_PERCENT}%`));
+      .find(
+        (l) =>
+          /\bsafe margins?\b/i.test(l) &&
+          l.includes(`${ACTION_SAFE_PERCENT}%`) &&
+          l.includes(`${TITLE_SAFE_PERCENT}%`),
+      );
     expect(line).toBeDefined();
-    expect(line).toContain(`${TITLE_SAFE_PERCENT}%`);
   });
 });

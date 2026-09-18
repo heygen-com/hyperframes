@@ -97,10 +97,10 @@ function ActiveGuides({ iframeRef, rulerVisible, safeMarginsVisible }: ActiveGui
 
 const TICK_PX = 7;
 const EDGE_MIDPOINTS = [
-  { edge: "top", style: { left: "50%", top: -TICK_PX / 2, width: 1, height: TICK_PX } },
-  { edge: "bottom", style: { left: "50%", bottom: -TICK_PX / 2, width: 1, height: TICK_PX } },
-  { edge: "left", style: { top: "50%", left: -TICK_PX / 2, width: TICK_PX, height: 1 } },
-  { edge: "right", style: { top: "50%", right: -TICK_PX / 2, width: TICK_PX, height: 1 } },
+  { edge: "top", style: { left: "50%", top: -(TICK_PX + 1) / 2, width: 1, height: TICK_PX } },
+  { edge: "bottom", style: { left: "50%", bottom: -(TICK_PX + 1) / 2, width: 1, height: TICK_PX } },
+  { edge: "left", style: { top: "50%", left: -(TICK_PX + 1) / 2, width: TICK_PX, height: 1 } },
+  { edge: "right", style: { top: "50%", right: -(TICK_PX + 1) / 2, width: TICK_PX, height: 1 } },
 ] as const;
 
 /** One thin white box inset from every edge, with a tick at the midpoint of each edge. */
@@ -115,7 +115,6 @@ function SafeBox({ boxPercent }: { boxPercent: number }) {
         top: inset,
         right: inset,
         bottom: inset,
-        boxShadow: "0 0 0 1px rgba(0,0,0,0.25)",
       }}
     >
       {EDGE_MIDPOINTS.map(({ edge, style }) => (
