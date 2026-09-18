@@ -53,33 +53,40 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     vi.unstubAllGlobals();
   });
 
-  // editHistory.ts's coalescing keeps the LAST recordEdit call's label, so the
-  // folded ripple move must carry the delete's label, not its own.
-  it("passes the delete's own label to the folded ripple move, not 'Move timeline clips'", async () => {
-    const a = el("hf-a", 0, 2);
-    const b = el("hf-b", 2, 2);
-    const c = el("hf-c", 4, 2);
-    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+  type DeleteOpsOptions = Parameters<typeof useTimelineDeleteOps>[0];
 
+  function mountDeleteHarness(overrides: {
+    handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"];
+    showToast?: DeleteOpsOptions["showToast"];
+  }) {
+    const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
     function Harness() {
       hook = useTimelineDeleteOps({
         projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
-        timelineElements: [a, b, c],
-        showToast: vi.fn(),
+        timelineElements: elements,
+        showToast: overrides.showToast ?? vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
         recordEdit: vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
-        handleTimelineGroupMove,
+        handleTimelineGroupMove: overrides.handleTimelineGroupMove,
       });
       return null;
     }
-
     mountReactHarness(<Harness />);
+    return { b: elements[1], getHook: () => hook! };
+  }
+
+  // editHistory.ts's coalescing keeps the LAST recordEdit call's label, so the
+  // folded ripple move must carry the delete's label, not its own.
+  it("passes the delete's own label to the folded ripple move, not 'Move timeline clips'", async () => {
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove });
+
     await act(async () => {
-      await hook!.handleTimelineElementDelete(b);
+      await getHook().handleTimelineElementDelete(b);
     });
 
     expect(handleTimelineGroupMove).toHaveBeenCalledWith(
@@ -89,31 +96,12 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
   });
 
   it("tells the user when a ripple fails to persist after a committed delete", async () => {
-    const a = el("hf-a", 0, 2);
-    const b = el("hf-b", 2, 2);
-    const c = el("hf-c", 4, 2);
     const handleTimelineGroupMove = vi.fn().mockRejectedValue(new Error("persist failed"));
     const showToast = vi.fn();
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, showToast });
 
-    let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
-    function Harness() {
-      hook = useTimelineDeleteOps({
-        projectIdRef: { current: "test-project" },
-        activeCompPath: "index.html",
-        timelineElements: [a, b, c],
-        showToast,
-        writeProjectFile: vi.fn().mockResolvedValue(undefined),
-        recordEdit: vi.fn().mockResolvedValue(undefined),
-        reloadPreview: vi.fn(),
-        previewIframeRef: { current: null },
-        handleTimelineGroupMove,
-      });
-      return null;
-    }
-
-    mountReactHarness(<Harness />);
     await act(async () => {
-      await hook!.handleTimelineElementDelete(b);
+      await getHook().handleTimelineElementDelete(b);
     });
 
     expect(showToast).toHaveBeenCalledWith(
