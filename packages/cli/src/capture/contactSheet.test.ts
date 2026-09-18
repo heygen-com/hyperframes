@@ -54,7 +54,13 @@ describe("createContactSheet", () => {
 
       const svgT = async (n: string, x: string) => {
         const s0 = performance.now();
-        await sharp(Buffer.from(`<svg width="16" height="26"><text x="8" y="18" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="bold" fill="#fff">${x}</text></svg>`)).png().toBuffer();
+        await sharp(
+          Buffer.from(
+            `<svg width="16" height="26"><text x="8" y="18" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="bold" fill="#fff">${x}</text></svg>`,
+          ),
+        )
+          .png()
+          .toBuffer();
         console.log(`PROBE ${n}: ${(performance.now() - s0).toFixed(0)}ms`);
       };
       await svgT("first svg text in this test (cold)", "A");
