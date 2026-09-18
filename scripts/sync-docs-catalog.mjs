@@ -4,16 +4,13 @@
 // snapshot). Usage: node scripts/sync-docs-catalog.mjs [path/to/docs]
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { galleryPreview } from "./catalog-preview-policy.mjs";
+import { buildNav } from "./build-docs-gallery-nav.mjs";
+import { getCatalogTab, readJson, resolveDocsRoot, slug } from "./docs-catalog-shared.mjs";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
-const docs = path.resolve(process.argv[2] || path.join(root, "docs"));
-const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
-const slug = (s) => s.toLowerCase().replace(/&/g, " ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-
+const { root, docs } = resolveDocsRoot(process.argv[2]);
 const config = readJson(path.join(docs, "docs.json"));
-const tab = config.navigation.tabs.find((t) => t.tab === "Catalog");
+const tab = getCatalogTab(config);
 
 // Walk the existing hand-authored nav so group/section order and labels stay ours.
 // pathLabels accumulates each {group,pages} label on the way down, exactly like the
@@ -48,7 +45,13 @@ function walk(node, pathLabels) {
     });
     return;
   }
-  if (node && typeof node === "object" && node.group !== "Overview") walk(node.pages || [], [...pathLabels, node.group]);
+  if (node && typeof node === "object") {
+    if (node.group === "Overview") return;
+    // "Catalog" is the synthetic wrapper buildNav() adds around every real group below; skip
+    // it as a label so re-running against already-generated output doesn't shift nesting.
+    const transparent = node.group === "Catalog";
+    walk(node.pages || [], transparent ? pathLabels : [...pathLabels, node.group]);
+  }
 }
 for (const g of tab.groups) walk(g, []);
 
@@ -64,4 +67,4 @@ const result = { source: "https://github.com/heygen-com/hyperframes", groups, it
 fs.writeFileSync(path.join(docs, "snippets/catalog-gallery-data.mdx"), `export const catalogGalleryData = ${JSON.stringify(result)};\n`);
 console.log(`Synced ${items.length} catalog items in ${groups.length} groups.`);
 
-await import("./build-docs-gallery-nav.mjs");
+buildNav(docs);

@@ -6,11 +6,9 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { getCatalogTab, readCatalogGalleryData, readJson, resolveDocsRoot } from "./docs-catalog-shared.mjs";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
-const docs = path.resolve(process.argv[2] || path.join(root, "docs"));
-const read = (p) => fs.readFileSync(path.join(docs, p), "utf8");
+const { root, docs } = resolveDocsRoot(process.argv[2]);
 
 function leafPaths(tab) {
   const paths = [];
@@ -24,12 +22,12 @@ function leafPaths(tab) {
   return paths;
 }
 
-const config = JSON.parse(read("docs.json"));
-const tab = config.navigation.tabs.find((t) => t.tab === "Catalog");
+const config = readJson(path.join(docs, "docs.json"));
+const tab = getCatalogTab(config);
 const after = leafPaths(tab);
 assert.equal(after.length, new Set(after).size, "Duplicate sidebar item");
 
-const data = JSON.parse(read("snippets/catalog-gallery-data.mdx").replace(/^export const catalogGalleryData = /, "").replace(/;\s*$/, ""));
+const data = readCatalogGalleryData(docs);
 assert.equal(data.items.length, after.filter((p) => p !== "/catalog/index").length, "Gallery data item count does not match the nav's leaf page count");
 for (const item of data.items) {
   assert.ok(after.includes(item.href), `Gallery item missing from the sidebar: ${item.href}`);
@@ -41,7 +39,7 @@ let before = null;
 try {
   const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: root }).toString().trim();
   const prior = JSON.parse(execFileSync("git", ["show", `${base}:docs/docs.json`], { cwd: root }).toString());
-  const priorTab = prior.navigation.tabs.find((t) => t.tab === "Catalog");
+  const priorTab = getCatalogTab(prior);
   before = leafPaths(priorTab);
 } catch (e) {
   console.warn(`! Could not diff against origin/main's docs.json (${e.message}); skipping the before/after page-list proof.`);
