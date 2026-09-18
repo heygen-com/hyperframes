@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes } from "../../ui/format.js";
-import { formatLintFindings } from "../../utils/lintFormat.js";
+import { formatLintStartupMessage } from "../../utils/lintFormat.js";
 import {
   hasDefinitiveEntryMismatch,
   lintProject,
@@ -218,7 +218,7 @@ export async function runRenderLint(
       ? await runRenderLintInOwnedProcess(plan.project.dir, explicitEntry, signal)
       : await runLint(plan.project.dir, explicitEntry);
   if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
-  presentRenderLintFindings(lintResult, plan.effectiveQuiet);
+  presentRenderLintFindings(lintResult, plan.effectiveQuiet, plan.lintVerbose);
   const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
   if (renderLintShouldAbort(plan.strictErrors, plan.strictAll, lintResult)) {
     presentRenderLintAbort(plan, definitiveEntryMismatch);
@@ -245,10 +245,12 @@ async function runRenderLintInOwnedProcess(
 function presentRenderLintFindings(
   lintResult: Awaited<ReturnType<typeof lintProject>>,
   quiet: boolean,
+  lintVerbose: boolean,
 ): void {
   if (quiet) return;
   console.log("");
-  for (const line of formatLintFindings(lintResult, { errorsFirst: true })) console.log(line);
+  for (const line of formatLintStartupMessage(lintResult, lintVerbose, { errorsFirst: true }))
+    console.log(line);
 }
 
 function presentRenderLintAbort(plan: RenderPlan, definitiveEntryMismatch: boolean): void {

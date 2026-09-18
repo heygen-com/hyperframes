@@ -87,6 +87,7 @@ export interface RenderCommandArgs {
   "best-effort"?: boolean;
   strict?: boolean;
   "strict-all"?: boolean;
+  "lint-verbose"?: boolean;
   "max-concurrent-renders"?: string;
   variables?: string;
   "variables-file"?: string;
@@ -139,6 +140,7 @@ export interface RenderPlan {
   useGpu: boolean;
   browserGpuMode: BrowserGpuMode;
   quiet: boolean;
+  lintVerbose: boolean;
   debug: boolean;
   bestEffort: boolean;
   batchJson: boolean;
@@ -533,6 +535,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     useGpu,
     browserGpuMode,
     quiet,
+    lintVerbose: args["lint-verbose"] ?? false,
     debug: args.debug ?? false,
     bestEffort: args["best-effort"] ?? true,
     batchJson,

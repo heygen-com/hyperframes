@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HyperframeLintFinding } from "@hyperframes/core/lint";
-import { formatLintFindings } from "./lintFormat.js";
+import { formatLintFindings, formatLintStartupMessage } from "./lintFormat.js";
 import type { ProjectLintResult } from "./lintProject.js";
 
 function finding(
@@ -203,5 +203,33 @@ describe("formatLintFindings", () => {
 
     const verbose = formatLintFindings(result, { showSummary: true, verbose: true });
     expect(verbose.at(-1)).toContain("1 error(s), 0 warning(s), 1 info(s)");
+  });
+});
+
+describe("formatLintStartupMessage", () => {
+  const result = project([
+    {
+      file: "index.html",
+      findings: [finding("error"), finding("error"), finding("warning")],
+    },
+  ]);
+
+  it("collapses to a one-line summary by default", () => {
+    const lines = formatLintStartupMessage(result, false);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("2 error(s), 1 warning(s)");
+    expect(lines[0]).toContain("Lint badge in Studio");
+    expect(lines[0]).toContain("--lint-verbose");
+  });
+
+  it("does not print individual findings in the default summary", () => {
+    const lines = formatLintStartupMessage(result, false);
+    expect(lines.join("\n")).not.toContain("error-code");
+  });
+
+  it("prints full per-finding output when verbose", () => {
+    const lines = formatLintStartupMessage(result, true);
+    expect(lines).toEqual(formatLintFindings(result));
+    expect(lines.length).toBeGreaterThan(1);
   });
 });

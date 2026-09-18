@@ -36,6 +36,10 @@ export const examples: Example[] = [
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
   ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
   [
+    "Show full lint findings instead of the summary line",
+    "hyperframes render --lint-verbose --output out.mp4",
+  ],
+  [
     "Relocate frame cache off C: (Windows) or another small partition",
     "hyperframes render --frames-cache-dir D:/hf-cache --output out.mp4",
   ],
@@ -241,6 +245,11 @@ export default defineCommand({
     quiet: {
       type: "boolean",
       description: "Suppress verbose output",
+      default: false,
+    },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings instead of the summary line",
       default: false,
     },
     debug: {

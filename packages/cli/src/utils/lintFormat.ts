@@ -58,10 +58,36 @@ export function formatLintFindings(
   if (showSummary) {
     const icon = totalErrors > 0 ? c.error("◇") : c.success("◇");
     lines.push("");
-    const summaryParts = [`${totalErrors} error(s)`, `${totalWarnings} warning(s)`];
-    if (verbose && totalInfos > 0) summaryParts.push(`${totalInfos} info(s)`);
-    lines.push(`${icon}  ${summaryParts.join(", ")}`);
+    lines.push(`${icon}  ${formatLintCounts(totalErrors, totalWarnings, totalInfos, verbose)}`);
   }
 
   return lines;
+}
+
+function formatLintCounts(
+  totalErrors: number,
+  totalWarnings: number,
+  totalInfos: number,
+  verbose: boolean,
+): string {
+  const parts = [`${totalErrors} error(s)`, `${totalWarnings} warning(s)`];
+  if (verbose && totalInfos > 0) parts.push(`${totalInfos} info(s)`);
+  return parts.join(", ");
+}
+
+/**
+ * One-line lint summary by default, full findings (via `formatLintFindings`) when `verbose`.
+ * `verboseOptions` passes through to `formatLintFindings` for the verbose case only, so a
+ * caller that wants `errorsFirst`-style grouping keeps it.
+ */
+export function formatLintStartupMessage(
+  lintResult: ProjectLintResult,
+  verbose: boolean,
+  verboseOptions?: LintFormatOptions,
+): string[] {
+  if (verbose) return formatLintFindings(lintResult, verboseOptions);
+  const counts = formatLintCounts(lintResult.totalErrors, lintResult.totalWarnings, 0, false);
+  return [
+    `  Lint: ${counts} — see the Lint badge in Studio, or run with --lint-verbose for full output.`,
+  ];
 }

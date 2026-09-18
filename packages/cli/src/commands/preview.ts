@@ -28,6 +28,10 @@ export const examples: Example[] = [
     "Disable auto-proxying of browser-hostile video codecs (HEVC, ProRes, AV1)",
     "hyperframes preview --no-proxy",
   ],
+  [
+    "Show full lint findings on startup instead of the summary line",
+    "hyperframes preview --lint-verbose",
+  ],
 ];
 import {
   existsSync,
@@ -54,7 +58,7 @@ import {
   validateRemoteDebuggingPortDeps,
 } from "../utils/openBrowser.js";
 import { lintProject } from "../utils/lintProject.js";
-import { formatLintFindings } from "../utils/lintFormat.js";
+import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   activeServerOnPort,
   findPortAndServe,
@@ -175,6 +179,11 @@ export default defineCommand({
     "kill-all": {
       type: "boolean",
       description: "Kill all active preview servers and exit",
+      default: false,
+    },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings on startup (default: a one-line summary)",
       default: false,
     },
     open: {
@@ -420,7 +429,8 @@ export default defineCommand({
     const lintResult = await lintProject(dir);
     if (!args.json && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
       console.log();
-      for (const line of formatLintFindings(lintResult)) console.log(line);
+      for (const line of formatLintStartupMessage(lintResult, Boolean(args["lint-verbose"])))
+        console.log(line);
       console.log();
     }
 

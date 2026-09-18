@@ -321,6 +321,64 @@ describe("renderLocal browser GPU config", () => {
     ).rejects.toMatchObject({ name: "CliRuntimeError" });
   });
 
+  it("prints a one-line summary by default, and full findings when lintVerbose is set", async () => {
+    const lintResult = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: true,
+            errorCount: 0,
+            warningCount: 1,
+            infoCount: 0,
+            findings: [
+              { code: "some_warning", severity: "warning" as const, message: "a warning" },
+            ],
+          },
+        },
+      ],
+      totalErrors: 0,
+      totalWarnings: 1,
+      totalInfos: 0,
+    };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runRenderLint(
+      {
+        project: { dir: "/tmp/project" },
+        entryFile: undefined,
+        renderTarget: "/tmp/project/index.html",
+        strictErrors: false,
+        strictAll: false,
+        effectiveQuiet: false,
+        lintVerbose: false,
+      } as never,
+      async () => lintResult,
+    );
+    const summaryOutput = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(summaryOutput).toContain("1 warning(s)");
+    expect(summaryOutput).not.toContain("some_warning");
+
+    logSpy.mockClear();
+    await runRenderLint(
+      {
+        project: { dir: "/tmp/project" },
+        entryFile: undefined,
+        renderTarget: "/tmp/project/index.html",
+        strictErrors: false,
+        strictAll: false,
+        effectiveQuiet: false,
+        lintVerbose: true,
+      } as never,
+      async () => lintResult,
+    );
+    const verboseOutput = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(verboseOutput).toContain("some_warning");
+
+    logSpy.mockRestore();
+  });
+
   function setEnv(key: string, value: string) {
     if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
     process.env[key] = value;
