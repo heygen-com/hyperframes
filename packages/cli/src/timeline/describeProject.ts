@@ -21,6 +21,8 @@ export interface TimelineRow extends ClipFact {
   trackKind: TrackKind;
   /** False when the source does not author a duration (media length is only known at render). */
   durationAuthored: boolean;
+  /** Why `data-automation` / `data-fx-chain` could not be read; `null` when fine or absent. */
+  laneError: string | null;
   /** Clips of a sub-composition, times local to the host. One level only. */
   children: TimelineRow[];
 }
@@ -47,18 +49,19 @@ function toNode(el: Element): DomNode {
   return { tag: el.tagName, attrs, children: Array.from(el.children).map(toNode), el };
 }
 
-function readLanes(el: Element): ClipLane[] {
+function readLanes(el: Element): { lanes: ClipLane[]; laneError: string | null } {
   const raw = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
-  if (!raw) return [];
+  if (!raw) return { lanes: [], laneError: null };
   try {
     const fx = el.getAttribute(HF_AUDIO_FX_ATTR);
     const chain = fx ? parseAudioFxChain(fx) : undefined;
-    return resolveAutomation(parseAutomation(raw), chain).lanes.map((lane) => ({
+    const lanes = resolveAutomation(parseAutomation(raw), chain).lanes.map((lane) => ({
       target: lane.target,
       points: lane.points.map(({ t, v }) => ({ t, v })),
     }));
-  } catch {
-    return [];
+    return { lanes, laneError: null };
+  } catch (err) {
+    return { lanes: [], laneError: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -72,10 +75,11 @@ function describeRow(doc: Document, node: DomNode, baseDir: string, depth: numbe
   const inner = children.reduce((max, c) => Math.max(max, c.end), 0);
   const duration = authored ?? inner;
   const rate = parseNumeric(el.getAttribute("data-playback-rate"));
+  const kind = el.tagName.toLowerCase();
   return {
-    id: el.id || el.getAttribute("data-composition-id") || `${el.tagName.toLowerCase()}`,
+    id: el.id || el.getAttribute("data-composition-id") || kind,
     label: null,
-    kind: el.tagName.toLowerCase(),
+    kind,
     trackKind: trackKindOf(node).kind,
     start,
     duration,
@@ -84,7 +88,7 @@ function describeRow(doc: Document, node: DomNode, baseDir: string, depth: numbe
     src: el.getAttribute("src") ?? host,
     sourceFile: host,
     volume: parseNumeric(el.getAttribute("data-volume")),
-    lanes: readLanes(el),
+    ...readLanes(el),
     playbackRate: rate === 1 ? null : rate,
     audioGroup: el.getAttribute(HF_AUDIO_GROUP_ATTR),
     role: null,
