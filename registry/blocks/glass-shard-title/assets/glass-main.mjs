@@ -75,7 +75,7 @@ scene.environmentRotation = new THREE.Euler(0, 0.6, 0);
 hdrTex.dispose();
 pmrem.dispose();
 
-const matcapTex = await new THREE.TextureLoader().loadAsync("https://static.heygen.ai/hyperframes-oss/docs/images/catalog/assets/glass-shard-title/matcap-1.png");
+const matcapTex = await new THREE.TextureLoader().loadAsync("assets/matcap-1.png");
 matcapTex.colorSpace = THREE.SRGBColorSpace;
 matcapTex.wrapS = matcapTex.wrapT = THREE.RepeatWrapping;
 const mk = 1 / 0.2;

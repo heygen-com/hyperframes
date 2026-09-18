@@ -44,7 +44,6 @@ import {
   externalizeDataUris,
   inlineMountedComposition,
   HOSTED_EXTENSIONS,
-  HOSTED_DIRECTORY_BYTE_ALLOWANCE,
   hostItemDirectory,
   type HostItemDirectoryResult,
   localReferences,
@@ -209,12 +208,7 @@ function resolveBaseHref(
 ): HostItemDirectoryResult {
   if (!interactive && !needsOwnDirectory(item, unresolved)) return { status: "not-needed" };
   const itemUrl = `/public/catalog/items/${item.name}`;
-  return hostItemDirectory(
-    projectDir,
-    join(payloadRoot, "items", item.name),
-    `${itemUrl}/`,
-    HOSTED_DIRECTORY_BYTE_ALLOWANCE[item.name],
-  );
+  return hostItemDirectory(projectDir, join(payloadRoot, "items", item.name), `${itemUrl}/`);
 }
 
 /** An interactive preview inlines the component and clears its pinned demo values,

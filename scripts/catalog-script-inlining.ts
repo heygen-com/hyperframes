@@ -4,6 +4,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import type { RegistryItem } from "../packages/core/src/index.js";
+import { hostedUrlByReference } from "./registry-hosted-assets.ts";
 
 interface VendorFile {
   /** Stable key used both as the JSON filename and the import-map value lookup. */
@@ -165,12 +167,37 @@ function extractAndRemoveScript(
   };
 }
 
+/** Script text loads hosted assets by their local name, and the payload has no such file: point
+ * each at its CDN URL. `assetCall` is the bundle's base-joining helper, which takes the name
+ * relative to `assets/`. Throws when a name is still there, so a rebuild that renames things fails loudly. */
+export function withHostedRefs(text: string, projectDir: string, assetCall?: string): string {
+  const manifest = JSON.parse(
+    readFileSync(join(projectDir, "registry-item.json"), "utf-8"),
+  ) as RegistryItem;
+  let out = text;
+  for (const [ref, url] of hostedUrlByReference(manifest)) {
+    const names = new Set([ref, ref.replace(/^assets\//, "")]);
+    for (const name of names) {
+      if (assetCall) out = out.split(`${assetCall}("${name}")`).join(`"${url}"`);
+      out = out.split(`"${name}"`).join(`"${url}"`);
+    }
+    if (ref.startsWith("assets/") && out.includes(`"${ref.slice("assets/".length)}"`)) {
+      throw new Error(`catalog-script-inlining: "${ref}" is still loaded by its local name.`);
+    }
+  }
+  return out;
+}
+
 function inlineFrostScripts(
   html: string,
   projectDir: string,
   vendorUrls: Record<string, string>,
 ): string {
-  const frostText = readFileSync(join(projectDir, "assets/frost.js"), "utf-8");
+  const frostText = withHostedRefs(
+    readFileSync(join(projectDir, "assets/frost.js"), "utf-8"),
+    projectDir,
+    "a2",
+  );
 
   // Moves the composition's own inline script into the same async chain, after
   // gsap/frost.js load: left in document order it would run before either is ready.
@@ -195,7 +222,10 @@ ${gsapLoaderJs(vendorUrls)}
 
 function inlineGlassScripts(html: string, projectDir: string): string {
   const hdrRelPath = "assets/ferndale_studio_01_1k.hdr";
-  let glassText = readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8");
+  let glassText = withHostedRefs(
+    readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8"),
+    projectDir,
+  );
   if (!glassText.includes(hdrRelPath)) {
     throw new Error(
       `catalog-script-inlining: glass-main.js no longer references "${hdrRelPath}"; ` +
