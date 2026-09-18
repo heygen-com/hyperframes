@@ -4210,6 +4210,10 @@ export function initSandboxRuntimeModular(): void {
       }
     }
     state.deterministicAdapters = [];
+    // A stale, never-resolved buildReady promise from the torn-down composition
+    // would otherwise permanently block render-ready for whatever loads next
+    // into this window, since window.__hf itself is never reset.
+    if (window.__hf?.buildReady) window.__hf.buildReady = {};
     for (const cleanup of runtimeCleanupCallbacks.splice(0)) {
       try {
         cleanup();

@@ -1013,8 +1013,9 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
   }
 
-  /** Gates play() on composition readiness (media/images/fonts), bounded by
-   * ASSETS_READY_TIMEOUT_MS; settles synchronously when nothing is pending. */
+  /** Gates play() on composition readiness (media, compute, paint-and-idle),
+   * bounded by ASSETS_READY_TIMEOUT_MS; settles synchronously when nothing
+   * is pending. */
   private _waitForAssetsReady(doc: Document | null): void {
     this._assetsReady = false;
     // Invalidates any earlier wait still in flight (a composition swap, or

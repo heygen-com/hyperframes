@@ -2887,6 +2887,34 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  it("clears a stale buildReady entry on teardown so the next init isn't blocked by it", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    window.__hf = window.__hf || {};
+    // Simulates a composition that registered a build hold and was torn down
+    // (piece removed, project swapped) before that promise ever resolved.
+    window.__hf.buildReady = { stale: new Promise<void>(() => {}) };
+
+    initSandboxRuntimeModular();
+    window.__hfRuntimeTeardown?.();
+
+    // A fresh composition loads into the same window without registering
+    // anything under "stale" — the leftover promise must not still be polled.
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(window.__renderReady).toBe(true);
+  });
+
   it("sets __renderReady even without a GSAP timeline (CSS/WAAPI compositions)", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

@@ -99,7 +99,7 @@ window.__hf.buildReady = window.__hf.buildReady || {};
 window.__hf.buildReady["<your-piece-name>"] = buildScene(); // resolves once the scene is actually drawable
 ```
 
-Register it synchronously, in the same script block that starts the build — same timing as `DefaultLoadingManager`, so the runtime's first readiness check already sees it. Only do this for setup an adapter cannot see; render-critical seeking still comes from `hf-seek`, not this hold.
+Register it synchronously, in the same script block that starts the build — same timing as `DefaultLoadingManager`, so the runtime's first readiness check already sees it. Only do this for setup an adapter cannot see; render-critical seeking still comes from `hf-seek`, not this hold. The key must be unique within the composition — a second registration under the same key silently replaces the first, dropping its hold.
 
 ## AnimationMixer Pattern
 
