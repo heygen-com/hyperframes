@@ -15,7 +15,7 @@ import {
   type StructureNode,
   type TrackKind,
 } from "@hyperframes/parsers";
-import { resolveReferencedDuration, resolveStart } from "../utils/resolveStart.js";
+import { resolveReferencedDuration, resolveReferencedStart } from "@hyperframes/engine";
 
 export interface TimelineRow extends ClipFact {
   trackKind: TrackKind;
@@ -86,7 +86,7 @@ interface DocScope {
 function describeRow(scope: DocScope, node: DomNode, depth: number): TimelineRow {
   const { el } = node;
   const { doc, startCache } = scope;
-  const start = resolveStart(doc, el, startCache, new Set());
+  const start = resolveReferencedStart(doc, el, startCache, new Set());
   const authored = resolveReferencedDuration(doc, el, startCache, new Set());
   const host = el.getAttribute("data-composition-src");
   const children = host && depth === 0 ? readSubComposition(host, scope) : [];

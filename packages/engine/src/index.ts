@@ -227,6 +227,7 @@ export {
 
 export {
   resolveReferencedStart,
+  resolveReferencedDuration,
   type RefResolverEl,
   type RefResolverDoc,
 } from "./services/referenceResolver.js";
