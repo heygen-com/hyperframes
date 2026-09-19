@@ -36,6 +36,9 @@ const BASE_FLAG = "--base";
  * Entries are for deletions that are NOT renames — git already pairs those on
  * its own. Remove an entry once its deletion has landed on the base.
  */
+const STORYBOARD_VIEW_REASON =
+  "owner-directed removal of the Studio storyboard view; its only readers were deleted with it";
+
 export const ALLOWED_DELETIONS = new Map([
   [
     "packages/studio/src/components/StudioGlobalDragOverlay.tsx",
@@ -177,6 +180,44 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/hooks/useExpandedTimelineElements.test.ts",
     "tests for the removed child-row expansion hook",
   ],
+  ...[
+    "docs/studio/storyboard.mdx",
+    "packages/studio-server/src/routes/storyboard.test.ts",
+    "packages/studio-server/src/routes/storyboard.ts",
+    "packages/studio/fixtures/storyboard-sample/README.md",
+    "packages/studio/fixtures/storyboard-sample/SCRIPT.md",
+    "packages/studio/fixtures/storyboard-sample/STORYBOARD.md",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/01-hook.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/02-problem.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/03-feature.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/04-proof.html",
+    "packages/studio/fixtures/storyboard-sample/index.html",
+    "packages/studio/src/components/storyboard/AgentChatMessageButton.test.tsx",
+    "packages/studio/src/components/storyboard/AgentChatMessageButton.tsx",
+    "packages/studio/src/components/storyboard/FramePoster.test.tsx",
+    "packages/studio/src/components/storyboard/FramePoster.tsx",
+    "packages/studio/src/components/storyboard/StoryboardDirection.tsx",
+    "packages/studio/src/components/storyboard/StoryboardFrameFocus.tsx",
+    "packages/studio/src/components/storyboard/StoryboardFrameTile.tsx",
+    "packages/studio/src/components/storyboard/StoryboardGrid.tsx",
+    "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
+    "packages/studio/src/components/storyboard/StoryboardReviewGuide.tsx",
+    "packages/studio/src/components/storyboard/StoryboardScriptPanel.tsx",
+    "packages/studio/src/components/storyboard/StoryboardSourceEditor.tsx",
+    "packages/studio/src/components/storyboard/StoryboardStatusLegend.tsx",
+    "packages/studio/src/components/storyboard/StoryboardView.tsx",
+    "packages/studio/src/components/storyboard/StoryboardViewModeGuard.test.tsx",
+    "packages/studio/src/components/storyboard/frameComments.test.ts",
+    "packages/studio/src/components/storyboard/frameComments.ts",
+    "packages/studio/src/components/storyboard/frameStatus.ts",
+    "packages/studio/src/components/storyboard/storyboardReviewStage.test.ts",
+    "packages/studio/src/components/storyboard/storyboardReviewStage.ts",
+    "packages/studio/src/components/storyboard/useFrameComments.ts",
+    "packages/studio/src/contexts/ViewModeContext.tsx",
+    "packages/studio/src/hooks/useProjectSignaturePoll.test.tsx",
+    "packages/studio/src/hooks/useProjectSignaturePoll.ts",
+    "packages/studio/src/hooks/useStoryboard.ts",
+  ].map((path) => [path, STORYBOARD_VIEW_REASON]),
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {
