@@ -121,7 +121,7 @@ function applyTypedJsonDrop(
  * Dropping an asset/file/block/composition onto the timeline places it at the
  * exact time and track it was dropped on, like CapCut (pointer placement on
  * every track but the magnetic main track). Supersedes the prior playhead
- * decision (#2291); playhead adds stay available, see useAddAssetAtPlayhead.
+ * decision (66366b0d3); playhead adds stay available, see useAddAssetAtPlayhead.
  */
 export function useTimelineAssetDrop({
   scrollRef,
