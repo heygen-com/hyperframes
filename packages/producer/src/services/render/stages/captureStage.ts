@@ -536,8 +536,6 @@ async function captureSessionFrames(
     false,
   );
   // Capture the sequential session's static-dedup perf before close (the
-  // counters are valid only while the session is live). Reset first so a
-  // transient retry replaces the crashed attempt's perf.
-  dedupPerfs.length = 0;
+  // counters are valid only while the session is live).
   dedupPerfs.push(getCapturePerfSummary(session));
 }
