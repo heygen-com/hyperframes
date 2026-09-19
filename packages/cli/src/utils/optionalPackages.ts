@@ -1,8 +1,16 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
 
 /** Module type of each optional package; the keys are the only names the loader accepts. */
@@ -99,11 +107,24 @@ function runNpm(args: string[]): Promise<void> {
   });
 }
 
+/** Removes a prior pid's abandoned staging dir left by a crash or a kill mid-install. */
+function sweepStaleStaging(dir: string): void {
+  const prefix = `${basename(dir)}.tmp-`;
+  const parent = dirname(dir);
+  if (!existsSync(parent)) return;
+  for (const entry of readdirSync(parent)) {
+    if (entry.startsWith(prefix) && entry !== `${prefix}${process.pid}`) {
+      rmSync(join(parent, entry), { recursive: true, force: true });
+    }
+  }
+}
+
 /**
  * Installs into a sibling staging dir, then renames, so `dir` only ever holds a complete install.
  * No cross-process lock: two first runs both download and the loser discards its copy.
  */
 async function install(dir: string, name: string, version: string): Promise<void> {
+  sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}`;
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(staging, { recursive: true });
@@ -117,6 +138,10 @@ async function install(dir: string, name: string, version: string): Promise<void
       "--no-audit",
       "--no-fund",
       "--loglevel=error",
+      // A first-use install is interactive, not a CI resolve: fail fast and name the
+      // manual command instead of sitting through npm's default multi-minute backoff.
+      "--fetch-retries=0",
+      "--fetch-timeout=20000",
     ]);
     if (isInstalled(dir, name)) return;
     rmSync(dir, { recursive: true, force: true });
