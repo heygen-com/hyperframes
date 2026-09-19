@@ -192,7 +192,7 @@ export function evaluate({ body, files }) {
 }
 
 const DOWNLOAD_ATTEMPTS = 3;
-const DOWNLOAD_TIMEOUT_MS = 30_000;
+const DOWNLOAD_DEADLINE_MS = 45_000;
 const RETRY_DELAYS_MS = [1000, 3000];
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -205,12 +205,12 @@ const TRUSTED_REDIRECT_HOST =
 class NonRetryable extends Error {}
 
 /** One GET, following redirects only to hosts that serve GitHub attachments. */
-async function fetchTrusted(url, fetchImpl) {
+async function fetchTrusted(url, fetchImpl, signal) {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const response = await fetchImpl(current, {
       redirect: "manual",
-      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      signal,
     });
     if (!REDIRECT_STATUSES.has(response.status)) return response;
     const next = new URL(response.headers.get("location") ?? "", current);
@@ -257,11 +257,13 @@ export async function downloadAsset(
   sleep = pause,
   budget = { left: MAX_TOTAL_BYTES },
 ) {
+  const signal = AbortSignal.timeout(DOWNLOAD_DEADLINE_MS);
   let failure;
   for (let attempt = 0; attempt < DOWNLOAD_ATTEMPTS; attempt++) {
     if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
+    if (signal.aborted) throw new NonRetryable(`not finished within ${DOWNLOAD_DEADLINE_MS} ms`);
     try {
-      const response = await fetchTrusted(url, fetchImpl);
+      const response = await fetchTrusted(url, fetchImpl, signal);
       if (response.ok) return await readCapped(response, budget);
       failure = new Error(`HTTP ${response.status}`);
       if (!isRetryableStatus(response.status)) throw failure;
@@ -278,24 +280,31 @@ const captureUrls = (section) => [
   ...new Set(
     (section.text.match(ANY_URL) ?? []).filter((raw) => {
       const url = parseUrl(raw);
-      return url !== null && isAttachmentUrl(url);
+      return url !== null && url.protocol === "https:" && isAttachmentUrl(url);
     }),
   ),
 ];
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-/** url -> hash for every capture in a section, or a problem for each one that could not be read. */
-async function hashCaptures(name, section, download) {
-  return Promise.all(
-    captureUrls(section).map(async (url) => {
-      try {
-        return { name, url, hash: sha256(await download(url)) };
-      } catch (error) {
-        return { name, url, problem: `could not download ${name} asset ${url}: ${error.message}` };
-      }
-    }),
-  );
+/** url -> hash for each capture, read one at a time so one large asset cannot starve a sibling of the shared budget. */
+async function hashCaptures(name, urls, download) {
+  const hashed = [];
+  for (const url of urls) {
+    let bytes;
+    try {
+      bytes = await download(url);
+    } catch (error) {
+      hashed.push({
+        name,
+        url,
+        problem: `could not download ${name} asset ${url}: ${error.message}`,
+      });
+      continue;
+    }
+    hashed.push({ name, url, hash: sha256(bytes) });
+  }
+  return hashed;
 }
 
 /** Every After asset must differ by content hash from every Before asset; an unreadable download is a problem. */
@@ -306,10 +315,11 @@ export async function duplicateCaptureProblems(body, download) {
   const before = findSection(sections, "before");
   const after = findSection(sections, "after");
   if (!before || !after) return { unreadable: [], identical: [] };
-  const [befores, afters] = await Promise.all([
-    hashCaptures("Before", before, download),
-    hashCaptures("After", after, download),
-  ]);
+  const beforeUrls = captureUrls(before);
+  const sharedUrls = captureUrls(after).filter((url) => beforeUrls.includes(url));
+  const unshared = (urls) => urls.filter((url) => !sharedUrls.includes(url));
+  const befores = await hashCaptures("Before", unshared(beforeUrls), download);
+  const afters = await hashCaptures("After", unshared(captureUrls(after)), download);
   const unreadable = [...befores, ...afters].filter((asset) => asset.problem);
   const hashedBefores = befores.filter((asset) => asset.hash);
   const identical = afters
@@ -319,7 +329,11 @@ export async function duplicateCaptureProblems(body, download) {
         .filter((old) => old.hash === asset.hash)
         .map((old) => `After asset ${asset.url} is byte-identical to Before asset ${old.url}`),
     );
-  return { unreadable: unreadable.map((asset) => asset.problem), identical };
+  const sameUrl = sharedUrls.map((url) => `After asset ${url} is the same link as a Before asset`);
+  return {
+    unreadable: unreadable.map((asset) => asset.problem),
+    identical: [...sameUrl, ...identical],
+  };
 }
 
 export function attachCommand(prNumber) {

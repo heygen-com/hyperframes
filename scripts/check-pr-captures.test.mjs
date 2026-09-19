@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -434,4 +434,110 @@ test("an unreadable capture blocks a same-repo PR but is skipped on a fork", () 
   assert.equal(blocking(["x"], [], same), true);
   assert.equal(blocking(["x"], [], fork), false);
   assert.equal(blocking([], ["dup"], fork), true);
+});
+
+test("the same link under both headings is caught without any download", async () => {
+  let fetched = 0;
+  const { identical } = await duplicateCaptureProblems(bodyWith(OLD, OLD), async () => {
+    fetched++;
+    return Buffer.from("x");
+  });
+  assert.equal(identical.length, 1);
+  assert.equal(fetched, 0);
+});
+
+test("a plain http attachment link is never fetched", async () => {
+  const insecure = OLD.replace("https:", "http:");
+  const seen = [];
+  await duplicateCaptureProblems(
+    bodyWith(insecure, NEW),
+    async (url) => (seen.push(url), Buffer.from(url)),
+  );
+  assert.deepEqual(seen, [NEW]);
+});
+
+test("a lookalike of a trusted host is refused as a redirect", async () => {
+  for (const host of ["evilgithub.com", "github.com.evil.example", "notgithubusercontent.com"]) {
+    await assert.rejects(
+      downloadAsset(OLD, async () => redirect(`https://${host}/x`), noSleep),
+      /not a GitHub asset host/,
+    );
+  }
+});
+
+test("a redirect loop stops after the redirect limit", async () => {
+  let calls = 0;
+  const loop = async () => (calls++, redirect("https://github.com/user-attachments/assets/loop"));
+  await assert.rejects(downloadAsset(OLD, loop, noSleep), /too many redirects/);
+  assert.equal(calls, 6);
+});
+
+test("a 429 is retried", async () => {
+  let calls = 0;
+  const limited = async () => (++calls < 2 ? { ok: false, status: 429 } : ok());
+  assert.equal((await downloadAsset(OLD, limited, noSleep)).toString(), "x");
+});
+
+test("the body reader is cancelled when the cap stops a download", async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    pull: (controller) => controller.enqueue(new Uint8Array(60 * MB)),
+    cancel: () => (cancelled = true),
+  });
+  await assert.rejects(
+    downloadAsset(OLD, async () => ({ ok: true, status: 200, body }), noSleep),
+    /larger than/,
+  );
+  assert.equal(cancelled, true);
+});
+
+test("the deadline covers every attempt, so a slow asset is not retried past it", async () => {
+  const deadline = new AbortController();
+  let calls = 0;
+  const failsAfterDeadline = async () => {
+    calls++;
+    deadline.abort();
+    throw new Error("network");
+  };
+  const realTimeout = AbortSignal.timeout;
+  AbortSignal.timeout = () => deadline.signal;
+  try {
+    await assert.rejects(downloadAsset(OLD, failsAfterDeadline, noSleep), /not finished within/);
+  } finally {
+    AbortSignal.timeout = realTimeout;
+  }
+  assert.equal(calls, 1);
+});
+
+function runCli(env) {
+  const dir = mkdtempSync(join(tmpdir(), "captures-cli-"));
+  const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
+  git("init", "-q", "-b", "main");
+  git("-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base");
+  git("checkout", "-q", "-b", "pr");
+  mkdirSync(join(dir, "packages/studio/src"), { recursive: true });
+  writeFileSync(join(dir, "packages/studio/src/a.ts"), "x\n".repeat(50));
+  git("add", "-A");
+  git("-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "-m", "change");
+  const copy = join(dir, "check.mjs");
+  copyFileSync(new URL("./check-pr-captures.mjs", import.meta.url), copy);
+  const preload = join(dir, "no-network.mjs");
+  writeFileSync(preload, "globalThis.fetch = async () => ({ ok: false, status: 404 });\n");
+  return spawnSync("node", ["--import", preload, copy, "--base", "main", "--head", "HEAD"], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, PR_BODY: bodyWith(`[a](${OLD})`, `[b](${NEW})`), ...env },
+  });
+}
+
+test("the CLI fails a same-repo PR whose capture cannot be downloaded", () => {
+  const result = runCli({ HEAD_REPO: "a/r", BASE_REPO: "a/r" });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /could not be downloaded/);
+});
+
+test("the CLI skips, and says why, for a fork PR whose capture cannot be downloaded", () => {
+  const result = runCli({ HEAD_REPO: "someone/r", BASE_REPO: "a/r" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /from a fork/);
 });
