@@ -55,3 +55,12 @@ test("the Studio skill holds conventions only and points at the owner doc for ed
   assert.match(skill, /creator-editing-recipes\.md/);
   assert.equal(htmlBlocks(skill).length, 0, "a recipe restated in the Studio skill will drift");
 });
+
+test("the Remotion translation docs do not claim volume ramps are unsupported", async () => {
+  for (const path of [
+    "skills/remotion-to-hyperframes/references/limitations.md",
+    "skills/remotion-to-hyperframes/references/media.md",
+  ]) {
+    assert.doesNotMatch(await read(path), /static `data-volume` only/, path);
+  }
+});
