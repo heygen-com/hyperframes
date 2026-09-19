@@ -2055,8 +2055,8 @@ export const CatalogDetail = ({
     if (webgpu) hasWebgpuAdapter(navigator.gpu, 3000).then(setHasAdapter);
   }, [webgpu]);
   const adapterMissing = webgpu && hasAdapter === false;
-  // Edits reach a mounted player only, so the panel goes when the clip stands in for it.
-  const tunePanel = hasTune && !adapterMissing;
+  // Edits reach a mounted player only, so the panel waits for the probe and goes when the clip stands in.
+  const tunePanel = hasTune && !(webgpu && hasAdapter !== true);
   let webgpuStage = player;
   if (webgpu && hasAdapter === null) webgpuStage = <div className="aspect-video w-full" />;
   if (adapterMissing) webgpuStage = recorded;
