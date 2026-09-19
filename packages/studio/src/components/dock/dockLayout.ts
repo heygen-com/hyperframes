@@ -31,10 +31,9 @@ export function sideMinimumWidth(dockWidth: number): number {
 
 function sideGroups(api: DockviewApi) {
   return api.groups.flatMap((group) => {
-    const zones = group.panels.flatMap((panel) => {
-      return isPanelId(panel.id) ? [PANEL_DEFINITIONS[panel.id].zone] : [];
-    });
-    const zone = zones.find((candidate) => candidate !== "center");
+    const zone = group.panels
+      .map((panel) => (isPanelId(panel.id) ? PANEL_DEFINITIONS[panel.id].zone : "center"))
+      .find((candidate) => candidate !== "center");
     return zone ? [{ group, zone }] : [];
   });
 }
