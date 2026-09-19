@@ -74,6 +74,14 @@ export function withoutMissingAdapter(html: string, failures: string[]): string[
   return failures.filter((failure) => !/no WebGPU adapter/i.test(failure));
 }
 
+/** Chrome aborts a media element's first request when it reissues it as range requests (or when
+ * the page closes mid-stream). That is playback, not a broken URL; a 404 or DNS failure still counts. */
+export function withoutAbortedMedia(failures: string[]): string[] {
+  return failures.filter(
+    (failure) => !/^request failed: \S+\.(mp4|m4a|webm|mov) \(net::ERR_ABORTED\)$/i.test(failure),
+  );
+}
+
 // "/" is the bootstrap navigation target before setContent() replaces the
 // document, and favicon.ico is Chrome's own auto-request; neither is part
 // of the payload under test, so both must succeed quietly.
@@ -137,7 +145,7 @@ async function checkAll(
   for (const { item, path } of items) {
     const { html } = JSON.parse(readFileSync(path, "utf-8")) as { html: string };
     const checked = await checkPageLoads(browser, origin, html);
-    const failures = withoutMissingAdapter(html, checked.failures);
+    const failures = withoutAbortedMedia(withoutMissingAdapter(html, checked.failures));
     if (failures.length > 0) {
       failed += 1;
       console.log(`✗ ${item}`);

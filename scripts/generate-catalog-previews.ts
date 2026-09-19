@@ -45,6 +45,7 @@ import { compileForRender } from "../packages/producer/src/services/htmlCompiler
 import { resolveContainedCopies } from "./registry-target-paths.mjs";
 import { fetchHostedFiles } from "./catalog-hosted-files.js";
 import { withHostedDefaults } from "./registry-hosted-assets.ts";
+import { withHostedRefs } from "./catalog-script-inlining.ts";
 import type { RegistryItem } from "../packages/core/src/index.js";
 import { openOpaqueCapture } from "./preview-capture.js";
 
@@ -166,7 +167,9 @@ function pointHostedAssetsAtCdn(projectDir: string): void {
   if (entryPath === undefined) return;
 
   const html = readFileSync(entryPath, "utf-8");
-  const rewritten = rewriteVariableDefaults(html, manifest);
+  // Direct references (`src="assets/x.mp4"`, `url("assets/x.woff2")`) name a hosted file just as a
+  // variable default does, and the payload has no such file beside it.
+  const rewritten = withHostedRefs(rewriteVariableDefaults(html, manifest), projectDir);
   if (rewritten !== html) writeFileSync(entryPath, rewritten, "utf-8");
 }
 
