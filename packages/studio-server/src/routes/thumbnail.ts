@@ -21,7 +21,6 @@ import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator
 const THUMBNAIL_CACHE_VERSION = "v4";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
 const THUMBNAIL_MAX_OUTPUT_HEIGHT = 135;
-const STORYBOARD_MAX_OUTPUT_DIMENSION = 1080;
 const THUMBNAIL_CACHE_MAX_BYTES = 512 * 1024 * 1024;
 const THUMBNAIL_CACHE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const prunedCacheDirs = new Set<string>();
@@ -103,11 +102,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const outputMode =
       requestedOutput === "source"
         ? "source"
-        : requestedOutput === "storyboard"
-          ? "storyboard"
-          : requestedOutput !== "preview" && format === "png"
-            ? "source"
-            : "preview";
+        : requestedOutput !== "preview" && format === "png"
+          ? "source"
+          : "preview";
     const rawSelectorIndex = Number.parseInt(url.searchParams.get("selectorIndex") || "0", 10);
     const selectorIndex =
       Number.isFinite(rawSelectorIndex) && rawSelectorIndex > 0 ? rawSelectorIndex : undefined;
@@ -168,13 +165,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const outputScale =
       outputMode === "source"
         ? 1
-        : outputMode === "storyboard"
-          ? Math.min(
-              1,
-              STORYBOARD_MAX_OUTPUT_DIMENSION / compW,
-              STORYBOARD_MAX_OUTPUT_DIMENSION / compH,
-            )
-          : Math.min(1, THUMBNAIL_MAX_OUTPUT_WIDTH / compW, THUMBNAIL_MAX_OUTPUT_HEIGHT / compH);
+        : Math.min(1, THUMBNAIL_MAX_OUTPUT_WIDTH / compW, THUMBNAIL_MAX_OUTPUT_HEIGHT / compH);
     const outputWidth = Math.max(1, Math.round(compW * outputScale));
     const outputHeight = Math.max(1, Math.round(compH * outputScale));
     const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${projectSignatureKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;

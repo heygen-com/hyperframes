@@ -1,9 +1,8 @@
-import { useRef, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
-import { useViewMode, type StudioViewMode } from "../contexts/ViewModeContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 
@@ -139,63 +138,6 @@ function HyperframesLogo() {
   );
 }
 
-const VIEW_MODE_OPTIONS: Array<{ mode: StudioViewMode; label: string }> = [
-  { mode: "storyboard", label: "Storyboard" },
-  { mode: "timeline", label: "Preview" },
-];
-
-/** Segmented control switching the main stage between storyboard and preview. */
-export function ViewModeToggle() {
-  const { viewMode, setViewMode } = useViewMode();
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  const selectMode = (mode: StudioViewMode) => {
-    if (mode === viewMode) return;
-    if (setViewMode(mode)) trackStudioEvent("view_mode_toggle", { mode });
-  };
-
-  // Complete APG tabs pattern: roving tabIndex + arrow-key navigation.
-  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    const dir = e.key === "ArrowLeft" ? -1 : 1;
-    const next = (index + dir + VIEW_MODE_OPTIONS.length) % VIEW_MODE_OPTIONS.length;
-    tabRefs.current[next]?.focus();
-    selectMode(VIEW_MODE_OPTIONS[next].mode);
-  };
-
-  return (
-    <div
-      className="flex items-center gap-0.5 rounded-md bg-neutral-800 p-0.5"
-      role="tablist"
-      aria-label="Studio view"
-    >
-      {VIEW_MODE_OPTIONS.map(({ mode, label }, index) => {
-        const active = viewMode === mode;
-        return (
-          <button
-            key={mode}
-            ref={(el) => {
-              tabRefs.current[index] = el;
-            }}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            tabIndex={active ? 0 : -1}
-            onClick={() => selectMode(mode)}
-            onKeyDown={(e) => handleKeyDown(e, index)}
-            className={`rounded px-3 py-1 text-[11px] font-medium transition-colors active:scale-[0.98] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
-              active ? "bg-neutral-200 text-neutral-900" : "text-neutral-400 hover:text-neutral-200"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 /**
  * Does the header's Inspector button open the panel, or close it?
  *
@@ -241,8 +183,6 @@ export function StudioHeader({
         </span>
         <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
-      {/* Center: storyboard / preview toggle */}
-      <ViewModeToggle />
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
         <Tooltip

@@ -30,8 +30,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   left: ReactNode;
   /** Right panel (inspector/design) or null when collapsed, in the top row. */
   right: ReactNode;
-  /** Hide the whole shell (e.g. while the storyboard view is active). */
-  hidden?: boolean;
   timelineToolbar: ReactNode;
   renderClipContent: RenderClipContent;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void> | void;
@@ -76,7 +74,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
 export function EditorShell({
   left,
   right,
-  hidden,
   timelineToolbar,
   renderClipContent,
   handleTimelineElementDelete,
@@ -157,7 +154,7 @@ export function EditorShell({
   });
 
   return (
-    <div className={`flex flex-col flex-1 min-h-0${hidden ? " hidden" : ""}`}>
+    <div className="flex flex-col flex-1 min-h-0">
       <TimelineEditProvider value={timelineEditCallbacks}>
         <NLEProvider
           projectId={projectId}

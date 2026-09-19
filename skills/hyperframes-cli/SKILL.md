@@ -57,10 +57,9 @@ ffprobe -v error -show_format -show_streams out.mp4
 
 Do not confuse these states:
 
-| Surface                   | When it may open                                       | Purpose                                                                           |
-| ------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Storyboard board          | Before composition checks, only when `storyboard: yes` | Review plan cards and wireframe sketches. Open `?view=storyboard#project/<name>`. |
-| Final composition preview | After `check` passes                                   | Review the assembled timeline before render. Open `#project/<name>`.              |
+| Surface                   | When it may open     | Purpose                                                              |
+| ------------------------- | -------------------- | -------------------------------------------------------------------- |
+| Final composition preview | After `check` passes | Review the assembled timeline before render. Open `#project/<name>`. |
 
 The early board is not approval of the final video. Rendering always requires the final approval defined by `hyperframes/references/review-loop.md`.
 

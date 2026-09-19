@@ -53,8 +53,6 @@ import { StudioRightPanel } from "./components/StudioRightPanel";
 import { TimelineToolbar } from "./components/TimelineToolbar";
 import { StudioPlaybackProvider, StudioShellProvider } from "./contexts/StudioContext";
 import { PanelLayoutProvider } from "./contexts/PanelLayoutContext";
-import { ViewModeProvider, useViewModeState } from "./contexts/ViewModeContext";
-import { StoryboardView } from "./components/storyboard/StoryboardView";
 import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
@@ -68,7 +66,6 @@ const getTimelineSelectionSet = () => usePlayerStore.getState().selectedElementI
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
-  const viewModeValue = useViewModeState();
   useStudioSessionStart(projectId, resolving, waitingForServer);
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
@@ -441,7 +438,6 @@ export function StudioApp() {
   return (
     <StudioShellProvider value={studioCtxValue}>
       <StudioPlaybackProvider value={studioCtxValue}>
-        <ViewModeProvider value={viewModeValue}>
           <PanelLayoutProvider value={panelLayout}>
             <FileManagerProvider value={fileManager}>
               <DomEditProvider value={domEditSession}>
@@ -472,14 +468,7 @@ export function StudioApp() {
                     />
                   )}
                   <ExternalFileConflictBanner coordinator={externalFileChanges} />
-                  {viewModeValue.viewMode === "storyboard" && (
-                    <StoryboardView
-                      projectId={projectId}
-                      onSelectComposition={handleSelectComposition}
-                    />
-                  )}
                   <EditorShell
-                    hidden={viewModeValue.viewMode === "storyboard"}
                     left={
                       <StudioLeftSidebar
                         leftSidebarRef={leftSidebarRef}
@@ -578,7 +567,6 @@ export function StudioApp() {
               </DomEditProvider>
             </FileManagerProvider>
           </PanelLayoutProvider>
-        </ViewModeProvider>
       </StudioPlaybackProvider>
     </StudioShellProvider>
   );
