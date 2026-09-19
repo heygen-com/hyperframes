@@ -98,6 +98,20 @@ describe("Dock on React 19", () => {
     expect(host.querySelector('[data-testid="content-renders"]')).not.toBeNull();
   });
 
+  it("restores the stored layout on the next mount instead of rebuilding the default", () => {
+    mount("p1");
+    act(() => useDockLayoutStore.getState().closePanel("renders"));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+
+    mount("p1");
+    expect(useDockLayoutStore.getState().openPanels.has("renders")).toBe(false);
+  });
+
   it("falls back to the default layout when the stored one names an unknown panel", () => {
     localStorage.setItem(
       "hf-studio-ui-preferences:p1",
@@ -123,5 +137,21 @@ describe("parseDockLayout", () => {
         panels: { ghost: { id: "ghost", contentComponent: "panel" } },
       }),
     ).toBeNull();
+  });
+
+  const placed = (views: string[], panelIds: string[]) => ({
+    grid: {
+      width: 1,
+      height: 1,
+      orientation: "HORIZONTAL",
+      root: { type: "leaf", data: { views } },
+    },
+    panels: Object.fromEntries(panelIds.map((id) => [id, { id, contentComponent: "panel" }])),
+  });
+
+  it("rejects a view that has no panel entry and a panel that no view places", () => {
+    expect(parseDockLayout(placed(["preview", "design"], ["preview"]))).toBeNull();
+    expect(parseDockLayout(placed(["preview"], ["preview", "design"]))).toBeNull();
+    expect(parseDockLayout(placed(["preview", "design"], ["preview", "design"]))).not.toBeNull();
   });
 });
