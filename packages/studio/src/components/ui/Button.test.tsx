@@ -79,9 +79,11 @@ describe("Button classes", () => {
   });
 
   it("fails an undefined class, so the check above is not vacuous", () => {
-    expect(unresolved(["rounded-button", "shadow-btn-primary"])).toEqual([
-      "rounded-button",
-      "shadow-btn-primary",
+    // Names in a real namespace with no token behind them; the theme file now defines the
+    // `rounded-button` pair this used to name.
+    expect(unresolved(["bg-not-a-token", "text-step-999"])).toEqual([
+      "bg-not-a-token",
+      "text-step-999",
     ]);
   });
 
