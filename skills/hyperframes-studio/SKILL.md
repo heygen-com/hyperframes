@@ -57,15 +57,17 @@ layering.
 
 Any ruler or safe-box overlay lives in the preview pane, never inside the composition, so
 do not add guide elements to the HTML.
-Vertical and wide framings each have their own safe box.
+Both framings (wide and vertical) use the same two safe boxes, Premiere's defaults. The preview
+toggle draws them with a tick at the midpoint of every edge. Source:
+`ACTION_SAFE_PERCENT` and `TITLE_SAFE_PERCENT` in `packages/studio/src/utils/previewSafeMargins.ts`.
 
-| Framing              | Safe box                                                                | Caption band                    |
-| -------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| Wide (16:9)          | action-safe 93% of the frame, title-safe 90% (EBU R95, SMPTE ST 2046-1) | Bottom of the title-safe area   |
-| Vertical (1080x1920) | Insets: top 250, bottom 484, left 140, right 140 (px)                   | Directly above the bottom inset |
+| Box         | Share of the frame | Inset on every edge |
+| ----------- | ------------------ | ------------------- |
+| Action-safe | 90%                | 5%                  |
+| Title-safe  | 80%                | 10%                 |
 
-- Keep captions and key content inside the safe box for the format being built.
-- Two-up and 50/50 layouts keep each half's content inside the safe box.
+- Keep captions and key content inside the title-safe box (80%).
+- Two-up and 50/50 layouts keep each half's content inside the title-safe box.
 
 ## Checking your work
 

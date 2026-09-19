@@ -64,3 +64,12 @@ test("the Remotion translation docs do not claim volume ramps are unsupported", 
     assert.doesNotMatch(await read(path), /static `data-volume` only/, path);
   }
 });
+
+test("the Studio skill's safe boxes equal the preview's", async () => {
+  const src = await read("packages/studio/src/utils/previewSafeMargins.ts");
+  const action = src.match(/ACTION_SAFE_PERCENT = (\d+)/)?.[1];
+  const title = src.match(/TITLE_SAFE_PERCENT = (\d+)/)?.[1];
+  const skill = await read(STUDIO_SKILL);
+  assert.match(skill, new RegExp(`Action-safe\\s*\\|\\s*${action}%`));
+  assert.match(skill, new RegExp(`Title-safe\\s*\\|\\s*${title}%`));
+});
