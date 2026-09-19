@@ -133,7 +133,7 @@ describe("RenderQueue controls", () => {
   });
 
   it("submits the canonical landscape 4K preset selected by the user", async () => {
-    const onStartRender = vi.fn();
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
     const host = mountRenderQueue(onStartRender);
 
     // Auto, 1080p, 4K: two steps down from the default.
@@ -146,11 +146,9 @@ describe("RenderQueue controls", () => {
   });
 
   it("refuses a resolution the composition cannot reach, and says why", async () => {
-    // 1080p on a 1280x720 comp is a 1.5x scale, which the producer rejects at
-    // render time. The option stays listed, because its label is where the
-    // reason lives, but the keyboard cannot commit it: highlighting it and
-    // pressing Enter leaves the resolution where it was.
-    const onStartRender = vi.fn();
+    // 1080p on a 1280x720 comp is a 1.5x scale, which the producer rejects; the
+    // option stays listed (its label explains why) but the keyboard skips it.
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
     const host = mountRenderQueue(onStartRender, { width: 1280, height: 720 });
     const trigger = triggerFor(host, "Resolution");
 
@@ -207,7 +205,7 @@ describe("RenderQueue FFmpeg gate", () => {
       hint: "brew install ffmpeg",
       command: "brew install ffmpeg",
     };
-    const onStartRender = vi.fn();
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
     const host = mountRenderQueue(onStartRender);
 
     expect(host.textContent).toContain("FFmpeg not found");
@@ -240,7 +238,7 @@ describe("RenderQueue FFmpeg gate", () => {
   // as "not installed" would lock Export for setups that render fine.
   it("leaves Export usable when the probe returns no answer", () => {
     ffmpegStatus = null;
-    const onStartRender = vi.fn();
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
     const host = mountRenderQueue(onStartRender);
 
     expect(host.textContent).not.toContain("FFmpeg not found");
