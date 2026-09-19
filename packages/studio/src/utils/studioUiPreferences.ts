@@ -1,3 +1,6 @@
+import type { SerializedDockview } from "dockview-react";
+import { parseDockLayout } from "../components/dock/dockLayoutSchema";
+
 export interface StoredPreviewZoomState {
   zoomPercent: number;
   panX: number;
@@ -47,6 +50,8 @@ export interface StudioUiPreferences {
    * intentionally scoped to one mount.
    */
   agentToolsEnabled?: boolean;
+  /** The dock's serialized panel tree; parsed by `parseDockLayout` on read. */
+  dockLayout?: SerializedDockview;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -169,6 +174,8 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     if (typeof parsed.agentToolsEnabled === "boolean") {
       preferences.agentToolsEnabled = parsed.agentToolsEnabled;
     }
+    const dockLayout = parseDockLayout(parsed.dockLayout);
+    if (dockLayout) preferences.dockLayout = dockLayout;
     return preferences;
   } catch {
     return {};
