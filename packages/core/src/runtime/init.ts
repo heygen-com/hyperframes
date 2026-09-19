@@ -995,7 +995,20 @@ export function initSandboxRuntimeModular(): void {
       if (duration != null) clipEnds.push(Math.max(0, start) + duration);
       else if (isMediaElement(node)) clipEnds.push(null);
     }
-    return resolveCompositionDuration({ authoredDurationSeconds: null, clipEndsSeconds: clipEnds });
+    const result = resolveCompositionDuration({
+      authoredDurationSeconds: null,
+      clipEndsSeconds: clipEnds,
+    });
+    // A length that a pending clip can still extend is not final, and a renderer that reads the
+    // duration once would lock the short one in: stay at zero until every clip's length is known.
+    return result.pendingClips > 0
+      ? {
+          ...result,
+          seconds: null,
+          source: "unresolved" as const,
+          reason: "a clip's length is pending",
+        }
+      : result;
   };
 
   let contentDerivedCache: {
@@ -1020,10 +1033,11 @@ export function initSandboxRuntimeModular(): void {
       seconds: result.seconds,
       pendingClips: result.pendingClips,
     };
+    if (result.source !== "derived") return;
     postRuntimeDiagnosticOnce(
       "composition_duration_derived",
       { source: result.source, seconds: result.seconds, pendingClips: result.pendingClips },
-      `composition_duration_derived:${result.source}:${result.seconds}:${result.pendingClips}`,
+      `composition_duration_derived:${result.seconds}`,
     );
   };
 
@@ -1279,6 +1293,7 @@ export function initSandboxRuntimeModular(): void {
     const fallbackDuration =
       Number.isFinite(fallback) && fallback > MIN_VALID_TIMELINE_DURATION_SECONDS ? fallback : 0;
     let safeDuration = 0;
+    let derivedDuration: ReturnType<typeof resolveContentDerivedDuration> | null = null;
     // Timeline is the source of truth for authored composition duration.
     if (isUsableTimelineDuration(timelineDuration)) {
       safeDuration = Math.max(timelineDuration, durationFloor, fallbackDuration);
@@ -1287,10 +1302,12 @@ export function initSandboxRuntimeModular(): void {
     } else if (fallbackDuration > 0) {
       safeDuration = fallbackDuration;
     } else {
-      const derived = readContentDerivedDuration();
-      publishDerivedDuration(derived);
-      safeDuration = derived.seconds ?? 0;
+      derivedDuration = readContentDerivedDuration();
+      safeDuration = derivedDuration.seconds ?? 0;
     }
+    // The published source describes only a length that was derived; any other source clears it.
+    if (derivedDuration) publishDerivedDuration(derivedDuration);
+    else if (window.__hf?.durationSource) delete window.__hf.durationSource;
     return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
   };
 

@@ -1643,15 +1643,39 @@ describe("composition rules", () => {
       const html = `<html><body>
         <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
           <img src="a.png" data-start="2" />
-          <div class="clip" data-start="0" data-duration="4"></div>
+          <div class="clip" data-start="0" data-duration="6"></div>
         </div>
       </body></html>`;
       const result = await lintHyperframeHtml(html);
       expect(find(result.findings)).toBeUndefined();
       const derived = result.findings.find((f) => f.code === "root_composition_duration_derived");
       expect(derived?.severity).toBe("warning");
-      expect(derived?.message).toContain("5s");
+      expect(derived?.message).toContain("at least 6s");
       expect(derived?.fixHint).toContain("data-duration");
+    });
+
+    it("counts a clip with a reference start or a video with no length as known only at runtime", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <img src="a.png" data-start="0" />
+          <video src="v.mp4" data-start="0"></video>
+          <div class="clip" data-start="a+1" data-duration="2"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const derived = result.findings.find((f) => f.code === "root_composition_duration_derived");
+      expect(derived?.message).toContain("at least 3s");
+      expect(derived?.message).toContain("2 clip(s) whose length is only known at runtime");
+    });
+
+    it("does not count a clip whose data-end is before its start", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="clip" data-start="5" data-end="3"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)?.severity).toBe("error");
     });
 
     it("still errors when the only clips have no length to derive from", async () => {

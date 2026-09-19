@@ -1064,9 +1064,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
             severity: "warning",
             message:
               "Root composition has no data-duration and no GSAP timeline, so its length is taken from " +
-              `its clips: ${derived.seconds}s` +
+              `its clips: at least ${derived.seconds}s` +
               (derived.pendingClips > 0
-                ? `, and ${derived.pendingClips} media clip(s) whose length is only known from the file`
+                ? `, and ${derived.pendingClips} clip(s) whose length is only known at runtime`
                 : "") +
               ".",
             fixHint:
@@ -1240,8 +1240,13 @@ function deriveDurationFromClips(tags: OpenTag[], rootTag: OpenTag) {
   for (const tag of tags) {
     if (tag === rootTag) continue;
     const startRaw = readAttr(tag.raw, "data-start");
-    const start = startRaw === null ? Number.NaN : Number(startRaw);
-    if (!Number.isFinite(start)) continue;
+    if (startRaw === null) continue;
+    const start = Number(startRaw);
+    // A reference start ("intro+2") is resolved by the runtime; here it is a clip of unknown end.
+    if (!Number.isFinite(start)) {
+      clipEnds.push(null);
+      continue;
+    }
     const getAttr = (name: string) => readAttr(tag.raw, name);
     const authored = readAuthoredDurationSeconds(getAttr, start);
     if (CLIP_MEDIA_TAGS.has(tag.name)) {
@@ -1253,7 +1258,7 @@ function deriveDurationFromClips(tags: OpenTag[], rootTag: OpenTag) {
         playbackRate: 1,
       });
       clipEnds.push(seconds === null ? null : start + seconds);
-    } else if (authored !== null) {
+    } else if (authored !== null && authored > 0) {
       clipEnds.push(start + authored);
     }
   }

@@ -3055,15 +3055,28 @@ describe("initSandboxRuntimeModular", () => {
       expect(window.__player?.getDuration()).toBe(5);
     });
 
-    it("counts a video whose length is not known yet as pending, not as a guess", () => {
+    it("stays at zero while a video's length is pending, so a renderer never locks in a short one", () => {
       mountRoot(
         '<div class="clip" data-start="0" data-duration="2"></div><video data-start="0"></video>',
       );
+      expect(window.__player?.getDuration()).toBe(0);
       expect(window.__hf?.durationSource).toEqual({
-        source: "derived",
-        seconds: 2,
+        source: "unresolved",
+        seconds: null,
         pendingClips: 1,
       });
+    });
+
+    it("reports no derived source when a timeline supplies the length", () => {
+      mountRoot('<div class="clip" data-start="0" data-duration="2"></div>');
+      expect(window.__hf?.durationSource?.source).toBe("derived");
+      document.body.innerHTML = "";
+      window.__timelines = {};
+      document.body.innerHTML =
+        '<div data-composition-id="main" data-root="true" data-start="0" data-duration="8"></div>';
+      initSandboxRuntimeModular();
+      expect(window.__player?.getDuration()).toBe(8);
+      expect(window.__hf?.durationSource).toBeUndefined();
     });
 
     it("stays at zero, reported unresolved, when there is no timed content", () => {
