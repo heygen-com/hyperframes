@@ -1,0 +1,77 @@
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC53FwrK3iLTcvneQg7Ca725JhhKnNqk5L7W0Q5n-Z_slT9M7tkq5KossX_VRyjNrd7HVULhR8ZQMwDOh09SteA8Yk6zFVk206-C5FOOhDh4g_XIX269QsbfTDHHrF4GXVJ6FPIs7HVdH-f4y1Efk6SksVDlEcoHCsTbku4tk10S_6TqEzHcXFbzA&skey=e5dfd0c3910c7ec9&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC53FwrK3iLTcvneQg7Ca725JhhKnNqk5L7W0Q5n-Z_slT9M7tkq5KossX_VRyjNrd7HVULhR8ZQMwDOh09SteA8Yk6zFVk206-C5FOOhDh4g_XIX269QsbfTDHHrF4GXVJ6FPIs7HVdH-f4y1Efk6SksVDlEcoHCsTbku4tk10S_6TqEzHcXFbzA&skey=e5dfd0c3910c7ec9&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 200;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 900;
+  src: url(https://fonts.gstatic.com/l/font?kit=UcC73FwrK3iLTeHuS_nVMrMxCp50SjIq15j8eUYD9d41mVb_NL5mpZyqsMP5Vx69KLV5G1MJhxEXQs4FPB8_NKmC8488zldq1Uy8DZdMOA7_4A3RJ3-4-wUZfzbBHLNGJ3dL7lXKsb_bdn2Z5S9GYFCQkMNFlkUmEikRaE0mSzsWX6bxniqpYhQ&skey=c491285d6722e4fa&v=v20) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}

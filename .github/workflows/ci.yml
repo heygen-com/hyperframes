@@ -62,7 +62,10 @@ jobs:
               - "docs/**"
               - "registry/**"
               - "scripts/*catalog*"
+              - "scripts/catalog-fetch-mirror/**"
               - "scripts/docs-catalog-shared.mjs"
+              - "packages/core/**"
+              - "packages/producer/**"
               - "package.json"
               - ".github/workflows/ci.yml"
             code:

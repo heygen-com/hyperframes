@@ -22,10 +22,12 @@
  *   npx tsx scripts/generate-catalog-payloads.ts --type block       # blocks only
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { installFetchMirror } from "./catalog-fetch-mirror.ts";
 import {
   discoverItems,
   prepareProjectDir,
@@ -378,8 +380,23 @@ function parseArgs(): { only: string | null; type: ItemKind | null } {
   return { only: value("--only"), type: (type as ItemKind | null) ?? null };
 }
 
+const fetchMirrorDir = resolve(repoRoot, "scripts/catalog-fetch-mirror");
+
 async function main(): Promise<void> {
   const { only, type } = parseArgs();
+  const mode = process.env.CATALOG_FETCH_MIRROR === "record" ? "record" : "replay";
+  // A warm font cache would skip fetches the mirror needs to see, so every run starts with an empty one.
+  process.env.HYPERFRAMES_FONT_CACHE_DIR = mkdtempSync(join(tmpdir(), "catalog-fonts-"));
+  const mirror = installFetchMirror(fetchMirrorDir, mode);
+  try {
+    await generate(only, type);
+    mirror.assertNoMisses();
+  } finally {
+    mirror.finish();
+  }
+}
+
+async function generate(only: string | null, type: ItemKind | null): Promise<void> {
   const items = discoverItems(type, only);
   console.log(`Building ${items.length} catalog payload(s)...\n`);
 
@@ -406,7 +423,10 @@ async function main(): Promise<void> {
   // could not be built at all. Reporting them apart keeps a breakage from
   // reading as a considered fallback.
   console.log(`\nDone. ${written} payload(s) written, ${skipped} still on video.`);
-  if (failed > 0) console.log(`${failed} item(s) failed to build.`);
+  if (failed > 0) {
+    console.log(`${failed} item(s) failed to build.`);
+    process.exitCode = 1;
+  }
 }
 
 runAsCommand(import.meta.url, main);
