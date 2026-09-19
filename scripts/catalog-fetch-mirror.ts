@@ -29,7 +29,9 @@ function readIndex(dir: string): MirrorIndex {
 }
 
 function writeIndex(dir: string, index: MirrorIndex): void {
-  const sorted = Object.fromEntries(Object.entries(index).sort(([a], [b]) => a.localeCompare(b)));
+  const sorted = Object.fromEntries(
+    Object.entries(index).sort(([a], [b]) => (a < b ? -1 : Number(a > b))),
+  );
   writeFileSync(join(dir, "index.json"), `${JSON.stringify(sorted, null, 2)}\n`);
 }
 

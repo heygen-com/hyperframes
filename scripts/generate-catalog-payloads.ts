@@ -386,13 +386,15 @@ async function main(): Promise<void> {
   const { only, type } = parseArgs();
   const mode = process.env.CATALOG_FETCH_MIRROR === "record" ? "record" : "replay";
   // A warm font cache would skip fetches the mirror needs to see, so every run starts with an empty one.
-  process.env.HYPERFRAMES_FONT_CACHE_DIR = mkdtempSync(join(tmpdir(), "catalog-fonts-"));
+  const fontCache = mkdtempSync(join(tmpdir(), "catalog-fonts-"));
+  process.env.HYPERFRAMES_FONT_CACHE_DIR = fontCache;
   const mirror = installFetchMirror(fetchMirrorDir, mode);
   try {
     await generate(only, type);
     mirror.assertNoMisses();
   } finally {
     mirror.finish();
+    rmSync(fontCache, { recursive: true, force: true });
   }
 }
 
