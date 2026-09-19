@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
+import React, { act, type ComponentProps } from "react";
+import type { DockviewApi } from "dockview-react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as dockLayout from "./dockLayout";
@@ -11,6 +12,22 @@ import { PANEL_IDS } from "./panelRegistry";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let dockApi: DockviewApi | null = null;
+vi.mock("dockview-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("dockview-react")>();
+  return {
+    ...actual,
+    DockviewReact: (props: ComponentProps<typeof actual.DockviewReact>) =>
+      React.createElement(actual.DockviewReact, {
+        ...props,
+        onReady: (event) => {
+          dockApi = event.api;
+          props.onReady(event);
+        },
+      }),
+  };
+});
 
 const liveObservers = new Set<{ callback: () => void; target?: Element }>();
 class ResizeObserverStub {
@@ -175,6 +192,16 @@ describe("Dock on React 19", () => {
 });
 
 describe("Dock wiring", () => {
+  it("re-applies the side minimums when a panel is dragged to another group", () => {
+    mount(null);
+    applySideMinimums.mockClear();
+    const preview = dockApi?.getPanel("preview");
+    const design = dockApi?.getPanel("design");
+    if (!preview || !design) throw new Error("default layout is missing panels");
+    act(() => design.api.moveTo({ group: preview.group }));
+    expect(applySideMinimums).toHaveBeenCalled();
+  });
+
   it("makes the sashes keyboard-focusable separators", () => {
     const host = mount(null);
     const sashes = host.querySelectorAll<HTMLElement>('.dv-sash[role="separator"]');

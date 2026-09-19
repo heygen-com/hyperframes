@@ -55,7 +55,9 @@ describe("dock sashes", () => {
     for (const sash of sashes()) {
       expect(sash.getAttribute("role")).toBe("separator");
       expect(sash.tabIndex).toBe(0);
-      expect(sash.getAttribute("aria-label")).toMatch(/^Resize (columns|rows)$/);
+      const label = sash.getAttribute("aria-label");
+      const orientation = sash.getAttribute("aria-orientation");
+      expect(label).toBe(orientation === "vertical" ? "Resize columns" : "Resize rows");
     }
     expect(
       sashes()
