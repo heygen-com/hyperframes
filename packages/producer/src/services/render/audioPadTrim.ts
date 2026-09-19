@@ -28,6 +28,7 @@ import {
   getFfprobeBinary,
   ManagedChildProcess,
   runFfmpeg,
+  withTransientSpawnRetry,
   trackChildProcess,
   type AudioMetadata,
 } from "@hyperframes/engine";
@@ -41,7 +42,7 @@ import { redactKnownPaths, redactTelemetryString } from "@hyperframes/core";
 const AUDIO_DURATION_TOLERANCE_SECONDS = 0.001;
 
 /** Delivery headroom applied after every AAC encode in this stage. */
-export const AAC_DELIVERY_TRUE_PEAK_DBFS = -1;
+const AAC_DELIVERY_TRUE_PEAK_DBFS = -1;
 const AAC_TRUE_PEAK_CORRECTION_HEADROOM_DB = 0.5;
 const MAX_TRUE_PEAK_CORRECTION_PASSES = 3;
 
@@ -635,13 +636,18 @@ async function defaultRunFfmpeg(
 
 // ── ffprobe JSON runner (shared between fast/slow video probe paths) ─────
 
-async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
-  // Callers bake the input path into `args` (terminated with "--"), so this
-  // helper cannot add the terminator itself — assert they did rather than
-  // let a dash-prefixed path silently reach ffprobe as an option.
-  if (!args.includes("--")) {
-    throw new Error('[audioPadTrim] ffprobe args must terminate options with "--".');
-  }
+type FfprobeRunOutcome = {
+  reason: "exit" | "abort" | "deadline" | "inactivity" | "spawn_error";
+  exitCode: number | null;
+  stderr: string;
+  stdout: string;
+  error?: Error;
+};
+
+async function spawnAndCollectFfprobe(
+  args: string[],
+  signal?: AbortSignal,
+): Promise<FfprobeRunOutcome> {
   const proc = spawn(getFfprobeBinary(), args, { stdio: ["ignore", "pipe", "pipe"] });
   trackChildProcess(proc);
   let stdout = "";
@@ -653,6 +659,22 @@ async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<
     deadlineAtMs: Date.now() + 30_000,
   });
   const outcome = await managed.wait();
+  return { ...outcome, stdout };
+}
+
+async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
+  // Callers bake the input path into `args` (terminated with "--"), so this
+  // helper cannot add the terminator itself — assert they did rather than
+  // let a dash-prefixed path silently reach ffprobe as an option.
+  if (!args.includes("--")) {
+    throw new Error('[audioPadTrim] ffprobe args must terminate options with "--".');
+  }
+  const outcome = await withTransientSpawnRetry(
+    getFfprobeBinary(),
+    () => spawnAndCollectFfprobe(args, signal),
+    (result) =>
+      result.reason === "spawn_error" ? (result.error as NodeJS.ErrnoException) : undefined,
+  );
   if (outcome.reason === "spawn_error") {
     if ((outcome.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
       throw new Error("[audioPadTrim] ffprobe not found. Please install FFmpeg.");
@@ -670,7 +692,7 @@ async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<
     throw new Error(`ffprobe ${outcome.reason}: ${redactTelemetryString(scrubbed, 2000)}`);
   }
   try {
-    return JSON.parse(stdout) as T;
+    return JSON.parse(outcome.stdout) as T;
   } catch (err) {
     throw new Error(`Failed to parse ffprobe output: ${(err as Error).message}`);
   }
