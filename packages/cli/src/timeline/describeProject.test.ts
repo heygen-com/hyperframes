@@ -508,20 +508,30 @@ describe("shared media-duration fixtures", () => {
 });
 
 describe("createProbeGate", () => {
-  it("never runs more than its limit at once", async () => {
+  it("never runs more than its limit at once, even for jobs arriving while slots are held", async () => {
     const gate = createProbeGate(4);
+    const releases: Array<() => void> = [];
     let running = 0;
     let peak = 0;
     const job = () =>
       gate(async () => {
         running += 1;
         peak = Math.max(peak, running);
-        await new Promise((r) => setTimeout(r, 5));
+        await new Promise<void>((done) => releases.push(done));
         running -= 1;
       });
-    const firstWave = Array.from({ length: 12 }, job);
-    await new Promise((r) => setTimeout(r, 40));
-    await Promise.all([...firstWave, ...Array.from({ length: 12 }, job)]);
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const jobs = Array.from({ length: 8 }, job);
+    await tick();
+    releases.shift()!();
+    await tick();
+    jobs.push(...Array.from({ length: 8 }, job));
+    await tick();
+    while (releases.length > 0) {
+      releases.shift()!();
+      await tick();
+    }
+    await Promise.all(jobs);
     expect(peak).toBe(4);
   });
 });

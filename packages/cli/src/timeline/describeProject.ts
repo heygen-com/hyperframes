@@ -173,36 +173,37 @@ function resolveContainerDuration(
   return { duration: inner, durationSource: "inner", pendingReason: null };
 }
 
-/** A failed probe explains why the resolver had nothing; otherwise the resolver's own reason. */
-function pendingReasonOf(
-  result: ReturnType<typeof resolveMediaDuration>,
-  probe: ProbeResult | null,
-): string | null {
-  if (result.source !== "pending") return null;
-  return (probe && !probe.ok ? probe.reason : result.reason) ?? null;
-}
-
-/** Media rows go through the parsers resolver with an ffprobe source length. */
+/** Media rows go through the parsers resolver; only a row it cannot settle without the file is probed. */
 async function resolveMediaRowDuration(
   scope: DocScope,
   el: Element,
   tag: MediaTag,
   authored: number | null,
 ): Promise<DurationResolution> {
-  const skipProbe = tag === "img" || (authored ?? 0) > 0;
-  const probe = skipProbe ? null : await probeSource(scope, el, tag);
   const getAttr = (name: string) => el.getAttribute(name);
-  const result = resolveMediaDuration({
+  const input = {
     tag,
     authoredDurationSeconds: authored,
-    sourceDurationSeconds: probe?.ok ? probe.seconds : null,
     mediaStartSeconds: readMediaOffsetSeconds(getAttr),
     playbackRate: readPlaybackRate(getAttr),
+  };
+  const unprobed = resolveMediaDuration({ ...input, sourceDurationSeconds: null });
+  if (unprobed.source !== "pending") {
+    return {
+      duration: unprobed.seconds ?? 0,
+      durationSource: unprobed.source,
+      pendingReason: null,
+    };
+  }
+  const probe = await probeSource(scope, el, tag);
+  const result = resolveMediaDuration({
+    ...input,
+    sourceDurationSeconds: probe.ok ? probe.seconds : null,
   });
   return {
     duration: result.seconds ?? 0,
     durationSource: result.source,
-    pendingReason: pendingReasonOf(result, probe),
+    pendingReason: result.source === "pending" ? (probe.ok ? null : probe.reason) : null,
   };
 }
 
