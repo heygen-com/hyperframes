@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -88,6 +88,20 @@ describe("describeProject", () => {
       ["d", 0],
     ]);
     rmSync(join(dir, "..", "hf-outside.html"));
+  });
+
+  it("does not follow a symlink out of the project", () => {
+    const index = project();
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    writeFileSync(join(outside, "secret.html"), TITLE);
+    symlinkSync(join(outside, "secret.html"), join(dir, "compositions", "link.html"));
+    writeFileSync(
+      index,
+      `<div data-composition-id="m"><div id="l" data-composition-src="compositions/link.html" data-start="0" data-duration="1"></div></div>`,
+    );
+    const [row] = describeProject(index).tracks.flatMap((t) => t.rows);
+    expect(row!.children).toEqual([]);
+    rmSync(outside, { recursive: true, force: true });
   });
 
   it("marks a clip without an authored duration instead of reporting 0 as a fact", () => {
