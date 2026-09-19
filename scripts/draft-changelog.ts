@@ -108,8 +108,7 @@ function main() {
 function createDraft(options: Options): DraftOutput {
   const versionTag = `v${options.version}`;
   const to = options.to ?? (tagExists(versionTag) ? versionTag : "HEAD");
-  const from = options.from ?? resolvePreviousTag(versionTag, to);
-  if (!options.from) assertNoSkippedTags(from, options.version);
+  const from = options.from ?? resolvePreviousTag(versionTag, to, options.version);
   const commits = getCommits(from, to).filter((commit) => !shouldSkipCommit(commit));
   const parsedCommits = commits.map(parseCommit);
 
@@ -213,15 +212,17 @@ function tagExists(tag: string) {
   }
 }
 
-function resolvePreviousTag(versionTag: string, to: string) {
+function resolvePreviousTag(versionTag: string, to: string, version: string) {
+  const ref = tagExists(versionTag) ? `${versionTag}^` : to;
+  let from: string;
   try {
-    if (tagExists(versionTag)) {
-      return git(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", `${versionTag}^`]);
-    }
-    return git(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", to]);
+    from = git(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", ref]);
   } catch {
     fail("Could not resolve the previous release tag. Pass --from <tag> explicitly.");
   }
+  // Only guards an auto-resolved baseline; an explicit --from never reaches here.
+  assertNoSkippedTags(from, version);
+  return from;
 }
 
 /**
