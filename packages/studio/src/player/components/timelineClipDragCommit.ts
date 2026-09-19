@@ -176,8 +176,8 @@ export function persistMoveEdits(
 /**
  * Build the time-shift resolver for a multi-selection drag: every member of the
  * selection moves by the dragged clip's delta (clamped ≥ 0); non-members are
- * untouched. Returns null when this is not a multi-selection drag. A locked /
- * implicit member is dropped from the moving set (a marquee can sweep one in).
+ * untouched. Returns null when this is not a multi-selection drag. A locked
+ * member is dropped from the moving set (a marquee can sweep one in).
  */
 function resolveMultiSelection(
   drag: DraggedClipState,

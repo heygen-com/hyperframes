@@ -115,9 +115,7 @@ export function useTimelineSyncCallbacks({
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
     (data: RuntimeTimelineMessage) => {
-      if (!data.clips || data.clips.length === 0) {
-        return;
-      }
+      if (!data.clips) return;
 
       usePlayerStore.getState().setClipManifest(data.clips);
 
