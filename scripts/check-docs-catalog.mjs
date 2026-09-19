@@ -18,7 +18,6 @@ const { root, docs } = resolveDocsRoot(process.argv[2]);
 
 // Items allowed without a live preview, each with the reason it has none.
 const NO_LIVE = new Map([
-  ["caption-blend-difference", "a style-only helper (a CSS class), so there is no scene to play"],
   [
     "heygen-avatar-promo-card",
     "its source videos are not on the CDN yet; a maintainer runs host-registry-assets",
