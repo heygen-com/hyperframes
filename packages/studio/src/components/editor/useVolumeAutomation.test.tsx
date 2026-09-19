@@ -251,4 +251,11 @@ describe("useVolumeAutomation speed lane", () => {
     expect(lane.target).toBe("rate");
     expect(lane.points.at(-1).t).toBe(8);
   });
+
+  it("offers no preset while the clip has no known duration, and writes nothing", () => {
+    const { binding, onSetAttributeQuiet } = bind({ start: "0" });
+    expect(binding.rate.canApplyPreset).toBe(false);
+    binding.rate.onApplyPreset("flash-out");
+    expect(onSetAttributeQuiet).not.toHaveBeenCalled();
+  });
 });
