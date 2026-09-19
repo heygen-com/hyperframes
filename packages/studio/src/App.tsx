@@ -539,6 +539,7 @@ export function StudioApp() {
                     handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                     handleRazorSplit={timelineEditing.handleRazorSplit}
                     handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
+                    placementOps={timelineEditing.placementOps}
                     onCopyClip={handleCopy}
                     onPasteClip={handlePaste}
                     onDuplicateClip={handleDuplicate}

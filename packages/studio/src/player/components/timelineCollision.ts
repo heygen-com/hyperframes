@@ -84,6 +84,7 @@ function outOfRangeZoneInsertRow(
   return desired < Math.min(...zoneTracks) ? zoneTop : zoneBottom;
 }
 
+// fallow-ignore-next-line complexity
 export function resolveZoneDropPlacement(input: {
   order: number[];
   audioTracks: ReadonlySet<number>;
@@ -95,6 +96,8 @@ export function resolveZoneDropPlacement(input: {
   dragKey: string;
   isAudio: boolean;
   preferInsertAbove?: boolean;
+  /** Group drags keep the old bump-to-a-free-lane rule; a single clip overwrites in place. */
+  relocateOnOverlap?: boolean;
 }): { track: number; insertRow: number | null } {
   const { order, audioTracks, elements, desiredTrack, deliberateInsertRow } = input;
   const { start, duration, dragKey, isAudio, preferInsertAbove } = input;
@@ -108,6 +111,9 @@ export function resolveZoneDropPlacement(input: {
   }
 
   const desired = clampTrackToZone(desiredTrack, order, audioRow, isAudio);
+  if (!input.relocateOnOverlap && order.includes(desired)) {
+    return { track: desired, insertRow: null };
+  }
   const zoneTracks = order.filter((t) => audioTracks.has(t) === isAudio);
   const placement = resolvePlacement({
     elements,

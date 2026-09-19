@@ -6,6 +6,8 @@ import { trackStudioRazorSplit } from "../telemetry/events";
 import { canSplitElementAt, selectSplittableElements } from "../utils/timelineElementSplit";
 import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
 import type { RecordEditInput } from "./timelineEditingHelpers";
+import type { PlacementFold } from "../player/components/timelinePlacementCommit";
+import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 
 interface UseRazorSplitOptions {
   projectId: string | null;
@@ -50,7 +52,12 @@ export function useRazorSplit({
   }, [forceReloadSdkSession, reloadPreview]);
 
   const runCut = useCallback(
-    async (elements: readonly TimelineElement[], splitTime: number, mode: "single" | "all") => {
+    async (
+      elements: readonly TimelineElement[],
+      splitTime: number,
+      mode: "single" | "all",
+      fold?: PlacementFold,
+    ) => {
       const pid = projectIdRef.current;
       if (!pid || elements.length === 0) return;
       const intents = buildAtomicCutIntents(elements, splitTime, activeCompPath);
@@ -64,6 +71,7 @@ export function useRazorSplit({
         projectId: pid,
         intents,
         label,
+        ...fold,
         writeProjectFile,
         recordEdit,
         observeProjectFileVersion,
@@ -114,6 +122,19 @@ export function useRazorSplit({
     [isRecordingRef, runCut, showToast],
   );
 
+  /** One cut inside a clip drop: recorded under the drop's fold key, true once it landed. */
+  const handlePlacementSplit = useCallback(
+    async (element: TimelineElement, splitTime: number, fold: PlacementFold) => {
+      try {
+        return (await runCut([element], splitTime, "single", fold)) !== undefined;
+      } catch (error) {
+        showToast(getStudioSaveErrorMessage(error), "error");
+        return false;
+      }
+    },
+    [runCut, showToast],
+  );
+
   const handleRazorSplitAll = useCallback(
     async (splitTime: number) => {
       if (isRecordingRef?.current) {
@@ -135,5 +156,5 @@ export function useRazorSplit({
     [isRecordingRef, runCut, showToast],
   );
 
-  return { handleRazorSplit, handleRazorSplitAll };
+  return { handleRazorSplit, handleRazorSplitAll, handlePlacementSplit };
 }

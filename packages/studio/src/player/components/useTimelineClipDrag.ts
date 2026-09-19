@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -234,6 +235,9 @@ export function useTimelineClipDrag({
   // It owns a projection only; canonical store timing changes at commit.
   const groupResizeRef = useRef<TimelineGroupResizeSession | null>(null);
 
+  const { onPlacementOps } = useTimelineEditContextOptional();
+  const onPlacementOpsRef = useRef(onPlacementOps);
+  onPlacementOpsRef.current = onPlacementOps;
   const onMoveElementRef = useRef(onMoveElement);
   onMoveElementRef.current = onMoveElement;
   const onMoveElementsRef = useRef(onMoveElements);
@@ -391,6 +395,7 @@ export function useTimelineClipDrag({
   useMountEffect(() =>
     mountTimelineClipDragGestureLifecycle({
       onStackingPatchesRef,
+      onPlacementOpsRef,
       refreshAfterLaneMoveRef,
       readZIndexRef,
       onBlockedEditAttemptRef,

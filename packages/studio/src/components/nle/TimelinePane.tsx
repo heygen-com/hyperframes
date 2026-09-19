@@ -40,6 +40,8 @@ export function forwardRebasedTimelineMoveElements(
   );
 }
 
+type TimelineResizeCommitOptions = { coalesceKey?: string; coalesceMs?: number };
+
 type TimelineResizeChange = {
   element: TimelineElement;
   start: number;
@@ -49,10 +51,10 @@ type TimelineResizeChange = {
 
 export function forwardRebasedTimelineResizeElements(
   changes: TimelineResizeChange[],
-  options: { coalesceKey?: string } | undefined,
+  options: TimelineResizeCommitOptions | undefined,
   onResizeElements: (
     changes: TimelineResizeChange[],
-    options?: { coalesceKey?: string },
+    options?: TimelineResizeCommitOptions,
   ) => Promise<void> | void,
 ) {
   return onResizeElements(
@@ -222,7 +224,7 @@ export function TimelinePane({
         duration: number;
         playbackStart?: number;
       }>,
-      options?: { coalesceKey?: string },
+      options?: TimelineResizeCommitOptions,
     ) => {
       if (!onResizeElements) return;
       if (changes.some(({ element }) => element.expandedParentStart !== undefined)) {

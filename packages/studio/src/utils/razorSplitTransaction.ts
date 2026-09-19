@@ -166,6 +166,9 @@ interface RunAtomicCutInput {
   projectId: string;
   intents: CutFileIntent[];
   label: string;
+  /** Folds this cut into the undo entry of the writes that share the key. */
+  coalesceKey?: string;
+  coalesceMs?: number;
   writeProjectFile: ProjectFileWriter;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   observeProjectFileVersion?: (path: string, version: string | null) => void;
@@ -181,7 +184,13 @@ export function runAtomicCutTransaction(input: RunAtomicCutInput): Promise<Atomi
       result.files.map((file) => [file.path, { before: file.before, after: file.after }]),
     );
     try {
-      await input.recordEdit({ label: input.label, kind: "timeline", files: snapshots });
+      await input.recordEdit({
+        label: input.label,
+        kind: "timeline",
+        coalesceKey: input.coalesceKey,
+        coalesceMs: input.coalesceMs,
+        files: snapshots,
+      });
     } catch (error) {
       try {
         await rollbackUnrecordedCut(result.files, input.writeProjectFile);

@@ -18,6 +18,8 @@ import {
 import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
+import { commitPlacementDrop, type PlacementOps } from "./timelinePlacementCommit";
+import type { TimelineEditCallbacks } from "./timelineCallbacks";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -76,6 +78,12 @@ export interface DragCommitDeps {
   onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => Promise<unknown> | void;
   /** Converge the preview manifest after the complete lane + z transaction. */
   refreshAfterLaneMove?: () => void;
+  /** Trims for a drop that cuts a neighbour. */
+  onResizeElements?: TimelineEditCallbacks["onResizeElements"];
+  /** Split and remove writes for a drop that cuts a neighbour. */
+  placementOps?: PlacementOps;
+  /** Alt or Cmd held at pointer-up: push what follows instead of overwriting. */
+  insertMode?: boolean;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
@@ -239,6 +247,22 @@ export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommi
   const aimTrack = drag.desiredTrack ?? drag.previewTrack;
   const isVertical = isInsert || aimTrack !== drag.element.track;
   const multi = resolveMultiSelection(drag, deps);
+
+  if (!isInsert && !multi) {
+    const mode = deps.insertMode ? "insert" : "overwrite";
+    const move = (edits: TimelineMoveEdit[], fold: { coalesceKey: string; coalesceMs: number }) =>
+      refreshAfterDurableLaneMove(
+        persistMoveEdits(
+          edits,
+          deps,
+          fold.coalesceKey,
+          edits.some((e) => e.updates.track !== e.element.track) ? "lane-reorder" : "timing",
+          fold.coalesceMs,
+        ),
+        deps,
+      );
+    if (commitPlacementDrop(drag, deps, mode, move)) return;
+  }
 
   // ── Pure time-move (dragged clip keeps its lane, no insert) ─────────────────
   if (!isInsert && !laneChanged) {

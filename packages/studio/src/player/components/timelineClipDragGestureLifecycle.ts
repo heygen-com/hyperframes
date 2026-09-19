@@ -74,6 +74,7 @@ interface TimelineClipDragGestureLifecycleInput {
     ((patches: StackingPatch[]) => Promise<unknown> | void) | undefined
   >;
   refreshAfterLaneMoveRef: RefObject<(() => void) | undefined>;
+  onPlacementOpsRef: RefObject<TimelineEditCallbacks["onPlacementOps"]>;
 }
 
 export function mountTimelineClipDragGestureLifecycle({
@@ -109,6 +110,7 @@ export function mountTimelineClipDragGestureLifecycle({
   readZIndexRef,
   onStackingPatchesRef,
   refreshAfterLaneMoveRef,
+  onPlacementOpsRef,
 }: TimelineClipDragGestureLifecycleInput): () => void {
   const clearSuppressedClick = () => {
     requestAnimationFrame(() => {
@@ -277,7 +279,7 @@ export function mountTimelineClipDragGestureLifecycle({
     if (blocked.started) clearSuppressedClick();
   };
 
-  const commitDragPointerUp = (drag: DraggedClipState) => {
+  const commitDragPointerUp = (drag: DraggedClipState, insertMode: boolean) => {
     if (!drag.started) return;
     suppressClickRef.current = true;
     clearSuppressedClick();
@@ -291,6 +293,9 @@ export function mountTimelineClipDragGestureLifecycle({
       readZIndex: readZIndexRef.current,
       onStackingPatches: onStackingPatchesRef.current,
       refreshAfterLaneMove: refreshAfterLaneMoveRef.current,
+      onResizeElements: onResizeElementsRef.current,
+      placementOps: onPlacementOpsRef.current,
+      insertMode,
     });
   };
 
@@ -333,12 +338,12 @@ export function mountTimelineClipDragGestureLifecycle({
     return claimed;
   };
 
-  const commitClaimedGesture = (gesture: TimelineGestureCommit) => {
+  const commitClaimedGesture = (gesture: TimelineGestureCommit, insertMode: boolean) => {
     try {
       if (gesture.kind === "resize" && gesture.resize) {
         commitResizePointerUp(gesture.resize, gesture.groupResize);
       } else if (gesture.kind === "drag" && gesture.drag) {
-        commitDragPointerUp(gesture.drag);
+        commitDragPointerUp(gesture.drag, insertMode);
       }
     } finally {
       const lifecycle = lifecycleRef.current;
@@ -352,7 +357,7 @@ export function mountTimelineClipDragGestureLifecycle({
     const claimed = claimActiveGesture(event);
     if (claimed === "ignored") return;
     if (claimed) {
-      commitClaimedGesture(claimed);
+      commitClaimedGesture(claimed, event.altKey || event.metaKey);
       return;
     }
     const blocked = blockedClipRef.current;

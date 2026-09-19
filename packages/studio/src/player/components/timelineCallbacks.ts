@@ -5,6 +5,7 @@ import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 import type { BlockedTimelineEditIntent } from "./timelineEditing";
 import type { PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
+import type { PlacementOps } from "./timelinePlacementCommit";
 
 export interface TimelinePropertyGroupKeyframeToggle {
   animationId: string;
@@ -54,6 +55,8 @@ export interface TimelineEditCallbacks {
     operation?: TimelineMoveOperation,
     coalesceMs?: number,
   ) => Promise<void> | void;
+  /** Split and remove writes a clip drop needs when it cuts a neighbour (one shared undo step). */
+  onPlacementOps?: PlacementOps;
   onResizeElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
@@ -65,7 +68,7 @@ export interface TimelineEditCallbacks {
       duration: number;
       playbackStart?: number;
     }>,
-    options?: { coalesceKey?: string },
+    options?: { coalesceKey?: string; coalesceMs?: number },
   ) => Promise<void> | void;
   /**
    * `displayNumber` is the row the CLICKED control announced. It travels with
