@@ -20,6 +20,7 @@ import {
   splitTimelineElementKey,
 } from "../../player/lib/timelineElementHelpers";
 import type { TimelineKeyframeTarget } from "../../player/components/timelineKeyframeIdentity";
+import type { PlacementOps } from "../../player/components/timelinePlacementCommit";
 
 export interface TimelineEditCallbackDeps {
   handleTimelineElementMove: (
@@ -46,6 +47,8 @@ export interface TimelineEditCallbackDeps {
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplitAll: (splitTime: number) => Promise<void> | void;
+  /** Split and remove writes for a clip drop that overwrites a neighbour. */
+  placementOps?: PlacementOps;
   /** C1's ungrouped-track FX pointer — same auto-grouping write B6's carve uses. */
   handleGroupClips?: (
     clipIds: readonly string[],
@@ -124,6 +127,7 @@ export function useTimelineEditCallbacks({
   handleTimelineElementSplit,
   handleRazorSplit,
   handleRazorSplitAll,
+  placementOps,
   handleGroupClips,
   setElementFxAttribute,
 }: TimelineEditCallbackDeps): TimelineEditCallbacks {
@@ -207,6 +211,7 @@ export function useTimelineEditCallbacks({
       onMoveElements: handleTimelineElementsMove,
       onResizeElement: handleTimelineElementResize,
       onResizeElements: handleTimelineGroupResize,
+      onPlacementOps: placementOps,
       onToggleTrackHidden: handleToggleTrackHidden,
       onSetAudioGroupAttributeLive: setAudioGroupAttribute.setLive,
       onSetAudioGroupAttributeQuiet: setAudioGroupAttribute.setQuiet,
@@ -405,6 +410,7 @@ export function useTimelineEditCallbacks({
       handleTimelineElementsMove,
       handleTimelineElementResize,
       handleTimelineGroupResize,
+      placementOps,
       handleToggleTrackHidden,
       setAudioGroupAttribute,
       handleGroupClips,

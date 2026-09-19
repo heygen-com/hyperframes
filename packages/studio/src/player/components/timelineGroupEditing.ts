@@ -181,7 +181,7 @@ function elementKey(element: TimelineElement): string {
   return element.key ?? element.id;
 }
 
-function hasSourcePlaybackOffset(element: TimelineElement): boolean {
+export function hasSourcePlaybackOffset(element: TimelineElement): boolean {
   const tag = element.tag.toLowerCase();
   return element.kind === "composition" || tag === "audio" || tag === "video";
 }

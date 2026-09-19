@@ -104,7 +104,9 @@ function resolveDropPlacement(
   desiredTrack: number,
   ctx: DragPreviewContext,
 ): { track: number; insertRow: number | null } {
-  const { scroll, trackOrder, rowHeights, elements } = ctx;
+  const { scroll, trackOrder, rowHeights, elements, selectedKeys } = ctx;
+  const dragKey = drag.element.key ?? drag.element.id;
+  const isGroupDrag = selectedKeys.size > 1 && selectedKeys.has(dragKey);
   // rowFloat = the pointer's position in track-heights from the top lane; a
   // near-boundary hover requests a deliberate new-track insert. Uses the
   // shared row→y inverse so the top breathing pad is subtracted consistently.
@@ -134,9 +136,10 @@ function resolveDropPlacement(
     deliberateInsertRow: rawInsertRow,
     start: previewStart,
     duration: drag.element.duration,
-    dragKey: drag.element.key ?? drag.element.id,
+    dragKey,
     isAudio: isAudioTimelineElement(drag.element),
     preferInsertAbove,
+    relocateOnOverlap: isGroupDrag,
   });
 }
 

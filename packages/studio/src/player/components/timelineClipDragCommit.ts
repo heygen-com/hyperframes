@@ -18,6 +18,12 @@ import {
 import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
+import {
+  commitPlacementDrop,
+  type PlacementFold,
+  type PlacementOps,
+} from "./timelinePlacementCommit";
+import type { TimelineEditCallbacks } from "./timelineCallbacks";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -76,6 +82,12 @@ export interface DragCommitDeps {
   onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => Promise<unknown> | void;
   /** Converge the preview manifest after the complete lane + z transaction. */
   refreshAfterLaneMove?: () => void;
+  /** Trims for a drop that cuts a neighbour. */
+  onResizeElements?: TimelineEditCallbacks["onResizeElements"];
+  /** Split and remove writes for a drop that cuts a neighbour. */
+  placementOps?: PlacementOps;
+  /** Alt or Cmd held at pointer-up: push what follows instead of overwriting. */
+  insertMode?: boolean;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
@@ -105,6 +117,8 @@ export function persistMoveEdits(
   coalesceKey?: string,
   operation: TimelineMoveOperation = "timing",
   coalesceMs?: number,
+  /** False when the caller already wrote the end state to the store (a placement drop does). */
+  updateStore = true,
 ): Promise<boolean> {
   if (edits.length === 0) return Promise.resolve(true);
   const { updateElement, onMoveElement, onMoveElements } = deps;
@@ -138,7 +152,7 @@ export function persistMoveEdits(
       writtenTrack == null ? e.updates : { ...e.updates, authoredTrack: writtenTrack },
     );
   };
-  for (const e of edits) applyEdit(e);
+  if (updateStore) for (const e of edits) applyEdit(e);
   // The store above gets DISPLAY lanes; the file below gets the authored-space
   // track when one was resolved (see TimelineMoveEdit.persistTrack).
   const persistEdits = edits.map((e) =>
@@ -155,6 +169,7 @@ export function persistMoveEdits(
       // restore the preview manifest's pre-gesture lane. Reassert the durable
       // result after persistence, but only while this remains the latest
       // optimistic gesture so an older save can never clobber a newer drag.
+      if (!updateStore) return true;
       for (const e of edits) {
         const key = keyOf(e.element);
         if (isLatestTimelineOptimisticGesture(updateElement, revision, key)) applyEdit(e);
@@ -162,9 +177,15 @@ export function persistMoveEdits(
       return true;
     },
     (error) => {
-      for (const p of prev) {
-        if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          updateElement(p.key, { start: p.start, track: p.track, authoredTrack: p.authoredTrack });
+      if (updateStore) {
+        for (const p of prev) {
+          if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
+            updateElement(p.key, {
+              start: p.start,
+              track: p.track,
+              authoredTrack: p.authoredTrack,
+            });
+          }
         }
       }
       console.error("[Timeline] Failed to persist clip edits", error);
@@ -239,6 +260,23 @@ export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommi
   const aimTrack = drag.desiredTrack ?? drag.previewTrack;
   const isVertical = isInsert || aimTrack !== drag.element.track;
   const multi = resolveMultiSelection(drag, deps);
+
+  if (!isInsert && !multi) {
+    const mode = deps.insertMode ? "insert" : "overwrite";
+    const move = (edits: TimelineMoveEdit[], fold: PlacementFold) =>
+      refreshAfterDurableLaneMove(
+        persistMoveEdits(
+          edits,
+          deps,
+          fold.coalesceKey,
+          edits.some((e) => e.updates.track !== e.element.track) ? "lane-reorder" : "timing",
+          fold.coalesceMs,
+          false,
+        ),
+        deps,
+      );
+    if (commitPlacementDrop(drag, deps, mode, move)) return;
+  }
 
   // ── Pure time-move (dragged clip keeps its lane, no insert) ─────────────────
   if (!isInsert && !laneChanged) {

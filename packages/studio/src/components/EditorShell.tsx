@@ -94,6 +94,7 @@ export function EditorShell({
   handleTimelineElementSplit,
   handleRazorSplit,
   handleRazorSplitAll,
+  placementOps,
   onCopyClip,
   onPasteClip,
   onDuplicateClip,
@@ -151,6 +152,7 @@ export function EditorShell({
     handleTimelineElementSplit,
     handleRazorSplit,
     handleRazorSplitAll,
+    placementOps,
   });
 
   return (

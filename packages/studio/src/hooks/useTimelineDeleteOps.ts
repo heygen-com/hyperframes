@@ -16,6 +16,7 @@ import {
   resolveMainTrackDeleteRippleShifts,
   resolveShiftedElements,
 } from "../player/components/timelineGapCommit";
+import type { PlacementFold } from "../player/components/timelinePlacementCommit";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -78,17 +79,17 @@ export function useTimelineDeleteOps({
   // named in words instead.
   const rippleNoticeShownRef = useRef(false);
   // fallow-ignore-next-line complexity
-  const handleTimelineElementsDelete = useCallback(
+  const deleteTimelineElements = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection: TimelineElement[]) => {
+    async (selection: TimelineElement[], overwrite?: PlacementFold): Promise<boolean> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
-        return;
+        return false;
       }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
       const [element] = selection;
-      if (!element) return;
+      if (!element) return false;
       const label =
         selection.length === 1 ? getTimelineElementLabel(element) : `${selection.length} clips`;
 
@@ -151,7 +152,8 @@ export function useTimelineDeleteOps({
         // Shared with the ripple move below so a folded ripple is one undo
         // step with the delete, not two (editHistory.ts coalesces by key +
         // window across separate recordEdit calls, not by label).
-        const coalesceKey = `main-track-ripple-delete:${deleteGestureSeq++}`;
+        const coalesceKey =
+          overwrite?.coalesceKey ?? `main-track-ripple-delete:${deleteGestureSeq++}`;
         const deleteHistoryLabel = "Delete timeline clip";
         try {
           await saveProjectFilesWithHistory({
@@ -159,6 +161,7 @@ export function useTimelineDeleteOps({
             label: deleteHistoryLabel,
             kind: "timeline",
             coalesceKey,
+            coalesceMs: overwrite?.coalesceMs,
             files: { [targetPath]: patchedContent },
             readFile: async () => originalContent,
             // remove-element already wrote the removal, so disk holds THAT — not the
@@ -179,11 +182,14 @@ export function useTimelineDeleteOps({
         // first (resolveMainTrackDeleteRippleShifts — off, no main-track clip
         // deleted, already gapless, or a locked survivor all resolve to null),
         // then the one write, folded into the delete's undo entry above.
-        const rippleShifts = resolveMainTrackDeleteRippleShifts(
-          survivors,
-          sameFile,
-          usePlayerStore.getState().rippleEditEnabled,
-        );
+        // An overwrite never ripples: the dropped clip fills the span it removed.
+        const rippleShifts = overwrite
+          ? null
+          : resolveMainTrackDeleteRippleShifts(
+              survivors,
+              sameFile,
+              usePlayerStore.getState().rippleEditEnabled,
+            );
         let rippleApplied: TimelineGroupMoveChange[] | null = null;
         let rippleFailed = false;
         if (rippleShifts) {
@@ -211,14 +217,20 @@ export function useTimelineDeleteOps({
           }
         }
 
-        usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleApplied));
-        usePlayerStore.getState().setSelectedElementId(null);
-        usePlayerStore.getState().setSelectedElementIds(new Set());
+        if (!overwrite) {
+          // A folded delete leaves the store to the drop, which already wrote its end state.
+          usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleApplied));
+          usePlayerStore.getState().setSelectedElementId(null);
+          usePlayerStore.getState().setSelectedElementIds(new Set());
+        }
         forceReloadSdkSession?.();
-        reloadPreview();
+        // Folded into a drop: the drop's own single reload (after every step
+        // lands) replaces this one, so an interior remove never shows the
+        // preview a state the next step is about to make stale.
+        if (!overwrite) reloadPreview();
         // A failed ripple already showed its own toast above; the user did one
         // thing (delete), so they get one message, not this generic follow-up too.
-        if (!rippleFailed) {
+        if (!rippleFailed && !overwrite) {
           showToast(
             `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
             "info",
@@ -232,9 +244,11 @@ export function useTimelineDeleteOps({
             "info",
           );
         }
+        return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
         showToast(message);
+        return false;
       }
     },
     [
@@ -252,13 +266,25 @@ export function useTimelineDeleteOps({
     ],
   );
 
+  const handleTimelineElementsDelete = useCallback(
+    async (selection: TimelineElement[]) => {
+      await deleteTimelineElements(selection);
+    },
+    [deleteTimelineElements],
+  );
+
   /** Single-clip delete — the context menu and clip chrome path. */
   const handleTimelineElementDelete = useCallback(
     async (element: TimelineElement) => {
-      await handleTimelineElementsDelete([element]);
+      await deleteTimelineElements([element]);
     },
-    [handleTimelineElementsDelete],
+    [deleteTimelineElements],
   );
 
-  return { handleTimelineElementsDelete, handleTimelineElementDelete };
+  return {
+    handleTimelineElementsDelete,
+    handleTimelineElementDelete,
+    /** The delete a clip drop uses to remove an overwritten clip: no ripple, folded into its undo step. */
+    deleteTimelineElements,
+  };
 }

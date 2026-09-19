@@ -285,6 +285,7 @@ describe("resolveZoneDropPlacement (the whole drop decision, no same-track overl
     duration: 2,
     dragKey: "x",
     isAudio: false,
+    relocateOnOverlap: true,
   };
 
   it("lands on the aimed track when it is free at that time", () => {
@@ -514,5 +515,47 @@ describe("resolveMainTrackDropStart (magnetic first clip on an empty main track)
 
   it("an audio clip landing on track 0 is not the main track (visual zone only)", () => {
     expect(resolveMainTrackDropStart([], 1, 0, true, 7)).toBe(7);
+  });
+});
+
+describe("resolveZoneDropPlacement overwrite (a single clip does not relocate)", () => {
+  const base = {
+    order: [0, 1, 2, 3],
+    audioTracks: new Set([3]),
+    deliberateInsertRow: null as number | null,
+    start: 2,
+    duration: 2,
+    dragKey: "x",
+    isAudio: false,
+  };
+
+  it("stays on the aimed lane over an overlapping clip", () => {
+    expect(
+      resolveZoneDropPlacement({ ...base, elements: [el("a", 1, 0, 5)], desiredTrack: 1 }),
+    ).toEqual({ track: 1, insertRow: null });
+  });
+
+  it("stays on the aimed lane when every lane is occupied", () => {
+    const full = [el("a", 0, 0, 9), el("b", 1, 0, 9), el("c", 2, 0, 9)];
+    expect(resolveZoneDropPlacement({ ...base, elements: full, desiredTrack: 1 })).toEqual({
+      track: 1,
+      insertRow: null,
+    });
+  });
+
+  it("still honours a deliberate new-track insert", () => {
+    expect(
+      resolveZoneDropPlacement({
+        ...base,
+        elements: [el("a", 1, 0, 5)],
+        desiredTrack: 1,
+        deliberateInsertRow: 1,
+      }),
+    ).toEqual({ track: 1, insertRow: 1 });
+  });
+
+  it("still creates a track for an aim that is not a real lane", () => {
+    const result = resolveZoneDropPlacement({ ...base, elements: [], desiredTrack: -1 });
+    expect(result.insertRow).not.toBeNull();
   });
 });

@@ -9,6 +9,7 @@ import { createPersistentEditHistoryStore } from "./usePersistentEditHistory";
 import { createEmptyEditHistory } from "../utils/editHistory";
 import type { EditHistoryStorageAdapter } from "../utils/editHistoryStorage";
 import { createSplitFetchMock, mountProbe } from "./useRazorSplit.testHelpers";
+import type { PlacementFold } from "../player/components/timelinePlacementCommit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,11 +50,19 @@ interface SplitRequest {
 
 type SingleSplit = (element: TimelineElement, splitTime: number) => Promise<void>;
 type SplitAll = (splitTime: number) => Promise<void>;
+type PlacementSplit = (
+  element: TimelineElement,
+  splitTime: number,
+  fold: PlacementFold,
+) => Promise<boolean>;
 
 interface Harness {
   splitRequests: SplitRequest[];
   singleRef: { current: SingleSplit | undefined };
   allRef: { current: SplitAll | undefined };
+  placementRef: { current: PlacementSplit | undefined };
+  reloadPreview: ReturnType<typeof vi.fn>;
+  forceReloadSdkSession: ReturnType<typeof vi.fn>;
   root: ReturnType<typeof mountProbe>;
 }
 
@@ -76,9 +85,12 @@ function mountRazorSplit(): Harness {
 
   const singleRef: { current: SingleSplit | undefined } = { current: undefined };
   const allRef: { current: SplitAll | undefined } = { current: undefined };
+  const placementRef: { current: PlacementSplit | undefined } = { current: undefined };
+  const reloadPreview = vi.fn();
+  const forceReloadSdkSession = vi.fn();
 
   function Component() {
-    const { handleRazorSplit, handleRazorSplitAll } = useRazorSplit({
+    const { handleRazorSplit, handleRazorSplitAll, handlePlacementSplit } = useRazorSplit({
       projectId: "p1",
       activeCompPath: ROOT_FILE,
       showToast: () => {},
@@ -86,15 +98,25 @@ function mountRazorSplit(): Harness {
         disk[path] = content;
       },
       recordEdit: async () => {},
-      reloadPreview: () => {},
+      reloadPreview,
+      forceReloadSdkSession,
     });
     singleRef.current = handleRazorSplit;
     allRef.current = handleRazorSplitAll;
+    placementRef.current = handlePlacementSplit;
     return null;
   }
 
   const root = mountProbe(Component);
-  return { splitRequests, singleRef, allRef, root };
+  return {
+    splitRequests,
+    singleRef,
+    allRef,
+    placementRef,
+    reloadPreview,
+    forceReloadSdkSession,
+    root,
+  };
 }
 
 afterEach(() => {
@@ -159,6 +181,37 @@ describe("useRazorSplit — sub-comp coordinate rebasing", () => {
     // Expanded child: rebased by its OWN expandedParentStart, not the root's.
     expect(childReq.splitTime).toBe(1); // 3 - 2
     expect(childReq.elementStart).toBe(0); // 2 - 2
+  });
+});
+
+// A drop reloads the preview once, at its end; an interior split must not reload on its own.
+describe("useRazorSplit — preview reload folded into a drop", () => {
+  let harness: Harness;
+  beforeEach(() => {
+    harness = mountRazorSplit();
+  });
+  afterEach(() => {
+    act(() => harness.root.unmount());
+  });
+
+  it("skips reloading the preview for a split folded into a drop, but still refreshes the sdk session", async () => {
+    await act(async () => {
+      await harness.placementRef.current!(rootElement, 4, {
+        coalesceKey: "clip-overwrite:1",
+        coalesceMs: Number.POSITIVE_INFINITY,
+      });
+    });
+
+    expect(harness.reloadPreview).not.toHaveBeenCalled();
+    expect(harness.forceReloadSdkSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reloads the preview for a plain (non-drop) split", async () => {
+    await act(async () => {
+      await harness.singleRef.current!(rootElement, 4);
+    });
+
+    expect(harness.reloadPreview).toHaveBeenCalledTimes(1);
   });
 });
 

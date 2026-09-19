@@ -1,7 +1,8 @@
 // fallow-ignore-file complexity
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
+import type { PlacementOps } from "../player/components/timelinePlacementCommit";
 import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
 import {
   applyTimelineStackingReorder,
@@ -402,19 +403,20 @@ export function useTimelineEditing({
     isRecordingRef,
   });
 
-  const { handleTimelineElementsDelete, handleTimelineElementDelete } = useTimelineDeleteOps({
-    projectIdRef,
-    activeCompPath,
-    timelineElements,
-    showToast,
-    writeProjectFile,
-    recordEdit,
-    reloadPreview,
-    isRecordingRef,
-    forceReloadSdkSession,
-    previewIframeRef,
-    handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
-  });
+  const { handleTimelineElementsDelete, handleTimelineElementDelete, deleteTimelineElements } =
+    useTimelineDeleteOps({
+      projectIdRef,
+      activeCompPath,
+      timelineElements,
+      showToast,
+      writeProjectFile,
+      recordEdit,
+      reloadPreview,
+      isRecordingRef,
+      forceReloadSdkSession,
+      previewIframeRef,
+      handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
+    });
 
   const { handleTimelineAssetDrop, handleTimelineFileDrop, handleTimelineCompositionDrop } =
     useTimelineAssetDropOps({
@@ -433,7 +435,7 @@ export function useTimelineEditing({
 
   const handleBlockedTimelineEdit = useBlockedTimelineEditToast(showToast);
 
-  const { handleRazorSplit, handleRazorSplitAll } = useRazorSplit({
+  const { handleRazorSplit, handleRazorSplitAll, handlePlacementSplit } = useRazorSplit({
     projectId,
     activeCompPath,
     showToast,
@@ -445,7 +447,18 @@ export function useTimelineEditing({
     forceReloadSdkSession,
   });
 
+  const placementOps = useMemo<PlacementOps>(
+    () => ({
+      split: handlePlacementSplit,
+      remove: deleteTimelineElements,
+      toast: (message) => showToast(message, "error"),
+      reloadPreview,
+    }),
+    [handlePlacementSplit, deleteTimelineElements, showToast, reloadPreview],
+  );
+
   return {
+    placementOps,
     handleTimelineElementMove,
     handleTimelineElementResize,
     handleToggleTrackHidden,

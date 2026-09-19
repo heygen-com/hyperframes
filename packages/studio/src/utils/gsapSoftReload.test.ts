@@ -105,6 +105,14 @@ describe("applySoftReload", () => {
     expect(contentWindow.__hfStudioManualEditsApply).toHaveBeenCalled();
   });
 
+  it("keeps the live playhead and playback running when the reload lands while playing", () => {
+    // The store's currentTime is the last seek, not the playhead, while playing.
+    const { iframe, contentWindow } = buildMockIframe();
+    contentWindow.__player.isPlaying = () => true;
+    applySoftReloadFinalization(iframe, 0.5);
+    expect(contentWindow.__player.seek).toHaveBeenCalledWith(2.0, { keepPlaying: true });
+  });
+
   it("seeks to the caller-supplied currentTime override instead of the iframe's own __player.getTime()", () => {
     // Regression: the iframe's raw __player.getTime() (2.0 here, per the mock)
     // can desync from the studio's authoritative scrub position — e.g. a
