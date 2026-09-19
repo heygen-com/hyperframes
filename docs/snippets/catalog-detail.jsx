@@ -1971,24 +1971,23 @@ export const CatalogDetail = ({
     setCopiedKey(key);
     setTimeout(() => setCopiedKey((current) => (current === key ? "" : current)), 1400);
   };
-  const CopyAction = ({ id, label, text, primary }) => (
-    <button
-      type="button"
-      className="hf-ve-action"
-      data-primary={primary ? "true" : "false"}
-      onClick={() => copy(id, typeof text === "function" ? text() : text)}
-    >
-      {[label, "Copied"].map((text) => (
-        <span
-          key={text}
-          className="hf-ve-action-label"
-          data-shown={text === (copiedKey === id ? "Copied" : label) ? "true" : "false"}
-        >
-          {text}
-        </span>
-      ))}
-    </button>
-  );
+  const CopyAction = ({ id, label, text, primary }) => {
+    const shown = copiedKey === id ? "Copied" : label;
+    return (
+      <button
+        type="button"
+        className="hf-ve-action"
+        data-primary={primary ? "true" : "false"}
+        onClick={() => copy(id, typeof text === "function" ? text() : text)}
+      >
+        {[label, "Copied"].map((name) => (
+          <span key={name} className="hf-ve-action-label" data-shown={String(name === shown)}>
+            {name}
+          </span>
+        ))}
+      </button>
+    );
+  };
   const wiring = snippetLines.map((tokens) => tokens.map(([, text]) => text).join("")).join("\n");
   const mountText = `${wiring}\n`;
 
