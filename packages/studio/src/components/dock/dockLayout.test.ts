@@ -1,0 +1,90 @@
+// @vitest-environment happy-dom
+
+import { createDockview, type DockviewApi } from "dockview-react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  applySideMinimums,
+  buildEditLayout,
+  defaultSideWidths,
+  sideMinimumWidth,
+} from "./dockLayout";
+
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+
+// Expected values are hand-derived from the old fitPanels rule: the preview keeps 360 first,
+// then each side column takes half of what remains, never above 200 or below 120.
+describe("sideMinimumWidth", () => {
+  it.each([
+    [1680, 200],
+    [1200, 200],
+    [860, 200],
+    [760, 200],
+    [700, 170],
+    [600, 120],
+    [560, 120],
+    [400, 120],
+  ])("is %ipx wide -> sides shrink to %ipx at most", (viewport, expected) => {
+    expect(sideMinimumWidth(viewport)).toBe(expected);
+  });
+});
+
+describe("defaultSideWidths", () => {
+  it.each([
+    [1680, 384, 424],
+    [1280, 329, 364],
+    [860, 221, 244],
+    [560, 120, 120],
+  ])("at %ipx gives %i / %i", (viewport, left, right) => {
+    expect(defaultSideWidths(viewport)).toEqual({ left, right });
+  });
+
+  it.each([1680, 1280, 1000, 860, 760, 700, 600, 560, 480])(
+    "leaves the preview its 360px floor at %ipx whenever the sides can shrink enough",
+    (viewport) => {
+      const { left, right } = defaultSideWidths(viewport);
+      const floor = sideMinimumWidth(viewport);
+      const overflow = left + right + 360 - viewport;
+      expect(overflow <= 0 || (left === floor && right === floor)).toBe(true);
+    },
+  );
+});
+
+describe("applySideMinimums", () => {
+  let host: HTMLElement;
+  let api: DockviewApi;
+  beforeEach(() => {
+    host = document.createElement("div");
+    document.body.append(host);
+    api = createDockview(host, {
+      createComponent: () => ({ element: document.createElement("div"), init() {}, dispose() {} }),
+    });
+  });
+  afterEach(() => {
+    api.dispose();
+    document.body.innerHTML = "";
+  });
+
+  it("lowers side groups' minimum on a narrow window and shrinks them, never touching the preview", () => {
+    api.layout(1200, 700);
+    buildEditLayout(api, 1200);
+    applySideMinimums(api, 560);
+    expect(api.getPanel("compositions")?.group.minimumWidth).toBe(120);
+    expect(api.getPanel("design")?.group.minimumWidth).toBe(120);
+    expect(api.getPanel("compositions")?.group.width).toBe(120);
+    expect(api.getPanel("design")?.group.width).toBe(120);
+    expect(api.getPanel("preview")?.group.minimumWidth).toBe(360);
+  });
+
+  it("leaves a wide window's user-chosen widths alone", () => {
+    api.layout(1200, 700);
+    buildEditLayout(api, 1200);
+    api.getPanel("compositions")?.group.api.setSize({ width: 300 });
+    applySideMinimums(api, 1200);
+    expect(api.getPanel("compositions")?.group.width).toBe(300);
+  });
+});

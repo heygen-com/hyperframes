@@ -21,3 +21,8 @@
   --dv-tab-font-size: 11px;
   --dv-tabs-and-actions-container-font-size: 11px;
 }
+
+.hf-dock .dv-sash:focus-visible {
+  background-color: var(--dv-active-sash-color);
+  outline: none;
+}
