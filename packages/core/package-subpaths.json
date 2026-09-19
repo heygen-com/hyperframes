@@ -188,6 +188,12 @@
       "types": "./dist/audioGain.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./speed-ramp": {
+      "source": "./src/speedRamp.ts",
+      "runtime": "./dist/speedRamp.js",
+      "types": "./dist/speedRamp.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",
