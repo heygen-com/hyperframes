@@ -100,7 +100,8 @@ function mainTimelineStart(scope: DocScope, el: Element, start: number): number 
   const authored = /^(video|audio)$/i.test(el.tagName)
     ? parseNumeric(el.getAttribute("data-start"))
     : null;
-  if (authored === null) return scope.origin + start;
+  // Like the runtime, a host at t=0 has nothing for the basis to disambiguate: ordinary resolution.
+  if (authored === null || scope.origin <= 0) return scope.origin + start;
   return resolveAbsoluteMediaStartSeconds({
     authoredStart: authored,
     hostStart: scope.origin,

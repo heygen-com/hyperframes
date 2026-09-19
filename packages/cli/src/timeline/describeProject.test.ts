@@ -188,6 +188,16 @@ describe("absolute main-timeline time", () => {
     expect(host.children.find((c) => c.id === "nested")).toMatchObject({ absStart: 2, absEnd: 4 });
   });
 
+  it("clamps a negative media start to 0 when the host starts at 0, as the runtime does", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-timeline-neg0-"));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<div data-composition-id="main" data-duration="10"><video id="v" src="v.mp4" data-start="-3" data-duration="2" data-track-index="0"></video></div>`,
+    );
+    const v = describeProject(join(dir, "index.html")).tracks.flatMap((t) => t.rows)[0];
+    expect(v).toMatchObject({ id: "v", absStart: 0, absEnd: 2 });
+  });
+
   it("prints the absolute time first and the local time in parentheses for a nested row", () => {
     const text = formatTimeline(describeProject(inversionProject()));
     expect(text).toContain("direct 20-25s");
