@@ -233,6 +233,7 @@ export const Timeline = memo(function Timeline({
     onResizeElement: pinnedOnResizeElement,
     onResizeElements: pinnedOnResizeElements,
     onBlockedEditAttempt,
+    onSeek,
     setShowPopover,
     setRangeSelectionRef,
     readZIndex: zSyncEnabled ? readClipZIndex : undefined,

@@ -4,6 +4,7 @@ import {
   collectTimelineSnapTargets,
   snapMoveToTargets,
   snapTimelineTime,
+  resolveSnapGuide,
 } from "./timelineSnapping";
 
 describe("collectTimelineSnapTargets", () => {
@@ -130,5 +131,19 @@ describe("snapMoveToTargets", () => {
     const duration = 10 / 3;
     const r = snapMoveToTargets(5.0, duration, [{ time: 5.05, type: "beat" }], 100, 6);
     expect(r.snapTime).toBeNull();
+  });
+});
+
+describe("resolveSnapGuide", () => {
+  it("prefers a started move, falls back to a trim, and is null when neither snapped", () => {
+    const move = { started: true, snapTime: 2, snapType: "playhead" as const };
+    const trim = { snapTime: 5, snapType: "clip-edge" as const };
+    expect(resolveSnapGuide(move, trim)).toEqual({ time: 2, type: "playhead" });
+    expect(resolveSnapGuide({ ...move, started: false }, trim)).toEqual({
+      time: 5,
+      type: "clip-edge",
+    });
+    expect(resolveSnapGuide(null, { snapTime: null, snapType: null })).toBeNull();
+    expect(resolveSnapGuide(null, null)).toBeNull();
   });
 });

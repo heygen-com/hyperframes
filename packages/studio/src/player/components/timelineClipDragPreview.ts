@@ -12,6 +12,7 @@ import {
   snapMoveToTargets,
   snapTimelineTime,
   type TimelineSnapTarget,
+  type TimelineSnapType,
 } from "./timelineSnapping";
 import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
 import {
@@ -223,6 +224,14 @@ export function computeDragPreview(
   };
 }
 
+/** One 30 fps frame: the last visible frame of a clip sits just before its end time. */
+const TRIM_END_FRAME_LEAD_S = 1 / 30;
+
+/** The composition time whose frame a trim shows: the edge being dragged. */
+export function trimPreviewTime(edge: "start" | "end", start: number, duration: number): number {
+  return edge === "start" ? start : Math.max(start, start + duration - TRIM_END_FRAME_LEAD_S);
+}
+
 export interface ResizePreviewContext {
   scroll: HTMLDivElement | null;
   pps: number;
@@ -234,6 +243,9 @@ export interface ResizePreviewResult {
   previewStart: number;
   previewDuration: number;
   previewPlaybackStart?: number;
+  /** The target the trimmed edge snapped to; null when the edge is free. */
+  snapTime: number | null;
+  snapType: TimelineSnapType | null;
 }
 
 /** Compute the trim preview for a pointer x (pure — the hook applies the state). */
@@ -296,19 +308,22 @@ export function computeResizePreview(
     resize.element.key ?? resize.element.id,
     !isMusicTrack(resize.element),
   );
+  let snap: TimelineSnapTarget | null = null;
   if (trimTargets.length > 0) {
     const snapSecs = TIMELINE_SNAP_PX / Math.max(pps, 1);
     if (resize.edge === "end") {
       const edgeTime = nextResize.start + nextResize.duration;
-      const snapped = snapTimelineTime(edgeTime, trimTargets, snapSecs).time;
+      const { time: snapped, target } = snapTimelineTime(edgeTime, trimTargets, snapSecs);
       // Stay within [start+minDuration, maxEnd] so the snap can't create a
       // degenerate clip or run past the source/composition limit.
       const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
-      if (snapped !== edgeTime && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
-        nextResize = { ...nextResize, duration: snappedDuration };
+      if (target && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
+        // An edge already on the target still owns the guide; only move it when off.
+        if (snapped !== edgeTime) nextResize = { ...nextResize, duration: snappedDuration };
+        snap = target;
       }
     } else {
-      const snapped = snapTimelineTime(nextResize.start, trimTargets, snapSecs).time;
+      const { time: snapped, target } = snapTimelineTime(nextResize.start, trimTargets, snapSecs);
       const delta = nextResize.start - snapped; // >0 when snapping left
       // Leftward snap reveals more source; cap so playbackStart can't go < 0.
       const maxLeftDelta =
@@ -318,22 +333,20 @@ export function computeResizePreview(
       // Also require the resulting duration to stay >= minDuration so a rightward
       // snap (delta < 0) can't collapse the clip to zero/negative.
       const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
-      if (
-        snapped !== nextResize.start &&
-        snapped >= 0 &&
-        delta <= maxLeftDelta + 1e-6 &&
-        snappedDuration >= 0.05
-      ) {
-        nextResize = {
-          ...nextResize,
-          start: snapped,
-          duration: snappedDuration,
-          playbackStart:
-            nextResize.playbackStart != null
-              ? Math.round(Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000) /
-                1000
-              : undefined,
-        };
+      if (target && snapped >= 0 && delta <= maxLeftDelta + 1e-6 && snappedDuration >= 0.05) {
+        if (snapped !== nextResize.start) {
+          nextResize = {
+            ...nextResize,
+            start: snapped,
+            duration: snappedDuration,
+            playbackStart:
+              nextResize.playbackStart != null
+                ? Math.round(Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000) /
+                  1000
+                : undefined,
+          };
+        }
+        snap = target;
       }
     }
   }
@@ -343,6 +356,8 @@ export function computeResizePreview(
     previewStart: nextResize.start,
     previewDuration: nextResize.duration,
     previewPlaybackStart: nextResize.playbackStart,
+    snapTime: snap?.time ?? null,
+    snapType: snap?.type ?? null,
   };
 }
 
@@ -364,6 +379,8 @@ export function previewGroupResize(
     previewStart: grabbedChange?.start ?? next.previewStart,
     previewDuration: grabbedChange?.duration ?? next.previewDuration,
     previewPlaybackStart: grabbedChange?.playbackStart ?? next.previewPlaybackStart,
+    snapTime: next.snapTime,
+    snapType: next.snapType,
     groupPreview: session.changes,
   });
 }

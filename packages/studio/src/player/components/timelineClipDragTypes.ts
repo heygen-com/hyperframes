@@ -57,6 +57,9 @@ export interface ResizingClipState {
   previewStart: number;
   previewDuration: number;
   previewPlaybackStart?: number;
+  /** Snap target the trimmed edge landed on, for the guide highlight. */
+  snapTime?: number | null;
+  snapType?: TimelineSnapType | null;
   /** Coordinator-owned group projection; canonical elements change only on commit. */
   groupPreview?: readonly {
     key: string;

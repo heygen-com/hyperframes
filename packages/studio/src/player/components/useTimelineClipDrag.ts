@@ -17,6 +17,7 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import {
   computeDragPreview,
   computeResizePreview,
+  trimPreviewTime,
   previewGroupResize,
   type ResizePreviewResult,
 } from "./timelineClipDragPreview";
@@ -64,6 +65,8 @@ interface UseTimelineClipDragInput {
   ) => Promise<void> | void;
   onResizeElements?: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
+  /** Seeks the preview; a trim shows the frame at its dragged edge. */
+  onSeek?: (time: number) => void;
   setShowPopover: (show: boolean) => void;
   /** Stable ref to the range selection setter — wired after mount to break circular dependency. */
   setRangeSelectionRef: React.RefObject<((sel: null) => void) | null>;
@@ -92,6 +95,7 @@ export function useTimelineClipDrag({
   onResizeElement,
   onResizeElements,
   onBlockedEditAttempt,
+  onSeek,
   setShowPopover,
   setRangeSelectionRef,
   readZIndex,
@@ -244,6 +248,10 @@ export function useTimelineClipDrag({
   onResizeElementRef.current = onResizeElement;
   const onResizeElementsRef = useRef(onResizeElements);
   onResizeElementsRef.current = onResizeElements;
+  const onSeekRef = useRef(onSeek);
+  onSeekRef.current = onSeek;
+  // Playhead time before the first trim preview seek; restored when the gesture ends.
+  const trimSeekOriginRef = useRef<number | null>(null);
   const readZIndexRef = useRef(readZIndex);
   readZIndexRef.current = readZIndex;
   const onStackingPatchesRef = useRef(onStackingPatches);
@@ -292,6 +300,8 @@ export function useTimelineClipDrag({
         pps: ppsRef.current,
         buildSnapTargets,
       });
+      trimSeekOriginRef.current ??= usePlayerStore.getState().currentTime;
+      onSeekRef.current?.(trimPreviewTime(resize.edge, next.previewStart, next.previewDuration));
       const setResizeState = (v: ResizePreviewResult) =>
         publishResizingClip(
           resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
@@ -337,6 +347,10 @@ export function useTimelineClipDrag({
     if (clipDragScrollRaf.current) {
       cancelAnimationFrame(clipDragScrollRaf.current);
       clipDragScrollRaf.current = 0;
+    }
+    if (trimSeekOriginRef.current != null) {
+      onSeekRef.current?.(trimSeekOriginRef.current);
+      trimSeekOriginRef.current = null;
     }
     // Gesture teardown: drop frozen caches so the next gesture reads fresh state.
     snapTargetsCacheRef.current.clear();

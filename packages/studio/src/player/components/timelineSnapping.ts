@@ -7,6 +7,16 @@ export interface TimelineSnapTarget {
   type: TimelineSnapType;
 }
 
+/** The guide the canvas draws: the live move's snap target, else the live trim's. */
+export function resolveSnapGuide(
+  moving: { started: boolean; snapTime: number | null; snapType: TimelineSnapType | null } | null,
+  trimming: { snapTime?: number | null; snapType?: TimelineSnapType | null } | null,
+): TimelineSnapTarget | null {
+  const source = moving?.started ? moving : trimming;
+  if (source?.snapTime == null || source.snapType == null) return null;
+  return { time: source.snapTime, type: source.snapType };
+}
+
 /** Pixel radius within which a time snaps to a target (matches historical beat snap). */
 export const TIMELINE_SNAP_PX = 8;
 

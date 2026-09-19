@@ -23,6 +23,7 @@ import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
+import { resolveSnapGuide } from "./timelineSnapping";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -47,7 +48,8 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
 const DROP_PREVIEW_SECONDS = 3;
 
 export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
-  const { draggedClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
+  const { draggedClip, resizingClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
+  const snapGuide = resolveSnapGuide(draggedClip, resizingClip);
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
   const dropTrackIndex = props.dropPreview
@@ -218,18 +220,18 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         />
       )}
 
-      {/* Snap guide for non-beat targets during clip drag */}
-      {draggedClip?.started && draggedClip.snapTime != null && draggedClip.snapType !== "beat" && (
+      {/* Snap guide for non-beat targets during a clip move or trim */}
+      {snapGuide && snapGuide.type !== "beat" && (
         <div
           className="absolute pointer-events-none"
           style={{
-            left: props.contentOrigin + draggedClip.snapTime * props.pps,
+            left: props.contentOrigin + snapGuide.time * props.pps,
             top: RULER_H,
             bottom: 0,
             width: 1,
-            background: draggedClip.snapType === "playhead" ? "#3CE6AC" : "rgba(255,255,255,0.6)",
+            background: snapGuide.type === "playhead" ? "#3CE6AC" : "rgba(255,255,255,0.6)",
             boxShadow:
-              draggedClip.snapType === "playhead"
+              snapGuide.type === "playhead"
                 ? "0 0 6px rgba(60,230,172,0.5)"
                 : "0 0 6px rgba(255,255,255,0.4)",
             zIndex: 60,
