@@ -37,7 +37,11 @@ export interface LaneBinding {
   automatedValue: number | undefined;
 }
 
-export type RateBinding = LaneBinding & { onApplyPreset: (id: SpeedPresetId) => void };
+export type RateBinding = LaneBinding & {
+  /** False while the clip has no known duration to stretch a preset over. */
+  canApplyPreset: boolean;
+  onApplyPreset: (id: SpeedPresetId) => void;
+};
 
 export interface VolumeAutomationBinding {
   volumeAutomated: boolean;
@@ -103,8 +107,10 @@ export function useVolumeAutomation(
     onCommitVolumeAt: volume.onCommitAt,
     rate: {
       ...rate,
-      onApplyPreset: (id) =>
-        write(withLane(automation, speedPresetLane(id, elDuration > 0 ? elDuration : 1))),
+      canApplyPreset: elDuration > 0,
+      onApplyPreset: (id) => {
+        if (elDuration > 0) write(withLane(automation, speedPresetLane(id, elDuration)));
+      },
     },
   };
 }

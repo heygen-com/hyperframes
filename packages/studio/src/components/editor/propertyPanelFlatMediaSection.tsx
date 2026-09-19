@@ -295,7 +295,7 @@ export function FlatMediaSection({
               onRemoveAutomation={rate ? () => rate.onRemoveAutomation() : undefined}
             />
           </div>
-          {rate && (
+          {rate?.canApplyPreset && (
             <FlatSelectRow
               label="Speed preset"
               value=""
