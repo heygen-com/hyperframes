@@ -29,12 +29,16 @@ export function sideMinimumWidth(dockWidth: number): number {
   return Math.min(MIN_SIDE_W, Math.max(MIN_SIDE_W_FLOOR, fair));
 }
 
+/** A group is a side group only if every tab is; a side panel tabbed into the preview keeps its floor. */
 function sideGroups(api: DockviewApi) {
   return api.groups.flatMap((group) => {
-    const zone = group.panels
-      .map((panel) => (isPanelId(panel.id) ? PANEL_DEFINITIONS[panel.id].zone : "center"))
-      .find((candidate) => candidate !== "center");
-    return zone ? [{ group, zone }] : [];
+    const zones = group.panels.map((panel) =>
+      isPanelId(panel.id) ? PANEL_DEFINITIONS[panel.id].zone : "center",
+    );
+    const zone = zones[0];
+    return zone && zone !== "center" && zones.every((candidate) => candidate !== "center")
+      ? [{ group, zone }]
+      : [];
   });
 }
 

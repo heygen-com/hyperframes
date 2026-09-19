@@ -136,6 +136,7 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
 
   const onReady = useCallback(
     ({ api }: DockviewReadyEvent) => {
+      disposeRef.current();
       restoreOrBuild(api, projectId);
       applySideMinimums(api);
       const root = api.groups[0]?.element.closest<HTMLElement>(".hf-dock");
@@ -164,6 +165,10 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       };
       const subscriptions = [
         api.onDidAddPanel(() => {
+          applySideMinimums(api);
+          onDockChange();
+        }),
+        api.onDidMovePanel(() => {
           applySideMinimums(api);
           onDockChange();
         }),

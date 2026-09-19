@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as dockLayout from "./dockLayout";
 import { Dock } from "./Dock";
 import { parseDockLayout } from "./dockLayoutSchema";
 import { useDockLayoutStore } from "./dockLayoutStore";
@@ -11,12 +12,22 @@ import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const resizeCallbacks: Array<() => void> = [];
 class ResizeObserverStub {
+  constructor(callback: () => void) {
+    resizeCallbacks.push(callback);
+  }
   observe() {}
   unobserve() {}
   disconnect() {}
 }
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+
+vi.mock("./dockLayout", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./dockLayout")>();
+  return { ...actual, applySideMinimums: vi.fn(actual.applySideMinimums) };
+});
+const applySideMinimums = vi.mocked(dockLayout.applySideMinimums);
 
 let root: Root | null = null;
 
@@ -154,6 +165,28 @@ describe("Dock on React 19", () => {
     );
     const host = mount("p1");
     expect(host.querySelector('[data-testid="content-preview"]')).not.toBeNull();
+  });
+});
+
+describe("Dock wiring", () => {
+  it("makes the sashes keyboard-focusable separators", () => {
+    const host = mount(null);
+    const sashes = host.querySelectorAll<HTMLElement>('.dv-sash[role="separator"]');
+    expect(sashes.length).toBeGreaterThan(0);
+    for (const sash of sashes) expect(sash.tabIndex).toBe(0);
+  });
+
+  it("re-fits the side columns to the window width when it resizes", () => {
+    mount(null);
+    const innerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { value: 560, configurable: true });
+    try {
+      applySideMinimums.mockClear();
+      act(() => resizeCallbacks.forEach((callback) => callback()));
+      expect(applySideMinimums).toHaveBeenCalledWith(expect.anything(), 560);
+    } finally {
+      Object.defineProperty(window, "innerWidth", { value: innerWidth, configurable: true });
+    }
   });
 });
 

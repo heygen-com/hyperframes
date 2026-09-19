@@ -87,4 +87,16 @@ describe("applySideMinimums", () => {
     applySideMinimums(api, 1200);
     expect(api.getPanel("compositions")?.group.width).toBe(300);
   });
+
+  it("keeps the preview's floor when a side panel is tabbed into the preview group", () => {
+    api.layout(1200, 700);
+    buildEditLayout(api, 1200);
+    const preview = api.getPanel("preview");
+    const design = api.getPanel("design");
+    if (!preview || !design) throw new Error("default layout is missing panels");
+    design.api.moveTo({ group: preview.group, position: "center", index: 0 });
+    preview.api.setActive();
+    applySideMinimums(api, 560);
+    expect(preview.group.minimumWidth).toBe(360);
+  });
 });
