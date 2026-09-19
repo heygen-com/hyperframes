@@ -345,7 +345,7 @@ describe("tile reveal", () => {
       source.indexOf("player.setAttribute('srcdoc'"),
     );
     assert.match(handler, /revealWhenPainted\(/);
-    assert.doesNotMatch(handler.split("revealWhenPainted")[0], /dataset\.ready = 'true'/);
+    assert.doesNotMatch(handler.split("revealWhenPainted")[0] ?? "", /dataset\.ready = 'true'/);
   });
 });
 
