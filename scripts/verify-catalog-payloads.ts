@@ -67,7 +67,7 @@ function payloadFiles(
 
 /** What a WebGPU piece reports in a browser with no adapter (frost: "no WebGPU adapter", liquid glass: "WebGPU not available"). */
 export const MISSING_ADAPTER =
-  /no WebGPU adapter|WebGPU (is )?(not available|unavailable|not supported)|failed to request .*adapter/i;
+  /no WebGPU adapter|WebGPU (is )?(not available|unavailable|not supported)|failed to request (a )?(webgpu )?adapter\b(?! info)/i;
 
 /** Whether the item's manifest declares the "webgpu" tag, the one owner of "needs a WebGPU adapter". */
 export function declaresWebgpu(kindDir: string, item: string): boolean {
