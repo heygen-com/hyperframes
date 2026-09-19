@@ -1,7 +1,6 @@
 /**
- * Tooltip — Base UI's tooltip wearing Studio's tokens, same props as before.
- * The trigger is a `display: contents` wrapper (no layout box) so a disabled
- * control still gets hover; the bubble anchors to the child, which has the box.
+ * Tooltip: Base UI's tooltip in Studio tokens. The trigger is a box-less
+ * `display: contents` wrapper so a disabled control still gets hover.
  */
 
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
