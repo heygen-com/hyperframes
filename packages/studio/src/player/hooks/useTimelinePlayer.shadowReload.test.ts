@@ -268,6 +268,27 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  it("keeps a slow shadow pending past 5s and fails it only at the single budget", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const silent = makeFakeIframe({});
+    act(() => {
+      getApi().setShadowIframeNode(silent);
+      getApi().onShadowIframeLoad(gen);
+    });
+
+    act(() => void vi.advanceTimersByTime(5001));
+    expect(getApi().previewSlots).toHaveLength(2);
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS));
+    expect(getApi().previewSlots).toEqual([{ gen: 0, role: "live" }]);
+    expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    unmount(root);
+  });
+
   it("drops a shadow whose document reports an error and reports the cause", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();

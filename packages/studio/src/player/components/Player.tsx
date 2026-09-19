@@ -167,6 +167,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const [assetWaitLong, setAssetWaitLong] = useState(false);
     const [shaderTransitionLoading, setShaderTransitionLoading] = useState(false);
     const [compositionLoading, setCompositionLoading] = useState(true);
+    const [painted, setPainted] = useState(false);
     const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
     const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -221,6 +222,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setPreviewError(null);
           setCompositionLoading(false);
         };
+        const handlePainted = () => setPainted(true);
         const handleError = (event: Event) => {
           const message = readPreviewErrorMessage(event);
           onPreviewErrorRef.current?.(message);
@@ -233,6 +235,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setPreviewError(null);
           setShaderTransitionLoading(false);
           setCompositionLoading(true);
+          setPainted(false);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");
@@ -291,6 +294,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("click", preventToggle, { capture: true });
         player.addEventListener("shadertransitionstate", handleShaderTransitionState);
         player.addEventListener("ready", handleReady);
+        player.addEventListener("painted", handlePainted);
         player.addEventListener("error", handleError);
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
@@ -330,6 +334,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("click", preventToggle, { capture: true });
           player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
           player.removeEventListener("ready", handleReady);
+          player.removeEventListener("painted", handlePainted);
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
@@ -412,8 +417,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     };
 
     const readyToShow =
-      loaded && !compositionLoading && !shaderTransitionLoading && !assetsLoading && !previewError;
-    // Two frames of grace so a loader that is about to raise again cannot slip through.
+      loaded &&
+      painted &&
+      !compositionLoading &&
+      !shaderTransitionLoading &&
+      !assetsLoading &&
+      !previewError;
+    // `painted` means the player's own loader has finished fading; two frames of grace on top.
     useEffect(() => {
       if (!readyToShow) {
         onReadyToShowChangeRef.current?.(false);

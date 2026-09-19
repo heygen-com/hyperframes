@@ -14,7 +14,8 @@ import {
 } from "./useTimelineSyncCallbacks";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 
-// The Player caps its own asset wait at 10s; leave room for the load and shader loader on top.
+// The single wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
+// leaves about 6.5s for the document load and runtime boot. Nothing shorter may fail the swap.
 export const SHADOW_READY_TIMEOUT_MS = 15_000;
 
 type UseShadowPreviewReloadParams = Omit<
@@ -110,12 +111,6 @@ export function useShadowPreviewReload({
     },
     [promoteWhenReady],
   );
-  const onAdapterTimeout = useCallback(
-    (gen?: number) => {
-      if (gen != null) failShadow(gen, "the new document never became ready");
-    },
-    [failShadow],
-  );
 
   const { onIframeLoad: onShadowIframeLoad, cancelPendingLoad } = useTimelineSyncCallbacks({
     iframeRef: shadowIframeRef,
@@ -133,7 +128,6 @@ export function useShadowPreviewReload({
     applyPreviewAudioState: () => {},
     onAdapterReady: markAdapterReady,
     isCurrent: isCurrentShadow,
-    onLoadGiveUp: onAdapterTimeout,
   });
   cancelPendingLoadRef.current = cancelPendingLoad;
 

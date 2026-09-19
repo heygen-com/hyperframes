@@ -29,6 +29,7 @@ export interface NLEContextValue {
   onShadowError: (gen: number, message: string) => void;
   setShadowIframeNode: (node: HTMLIFrameElement | null) => void;
   resetPreviewSlots: () => void;
+  containerRef: React.MutableRefObject<HTMLDivElement | null>;
   // composition stack (from useCompositionStack)
   compositionStack: CompositionLevel[];
   updateCompositionStack: React.Dispatch<React.SetStateAction<CompositionLevel[]>>;
@@ -80,6 +81,7 @@ export function NLEProvider({
   children,
 }: NLEProviderProps) {
   const shadowPromotedRef = useRef<() => void>(() => {});
+  const containerRef = useRef<HTMLDivElement>(null);
   const {
     iframeRef,
     togglePlay,
@@ -296,6 +298,7 @@ export function NLEProvider({
   const value: NLEContextValue = {
     projectId,
     iframeRef,
+    containerRef,
     togglePlay,
     seek,
     refreshPlayer,

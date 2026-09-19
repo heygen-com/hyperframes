@@ -134,6 +134,7 @@ describe("preview errors", () => {
       "player:click",
       "player:shadertransitionstate",
       "player:ready",
+      "player:painted",
       "player:error",
     ]) {
       expect(lifecycleLog.indexOf(listener)).toBeGreaterThan(-1);
@@ -206,6 +207,30 @@ describe("ready to show", () => {
       );
     });
 
+  const painted = (player: TestHyperframesPlayer) =>
+    act(() => void player.dispatchEvent(new Event("painted")));
+
+  it("promotes only once the player reports painted, not at ready or assetsready", async () => {
+    const onReadyToShowChange = vi.fn();
+    const { player } = await mountPlayer({ onReadyToShowChange });
+    const el = player as TestHyperframesPlayer;
+
+    loadAndReady(el);
+    await twoFrames();
+    expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
+
+    act(() => void el.dispatchEvent(new Event("assetsready")));
+    await twoFrames();
+    expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
+
+    painted(el);
+    await twoFrames();
+    expect(onReadyToShowChange).toHaveBeenLastCalledWith(true);
+
+    act(() => void el.iframeElement.dispatchEvent(new Event("load")));
+    expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("holds while the shader transition loader is up and fires once it clears", async () => {
     const onReadyToShowChange = vi.fn();
     const { player } = await mountPlayer({ onReadyToShowChange });
@@ -218,6 +243,7 @@ describe("ready to show", () => {
     expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
 
     shaderState(el, false);
+    painted(el);
     await twoFrames();
     expect(onReadyToShowChange).toHaveBeenLastCalledWith(true);
 
