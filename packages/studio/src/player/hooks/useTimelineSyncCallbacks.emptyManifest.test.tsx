@@ -9,7 +9,7 @@ import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("processTimelineMessage with an empty manifest", () => {
-  it("commits zero rows so the previous rows do not linger", () => {
+  it("commits zero rows without adopting the runtime 1s floor as the duration", () => {
     const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
     let processTimelineMessage: ReturnType<
       typeof useTimelineSyncCallbacks
@@ -34,7 +34,7 @@ describe("processTimelineMessage with an empty manifest", () => {
     const host = document.createElement("div");
     act(() => createRoot(host).render(<Harness />));
 
-    processTimelineMessage!({ clips: [], durationInFrames: 0 });
+    processTimelineMessage!({ clips: [], durationInFrames: 30 });
 
     expect(sync).toHaveBeenCalledWith([], undefined);
   });

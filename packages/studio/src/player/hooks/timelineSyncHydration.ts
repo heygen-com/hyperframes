@@ -241,14 +241,14 @@ export function buildTimelineElementsFromClips(
  * straddle it. A non-positive duration means "not known yet" — pass through
  * untouched rather than clamping everything to nothing.
  */
-/** Commits the manifest's elements, including none: a composition with no rows must clear the store. */
+/** Commits the manifest elements, including none. An empty manifest carries a 1s floor, not a duration. */
 export function syncManifestTimeline(
   els: readonly TimelineElement[],
   manifestDuration: number,
   storeDuration: number,
   sync: (els: TimelineElement[], duration?: number) => void,
 ): void {
-  const hasDuration = manifestDuration > 0;
+  const hasDuration = manifestDuration > 0 && els.length > 0;
   sync(
     clampElementsToDuration(els, hasDuration ? manifestDuration : storeDuration),
     hasDuration ? manifestDuration : undefined,
