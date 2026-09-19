@@ -5,7 +5,7 @@
  */
 
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import { cloneElement, useId, useState, type ReactElement } from "react";
+import { cloneElement, useId, useRef, useState, type ReactElement } from "react";
 
 interface TooltipProps {
   label: string;
@@ -22,19 +22,19 @@ const VIEWPORT_MARGIN = 8;
 
 export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipProps) {
   const [open, setOpen] = useState(false);
-  const [box, setBox] = useState<HTMLElement | null>(null);
+  const boxRef = useRef<HTMLSpanElement>(null);
   const tooltipId = useId();
 
   return (
     <BaseTooltip.Root open={open} onOpenChange={setOpen}>
-      <BaseTooltip.Trigger delay={delay} render={<span ref={setBox} className="contents" />}>
+      <BaseTooltip.Trigger delay={delay} render={<span ref={boxRef} className="contents" />}>
         {cloneElement(children, {
           "aria-describedby": open ? tooltipId : children.props["aria-describedby"],
         })}
       </BaseTooltip.Trigger>
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner
-          anchor={() => box?.firstElementChild ?? null}
+          anchor={() => boxRef.current?.firstElementChild ?? null}
           side={side}
           sideOffset={SIDE_OFFSET}
           collisionPadding={VIEWPORT_MARGIN}
