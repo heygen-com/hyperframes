@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import {
+  blocking,
+  isFork,
   attachCommand,
   downloadAsset,
   duplicateCaptureProblems,
@@ -340,7 +342,7 @@ test("downloadAsset does not retry a 404 or 403", async () => {
 const redirect = (location) => ({ ok: false, status: 302, headers: new Headers({ location }) });
 
 test("downloadAsset follows a redirect to signed storage but not to another host", async () => {
-  const signed = "https://github-production-user-asset.s3.amazonaws.com/1/clip.mp4?X-Amz=1";
+  const signed = "https://github-production-user-asset-6210df.s3.amazonaws.com/1/clip.mp4?X-Amz=1";
   const seen = [];
   const viaS3 = async (url) => (seen.push(url), url === OLD ? redirect(signed) : ok());
   assert.equal((await downloadAsset(OLD, viaS3, noSleep)).toString(), "x");
@@ -381,4 +383,55 @@ test("the duplicate check is skipped when the PR touches neither package", () =>
     env: { ...process.env, PR_BODY: body },
   });
   assert.equal(result.status, 0, result.stderr);
+});
+
+test("a redirect to another S3 bucket is refused, GitHub's asset bucket is not", async () => {
+  const other = "https://attacker-bucket.s3.amazonaws.com/x.mp4";
+  await assert.rejects(
+    downloadAsset(OLD, async () => redirect(other), noSleep),
+    /not a GitHub asset host/,
+  );
+  const lookalike = "https://github-production-user-asset-1.s3.amazonaws.com.evil.example/x";
+  await assert.rejects(
+    downloadAsset(OLD, async () => redirect(lookalike), noSleep),
+    /not a GitHub asset host/,
+  );
+});
+
+const streamOf = (...sizes) => ({
+  ok: true,
+  status: 200,
+  body: new ReadableStream({
+    start(controller) {
+      for (const size of sizes) controller.enqueue(new Uint8Array(size));
+      controller.close();
+    },
+  }),
+});
+const MB = 1024 * 1024;
+
+test("downloadAsset refuses one asset over the per-asset cap", async () => {
+  await assert.rejects(
+    downloadAsset(OLD, async () => streamOf(60 * MB, 60 * MB), noSleep),
+    /larger than/,
+  );
+});
+
+test("downloadAsset refuses once the shared budget is spent, across assets", async () => {
+  const budget = { left: 150 * MB };
+  const get = async () => streamOf(90 * MB);
+  await downloadAsset(OLD, get, noSleep, budget);
+  await assert.rejects(downloadAsset(NEW, get, noSleep, budget), /together exceed/);
+});
+
+test("an unreadable capture blocks a same-repo PR but is skipped on a fork", () => {
+  const same = { HEAD_REPO: "a/r", BASE_REPO: "a/r" };
+  const fork = { HEAD_REPO: "someone/r", BASE_REPO: "a/r" };
+  assert.equal(isFork(same), false);
+  assert.equal(isFork(fork), true);
+  assert.equal(isFork({}), false);
+  assert.equal(isFork({ BASE_REPO: "a/r" }), false);
+  assert.equal(blocking(["x"], [], same), true);
+  assert.equal(blocking(["x"], [], fork), false);
+  assert.equal(blocking([], ["dup"], fork), true);
 });

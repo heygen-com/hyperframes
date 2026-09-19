@@ -196,8 +196,11 @@ const DOWNLOAD_TIMEOUT_MS = 30_000;
 const RETRY_DELAYS_MS = [1000, 3000];
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-/** An attachment redirects from github.com to signed storage; a redirect anywhere else is not followed. */
-const TRUSTED_REDIRECT_HOST = /(^|\.)(github\.com|githubusercontent\.com|amazonaws\.com)$/;
+const MAX_ASSET_BYTES = 100 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 300 * 1024 * 1024;
+/** An attachment redirects to GitHub's own signed-storage bucket; a redirect anywhere else is not followed. */
+const TRUSTED_REDIRECT_HOST =
+  /^(([a-z0-9-]+\.)*(github\.com|githubusercontent\.com)|github-production-[a-z0-9-]+-asset-[a-z0-9]+\.s3\.amazonaws\.com)$/;
 
 class NonRetryable extends Error {}
 
@@ -219,17 +222,47 @@ async function fetchTrusted(url, fetchImpl) {
   throw new NonRetryable("too many redirects");
 }
 
+/** The body, refusing once this asset or the shared budget of the whole check runs out of bytes. */
+async function readCapped(response, budget) {
+  const chunks = [];
+  let size = 0;
+  const take = (chunk) => {
+    size += chunk.byteLength;
+    budget.left -= chunk.byteLength;
+    if (size > MAX_ASSET_BYTES) throw new NonRetryable(`larger than ${MAX_ASSET_BYTES} bytes`);
+    if (budget.left < 0)
+      throw new NonRetryable(`captures together exceed ${MAX_TOTAL_BYTES} bytes`);
+    chunks.push(Buffer.from(chunk));
+  };
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    try {
+      for (let part = await reader.read(); !part.done; part = await reader.read()) take(part.value);
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+  } else {
+    take(await response.arrayBuffer());
+  }
+  return Buffer.concat(chunks);
+}
+
 const isRetryableStatus = (status) => status === 429 || status >= 500;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The bytes behind a capture URL; a 429, 5xx or network error is retried with backoff, any other status is final. */
-export async function downloadAsset(url, fetchImpl = fetch, sleep = pause) {
+export async function downloadAsset(
+  url,
+  fetchImpl = fetch,
+  sleep = pause,
+  budget = { left: MAX_TOTAL_BYTES },
+) {
   let failure;
   for (let attempt = 0; attempt < DOWNLOAD_ATTEMPTS; attempt++) {
     if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
     try {
       const response = await fetchTrusted(url, fetchImpl);
-      if (response.ok) return Buffer.from(await response.arrayBuffer());
+      if (response.ok) return await readCapped(response, budget);
       failure = new Error(`HTTP ${response.status}`);
       if (!isRetryableStatus(response.status)) throw failure;
     } catch (error) {
@@ -266,7 +299,9 @@ async function hashCaptures(name, section, download) {
 }
 
 /** Every After asset must differ by content hash from every Before asset; an unreadable download is a problem. */
-export async function duplicateCaptureProblems(body, download = downloadAsset) {
+export async function duplicateCaptureProblems(body, download) {
+  const budget = { left: MAX_TOTAL_BYTES };
+  download ??= (url) => downloadAsset(url, fetch, pause, budget);
   const sections = parseSections(body);
   const before = findSection(sections, "before");
   const after = findSection(sections, "after");
@@ -323,6 +358,11 @@ function printFailure(problems, prNumber) {
   );
 }
 
+/** A fork's PR runs without secrets, so an unreadable capture there is skipped, never failed. */
+export const isFork = (env) => Boolean(env.HEAD_REPO) && env.HEAD_REPO !== env.BASE_REPO;
+export const blocking = (unreadable, identical, env) =>
+  identical.length > 0 || (unreadable.length > 0 && !isFork(env));
+
 async function main() {
   const args = process.argv.slice(2);
   const numstat = readNumstat(flag(args, "--base", "origin/main"), flag(args, "--head", "HEAD"));
@@ -335,7 +375,11 @@ async function main() {
   }
   const none = { unreadable: [], identical: [] };
   const { unreadable, identical } = files.length > 0 ? await duplicateCaptureProblems(body) : none;
-  if (unreadable.length > 0) {
+  if (unreadable.length > 0 && isFork(process.env)) {
+    console.log("Skipped the duplicate-capture comparison: this PR is from a fork and a capture");
+    console.log("could not be downloaded without a token, which a fork cannot have.");
+    for (const problem of unreadable) console.log(`  - ${problem}`);
+  } else if (unreadable.length > 0) {
     console.error("A capture could not be downloaded to compare:");
     for (const problem of unreadable) console.error(`  - ${problem}`);
   }
@@ -344,7 +388,7 @@ async function main() {
     for (const problem of identical) console.error(`  - ${problem}`);
     console.error("Re-attach the real After recording; a Before clip under After proves nothing.");
   }
-  if (unreadable.length + identical.length > 0) process.exit(1);
+  if (blocking(unreadable, identical, process.env)) process.exit(1);
   console.log("packages/studio and packages/player: captures present, or nothing to show.");
 }
 
