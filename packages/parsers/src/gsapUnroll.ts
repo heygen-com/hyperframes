@@ -15,6 +15,7 @@
  * inside other helpers) are left as-is rather than guessed at.
  */
 import * as acorn from "acorn";
+import * as acornWalk from "acorn-walk";
 import MagicString from "magic-string";
 import type { GsapAnimation } from "./gsapSerialize.js";
 import { serializeValue as valueToCode, safeJsKey as safeKey } from "./gsapSerialize.js";
@@ -153,11 +154,11 @@ const EFFECT_NODES = new Set([
 ]);
 
 function containsEffect(node: Node): boolean {
-  if (!node || typeof node !== "object") return false;
-  if (EFFECT_NODES.has(node.type)) return true;
-  return Object.values(node).some((child) =>
-    Array.isArray(child) ? child.some(containsEffect) : containsEffect(child),
-  );
+  let hit = false;
+  acornWalk.full(node, (n: Node) => {
+    if (EFFECT_NODES.has(n.type)) hit = true;
+  });
+  return hit;
 }
 
 /** True for a chain like `tl.to(...).from(...)` where every link is a tween method with effect-free arguments. */
