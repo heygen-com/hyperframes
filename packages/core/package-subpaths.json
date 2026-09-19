@@ -248,6 +248,12 @@
       "types": "./dist/runtime/protocol.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/clip-window": {
+      "source": "./src/runtime/clipWindow.ts",
+      "runtime": "./dist/runtime/clipWindow.js",
+      "types": "./dist/runtime/clipWindow.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/stacking-context": {
       "source": "./src/runtime/stackingContext.ts",
       "runtime": "./dist/runtime/stackingContext.js",
