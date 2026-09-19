@@ -97,6 +97,12 @@ describe("media_missing_duration", () => {
   });
 });
 
+describe("static media", () => {
+  it("does not flag a bare img with no timing attributes", async () => {
+    expect(has(await codes('<img src="bg.svg" alt="" />'), "media_missing_duration")).toBe(false);
+  });
+});
+
 describe("caption rules", () => {
   const cap = (extra: string) =>
     `<div data-composition-src="compositions/captions.html" data-start="0" data-duration="5" ${extra}></div>`;

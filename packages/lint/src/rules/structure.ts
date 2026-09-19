@@ -120,8 +120,13 @@ function nestedStructureFindings(rows: TagNode[], severity: Severity): Hyperfram
 }
 
 function missingDurationFindings(rows: TagNode[], severity: Severity): HyperframeLintFinding[] {
+  // A bare media element with no timing is a static layer, not a timeline clip.
+  const intendedClip = (row: TagNode) =>
+    !MEDIA_TAGS.has(row.tag) ||
+    row.attrs["data-start"] !== undefined ||
+    row.attrs["data-track-index"] !== undefined;
   return rows
-    .filter((row) => row.attrs["data-duration"] === undefined)
+    .filter((row) => row.attrs["data-duration"] === undefined && intendedClip(row))
     .map((row) => {
       const isMedia = MEDIA_TAGS.has(row.tag);
       return {
