@@ -1,0 +1,348 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"headline","type":"string","label":"Headline","default":"Designed in glass","maxLength":40},{"id":"tileCount","type":"number","label":"Tiles","default":8,"min":1,"max":400,"step":1},{"id":"roundness","type":"number","label":"Roundness (0-1)","default":0.4,"min":0,"max":1,"step":0.01},{"id":"bevel","type":"number","label":"Bevel (0-1)","default":0.35,"min":0,"max":1,"step":0.01},{"id":"meshSmooth","type":"number","label":"Surface smoothness (0-1)","default":0.6,"min":0,"max":1,"step":0.01},{"id":"flyInTime","type":"number","label":"Fly-in time (s)","default":2.3,"min":0.2,"max":6,"step":0.05},{"id":"flyOutTime","type":"number","label":"Fly-out time (s)","default":2.4,"min":0.2,"max":6,"step":0.05},{"id":"stagger","type":"number","label":"Stagger (0-1)","default":0.27,"min":0,"max":1,"step":0.01},{"id":"flyInRotation","type":"number","label":"Fly-in rotation (0-60)","description":"Amount of inbound tumbling over the entire flight. 0 disables flight rotation; final orientation lands with each shard position.","default":5,"min":0,"max":60,"step":0.1},{"id":"flyOutRotation","type":"number","label":"Fly-out rotation (0-6)","default":6,"min":0,"max":6,"step":0.1},{"id":"chaos","type":"number","label":"Outline chaos (0-1)","default":0.25,"min":0,"max":1,"step":0.01},{"id":"padding","type":"number","label":"Edge padding (0-1)","default":1,"min":0,"max":1,"step":0.01},{"id":"sizeVariance","type":"number","label":"Size variance (0-1)","default":0.35,"min":0,"max":1,"step":0.01},{"id":"gap","type":"number","label":"Tile gap","default":0.03,"min":0,"max":0.3,"step":0.002},{"id":"easePow","type":"number","label":"Fly-in position ease (1-10)","description":"Shapes lateral and depth travel. Rotation uses the same staggered flight window with a gentle settle through arrival.","default":10,"min":1,"max":10,"step":0.1},{"id":"sideDist","type":"number","label":"Side fly distance","default":3,"min":0,"max":60,"step":0.5},{"id":"zDist","type":"number","label":"Z fly-from (negative)","default":-42,"min":-400,"max":0,"step":2},{"id":"zOut","type":"number","label":"Z fly-out to (+ = past camera)","default":14,"min":-400,"max":60,"step":2},{"id":"fog","type":"number","label":"Fog distance (0 = off)","default":36,"min":0,"max":400,"step":2}]'
+>
+  <head>
+    <script>
+      /* ?play standalone mode only: this file lives in compositions/ but its
+         asset paths are project-root-relative (they resolve there when the
+         runtime inlines it into the host). Never runs for Studio/render. */
+      if (new URLSearchParams(location.search).has("play")) document.write('<base href="../">');
+    </script>
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Glass Shard Title</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-delaunay@6.0.4/dist/d3-delaunay.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("assets/fonts/Geist-Regular.ttf") format("truetype");
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Geist";
+        src: url("assets/fonts/Geist-SemiBold.ttf") format("truetype");
+        font-weight: 600;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Geist";
+        src: url("assets/fonts/Geist-Bold.ttf") format("truetype");
+        font-weight: 700;
+        font-style: normal;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0a0f;
+      }
+      body {
+        font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+      }
+      #gst-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0a0f; /* flat — no gradients, no glow */
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      #gst-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #gst-fontload {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-51pv"
+      id="gst-root"
+      data-composition-id="glass-shard-title"
+      data-start="0"
+      data-duration="12.16"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        data-hf-id="hf-lsju"
+        id="gst-canvas-clip"
+        class="clip"
+        data-start="0"
+        data-duration="12.16"
+        data-track-index="1"
+        data-media-start="0"
+      ></div>
+      <div
+        data-hf-id="hf-uo1i"
+        id="gst-fontload"
+        aria-hidden="true"
+        data-start="0"
+        data-duration="12.16"
+        data-media-start="0"
+      >
+        <span data-hf-id="hf-kqtg" style="font-weight: 400">Aa</span
+        ><span data-hf-id="hf-7bxm" style="font-weight: 600">Aa</span>
+      </div>
+    </div>
+
+    <script>
+      /* ================================================================
+         glass-shard-title — iridescent glass shards fly in from the left
+         and right edges, assemble into the headline, idle with a slight
+         rotation, then fly back out and leave the frame empty.
+
+         The ONLY content is the headline. Flat dark background.
+
+         Seek-safety: the timeline drives two master progresses (tin, tout)
+         plus the material resolve; every per-shard position/rotation is a
+         pure function of those masters and st.time. No rAF, no
+         integrators, no Math.random(). Shard layout is seeded and built
+         after fonts load (cell selection samples the rasterised text).
+         ================================================================ */
+      window.__timelines = window.__timelines || {};
+      /* Studio's variables/SDK parser fails on any composition with a <canvas>
+         in its MARKUP (verified by bisection) — so the canvas is created at
+         runtime instead. Identical for preview/render; invisible to the parser.
+
+         Guarded: if this script is evaluated twice in one document a second
+         <canvas id="gst-canvas"> would be appended, getElementById would keep
+         returning the FIRST one, and the second three.js renderer would be
+         built on a canvas that already owns a live WebGL context. */
+      (function () {
+        if (document.getElementById("gst-canvas")) return;
+        var c = document.createElement("canvas");
+        c.id = "gst-canvas";
+        c.width = 1920;
+        c.height = 1080;
+        document.getElementById("gst-canvas-clip").appendChild(c);
+      })();
+
+      window.gstMulberry32 = gstMulberry32;
+      function gstMulberry32(seed) {
+        return function () {
+          var s = (seed = (seed + 0x6d2b79f5) | 0);
+          var t = Math.imul(s ^ (s >>> 15), 1 | s);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      (function () {
+        var DUR = 9;
+
+        /* ---- Studio variables ---- */
+        var vars = {
+          headline: "Designed in glass",
+          tileCount: 8,
+          roundness: 0.4,
+          bevel: 0.35,
+          meshSmooth: 0.6,
+          flyInTime: 2.3,
+          flyOutTime: 2.4,
+          stagger: 0.27,
+          flyInRotation: 5,
+          flyOutRotation: 6,
+          chaos: 0.25,
+          padding: 1,
+          sizeVariance: 0.35,
+          gap: 0.03,
+          easePow: 10,
+          sideDist: 3,
+          zDist: -42,
+          zOut: 14,
+          fog: 36,
+        };
+        try {
+          if (window.__hyperframes && window.__hyperframes.getVariables) {
+            var v = window.__hyperframes.getVariables() || {};
+            if (v.headline) vars.headline = String(v.headline);
+            if (v.title) vars.headline = String(v.title); /* legacy id */
+            if (v.tileCount !== undefined && isFinite(Number(v.tileCount)))
+              vars.tileCount = Number(v.tileCount);
+            if (v.roundness !== undefined && isFinite(Number(v.roundness)))
+              vars.roundness = Number(v.roundness);
+            if (v.bevel !== undefined && isFinite(Number(v.bevel))) vars.bevel = Number(v.bevel);
+            if (v.meshSmooth !== undefined && isFinite(Number(v.meshSmooth)))
+              vars.meshSmooth = Number(v.meshSmooth);
+            if (v.flyInTime !== undefined && isFinite(Number(v.flyInTime)))
+              vars.flyInTime = Number(v.flyInTime);
+            if (v.flyOutTime !== undefined && isFinite(Number(v.flyOutTime)))
+              vars.flyOutTime = Number(v.flyOutTime);
+            if (v.stagger !== undefined && isFinite(Number(v.stagger)))
+              vars.stagger = Number(v.stagger);
+            /* Legacy callers may still provide spin. New controls override it
+               independently; the old multiplier/default keeps its meaning. */
+            if (v.spin !== undefined && isFinite(Number(v.spin))) {
+              vars.flyInRotation = vars.flyOutRotation = Math.max(0, Math.min(6, Number(v.spin)));
+            }
+            if (v.flyInRotation !== undefined && isFinite(Number(v.flyInRotation)))
+              vars.flyInRotation = Number(v.flyInRotation);
+            if (v.flyOutRotation !== undefined && isFinite(Number(v.flyOutRotation)))
+              vars.flyOutRotation = Number(v.flyOutRotation);
+            if (v.zOut !== undefined && isFinite(Number(v.zOut))) vars.zOut = Number(v.zOut);
+            if (v.chaos !== undefined && isFinite(Number(v.chaos))) vars.chaos = Number(v.chaos);
+            if (v.padding !== undefined && isFinite(Number(v.padding)))
+              vars.padding = Number(v.padding);
+            if (v.sizeVariance !== undefined && isFinite(Number(v.sizeVariance)))
+              vars.sizeVariance = Number(v.sizeVariance);
+            if (v.gap !== undefined && isFinite(Number(v.gap))) vars.gap = Number(v.gap);
+            if (v.easePow !== undefined && isFinite(Number(v.easePow)))
+              vars.easePow = Number(v.easePow);
+            if (v.sideDist !== undefined && isFinite(Number(v.sideDist)))
+              vars.sideDist = Number(v.sideDist);
+            if (v.zDist !== undefined && isFinite(Number(v.zDist))) vars.zDist = Number(v.zDist);
+            if (v.fog !== undefined && isFinite(Number(v.fog))) vars.fog = Number(v.fog);
+          }
+        } catch (e) {
+          /* keep defaults */
+        }
+        vars.tileCount = Math.max(1, Math.min(400, Math.round(vars.tileCount)));
+        vars.roundness = Math.max(0, Math.min(1, vars.roundness));
+        vars.bevel = Math.max(0, Math.min(1, vars.bevel));
+        vars.meshSmooth = Math.max(0, Math.min(1, vars.meshSmooth));
+        vars.flyInTime = Math.max(0.2, Math.min(6, vars.flyInTime));
+        vars.flyOutTime = Math.max(0.2, Math.min(6, vars.flyOutTime));
+        vars.stagger = Math.max(0, Math.min(1, vars.stagger));
+        vars.flyInRotation = Math.max(0, Math.min(60, vars.flyInRotation));
+        vars.flyOutRotation = Math.max(0, Math.min(6, vars.flyOutRotation));
+        vars.zOut = Math.max(-400, Math.min(60, vars.zOut));
+        vars.chaos = Math.max(0, Math.min(1, vars.chaos));
+        vars.padding = Math.max(0, Math.min(1, vars.padding));
+        vars.sizeVariance = Math.max(0, Math.min(1, vars.sizeVariance));
+        vars.gap = Math.max(0, Math.min(0.3, vars.gap));
+        vars.easePow = Math.max(1, Math.min(10, vars.easePow));
+        vars.sideDist = Math.max(0, Math.min(60, vars.sideDist));
+        /* zDist is a coordinate: accept "-200" style input, clamp behind pane. */
+        vars.zDist = Math.min(0, Math.max(-400, vars.zDist > 0 ? -vars.zDist : vars.zDist));
+        vars.fog = Math.max(0, Math.min(400, vars.fog));
+
+        /* ---- Phase windows (speed compresses fly phases, hold absorbs) ---- */
+        var IN_START = 0.12;
+        var OUT_END = DUR - 0.35;
+        /* Explicit flight durations; if in + out + a minimum hold exceed the
+           composition, both scale down proportionally. */
+        var MIN_HOLD = 0.5;
+        var avail = OUT_END - IN_START - MIN_HOLD;
+        var tIn = vars.flyInTime,
+          tOut = vars.flyOutTime;
+        if (tIn + tOut > avail) {
+          var k = avail / (tIn + tOut);
+          tIn *= k;
+          tOut *= k;
+        }
+        var IN_WINDOW = tIn;
+        var OUT_WINDOW = tOut;
+        var OUT_START = OUT_END - OUT_WINDOW;
+
+        /* Scripted state read by renderScene. */
+        var st = {
+          time: 0,
+          tin: 0 /* master fly-in progress 0..1 */,
+          tout: 0 /* master fly-out progress 0..1 */,
+          thickness: 0.5,
+          roughness: 0.07,
+          ior: 1.52,
+        };
+
+        window.__GST = { DUR: DUR, st: st, vars: vars };
+
+        /* ---- Timeline: paused, registered, hf-seek wired ---- */
+        var tl = gsap.timeline({ paused: true });
+        tl.eventCallback("onUpdate", function () {
+          if (window.__gstRender) window.__gstRender();
+        });
+        /* Studio's player seeks with GSAP events suppressed and dispatches an
+           hf-seek CustomEvent instead — re-sync and repaint so the stage follows. */
+        /* Exactly one listener and one live timeline per document. A second
+           evaluation of this script would otherwise stack another hf-seek
+           listener and leave the previous paused timeline registered, so every
+           seek would drive N timelines and repaint N times. Declared as a
+           named function (not an arrow) so the reference read back off window
+           is identical and removeEventListener actually matches. */
+        function gstOnSeek(event) {
+          var d = event && event.detail;
+          if (d && typeof d.time === "number")
+            tl.totalTime(Math.min(d.time, tl.totalDuration()), true);
+          var fn = tl.eventCallback("onUpdate");
+          if (fn) fn();
+        }
+        if (window.__gstSeekHandler) window.removeEventListener("hf-seek", window.__gstSeekHandler);
+        if (window.__gstTimeline && window.__gstTimeline !== tl) {
+          try {
+            window.__gstTimeline.kill();
+          } catch (e) {
+            /* best effort */
+          }
+        }
+        window.__gstSeekHandler = gstOnSeek;
+        window.__gstTimeline = tl;
+        window.addEventListener("hf-seek", gstOnSeek);
+        /* Release the listener and the timeline with the document. Skipped for
+           a bfcache'd page, which is coming back with this stage still live. */
+        window.addEventListener("pagehide", function (event) {
+          if (event && event.persisted === true) return;
+          window.removeEventListener("hf-seek", gstOnSeek);
+          window.__gstSeekHandler = null;
+          window.__gstTimeline = null;
+          try {
+            tl.kill();
+          } catch (e) {
+            /* best effort */
+          }
+        });
+
+        tl.to(st, { time: DUR, duration: DUR, ease: "none" }, 0);
+        tl.to(st, { tin: 1, duration: IN_WINDOW, ease: "none" }, IN_START);
+        tl.to(st, { tout: 1, duration: OUT_WINDOW, ease: "none" }, OUT_START);
+
+        /* Glass stays clear throughout. The old frosted->clear resolve made
+           still-flying shards transmit a BLURRED copy of the already-seated
+           text — the ghost headline — so it is gone. */
+
+        window.__timelines["glass-shard-title"] = tl;
+      })();
+    </script>
+
+    <script src="assets/glass-main.js"></script>
+    <script>
+      /* Standalone playback: open this file with ?play (add &loop to repeat).
+         Inert without the param — Studio and the renderer never add it, so
+         editing and deterministic renders are unaffected. */
+      (function () {
+        var q = new URLSearchParams(location.search);
+        if (!q.has("play")) return;
+        var tick = setInterval(function () {
+          var map = window.__timelines || {};
+          var ids = Object.keys(map);
+          if (!ids.length) return;
+          clearInterval(tick);
+          for (var i = 0; i < ids.length; i++) {
+            var tl = map[ids[i]];
+            if (q.has("loop")) tl.repeat(-1);
+            tl.play(0);
+          }
+        }, 100);
+      })();
+    </script>
+  </body>
+</html>

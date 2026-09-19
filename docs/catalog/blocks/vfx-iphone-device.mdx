@@ -1,29 +1,29 @@
 ---
 title: "iPhone & MacBook 3D Showcase"
 description: "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="vfx-iphone-device"
+  compositionSrc="compositions/vfx-iphone-device.html"
+  title="iPhone & MacBook 3D Showcase"
+  description="Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable."
+  variables={[]}
+  meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":849}}
+  attribution={{"path":"registry/blocks/vfx-iphone-device","tags":["html-in-canvas","3d","device","iphone","macbook","gltf"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/vfx-iphone-device/vfx-iphone-device.html"
+>
 
-<InstallCommand command="npx hyperframes add vfx-iphone-device" item="vfx-iphone-device" />
+<CatalogSlot slot="code">
 
-That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under `models/`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title="vfx-iphone-device.html">
-
-```html
+```html vfx-iphone-device.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -652,14 +652,31 @@ That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under
         if (ready === 2) onReady();
       });
 
+      function waitForPaint(canvas) {
+        return new Promise(function (resolvePaint) {
+          if (!canvas || typeof canvas.requestPaint !== "function") {
+            resolvePaint();
+            return;
+          }
+          var resolved = false;
+          function done() {
+            if (resolved) return;
+            resolved = true;
+            canvas.onpaint = null;
+            resolvePaint();
+          }
+          canvas.onpaint = done;
+          canvas.requestPaint();
+          setTimeout(done, 100);
+        });
+      }
+
       function onReady() {
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () {
-            paintReady = true;
-            captureScreens();
-            window.__timelines = window.__timelines || {};
-            window.__timelines["devices-canvas"] = tl;
-          });
+        Promise.all([waitForPaint(capPhoneCvs), waitForPaint(capLapCvs)]).then(function () {
+          paintReady = true;
+          captureScreens();
+          window.__timelines = window.__timelines || {};
+          window.__timelines["devices-canvas"] = tl;
         });
       }
 
@@ -858,15 +875,42 @@ That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add vfx-iphone-device" item="vfx-iphone-device" />
 
-```html
-<div data-composition-id="vfx-iphone-device" data-composition-src="compositions/vfx-iphone-device.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under `models/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
+
+## Add it to your video
+
+It runs for 15 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="vfx-iphone-device"
+  data-composition-src="compositions/vfx-iphone-device.html"
+  data-start="0"
+  data-duration="15"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -877,3 +921,7 @@ Tagged `html-in-canvas` `3d` `device` `iphone` `macbook` `gltf`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

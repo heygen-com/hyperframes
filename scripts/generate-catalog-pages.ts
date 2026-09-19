@@ -24,32 +24,16 @@ import {
   ITEM_TYPE_DIRS,
 } from "../packages/core/src/registry/types.js";
 import { withHostedDefaults } from "./registry-hosted-assets.ts";
+import { declaredVariables } from "./catalog/component-variables.ts";
+import { usesWebgpu } from "./docs-catalog-shared.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const registryDir = resolve(repoRoot, "registry");
 const docsDir = resolve(repoRoot, "docs");
+const rawSourceBase = "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
 const catalogImageBase = "https://static.heygen.ai/hyperframes-oss/docs/images/catalog";
 const payloadRoot = resolve(repoRoot, "docs/public/catalog");
-
-/**
- * The player is loaded from a CDN rather than bundled into the docs, on
- * `latest` rather than a pinned line.
- *
- * This used to derive the minor line from the player's own package.json, which
- * is correct only while every page is regenerated on the release that moves it.
- * That is not what happened: the pages sat on the previous minor after a bump,
- * so a shipped player fix reached npm and never reached the catalog, and
- * nothing surfaced it, because a page on an old player still renders. A version
- * that has to be carried in step across 175 generated pages and two hand
- * written snippets is a version that will be stale, and staleness here is
- * silent, which is the worst combination.
- *
- * `latest` costs the ability to hold the docs back from a bad player release.
- * That is a real cost, paid deliberately: the previous arrangement did not buy
- * that control either, it only delayed every good release too.
- */
-const playerVersionRange = "latest";
 
 /**
  * Render a JSX/MDX attribute as a plain double-quoted string.
@@ -91,47 +75,6 @@ function unsupportedFlag(kind: ItemKind, name: string): string | null {
   return payload.unsupported ?? null;
 }
 
-/**
- * A live preview: the real composition, running in the real player.
- *
- * The player is mounted inside the iframe rather than written into the page
- * because the docs renderer strips unknown custom elements from MDX, so a
- * `<hyperframes-player>` written here would never reach the DOM. Nothing
- * rewrites the inside of a `srcDoc` document, so it survives there.
- *
- * The composition arrives as JSON because the docs host publishes only JSON and
- * images out of `docs/public`; an `.html` payload 404s in production while its
- * page still serves, which is exactly how a previous attempt at this broke
- * every catalog preview at once.
- */
-function playerEmbed(kind: ItemKind, name: string, posterUrl: string | null | undefined): string {
-  const payloadUrl = `/public/catalog/${typeDir(kind)}/${name}.json`;
-  const poster = posterUrl ? `p.setAttribute("poster","${posterUrl}");` : "";
-  const bootstrap = [
-    '<!doctype html><html><head><meta charset="utf-8">',
-    "<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}",
-    "hyperframes-player{display:block;width:100%;height:100%}</style>",
-    `<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@${playerVersionRange}/dist/hyperframes-player.global.js"><\\/script>`,
-    "</head><body><script>",
-    `fetch("${payloadUrl}").then(function(r){return r.json()}).then(function(d){`,
-    'var p=document.createElement("hyperframes-player");',
-    'p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");',
-    'p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");',
-    poster,
-    "document.body.appendChild(p)});",
-    "<\\/script></body></html>",
-  ].join("");
-
-  return [
-    "<iframe",
-    '  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"',
-    `  ${mdxStringAttribute("title", `${name} preview`)}`,
-    '  loading="lazy"',
-    `  srcDoc={${"`"}${bootstrap}${"`"}}`,
-    "/>",
-  ].join("\n");
-}
-
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type ItemKind = "block" | "component";
@@ -139,6 +82,7 @@ type ItemKind = "block" | "component";
 interface SourceMetadata {
   authorUrl?: string;
   sourcePrompt?: string;
+  stability?: string;
 }
 
 interface TextureGroup {
@@ -837,128 +781,96 @@ function primarySource(
   return { path: file.path, source };
 }
 
-function generateSource(kind: ItemKind, manifest: RegistryItem): string[] {
-  const file = primarySource(kind, manifest);
-  if (!file) return [];
-
-  return [
-    "## Source",
-    "",
-    `<Accordion ${mdxStringAttribute("title", file.path)}>`,
-    "",
-    "```html",
-    file.source,
-    "```",
-    "",
-    "</Accordion>",
-    "",
-  ];
-}
-
 function itemVariables(manifest: RegistryItem): ItemVariable[] {
   const raw = (manifest as RegistryItem & { variables?: ItemVariable[] }).variables;
   return Array.isArray(raw) ? raw : [];
 }
 
-/**
- * Preview, paste-ready snippet and every control over both, as one component.
- *
- * This is what the static `## Variables` table and the `data-variable-values`
- * block below it used to be. The table could say `glow` accepts `none |
- * standard | strong` and could not show what any of them looked like; a reader
- * had to install the item to find out. Descriptions survive the move — they
- * sit under their own control instead of in a column.
- */
-function generateVariablesExplorer(
-  kind: ItemKind,
-  manifest: RegistryItem,
-  variables: ItemVariable[],
-  target: string,
-): string[] {
-  const open = [
-    "<VariablesExplorer",
-    `  previewSrc="/public/catalog/${typeDir(kind)}/${manifest.name}.json"`,
-    `  compositionId="${manifest.name}"`,
-    `  compositionSrc="${target}"`,
-    `  variables={${JSON.stringify(variables)}}`,
-  ];
-
-  // The source, as a real fence inside the component. It is static — a reader
-  // dragging a knob changes the mount snippet, never this — so it can be
-  // highlighted at build time by the same shiki pass that colours every other
-  // fence on the site, instead of being coloured by hand in the browser. MDX
-  // parses a fenced block in JSX children as markdown, provided it is set off
-  // by blank lines, and hands the compiled block down as `children`.
+/** The manifest's variables, else what the composition itself declares on its root. */
+function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[] {
+  const declared = itemVariables(manifest);
+  if (declared.length > 0) return declared;
   const file = primarySource(kind, manifest);
-  if (!file) return [...open, "/>", ""];
-
-  return [
-    ...open,
-    ">",
-    "",
-    "```html " + file.path,
-    file.source,
-    "```",
-    "",
-    "</VariablesExplorer>",
-    "",
-  ];
+  return file ? (declaredVariables(file.source) as ItemVariable[]) : [];
 }
 
-/** The one thing above the fold: a live player, a texture sheet or a recorded video. */
-function previewSection(
-  kind: ItemKind,
-  manifest: RegistryItem,
-  textureGroups: ReturnType<typeof textureGroupsFor>,
-): string[] {
-  if (textureGroups.length > 0) return generateTexturePreview(manifest, textureGroups);
+/** The catalog shelf an item sits on, one function for the nav and the page's category. */
+// fallow-ignore-next-line complexity
+function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
+  const tags = entry.tags;
+  // Declared membership beats every inferred rule below: `video-primitive` is
+  // the tag a human puts on an item to put it on the primitives shelf, and it
+  // must not be overridden by whatever else the item happens to be tagged.
+  if (tags.includes("video-primitive")) return "Motion Primitives";
+  // Same precedence rule: `3d-motion` is a declared shelf, checked before any
+  // inferred tag (e.g. `transition`, `carousel`) that a 3D-motion piece also carries.
+  if (tags[0] === "3d-motion") return "3D motion";
+  // Two-tag combos for specific grouping
+  if (tags.includes("transition") && tags.includes("shader")) return "Shader Transitions";
+  if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
+  if (tags.includes("captions")) return "Captions";
+  if (tags.includes("html-in-canvas")) return "HTML-in-Canvas";
+  // Code animations (morph, flight, diff, …) — keyed on the code-animation tag so
+  // they group separately from the static code-snippet themes.
+  if (tags.includes("code-animation")) return "Code Animations";
+  // Single-tag mapping
+  if (tags.includes("lower-third")) return "Lower Thirds";
+  if (tags.includes("social")) return "Social Overlays";
+  if (tags.includes("transition"))
+    return entry.type === "component" ? "Effects" : "CSS Transitions";
+  // The editor and terminal themes are 24 near-identical pages. Left in
+  // Showcases they were two thirds of it, and the handful of actual showcase
+  // scenes were unfindable underneath them.
+  if (entry.name.startsWith("code-snippet-")) return "Code Snippets";
+  // Keyed on the first tag so `screen-flow-carousel` (leads with `product-demo`) stays a showcase.
+  if (tags[0] === "carousel") return "Carousels";
+  if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
+  if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";
+  // Split what used to be one 267-item "Effects" list. Ordered most specific
+  // first: an item tagged both `camera` and `motion-primitive` is a camera
+  // move, which is the narrower and more useful shelf to find it on.
+  if (tags.includes("texture")) return "Texture";
+  if (tags.includes("camera") || tags.includes("3d")) return "Camera & 3D";
+  if (tags.includes("product-demo") || tags.includes("demonstrate") || tags.includes("pointers")) {
+    return "Product Demo";
+  }
+  if (
+    tags.includes("typography") ||
+    tags.includes("text-effects") ||
+    tags.includes("text") ||
+    tags.includes("caption-style")
+  ) {
+    return "Typography & Text";
+  }
+  if (tags.includes("motion-primitive")) return "Motion Scenes";
+  if (entry.type === "component") return "Effects";
+  // Remaining blocks
+  return "Blocks";
+}
 
+/** True when the live payload draws with WebGPU, so a browser without an adapter cannot play it. */
+function payloadUsesWebgpu(kind: ItemKind, name: string): boolean {
+  const { html } = JSON.parse(readFileSync(payloadPath(kind, name), "utf-8")) as { html?: string };
+  return usesWebgpu(html ?? "");
+}
+
+/** What the stage shows when the player cannot run the composition: a flag notice, or the recorded video. */
+export function stageProps(kind: ItemKind, manifest: RegistryItem): string[] {
+  if (hasPayload(kind, manifest.name)) {
+    // The recorded clip is the fallback for a browser with no WebGPU adapter.
+    if (!manifest.preview?.video || !payloadUsesWebgpu(kind, manifest.name)) return [];
+    return [...recordedProps(kind, manifest), "  webgpu"];
+  }
   const flag = unsupportedFlag(kind, manifest.name);
   // A recorded video still plays without the flag, so it wins over the notice.
-  if (flag && !manifest.preview?.video) {
-    return [
-      `<div className="w-full aspect-video rounded-xl border border-dashed flex items-center justify-center text-sm text-zinc-500">`,
-      `  Needs <code>chrome://flags/#${flag}</code> to render live`,
-      `</div>`,
-      "",
-    ];
-  }
+  if (flag && !manifest.preview?.video) return [`  needsFlag="${flag}"`];
+  return recordedProps(kind, manifest);
+}
 
-  // A built payload plays the real composition, and takes precedence over both
-  // iframe paths below. The variables explorer is parked rather than wired up:
-  // its preview document is an `.html` file the docs host does not publish, so
-  // it would show an empty frame in production. Reconnecting it to payloads is
-  // a follow-up. The machinery that fed it is gone rather than left uncalled:
-  // its whole job was writing preview documents the docs host discards, and it
-  // is recoverable from 3b53bfd2f when the explorer is rebuilt on payloads.
-  if (hasPayload(kind, manifest.name)) {
-    // An item that declares variables gets the panel, which mounts the same
-    // payload and re-mounts it as values change. Everything else gets the
-    // plain player.
-    // CDN defaults, not the local paths the manifest declares. The explorer
-    // posts every value to the preview frame on mount, including the untouched
-    // ones, so a local path here would override the payload's own default and
-    // ask the frame for a file that was deliberately never published.
-    const variables = withHostedDefaults(itemVariables(manifest), manifest);
-    if (variables.length > 0) {
-      const primaryTarget =
-        primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
-      return generateVariablesExplorer(kind, manifest, variables, primaryTarget);
-    }
-    return [playerEmbed(kind, manifest.name, catalogPreviewFor(kind, manifest)), ""];
-  }
-  // No demo.html to play, so fall back to the recorded video. Blocks are the
-  // population that lands here: 125 of 132 ship no demo.
+function recordedProps(kind: ItemKind, manifest: RegistryItem): string[] {
   const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
-  // Same source of truth as the index: a manifest that declares a preview
-  // without a poster has no .png, and asking for one is a 403 the browser
-  // fetches before the video.
   const posterUrl = catalogPreviewFor(kind, manifest);
-  const poster = posterUrl ? ` poster="${posterUrl}"` : "";
-  return [
-    `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4"${poster} autoPlay muted loop playsInline />`,
-    "",
-  ];
+  return [`  video="${previewPath}.mp4"`, ...(posterUrl ? [`  poster="${posterUrl}"`] : [])];
 }
 
 /** How to use it. Empty when a human already wrote that section by hand. */
@@ -1057,6 +969,71 @@ function footerSection(
   return footer;
 }
 
+/** The lines, or nothing: keeps each optional prop out of the caller's branch count. */
+function when(condition: boolean, ...lines: string[]): string[] {
+  return condition ? lines : [];
+}
+
+function itemSize(manifest: RegistryItem): { width?: number; height?: number } {
+  return ("dimensions" in manifest && manifest.dimensions) || {};
+}
+
+function stabilityBadge(source: SourceMetadata): "Experimental" | "Stable" {
+  return source.stability === "experimental" ? "Experimental" : "Stable";
+}
+
+function detailMeta(kind: ItemKind, manifest: RegistryItem, file: { source: string } | null) {
+  const { width, height } = itemSize(manifest);
+  return {
+    duration: "duration" in manifest ? manifest.duration : undefined,
+    width,
+    height,
+    category: groupForItem({ name: manifest.name, type: kind, tags: manifest.tags ?? [] }),
+    badge: stabilityBadge(manifest as RegistryItem & SourceMetadata),
+    codeLines: file?.source.split("\n").length,
+  };
+}
+
+function detailAttribution(kind: ItemKind, manifest: RegistryItem) {
+  const source = manifest as RegistryItem & SourceMetadata;
+  return {
+    author: manifest.author,
+    authorUrl: source.authorUrl,
+    path: `registry/${typeDir(kind)}/${manifest.name}`,
+    tags: manifest.tags ?? [],
+  };
+}
+
+/** The props the detail component renders its meta row, About and links from. */
+function detailOpening(
+  kind: ItemKind,
+  manifest: RegistryItem,
+  target: string,
+  live: boolean,
+  hasCode: boolean,
+): string[] {
+  const variables = live ? withHostedDefaults(tunableVariables(kind, manifest), manifest) : [];
+  const meta = detailMeta(kind, manifest, primarySource(kind, manifest));
+  const raw = primaryFileFor(manifest)?.path;
+  const base = `${typeDir(kind)}/${manifest.name}`;
+  return [
+    "<CatalogDetail",
+    ...when(live, `  previewSrc="/public/catalog/${base}.json"`),
+    `  compositionId="${manifest.name}"`,
+    `  compositionSrc="${target}"`,
+    `  title=${JSON.stringify(manifest.title)}`,
+    `  description=${JSON.stringify(manifest.description)}`,
+    `  variables={${JSON.stringify(variables)}}`,
+    `  meta={${JSON.stringify(meta)}}`,
+    `  attribution={${JSON.stringify(detailAttribution(kind, manifest))}}`,
+    ...stageProps(kind, manifest),
+    ...when(hasCode, "  hasCode"),
+    ...when(Boolean(raw), `  rawUrl="${rawSourceBase}/${base}/${raw}"`),
+    ">",
+    "",
+  ];
+}
+
 // fallow-ignore-next-line complexity
 function generateItemMdx(
   kind: ItemKind,
@@ -1068,46 +1045,56 @@ function generateItemMdx(
   const source = manifest as RegistryItem & SourceMetadata;
   const textureGroups = textureGroupsFor(manifest);
   const primaryTarget = primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
+  const live = hasPayload(kind, manifest.name);
+  const file = primarySource(kind, manifest);
 
-  // Frontmatter only. Mintlify renders `title` as the H1 and `description` as
-  // the standfirst, so repeating both in the body (as this generator used to)
-  // printed each one twice on every page.
+  // `mode: frame` gives the page the full content width the stage and the Tune
+  // panel need side by side. Mintlify still renders `title` as the H1 and
+  // `description` as the standfirst, so neither is repeated in the body.
   const lines: string[] = [
     "---",
     `title: ${yamlString(manifest.title)}`,
     `description: ${yamlString(manifest.description)}`,
+    'mode: "frame"',
     "---",
     "",
+    'import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";',
     'import { InstallCommand } from "/snippets/install-command.jsx";',
-    ...(itemVariables(manifest).length > 0 && hasPayload(kind, manifest.name)
-      ? ['import { VariablesExplorer } from "/snippets/variables-explorer.jsx";']
-      : []),
     "",
+    ...detailOpening(kind, manifest, primaryTarget, live, Boolean(file)),
   ];
 
-  // 1. How to get it, before anything else. It is the one line a reader is here
-  //    to copy, and below the preview it landed under the explorer's Customize
-  //    panel, a screen or more down. A CodeGroup around a single block just drew
-  //    an empty tab bar.
+  // The source is static, so a real fence highlights it at build time with the
+  // same shiki pass as every other code block; MDX hands it down as children.
+  if (file) {
+    lines.push(
+      '<CatalogSlot slot="code">',
+      "",
+      "```html " + file.path,
+      file.source,
+      "```",
+      "",
+      "</CatalogSlot>",
+      "",
+    );
+  }
+
   lines.push(
-    "## Install",
+    '<CatalogSlot slot="install">',
     "",
     `<InstallCommand command="${installCmd}" item="${manifest.name}" />`,
     "",
     installOutcome(manifest, primaryTarget),
     "",
+    "</CatalogSlot>",
+    "",
+    '<CatalogSlot slot="docs">',
+    "",
   );
-
-  // 2. What it looks like. Credits, tags and the source prompt used to sit above
-  //    this and pushed the preview below the fold; they stay in the footer.
-  lines.push(...previewSection(kind, manifest, textureGroups));
 
   // Prerequisite where it bites: you need the flag to preview what you just installed.
   if (tags.includes("html-in-canvas")) {
     lines.push(
-      // Danger, not Warning: without the flag the preview on this page is a
-      // black rectangle, so this is a prerequisite for seeing anything rather
-      // than a caveat about the result.
       "<Danger>",
       "  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.",
       "  Without it this item's screen renders black. Rendering from the CLI switches",
@@ -1117,38 +1104,31 @@ function generateItemMdx(
     );
   }
 
-  // 3. How to use it — unless a human already wrote that section, in which case
-  //    their version is carried through below instead of being overwritten.
+  // How to use it, unless a human already wrote that section: theirs is carried below.
   lines.push(...usageSection(kind, manifest, primaryTarget, carried, textureGroups));
-
   lines.push(...generateParams(manifest));
   lines.push(...generateVariables(manifest));
   lines.push(...generateVariableUsage(manifest, primaryTarget));
 
-  lines.push(...generateSource(kind, manifest));
-
   if (textureGroups.length > 0) {
+    lines.push("## Texture masks", "", ...generateTexturePreview(manifest, textureGroups));
     lines.push(...generateTextureAgentUsage(manifest, textureGroups));
     lines.push(...generateTextureAnimationExample(manifest, textureGroups));
     lines.push(...generateTextureExamples(manifest, textureGroups));
   }
 
-  // 4. Sections a human added to the previously generated page. Carried through
-  //    verbatim so regenerating never silently deletes hand-written docs.
-  if (carried.sections.length > 0) {
-    lines.push(...carried.sections);
-  }
+  // Sections a human added to the previously generated page, carried verbatim so
+  // regenerating never silently deletes hand-written docs.
+  if (carried.sections.length > 0) lines.push(...carried.sections);
 
   if (manifest.relatedSkill) {
     lines.push(`<Tip>Related skill: \`/${manifest.relatedSkill}\`</Tip>`, "");
   }
 
-  // 5. Generated tail: provenance (the least of what a reader came for) and
-  //    then the required `## Related topics` continuation, so the page ends with
-  //    it per docs/AGENTS.md. The marker delimits everything generated below it.
-  const footer = footerSection(manifest, tags, source);
-
-  lines.push(FOOTER_MARKER, "", ...footer, ...RELATED_TOPICS);
+  // Generated tail: provenance, then the required `## Related topics` so the
+  // page ends with it per docs/AGENTS.md. The marker delimits what is generated.
+  lines.push(FOOTER_MARKER, "", ...footerSection(manifest, tags, source), ...RELATED_TOPICS);
+  lines.push("</CatalogSlot>", "", "</CatalogDetail>", "");
 
   return lines.join("\n");
 }
@@ -1227,6 +1207,7 @@ function main(): void {
   // Items with the same first tag are grouped together. Items without tags
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
+    "3D motion": -1,
     "Code Animations": 0,
     Captions: 1,
     "HTML-in-Canvas": 2,
@@ -1248,64 +1229,6 @@ function main(): void {
     Blocks: 16,
   };
 
-  // fallow-ignore-next-line complexity
-  function groupForItem(entry: CatalogEntry): string {
-    const tags = entry.tags;
-    // Declared membership beats every inferred rule below: `video-primitive` is
-    // the tag a human puts on an item to put it on the primitives shelf, and it
-    // must not be overridden by whatever else the item happens to be tagged.
-    if (tags.includes("video-primitive")) return "Motion Primitives";
-    // Two-tag combos for specific grouping
-    if (tags.includes("transition") && tags.includes("shader")) return "Shader Transitions";
-    if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
-    if (tags.includes("captions")) return "Captions";
-    if (tags.includes("html-in-canvas")) return "HTML-in-Canvas";
-    // Code animations (morph, flight, diff, …) — keyed on the code-animation tag so
-    // they group separately from the static code-snippet themes.
-    if (tags.includes("code-animation")) return "Code Animations";
-    // Single-tag mapping
-    if (tags.includes("lower-third")) return "Lower Thirds";
-    if (tags.includes("social")) return "Social Overlays";
-    if (tags.includes("transition"))
-      return entry.type === "component" ? "Effects" : "CSS Transitions";
-    // The editor and terminal themes are 24 near-identical pages. Left in
-    // Showcases they were two thirds of it, and the handful of actual showcase
-    // scenes were unfindable underneath them.
-    if (entry.name.startsWith("code-snippet-")) return "Code Snippets";
-    // Same story, same fix: 25 image carousels are half of Showcases, and the
-    // scenes that shelf is for disappear underneath them. Keyed on the FIRST
-    // tag, which is this file's stated grouping rule, so an item that merely
-    // uses a carousel — `screen-flow-carousel` leads with `product-demo` —
-    // stays on the shelf that describes what it is for.
-    if (tags[0] === "carousel") return "Carousels";
-    if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
-    if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";
-    // Split what used to be one 267-item "Effects" list. Ordered most specific
-    // first: an item tagged both `camera` and `motion-primitive` is a camera
-    // move, which is the narrower and more useful shelf to find it on.
-    if (tags.includes("texture")) return "Texture";
-    if (tags.includes("camera") || tags.includes("3d")) return "Camera & 3D";
-    if (
-      tags.includes("product-demo") ||
-      tags.includes("demonstrate") ||
-      tags.includes("pointers")
-    ) {
-      return "Product Demo";
-    }
-    if (
-      tags.includes("typography") ||
-      tags.includes("text-effects") ||
-      tags.includes("text") ||
-      tags.includes("caption-style")
-    ) {
-      return "Typography & Text";
-    }
-    if (tags.includes("motion-primitive")) return "Motion Scenes";
-    if (entry.type === "component") return "Effects";
-    // Remaining blocks
-    return "Blocks";
-  }
-
   const groupMap = new Map<string, string[]>();
   for (const entry of catalogIndex) {
     const group = groupForItem(entry);
@@ -1323,6 +1246,7 @@ function main(): void {
   // Collapsing them under what a reader came here to make turns it into eight
   // openable sections, and keeps every existing shelf name intact underneath.
   const SECTIONS: { section: string; groups: string[] }[] = [
+    { section: "3D motion", groups: ["3D motion"] },
     { section: "Text & captions", groups: ["Captions", "Typography & Text", "Lower Thirds"] },
     { section: "Code", groups: ["Code Animations", "Code Snippets"] },
     { section: "Transitions", groups: ["Shader Transitions", "CSS Transitions"] },

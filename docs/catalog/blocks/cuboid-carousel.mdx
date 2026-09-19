@@ -1,0 +1,944 @@
+---
+title: "Cuboid Carousel"
+description: "A chain of bevelled cuboids rides a travelling wave as a content carousel."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/cuboid-carousel.json"
+  compositionId="cuboid-carousel"
+  compositionSrc="compositions/cuboid-carousel/cuboid-carousel.html"
+  title="Cuboid Carousel"
+  description="A chain of bevelled cuboids rides a travelling wave as a content carousel."
+  variables={[{"id":"cardsJson","type":"string","label":"Content - Cards JSON (optional, see CARDS in source)","default":""},{"id":"heroCard","type":"number","label":"Content - Hero card (1-based)","default":4,"min":1,"max":12,"step":1},{"id":"count","type":"number","label":"Content - Repeating card count","default":8,"min":1,"max":12,"step":1},{"id":"gap","type":"number","label":"Layout - Extra gap between cuboids","default":0.01,"min":0,"max":1.5,"step":0.005},{"id":"cuboidWidth","type":"number","label":"Cuboid - Width","default":1.7,"min":0.3,"max":5,"step":0.01},{"id":"cuboidHeight","type":"number","label":"Cuboid - Height","default":2.4,"min":0.3,"max":6,"step":0.01},{"id":"cuboidDepth","type":"number","label":"Cuboid - Thickness (depth)","default":0.14,"min":0.02,"max":2,"step":0.01},{"id":"cornerRadius","type":"number","label":"Cuboid - Corner radius","default":0.105,"min":0,"max":0.6,"step":0.005},{"id":"bevelSize","type":"number","label":"Cuboid - Bevel size (edge chamfer)","default":0.03,"min":0,"max":0.3,"step":0.001},{"id":"bevelThickness","type":"number","label":"Cuboid - Bevel thickness","default":0.04,"min":0,"max":0.3,"step":0.001},{"id":"smoothness","type":"number","label":"Cuboid - Smoothness (segments)","default":32,"min":1,"max":32,"step":1},{"id":"bodyColor","type":"color","label":"Cuboid - Body colour","default":"#242424"},{"id":"roughness","type":"number","label":"Cuboid - Roughness","default":0.6,"min":0,"max":1,"step":0.01},{"id":"metalness","type":"number","label":"Cuboid - Metalness","default":0.4,"min":0,"max":1,"step":0.01},{"id":"heroScale","type":"number","label":"Hero - Isolated scale","default":1,"min":1,"max":1.6,"step":0.01},{"id":"heroFillIntensity","type":"number","label":"Hero - Face light intensity","default":0.55,"min":0,"max":2,"step":0.05,"description":"A soft fill on the detached face keeps its text readable without changing the original chain lighting."},{"id":"heroExitX","type":"number","label":"Hero - Exit X rotation degrees","default":288,"min":-720,"max":720,"step":1},{"id":"heroExitY","type":"number","label":"Hero - Exit Y rotation degrees","default":-234,"min":-720,"max":720,"step":1},{"id":"heroExitZ","type":"number","label":"Hero - Exit Z rotation degrees","default":198,"min":-720,"max":720,"step":1},{"id":"ambientIntensity","type":"number","label":"Lights - Ambient intensity","default":0.35,"min":0,"max":4,"step":0.01},{"id":"ambientColor","type":"color","label":"Lights - Ambient colour","default":"#ffffff"},{"id":"topIntensity","type":"number","label":"Lights - Top rig intensity","default":3.1,"min":0,"max":12,"step":0.05},{"id":"topColor","type":"color","label":"Lights - Top rig colour","default":"#ffffff"},{"id":"bottomIntensity","type":"number","label":"Lights - Bottom rig intensity","default":2.15,"min":0,"max":12,"step":0.05},{"id":"bottomColor","type":"color","label":"Lights - Bottom rig colour","default":"#ffcaad"},{"id":"keyIntensity","type":"number","label":"Lights - Key rig intensity","default":5,"min":0,"max":12,"step":0.05},{"id":"keyColor","type":"color","label":"Lights - Key rig colour","default":"#ffe9d6"},{"id":"shadowRadius","type":"number","label":"Shadows - Softness at map size 2048","default":44.5,"min":0,"max":50,"step":0.5},{"id":"shadowMapSize","type":"number","label":"Shadows - Map size","default":2048,"min":512,"max":4096,"step":256},{"id":"backdrop","type":"color","label":"Background - Colour","default":"#0b0d13"},{"id":"cameraFov","type":"number","label":"Camera - Initial Field of view","default":11,"min":10,"max":90,"step":0.5},{"id":"cameraX","type":"number","label":"Camera - Initial X","default":-1.65,"min":-20,"max":20,"step":0.05},{"id":"cameraY","type":"number","label":"Camera - Initial Y","default":8.5,"min":-20,"max":20,"step":0.05},{"id":"cameraZ","type":"number","label":"Camera - Initial Z (distance)","default":-8.508708,"min":-20,"max":50,"step":0.1},{"id":"cameraSettleFrame","type":"number","label":"Camera - Settle frame (30 fps)","default":70,"min":20,"max":90,"step":1,"description":"Fast-start ease-out along the saved route. Approved value: 70."},{"id":"handheldStrength","type":"number","label":"Camera - Handheld hold strength","default":1,"min":0,"max":1,"step":0.05,"description":"Camera-only motion during frames 90–150; 0 disables it, 1 matches Blender."},{"id":"cameraTargetFov","type":"number","label":"Camera target - Field of view","default":34,"min":10,"max":90,"step":0.5},{"id":"cameraTargetX","type":"number","label":"Camera target - X","default":-7.25,"min":-20,"max":20,"step":0.05},{"id":"cameraTargetY","type":"number","label":"Camera target - Y","default":1.15,"min":-20,"max":20,"step":0.05},{"id":"cameraTargetZ","type":"number","label":"Camera target - Z","default":6.2,"min":2,"max":50,"step":0.1}]}
+  meta={{"duration":6.67,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":873}}
+  attribution={{"path":"registry/blocks/cuboid-carousel","tags":["3d-motion","carousel","cards","travelling-wave","pbr","shadows","room-environment"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/cuboid-carousel/cuboid-carousel.html"
+>
+
+<CatalogSlot slot="code">
+
+```html cuboid-carousel.html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"cardsJson","type":"string","label":"Content - Cards JSON (optional, see CARDS in source)","default":""},{"id":"heroCard","type":"number","label":"Content - Hero card (1-based)","default":4,"min":1,"max":12,"step":1},{"id":"count","type":"number","label":"Content - Repeating card count","default":8,"min":1,"max":12,"step":1},{"id":"gap","type":"number","label":"Layout - Extra gap between cuboids","default":0.01,"min":0,"max":1.5,"step":0.005},{"id":"cuboidWidth","type":"number","label":"Cuboid - Width","default":1.7,"min":0.3,"max":5,"step":0.01},{"id":"cuboidHeight","type":"number","label":"Cuboid - Height","default":2.4,"min":0.3,"max":6,"step":0.01},{"id":"cuboidDepth","type":"number","label":"Cuboid - Thickness (depth)","default":0.14,"min":0.02,"max":2,"step":0.01},{"id":"cornerRadius","type":"number","label":"Cuboid - Corner radius","default":0.105,"min":0,"max":0.6,"step":0.005},{"id":"bevelSize","type":"number","label":"Cuboid - Bevel size (edge chamfer)","default":0.03,"min":0,"max":0.3,"step":0.001},{"id":"bevelThickness","type":"number","label":"Cuboid - Bevel thickness","default":0.04,"min":0,"max":0.3,"step":0.001},{"id":"smoothness","type":"number","label":"Cuboid - Smoothness (segments)","default":32,"min":1,"max":32,"step":1},{"id":"bodyColor","type":"color","label":"Cuboid - Body colour","default":"#242424"},{"id":"roughness","type":"number","label":"Cuboid - Roughness","default":0.6,"min":0,"max":1,"step":0.01},{"id":"metalness","type":"number","label":"Cuboid - Metalness","default":0.4,"min":0,"max":1,"step":0.01},{"id":"heroScale","type":"number","label":"Hero - Isolated scale","default":1,"min":1,"max":1.6,"step":0.01},{"id":"heroFillIntensity","type":"number","label":"Hero - Face light intensity","default":0.55,"min":0,"max":2,"step":0.05,"description":"A soft fill on the detached face keeps its text readable without changing the original chain lighting."},{"id":"heroExitX","type":"number","label":"Hero - Exit X rotation degrees","default":288,"min":-720,"max":720,"step":1},{"id":"heroExitY","type":"number","label":"Hero - Exit Y rotation degrees","default":-234,"min":-720,"max":720,"step":1},{"id":"heroExitZ","type":"number","label":"Hero - Exit Z rotation degrees","default":198,"min":-720,"max":720,"step":1},{"id":"ambientIntensity","type":"number","label":"Lights - Ambient intensity","default":0.35,"min":0,"max":4,"step":0.01},{"id":"ambientColor","type":"color","label":"Lights - Ambient colour","default":"#ffffff"},{"id":"topIntensity","type":"number","label":"Lights - Top rig intensity","default":3.1,"min":0,"max":12,"step":0.05},{"id":"topColor","type":"color","label":"Lights - Top rig colour","default":"#ffffff"},{"id":"bottomIntensity","type":"number","label":"Lights - Bottom rig intensity","default":2.15,"min":0,"max":12,"step":0.05},{"id":"bottomColor","type":"color","label":"Lights - Bottom rig colour","default":"#ffcaad"},{"id":"keyIntensity","type":"number","label":"Lights - Key rig intensity","default":5,"min":0,"max":12,"step":0.05},{"id":"keyColor","type":"color","label":"Lights - Key rig colour","default":"#ffe9d6"},{"id":"shadowRadius","type":"number","label":"Shadows - Softness at map size 2048","default":44.5,"min":0,"max":50,"step":0.5},{"id":"shadowMapSize","type":"number","label":"Shadows - Map size","default":2048,"min":512,"max":4096,"step":256},{"id":"backdrop","type":"color","label":"Background - Colour","default":"#0b0d13"},{"id":"cameraFov","type":"number","label":"Camera - Initial Field of view","default":11,"min":10,"max":90,"step":0.5},{"id":"cameraX","type":"number","label":"Camera - Initial X","default":-1.65,"min":-20,"max":20,"step":0.05},{"id":"cameraY","type":"number","label":"Camera - Initial Y","default":8.5,"min":-20,"max":20,"step":0.05},{"id":"cameraZ","type":"number","label":"Camera - Initial Z (distance)","default":-8.508708,"min":-20,"max":50,"step":0.1},{"id":"cameraSettleFrame","type":"number","label":"Camera - Settle frame (30 fps)","default":70,"min":20,"max":90,"step":1,"description":"Fast-start ease-out along the saved route. Approved value: 70."},{"id":"handheldStrength","type":"number","label":"Camera - Handheld hold strength","default":1,"min":0,"max":1,"step":0.05,"description":"Camera-only motion during frames 90–150; 0 disables it, 1 matches Blender."},{"id":"cameraTargetFov","type":"number","label":"Camera target - Field of view","default":34,"min":10,"max":90,"step":0.5},{"id":"cameraTargetX","type":"number","label":"Camera target - X","default":-7.25,"min":-20,"max":20,"step":0.05},{"id":"cameraTargetY","type":"number","label":"Camera target - Y","default":1.15,"min":-20,"max":20,"step":0.05},{"id":"cameraTargetZ","type":"number","label":"Camera target - Z","default":6.2,"min":2,"max":50,"step":0.1}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>cuboid-carousel</title>
+    <script src="assets/gsap-3.14.2.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/three.module.min.js",
+          "three/addons/": "./assets/addons/"
+        }
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      #cc-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #0b0d13;
+        overflow: hidden;
+      }
+      #cc-bg {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background: #0b0d13;
+      }
+      #cc-stage {
+        position: relative;
+        z-index: 1;
+      }
+      #cc-canvas {
+        display: block;
+        width: 1920px;
+        height: 1080px;
+      }
+      #cc-fontload {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        font-family: "Inter", sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-im3h"
+      id="cc-root"
+      data-composition-id="cuboid-carousel"
+      data-start="0"
+      data-duration="6.666666666666667"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div data-hf-id="hf-y4po" id="cc-bg" aria-hidden="true"></div>
+      <section
+        data-hf-id="hf-xpi6"
+        id="cc-stage"
+        class="clip"
+        data-start="0"
+        data-duration="6.666666666666667"
+        data-track-index="1"
+      ></section>
+      <div data-hf-id="hf-0e46" id="cc-fontload" aria-hidden="true">
+        <span data-hf-id="hf-kqtg" style="font-weight: 400">Aa</span
+        ><span data-hf-id="hf-grhl" style="font-weight: 500">Aa</span>
+      </div>
+    </div>
+
+    <script>
+      /* Studio's variables parser fails on any composition with a <canvas> in
+         its MARKUP - created at runtime instead (identical for render). */
+      (function () {
+        var c = document.createElement("canvas");
+        c.id = "cc-canvas";
+        c.width = 1920;
+        c.height = 1080;
+        document.getElementById("cc-stage").appendChild(c);
+      })();
+    </script>
+    <script type="module">
+      /* Approved Blender choreography, 200 frames at 30 fps. Card geometry,
+         content textures and lighting remain the existing live block. Motion
+         uses saved native card curves and evaluated camera/handheld samples.
+         Frame 31: breakaway; 90–150: locked hero; 150–190: camera fly-through. */
+      import * as THREE from "three";
+      import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+      import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+
+      import { MOTION } from "./assets/cuboid-motion.js";
+
+      const DUR = MOTION.endFrame / MOTION.fps;
+      const V =
+        window.__hyperframes && window.__hyperframes.getVariables
+          ? window.__hyperframes.getVariables()
+          : {};
+
+      // ---- variable readers (every one clamped to the DialKit range) ----
+      const num = (v, d, lo, hi) => {
+        const n = Number(v);
+        return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
+      };
+      const col = (v, d) =>
+        typeof v === "string" && /^#[0-9a-fA-F]{3,8}$/.test(v.trim()) ? v.trim() : d;
+      const bool = (v, d) =>
+        typeof v === "boolean" ? v : v === "true" ? true : v === "false" ? false : d;
+      const pick = (v, opts, d) => (opts.indexOf(String(v)) >= 0 ? String(v) : d);
+
+      // cuboid
+      const WIDTH = num(V.cuboidWidth, 1.7, 0.3, 5);
+      const HEIGHT = num(V.cuboidHeight, 2.4, 0.3, 6);
+      const DEPTH = num(V.cuboidDepth, 0.16, 0.02, 2);
+      const CORNER_R = num(V.cornerRadius, 0.105, 0, 0.6);
+      const BEVEL_SIZE = num(V.bevelSize, 0.03, 0, 0.3);
+      const BEVEL_THICK = num(V.bevelThickness, 0.04, 0, 0.3);
+      const SMOOTH = Math.round(num(V.smoothness, 32, 1, 32));
+      const ROUGH = num(V.roughness, 0.6, 0, 1);
+      const METAL = num(V.metalness, 0.4, 0, 1);
+      const BODY = col(V.bodyColor, "#242424");
+      // layout
+      const COUNT = Math.round(num(V.count, 8, 1, 12));
+      const GAP = num(V.gap, 0.01, 0, 1.5);
+      // rotation
+      const AXIS = "x";
+      // hero
+      const HERO_SCALE = num(V.heroScale, 1, 1, 1.6);
+      // lights
+      const AMB_I = num(V.ambientIntensity, 0.35, 0, 4);
+      const AMB_C = col(V.ambientColor, "#ffffff");
+      const TOP_I = num(V.topIntensity, 3.1, 0, 12);
+      const TOP_C = col(V.topColor, "#ffffff");
+      const BOT_I = num(V.bottomIntensity, 2.15, 0, 12);
+      const BOT_C = col(V.bottomColor, "#ffcaad");
+      const KEY_I = num(V.keyIntensity, 5, 0, 12);
+      const KEY_C = col(V.keyColor, "#ffe9d6");
+      // shadows
+      const SHADOW_RADIUS = num(V.shadowRadius, 44.5, 0, 50);
+      const MAP_SIZE = Math.max(
+        512,
+        Math.min(4096, Math.round(num(V.shadowMapSize, 2048, 512, 4096) / 256) * 256),
+      );
+      // flat page background
+      const BACKDROP = col(V.backdrop, "#0b0d13");
+      // camera
+      const FOV = num(V.cameraFov, 65, 10, 90);
+      const CAM_X = num(V.cameraX, -0.010523080825805664, -20, 20);
+      const CAM_Y = num(V.cameraY, 0.5195326805114746, -20, 20);
+      const CAM_Z = num(V.cameraZ, -8.508708000183105, -20, 50);
+
+      const TARGET_FOV = num(V.cameraTargetFov, 34, 10, 90);
+      const TARGET_X = num(V.cameraTargetX, -7.25, -20, 20);
+      const TARGET_Y = num(V.cameraTargetY, 1.15, -20, 20);
+      const TARGET_Z = num(V.cameraTargetZ, 6.2, 2, 50);
+
+      /* ---- derived spacing: the no-overlap floor (see header) ---- */
+      const sweepHalf =
+        AXIS === "x"
+          ? WIDTH / 2
+          : AXIS === "y"
+            ? Math.hypot(WIDTH, DEPTH) / 2
+            : Math.hypot(WIDTH, HEIGHT) / 2;
+      const zSweepHalf =
+        AXIS === "x"
+          ? Math.hypot(HEIGHT, DEPTH) / 2
+          : AXIS === "y"
+            ? Math.hypot(WIDTH, DEPTH) / 2
+            : DEPTH / 2;
+      const SPACING = Math.max(WIDTH, 2 * sweepHalf + 0.02) + GAP;
+      const HALF_EXTENT = sweepHalf * HERO_SCALE;
+
+      /* ---- viewport maths (ported from viewportHalfWidth) ---- */
+      const ASPECT = 1920 / 1080;
+      const vFov = (FOV * Math.PI) / 180;
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * ASPECT);
+      const VIEW_HALF = CAM_Z * Math.tan(hFov / 2);
+      /* Off-screen test. A cuboid reaches back to z = -zSweepHalf*heroScale,
+         where the frustum is WIDER than at z = 0, so culling on VIEW_HALF
+         alone would clip a corner that is still in shot. Measure at the
+         deepest point the geometry can reach. */
+      const EDGE =
+        (CAM_Z + zSweepHalf * HERO_SCALE) * Math.tan(hFov / 2) + Math.abs(CAM_X) + HALF_EXTENT; // |x| > EDGE = off-screen
+
+      /* ================= CONTENT - edit here =================
+         Each: { color, category, title, pills: [1-2 strings] }. The same array
+         can be supplied at render/preview time as JSON via the `cardsJson`
+         variable; anything invalid falls back to this list. */
+      const CARDS = [
+        {
+          color: "#fe552e",
+          category: "Creative requests",
+          title: "Identify key resources",
+          pills: ["In progress", "Jul 17, 2026"],
+        },
+        {
+          color: "#d98a1f",
+          category: "Creative requests",
+          title: "Develop concept art",
+          pills: ["In review", "Jul 20, 2026"],
+        },
+        {
+          color: "#4f6ef0",
+          category: "Product Development",
+          title: "Create Design Prototypes",
+          pills: ["In progress", "Aug 02, 2026"],
+        },
+        {
+          color: "#1f9d57",
+          category: "Project Management",
+          title: "Draft Project Timeline",
+          pills: ["Planned", "Aug 09, 2026"],
+        },
+        {
+          color: "#c026d3",
+          category: "Research",
+          title: "Run user interviews",
+          pills: ["Planned", "Aug 15, 2026"],
+        },
+        {
+          color: "#0891b2",
+          category: "Product Development",
+          title: "Ship the beta",
+          pills: ["Blocked", "Aug 22, 2026"],
+        },
+        {
+          color: "#e11d48",
+          category: "Creative requests",
+          title: "Cut the launch film",
+          pills: ["Planned", "Sep 01, 2026"],
+        },
+        {
+          color: "#7c3aed",
+          category: "Research",
+          title: "Synthesise findings",
+          pills: ["Planned", "Sep 08, 2026"],
+        },
+      ];
+      const FALLBACK_COLORS = [
+        "#fe552e",
+        "#d98a1f",
+        "#4f6ef0",
+        "#1f9d57",
+        "#c026d3",
+        "#0891b2",
+        "#e11d48",
+        "#7c3aed",
+      ];
+
+      /* cardsJson override: strict parse, silent fallback on any problem. */
+      let ITEMS = CARDS;
+      try {
+        const raw = String(V.cardsJson || "").trim();
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length >= 1 && parsed.length <= 24) {
+            const clean = parsed.map((e, i) => ({
+              color: typeof e.color === "string" ? e.color : FALLBACK_COLORS[i % 8],
+              category: typeof e.category === "string" ? e.category : "",
+              title: typeof e.title === "string" ? e.title : "",
+              pills: Array.isArray(e.pills) ? e.pills.slice(0, 2).map((x) => String(x)) : [],
+            }));
+            if (clean.every((e) => e.title)) ITEMS = clean;
+          }
+        }
+      } catch (e) {
+        /* keep CARDS */
+      }
+
+      const HERO = Math.max(0, Math.min(COUNT - 1, Math.round(num(V.heroCard, 4, 1, 12)) - 1));
+
+      const clamp01 = (x) => Math.max(0, Math.min(1, x));
+      const smooth01 = (x) => x * x * (3 - 2 * x);
+      const N = MOTION.tiles.length;
+      const CAMERA_SETTLE = num(V.cameraSettleFrame, 70, 20, 90);
+      const T_IN = CAMERA_SETTLE / 30,
+        T_BREAK = 31 / 30,
+        T_CENTER = 90 / 30;
+      const T_CLEAR = MOTION.tiles.find((tile) => !tile.hero).hideFrame / 30;
+      const T_OUT = 150 / 30,
+        T_EMPTY = 190 / 30;
+
+      const canvas = document.getElementById("cc-canvas");
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(1920, 1080, false);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(BACKDROP);
+      document.getElementById("cc-bg").style.background = BACKDROP;
+
+      const camera = new THREE.PerspectiveCamera(FOV, ASPECT, 0.1, 200);
+      camera.position.set(CAM_X, CAM_Y, CAM_Z);
+      camera.lookAt(0, 0, 0);
+
+      // environment (stand-in for the `city` preset)
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+      const envMap = envRT.texture;
+
+      // ---- lights, exactly the experiment's rig ----
+      scene.add(new THREE.AmbientLight(new THREE.Color(AMB_C), AMB_I));
+
+      const top = new THREE.DirectionalLight(new THREE.Color(TOP_C), TOP_I);
+      top.position.set(20, 9, 3);
+      top.castShadow = true;
+      top.shadow.mapSize.set(MAP_SIZE, MAP_SIZE);
+      // "softness at the reference map size (2048)" - stable across mapSize
+      top.shadow.radius = SHADOW_RADIUS * (MAP_SIZE / 2048);
+      top.shadow.bias = -0.0003;
+      top.shadow.normalBias = 0.02;
+      {
+        const c = top.shadow.camera;
+        const halfW = Math.max(14, VIEW_HALF + SPACING * 3);
+        const halfH = Math.max(10, HEIGHT * 0.7 + 2);
+        c.left = -halfW;
+        c.right = halfW;
+        c.top = halfH;
+        c.bottom = -halfH;
+        c.near = 0.5;
+        c.far = 60;
+        c.updateProjectionMatrix();
+      }
+      scene.add(top);
+
+      const bottom = new THREE.DirectionalLight(new THREE.Color(BOT_C), BOT_I);
+      bottom.position.set(0, -8, 3);
+      scene.add(bottom);
+
+      const keyLight = new THREE.DirectionalLight(new THREE.Color(KEY_C), KEY_I);
+      keyLight.position.set(12, 9.2, 7);
+      scene.add(keyLight);
+
+      /* ---- rounded-rect shape + bevelled extrude, ported from
+             roundedRectShape() / buildCardGeometry() ---- */
+      function roundedRectShape(w, h, r) {
+        const s = new THREE.Shape();
+        const x = -w / 2,
+          y = -h / 2;
+        s.moveTo(x + r, y);
+        s.lineTo(x + w - r, y);
+        s.quadraticCurveTo(x + w, y, x + w, y + r);
+        s.lineTo(x + w, y + h - r);
+        s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        s.lineTo(x + r, y + h);
+        s.quadraticCurveTo(x, y + h, x, y + h - r);
+        s.lineTo(x, y + r);
+        s.quadraticCurveTo(x, y, x + r, y);
+        s.closePath();
+        return s;
+      }
+
+      function buildCardGeometry() {
+        const outerR = Math.min(CORNER_R, Math.min(WIDTH, HEIGHT) / 2 - 0.001);
+        const r = Math.max(outerR, 0.002);
+        const bSize = Math.max(
+          0,
+          Math.min(BEVEL_SIZE, r * 0.98, WIDTH / 2 - 0.005, HEIGHT / 2 - 0.005),
+        );
+        const maxThick = Math.max(DEPTH * 0.45, 0.0005);
+        const bThick = Math.max(0, Math.min(BEVEL_THICK, maxThick));
+        const sizeOn = bSize > 0.0005,
+          thickOn = bThick > 0.0005;
+        const bevelOn = sizeOn || thickOn;
+        const innerW = sizeOn ? Math.max(WIDTH - 2 * bSize, 0.01) : WIDTH;
+        const innerH = sizeOn ? Math.max(HEIGHT - 2 * bSize, 0.01) : HEIGHT;
+        const innerR = sizeOn ? Math.max(r - bSize, 0.002) : r;
+        const extrudeDepth = thickOn ? Math.max(DEPTH - 2 * bThick, DEPTH * 0.15, 0.002) : DEPTH;
+
+        const shape = roundedRectShape(innerW, innerH, innerR);
+
+        // Cap UVs span the full face so the text texture lands square on it;
+        // side walls collapse to a single point, as in the source.
+        const uvGenerator = {
+          generateTopUV(_g, vertices, a, b, c) {
+            const p = (i) =>
+              new THREE.Vector2(
+                (vertices[i * 3] + WIDTH / 2) / WIDTH,
+                (vertices[i * 3 + 1] + HEIGHT / 2) / HEIGHT,
+              );
+            return [p(a), p(b), p(c)];
+          },
+          generateSideWallUV() {
+            return [
+              new THREE.Vector2(0, 0),
+              new THREE.Vector2(0, 0),
+              new THREE.Vector2(0, 0),
+              new THREE.Vector2(0, 0),
+            ];
+          },
+        };
+
+        const geo = new THREE.ExtrudeGeometry(shape, {
+          depth: extrudeDepth,
+          bevelEnabled: bevelOn,
+          bevelThickness: bThick,
+          bevelSize: bSize,
+          bevelSegments: Math.max(16, Math.round(SMOOTH * 2)),
+          curveSegments: Math.max(16, Math.round(SMOOTH)),
+          steps: 1,
+          UVGenerator: uvGenerator,
+        });
+        geo.center();
+        if (bevelOn) {
+          const merged = mergeVertices(geo, 1e-4);
+          geo.dispose();
+          merged.computeVertexNormals();
+          merged.computeBoundingSphere();
+          return merged;
+        }
+        geo.computeVertexNormals();
+        geo.computeBoundingSphere();
+        return geo;
+      }
+
+      /* ---- face texture, ported from face-renderer.ts (540x756).
+             The source clears to transparent and lets the body colour show
+             through a masking shader; painting the body colour in first gives
+             the same result without the extra pass. ---- */
+      const FACE_W = 540,
+        FACE_H = 756;
+      const FONT_STACK = '"Inter", -apple-system, system-ui, sans-serif';
+
+      function lightTint(hex, amount = 0.55) {
+        return new THREE.Color(hex).lerp(new THREE.Color("#ffffff"), amount).getStyle();
+      }
+      function roundedRectPath(ctx, x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + w, y, x + w, y + h, radius);
+        ctx.arcTo(x + w, y + h, x, y + h, radius);
+        ctx.arcTo(x, y + h, x, y, radius);
+        ctx.arcTo(x, y, x + w, y, radius);
+        ctx.closePath();
+      }
+      function wrapLines(ctx, text, maxWidth) {
+        const words = String(text).split(" ");
+        const lines = [];
+        let current = "";
+        for (const word of words) {
+          const candidate = current ? current + " " + word : word;
+          if (ctx.measureText(candidate).width > maxWidth && current) {
+            lines.push(current);
+            current = word;
+          } else current = candidate;
+        }
+        if (current) lines.push(current);
+        return lines;
+      }
+
+      function faceTexture(item) {
+        const c = document.createElement("canvas");
+        c.width = FACE_W;
+        c.height = FACE_H;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = BODY;
+        ctx.fillRect(0, 0, FACE_W, FACE_H);
+
+        const tint = lightTint(item.color);
+        const pad = 45;
+        const contentW = FACE_W - pad * 2;
+        let y = pad + 8;
+
+        ctx.textBaseline = "alphabetic";
+        ctx.textAlign = "left";
+
+        ctx.fillStyle = tint;
+        ctx.font = "400 25px " + FONT_STACK;
+        ctx.fillText(item.category, pad, y + 22);
+        y += 22 + 34;
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "500 38px " + FONT_STACK;
+        for (const line of wrapLines(ctx, item.title, contentW)) {
+          ctx.fillText(line, pad, y + 34);
+          y += 47;
+        }
+
+        ctx.font = "400 19px " + FONT_STACK;
+        const pillH = 50;
+        const pillY = FACE_H - pad - pillH;
+        let pillX = pad;
+        for (const label of item.pills) {
+          const pillW = ctx.measureText(label).width + 44;
+          roundedRectPath(ctx, pillX, pillY, pillW, pillH, pillH / 2);
+          ctx.strokeStyle = tint;
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+          ctx.fillStyle = tint;
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, pillX + 22, pillY + pillH / 2 + 1);
+          ctx.textBaseline = "alphabetic";
+          pillX += pillW + 15;
+        }
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.flipY = false;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 8;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        return tex;
+      }
+
+      // ---- build the chain ----
+      const geometry = buildCardGeometry();
+      const sideMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(BODY),
+        roughness: ROUGH,
+        metalness: METAL,
+        envMap,
+        envMapIntensity: 0.3,
+      });
+      const EULER_ORDER = AXIS === "x" ? "XYZ" : AXIS === "y" ? "YXZ" : "ZXY";
+
+      let capMats = [];
+      let heroMat = null;
+      let cuboids = [];
+      function buildChain() {
+        if (heroMat) heroMat.dispose();
+        capMats.forEach((m) => {
+          if (m.map) m.map.dispose();
+          m.dispose();
+        });
+        capMats = ITEMS.map((item) => {
+          const capMat = new THREE.MeshStandardMaterial({
+            map: faceTexture(item),
+            roughness: ROUGH,
+            metalness: METAL,
+            envMap,
+            envMapIntensity: 0,
+          });
+          /* The source masks content to the front cap with a smoothstep on
+             position.z (uHalfDepth / uCapBand). Same idea: the back cap drops
+             the map and shows plain body colour, so text never reads mirrored. */
+          capMat.onBeforeCompile = (shader) => {
+            shader.uniforms.uBody = { value: new THREE.Color(BODY) };
+            shader.vertexShader = shader.vertexShader
+              .replace("#include <common>", "#include <common>\nvarying float vLocalZ;")
+              .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocalZ = position.z;");
+            shader.fragmentShader = shader.fragmentShader
+              .replace(
+                "#include <common>",
+                "#include <common>\nvarying float vLocalZ;\nuniform vec3 uBody;",
+              )
+              .replace(
+                "#include <map_fragment>",
+                "#include <map_fragment>\nif (vLocalZ > 0.0) diffuseColor.rgb = uBody;",
+              )
+              .replace(
+                "#include <emissivemap_fragment>",
+                "#include <emissivemap_fragment>\nif (vLocalZ > 0.0) totalEmissiveRadiance = vec3(0.0);",
+              );
+          };
+          return capMat;
+        });
+        // A separate material avoids brightening repeated cards with the same
+        // content. Emissive fill is masked off the unprinted back cap as well.
+        const heroSource = capMats[HERO % ITEMS.length];
+        heroMat = heroSource.clone();
+        heroMat.onBeforeCompile = heroSource.onBeforeCompile;
+        heroMat.emissive.set(0xffffff);
+        heroMat.emissiveMap = heroSource.map;
+        heroMat.emissiveIntensity = 0;
+        if (cuboids.length === 0) {
+          for (let j = 0; j < N; j++) {
+            // ExtrudeGeometry group 0 = caps, group 1 = side walls
+            const mesh = new THREE.Mesh(geometry, [capMats[0], sideMat]);
+            mesh.rotation.order = EULER_ORDER;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+            cuboids.push(mesh);
+          }
+        }
+      }
+      buildChain();
+
+      // Blender frame 0 maps to web time 0. Every pose is reconstructed on seek.
+      const basis = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0),
+        -Math.PI / 2,
+      );
+      const inverseBasis = basis.clone().invert();
+      const sourceRoot = new THREE.Matrix4().set(...MOTION.rootMatrix);
+      const convertedRoot = new THREE.Matrix4()
+        .makeRotationFromQuaternion(basis)
+        .multiply(sourceRoot)
+        .multiply(new THREE.Matrix4().makeRotationFromQuaternion(inverseBasis));
+      const motionRoot = new THREE.Group();
+      motionRoot.name = "Blender approved Cuboid chain";
+      motionRoot.matrixAutoUpdate = false;
+      motionRoot.matrix.copy(convertedRoot);
+      scene.add(motionRoot);
+      for (const mesh of cuboids) motionRoot.add(mesh);
+      const heroSlot = MOTION.tiles.findIndex((tile) => tile.hero);
+      const sourceStart = new THREE.Vector3(...MOTION.cameraStart).applyQuaternion(basis);
+      const sourceEnd = new THREE.Vector3(...MOTION.cameraEnd).applyQuaternion(basis);
+      const startOffset = new THREE.Vector3(CAM_X, CAM_Y, CAM_Z).sub(sourceStart);
+      const endOffset = new THREE.Vector3(TARGET_X, TARGET_Y, TARGET_Z).sub(sourceEnd);
+      const hasCameraOffset = startOffset.lengthSq() + endOffset.lengthSq() > 1e-14;
+      const targetCamera = new THREE.Vector3(TARGET_X, TARGET_Y, TARGET_Z);
+      const samplePosition = new THREE.Vector3(),
+        basePosition = new THREE.Vector3();
+      const sampleQuaternion = new THREE.Quaternion(),
+        baseQuaternion = new THREE.Quaternion();
+      const qA = new THREE.Quaternion(),
+        qB = new THREE.Quaternion(),
+        qDelta = new THREE.Quaternion();
+      const poseEuler = new THREE.Euler(0, 0, 0, "ZYX");
+      const lookCamera = new THREE.PerspectiveCamera();
+      const zero = new THREE.Vector3();
+      const S = { t: 0 };
+      const HERO_FILL = num(V.heroFillIntensity, 0.55, 0, 2);
+      const HANDHELD = num(V.handheldStrength, 1, 0, 1);
+      const EXIT_ANGLES = [
+        num(V.heroExitX, 288, -720, 720),
+        num(V.heroExitY, -234, -720, 720),
+        num(V.heroExitZ, 198, -720, 720),
+      ];
+      const sourceExitAngles = [288, -234, 198];
+
+      function channelAt(keys, frame) {
+        if (!keys || !keys.length) return 0;
+        if (frame <= keys[0][0]) return keys[0][1];
+        let lo = 0,
+          hi = keys.length - 1;
+        if (frame >= keys[hi][0]) return keys[hi][1];
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          if (keys[mid][0] <= frame) lo = mid;
+          else hi = mid;
+        }
+        const a = keys[lo],
+          b = keys[hi],
+          u = (frame - a[0]) / (b[0] - a[0]);
+        return a[1] + (b[1] - a[1]) * u;
+      }
+      function readCamera(frame, position, quaternion) {
+        const f = Math.max(0, Math.min(MOTION.endFrame, frame));
+        const i = Math.floor(f),
+          j = Math.min(MOTION.endFrame, i + 1),
+          u = f - i;
+        const a = MOTION.camera[i],
+          b = MOTION.camera[j];
+        position
+          .set(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u)
+          .applyQuaternion(basis);
+        qA.set(a[3], a[4], a[5], a[6]);
+        qB.set(b[3], b[4], b[5], b[6]);
+        // Camera optical axes are already -Z forward / +Y up: convert world basis only.
+        quaternion.slerpQuaternions(qA, qB, u).premultiply(basis).normalize();
+        return a[7] + (b[7] - a[7]) * u;
+      }
+      function cameraAt(frame) {
+        const cameraFrame =
+          frame < CAMERA_SETTLE ? (frame * 70) / CAMERA_SETTLE : Math.max(70, frame);
+        const sourceFov = readCamera(cameraFrame, samplePosition, sampleQuaternion);
+        const inHandheld = frame > 90 && frame < 150;
+        if (inHandheld) {
+          readCamera(90, basePosition, baseQuaternion);
+          if (HANDHELD !== 1) {
+            samplePosition.lerpVectors(basePosition, samplePosition, HANDHELD);
+            sampleQuaternion.slerpQuaternions(baseQuaternion, sampleQuaternion, HANDHELD);
+          }
+        } else {
+          basePosition.copy(samplePosition);
+          baseQuaternion.copy(sampleQuaternion);
+        }
+        const u = clamp01(
+          (MOTION.cameraControls["Start FOV degrees"] - sourceFov) /
+            (MOTION.cameraControls["Start FOV degrees"] - MOTION.cameraControls["End FOV degrees"]),
+        );
+        // A changed start must not recompute the approved settled/handheld pose.
+        if (hasCameraOffset && (u < 1 || endOffset.lengthSq() > 1e-14)) {
+          qDelta.copy(baseQuaternion).invert().multiply(sampleQuaternion);
+          const offset = startOffset.clone().lerp(endOffset, u);
+          lookCamera.position.copy(basePosition).add(offset);
+          lookCamera.lookAt(zero);
+          sampleQuaternion.copy(lookCamera.quaternion).multiply(qDelta);
+          samplePosition.add(offset);
+        }
+        camera.position.copy(samplePosition);
+        camera.quaternion.copy(sampleQuaternion);
+        camera.fov = FOV === 65 && TARGET_FOV === 34 ? sourceFov : FOV + (TARGET_FOV - FOV) * u;
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld();
+      }
+      const heroInitialX = MOTION.tiles[heroSlot].channels.location[0][0][1];
+      const slotOffsets = MOTION.tiles.map(
+        (tile) => (tile.channels.location[0][0][1] - heroInitialX) / 1.73,
+      );
+      // One mesh owns the hero slot before and after separation. Its arrival
+      // must use the same transport as the constant-rate chain, not the old
+      // slower Blender arrival curve. Keep that transport while it first lifts
+      // clear, then rejoin the approved absolute path without a position jump.
+      const heroXKeys = MOTION.tiles[heroSlot].channels.location[0];
+      const chainXKeys = MOTION.tiles.find((tile) => !tile.hero).channels.location[0];
+      const HERO_SLOT_RELEASE = 36,
+        HERO_PATH_REJOIN = 70;
+      const heroSlotXAt = (frame) => heroInitialX + channelAt(chainXKeys, frame) - chainXKeys[0][1];
+      const heroSlotDelta =
+        heroSlotXAt(HERO_SLOT_RELEASE) - channelAt(heroXKeys, HERO_SLOT_RELEASE);
+      const heroSlotVelocityDelta =
+        (heroSlotXAt(HERO_SLOT_RELEASE) -
+          heroSlotXAt(HERO_SLOT_RELEASE - 0.25) -
+          channelAt(heroXKeys, HERO_SLOT_RELEASE) +
+          channelAt(heroXKeys, HERO_SLOT_RELEASE - 0.25)) /
+        0.25;
+      function heroSlotCorrection(frame) {
+        if (frame <= HERO_SLOT_RELEASE) return heroSlotXAt(frame) - channelAt(heroXKeys, frame);
+        if (frame >= HERO_PATH_REJOIN) return 0;
+        const duration = HERO_PATH_REJOIN - HERO_SLOT_RELEASE;
+        const u = (frame - HERO_SLOT_RELEASE) / duration,
+          u2 = u * u,
+          u3 = u2 * u;
+        return (
+          (2 * u3 - 3 * u2 + 1) * heroSlotDelta +
+          (u3 - 2 * u2 + u) * duration * heroSlotVelocityDelta
+        );
+      }
+      const heroExitBase = MOTION.tiles[heroSlot].channels.rotation_euler.map((keys) =>
+        channelAt(keys, 150),
+      );
+      const actualPose = { frame: 0, camera: [], hero: [], heroRotation: [], visibleTiles: 0 };
+      function renderAt(time) {
+        S.t = Math.max(0, Math.min(DUR, time));
+        const frame = S.t * MOTION.fps;
+        cameraAt(frame);
+        const heroProgress = smooth01(clamp01((frame - 31) / 59));
+        heroMat.emissiveIntensity = HERO_FILL * heroProgress;
+        let visibleTiles = 0;
+        for (let j = 0; j < cuboids.length; j++) {
+          const mesh = cuboids[j],
+            tile = MOTION.tiles[j],
+            c = tile.channels;
+          const p = c.location.map((keys) => channelAt(keys, frame));
+          if (tile.hero) p[0] += heroSlotCorrection(frame);
+          const r = c.rotation_euler.map((keys) => channelAt(keys, frame));
+          if (tile.hero && frame > 150) {
+            for (let axis = 0; axis < 3; axis++)
+              r[axis] =
+                heroExitBase[axis] +
+                ((r[axis] - heroExitBase[axis]) * EXIT_ANGLES[axis]) / sourceExitAngles[axis];
+          }
+          mesh.position.set(p[0], p[2], -p[1]);
+          if (!tile.hero) mesh.position.x += slotOffsets[j] * (SPACING - 1.73);
+          // Blender XYZ is extrinsic X→Y→Z; Three's matching Euler order is ZYX.
+          poseEuler.set(r[0], r[1], r[2], "ZYX");
+          mesh.quaternion.setFromEuler(poseEuler).premultiply(basis).multiply(inverseBasis);
+          const scale = c.scale.map((keys) => channelAt(keys, frame));
+          mesh.scale.set(scale[0], scale[2], scale[1]);
+          if (tile.hero) mesh.scale.multiplyScalar(1 + (HERO_SCALE - 1) * heroProgress);
+          const item = ((((tile.itemIndex + HERO - 3) % COUNT) + COUNT) % COUNT) % ITEMS.length;
+          mesh.material[0] = tile.hero && frame >= 31 ? heroMat : capMats[item];
+          mesh.visible = frame < tile.hideFrame;
+          if (mesh.visible) visibleTiles++;
+          if (tile.hero) {
+            actualPose.hero = mesh.position.toArray();
+            actualPose.heroRotation = r;
+          }
+        }
+        actualPose.frame = frame;
+        actualPose.camera = camera.position.toArray();
+        actualPose.visibleTiles = visibleTiles;
+        renderer.toneMappingExposure = 1;
+        renderer.render(scene, camera);
+      }
+      window.__cuboidMotion = {
+        source: MOTION.sourceFile,
+        sha256: MOTION.sourceSha256,
+        fps: MOTION.fps,
+        endFrame: MOTION.endFrame,
+        phases: {
+          breakaway: 31,
+          directApproach: 40,
+          centered: 90,
+          exit: 150,
+          clear: 190,
+          end: 200,
+        },
+        get pose() {
+          return { ...actualPose };
+        },
+      };
+
+      /* ---- timeline: paused, seek-safe, no rAF ---- */
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.addLabel("arrival", 0);
+      tl.addLabel("alternate-camera", T_IN);
+      tl.addLabel("hero-breakaway", T_BREAK);
+      tl.addLabel("hero-centered", T_CENTER);
+      tl.addLabel("solo-hold", T_CLEAR);
+      tl.addLabel("hero-exit", T_OUT);
+      tl.addLabel("empty", T_EMPTY);
+      tl.to(S, { t: DUR, duration: DUR, ease: "none" }, 0);
+      tl.eventCallback("onUpdate", () => renderAt(S.t));
+
+      /* Studio's player seeks with GSAP events suppressed and dispatches an
+         hf-seek CustomEvent instead - re-sync and repaint so the stage follows. */
+      window.addEventListener("hf-seek", function (event) {
+        const d = event && event.detail;
+        if (d && typeof d.time === "number")
+          tl.totalTime(Math.min(d.time, tl.totalDuration()), true);
+        const fn = tl.eventCallback("onUpdate");
+        if (fn) fn();
+      });
+      window.__timelines["cuboid-carousel"] = tl;
+
+      renderAt(0);
+      /* Draw across the timeline and flush the GPU before ready, so shader links
+         and texture uploads land in the readiness gate, not the first visible frames. */
+      async function warmGpu() {
+        for (const f of [0.25, 0.5, 0.75]) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          renderAt(DUR * f);
+        }
+        renderAt(S.t);
+        renderer.getContext().finish();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["cuboid-carousel"] = (
+        document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()
+      )
+        .then(() => {
+          buildChain();
+          renderAt(S.t);
+          return warmGpu();
+        })
+        .catch(() => {});
+    </script>
+    <script>
+      /* Standalone playback: open this file with ?play (add &loop to repeat).
+         Inert without the param — Studio and the renderer never add it, so
+         editing and deterministic renders are unaffected. */
+      (function () {
+        var q = new URLSearchParams(location.search);
+        if (!q.has("play")) return;
+        var tick = setInterval(function () {
+          var map = window.__timelines || {};
+          var ids = Object.keys(map);
+          if (!ids.length) return;
+          clearInterval(tick);
+          for (var i = 0; i < ids.length; i++) {
+            var tl = map[ids[i]];
+            if (q.has("loop")) tl.repeat(-1);
+            tl.play(0);
+          }
+        }, 100);
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add cuboid-carousel" item="cuboid-carousel" />
+
+That writes `compositions/cuboid-carousel/cuboid-carousel.html`, plus 9 supporting files under `compositions/cuboid-carousel/assets/`, `compositions/cuboid-carousel/assets/addons/environments/`, `compositions/cuboid-carousel/assets/addons/utils/`, and `compositions/cuboid-carousel/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6.67 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="cuboid-carousel"
+  data-composition-src="compositions/cuboid-carousel/cuboid-carousel.html"
+  data-start="0"
+  data-duration="6.67"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `3d-motion` `carousel` `cards` `travelling-wave` `pbr` `shadows` `room-environment`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
