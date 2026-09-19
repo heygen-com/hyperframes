@@ -1,6 +1,6 @@
 # Storyboard recipe — plan a video like the launch films
 
-Applies wherever a run plans on a storyboard (`storyboard: yes` in `brief-contract.md`). This file owns **how to make the storyboard**: what goes in it, and the one HTML page the user reviews. `review-loop.md` owns when the user is asked; `storyboard-format.md` owns the `STORYBOARD.md` file the scripts parse; `story-spine.md` owns the order of the story. The method is distilled from the shipped launch films' storyboards (a header, a named spine, a beat list, a contact sheet, a review round) and from how their handoffs describe them. Nothing here is a Studio feature: the agent writes the storyboard, the user reads it in chat and in a browser.
+Applies wherever a run plans on a storyboard (`storyboard: yes` in `brief-contract.md`). This file owns **how to make the storyboard**: what goes in it, and the one HTML page the user reviews. `review-loop.md` owns when the user is asked; `storyboard-format.md` owns the `STORYBOARD.md` file the scripts parse; `story-spine.md` owns the order of the story. The method is distilled from the shipped launch films' storyboards (a header, a named spine, a beat list, a contact sheet, a review round) and how their handoffs describe them, plus a few rules (the held frame, the slideshow/screensaver bans, the caption keep-out) that show up consistently in the wider storyboard corpus even where a given launch film omits them. Nothing here is a Studio feature: the agent writes the storyboard, the user reads it in chat and in a browser.
 
 ## 1. Open with the decisions, before any beat
 
@@ -33,7 +33,7 @@ One beat per idea, one focus per beat. Give each beat a short semantic name that
 
 Real product proof is real: a captured screen, the real command output, or a labelled placeholder beat that holds the slot. Never draw a vendor's UI in DOM. Where the film depicts something real, add a truthfulness line saying what is real.
 
-Craft devices that make a storyboard specific (hero prop, accumulation, breather, callback, two-color discipline) are taught with examples in `docs/prompting/storyboards.mdx`; use them by name.
+Craft devices that make a storyboard specific are taught with examples in `docs/prompting/storyboards.mdx` (breather, callback, two-color discipline) and `docs/prompting/motion.mdx` (hero prop, accumulation); use them by name.
 
 ## 3. `storyboard.html`: the page the user reviews
 
@@ -51,7 +51,7 @@ A sketch is a few dozen lines of HTML per cell; the whole sheet lands in minutes
 
 1. Present the chat proposal (`story-spine.md` § 3), then the sheet.
 2. Record the user's notes verbatim under `## Changes from v1` and unresolved questions under `## Still open` (above the first frame), then bump the version and revise **only the beats named**.
-3. Repeat until the user says the layout is locked, then list what is locked under `## Locked`. Build only after the lock.
+3. Repeat until the user says the layout is locked, then list what is locked under `## Locked` (above the first frame, same reason as § 1). Build only after the lock.
 4. When the build lands, the compositions are the truth: regenerate the timing table from `index.html` (and the transcript when there is voiceover) and update `STORYBOARD.md` and `storyboard.html` to match, because every launch film drifted from its storyboard. State the final length.
 
 Do not render until asked.
