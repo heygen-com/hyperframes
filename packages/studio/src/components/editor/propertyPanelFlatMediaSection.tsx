@@ -13,6 +13,10 @@ import {
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
 import { AutomationToggle } from "./propertyPanelFxControls";
+import { RATE_RANGE } from "@hyperframes/core/audio-automation";
+import { type SpeedPresetId } from "@hyperframes/core/speed-ramp";
+import { SPEED_PRESET_OPTIONS, type RateBinding } from "./useVolumeAutomation";
+import { fromUnit, toUnit } from "../../player/components/automationLaneGeometry";
 import {
   AUDIO_GAIN_FADER_MAX,
   AUDIO_GAIN_FADER_MIN,
@@ -36,6 +40,7 @@ export function FlatMediaSection({
   onRemoveVolumeAutomation,
   onCommitVolumeAt,
   automatedVolumeValue,
+  rate,
 }: {
   projectDir: string | null;
   element: DomEditSelection;
@@ -49,6 +54,8 @@ export function FlatMediaSection({
   onRemoveVolumeAutomation?: () => void;
   onCommitVolumeAt?: (v: number) => void;
   automatedVolumeValue?: number;
+  /** Speed lane binding and presets; absent outside the Studio panel. */
+  rate?: RateBinding;
   onRemoveBackground?: (
     inputPath: string,
     options: {
@@ -77,7 +84,9 @@ export function FlatMediaSection({
     Number.parseFloat(
       element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
     ) || 0;
-  const playbackRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
+  const constantRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
+  const playbackRate =
+    rate?.automated && rate.automatedValue !== undefined ? rate.automatedValue : constantRate;
   const sourceDuration =
     Number.parseFloat(element.dataAttributes["source-duration"] ?? "") ||
     (el as HTMLMediaElement).duration ||
@@ -259,17 +268,42 @@ export function FlatMediaSection({
               }
             />
           </div>
-          <FlatSlider
-            label="Rate"
-            value={playbackRate * 100}
-            min={25}
-            max={300}
-            tier={playbackRate === 1 ? "default" : "explicitCustom"}
-            displayValue={`${formatNumericValue(playbackRate)}x`}
-            onCommit={(next) =>
-              void onSetAttribute("playback-rate", formatNumericValue(next / 100))
-            }
-          />
+          <div className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <FlatSlider
+                label="Speed"
+                value={Math.round(toUnit(RATE_RANGE, playbackRate) * 1000)}
+                min={0}
+                max={1000}
+                tier={playbackRate === 1 ? "default" : "explicitCustom"}
+                displayValue={`${formatNumericValue(playbackRate)}x`}
+                onCommit={(next) => {
+                  const speed = fromUnit(RATE_RANGE, next / 1000);
+                  if (rate?.automated) {
+                    rate.onCommitAt(speed);
+                  } else {
+                    void onSetAttribute("playback-rate", formatNumericValue(speed));
+                  }
+                }}
+              />
+            </div>
+            <AutomationToggle
+              paramKey="rate"
+              label="Speed"
+              automated={Boolean(rate?.automated)}
+              onAutomate={rate ? () => rate.onAutomate() : undefined}
+              onRemoveAutomation={rate ? () => rate.onRemoveAutomation() : undefined}
+            />
+          </div>
+          {rate && (
+            <FlatSelectRow
+              label="Speed preset"
+              value=""
+              options={[{ value: "", label: "Choose…" }, ...SPEED_PRESET_OPTIONS]}
+              tier="default"
+              onChange={(id) => id && rate.onApplyPreset(id as SpeedPresetId)}
+            />
+          )}
           <FlatSlider
             label="Media start"
             value={Math.round(mediaStart * 100)}

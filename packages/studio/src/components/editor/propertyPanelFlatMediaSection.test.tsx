@@ -250,8 +250,8 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
       rateTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
       rateTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
     });
-    // min=25, max=300, ratio=1.0 -> raw=300 -> commit(300) -> 300/100=3 -> "3"
-    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "3");
+    // the speed slider is log-scaled 0.1x..10x, so the far end of the track is 10x
+    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "10");
     act(() => root.unmount());
   });
 
