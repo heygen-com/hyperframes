@@ -615,9 +615,9 @@ export const CatalogDetail = ({
 }
 .hf-ve-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .hf-ve-action {
-  display: inline-flex;
+  display: inline-grid;
   align-items: center;
-  gap: 8px;
+  justify-items: center;
   padding: 8px 14px;
   border-radius: 10px;
   font-size: 14px;
@@ -628,6 +628,8 @@ export const CatalogDetail = ({
   border: 0;
   cursor: pointer;
 }
+.hf-ve-action-label { grid-area: 1 / 1; }
+.hf-ve-action-label[data-shown="false"] { visibility: hidden; }
 .hf-ve-action:hover:not(:disabled) { background: var(--ve-line); }
 .hf-ve-action:disabled { opacity: 0.4; cursor: default; }
 .hf-ve-tune-foot .hf-ve-action { justify-content: center; white-space: nowrap; }
@@ -1976,7 +1978,15 @@ export const CatalogDetail = ({
       data-primary={primary ? "true" : "false"}
       onClick={() => copy(id, typeof text === "function" ? text() : text)}
     >
-      {copiedKey === id ? "Copied" : label}
+      {[label, "Copied"].map((text) => (
+        <span
+          key={text}
+          className="hf-ve-action-label"
+          data-shown={text === (copiedKey === id ? "Copied" : label) ? "true" : "false"}
+        >
+          {text}
+        </span>
+      ))}
     </button>
   );
   const wiring = snippetLines.map((tokens) => tokens.map(([, text]) => text).join("")).join("\n");

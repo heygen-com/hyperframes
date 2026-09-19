@@ -537,3 +537,27 @@ test("the tabs are Preview, Code, Snippet, Docs with Preview selected", async ()
   ].map((m) => `${m[2]}:${m[1]}`);
   assert.deepEqual(tabs, ["Preview:true", "Code:false", "Snippet:false", "Docs:false"]);
 });
+
+test("a copy button holds its label and 'Copied' in one grid cell, so the swap never resizes it", async () => {
+  const html = await renderDetail(["install"]);
+  const buttons = [...html.matchAll(/<button[^>]*class="hf-ve-action"[^>]*>(.*?)<\/button>/g)].map(
+    (m) => m[1] ?? "",
+  );
+  const copyButtons = buttons.filter((b) => b.includes(">Copied<"));
+  assert.ok(copyButtons.length >= 3, `expected the copy buttons, found ${copyButtons.length}`);
+  for (const b of copyButtons) {
+    assert.equal(
+      b.match(/class="hf-ve-action-label"/g)?.length,
+      2,
+      "label and Copied both rendered",
+    );
+    assert.equal(b.match(/data-shown="true"/g)?.length, 1, "exactly one is shown");
+  }
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "snippets", "catalog-detail.jsx"),
+    "utf8",
+  );
+  assert.match(source, /\.hf-ve-action \{[^}]*display: inline-grid;/);
+  assert.match(source, /\.hf-ve-action-label \{ grid-area: 1 \/ 1; \}/);
+  assert.match(source, /\.hf-ve-action-label\[data-shown="false"\] \{ visibility: hidden; \}/);
+});
