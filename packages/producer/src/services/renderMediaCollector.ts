@@ -15,7 +15,7 @@
  */
 
 import { parseHTML } from "linkedom";
-import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
+import { MEDIA_RENDER_ID_ATTR, resolveAuthoredTimingWindow } from "@hyperframes/core";
 import {
   MEDIA_START_BASIS_ATTR,
   readMediaStartBasis,
@@ -41,6 +41,26 @@ import {
  */
 const COMPOSITION_HOST_ATTR = "data-composition-file";
 
+/**
+ * Where a composition host closes, in its parent's time, or null when it is
+ * unbounded. Delegates to the runtime's own `resolveAuthoredTimingWindow`: a
+ * positive `data-duration` closes the host at start + duration; `data-end`
+ * applies only when `data-duration` is absent or non-positive, and only when
+ * it lies past the start. This is the same window the runtime uses to hide
+ * the host's descendants, so nested media stops with the scene instead of
+ * running to the scene file's end — and a zero duration no longer collapses
+ * the window to `hostStart` and drops every nested clip.
+ */
+function resolveHostEnd(host: Element, hostStart: number): number | null {
+  return (
+    resolveAuthoredTimingWindow({
+      start: hostStart,
+      duration: host.getAttribute("data-duration"),
+      end: host.getAttribute("data-end"),
+    })?.end ?? null
+  );
+}
+
 interface HostWindow {
   /** Seconds to add to a descendant's authored, scene-relative start. */
   offset: number;
@@ -52,20 +72,15 @@ interface HostWindow {
 
 const ROOT_WINDOW: HostWindow = { offset: 0, limit: Infinity, basis: "local" };
 
-function parseNumeric(value: string | null): number | null {
-  if (value == null || value === "") return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 /**
  * Fold a media element's chain of composition hosts into one window.
  *
  * Host `data-start` is resolved the same way media is (`resolveReferencedStart`):
  * numeric literals, or an id / `data-composition-id` ref to a sibling slot's
  * end (`data-start="hook"`). `parseFloat("hook")` is 0, which stacked every
- * chained scene at 0–2s. Only `data-end` bounds a host: a host carrying just
- * `data-duration` was unbounded in the file-tree walk too.
+ * chained scene at 0–2s. Each host's end comes from `resolveHostEnd`, which
+ * shares the runtime's timing resolver, so the planner's media windows match
+ * the window in which the runtime shows the host's descendants.
  */
 function resolveHostWindow(
   element: Element,
@@ -84,7 +99,7 @@ function resolveHostWindow(
   // parentElement walks leaf → root; the offsets accumulate root → leaf.
   for (const host of hosts.reverse()) {
     const hostStart = resolveReferencedStart(document, host, startCache, visiting);
-    const hostEnd = parseNumeric(host.getAttribute("data-end"));
+    const hostEnd = resolveHostEnd(host, hostStart);
     if (hostEnd != null) limit = Math.min(limit, offset + hostEnd);
     offset += hostStart;
   }
