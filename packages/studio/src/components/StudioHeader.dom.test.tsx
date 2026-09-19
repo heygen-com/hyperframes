@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 /**
- * The header on the shared primitives: same controls, disabled history still explained,
+ * The header on the shared primitives: Capture and Inspector grouped, Export separate,
  * hotkey filters unchanged (KTD13). Contexts are mocked, not provided.
  */
 import React, { act } from "react";
@@ -61,7 +61,7 @@ afterEach(() => {
   host.remove();
 });
 
-function mount(): HTMLElement {
+function mount(props: { inspectorButtonActive?: boolean } = {}): HTMLElement {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -73,7 +73,7 @@ function mount(): HTMLElement {
         captureFrameFilename="frame.png"
         handleCaptureFrameClick={vi.fn()}
         refreshCaptureFrameTime={vi.fn()}
-        inspectorButtonActive={false}
+        inspectorButtonActive={props.inspectorButtonActive ?? false}
         inspectorPanelActive={false}
       />,
     ),
@@ -107,19 +107,41 @@ it("renders Export as the shared primary Button at the medium size", () => {
   );
 });
 
-it("disables Undo and Redo while the history is empty", () => {
+it("no longer renders Undo or Redo in the header", () => {
   const host = mount();
 
-  expect(query(host, '[aria-label="Undo"]').hasAttribute("disabled")).toBe(true);
-  expect(query(host, '[aria-label="Redo"]').hasAttribute("disabled")).toBe(true);
+  expect(host.querySelector('[aria-label="Undo"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Redo"]')).toBeNull();
 });
 
-it("enables Undo once there is something to undo", () => {
-  editHistory.canUndo = true;
-  editHistory.undoLabel = "Move layer";
+it("groups Capture and Inspector in one bordered segment, Export outside it", () => {
   const host = mount();
+  const group = query(host, '[aria-label="Capture current frame"]').closest(".divide-x");
 
-  expect(query(host, '[aria-label="Undo"]').hasAttribute("disabled")).toBe(false);
+  expect(group?.contains(query(host, '[aria-label="Inspector"]'))).toBe(true);
+  expect(group?.contains(query(host, '[data-testid="header-export"]'))).toBe(false);
+  expect(group).not.toBeNull();
+});
+
+it("drops the Capture label below 1000px but keeps its accessible name", () => {
+  const host = mount();
+  const capture = query(host, '[aria-label="Capture current frame"]');
+
+  expect(query(capture, "span").className).toContain("max-[1000px]:hidden");
+});
+
+it("shows Inspector pressed and filled only when on", () => {
+  const host = mount({ inspectorButtonActive: true });
+  const on = query(host, '[aria-label="Inspector"]');
+  expect(on.getAttribute("aria-pressed")).toBe("true");
+  expect(on.className).toContain("text-accent");
+  act(() => mounted?.root.unmount());
+  mounted?.host.remove();
+  mounted = null;
+
+  const off = query(mount(), '[aria-label="Inspector"]');
+  expect(off.getAttribute("aria-pressed")).toBe("false");
+  expect(off.className).not.toContain("text-accent");
 });
 
 it("keeps Capture a real download link rather than a button", () => {
@@ -130,7 +152,8 @@ it("keeps Capture a real download link rather than a button", () => {
 
   expect(capture.tagName).toBe("A");
   expect(capture.getAttribute("download")).toBe("frame.png");
-  expectRecipe(capture, buttonSizes.md);
+  // h-full replaces the md height: the group's own h-ctl sets the shared control height.
+  expectRecipe(capture, "px-3", "text-step-12");
 });
 
 it("classifies the new header controls for the hotkey filters as the old ones were (KTD13)", () => {
@@ -140,8 +163,6 @@ it("classifies the new header controls for the hotkey filters as the old ones we
   const host = mount();
   const controls = [
     query(host, '[data-testid="header-export"]'),
-    query(host, '[aria-label="Undo"]'),
-    query(host, '[aria-label="Redo"]'),
     query(host, '[aria-label="Inspector"]'),
     query(host, '[aria-label="Capture current frame"]'),
   ];

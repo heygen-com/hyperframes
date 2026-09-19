@@ -22,6 +22,8 @@ import {
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
+import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
+import { TimelineHistoryButtons } from "./TimelineHistoryButtons";
 import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
@@ -186,13 +188,6 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
-  // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
-  const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
-  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/6 hover:text-neutral-200 active:scale-[0.98]`;
-  const flatActive = `${flatBtn} bg-white/8 text-neutral-100 active:scale-[0.98]`;
-  const flatDisabled = `${flatBtn} text-neutral-700 cursor-not-allowed`;
-
   return (
     // The "TIMELINE" label is dropped for CapCut-like density — the pane's
     // position (tracks right below) makes it self-evident.
@@ -212,6 +207,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               </svg>
             </button>
           </Tooltip>
+          <TimelineHistoryButtons />
           <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
             <button
               type="button"
