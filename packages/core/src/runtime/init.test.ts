@@ -3091,6 +3091,21 @@ describe("initSandboxRuntimeModular", () => {
       }
     });
 
+    it("treats a declared data-lottie-src or a loaded DotLottie as a pending clip too", () => {
+      mountRoot(
+        '<div class="clip" data-start="0" data-duration="2"></div><div data-lottie-src="a.json"></div>',
+      );
+      expect(window.__player?.getDuration()).toBe(0);
+      const dotLottieWindow = window as Window & { DotLottie?: unknown };
+      dotLottieWindow.DotLottie = class {};
+      try {
+        mountRoot('<div class="clip" data-start="0" data-duration="2"></div>');
+        expect(window.__hf?.durationSource?.pendingClips).toBe(1);
+      } finally {
+        delete dotLottieWindow.DotLottie;
+      }
+    });
+
     it("uses the Lottie's own length once it is registered, not the clips' length", () => {
       const lottieWindow = window as Window & { lottie?: unknown; __hfLottie?: unknown[] };
       lottieWindow.lottie = { getRegisteredAnimations: () => [] };
