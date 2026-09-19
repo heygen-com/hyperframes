@@ -44,26 +44,19 @@ async function invalidDemoMedia(entryName: string): Promise<string[]> {
     .map((finding) => `${entryName}/demo.html: ${finding.code}`);
 }
 
+const entryNames = readdirSync(componentsDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name);
+
 describe("registry components", () => {
-  it("ships installable snippets without invalid nested media", async () => {
-    const invalidMedia: string[] = [];
+  it.each(entryNames)(
+    "%s ships installable snippets without invalid nested media",
+    async (name) => {
+      expect(await invalidInstallableMedia(name)).toEqual([]);
+    },
+  );
 
-    for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      invalidMedia.push(...(await invalidInstallableMedia(entry.name)));
-    }
-
-    expect(invalidMedia).toEqual([]);
-  });
-
-  it("ships demos without source-less media", async () => {
-    const invalidMedia: string[] = [];
-
-    for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      invalidMedia.push(...(await invalidDemoMedia(entry.name)));
-    }
-
-    expect(invalidMedia).toEqual([]);
+  it.each(entryNames)("%s ships a demo without source-less media", async (name) => {
+    expect(await invalidDemoMedia(name)).toEqual([]);
   });
 });
