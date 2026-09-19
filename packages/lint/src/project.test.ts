@@ -697,6 +697,7 @@ describe("audio_src_not_found with templating tokens", () => {
       "/audio/bed.mp3",
       "../audio/bed.mp3",
       "audio/bed.mp3?v=2",
+      "audio/bed.mp3#t=5",
     ]) {
       const project = audioProject(src);
       mkdirSync(join(project, "audio"), { recursive: true });

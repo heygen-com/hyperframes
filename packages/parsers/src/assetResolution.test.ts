@@ -212,10 +212,10 @@ describe("resolveProjectRelativeSrc — the one src resolver for lint and render
     );
   });
 
-  it("ignores a query string when locating the file", () => {
+  it("ignores a query string or media fragment when locating the file", () => {
     const projectDir = join(tmp, "project");
-    expect(resolveProjectRelativeSrc("assets/foo.mp4?v=2", projectDir)).toBe(
-      join(projectDir, "assets/foo.mp4"),
-    );
+    for (const src of ["assets/foo.mp4?v=2", "assets/foo.mp4#t=5", " assets/foo.mp4 "]) {
+      expect(resolveProjectRelativeSrc(src, projectDir)).toBe(join(projectDir, "assets/foo.mp4"));
+    }
   });
 });

@@ -177,8 +177,7 @@ export function resolveProjectRelativeSrc(
   baseDir: string,
   compiledDir?: string,
 ): string {
-  const qIdx = src.indexOf("?");
-  const cleanSrc = qIdx >= 0 ? src.slice(0, qIdx) : src;
+  const cleanSrc = cleanAssetUrl(src);
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
   if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
