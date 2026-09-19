@@ -374,7 +374,8 @@ The model is `u2net_human_seg` (MIT, ~168 MB ONNX). It downloads to
 after that. Peak inference RAM is about 1.5 GB.
 
 `--device auto` picks CoreML on Apple Silicon, CUDA where available, CPU
-otherwise. The CLI bundles the CPU build of `onnxruntime-node`; for CUDA, set
+otherwise. The first run installs the CPU build of `onnxruntime-node` into
+`~/.cache/hyperframes/optional/` (one line on stderr, once, no prompt); for CUDA, set
 `HYPERFRAMES_CUDA=1` and supply a GPU-enabled build.
 
 <Tip>

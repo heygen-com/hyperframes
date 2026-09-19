@@ -42,7 +42,6 @@
     "giget": "^3.2.0",
     "hono": "^4.0.0",
     "ignore": "^5.3.2",
-    "onnxruntime-node": "1.21.1",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
@@ -51,6 +50,7 @@
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
+    "@google/genai": "1.52.0",
     "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
@@ -66,14 +66,12 @@
     "@types/node": "^25.0.10",
     "ajv": "^8.20.0",
     "linkedom": "^0.18.12",
+    "onnxruntime-node": "1.21.1",
     "picocolors": "^1.1.1",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"
-  },
-  "optionalDependencies": {
-    "@google/genai": "^1.50.1"
   },
   "engines": {
     "node": ">=22"

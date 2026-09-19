@@ -27,6 +27,7 @@ import { c } from "../ui/colors.js";
 import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
+import { loadOptionalPackage } from "../utils/optionalPackages.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
@@ -834,7 +835,7 @@ export default defineCommand({
             console.log(`   ${c.dim("--describe: GEMINI_API_KEY not set, skipping")}`);
           } else if (paths.length > 0) {
             console.log(`   ${c.dim("Describing frames with Gemini vision...")}`);
-            const { GoogleGenAI } = await import("@google/genai");
+            const { GoogleGenAI } = await loadOptionalPackage("@google/genai", "--describe");
             const ai = new GoogleGenAI({ apiKey: geminiKey });
             const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
             const customQuestion =
@@ -915,7 +916,7 @@ export default defineCommand({
           }
         } catch (descErr) {
           const msg = normalizeErrorMessage(descErr);
-          console.log(`   ${c.dim(`--describe failed: ${msg.slice(0, 80)}`)}`);
+          console.log(`   ${c.dim(`--describe failed: ${msg}`)}`);
         }
       }
     } catch (err) {

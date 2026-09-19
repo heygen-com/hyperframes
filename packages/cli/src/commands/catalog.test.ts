@@ -137,10 +137,9 @@ vi.mock("../registry/localModel.js", () => ({
 }));
 
 vi.mock("../registry/localEmbedder.js", () => ({
-  // The native runtime is present in these tests. Left unmocked it answers
-  // false under vitest, and every accepted offer returns at the runtime guard
-  // before it can download, which looks like the download being skipped.
-  localRuntimeAvailable: async () => state.runtimeAvailable,
+  // Left unmocked this would run a real npm install under vitest.
+  ensureLocalRuntime: async () =>
+    state.runtimeAvailable ? { ok: true } : { ok: false, reason: "installing it failed" },
 }));
 
 vi.mock("../registry/localSemantic.js", () => ({
@@ -351,6 +350,16 @@ describe("catalog --json meaning search", () => {
 
     expect(envelope.tier).toBe("words");
     expect(envelope.warnings).toEqual(["on-device search did not run: model could not load"]);
+  });
+
+  it("downloads nothing and says why when the runtime cannot be installed", async () => {
+    state.modelStatus = "unavailable";
+    state.runtimeAvailable = false;
+
+    const envelope = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect(state.downloads).toBe(0);
+    expect(envelope.warnings).toEqual(["on-device search skipped: installing it failed"]);
   });
 
   it("refreshes a changed vector revision under existing consent", async () => {
