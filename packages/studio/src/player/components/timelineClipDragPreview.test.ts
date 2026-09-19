@@ -168,7 +168,7 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
     expect(next.previewTrack).toBe(0);
   });
 
-  it("uses the expanded row midpoint when choosing the side for an automatic insert", () => {
+  it("uses the expanded row midpoint when choosing the side for a group drag's automatic insert", () => {
     const rowHeights = [TRACK_H + 2 * LANE_H, TRACK_H];
     const dragged = clip("dragged", 0, 0, 1, 3);
     const occupied = [dragged, clip("block-0", 0, 0, 1, 2), clip("block-1", 1, 0, 1, 1)];
@@ -194,8 +194,16 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
     const next = computeDragPreview(drag, 0, clientY, {
       ...ctx(rowHeights, occupied),
       trackOrder: [0, 1],
+      selectedKeys: new Set(["dragged", "block-1"]),
     });
     expect(next.insertRow).toBe(0);
+    // A single clip dropped on the same occupied lanes stays put and overwrites instead.
+    const single = computeDragPreview(drag, 0, clientY, {
+      ...ctx(rowHeights, occupied),
+      trackOrder: [0, 1],
+    });
+    expect(single.insertRow).toBeNull();
+    expect(single.previewTrack).toBe(0);
   });
 });
 

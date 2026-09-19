@@ -111,10 +111,10 @@ export function resolveZoneDropPlacement(input: {
   }
 
   const desired = clampTrackToZone(desiredTrack, order, audioRow, isAudio);
-  if (!input.relocateOnOverlap && order.includes(desired)) {
+  const zoneTracks = order.filter((t) => audioTracks.has(t) === isAudio);
+  if (!input.relocateOnOverlap && zoneTracks.includes(desired)) {
     return { track: desired, insertRow: null };
   }
-  const zoneTracks = order.filter((t) => audioTracks.has(t) === isAudio);
   const placement = resolvePlacement({
     elements,
     desiredTrack: desired,
