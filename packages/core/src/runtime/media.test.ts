@@ -809,6 +809,44 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.play).not.toHaveBeenCalled();
   });
 
+  it("holds a video that runs to the composition end on its last frame at the terminal time", () => {
+    const clip = createMockClip({ start: 2.5, end: 5, duration: 2.5, sourceDuration: 10 });
+    const seek = {
+      clips: [clip],
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 5,
+    };
+    syncRuntimeMedia({ ...seek, timeSeconds: 5 });
+    expect(clip.el.currentTime).toBe(2.5);
+    expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("clamps a terminal video hold to a shorter source tail", () => {
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 0.25 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 5,
+      playing: true,
+      playbackRate: 1,
+      getCompositionDuration: () => 5,
+    });
+    expect(clip.el.currentTime).toBe(0.25);
+    expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("does not hold a video that ended before the composition did", () => {
+    const clip = createMockClip({ start: 0, end: 2.5, duration: 2.5, sourceDuration: 10 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 5,
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 5,
+    });
+    expect(clip.el.currentTime).toBe(0);
+  });
+
   it("seeks an ended video backward into its playable source", () => {
     const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 1 });
     Object.defineProperty(clip.el, "currentTime", { value: 1, writable: true, configurable: true });

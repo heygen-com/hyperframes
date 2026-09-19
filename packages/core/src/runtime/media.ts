@@ -1,5 +1,5 @@
 import { swallow } from "./diagnostics";
-import { isInClipWindow } from "./clipWindow";
+import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
@@ -254,21 +254,32 @@ export function syncRuntimeMedia(params: {
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
+  /** Lets a video clip that runs to the composition end hold its last frame at the terminal time.
+   *  A thunk, because deriving the duration is only worth it for a clip past its own end. */
+  getCompositionDuration?: () => number;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
     const clipRate = clip.rate ?? clip.playbackRate;
-    let relTime = sourceTimeAt(clipRate, params.timeSeconds - clip.start) + clip.mediaStart;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
-    const isHeldVideoTail =
+    const inWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
+    // A video that runs to the composition end stays the visible frame at and past it, so it
+    // is held on the frame it shows at its own end rather than left on a stale one.
+    const isTerminalVideo =
       isNonLoopVideo &&
-      clip.sourceDuration != null &&
-      relTime >= clip.sourceDuration &&
-      isInClipWindow(params.timeSeconds, clip.start, clip.end);
+      !inWindow &&
+      params.timeSeconds >= clip.end &&
+      params.getCompositionDuration !== undefined &&
+      isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
+    let relTime =
+      sourceTimeAt(clipRate, Math.min(params.timeSeconds, clip.end) - clip.start) + clip.mediaStart;
+    const isHeldVideoTail =
+      isTerminalVideo ||
+      (isNonLoopVideo && clip.sourceDuration != null && relTime >= clip.sourceDuration && inWindow);
     if (isHeldVideoTail && clip.sourceDuration != null) {
-      relTime = clip.sourceDuration;
+      relTime = Math.min(relTime, clip.sourceDuration);
     }
     const previousRelativeTime = lastRelativeTime.get(el);
     const audioReenteredAfterBackwardSeek =
@@ -287,7 +298,7 @@ export function syncRuntimeMedia(params: {
     // video additionally remains an active visual through
     // its authored window, with tail seeks clamped to the final frame.
     const isActive =
-      isInClipWindow(params.timeSeconds, clip.start, clip.end) &&
+      (inWindow || isTerminalVideo) &&
       relTime >= 0 &&
       (!el.ended || clip.loop || isHeldVideoTail || canSeekEndedMediaBackward);
     if (isActive) {

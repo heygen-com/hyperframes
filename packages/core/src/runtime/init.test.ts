@@ -982,6 +982,26 @@ describe("initSandboxRuntimeModular", () => {
       expect(lastClip.style.visibility).toBe("visible");
     });
 
+    it("seeks a terminal video to its last authored frame and keeps it paused on a direct seek", () => {
+      const root = buildRoot();
+      const video = document.createElement("video");
+      video.setAttribute("data-start", "2.5");
+      video.setAttribute("data-duration", "2.5");
+      root.appendChild(video);
+      Object.defineProperty(video, "duration", { value: 10, configurable: true });
+      Object.defineProperty(video, "currentTime", { value: 0, writable: true, configurable: true });
+      video.play = vi.fn(() => Promise.resolve());
+      window.__timelines = { main: createMockTimeline(5) };
+      initSandboxRuntimeModular();
+
+      window.__player?.renderSeek(5);
+
+      expect(video.style.visibility).toBe("visible");
+      expect(video.currentTime).toBe(2.5);
+      expect(video.paused).toBe(true);
+      expect(video.play).not.toHaveBeenCalled();
+    });
+
     it("still hides a clip that ended before the composition duration", () => {
       const root = buildRoot();
       const earlyClip = addClip(root, 0, 2.5);
