@@ -7,25 +7,44 @@ import type { PublishSdkSession } from "../utils/sdkCutover";
 import { addExternalFileReloadListener } from "./externalFileReloadBus";
 
 /**
- * Read a project file's content, or undefined on a non-2xx (optional read).
- * Replaces the removed SDK http adapter's `read()` — the only thing Studio used
- * it for (Studio is the sole writer, so the adapter's write path was dead).
+ * Why an optional project-file read produced no content. `stage: "read"` was a
+ * single opaque reason covering all of these, which made the largest remaining
+ * class of SDK-session failures undiagnosable: 56 users in a 7-day window hit
+ * it and, between them, never landed a single successful SDK edit. Knowing
+ * which branch fired is the difference between "the file legitimately is not
+ * there" and "the request never reached the file".
+ */
+type ProjectFileReadFailure =
+  | { ok: false; reason: "unsafe_path" }
+  | { ok: false; reason: "http_error"; status: number }
+  | { ok: false; reason: "missing_content" };
+
+type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
+
+/**
+ * Read a project file's content (optional read — a missing file is not an
+ * error). Replaces the removed SDK http adapter's `read()` — the only thing
+ * Studio used it for (Studio is the sole writer, so the adapter's write path
+ * was dead).
  */
 async function readProjectFileOptional(
   projectId: string,
   path: string,
-): Promise<string | undefined> {
+): Promise<ProjectFileReadResult> {
   // Reject traversal / NUL before building the request URL — `path` is a
   // user-influenced composition path (mirrors the guard in timelineEditingHelpers,
   // and closes the CodeQL client-side-request-forgery flag). encodeURIComponent
   // already confines both values to single segments of this same-origin URL.
-  if (path.includes("\0") || path.includes("..")) return undefined;
+  if (path.includes("\0") || path.includes("..")) return { ok: false, reason: "unsafe_path" };
   const res = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
   );
-  if (!res.ok) return undefined;
+  if (!res.ok) return { ok: false, reason: "http_error", status: res.status };
   const data = (await res.json()) as { content?: string };
-  return typeof data.content === "string" ? data.content : undefined;
+  // `optional=1` answers a missing file with 200 + `content: ""`, so a
+  // non-string here means a response shape we did not expect, not absence.
+  if (typeof data.content !== "string") return { ok: false, reason: "missing_content" };
+  return { ok: true, content: data.content };
 }
 
 /**
@@ -180,16 +199,29 @@ export function useSdkSession(
     };
 
     readProjectFileOptional(projectId, activeCompPath)
-      .then(async (content) => {
+      .then(async (read) => {
         if (cancelled) return;
-        if (typeof content !== "string") {
+        if (!read.ok) {
           // No SDK session follows, so EVERY cutover chokepoint below takes the
           // server path and emits nothing — the shadow never runs either. This
           // is the only place a missing session can originate, so a broken read
           // would otherwise be a silent, total SDK bypass.
-          trackStudioEvent("sdk_session_unavailable", { stage: "read" });
+          trackStudioEvent("sdk_session_unavailable", {
+            stage: "read",
+            reason: read.reason,
+            ...(read.reason === "http_error" ? { status: read.status } : {}),
+          });
           return;
         }
+        // `optional=1` answers a file that is not on disk with an empty string,
+        // which parses into a session with no elements — one that declines every
+        // edit wholesale. Distinguish it here rather than letting it look like a
+        // healthy session that simply never gets used.
+        if (read.content === "") {
+          trackStudioEvent("sdk_session_unavailable", { stage: "read", reason: "empty_file" });
+          return;
+        }
+        const content = read.content;
         // No persist queue: Studio's writeProjectFile (via sdkCutover's
         // persistSdkSerialize) is the SINGLE writer. Wiring the SDK persist
         // queue too would double-write the file (queue auto-writes on every
