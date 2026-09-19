@@ -94,10 +94,11 @@ async function addMediaSection() {
 test("the add-media recipe uses Studio's default durations", async () => {
   const { section, image } = await addMediaSection();
   const imageSecs = await studioDefaultSeconds("image");
-  const videoSecs = await studioDefaultSeconds("video");
   assert.ok(imageSecs, "could not read Studio's image default");
   assert.match(section, new RegExp(`Image: \`data-duration="${imageSecs}"\``));
-  assert.match(section, new RegExp(`\`${videoSecs}\` only when the length cannot be read`));
+  assert.match(section, /`data-start` is enough/);
+  assert.doesNotMatch(section, /ffprobe/);
+  assert.match(section, /root composition's `data-duration` is at least/);
   assert.match(image, new RegExp(`data-duration="${imageSecs}"`));
 });
 
