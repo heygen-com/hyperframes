@@ -74,25 +74,35 @@ test("the Studio skill's safe boxes equal the preview's", async () => {
   assert.match(skill, new RegExp(`Title-safe\\s*\\|\\s*${title}%`));
 });
 
-async function addMediaFacts() {
+async function studioDefaultSeconds(kind) {
   const helpers = await read("packages/studio/src/utils/studioHelpers.ts");
-  const defaults = helpers.match(/DEFAULT_TIMELINE_ASSET_DURATION[^=]*=\s*\{([^}]*)\}/)?.[1] ?? "";
-  const secs = (kind) => defaults.match(new RegExp(`${kind}:\\s*(\\d+(?:\\.\\d+)?)`))?.[1];
-  const section = (await read(OWNER)).split("## Add media")[1]?.split("\n## ")[0] ?? "";
-  const image = section.match(/<img[\s\S]*?\/>/)?.[0] ?? "";
-  return { secs, section, image };
+  const block = helpers.match(/DEFAULT_TIMELINE_ASSET_DURATION[^=]*=\s*\{([^}]*)\}/);
+  const defaults = block ? block[1] : "";
+  const value = defaults.match(new RegExp(`${kind}:\\s*(\\d+(?:\\.\\d+)?)`));
+  return value ? value[1] : undefined;
+}
+
+async function addMediaSection() {
+  const doc = await read(OWNER);
+  const afterHeading = doc.split("## Add media")[1] ?? "";
+  const section = afterHeading.split("\n## ")[0];
+  const imageMatch = section.match(/<img[\s\S]*?\/>/);
+  const image = imageMatch ? imageMatch[0] : "";
+  return { section, image };
 }
 
 test("the add-media recipe uses Studio's default durations", async () => {
-  const { secs, section, image } = await addMediaFacts();
-  assert.ok(secs("image"), "could not read Studio's image default");
-  assert.match(section, new RegExp(`Image: \`data-duration="${secs("image")}"\``));
-  assert.match(section, new RegExp(`\`${secs("video")}\` only when the length cannot be read`));
-  assert.match(image, new RegExp(`data-duration="${secs("image")}"`));
+  const { section, image } = await addMediaSection();
+  const imageSecs = await studioDefaultSeconds("image");
+  const videoSecs = await studioDefaultSeconds("video");
+  assert.ok(imageSecs, "could not read Studio's image default");
+  assert.match(section, new RegExp(`Image: \`data-duration="${imageSecs}"\``));
+  assert.match(section, new RegExp(`\`${videoSecs}\` only when the length cannot be read`));
+  assert.match(image, new RegExp(`data-duration="${imageSecs}"`));
 });
 
 test("the add-media recipe uses Studio's full-frame geometry", async () => {
-  const { section, image } = await addMediaFacts();
+  const { section, image } = await addMediaSection();
   const dropOps = await read("packages/studio/src/hooks/useTimelineAssetDropOps.ts");
   assert.match(
     dropOps,
@@ -104,7 +114,7 @@ test("the add-media recipe uses Studio's full-frame geometry", async () => {
 });
 
 test("the add-media example carries every attribute Studio's drop writes", async () => {
-  const { image } = await addMediaFacts();
+  const { image } = await addMediaSection();
   const drop = await read("packages/studio/src/utils/timelineAssetDrop.ts");
   for (const attr of ['class="clip"', "data-start", "data-duration", "data-track-index"]) {
     assert.ok(drop.includes(attr), `Studio no longer writes ${attr}`);
