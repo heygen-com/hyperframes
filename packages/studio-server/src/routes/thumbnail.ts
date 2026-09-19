@@ -100,11 +100,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     // PNG is the legacy source-density capture contract. Callers can opt either
     // format into the bounded preview contract explicitly.
     const outputMode =
-      requestedOutput === "source"
+      requestedOutput === "source" || (requestedOutput !== "preview" && format === "png")
         ? "source"
-        : requestedOutput !== "preview" && format === "png"
-          ? "source"
-          : "preview";
+        : "preview";
     const rawSelectorIndex = Number.parseInt(url.searchParams.get("selectorIndex") || "0", 10);
     const selectorIndex =
       Number.isFinite(rawSelectorIndex) && rawSelectorIndex > 0 ? rawSelectorIndex : undefined;
