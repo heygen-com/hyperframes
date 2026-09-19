@@ -11,6 +11,7 @@ import {
   attachCommand,
   downloadAsset,
   duplicateCaptureProblems,
+  LimitExceeded,
   evaluate,
   hasMedia,
   parseNumstat,
@@ -250,7 +251,7 @@ const fromMap = async (url) => {
   return Buffer.from(bytesByUrl[url]);
 };
 const bodyWith = (before, after) => `## Before\n${before}\n\n## After\n${after}\n`;
-const clean = { unreadable: [], identical: [] };
+const clean = { unreadable: [], identical: [], refused: [] };
 const dupes = (body) => duplicateCaptureProblems(body, fromMap);
 
 test("an After asset with different bytes than every Before asset passes", async () => {
@@ -509,7 +510,7 @@ test("the deadline covers every attempt, so a slow asset is not retried past it"
   assert.equal(calls, 1);
 });
 
-function runCli(env) {
+function runCli(env, body = bodyWith(`[a](${OLD})`, `[b](${NEW})`)) {
   const dir = mkdtempSync(join(tmpdir(), "captures-cli-"));
   const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
   git("init", "-q", "-b", "main");
@@ -526,7 +527,7 @@ function runCli(env) {
   return spawnSync("node", ["--import", preload, copy, "--base", "main", "--head", "HEAD"], {
     cwd: dir,
     encoding: "utf8",
-    env: { ...process.env, PR_BODY: bodyWith(`[a](${OLD})`, `[b](${NEW})`), ...env },
+    env: { ...process.env, PR_BODY: body, ...env },
   });
 }
 
@@ -540,4 +541,80 @@ test("the CLI skips, and says why, for a fork PR whose capture cannot be downloa
   const result = runCli({ HEAD_REPO: "someone/r", BASE_REPO: "a/r" });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /from a fork/);
+});
+
+const forkEnv = { HEAD_REPO: "someone/r", BASE_REPO: "a/r" };
+
+test("our own cap tripping is refused, not counted as an unreadable download", async () => {
+  const capped = async (url) => {
+    if (url === NEW) throw new LimitExceeded("captures together exceed the budget");
+    return Buffer.from("old");
+  };
+  const result = await duplicateCaptureProblems(bodyWith(`[a](${OLD})`, `[b](${NEW})`), capped);
+  assert.equal(result.unreadable.length, 0);
+  assert.equal(result.refused.length, 1);
+  assert.equal(
+    blocking(result.unreadable, [...result.identical, ...result.refused], forkEnv),
+    true,
+  );
+});
+
+test("a failed attempt gives its bytes back to the shared budget", async () => {
+  const budget = { left: 150 * MB };
+  let attempt = 0;
+  let sent = 0;
+  const flaky = async () => {
+    if (++attempt > 1) return streamOf(1);
+    return {
+      ok: true,
+      status: 200,
+      body: new ReadableStream({
+        pull(controller) {
+          if (sent++ === 0) controller.enqueue(new Uint8Array(50 * MB));
+          else controller.error(new Error("connection reset"));
+        },
+      }),
+    };
+  };
+  await downloadAsset(OLD, flaky, noSleep, budget);
+  assert.equal(budget.left, 150 * MB - 1);
+});
+
+test("trailing punctuation and a query string do not change which asset a link names", async () => {
+  const seen = [];
+  const record = async (url) => (seen.push(url), Buffer.from(url));
+  await duplicateCaptureProblems(bodyWith(`see ${OLD}.`, `${NEW}?raw=1, done`), record);
+  assert.deepEqual(seen, [OLD, NEW]);
+  const same = await duplicateCaptureProblems(bodyWith(OLD, `${OLD}?raw=1`), record);
+  assert.equal(same.identical.length, 1);
+});
+
+test("more capture links than the limit is refused", async () => {
+  const links = Array.from(
+    { length: 13 },
+    (_, i) =>
+      `https://github.com/user-attachments/assets/${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`,
+  );
+  const result = await duplicateCaptureProblems(bodyWith(links.join("\n"), NEW), fromMap);
+  assert.equal(result.refused.length, 1);
+});
+
+test("the CLI still fails a fork PR whose After link is a Before link", () => {
+  const result = runCli({ HEAD_REPO: "someone/r", BASE_REPO: "a/r" }, bodyWith(OLD, OLD));
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /same link/);
+});
+
+test("the CLI fails a fork PR that hits a limit of the check", () => {
+  const links = Array.from(
+    { length: 13 },
+    (_, i) =>
+      `https://github.com/user-attachments/assets/${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`,
+  );
+  const result = runCli(
+    { HEAD_REPO: "someone/r", BASE_REPO: "a/r" },
+    bodyWith(links.join("\n"), NEW),
+  );
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /limit of this check/);
 });
