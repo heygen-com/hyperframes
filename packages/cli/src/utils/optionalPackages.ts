@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -48,9 +49,10 @@ export function installedOptionalPackageVersion(
   name: OptionalPackage,
   cacheDir = CACHE_DIR,
 ): string | null {
-  const manifest = join(optionalPackageDir(name, cacheDir), "node_modules", name, "package.json");
-  if (!existsSync(manifest)) return null;
-  return (JSON.parse(readFileSync(manifest, "utf-8")) as { version: string }).version;
+  const dir = optionalPackageDir(name, cacheDir);
+  if (!isInstalled(dir, name)) return null;
+  return (JSON.parse(readFileSync(manifestPath(dir, name), "utf-8")) as { version: string })
+    .version;
 }
 
 /**
@@ -71,10 +73,13 @@ export async function loadOptionalPackage<N extends OptionalPackage>(
   try {
     await deps.install(dir, name, version);
   } catch (err) {
-    const reason = (err as Error).message.trim().split("\n")[0];
+    const output = (err as Error).message.trim();
+    const advice = NETWORK_FAILURE.test(output)
+      ? "Check your network connection, then retry"
+      : "Retry";
     throw new Error(
-      `${feature} needs ${name}, and installing it failed (${reason}). ` +
-        `Check your network connection, then retry, or install it yourself: npm install ${name}@${version} --prefix "${dir}"`,
+      `${feature} needs ${name}, and installing it failed (${output.split("\n")[0]}). ` +
+        `${advice}, or install it yourself: npm install ${name}@${version} --prefix "${dir}"`,
     );
   }
   const loaded = deps.loadInstalled(dir, name);
@@ -84,8 +89,14 @@ export async function loadOptionalPackage<N extends OptionalPackage>(
   return loaded as OptionalPackageModules[N];
 }
 
+const NETWORK_FAILURE = /ENOTFOUND|ETIMEDOUT|EAI_AGAIN|ECONNRESET|ECONNREFUSED|network/i;
+
+function manifestPath(dir: string, name: string): string {
+  return join(dir, "node_modules", name, "package.json");
+}
+
 function isInstalled(dir: string, name: string): boolean {
-  return existsSync(join(dir, "node_modules", name, "package.json"));
+  return existsSync(manifestPath(dir, name));
 }
 
 function loadInstalled(dir: string, name: string): unknown | null {
@@ -107,13 +118,24 @@ function runNpm(args: string[]): Promise<void> {
   });
 }
 
-/** Removes a prior pid's abandoned staging dir left by a crash or a kill mid-install. */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+/** Removes staging dirs whose owning pid is dead (crash or kill mid-install); never a live one. */
 function sweepStaleStaging(dir: string): void {
   const prefix = `${basename(dir)}.tmp-`;
   const parent = dirname(dir);
   if (!existsSync(parent)) return;
   for (const entry of readdirSync(parent)) {
-    if (entry.startsWith(prefix) && entry !== `${prefix}${process.pid}`) {
+    if (!entry.startsWith(prefix)) continue;
+    const pid = /^(\d+)-/.exec(entry.slice(prefix.length))?.[1];
+    if (pid !== undefined && !isProcessAlive(Number(pid))) {
       rmSync(join(parent, entry), { recursive: true, force: true });
     }
   }
@@ -122,15 +144,20 @@ function sweepStaleStaging(dir: string): void {
 /**
  * Installs into a sibling staging dir, then renames, so `dir` only ever holds a complete install.
  * No cross-process lock: two first runs both download and the loser discards its copy.
+ * `run` is the npm runner, injectable so tests can drive this without a network.
  */
-async function install(dir: string, name: string, version: string): Promise<void> {
+export async function install(
+  dir: string,
+  name: string,
+  version: string,
+  run: (args: string[]) => Promise<void> = runNpm,
+): Promise<void> {
   sweepStaleStaging(dir);
-  const staging = `${dir}.tmp-${process.pid}`;
-  rmSync(staging, { recursive: true, force: true });
+  const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
   mkdirSync(staging, { recursive: true });
   writeFileSync(join(staging, "package.json"), "{}");
   try {
-    await runNpm([
+    await run([
       "install",
       `${name}@${version}`,
       "--prefix",
