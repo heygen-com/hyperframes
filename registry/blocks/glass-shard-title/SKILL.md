@@ -25,7 +25,7 @@ Composition id: `glass-shard-title`. Duration 12.16 s at 30 fps, 1920×1080.
 
 ## Install
 
-Install with `npx hyperframes add glass-shard-title`; the files above land under `compositions/glass-shard-title/`. Then mount the block from the host `index.html`:
+Install with `npx hyperframes add glass-shard-title`; by default the files above land under `compositions/glass-shard-title/`. Then mount the block from the host `index.html`:
 
 ```html
 <div

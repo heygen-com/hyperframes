@@ -25,7 +25,7 @@ Composition id: `orbit-card`. Duration 10 s at 30 fps, 1920×1080.
 
 ## Install
 
-Install with `npx hyperframes add orbit-card`; the files above land under `compositions/orbit-card/`. Then mount the block from the host `index.html`:
+Install with `npx hyperframes add orbit-card`; by default the files above land under `compositions/orbit-card/`. Then mount the block from the host `index.html`:
 
 ```html
 <div

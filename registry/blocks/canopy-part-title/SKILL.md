@@ -17,7 +17,7 @@ Composition id: `canopy-part-title`. Duration 12 s at 30 fps, 1920×1080.
 
 ## Install
 
-Install with `npx hyperframes add canopy-part-title`; the files above land under `compositions/canopy-part-title/`. Then mount the block from the host `index.html`:
+Install with `npx hyperframes add canopy-part-title`; by default the files above land under `compositions/canopy-part-title/`. Then mount the block from the host `index.html`:
 
 ```html
 <div

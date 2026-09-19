@@ -31,3 +31,18 @@ for (const name of blocks) {
     }
   });
 }
+
+for (const name of blocks) {
+  test(`${name}: its mount and render paths are the composition file the manifest installs`, () => {
+    const dir = join(BLOCKS, name);
+    const manifest: { files: (ManifestFile & { target: string; type: string })[] } = JSON.parse(
+      readFileSync(join(dir, "registry-item.json"), "utf-8"),
+    );
+    const composition = manifest.files.find((file) => file.type === "hyperframes:composition");
+    const skill = readFileSync(join(dir, "SKILL.md"), "utf-8");
+    const mounted = skill.match(/data-composition-src="([^"]+)"/)?.[1];
+    const rendered = skill.match(/ render '([^']+)'/)?.[1];
+    assert.equal(mounted, composition?.target);
+    assert.equal(rendered, composition?.target);
+  });
+}
