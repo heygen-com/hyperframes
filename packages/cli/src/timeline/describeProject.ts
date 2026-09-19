@@ -15,7 +15,7 @@ import {
   type StructureNode,
   type TrackKind,
 } from "@hyperframes/parsers";
-import { resolveAbsoluteMediaStartSeconds } from "@hyperframes/core/media-timing";
+import { resolveMediaStartSeconds } from "@hyperframes/core/media-timing";
 import { resolveReferencedDuration, resolveReferencedStart } from "@hyperframes/engine";
 
 export interface TimelineRow extends ClipFact {
@@ -95,17 +95,16 @@ interface DocScope {
 
 const roundMs = (v: number) => Math.round(v * 1000) / 1000;
 
-/** Runtime rule: nested media is host-relative unless marked global (core `resolveAbsoluteMediaStartSeconds`). */
+/** Nested media follows the runtime's own rule (core `resolveMediaStartSeconds`); everything else is host-relative. */
 function mainTimelineStart(scope: DocScope, el: Element, start: number): number {
-  const authored = /^(video|audio)$/i.test(el.tagName)
-    ? parseNumeric(el.getAttribute("data-start"))
-    : null;
-  // Like the runtime, a host at t=0 has nothing for the basis to disambiguate: ordinary resolution.
-  if (authored === null || scope.origin <= 0) return scope.origin + start;
-  return resolveAbsoluteMediaStartSeconds({
-    authoredStart: authored,
+  const ordinaryStart = () => scope.origin + start;
+  if (!/^(video|audio)$/i.test(el.tagName)) return ordinaryStart();
+  return resolveMediaStartSeconds({
+    authoredStart: parseNumeric(el.getAttribute("data-start")),
     hostStart: scope.origin,
+    hasAutoStart: el.hasAttribute("data-hf-auto-start"),
     basis: el.getAttribute("data-hf-media-start-basis"),
+    ordinaryStart,
   });
 }
 

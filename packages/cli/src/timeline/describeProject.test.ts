@@ -272,7 +272,7 @@ describe("skill query one-liners", () => {
   it("documents four node one-liners, each answering from the fixture", () => {
     const lines = oneLiners("node -e");
     expect(lines).toHaveLength(4);
-    const [at, find, track, gaps] = lines.map(runOneLiner);
+    const [at = "", find, track, gaps] = lines.map(runOneLiner);
     expect(at.split("\n").filter(Boolean)).toEqual([
       "host index.html",
       "nested compositions/scene.html",

@@ -11,7 +11,7 @@ import {
 } from "./playbackRate";
 import { isMediaElement } from "./domRealm";
 import { parseStartExpression } from "./startExpression";
-import { MEDIA_START_BASIS_ATTR, resolveAbsoluteMediaStartSeconds } from "../mediaTiming";
+import { MEDIA_START_BASIS_ATTR, resolveMediaStartSeconds } from "../mediaTiming";
 
 export function createRuntimeStartTimeResolver(params: {
   timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
@@ -190,17 +190,12 @@ export function createRuntimeStartTimeResolver(params: {
   const resolveMediaStartForElement = (element: Element): number => {
     const compositionRoot = element.closest("[data-composition-id]");
     const hostStart = compositionRoot ? resolveStartForElementInternal(compositionRoot, 0) : 0;
-    const authoredStart = parseStrictFiniteTimingNumber(element.getAttribute("data-start"));
-    // No literal start (absent, or a `data-start="intro + 2"` reference), an
-    // auto-injected start, or a host at t=0 — nothing for the basis to
-    // disambiguate, so the ordinary start resolution is already correct.
-    if (element.hasAttribute("data-hf-auto-start") || authoredStart == null || hostStart <= 0) {
-      return resolveStartForElementInternal(element, hostStart);
-    }
-    return resolveAbsoluteMediaStartSeconds({
-      authoredStart,
+    return resolveMediaStartSeconds({
+      authoredStart: parseStrictFiniteTimingNumber(element.getAttribute("data-start")),
       hostStart,
+      hasAutoStart: element.hasAttribute("data-hf-auto-start"),
       basis: element.getAttribute(MEDIA_START_BASIS_ATTR),
+      ordinaryStart: () => resolveStartForElementInternal(element, hostStart),
     });
   };
 
