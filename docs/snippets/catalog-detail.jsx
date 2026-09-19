@@ -62,6 +62,16 @@ export const CatalogSlot = ({ slot, children }) => (
   </div>
 );
 
+/** Resolves false, never rejects: no gpu, a null adapter, a throw of either kind, or no answer in time. */
+function hasWebgpuAdapter(gpu, timeoutMs) {
+  const probe = new Promise((resolve) => resolve(gpu?.requestAdapter())).then(
+    (adapter) => Boolean(adapter),
+    () => false,
+  );
+  const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs, false));
+  return Promise.race([probe, timeout]);
+}
+
 export const CatalogDetail = ({
   previewSrc,
   compositionId,
@@ -2041,12 +2051,7 @@ export const CatalogDetail = ({
   // null until the adapter request settles, so the player never mounts on a browser that cannot run it.
   const [hasAdapter, setHasAdapter] = useState(null);
   useEffect(() => {
-    if (!webgpu) return;
-    // A request that never settles must not leave the stage blank.
-    const noAdapter = new Promise((resolve) => setTimeout(resolve, 3000, null));
-    Promise.race([navigator.gpu?.requestAdapter() ?? null, noAdapter])
-      .then((adapter) => setHasAdapter(Boolean(adapter)))
-      .catch(() => setHasAdapter(false));
+    if (webgpu) hasWebgpuAdapter(navigator.gpu, 3000).then(setHasAdapter);
   }, [webgpu]);
   const adapterMissing = webgpu && hasAdapter === false;
   // Edits reach a mounted player only, so the panel goes when the clip stands in for it.

@@ -24,6 +24,7 @@ import { runInNewContext } from "node:vm";
 import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
 import {
   mdxStringAttribute,
+  stageProps,
   variableBootstrap,
   variablePreviewWrapper,
 } from "./generate-catalog-pages.ts";
@@ -245,5 +246,49 @@ describe("WebGPU stage fallback props", () => {
     const mdx = page("ai-chat-reveal");
     assert.match(mdx, /^ {2}previewSrc=/m);
     assert.doesNotMatch(mdx, /^ {2}(video=|webgpu$)/m);
+  });
+});
+
+describe("WebGPU adapter probe", () => {
+  const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-detail.jsx"), "utf-8");
+  const fn = source.slice(
+    source.indexOf("function hasWebgpuAdapter"),
+    source.indexOf("export const CatalogDetail"),
+  );
+  const probe = runInNewContext(`${fn}; hasWebgpuAdapter`, { setTimeout, Promise }) as (
+    gpu: unknown,
+    ms: number,
+  ) => Promise<boolean>;
+
+  it("says yes only for a real adapter", async () => {
+    assert.equal(await probe({ requestAdapter: async () => ({}) }, 50), true);
+  });
+
+  it("falls back for no gpu, a null adapter, a rejection, a sync throw and a hang", async () => {
+    const throws = () => {
+      throw new Error("blocked");
+    };
+    const cases = [
+      undefined,
+      { requestAdapter: async () => null },
+      { requestAdapter: () => Promise.reject(new Error("no")) },
+      { requestAdapter: throws },
+      { requestAdapter: () => new Promise(() => {}) },
+    ];
+    for (const gpu of cases) assert.equal(await probe(gpu, 30), false);
+  });
+});
+
+describe("stageProps recorded-clip guard", () => {
+  const frost = JSON.parse(
+    readFileSync(
+      join(here, "..", "registry", "blocks", "frost-sequence-camera-orbit", "registry-item.json"),
+      "utf-8",
+    ),
+  );
+
+  it("offers the recorded fallback only when the manifest has a clip", () => {
+    assert.ok(stageProps("block", frost).includes("  webgpu"));
+    assert.deepEqual(stageProps("block", { ...frost, preview: undefined }), []);
   });
 });

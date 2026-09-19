@@ -855,7 +855,7 @@ function payloadUsesWebgpu(kind: ItemKind, name: string): boolean {
 }
 
 /** What the stage shows when the player cannot run the composition: a flag notice, or the recorded video. */
-function stageProps(kind: ItemKind, manifest: RegistryItem): string[] {
+export function stageProps(kind: ItemKind, manifest: RegistryItem): string[] {
   if (hasPayload(kind, manifest.name)) {
     // The recorded clip is the fallback for a browser with no WebGPU adapter.
     if (!manifest.preview?.video || !payloadUsesWebgpu(kind, manifest.name)) return [];
