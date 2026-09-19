@@ -475,8 +475,8 @@ import baked from "./baked.json";
 function applyBaked(cfg: any, values: any) {
   if (!values || typeof values !== "object") return;
   for (const [k, v] of Object.entries(values)) {
+    if (!Object.hasOwn(cfg, k) || k.startsWith("_")) continue;
     const c = cfg[k];
-    if (c === undefined || k.startsWith("_")) continue;
     if (Array.isArray(c)) {
       if (typeof v === "number") c[0] = v;
     } else if (c && typeof c === "object" && "type" in c) {

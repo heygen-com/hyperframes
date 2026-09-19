@@ -433,30 +433,26 @@ button("duplicate", () => {
 button("delete", () => {
   commit({ ...clone(track()), keys: track().keys.filter((k) => k.id !== selected) });
 });
-function library(): Record<string, CameraTrack> {
+function library(): Map<string, CameraTrack> {
   try {
-    return JSON.parse(store.get("frost-motion-shots-v1") || "{}");
+    return new Map(Object.entries(JSON.parse(store.get("frost-motion-shots-v1") || "{}")));
   } catch {
-    return {};
+    return new Map();
   }
 }
 function refreshLibrary() {
-  select("saved").replaceChildren(
-    ...Object.keys(library())
-      .sort()
-      .map((n) => new Option(n, n)),
-  );
+  select("saved").replaceChildren(...[...library().keys()].sort().map((n) => new Option(n, n)));
 }
 button("save", () => {
   const shots = library();
-  shots[track().name] = clone(track());
-  store.set("frost-motion-shots-v1", JSON.stringify(shots));
+  shots.set(track().name, clone(track()));
+  store.set("frost-motion-shots-v1", JSON.stringify(Object.fromEntries(shots)));
   refreshLibrary();
   select("saved").value = track().name;
   status("Saved shot: " + track().name);
 });
 button("load", () => {
-  const shot = library()[select("saved").value];
+  const shot = library().get(select("saved").value);
   if (shot) commit(parseTrack(shot));
 });
 const appliedValues = (original = false) => ({

@@ -7,7 +7,6 @@ import { ErosionField } from "../src/erosion/ErosionField";
 import { makeShape } from "../src/shape/sdf";
 import { createIceMaterial } from "../src/ice/IceMaterial";
 import { D } from "../src/dials/store";
-import { writeFileSync } from "node:fs";
 import assert from "node:assert/strict";
 THREE.TextureLoader.prototype.load = function () {
   return new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
@@ -116,8 +115,6 @@ console.log(
   locations.length,
   "vertex output locations (hardware limit 16).",
 );
-writeFileSync("/tmp/shards-vertex.wgsl", builder.vertexShader);
-writeFileSync("/tmp/shards-fragment.wgsl", builder.fragmentShader);
 assert.match(builder.vertexShader, /instanceIndex \* 3u/);
 assert.match(builder.vertexShader, /vec4<f32>\( (?:varyings\.)?positionLocal, 1.0 \)/);
 console.log(
@@ -135,6 +132,5 @@ for (const name of ["update", "retargetCount"]) {
   compute.camera = camera;
   compute.build();
   assert.ok(compute.computeShader.includes("@compute"));
-  writeFileSync("/tmp/frost-" + name + ".wgsl", compute.computeShader);
   console.log("Assembly " + name + " WGSL generated:", compute.computeShader.length, "bytes.");
 }
