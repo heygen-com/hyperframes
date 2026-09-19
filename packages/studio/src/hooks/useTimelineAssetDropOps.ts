@@ -25,6 +25,8 @@ import { commitTimelineCompositionInsertion } from "../utils/timelineComposition
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
+import { selectTimelineRowElements } from "../player/hooks/useTimelineRowElements";
+import { usePlayerStore } from "../player/store/playerStore";
 
 /** The first uploaded file opens the new track (if asked); the rest land on the lane it landed on. */
 function fileDropPlacement(
@@ -107,7 +109,11 @@ export function useTimelineAssetDropOps({
 
         const { source: sourceWithRoom, track } = resolveDropTrack({
           source: originalContent,
-          elements: relevantElements,
+          // insertRow counts the rows the timeline shows, so plan against those.
+          elements: selectTimelineRowElements(
+            relevantElements,
+            usePlayerStore.getState().topLevelIds,
+          ),
           placement,
           dropped: {
             id: newId,
