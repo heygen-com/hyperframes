@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="US Bubble Map"
   description="Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map"
   variables={[]}
-  meta={{"duration":12,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":477}}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":479}}
   attribution={{"path":"registry/blocks/us-map-bubble","tags":["data","map","geography","usa","bubble","cities"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/us-map-bubble/us-map-bubble.html"
@@ -140,7 +140,6 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           stroke: #ffffff;
           stroke-width: 1;
           transform-origin: center center;
-          transform: scale(0);
         }
 
         #us-map-bubble .city-pulse {
@@ -382,6 +381,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           function buildTimeline(projectedCities, pulseCircle) {
             var statePaths = statesGroup.querySelectorAll(".state-path");
             var bubbles = bubblesGroup.querySelectorAll(".city-bubble");
+            // Own the full transform via GSAP from the start (not CSS), so the
+            // scale tween below doesn't clobber a value GSAP never tracked.
+            gsap.set(bubbles, { scale: 0 });
             var callouts = calloutsGroup.querySelectorAll(".callout-group");
             var connections = connectionsGroup.querySelectorAll(".connection-line");
 
