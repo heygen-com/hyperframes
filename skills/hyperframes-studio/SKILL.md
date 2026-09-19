@@ -66,7 +66,7 @@ toggle draws them with a tick at the midpoint of every edge. Source:
 | Action-safe | 90%                | 5%                  |
 | Title-safe  | 80%                | 10%                 |
 
-- Keep captions and key content inside the title-safe box (80%).
+- Safe margins: everything visible stays inside the action-safe box (90%), and captions and key content stay inside the title-safe box (80%).
 - Two-up and 50/50 layouts keep each half's content inside the title-safe box.
 
 ## Checking your work
