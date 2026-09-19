@@ -109,22 +109,6 @@ export const GLYPHS = {
     ],
   },
   ungroup: { shapes: ["r 2 2 5.5 5.5 1.5", "r 8.5 8.5 5.5 5.5 1.5"] },
-  "bring-forward": {
-    shapes: ["M2.5 11 8 8.5l5.5 2.5", "M8 8.5v-6", "M5.5 5 8 2.5 10.5 5"],
-    small: ["M3 12h10", "M4 8.5 8 4.5l4 4"],
-  },
-  "send-backward": {
-    shapes: ["M2.5 5 8 7.5 13.5 5", "M8 7.5v6", "M5.5 11 8 13.5l2.5-2.5"],
-    small: ["M3 4h10", "M4 7.5 8 11.5l4-4"],
-  },
-  "bring-to-front": {
-    shapes: ["M2.5 10.5 8 8l5.5 2.5M2.5 13.5 8 11l5.5 2.5", "M8 8V2.5", "M5.5 5 8 2.5 10.5 5"],
-    small: ["M3 13h10", "M4 10.5 8 6.5l4 4M4 6.5 8 2.5l4 4"],
-  },
-  "send-to-back": {
-    shapes: ["M2.5 2.5 8 5l5.5-2.5M2.5 5.5 8 8l5.5-2.5", "M8 8v5.5", "M5.5 11 8 13.5l2.5-2.5"],
-    small: ["M3 3h10", "M4 5.5 8 9.5l4-4M4 9.5 8 13.5l4-4"],
-  },
   layers: {
     shapes: [
       "M8 2.5 13.5 5.25 8 8 2.5 5.25Z",
@@ -132,6 +116,12 @@ export const GLYPHS = {
       "M2.5 11.75 8 14.5l5.5-2.75",
     ],
   },
+  // Studio's own default z-order glyphs (CanvasContextMenu.tsx), reproduced
+  // verbatim in the module's format per Miguel's D-813 am.3 call: no redraw.
+  "bring-forward": { shapes: ["M3 11 L8 8.5 L13 11 L8 13.5 Z", "M8 8.5 L8 2", "M5.5 4.5 L8 2 L10.5 4.5"] },
+  "send-backward": { shapes: ["M3 5 L8 2.5 L13 5 L8 7.5 Z", "M8 7.5 L8 14", "M5.5 11.5 L8 14 L10.5 11.5"] },
+  "bring-to-front": { shapes: ["M3 9.5 L8 7 L13 9.5 L8 12 Z", "M3 12.5 L8 10 L13 12.5 L8 15 Z", "M8 12.5 L8 2", "M5.5 4.5 L8 2 L10.5 4.5"] },
+  "send-to-back": { shapes: ["M3 4 L8 1.5 L13 4 L8 6.5 Z", "M3 7 L8 4.5 L13 7 L8 9.5 Z", "M8 3.5 L8 14", "M5.5 11.5 L8 14 L10.5 11.5"] },
   crosshair: { shapes: ["c 8 8 5", "M8 1.5V4M8 12v2.5M1.5 8H4M12 8h2.5", "d 8 8 1"] },
   sparkle: { shapes: ["M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5Z"], fillable: true },
   // timeline
@@ -232,19 +222,10 @@ export const GLYPHS = {
       "c 8 8 2",
     ],
   },
-  "sidebar-show": {
-    shapes: [PANEL, "M6 2.5v11", "M8.5 6l2 2-2 2"],
-    small: [PANEL, "R 2 2.5 4.5 11 2"],
-  },
-  "sidebar-hide": {
-    shapes: [PANEL, "M6 2.5v11", "M11 6l-2 2 2 2"],
-    small: [PANEL, "M6.5 2.5v11"],
-  },
-  inspector: {
-    shapes: [PANEL, "M10 2.5v11"],
-    small: [PANEL, "R 9.5 2.5 4.5 11 2"],
-  },
   window: { shapes: [PANEL, "M2 6.5h12", "M7 6.5v7"] },
+  "sidebar-show": { shapes: [PANEL, "M6.5 2.5v11"] },
+  "sidebar-hide": { shapes: [PANEL, "R 2 2.5 4.5 11 2", "M6.5 2.5v11"] },
+  inspector: { shapes: [PANEL, "R 9.5 2.5 4.5 11 2", "M9.5 2.5v11"] },
   compare: { shapes: ["r 2 2 12 12 2", "M2 8h12"] },
   square: { shapes: ["r 2.5 2.5 11 11 2"], fillable: true },
   palette: {
