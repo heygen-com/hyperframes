@@ -39,18 +39,36 @@ Text output is `timeline <N>s`, then one block per track kind (`video`, `graphic
 ```
 graphics (2)
   |██████                                  | sec-connector 0-6.7s src=compositions/connector-morph.html
-    |██████████████                          | box 0-2.32s
+    |██████████████                          | box 15.67-17.99s (local 0-2.32s) in compositions/connector-morph.html
 audio (1)
   | █                                      | vo 1.6-3.6s src=vo.mp3 vol=0.5 group=vo volume[0:0.2 2:1]
 ```
 
 - The bar is 40 columns over the whole timeline. Times are seconds.
 - `src=`, `vol=`, `rate=` (playback rate, only when not 1), `group=` (audio group), and `<target>[t:v ...]` (automation lane points, `t` in seconds from the clip start) appear only when the clip has them.
-- Clips of a sub-composition are indented one level, with times local to that sub-composition. Deeper nesting is not expanded.
+- Clips of a sub-composition are indented one level. Their time is printed as the absolute main-timeline start-end first, then `(local <start>-<end>s)` (time inside that sub-composition), then `in <file>` (the file that declares the clip). Deeper nesting is not expanded (`children=unread` on that row).
 - `duration=unauthored` (dotted bar) means the element has no `data-duration`/`data-end`, so its length is only known at render time (typically media). Add a `data-duration` if the length matters.
 - `lanes unreadable: ...` means the clip's `data-automation` or `data-fx-chain` did not parse; fix the attribute.
 
-`--json` prints `{ timeline: { duration, tracks: [{ kind, rows: [...] }] } }`. Each row has `id`, `kind` (tag), `trackKind`, `start`, `duration`, `end`, `trackIndex`, `src`, `sourceFile`, `volume`, `lanes`, `playbackRate`, `audioGroup`, `durationAuthored`, `laneError`, and `children` (the sub-composition's rows).
+`--json` prints `{ timeline: { duration, tracks: [{ kind, rows: [...] }] } }`. Each row has `id`, `kind` (tag), `trackKind`, `start`, `duration`, `end` (local to the row's own file), **`absStart`, `absEnd`, `file`** (main-timeline time and the project-relative file that declares the clip — use these, not `start`/`end`, to compare clips across nesting), `trackIndex`, `src`, `sourceFile`, `volume`, `lanes`, `playbackRate`, `audioGroup`, `durationAuthored`, `laneError`, and `children` (the sub-composition's rows, one level).
+
+### Query one-liners (jq, node fallback if jq is absent)
+
+```bash
+TL=$(npx hyperframes timeline --json)
+# 1. what plays at absolute time T=12.5
+jq --argjson t 12.5 '[.. | objects | select(.absStart? != null and .absStart<=$t and .absEnd>$t)]' <<<"$TL"
+node -e 'const t=12.5,j=JSON.parse(require("fs").readFileSync(0,"utf8"));const w=r=>r.forEach(x=>{if(x.absStart<=t&&x.absEnd>t)console.log(x.id,x.file);w(x.children||[])});j.timeline.tracks.forEach(tr=>w(tr.rows))' <<<"$TL"
+# 2. find a clip by id or src -> file, track, absStart, absEnd
+jq --arg q tsfx-pet2 '[.. | objects | select(.id?==$q or .src?==$q)] | .[] | {file,trackKind,absStart,absEnd}' <<<"$TL"
+node -e 'const q="tsfx-pet2",j=JSON.parse(require("fs").readFileSync(0,"utf8"));const w=r=>r.forEach(x=>{if(x.id===q||x.src===q)console.log(x.file,x.trackKind,x.absStart,x.absEnd);w(x.children||[])});j.timeline.tracks.forEach(tr=>w(tr.rows))' <<<"$TL"
+# 3. clips of one track, in absolute order
+jq --arg k video '(.timeline.tracks[]|select(.kind==$k).rows)|sort_by(.absStart)|.[]|{id,absStart,absEnd}' <<<"$TL"
+node -e 'const k="video",j=JSON.parse(require("fs").readFileSync(0,"utf8"));j.timeline.tracks.find(t=>t.kind===k).rows.slice().sort((a,b)=>a.absStart-b.absStart).forEach(r=>console.log(r.id,r.absStart,r.absEnd))' <<<"$TL"
+# 4. gaps and overlaps within a track (positive = gap, negative = overlap)
+jq --arg k video '(.timeline.tracks[]|select(.kind==$k).rows)|sort_by(.absStart) as $r|[range(0;($r|length)-1)|{a:$r[.].id,b:$r[.+1].id,delta:($r[.+1].absStart-$r[.].absEnd)}]' <<<"$TL"
+node -e 'const k="video",j=JSON.parse(require("fs").readFileSync(0,"utf8"));const r=j.timeline.tracks.find(t=>t.kind===k).rows.slice().sort((a,b)=>a.absStart-b.absStart);for(let i=0;i<r.length-1;i++)console.log(r[i].id,r[i+1].id,r[i+1].absStart-r[i].absEnd)' <<<"$TL"
+```
 
 ## compositions, docs
 

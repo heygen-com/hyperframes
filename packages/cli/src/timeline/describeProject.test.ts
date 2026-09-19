@@ -127,6 +127,57 @@ describe("describeProject", () => {
   });
 });
 
+// A direct clip declared with a big data-start (20) reads as "the later one",
+// but a clip nested in a host that starts at 5 with its own local start of 1
+// actually plays at 6 on the main timeline: earlier than the direct clip.
+const INVERSION_INDEX = `<div data-composition-id="main" data-duration="30">
+  <video id="direct" src="d.mp4" data-start="20" data-duration="5" data-track-index="0"></video>
+  <div id="host" data-composition-src="compositions/scene.html" data-start="5" data-duration="10" data-track-index="1"></div>
+</div>`;
+const INVERSION_SCENE = `<template><div data-composition-id="scene"><video id="nested" src="n.mp4" data-start="1" data-duration="2" data-track-index="0"></video></div></template>`;
+
+const inversionProject = () => {
+  dir = mkdtempSync(join(tmpdir(), "hf-timeline-abs-"));
+  mkdirSync(join(dir, "compositions"));
+  writeFileSync(join(dir, "index.html"), INVERSION_INDEX);
+  writeFileSync(join(dir, "compositions", "scene.html"), INVERSION_SCENE);
+  return join(dir, "index.html");
+};
+
+describe("absolute main-timeline time", () => {
+  it("gives a nested clip an absolute start smaller than a later-declared direct clip's, plus the owning file", () => {
+    const rows = describeProject(inversionProject()).tracks.flatMap((t) => t.rows);
+    const direct = rows.find((r) => r.id === "direct")!;
+    const host = rows.find((r) => r.id === "host")!;
+    const nested = host.children.find((c) => c.id === "nested")!;
+
+    // Hand-computed: host starts at 5, nested is 1s into it, so nested's
+    // absolute start is 5 + 1 = 6, smaller than direct's 20.
+    expect(direct).toMatchObject({
+      start: 20,
+      end: 25,
+      absStart: 20,
+      absEnd: 25,
+      file: "index.html",
+    });
+    expect(host).toMatchObject({ start: 5, end: 15, absStart: 5, absEnd: 15, file: "index.html" });
+    expect(nested).toMatchObject({
+      start: 1,
+      end: 3,
+      absStart: 6,
+      absEnd: 8,
+      file: "compositions/scene.html",
+    });
+    expect(nested.absStart).toBeLessThan(direct.absStart);
+  });
+
+  it("prints the absolute time first and the local time in parentheses for a nested row", () => {
+    const text = formatTimeline(describeProject(inversionProject()));
+    expect(text).toContain("direct 20-25s");
+    expect(text).toContain("nested 6-8s (local 1-3s) in compositions/scene.html");
+  });
+});
+
 describe("formatTimeline", () => {
   it("treats playback rate 1 as unset and does not expand a host nested inside a sub-composition", () => {
     const index = project();
