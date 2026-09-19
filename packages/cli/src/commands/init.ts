@@ -352,6 +352,7 @@ function patchVideoSrc(
   dir: string,
   videoFilename: string | undefined,
   durationSeconds?: number,
+  audioFilename?: string,
 ): void {
   const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((e) => e.isFile() && e.name.endsWith(".html"))
@@ -365,9 +366,13 @@ function patchVideoSrc(
       // Remove video elements with placeholder src
       content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/video>/g, "");
       content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
-      // Remove audio elements with placeholder src
-      content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/audio>/g, "");
-      content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
+      if (audioFilename) {
+        content = content.replaceAll("__VIDEO_SRC__", audioFilename);
+      } else {
+        // Remove audio elements with placeholder src
+        content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/audio>/g, "");
+        content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
+      }
     }
     // Patch duration — use probed duration or default
     const dur = durationSeconds ? String(Math.round(durationSeconds * 100) / 100) : "10";
@@ -564,6 +569,7 @@ async function scaffoldProject(
   tailwind = false,
   resolution?: CanvasResolution,
   authoringSkill?: string,
+  localAudioName?: string,
 ): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
@@ -576,7 +582,7 @@ async function scaffoldProject(
   } else {
     await fetchRemoteTemplate(templateId, destDir);
   }
-  patchVideoSrc(destDir, localVideoName, durationSeconds);
+  patchVideoSrc(destDir, localVideoName, durationSeconds, localAudioName);
   if (tailwind) writeTailwindSupport(destDir);
   if (resolution) applyResolutionPreset(destDir, resolution);
 
@@ -916,6 +922,7 @@ export default defineCommand({
           tailwind,
           resolutionPreset,
           args.skill,
+          audioFlag ? basename(audioFlag) : undefined,
         );
       } catch (err) {
         console.error(
@@ -1131,6 +1138,7 @@ export default defineCommand({
         tailwind,
         resolutionPreset,
         args.skill,
+        audioFlag ? basename(audioFlag) : undefined,
       );
       if (!isBundled) {
         spin.stop(c.success(`Downloaded ${templateId}`));
