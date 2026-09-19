@@ -3067,6 +3067,26 @@ describe("initSandboxRuntimeModular", () => {
       });
     });
 
+    it("stays at zero while a sub-composition's own length is not known yet", () => {
+      mountRoot(
+        '<div class="clip" data-start="0" data-duration="2"></div><div data-composition-id="sub" data-start="0"></div>',
+      );
+      expect(window.__player?.getDuration()).toBe(0);
+      expect(window.__hf?.durationSource?.pendingClips).toBe(1);
+    });
+
+    it("posts the derived-length diagnostic only for a derived length", () => {
+      const spy = vi.spyOn(window, "postMessage");
+      const codes = () =>
+        spy.mock.calls
+          .map(([message]) => (message as { code?: string } | undefined)?.code)
+          .filter((code) => code === "composition_duration_derived");
+      mountRoot("<p>static</p>");
+      expect(codes()).toHaveLength(0);
+      mountRoot('<div class="clip" data-start="0" data-duration="2"></div>');
+      expect(codes()).toHaveLength(1);
+    });
+
     it("reports no derived source when a timeline supplies the length", () => {
       mountRoot('<div class="clip" data-start="0" data-duration="2"></div>');
       expect(window.__hf?.durationSource?.source).toBe("derived");

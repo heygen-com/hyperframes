@@ -975,6 +975,9 @@ export function initSandboxRuntimeModular(): void {
 
   /** The last-resort length: the latest end among the root's timed clips, used only when no
    *  timeline, floor or caller-supplied length exists. Pending media is counted, not guessed. */
+  // A sub-composition's length comes from its own timeline, which may not be registered yet.
+  const isCompositionHost = (node: Element): boolean =>
+    node.hasAttribute("data-composition-id") || node.hasAttribute("data-composition-src");
   const resolveContentDerivedDuration = () => {
     const rootEl = resolveRootCompositionElement();
     if (!rootEl)
@@ -993,7 +996,7 @@ export function initSandboxRuntimeModular(): void {
       if (!Number.isFinite(start)) continue;
       const duration = startResolver.resolveDurationForElement(node);
       if (duration != null) clipEnds.push(Math.max(0, start) + duration);
-      else if (isMediaElement(node)) clipEnds.push(null);
+      else if (isMediaElement(node) || isCompositionHost(node)) clipEnds.push(null);
     }
     const result = resolveCompositionDuration({
       authoredDurationSeconds: null,
