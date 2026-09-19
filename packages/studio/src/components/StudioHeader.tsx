@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { Camera } from "../icons/SystemIcons";
+import { Icon } from "../icons";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -216,28 +216,13 @@ export function StudioHeader({
               aria-label={capturing ? "Capturing frame" : "Capture current frame"}
             >
               {capturing ? (
-                <svg
-                  className="animate-spin motion-reduce:animate-none h-3.5 w-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden="true"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
+                <Icon
+                  name="spinner"
+                  size={14}
+                  className="animate-spin motion-reduce:animate-none"
+                />
               ) : (
-                <Camera size={14} />
+                <Icon name="camera" size={14} />
               )}
               <span className="max-[1000px]:hidden">{capturing ? "Capturing…" : "Capture"}</span>
             </a>
@@ -251,19 +236,7 @@ export function StudioHeader({
                 "h-full rounded-none",
                 inspectorButtonActive && "bg-hover text-accent enabled:hover:text-accent",
               )}
-              icon={
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
-                </svg>
-              }
+              icon={<Icon name="inspector" size={12} />}
               onClick={() => {
                 if (shouldOpenInspector(effectiveRightCollapsed, inspectorPanelActive)) {
                   trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });

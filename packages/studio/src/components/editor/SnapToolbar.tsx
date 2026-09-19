@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
+import { Icon } from "../../icons";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { usePreviewGuidesStore } from "./previewGuidesStore";
@@ -115,15 +115,15 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           }
           aria-label="Set motion destination"
         >
-          <Path size={16} weight={motionPathArmed ? "fill" : "regular"} />
+          <Icon name="path" />
         </button>
       )}
       {(
         [
-          ["rulerVisible", "Ruler", Ruler],
-          ["safeMarginsVisible", "Safe margins", FrameCorners],
+          ["rulerVisible", "Ruler", "ruler"],
+          ["safeMarginsVisible", "Safe margins", "safe-frame"],
         ] as const
-      ).map(([key, label, Icon]) => (
+      ).map(([key, label, name]) => (
         <button
           key={key}
           type="button"
@@ -137,7 +137,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           aria-label={`Toggle ${label.toLowerCase()}`}
           aria-pressed={guides[key]}
         >
-          <Icon size={16} weight={guides[key] ? "fill" : "regular"} />
+          <Icon name={name} />
         </button>
       ))}
       <button
@@ -151,7 +151,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         title={prefs.snapEnabled ? "Snap enabled (S)" : "Snap disabled (S)"}
         aria-label="Toggle snap"
       >
-        <MagnetStraight size={16} weight={prefs.snapEnabled ? "fill" : "regular"} />
+        <Icon name="magnet" filled={prefs.snapEnabled} />
       </button>
 
       <div className="relative">
@@ -175,7 +175,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           }
           aria-label="Toggle grid"
         >
-          <GridFour size={16} weight={prefs.gridVisible ? "fill" : "regular"} />
+          <Icon name="grid" />
         </button>
         <button
           type="button"
@@ -185,9 +185,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           aria-label="Grid options"
           aria-expanded={gridPopoverOpen}
         >
-          <svg width="7" height="7" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true">
-            <path d="M1 2.5l3 3 3-3z" />
-          </svg>
+          <Icon name="caret-down" size={8} />
         </button>
 
         {gridPopoverOpen && (

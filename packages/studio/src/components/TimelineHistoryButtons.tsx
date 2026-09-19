@@ -1,5 +1,5 @@
 import { useStudioShellContext } from "../contexts/StudioContext";
-import { RotateCcw, RotateCw } from "../icons/SystemIcons";
+import { UndoIcon, RedoIcon } from "../icons";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { historyTooltipLabel } from "../utils/studioHelpers";
 import { flatDisabled, flatIdle } from "./timelineToolbarStyles";
@@ -13,7 +13,7 @@ interface HistoryButtonProps {
 }
 
 function HistoryButton({ action, enabled, label, onClick }: HistoryButtonProps) {
-  const Icon = action === "undo" ? RotateCcw : RotateCw;
+  const Icon = action === "undo" ? UndoIcon : RedoIcon;
   return (
     <Tooltip label={historyTooltipLabel(action, label)}>
       <button

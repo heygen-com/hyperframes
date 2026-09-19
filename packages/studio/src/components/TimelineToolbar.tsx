@@ -1,12 +1,5 @@
 import { useEffect, useRef } from "react";
 import {
-  Image,
-  Magnet,
-  MagnifyingGlassMinus,
-  MagnifyingGlassPlus,
-  Waves,
-} from "@phosphor-icons/react";
-import {
   useEnableKeyframes,
   isPlayheadWithinTween,
   type EnableKeyframesSession,
@@ -24,7 +17,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
 import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
 import { TimelineHistoryButtons } from "./TimelineHistoryButtons";
-import { Scissors } from "../icons/SystemIcons";
+import { Icon } from "../icons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -202,9 +195,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               aria-pressed={activeTool === "select"}
               className={activeTool === "select" ? flatActive : flatIdle}
             >
-              <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
-                <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
-              </svg>
+              <Icon name="select" filled={activeTool === "select"} />
             </button>
           </Tooltip>
           <TimelineHistoryButtons />
@@ -216,7 +207,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               aria-pressed={activeTool === "razor"}
               className={activeTool === "razor" ? flatActive : flatIdle}
             >
-              <Scissors size={16} />
+              <Icon name="razor" filled={activeTool === "razor"} />
             </button>
           </Tooltip>
           {/* Divider: tool-mode | editing-actions */}
@@ -229,7 +220,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               aria-pressed={timelineSnapEnabled}
               className={timelineSnapEnabled ? flatActive : flatIdle}
             >
-              <Magnet size={16} weight="bold" aria-hidden="true" />
+              <Icon name="magnet" />
             </button>
           </Tooltip>
           <Tooltip
@@ -246,7 +237,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               aria-pressed={rippleEditEnabled}
               className={rippleEditEnabled ? flatActive : flatIdle}
             >
-              <Waves size={16} weight="bold" aria-hidden="true" />
+              <Icon name="waves" />
             </button>
           </Tooltip>
           {/* Always rendered (CapCut-style): with no keyframeable selection the
@@ -302,18 +293,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     }`
               }
             >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                {keyframeState === "active" ? (
-                  <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
-                ) : (
-                  <path
-                    d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                  />
-                )}
-              </svg>
+              <Icon name="keyframe" filled={keyframeState === "active"} />
             </button>
           </Tooltip>
           <Tooltip
@@ -334,20 +314,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   : "text-neutral-600 hover:text-neutral-400"
               }`}
             >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
-                {/* Same diamond outline as the Add-keyframe icon, with a
-                      record-style dot inside: filled = auto-recording,
-                      hollow = manual edits won't be keyframed. */}
-                <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
-                <circle
-                  cx="5"
-                  cy="5"
-                  r="1.8"
-                  fill={autoKeyframeEnabled ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth="1"
-                />
-              </svg>
+              <Icon name="keyframe-auto" filled={autoKeyframeEnabled} />
             </button>
           </Tooltip>
           {onSplitElement &&
@@ -380,23 +347,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     }}
                     className={canSplit ? flatIdle : flatDisabled}
                   >
-                    {/* "][" split glyph: two outward-facing brackets with a center gap */}
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      {/* Right bracket of left half: ] */}
-                      <path d="M5 3 L7 3 L7 13 L5 13" />
-                      {/* Left bracket of right half: [ */}
-                      <path d="M11 3 L9 3 L9 13 L11 13" />
-                    </svg>
+                    <Icon name="split" />
                   </button>
                 </Tooltip>
               );
@@ -429,15 +380,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                       : flatDisabled
                   }
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <Icon name="beat" />
                 </button>
               </Tooltip>
             );
@@ -466,7 +409,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
               }`}
             >
-              <Image size={16} aria-hidden="true" />
+              <Icon name="image" />
             </button>
           </Tooltip>
           <Tooltip label="Fit timeline to width">
@@ -494,7 +437,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               }}
               className={flatIdle}
             >
-              <MagnifyingGlassMinus size={16} aria-hidden="true" />
+              <Icon name="zoom-out" />
             </button>
           </Tooltip>
           <input
@@ -526,7 +469,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               }}
               className={flatIdle}
             >
-              <MagnifyingGlassPlus size={16} aria-hidden="true" />
+              <Icon name="zoom-in" />
             </button>
           </Tooltip>
           {/* Numeric zoom readout (main-parity): "Fit" in fit mode, N% in manual. */}
