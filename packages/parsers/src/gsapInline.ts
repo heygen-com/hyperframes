@@ -474,13 +474,17 @@ function bodyStatements(node: Node): Node[] {
 /** Tag this body's direct timeline tweens with provenance + a monotonic expansion-order stamp. */
 function tagTimelineCalls(stmts: Node[], prov: GsapProvenance, ctx: ExpandCtx): void {
   for (const stmt of stmts) {
+    const calls: Node[] = [];
     walkNodes(stmt, (n) => {
-      if (n.type === "CallExpression" && isTimelineRooted(n, ctx.timelineVar)) {
-        tagProvenance(n, { ...prov });
-        n.__hfOrder = ctx.order.n++;
-        n.__hfSiteStart = ctx.rootStart;
-      }
+      if (n.type === "CallExpression" && isTimelineRooted(n, ctx.timelineVar)) calls.push(n);
     });
+    // A chain's outer call is visited first but runs last; stamp in source order.
+    calls.sort((a, b) => a.callee.property.start - b.callee.property.start);
+    for (const n of calls) {
+      tagProvenance(n, { ...prov });
+      n.__hfOrder = ctx.order.n++;
+      n.__hfSiteStart = ctx.rootStart;
+    }
   }
 }
 

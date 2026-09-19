@@ -173,6 +173,31 @@ fade("#a"); tl.to("#c", { x: 1, duration: 1 }); fade("#b");`;
     it("unrolls to a script whose tweens start at the same times", () => {
       expect(starts(unrollComputedTimeline(script))).toEqual(starts(script));
     });
+
+    it("places helper tweens at the label they name, and unrolls to the same starts", () => {
+      const labelled = `const tl = gsap.timeline();
+function fade(s, at) { tl.to(s, { opacity: 0, duration: 1 }, at); }
+tl.addLabel("mid", 2);
+fade("#a", "mid"); fade("#b", "mid+=0.5");
+tl.to("#c", { x: 1, duration: 1 }, "mid");`;
+      expect(starts(labelled)).toEqual({ "#a": 2, "#b": 2.5, "#c": 2 });
+      expect(starts(unrollComputedTimeline(labelled))).toEqual(starts(labelled));
+    });
+
+    it("keeps the order of a tween chain a helper adds", () => {
+      const chained = `const tl = gsap.timeline();
+function f() { tl.to("#a", { opacity: 0, duration: 1 }).to("#b", { x: 5, duration: 2 }).to("#c", { y: 7, duration: 3 }); }
+f();`;
+      expect(starts(chained)).toEqual({ "#a": 0, "#b": 1, "#c": 3 });
+      expect(starts(unrollComputedTimeline(chained))).toEqual(starts(chained));
+    });
+  });
+
+  it("leaves a helper as authored when an inner link of its tween chain has a callback", () => {
+    const script = `const tl = gsap.timeline();
+function f(s) { tl.to(s, { opacity: 0, duration: 1, onComplete: () => { window.hit++; } }).to(s, { x: 1, duration: 1 }); }
+f("#a");`;
+    expect(unrollComputedTimeline(script)).toBe(script);
   });
 
   it("leaves a helper call as authored when the helper does more than add tweens", () => {

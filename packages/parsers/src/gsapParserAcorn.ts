@@ -1749,7 +1749,7 @@ function collectAddLabelDefs(
   scope: ScopeBindings,
   sortedCalls: TweenCallInfo[],
 ): AddLabelDef[] {
-  const callLocs = sortedCalls.map((c) => c.node.callee?.property?.loc?.start);
+  const callSites = sortedCalls.map(callSiteStart);
   const defs: AddLabelDef[] = [];
   acornWalk.simple(ast, {
     // fallow-ignore-next-line complexity
@@ -1772,14 +1772,10 @@ function collectAddLabelDefs(
       const posVal = resolveNode(node.arguments?.[1], scope);
       const position =
         typeof posVal === "number" || typeof posVal === "string" ? posVal : undefined;
-      const labelLoc = callee.property?.loc?.start;
+      const labelStart: number | undefined = callee.property?.start;
       let order = sortedCalls.length;
-      if (labelLoc) {
-        order = callLocs.findIndex(
-          (l) =>
-            l &&
-            (l.line > labelLoc.line || (l.line === labelLoc.line && l.column > labelLoc.column)),
-        );
+      if (labelStart !== undefined) {
+        order = callSites.findIndex((site) => site !== undefined && site > labelStart);
         if (order === -1) order = sortedCalls.length;
       }
       defs.push({ name, position, order });

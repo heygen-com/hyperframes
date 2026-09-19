@@ -160,11 +160,11 @@ function containsEffect(node: Node): boolean {
   );
 }
 
-/** True for a chain like `tl.to(...).from(...)` where every link is a tween method on the timeline. */
-function isTweenChain(expr: Node, timelineVar: string): boolean {
+/** True for a chain like `tl.to(...).from(...)` where every link is a tween method with effect-free arguments. */
+function isPureTweenChain(expr: Node, timelineVar: string): boolean {
   let node = expr;
   while (node?.type === "CallExpression") {
-    if (!isTimelineRooted(node, timelineVar)) return false;
+    if (!isTimelineRooted(node, timelineVar) || node.arguments.some(containsEffect)) return false;
     node = node.callee?.object;
   }
   return node?.type === "Identifier";
@@ -203,8 +203,8 @@ function onlyAddsTweens(stmts: Node[], ctx: UnrollScope, seen: Set<Node[]> = new
   seen.add(stmts);
   return stmts.every((stmt) => {
     if (stmt.type === "VariableDeclaration") return !containsEffect(stmt);
-    if (stmt.type === "ExpressionStatement" && isTweenChain(stmt.expression, ctx.timelineVar)) {
-      return !stmt.expression.arguments.some(containsEffect);
+    if (stmt.type === "ExpressionStatement" && isPureTweenChain(stmt.expression, ctx.timelineVar)) {
+      return true;
     }
     const nested = bodyOf(stmt, ctx.helpers);
     return nested !== null && onlyAddsTweens(nested, ctx, seen);
