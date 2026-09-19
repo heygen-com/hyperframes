@@ -65,6 +65,7 @@ vi.mock("../utils/ffprobe.js", async (importOriginal) => {
   return { ...actual, extractAudioMetadata: extractAudioMetadataMock };
 });
 
+import { RATE_RANGE } from "@hyperframes/core/audio-automation";
 import { parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
 describe("parseAudioElements strict literal timing", () => {
@@ -1395,8 +1396,8 @@ describe("parseAudioElements — relative data-start resolution", () => {
     const tracks = parseAudioElements(html);
 
     expect(tracks.find((track) => track.id === "fast")?.playbackRate).toBe(2);
-    expect(tracks.find((track) => track.id === "low")?.playbackRate).toBe(0.1);
-    expect(tracks.find((track) => track.id === "high")?.playbackRate).toBe(10);
+    expect(tracks.find((track) => track.id === "low")?.playbackRate).toBe(RATE_RANGE.min);
+    expect(tracks.find((track) => track.id === "high")?.playbackRate).toBe(RATE_RANGE.max);
     expect(tracks.find((track) => track.id === "invalid")?.playbackRate).toBe(1);
   });
 

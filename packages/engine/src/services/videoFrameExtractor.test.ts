@@ -58,6 +58,7 @@ import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.js";
 import { resolveRuntimeMediaClipDuration } from "../../../core/src/runtime/media.js";
 import { compileTimingAttrs } from "@hyperframes/core";
+import { RATE_RANGE } from "@hyperframes/core/audio-automation";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
 // regression test at packages/producer/tests/vfr-screen-recording/ runs inside
@@ -771,8 +772,8 @@ describe("parseVideoElements", () => {
     );
 
     expect(fast?.playbackRate).toBe(2);
-    expect(low?.playbackRate).toBe(0.1);
-    expect(high?.playbackRate).toBe(10);
+    expect(low?.playbackRate).toBe(RATE_RANGE.min);
+    expect(high?.playbackRate).toBe(RATE_RANGE.max);
     expect(invalid?.playbackRate).toBe(1);
   });
 
