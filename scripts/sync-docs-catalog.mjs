@@ -35,7 +35,9 @@ function previewFor(dir, id, docsDir, man) {
   if (!fs.existsSync(payloadPath)) return recorded;
   const payload = readJson(payloadPath);
   if (payload.unsupported) {
-    return recorded.mode === "video" ? recorded : { mode: "unsupported", flag: payload.unsupported };
+    return recorded.mode === "video"
+      ? recorded
+      : { mode: "unsupported", flag: payload.unsupported };
   }
   const { html } = payload;
   if (!html || previewGap(html)) return recorded;

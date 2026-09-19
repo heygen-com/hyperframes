@@ -188,6 +188,50 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/hooks/useExpandedTimelineElements.test.ts",
     "tests for the removed child-row expansion hook",
   ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k1.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k3.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k4.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r2k0.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r2k2.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/bgm.m4a",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/eb-garamond-latin-400-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/eb-garamond-latin-700-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-400-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-500-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-600-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
   ...[
     "docs/studio/storyboard.mdx",
     "packages/studio-server/src/routes/storyboard.test.ts",
