@@ -29,31 +29,40 @@ export function sideMinimumWidth(dockWidth: number): number {
   return Math.min(MIN_SIDE_W, Math.max(MIN_SIDE_W_FLOOR, fair));
 }
 
-/** A group is a side group only if every tab is; a side panel tabbed into the preview keeps its floor. */
-function sideGroups(api: DockviewApi) {
-  return api.groups.flatMap((group) => {
-    const zones = group.panels.map((panel) =>
-      isPanelId(panel.id) ? PANEL_DEFINITIONS[panel.id].zone : "center",
-    );
-    const zone = zones[0];
-    return zone && zone !== "center" && zones.every((candidate) => candidate !== "center")
-      ? [{ group, zone }]
-      : [];
-  });
+type GroupKind = { zone: "left" | "right" } | "preview";
+
+/**
+ * Classifies a group by its tabs: any preview tab makes it the preview group, otherwise it is a
+ * side group only if every tab is. Timeline-only groups are left alone.
+ */
+function classifyGroup(group: DockviewApi["groups"][number]): GroupKind | null {
+  const defs = group.panels.flatMap((panel) =>
+    isPanelId(panel.id) ? [{ id: panel.id, zone: PANEL_DEFINITIONS[panel.id].zone }] : [],
+  );
+  if (defs.some((def) => def.id === "preview")) return "preview";
+  const first = defs[0]?.zone;
+  const allSide = defs.length > 0 && defs.every((def) => def.zone !== "center");
+  return allSide && first && first !== "center" ? { zone: first } : null;
 }
 
 /**
- * Idempotent: re-run whenever the window resizes, a panel is added, or a layout is restored.
- * Dockview keeps stale widths when minimums drop after it laid out, so a narrow window also
- * shrinks each side group to its default width explicitly.
+ * Idempotent: re-run whenever the window resizes, a panel is added or moved, or a layout is
+ * restored. Dockview keeps constraints once set, so every group holding the preview is pinned
+ * to the preview floor explicitly, and side groups shrink to their default width on a narrow
+ * window because dockview keeps stale widths when minimums drop after layout.
  */
 export function applySideMinimums(api: DockviewApi, dockWidth = window.innerWidth) {
   const minimumWidth = sideMinimumWidth(dockWidth);
   const cap = defaultSideWidths(dockWidth);
-  for (const { group, zone } of sideGroups(api)) {
-    group.api.setConstraints({ minimumWidth });
-    const limit = zone === "right" ? cap.right : cap.left;
-    if (minimumWidth < MIN_SIDE_W && group.width > limit) group.api.setSize({ width: limit });
+  for (const group of api.groups) {
+    const kind = classifyGroup(group);
+    if (kind === "preview") {
+      group.api.setConstraints({ minimumWidth: MIN_PREVIEW_W });
+    } else if (kind) {
+      group.api.setConstraints({ minimumWidth });
+      const limit = kind.zone === "right" ? cap.right : cap.left;
+      if (minimumWidth < MIN_SIDE_W && group.width > limit) group.api.setSize({ width: limit });
+    }
   }
 }
 

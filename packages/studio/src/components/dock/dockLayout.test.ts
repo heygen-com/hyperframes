@@ -99,4 +99,16 @@ describe("applySideMinimums", () => {
     applySideMinimums(api, 560);
     expect(preview.group.minimumWidth).toBe(360);
   });
+
+  it("pins the preview floor when a side panel that was showing gets the preview dragged in", () => {
+    api.layout(1200, 700);
+    buildEditLayout(api, 1200);
+    applySideMinimums(api, 560);
+    const preview = api.getPanel("preview");
+    const design = api.getPanel("design");
+    if (!preview || !design) throw new Error("default layout is missing panels");
+    preview.api.moveTo({ group: design.group });
+    applySideMinimums(api, 560);
+    expect(preview.group.minimumWidth).toBe(360);
+  });
 });
