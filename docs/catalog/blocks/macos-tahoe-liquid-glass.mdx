@@ -1,29 +1,29 @@
 ---
 title: "macOS Tahoe Liquid Glass Desktop"
 description: "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="macos-tahoe-liquid-glass"
+  compositionSrc="compositions/macos-tahoe-liquid-glass.html"
+  title="macOS Tahoe Liquid Glass Desktop"
+  description="3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move."
+  variables={[]}
+  meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":1461}}
+  attribution={{"path":"registry/blocks/macos-tahoe-liquid-glass","tags":["html-in-canvas","3d","macos","tahoe","gltf"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/macos-tahoe-liquid-glass/macos-tahoe-liquid-glass.html"
+>
 
-<InstallCommand command="npx hyperframes add macos-tahoe-liquid-glass" item="macos-tahoe-liquid-glass" />
+<CatalogSlot slot="code">
 
-That writes `compositions/macos-tahoe-liquid-glass.html`, plus 18 supporting files under `models/`, `assets/wallpapers/`, and `assets/icons/`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title="macos-tahoe-liquid-glass.html">
-
-```html
+```html macos-tahoe-liquid-glass.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -1487,15 +1487,42 @@ That writes `compositions/macos-tahoe-liquid-glass.html`, plus 18 supporting fil
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add macos-tahoe-liquid-glass" item="macos-tahoe-liquid-glass" />
 
-```html
-<div data-composition-id="macos-tahoe-liquid-glass" data-composition-src="compositions/macos-tahoe-liquid-glass.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes `compositions/macos-tahoe-liquid-glass.html`, plus 18 supporting files under `models/`, `assets/wallpapers/`, and `assets/icons/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
+
+## Add it to your video
+
+It runs for 15 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="macos-tahoe-liquid-glass"
+  data-composition-src="compositions/macos-tahoe-liquid-glass.html"
+  data-start="0"
+  data-duration="15"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -1506,3 +1533,7 @@ Tagged `html-in-canvas` `3d` `macos` `tahoe` `gltf`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

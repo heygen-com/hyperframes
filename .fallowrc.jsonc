@@ -968,8 +968,8 @@
       // file-level fingerprint invalidation re-flags the inherited findings even at
       // unchanged line numbers.
       "packages/core/src/runtime/picker.ts",
-      // generate-catalog-payloads.ts: hostsOwnDirectory, parseArgs and main are
-      // untouched. buildPayload's canvas-draw-element branch now writes a marker
+      // generate-catalog-payloads.ts: hostsOwnDirectory, parseArgs and generate (the
+      // former main body, moved unchanged) are untouched. buildPayload's canvas-draw-element branch now writes a marker
       // via a small writePayload helper instead of dropping the payload, but at
       // the same branch count — its flagged 14-branch CRAP score predates this PR.
       "scripts/generate-catalog-payloads.ts",

@@ -1,47 +1,28 @@
 ---
 title: "Text Clone Wall Transition"
 description: "Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears — hard-cut the content beneath while covered"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/mk-clone-wall-transition.json"
+  compositionId="mk-clone-wall-transition"
+  compositionSrc="compositions/mk-clone-wall-transition.html"
+  title="Text Clone Wall Transition"
+  description="Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears — hard-cut the content beneath while covered"
+  variables={[]}
+  meta={{"duration":2.4,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":225}}
+  attribution={{"path":"registry/blocks/mk-clone-wall-transition","tags":["transition","typography","wipe"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/mk-clone-wall-transition/mk-clone-wall-transition.html"
+>
 
-<InstallCommand command="npx hyperframes add mk-clone-wall-transition" item="mk-clone-wall-transition" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/mk-clone-wall-transition.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="mk-clone-wall-transition preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/mk-clone-wall-transition.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/mk-clone-wall-transition.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 2.4 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="mk-clone-wall-transition"
-  data-composition-src="compositions/mk-clone-wall-transition.html"
-  data-start="0"
-  data-duration="2.4"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="mk-clone-wall-transition.html">
-
-```html
+```html mk-clone-wall-transition.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -269,7 +250,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add mk-clone-wall-transition" item="mk-clone-wall-transition" />
+
+That writes one file: `compositions/mk-clone-wall-transition.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 2.4 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="mk-clone-wall-transition"
+  data-composition-src="compositions/mk-clone-wall-transition.html"
+  data-start="0"
+  data-duration="2.4"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -280,3 +290,7 @@ Tagged `transition` `typography` `wipe`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

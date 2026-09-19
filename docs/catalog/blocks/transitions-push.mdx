@@ -1,28 +1,28 @@
 ---
 title: "Push Transitions"
 description: "Showcase of push and slide transitions"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/transitions-push.json"
+  compositionId="transitions-push"
+  compositionSrc="compositions/transitions-push.html"
+  title="Push Transitions"
+  description="Showcase of push and slide transitions"
+  variables={[]}
+  meta={{"duration":24,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":383}}
+  attribution={{"path":"registry/blocks/transitions-push","tags":["transition","showcase"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/transitions-push/transitions-push.html"
+>
 
-<InstallCommand command="npx hyperframes add transitions-push" item="transitions-push" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/transitions-push.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="transitions-push preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/transitions-push.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-push.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="transitions-push.html">
-
-```html
+```html transitions-push.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -408,15 +408,36 @@ That writes one file: `compositions/transitions-push.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add transitions-push" item="transitions-push" />
 
-```html
-<div data-composition-id="transitions-push" data-composition-src="compositions/transitions-push.html" data-start="0" data-duration="24" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes one file: `compositions/transitions-push.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 24 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="transitions-push"
+  data-composition-src="compositions/transitions-push.html"
+  data-start="0"
+  data-duration="24"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -427,3 +448,7 @@ Tagged `transition` `showcase`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

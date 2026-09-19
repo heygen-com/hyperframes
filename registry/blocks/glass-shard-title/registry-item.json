@@ -1,0 +1,80 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "glass-shard-title",
+  "type": "hyperframes:block",
+  "title": "Glass Shard Title",
+  "description": "Glass shards fly in through fog and tile themselves into the headline.",
+  "tags": ["3d-motion", "title-card", "glass", "voronoi", "shards", "fog", "hdr"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 12.16,
+  "files": [
+    {
+      "path": "glass-shard-title.html",
+      "target": "compositions/glass-shard-title/glass-shard-title.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/ferndale_studio_01_1k.hdr",
+      "target": "compositions/glass-shard-title/assets/ferndale_studio_01_1k.hdr",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/Geist-Bold.ttf",
+      "target": "compositions/glass-shard-title/assets/fonts/Geist-Bold.ttf",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/Geist-Regular.ttf",
+      "target": "compositions/glass-shard-title/assets/fonts/Geist-Regular.ttf",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/Geist-SemiBold.ttf",
+      "target": "compositions/glass-shard-title/assets/fonts/Geist-SemiBold.ttf",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/Geist-OFL.txt",
+      "target": "compositions/glass-shard-title/assets/fonts/Geist-OFL.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/cormorant-garamond.woff2",
+      "target": "compositions/glass-shard-title/assets/fonts/cormorant-garamond.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/CormorantGaramond-OFL.txt",
+      "target": "compositions/glass-shard-title/assets/fonts/CormorantGaramond-OFL.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/glass-main.js",
+      "target": "compositions/glass-shard-title/assets/glass-main.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/Three-LICENSE.txt",
+      "target": "compositions/glass-shard-title/assets/Three-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/matcap-1.png",
+      "target": "compositions/glass-shard-title/assets/matcap-1.png",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/8a4ba0deaf2bafb4.png"
+    },
+    {
+      "path": "SKILL.md",
+      "target": "compositions/glass-shard-title/SKILL.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glass-shard-title.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glass-shard-title.png"
+  }
+}

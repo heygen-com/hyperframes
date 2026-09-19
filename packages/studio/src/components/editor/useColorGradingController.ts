@@ -1,3 +1,4 @@
+import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   HF_COLOR_GRADING_ATTR,
@@ -430,6 +431,7 @@ export function useColorGradingController({
     [previewIframeRef, target],
   );
 
+  const livePreviewIframe = useLivePreviewIframe();
   useEffect(() => {
     const iframe = previewIframeRef?.current;
     if (!iframe) return;
@@ -455,7 +457,13 @@ export function useColorGradingController({
       window.removeEventListener("message", onMessage);
       window.clearTimeout(timer);
     };
-  }, [postColorGrading, postCompare, previewIframeRef, scheduleRuntimeStatusRefresh]);
+  }, [
+    postColorGrading,
+    postCompare,
+    previewIframeRef,
+    scheduleRuntimeStatusRefresh,
+    livePreviewIframe,
+  ]);
 
   useEffect(
     () => () => {
