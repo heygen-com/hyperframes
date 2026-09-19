@@ -22,6 +22,7 @@ import {
   PANEL_DEFINITIONS,
   PANEL_IDS,
   isPanelId,
+  panelsInZone,
   type PanelDefinition,
   type PanelId,
 } from "./panelRegistry";
@@ -74,9 +75,19 @@ function snapshot(api: DockviewApi): DockSnapshot {
 function createController(api: DockviewApi): DockController {
   const open = (id: PanelId) => {
     if (api.getPanel(id)) return;
-    const { near, direction } = PANEL_DEFINITIONS[id].reopen;
-    const hasAnchor = api.getPanel(near) !== undefined;
-    addRegisteredPanel(api, id, hasAnchor ? { referencePanel: near, direction } : undefined);
+    const { zone, reopen } = PANEL_DEFINITIONS[id];
+    // Side columns are tab groups; preview and timeline are separate groups in the centre.
+    const sibling =
+      zone === "center"
+        ? undefined
+        : panelsInZone(zone).find((other) => other !== id && api.getPanel(other));
+    if (sibling) {
+      addRegisteredPanel(api, id, { referencePanel: sibling, direction: "within" });
+      return;
+    }
+    const hasAnchor = api.getPanel(reopen.near) !== undefined;
+    const position = { referencePanel: reopen.near, direction: reopen.direction };
+    addRegisteredPanel(api, id, hasAnchor ? position : undefined);
   };
   return {
     open,
