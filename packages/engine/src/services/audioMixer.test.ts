@@ -1396,7 +1396,7 @@ describe("parseAudioElements — relative data-start resolution", () => {
 
     expect(tracks.find((track) => track.id === "fast")?.playbackRate).toBe(2);
     expect(tracks.find((track) => track.id === "low")?.playbackRate).toBe(0.1);
-    expect(tracks.find((track) => track.id === "high")?.playbackRate).toBe(5);
+    expect(tracks.find((track) => track.id === "high")?.playbackRate).toBe(10);
     expect(tracks.find((track) => track.id === "invalid")?.playbackRate).toBe(1);
   });
 

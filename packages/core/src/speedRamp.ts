@@ -1,10 +1,6 @@
 /** A ramp is a `rate` lane in `data-automation`; `sourceTimeAt` is the one rate-to-time mapping consumers share. */
 
-import {
-  RATE_TARGET,
-  sampleAutomationLane,
-  type HfAutomationLane,
-} from "./audioAutomation.js";
+import { RATE_TARGET, sampleAutomationLane, type HfAutomationLane } from "./audioAutomation.js";
 import { laneFromAttr } from "./runtime/audioAutomationVolume.js";
 import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE } from "./playbackRateBounds.js";
 
@@ -36,7 +32,9 @@ function buildTable(lane: HfAutomationLane): RateTable {
     if (t <= prevT) return;
     const prevRate = sampleAutomationLane(lane, prevT, "log");
     ts.push(t);
-    ss.push(ss[ss.length - 1]! + ((prevRate + sampleAutomationLane(lane, t, "log")) / 2) * (t - prevT));
+    ss.push(
+      ss[ss.length - 1]! + ((prevRate + sampleAutomationLane(lane, t, "log")) / 2) * (t - prevT),
+    );
   };
   const first = Math.max(0, pts[0]!.t);
   push(first);

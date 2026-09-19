@@ -377,7 +377,7 @@ describe("syncRuntimeMedia", () => {
       const clip = createMockClip({ start: 1, end: 5, rate });
       Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
       syncRuntimeMedia({ clips: [clip], timeSeconds: 3, playing: false, playbackRate: 1 });
-      expect(clip.el.currentTime).toBeCloseTo(3.6410, 2);
+      expect(clip.el.currentTime).toBeCloseTo(3.641, 2);
       syncRuntimeMedia({ clips: [clip], timeSeconds: 3, playing: true, playbackRate: 1 });
       expect(clip.el.playbackRate).toBeCloseTo(3, 5);
       expect(clip.el.preservesPitch).toBe(true);

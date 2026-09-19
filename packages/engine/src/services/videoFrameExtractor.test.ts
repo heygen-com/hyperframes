@@ -772,7 +772,7 @@ describe("parseVideoElements", () => {
 
     expect(fast?.playbackRate).toBe(2);
     expect(low?.playbackRate).toBe(0.1);
-    expect(high?.playbackRate).toBe(5);
+    expect(high?.playbackRate).toBe(10);
     expect(invalid?.playbackRate).toBe(1);
   });
 
