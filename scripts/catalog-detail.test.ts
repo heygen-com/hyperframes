@@ -566,3 +566,13 @@ test("a copy button holds its label and 'Copied' in one grid cell, so the swap n
     "the primary button keeps its dark background on hover, so its white label stays readable",
   );
 });
+
+test("the tab strip and tab content share the 16px inset the boxed panels (caption, tune) already use", async () => {
+  await renderDetail(["install"]);
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "snippets", "catalog-detail.jsx"),
+    "utf8",
+  );
+  assert.match(source, /\.hf-ve-tabs-row \{ margin: 20px 0 0 16px; \}/, "tab strip is inset 16px");
+  assert.match(source, /\.hf-ve-body \{ padding: 2rem 0 0 16px; \}/, "tab content is inset 16px");
+});

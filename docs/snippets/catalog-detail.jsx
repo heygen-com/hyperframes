@@ -686,10 +686,10 @@ export const CatalogDetail = ({
   padding: 16px;
   border-top: 1px solid var(--ve-line);
 }
-.hf-ve-tabs-row { margin: 20px 0 0; }
+.hf-ve-tabs-row { margin: 20px 0 0 16px; }
 .hf-ve-tabs-row .hf-ve-tab { padding: 6px 16px; font-size: 14px; }
 .hf-ve-tabs-row .hf-ve-tab small { margin-left: 6px; font-weight: 400; opacity: 0.7; }
-.hf-ve-body { padding: 2rem 0 0; }
+.hf-ve-body { padding: 2rem 0 0 16px; }
 .hf-ve-install { margin: 0 0 28px; }
 .hf-ve-install-title { margin: 0 0 12px; font-size: 24px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; color: var(--ve-fg); }
 .hf-ve-about h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
