@@ -90,6 +90,7 @@ import {
   explainDrawElementDisabled,
   scaleProtocolTimeoutForComposition,
   classifyCaptureFailure,
+  type CaptureFailureKind,
   cloneCaptureWarning,
   isMemoryExhaustionError,
   isTransientBrowserError,
@@ -1032,6 +1033,19 @@ export function resolveRenderWorkDirPrefix(
  */
 export const MAX_TRANSIENT_CAPTURE_RETRIES = 1;
 
+/** Single owner of the bounded transient-browser retry policy for both disk-capture paths. */
+export function isTransientCaptureRetryEligible(
+  failureKind: CaptureFailureKind,
+  missing: readonly FrameRange[],
+  retriesUsed: number,
+): boolean {
+  return (
+    missing.length > 0 &&
+    failureKind === "transient_browser" &&
+    retriesUsed < MAX_TRANSIENT_CAPTURE_RETRIES
+  );
+}
+
 /**
  * A retry only pays off if the attempt that just finished captured at least one
  * frame toward its target. When it captured nothing (frames still missing >=
@@ -1271,18 +1285,11 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       // composition. Unlike the worker-halving retry below, this keeps the same
       // worker count (parallelism isn't the problem) and does NOT require
       // forward progress — a tab that dies before frame 0 is the exact case we
-      // want to recover. Bounded by MAX_TRANSIENT_CAPTURE_RETRIES so a
-      // deterministically-dying tab still fails instead of looping.
-      //
-      // Scope: this covers the parallel disk-capture path (the multi-worker
-      // renders where a contended host most often drops a tab). The sequential
-      // and streaming capture paths run a single stateful session/encoder and
-      // don't route through here; probeStage already has its own transient
-      // retry for the session-init phase they share.
+      // want to recover. Eligibility is shared with the sequential branch in
+      // captureStage.ts; streaming capture doesn't route through here.
       if (
         options.allowRetry &&
-        failure.kind === "transient_browser" &&
-        transientRetriesUsed < MAX_TRANSIENT_CAPTURE_RETRIES
+        isTransientCaptureRetryEligible(failure.kind, remaining, transientRetriesUsed)
       ) {
         transientRetriesUsed++;
         options.log.warn(

@@ -5,7 +5,8 @@
  *   - `workerCount > 1`: parallel capture with adaptive retry via
  *     `executeDiskCaptureWithAdaptiveRetry`.
  *   - `workerCount === 1`: sequential capture in the orchestrator process,
- *     reusing `probeSession` when available.
+ *     reusing `probeSession` when available. A transient browser death retries
+ *     with a fresh session resuming from the first missing frame.
  *
  * The HDR layered branch (`useLayeredComposite === true`) and the streaming
  * encode fusion path (`useStreamingEncode === true` with successful encoder
@@ -38,6 +39,7 @@
 
 import { statfsSync } from "node:fs";
 import {
+  classifyCaptureFailure,
   frameFileExtension,
   type BeforeCaptureHook,
   type CaptureOptions,
@@ -59,6 +61,8 @@ import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   executeDiskCaptureWithAdaptiveRetry,
+  findMissingFrameRanges,
+  isTransientCaptureRetryEligible,
   type CaptureAttemptSummary,
   type ProgressCallback,
   type RenderJob,
@@ -221,7 +225,6 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     buildCaptureOptions,
     createRenderVideoFrameInjector,
     abortSignal,
-    assertNotAborted,
     onProgress,
     frameRange,
     dedupPerfs,
@@ -318,8 +321,51 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       probeSession = null;
     }
   } else {
-    // Sequential capture
+    const sequential = await runSequentialDiskCapture(input, captureOptions, captureCfg);
+    probeSession = null;
+    lastBrowserConsole = sequential.lastBrowserConsole;
+    captureBeyondViewport = sequential.captureBeyondViewport;
+  }
 
+  return { workerCount, probeSession, lastBrowserConsole, captureBeyondViewport };
+}
+
+interface SequentialCaptureResult {
+  lastBrowserConsole: string[];
+  captureBeyondViewport: boolean | undefined;
+}
+
+async function runSequentialDiskCapture(
+  input: CaptureStageInput,
+  captureOptions: CaptureOptions,
+  captureCfg: EngineConfig,
+): Promise<SequentialCaptureResult> {
+  const {
+    fileServer,
+    framesDir,
+    totalFrames,
+    log,
+    createRenderVideoFrameInjector,
+    abortSignal,
+    assertNotAborted,
+    frameRange,
+  } = input;
+  let { probeSession } = input;
+  let lastBrowserConsole: string[] = [];
+  let captureBeyondViewport: boolean | undefined;
+  // Sequential capture. Frame TIMES use the absolute composition index;
+  // file NAMES are relative (loop index `i`), so the encoder needs no
+  // `-start_number`.
+  const { rangeStart, rangeEnd } = resolveCaptureRange(frameRange, totalFrames);
+  const rangeFrames = rangeEnd - rangeStart;
+  const frameExt = frameFileExtension(captureOptions.format);
+  // Transient-browser retry: `resumeFrom` moves to the first frame missing
+  // from disk and a fresh session captures the remainder. Capped by
+  // `isTransientCaptureRetryEligible`.
+  let transientRetriesUsed = 0;
+  let resumeFrom = 0;
+
+  while (true) {
     const videoInjector = createRenderVideoFrameInjector();
     const session =
       probeSession ??
@@ -333,109 +379,44 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     captureBeyondViewport = session.options.captureBeyondViewport;
 
     try {
-      // Reuse preparation can fail while creating/resetting the output
-      // directory (for example EACCES, EROFS, or ENOSPC). Keep it inside the
-      // session-owning try/finally so the borrowed probe browser is closed
-      // even when preparation fails before capture starts.
+      // Reuse preparation can fail on the output dir (permissions, read-only, disk full);
+      // keep it inside try/finally so the borrowed probe browser is still closed.
       if (probeSession) {
         prepareCaptureSessionForReuse(session, framesDir, videoInjector);
         probeSession = null;
       }
-      if (!session.isInitialized) {
-        await initializeSession(session);
-      } else if (process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true") {
-        // Deferred drawElement init (probe-initialized video comps). The disk
-        // path has no drain-time self-verification, so only an explicit opt-in
-        // completes it here — mirroring the orchestrator clamp that routes
-        // default-on drawElement renders to the screenshot baseline on this
-        // path. No-op unless the session is deferred with an injector attached.
-        await completeDeferredDrawElementInit(session);
-      }
+      await ensureSessionReady(session);
       assertNotAborted();
       lastBrowserConsole = session.browserConsoleBuffer;
 
-      // `frameRange` captures only a sub-range of the timeline. Per-frame
-      // TIMES still use the absolute composition frame index so the page's
-      // virtual clock matches an in-process render at the same frame;
-      // file NAMES are normalized to 0 (via the relative loop index `i`)
-      // so the encoder can read frames without an `-start_number` override.
-      const rangeStart = frameRange?.startFrame ?? 0;
-      const rangeEnd = frameRange?.endFrame ?? totalFrames;
-      const rangeFrames = rangeEnd - rangeStart;
-
-      const reportFrame = (fileIndex: number): void => {
-        job.framesRendered = fileIndex + 1;
-        // Keep status cadence identical to the streaming sequential path; the
-        // capture error wrapper below must remain separate from finally so it
-        // can throw with the browser console before cleanup overwrites flow.
-        // fallow-ignore-next-line code-duplication
-        updateJobStatus(
-          job,
-          "rendering",
-          `Capturing frame ${fileIndex + 1}/${rangeFrames}`,
-          Math.round(25 + ((fileIndex + 1) / rangeFrames) * 45),
-          onProgress,
-        );
-      };
-
-      if (session.workerEncodeEnabled) {
-        // Worker-encode depth-2 pipeline on the DISK path (mirrors the streaming
-        // path): frame N's in-page Worker encodes while frame N+1's main thread
-        // does seek+paint+drawElement. Long comps (>streaming cap) land here, so
-        // without this they'd fall back to synchronous toDataURL and lose the
-        // ~1.5-2x worker-encode speedup entirely.
-        let prev: { fileIndex: number; encodeResult: Promise<Buffer> } | null = null;
-        const drainPrev = async (): Promise<void> => {
-          if (!prev) return;
-          assertNotAborted();
-          const buf = await prev.encodeResult;
-          writeCapturedFrame(session, prev.fileIndex, buf);
-          reportFrame(prev.fileIndex);
-        };
-        for (let i = 0; i < rangeFrames; i++) {
-          assertNotAborted();
-          const absoluteIdx = rangeStart + i;
-          const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-          const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
-          await drainPrev();
-          prev = { fileIndex: i, encodeResult };
-        }
-        await drainPrev();
-      } else {
-        for (let i = 0; i < rangeFrames; i++) {
-          assertNotAborted();
-          const absoluteIdx = rangeStart + i;
-          const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-          await captureFrame(session, i, time);
-          reportFrame(i);
-        }
-      }
-      // Sequential disk drawElement self-verification (PRINFRA-352 follow-up):
-      // the sequential disk path — reachable under the explicit fast-capture
-      // opt-in, including via probe-session reuse — armed ground-truth samples
-      // but never checked them, exactly like the parallel disk workers before
-      // #2749. Same synthetic-task shape the parallel verify uses; a breach
-      // throws DrawElementVerificationError and the orchestrator's disk-stage
-      // retry re-renders via screenshot.
-      await verifyDiskDrawElementSamples(
-        session,
-        {
-          workerId: 0,
-          startFrame: rangeStart,
-          endFrame: rangeEnd,
-          outputDir: framesDir,
-          outputFrameOffset: rangeStart,
-        },
-        false,
-      );
-      // Capture the sequential session's static-dedup perf before close (the
-      // counters are valid only while the session is live).
-      dedupPerfs.push(getCapturePerfSummary(session));
+      await captureSessionFrames(session, { input, rangeStart, rangeEnd, resumeFrom });
+      break;
       // This must mirror streaming capture: catch wraps the original failure with
       // browser diagnostics, finally only handles cleanup.
       // fallow-ignore-next-line code-duplication
     } catch (error) {
       lastBrowserConsole = session.browserConsoleBuffer;
+      const resume = planTransientResume(error, {
+        abortSignal,
+        rangeFrames,
+        framesDir,
+        frameExt,
+        retriesUsed: transientRetriesUsed,
+      });
+      if (resume !== null) {
+        transientRetriesUsed++;
+        resumeFrom = resume;
+        log.warn(
+          "[Render] Transient browser failure during sequential capture; retrying once with a fresh session.",
+          {
+            resumeFrom,
+            rangeFrames,
+            transientRetriesUsed,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+        continue;
+      }
       throw wrapCaptureStageError(error, lastBrowserConsole);
     } finally {
       // Keep the latest console buffer for success and cleanup-error summaries.
@@ -443,6 +424,120 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       await closeCaptureSession(session);
     }
   }
+  return { lastBrowserConsole, captureBeyondViewport };
+}
 
-  return { workerCount, probeSession, lastBrowserConsole, captureBeyondViewport };
+function resolveCaptureRange(
+  frameRange: CaptureStageInput["frameRange"],
+  totalFrames: number,
+): { rangeStart: number; rangeEnd: number } {
+  return { rangeStart: frameRange?.startFrame ?? 0, rangeEnd: frameRange?.endFrame ?? totalFrames };
+}
+
+/** First frame missing on disk when the failure is a retryable browser death, else null. */
+function planTransientResume(
+  error: unknown,
+  ctx: {
+    abortSignal: AbortSignal | undefined;
+    rangeFrames: number;
+    framesDir: string;
+    frameExt: "png" | "jpg";
+    retriesUsed: number;
+  },
+): number | null {
+  const failure = classifyCaptureFailure(error, { signal: ctx.abortSignal });
+  const missing = findMissingFrameRanges(ctx.rangeFrames, ctx.framesDir, ctx.frameExt);
+  const [firstMissing] = missing;
+  if (!firstMissing) return null;
+  return isTransientCaptureRetryEligible(failure.kind, missing, ctx.retriesUsed)
+    ? firstMissing.startFrame
+    : null;
+}
+
+async function ensureSessionReady(session: CaptureSession): Promise<void> {
+  if (!session.isInitialized) {
+    await initializeSession(session);
+    return;
+  }
+  // Deferred drawElement init (probe-initialized video comps). The disk path has no
+  // drain-time self-verification, so only the explicit fast-capture opt-in completes it.
+  if (process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true") {
+    await completeDeferredDrawElementInit(session);
+  }
+}
+
+interface SequentialFrameLoop {
+  input: CaptureStageInput;
+  rangeStart: number;
+  rangeEnd: number;
+  resumeFrom: number;
+}
+
+async function captureSessionFrames(
+  session: CaptureSession,
+  { input, rangeStart, rangeEnd, resumeFrom }: SequentialFrameLoop,
+): Promise<void> {
+  const { job, framesDir, dedupPerfs, assertNotAborted, onProgress } = input;
+  const rangeFrames = rangeEnd - rangeStart;
+  const reportFrame = (fileIndex: number): void => {
+    job.framesRendered = fileIndex + 1;
+    // Keep status cadence identical to the streaming sequential path; the
+    // capture error wrapper below must remain separate from finally so it
+    // can throw with the browser console before cleanup overwrites flow.
+    // fallow-ignore-next-line code-duplication
+    updateJobStatus(
+      job,
+      "rendering",
+      `Capturing frame ${fileIndex + 1}/${rangeFrames}`,
+      Math.round(25 + ((fileIndex + 1) / rangeFrames) * 45),
+      onProgress,
+    );
+  };
+
+  if (session.workerEncodeEnabled) {
+    // Depth-2 pipeline: frame N encodes in the page Worker while frame N+1 seeks and paints.
+    let prev: { fileIndex: number; encodeResult: Promise<Buffer> } | null = null;
+    const drainPrev = async (): Promise<void> => {
+      if (!prev) return;
+      assertNotAborted();
+      const buf = await prev.encodeResult;
+      writeCapturedFrame(session, prev.fileIndex, buf);
+      reportFrame(prev.fileIndex);
+    };
+    for (let i = resumeFrom; i < rangeFrames; i++) {
+      assertNotAborted();
+      const absoluteIdx = rangeStart + i;
+      const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
+      const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
+      await drainPrev();
+      prev = { fileIndex: i, encodeResult };
+    }
+    await drainPrev();
+  } else {
+    for (let i = resumeFrom; i < rangeFrames; i++) {
+      assertNotAborted();
+      const absoluteIdx = rangeStart + i;
+      const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
+      await captureFrame(session, i, time);
+      reportFrame(i);
+    }
+  }
+  // A breach throws DrawElementVerificationError; the orchestrator retries via screenshot.
+  // Only the resumed range is sampled after a transient retry.
+  await verifyDiskDrawElementSamples(
+    session,
+    {
+      workerId: 0,
+      startFrame: rangeStart + resumeFrom,
+      endFrame: rangeEnd,
+      outputDir: framesDir,
+      outputFrameOffset: rangeStart,
+    },
+    false,
+  );
+  // Capture the sequential session's static-dedup perf before close (the
+  // counters are valid only while the session is live). Reset first so a
+  // transient retry replaces the crashed attempt's perf.
+  dedupPerfs.length = 0;
+  dedupPerfs.push(getCapturePerfSummary(session));
 }
