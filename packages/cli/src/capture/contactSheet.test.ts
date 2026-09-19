@@ -59,6 +59,16 @@ describe("createContactSheet", () => {
         .png()
         .toFile(b);
 
+      // DIAGNOSTIC (temporary): which first-use step costs the ~4 s on Windows.
+      const svg = (inner: string) => Buffer.from(`<svg width="64" height="26">${inner}</svg>`);
+      console.time("first svg without text");
+      await sharp(svg('<rect width="64" height="26" fill="#1a1a1a"/>')).png().toBuffer();
+      console.timeEnd("first svg without text");
+      console.time("first svg with text");
+      await sharp(svg('<text x="8" y="18" font-family="Arial,sans-serif" font-size="13">A</text>'))
+        .png()
+        .toBuffer();
+      console.timeEnd("first svg with text");
       console.time("createContactSheet");
       await createContactSheet([a, b], out, {
         cols: 2,
