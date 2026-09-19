@@ -65,11 +65,14 @@ function payloadFiles(
   });
 }
 
+/** The page error a WebGPU piece throws in a browser with no adapter. */
+export const MISSING_ADAPTER = /no WebGPU adapter/i;
+
 /** A WebGPU piece cannot draw in a CI browser that has no adapter; that one error is the
  * environment, not the payload. Every other failure of such a piece still counts. */
 export function withoutMissingAdapter(html: string, failures: string[]): string[] {
   if (!html.includes("navigator.gpu")) return failures;
-  return failures.filter((failure) => !/no WebGPU adapter/i.test(failure));
+  return failures.filter((failure) => !MISSING_ADAPTER.test(failure));
 }
 
 /** Chrome aborts a media element's first request when it reissues it as range requests (or when

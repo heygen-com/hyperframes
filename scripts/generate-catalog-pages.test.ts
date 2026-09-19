@@ -153,18 +153,18 @@ function formEncodingPlayer(src: string): string {
 }
 
 describe("hfv round trip", () => {
-  it("carries every declared value through all four hops unchanged", () => {
-    const demoSrc = prepareSrcForElement(plainPlayer, runWrapper(explorerQuery(DECLARED)));
+  const assertDeclaredSurvives = (demoSrc: string): void => {
     const read = runBootstrap(queryOf(demoSrc));
     assert.deepEqual(read.fromWindow, DECLARED);
     assert.deepEqual(read.fromAttribute, DECLARED);
+  };
+
+  it("carries every declared value through all four hops unchanged", () => {
+    assertDeclaredSurvives(prepareSrcForElement(plainPlayer, runWrapper(explorerQuery(DECLARED))));
   });
 
   it("survives a player build that form-encodes the query", () => {
-    const demoSrc = formEncodingPlayer(runWrapper(explorerQuery(DECLARED)));
-    const read = runBootstrap(queryOf(demoSrc));
-    assert.deepEqual(read.fromWindow, DECLARED);
-    assert.deepEqual(read.fromAttribute, DECLARED);
+    assertDeclaredSurvives(formEncodingPlayer(runWrapper(explorerQuery(DECLARED))));
   });
 
   it("carries an edited value in from the explorer's message", () => {

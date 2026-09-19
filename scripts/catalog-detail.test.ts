@@ -125,6 +125,35 @@ const closeAll = (actual: number[], expected: number[], tolerance = 1e-6): void 
   actual.forEach((value, index) => close(value, at(expected, index), tolerance));
 };
 
+type Pen = [number, number];
+
+const cubicAt = (t: number, a: number, b: number, c: number, dd: number): number => {
+  const u = 1 - t;
+  return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * dd;
+};
+
+/** A quadratic is the cubic with both controls two thirds of the way out. */
+const toCubic = (code: string, args: number[], [x, y]: Pen): number[] | null => {
+  if (code === "C") return args;
+  if (code !== "Q") return null;
+  return [
+    x + (2 / 3) * (at(args, 0) - x),
+    y + (2 / 3) * (at(args, 1) - y),
+    at(args, 2) + (2 / 3) * (at(args, 0) - at(args, 2)),
+    at(args, 3) + (2 / 3) * (at(args, 1) - at(args, 3)),
+    at(args, 2),
+    at(args, 3),
+  ];
+};
+
+const sampleCubic = (see: (px: number, py: number) => void, [x, y]: Pen, c: number[]): void => {
+  for (let t = 0; t <= 1.0001; t += 0.002) {
+    see(cubicAt(t, x, at(c, 0), at(c, 2), at(c, 4)), cubicAt(t, y, at(c, 1), at(c, 3), at(c, 5)));
+  }
+};
+
+const endOf = (args: number[]): Pen => [at(args, args.length - 2), at(args, args.length - 1)];
+
 /**
  * The bounding box the browser would measure, computed here from the tight
  * extremes of each segment. Cubic and quadratic extremes come from the roots of
@@ -132,9 +161,7 @@ const closeAll = (actual: number[], expected: number[], tolerance = 1e-6): void 
  * curve and a fit computed from it would leave a visible margin.
  */
 const boundsOf = (d: string): { x: number; y: number; width: number; height: number } => {
-  const segments = normalisePathData(parsePathData(d));
-  let x = 0;
-  let y = 0;
+  let pen: Pen = [0, 0];
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -145,37 +172,13 @@ const boundsOf = (d: string): { x: number; y: number; width: number; height: num
     maxX = Math.max(maxX, px);
     maxY = Math.max(maxY, py);
   };
-  const cubicAt = (t: number, a: number, b: number, c: number, dd: number): number => {
-    const u = 1 - t;
-    return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * dd;
-  };
 
-  for (const { code, args } of segments) {
-    if (code === "M" || code === "L") {
-      see(at(args, 0), at(args, 1));
-      x = at(args, 0);
-      y = at(args, 1);
-    } else if (code === "Q") {
-      // A quadratic is the cubic with both controls two thirds of the way out.
-      const c1x = x + (2 / 3) * (at(args, 0) - x);
-      const c1y = y + (2 / 3) * (at(args, 1) - y);
-      const c2x = at(args, 2) + (2 / 3) * (at(args, 0) - at(args, 2));
-      const c2y = at(args, 3) + (2 / 3) * (at(args, 1) - at(args, 3));
-      for (let t = 0; t <= 1.0001; t += 0.002) {
-        see(cubicAt(t, x, c1x, c2x, at(args, 2)), cubicAt(t, y, c1y, c2y, at(args, 3)));
-      }
-      x = at(args, 2);
-      y = at(args, 3);
-    } else if (code === "C") {
-      for (let t = 0; t <= 1.0001; t += 0.002) {
-        see(
-          cubicAt(t, x, at(args, 0), at(args, 2), at(args, 4)),
-          cubicAt(t, y, at(args, 1), at(args, 3), at(args, 5)),
-        );
-      }
-      x = at(args, 4);
-      y = at(args, 5);
-    }
+  for (const { code, args } of normalisePathData(parsePathData(d))) {
+    if (!"MLQC".includes(code)) continue;
+    const cubic = toCubic(code, args, pen);
+    if (cubic) sampleCubic(see, pen, cubic);
+    else see(at(args, 0), at(args, 1));
+    pen = endOf(args);
   }
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 };

@@ -48,6 +48,7 @@ import { withHostedDefaults } from "./registry-hosted-assets.ts";
 import { withHostedRefs } from "./catalog-script-inlining.ts";
 import type { RegistryItem } from "../packages/core/src/index.js";
 import { openOpaqueCapture } from "./preview-capture.js";
+import { MISSING_ADAPTER } from "./verify-catalog-payloads.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -435,9 +436,8 @@ async function generateThumbnail(item: CatalogItem, projectDir: string): Promise
       },
     );
     console.log(`  ✓ ${item.name}.png (${result.captureTimeMs}ms)`);
-
-    await closeCaptureSession(session);
   } finally {
+    await closeCaptureSession(session).catch(() => undefined);
     fileServer.close();
     rmSync(framesDir, { recursive: true, force: true });
   }
@@ -535,6 +535,18 @@ function parseArgs(): { only: string | null; type: ItemKind | null; skipVideo: b
   return { only, type, skipVideo };
 }
 
+/** A missing WebGPU adapter is the runner, not the item: it keeps its committed poster and video. */
+function reportItemFailure(item: CatalogItem, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  if (MISSING_ADAPTER.test(message)) {
+    console.log(
+      `  – ${item.name}: no WebGPU adapter on this runner, keeping its committed poster and video`,
+    );
+    return;
+  }
+  console.error(`  ✗ ${item.name}: ${message}`);
+}
+
 async function main(): Promise<void> {
   const { only, type, skipVideo } = parseArgs();
   const items = discoverItems(type, only);
@@ -552,7 +564,7 @@ async function main(): Promise<void> {
         await generateVideo(item, projectDir);
       }
     } catch (err) {
-      console.error(`  ✗ ${item.name}: ${err instanceof Error ? err.message : err}`);
+      reportItemFailure(item, err);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

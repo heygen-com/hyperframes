@@ -56,7 +56,11 @@
  */
 
 /** A named page region (`code`, `install`, `docs`) that CatalogDetail shows under the matching tab. */
-export const CatalogSlot = ({ slot, children }) => <div data-slot={slot}>{children}</div>;
+export const CatalogSlot = ({ slot, children }) => (
+  <div data-slot={slot} className="prose prose-gray dark:prose-invert">
+    {children}
+  </div>
+);
 
 export const CatalogDetail = ({
   previewSrc,
@@ -136,9 +140,9 @@ export const CatalogDetail = ({
 }
 .hf-ve-tab[data-on="true"] {
   color: var(--ve-fg);
-  background: var(--ve-surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--ve-hover);
 }
+.hf-ve-tab:focus:not(:focus-visible) { outline: none; box-shadow: none; }
 .hf-ve-tab:hover:not([data-on="true"]) { color: var(--ve-fg); }
 
 /* Not a grid. A grid row is as tall as its tallest cell, so a five-line snippet
@@ -623,7 +627,9 @@ export const CatalogDetail = ({
   border: 0;
   cursor: pointer;
 }
-.hf-ve-action:hover { background: var(--ve-line); }
+.hf-ve-action:hover:not(:disabled) { background: var(--ve-line); }
+.hf-ve-action:disabled { opacity: 0.4; cursor: default; }
+.hf-ve-tune-foot .hf-ve-action { justify-content: center; white-space: nowrap; }
 .hf-ve-action[data-primary="true"] { color: var(--ve-on-fg); background: var(--ve-on-bg); }
 .hf-ve-action[data-primary="true"]:hover { opacity: 0.88; }
 .hf-ve-main { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
@@ -659,20 +665,28 @@ export const CatalogDetail = ({
   font-weight: 600;
 }
 .hf-ve-tune-head small { font-weight: 400; font-size: 13px; color: var(--ve-muted); }
-.hf-ve-tune-list { flex: 1; min-height: 0; overflow: auto; display: grid; gap: 14px; padding: 16px; align-content: start; }
+.hf-ve-tune-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  align-content: start;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+}
 .hf-ve-tune-foot {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
-  padding: 12px 16px;
+  padding: 16px;
   border-top: 1px solid var(--ve-line);
 }
-.hf-ve-tabs-row { margin: 20px 0 12px; }
+.hf-ve-tabs-row { margin: 20px 0 0; }
 .hf-ve-tabs-row .hf-ve-tab { padding: 6px 16px; font-size: 14px; }
 .hf-ve-tabs-row .hf-ve-tab small { margin-left: 6px; font-weight: 400; opacity: 0.7; }
-.hf-ve-body {
-  padding: 8px 4px;
-}
+.hf-ve-body { padding: 2rem 0 0; }
 .hf-ve-about h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
 .hf-ve-about p { margin: 0 0 12px; line-height: 1.6; max-width: 72ch; }
 .hf-ve-about .hf-ve-attr { font-size: 14px; color: var(--ve-muted); }
@@ -685,8 +699,6 @@ export const CatalogDetail = ({
 .hf-ve-body-pane .code-block pre,
 .hf-ve-slots [data-slot="code"] pre { max-height: 560px; overflow: auto; }
 .hf-ve-slots[data-tab="docs"] > [data-slot="docs"] { max-height: 720px; overflow: auto; padding-right: 8px; }
-/* Mintlify renders a paragraph as an inline span; only its own wrapper makes it a block. */
-.hf-ve-slots [data-slot] span[data-as="p"] { display: block; margin: 1.25em 0; }
 @media (max-width: 640px) {
   .hf-ve-actions { width: 100%; }
   .hf-ve-action { flex: 1 1 calc(50% - 8px); justify-content: center; }
@@ -1921,12 +1933,12 @@ export const CatalogDetail = ({
   })();
 
   const hasTune = variables.length > 0;
-  const [tab, setTab] = useState("preview");
+  const [tab, setTab] = useState("install");
   const lines = meta.codeLines;
   const TABS = [
+    ["install", "Install"],
     ["preview", "Preview"],
     ...(hasCode ? [["code", "Code", lines ? `${lines} ln` : ""]] : []),
-    ["install", "Install"],
     ["docs", "Docs"],
   ];
 
@@ -2111,7 +2123,7 @@ export const CatalogDetail = ({
                       setNotes({});
                     }}
                     disabled={!dirty}
-                    className="hf-ve-btn hf-ve-tint"
+                    className="hf-ve-action"
                   >
                     Reset
                   </button>
@@ -2149,7 +2161,7 @@ export const CatalogDetail = ({
         {/* Slots are shown by CSS on the tab attribute, not sorted here: MDX's child
             shape is not worth introspecting. Frame-mode pages have no prose wrapper,
             so the slots carry their own. */}
-        <div className="hf-ve-slots prose prose-gray dark:prose-invert" data-tab={tab}>
+        <div className="hf-ve-slots" data-tab={tab}>
           {children}
         </div>
         <div className="hf-ve-body-pane hf-ve-about not-prose" hidden={tab !== "preview"}>

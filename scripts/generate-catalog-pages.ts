@@ -954,6 +954,41 @@ function footerSection(
   return footer;
 }
 
+/** The lines, or nothing: keeps each optional prop out of the caller's branch count. */
+function when(condition: boolean, ...lines: string[]): string[] {
+  return condition ? lines : [];
+}
+
+function itemSize(manifest: RegistryItem): { width?: number; height?: number } {
+  return ("dimensions" in manifest && manifest.dimensions) || {};
+}
+
+function stabilityBadge(source: SourceMetadata): "Experimental" | "Stable" {
+  return source.stability === "experimental" ? "Experimental" : "Stable";
+}
+
+function detailMeta(kind: ItemKind, manifest: RegistryItem, file: { source: string } | null) {
+  const { width, height } = itemSize(manifest);
+  return {
+    duration: "duration" in manifest ? manifest.duration : undefined,
+    width,
+    height,
+    category: groupForItem({ name: manifest.name, type: kind, tags: manifest.tags ?? [] }),
+    badge: stabilityBadge(manifest as RegistryItem & SourceMetadata),
+    codeLines: file?.source.split("\n").length,
+  };
+}
+
+function detailAttribution(kind: ItemKind, manifest: RegistryItem) {
+  const source = manifest as RegistryItem & SourceMetadata;
+  return {
+    author: manifest.author,
+    authorUrl: source.authorUrl,
+    path: `registry/${typeDir(kind)}/${manifest.name}`,
+    tags: manifest.tags ?? [],
+  };
+}
+
 /** The props the detail component renders its meta row, About and links from. */
 function detailOpening(
   kind: ItemKind,
@@ -962,39 +997,23 @@ function detailOpening(
   live: boolean,
   hasCode: boolean,
 ): string[] {
-  const source = manifest as RegistryItem & SourceMetadata;
-  const file = primarySource(kind, manifest);
   const variables = live ? withHostedDefaults(tunableVariables(kind, manifest), manifest) : [];
-  const dims = "dimensions" in manifest ? manifest.dimensions : undefined;
-  const duration = "duration" in manifest ? manifest.duration : undefined;
-  const meta = {
-    duration,
-    width: dims?.width,
-    height: dims?.height,
-    category: groupForItem({ name: manifest.name, type: kind, tags: manifest.tags ?? [] }),
-    badge: source.stability === "experimental" ? "Experimental" : "Stable",
-    codeLines: file ? file.source.split("\n").length : undefined,
-  };
-  const attribution = {
-    author: manifest.author,
-    authorUrl: source.authorUrl,
-    path: `registry/${typeDir(kind)}/${manifest.name}`,
-    tags: manifest.tags ?? [],
-  };
+  const meta = detailMeta(kind, manifest, primarySource(kind, manifest));
   const raw = primaryFileFor(manifest)?.path;
+  const base = `${typeDir(kind)}/${manifest.name}`;
   return [
     "<CatalogDetail",
-    ...(live ? [`  previewSrc="/public/catalog/${typeDir(kind)}/${manifest.name}.json"`] : []),
+    ...when(live, `  previewSrc="/public/catalog/${base}.json"`),
     `  compositionId="${manifest.name}"`,
     `  compositionSrc="${target}"`,
     `  title=${JSON.stringify(manifest.title)}`,
     `  description=${JSON.stringify(manifest.description)}`,
     `  variables={${JSON.stringify(variables)}}`,
     `  meta={${JSON.stringify(meta)}}`,
-    `  attribution={${JSON.stringify(attribution)}}`,
+    `  attribution={${JSON.stringify(detailAttribution(kind, manifest))}}`,
     ...stageProps(kind, manifest),
-    ...(hasCode ? ["  hasCode"] : []),
-    ...(raw ? [`  rawUrl="${rawSourceBase}/${typeDir(kind)}/${manifest.name}/${raw}"`] : []),
+    ...when(hasCode, "  hasCode"),
+    ...when(Boolean(raw), `  rawUrl="${rawSourceBase}/${base}/${raw}"`),
     ">",
     "",
   ];
