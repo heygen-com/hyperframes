@@ -4,11 +4,12 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorShell } from "./EditorShell";
-import { isPreviewReadOnly } from "./editor/previewReadOnlyStore";
+import { usePreviewReadOnly } from "./editor/previewReadOnlyContext";
 
 const hookMocks = vi.hoisted(() => ({
   useTimelineSelectionPreviewSync: vi.fn(),
 }));
+const previewOverlaysProbe = vi.hoisted(() => ({ readOnly: null as boolean | null }));
 
 vi.mock("../hooks/useTimelineSelectionPreviewSync", () => hookMocks);
 vi.mock("../contexts/StudioContext", () => ({
@@ -48,8 +49,17 @@ vi.mock("./nle/NLEContext", () => ({
 vi.mock("./nle/useTimelineEditCallbacks", () => ({
   useTimelineEditCallbacks: () => ({}),
 }));
-vi.mock("./nle/PreviewPane", () => ({ PreviewPane: () => null }));
-vi.mock("./nle/PreviewOverlays", () => ({ PreviewOverlays: () => null }));
+vi.mock("./nle/PreviewPane", () => ({
+  // Renders its previewOverlay prop for real, so the mocked PreviewOverlays
+  // below (which reads the read-only context) actually mounts.
+  PreviewPane: (props: { previewOverlay?: React.ReactNode }) => props.previewOverlay ?? null,
+}));
+vi.mock("./nle/PreviewOverlays", () => ({
+  PreviewOverlays: () => {
+    previewOverlaysProbe.readOnly = usePreviewReadOnly();
+    return null;
+  },
+}));
 vi.mock("./nle/TimelinePane", () => ({ TimelinePane: () => null }));
 vi.mock("../captions/components/CaptionTimeline", () => ({ CaptionTimeline: () => null }));
 
@@ -120,17 +130,17 @@ describe("EditorShell timeline selection sync", () => {
     act(() => root.unmount());
   });
 
-  it("turns the preview read-only from the prop and back off on unmount", () => {
+  it("threads the read-only prop into descendants via context, and follows it across renders", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
 
     act(() => root.render(shell(true)));
-    expect(isPreviewReadOnly()).toBe(true);
+    expect(previewOverlaysProbe.readOnly).toBe(true);
     act(() => root.render(shell(false)));
-    expect(isPreviewReadOnly()).toBe(false);
+    expect(previewOverlaysProbe.readOnly).toBe(false);
     act(() => root.render(shell(true)));
+    expect(previewOverlaysProbe.readOnly).toBe(true);
     act(() => root.unmount());
-    expect(isPreviewReadOnly()).toBe(false);
   });
 });

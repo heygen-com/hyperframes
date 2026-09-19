@@ -6,7 +6,6 @@ import { usePlayerStore } from "../player";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { useGestureCommit } from "./useGestureCommit";
-import { usePreviewReadOnlyStore } from "../components/editor/previewReadOnlyStore";
 
 const gestureRecording = vi.hoisted(() => ({
   startRecording: vi.fn(),
@@ -53,7 +52,6 @@ afterEach(() => {
   cleanup = null;
   usePlayerStore.getState().reset();
   document.body.replaceChildren();
-  usePreviewReadOnlyStore.setState({ readOnly: false });
   vi.clearAllMocks();
 });
 
@@ -109,6 +107,7 @@ describe("useGestureCommit", () => {
         previewIframeRef: { current: iframe },
         showToast: vi.fn(),
         isGestureRecordingRef: { current: false },
+        readOnlyPreview: false,
       });
       return null;
     }
@@ -131,7 +130,6 @@ describe("useGestureCommit", () => {
   });
 
   it("does not start a recording while the preview is read-only", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
     const element = document.createElement("div");
     const commitMutation = vi.fn(async () => {});
     const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
@@ -147,6 +145,7 @@ describe("useGestureCommit", () => {
         previewIframeRef: { current: document.createElement("iframe") },
         showToast: vi.fn(),
         isGestureRecordingRef: { current: false },
+        readOnlyPreview: true,
       });
       return null;
     }

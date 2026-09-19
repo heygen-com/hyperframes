@@ -1,8 +1,8 @@
-import { useCallback, useEffect, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { PreviewPane } from "./nle/PreviewPane";
 import { TimelinePane } from "./nle/TimelinePane";
 import { PreviewOverlays } from "./nle/PreviewOverlays";
-import { usePreviewReadOnlyStore } from "./editor/previewReadOnlyStore";
+import { PreviewReadOnlyProvider } from "./editor/previewReadOnlyContext";
 import {
   useTimelineEditCallbacks,
   type TimelineEditCallbackDeps,
@@ -117,11 +117,6 @@ export function EditorShell({
   readOnlyPreview = false,
   readOnlyPreviewReason,
 }: EditorShellProps) {
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    usePreviewReadOnlyStore.getState().setReadOnly(readOnlyPreview, readOnlyPreviewReason);
-    return () => usePreviewReadOnlyStore.getState().setReadOnly(false);
-  }, [readOnlyPreview, readOnlyPreviewReason]);
   const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef, showToast } =
     useStudioShellContext();
   const { refreshKey, captionEditMode, refreshPreviewDocumentVersion, timelineElements } =
@@ -168,57 +163,59 @@ export function EditorShell({
   });
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <TimelineEditProvider value={timelineEditCallbacks}>
-        <NLEProvider
-          projectId={projectId}
-          refreshKey={refreshKey}
-          activeCompositionPath={activeCompPath}
-          onIframeRef={handlePreviewIframeRef}
-          onCompIdToSrcChange={setCompIdToSrc}
-          onCompositionLoadingChange={setCompositionLoading}
-          onCompositionChange={(compPath) => {
-            // Sync activeCompPath when the user drills down via the timeline or
-            // navigates back — keeps sidebar + thumbnails in sync. Guard no-ops to
-            // avoid circular refresh cascades (activeCompPath → stack → onChange).
-            if (compPath !== activeCompPath) {
-              setActiveCompPath(compPath);
-              refreshPreviewDocumentVersion();
-            }
-          }}
-        >
-          <EditorShellBody
+    <PreviewReadOnlyProvider readOnly={readOnlyPreview} reason={readOnlyPreviewReason}>
+      <div className="flex flex-col flex-1 min-h-0">
+        <TimelineEditProvider value={timelineEditCallbacks}>
+          <NLEProvider
             projectId={projectId}
-            panels={panels}
-            captionEditMode={captionEditMode}
-            onSelectTimelineElement={handleTimelineElementSelect}
-            onPreviewBlockDrop={handlePreviewBlockDrop}
-            timelineToolbar={timelineToolbar}
-            renderClipContent={renderClipContent}
-            onFileDrop={handleTimelineFileDrop}
-            onAssetDrop={handleTimelineAssetDrop}
-            onBlockDrop={handleTimelineBlockDrop}
-            onCompositionDrop={handleTimelineCompositionDrop}
-            onDeleteElement={handleTimelineElementDelete}
-            onCopyClip={onCopyClip}
-            onPasteClip={onPasteClip}
-            onDuplicateClip={onDuplicateClip}
-            canPasteClip={canPasteClip}
-            previewOverlay={
-              <PreviewOverlays
-                shouldShowMotionPath={shouldShowMotionPath}
-                shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
-                blockPreview={blockPreview}
-                isGestureRecording={isGestureRecording}
-                recordingState={recordingState}
-                onToggleRecording={onToggleRecording}
-                gestureOverlay={gestureOverlay}
-              />
-            }
-          />
-        </NLEProvider>
-      </TimelineEditProvider>
-    </div>
+            refreshKey={refreshKey}
+            activeCompositionPath={activeCompPath}
+            onIframeRef={handlePreviewIframeRef}
+            onCompIdToSrcChange={setCompIdToSrc}
+            onCompositionLoadingChange={setCompositionLoading}
+            onCompositionChange={(compPath) => {
+              // Sync activeCompPath when the user drills down via the timeline or
+              // navigates back — keeps sidebar + thumbnails in sync. Guard no-ops to
+              // avoid circular refresh cascades (activeCompPath → stack → onChange).
+              if (compPath !== activeCompPath) {
+                setActiveCompPath(compPath);
+                refreshPreviewDocumentVersion();
+              }
+            }}
+          >
+            <EditorShellBody
+              projectId={projectId}
+              panels={panels}
+              captionEditMode={captionEditMode}
+              onSelectTimelineElement={handleTimelineElementSelect}
+              onPreviewBlockDrop={handlePreviewBlockDrop}
+              timelineToolbar={timelineToolbar}
+              renderClipContent={renderClipContent}
+              onFileDrop={handleTimelineFileDrop}
+              onAssetDrop={handleTimelineAssetDrop}
+              onBlockDrop={handleTimelineBlockDrop}
+              onCompositionDrop={handleTimelineCompositionDrop}
+              onDeleteElement={handleTimelineElementDelete}
+              onCopyClip={onCopyClip}
+              onPasteClip={onPasteClip}
+              onDuplicateClip={onDuplicateClip}
+              canPasteClip={canPasteClip}
+              previewOverlay={
+                <PreviewOverlays
+                  shouldShowMotionPath={shouldShowMotionPath}
+                  shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
+                  blockPreview={blockPreview}
+                  isGestureRecording={isGestureRecording}
+                  recordingState={recordingState}
+                  onToggleRecording={onToggleRecording}
+                  gestureOverlay={gestureOverlay}
+                />
+              }
+            />
+          </NLEProvider>
+        </TimelineEditProvider>
+      </div>
+    </PreviewReadOnlyProvider>
   );
 }
 

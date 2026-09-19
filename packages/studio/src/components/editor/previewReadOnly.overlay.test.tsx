@@ -7,7 +7,7 @@ import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
 import { DomEditOverlay } from "./DomEditOverlay";
-import { usePreviewReadOnlyStore } from "./previewReadOnlyStore";
+import { PreviewReadOnlyProvider } from "./previewReadOnlyContext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -54,7 +54,10 @@ function textElement(id: string): HTMLElement {
   return element;
 }
 
-function fixture(overrides: Partial<React.ComponentProps<typeof DomEditOverlay>> = {}) {
+function fixture(
+  overrides: Partial<React.ComponentProps<typeof DomEditOverlay>> = {},
+  readOnly = false,
+) {
   const spies = {
     onCanvasMouseDown: vi.fn(),
     onSelectionChange: vi.fn(),
@@ -84,7 +87,13 @@ function fixture(overrides: Partial<React.ComponentProps<typeof DomEditOverlay>>
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  act(() => root.render(<DomEditOverlay {...props} />));
+  act(() =>
+    root.render(
+      <PreviewReadOnlyProvider readOnly={readOnly}>
+        <DomEditOverlay {...props} />
+      </PreviewReadOnlyProvider>,
+    ),
+  );
   return { spies, selection, overlay: host.firstElementChild as HTMLElement };
 }
 
@@ -106,7 +115,6 @@ afterEach(() => {
   act(() => root.unmount());
   document.body.innerHTML = "";
   layout.group = [];
-  usePreviewReadOnlyStore.setState({ readOnly: false });
   vi.useRealTimers();
 });
 
@@ -118,8 +126,7 @@ describe("DomEditOverlay with the preview read-only", () => {
   });
 
   it("refuses to start a move from the selection box", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture();
+    const { spies, overlay } = fixture({}, true);
     const box = overlay.querySelector(BOX)!;
     fire(box, "pointerdown");
     fire(box, "pointermove", { clientX: 40 });
@@ -134,8 +141,7 @@ describe("DomEditOverlay with the preview read-only", () => {
     expect(off.overlay.querySelectorAll("div.h-4.w-4")).toHaveLength(4);
     act(() => root.unmount());
     document.body.innerHTML = "";
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture();
+    const { spies, overlay } = fixture({}, true);
     expect(overlay.querySelectorAll("div.h-4.w-4")).toHaveLength(0);
     expect(spies.onBoxSizeCommit).not.toHaveBeenCalled();
   });
@@ -145,8 +151,7 @@ describe("DomEditOverlay with the preview read-only", () => {
     expect(off.overlay.querySelector('[aria-label="Rotate selection"]')).not.toBeNull();
     act(() => root.unmount());
     document.body.innerHTML = "";
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture();
+    const { spies, overlay } = fixture({}, true);
     expect(overlay.querySelector('[aria-label="Rotate selection"]')).toBeNull();
     expect(spies.onRotationCommit).not.toHaveBeenCalled();
   });
@@ -156,8 +161,7 @@ describe("DomEditOverlay with the preview read-only", () => {
     expect(off.overlay.querySelector("[data-dom-edit-crop-frame]")).not.toBeNull();
     act(() => root.unmount());
     document.body.innerHTML = "";
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture();
+    const { spies, overlay } = fixture({}, true);
     expect(overlay.querySelector("[data-dom-edit-crop-frame]")).toBeNull();
     expect(spies.onStyleCommit).not.toHaveBeenCalled();
   });
@@ -168,11 +172,13 @@ describe("DomEditOverlay with the preview read-only", () => {
       return { key: id, selection, element: selection.element, rect: RECT };
     });
     layout.group = members;
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture({
-      selection: null,
-      groupSelections: members.map((m) => m.selection),
-    });
+    const { spies, overlay } = fixture(
+      {
+        selection: null,
+        groupSelections: members.map((m) => m.selection),
+      },
+      true,
+    );
     fire(overlay.querySelector(BOX)!, "pointerdown");
     expect(spies.onManualDragStart).not.toHaveBeenCalled();
     expect(spies.onGroupPathOffsetCommit).not.toHaveBeenCalled();
@@ -198,8 +204,7 @@ describe("DomEditOverlay with the preview read-only", () => {
   });
 
   it("neither nudges on an arrow key nor swallows it", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies } = fixture();
+    const { spies } = fixture({}, true);
     expect(nudge().defaultPrevented).toBe(false);
     expect(spies.onPathOffsetCommit).not.toHaveBeenCalled();
   });
@@ -218,8 +223,7 @@ describe("DomEditOverlay with the preview read-only", () => {
   });
 
   it("does not open text for editing on Enter", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { selection, overlay } = fixture();
+    const { selection, overlay } = fixture({}, true);
     pressEnter(overlay);
     expect(selection.element.hasAttribute("contenteditable")).toBe(false);
   });
@@ -242,8 +246,7 @@ describe("DomEditOverlay with the preview read-only", () => {
     // Same fixture as the control test above (a real, already-selected element) so the
     // context menu actually opens; `selection: null` here would close it via
     // useCanvasContextMenuState's own deselect effect, before read-only ever mattered.
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture();
+    const { spies, overlay } = fixture({}, true);
     await rightClick(overlay);
     expect(document.body.textContent).not.toContain("Delete");
     expect(spies.onDeleteSelection).not.toHaveBeenCalled();
@@ -251,22 +254,19 @@ describe("DomEditOverlay with the preview read-only", () => {
   });
 
   it("still selects and reports to the host on right-click of an unselected element", async () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture({ selection: null });
+    const { spies, overlay } = fixture({ selection: null }, true);
     await rightClick(overlay);
     expect(spies.onSelectionChange).toHaveBeenCalledTimes(1);
   });
 
   it("still selects and reports to the host on a click", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture({ selection: null });
+    const { spies, overlay } = fixture({ selection: null }, true);
     fire(overlay, "mousedown");
     expect(spies.onCanvasMouseDown).toHaveBeenCalledTimes(1);
   });
 
   it("still selects on a click of the selection box", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    const { spies, overlay } = fixture();
+    const { spies, overlay } = fixture({}, true);
     fire(overlay.querySelector(BOX)!, "click");
     expect(spies.onCanvasMouseDown).toHaveBeenCalledTimes(1);
   });

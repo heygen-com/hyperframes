@@ -24,7 +24,6 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
-import { isPreviewReadOnly } from "../components/editor/previewReadOnlyStore";
 
 const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
@@ -39,16 +38,18 @@ export interface UseDomGeometryCommitsParams {
     patches: PatchOperation[],
     options: { label: string; coalesceKey: string; skipRefresh?: boolean },
   ) => Promise<void>;
+  readOnlyPreview: boolean;
 }
 
 export function useDomGeometryCommits({
   previewIframeRef,
   showToast,
   commitPositionPatchToHtml,
+  readOnlyPreview,
 }: UseDomGeometryCommitsParams) {
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
-      if (isPreviewReadOnly()) return Promise.resolve();
+      if (readOnlyPreview) return Promise.resolve();
       // ponytail: GSAP-targeted elements are blocked (no SDK position-in-script op); CSS-path
       // elements fall through to commitPositionPatchToHtml → persistDomEditOperations →
       // onTrySdkPersist and are already SDK-cut-over as setStyle/setAttribute (§3.3 done).
@@ -69,7 +70,7 @@ export function useDomGeometryCommits({
         throw error;
       });
     },
-    [commitPositionPatchToHtml, previewIframeRef, showToast],
+    [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
   );
 
   const handleDomBoxSizeCommit = useCallback(
@@ -78,7 +79,7 @@ export function useDomGeometryCommits({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
     ) => {
-      if (isPreviewReadOnly()) return Promise.resolve();
+      if (readOnlyPreview) return Promise.resolve();
       if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");
@@ -107,12 +108,12 @@ export function useDomGeometryCommits({
         throw error;
       });
     },
-    [commitPositionPatchToHtml, previewIframeRef, showToast],
+    [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
   );
 
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
-      if (isPreviewReadOnly()) return Promise.resolve();
+      if (readOnlyPreview) return Promise.resolve();
       if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");
@@ -128,7 +129,7 @@ export function useDomGeometryCommits({
         throw error;
       });
     },
-    [commitPositionPatchToHtml, previewIframeRef, showToast],
+    [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
   );
 
   const handleDomManualEditsReset = useCallback(

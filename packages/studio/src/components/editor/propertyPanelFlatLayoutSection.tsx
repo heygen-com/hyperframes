@@ -5,7 +5,7 @@ import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import type { DomEditSelection } from "./domEditingTypes";
-import { usePreviewReadOnly, usePreviewReadOnlyReason } from "./previewReadOnlyStore";
+import { usePreviewReadOnly, usePreviewReadOnlyReason } from "./previewReadOnlyContext";
 
 type KeyframeEntry = Array<{
   percentage: number;

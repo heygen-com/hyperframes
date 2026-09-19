@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dispatchModifierKey, dispatchPlainKey } from "./appHotkeysDispatch";
+import { dispatchModifierKey, dispatchPlainKey, type HotkeyCallbacks } from "./appHotkeysDispatch";
 import { usePlayerStore } from "../player/store/playerStore";
-import { usePreviewReadOnlyStore } from "../components/editor/previewReadOnlyStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
@@ -21,7 +20,7 @@ const bgmElement: TimelineElement = {
 /** Every callback dispatchPlainKey can reach, so a test can assert which one
  *  a key resolved to. Unannotated on purpose: the parameter type is not
  *  exported, and structural inference checks it at the call site. */
-function callbacks() {
+function callbacks(overrides: Partial<HotkeyCallbacks> = {}) {
   return {
     handleTimelineElementDelete: vi.fn(async () => {}),
     handleTimelineElementsDelete: vi.fn(async () => {}),
@@ -39,6 +38,8 @@ function callbacks() {
     onDeleteSelectedKeyframes: vi.fn(),
     showToast: vi.fn(),
     domEditSelectionRef: { current: null },
+    readOnlyPreview: false,
+    ...overrides,
   };
 }
 
@@ -306,13 +307,11 @@ describe('dispatchPlainKey — "A" returns to select while the razor is armed', 
 
 describe("hotkeys with the preview read-only", () => {
   beforeEach(() => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
     usePlayerStore.setState({ elements: [bgmElement], selectedElementId: "bgm" });
   });
-  afterEach(() => usePreviewReadOnlyStore.setState({ readOnly: false }));
 
   it("does not delete the selected element on Delete", () => {
-    const cb = callbacks();
+    const cb = callbacks({ readOnlyPreview: true });
     cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
     dispatchPlainKey(press("Delete"), "delete", cb);
     expect(cb.handleDomEditElementDelete).not.toHaveBeenCalled();
@@ -321,7 +320,7 @@ describe("hotkeys with the preview read-only", () => {
 
   it("does not split on s", () => {
     usePlayerStore.setState({ currentTime: 3 });
-    const cb = callbacks();
+    const cb = callbacks({ readOnlyPreview: true });
     dispatchPlainKey(press("s"), "s", cb);
     expect(cb.handleTimelineElementSplit).not.toHaveBeenCalled();
   });
@@ -332,20 +331,19 @@ describe("hotkeys with the preview read-only", () => {
     ["v", "handlePaste"],
     ["g", "onGroupSelection"],
   ] as const)("does not run %s", (key, callback) => {
-    const cb = callbacks();
+    const cb = callbacks({ readOnlyPreview: true });
     cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
     dispatchModifierKey(chord(key), key, cb);
     expect(cb[callback]).not.toHaveBeenCalled();
   });
 
   it("still undoes, because history covers timeline edits", () => {
-    const cb = callbacks();
+    const cb = callbacks({ readOnlyPreview: true });
     dispatchModifierKey(chord("z"), "z", cb);
     expect(cb.handleUndo).toHaveBeenCalledTimes(1);
   });
 
   it("control: with the flag off Delete removes the selected element", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: false });
     const cb = callbacks();
     cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
     dispatchPlainKey(press("Delete"), "delete", cb);

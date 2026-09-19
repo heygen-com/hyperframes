@@ -196,6 +196,7 @@ function renderGestureCommit(
       previewIframeRef: { current: document.createElement("iframe") },
       showToast: vi.fn(),
       isGestureRecordingRef: { current: false },
+      readOnlyPreview: false,
     });
     toggle = handleToggleRecording;
     return null;

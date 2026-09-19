@@ -6,7 +6,7 @@ import type { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGes
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { DomEditRotateHandle } from "./DomEditRotateHandle";
 import { resolveRotatedResizeCursor } from "./domEditResizeLocal";
-import { usePreviewReadOnly } from "./previewReadOnlyStore";
+import { usePreviewReadOnly } from "./previewReadOnlyContext";
 
 // Corner resize handles, Canva-style: one per corner, diagonal cursors.
 // Corners scale about the element center; the translate keeps the center

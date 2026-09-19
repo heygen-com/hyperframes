@@ -58,6 +58,7 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
   /** The timeline context menu's delete op — a canvas selection that IS a
    *  timeline row hands off here instead of the REST remove-elements path. */
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
+  readOnlyPreview: boolean;
 }
 
 export function useDomEditSession({
@@ -98,6 +99,7 @@ export function useDomEditSession({
   publishSdkSession,
   forceReloadSdkSession,
   handleTimelineElementsDelete,
+  readOnlyPreview,
 }: UseDomEditSessionParams) {
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
   void _setRefreshKey;
@@ -247,6 +249,7 @@ export function useDomEditSession({
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
     forceReloadSdkSession,
+    readOnlyPreview,
     onTrySdkPersist: sdkSession
       ? (selection, operations, originalContent, targetPath, options) => {
           // Decoupled tripwire, runs regardless of the cutover flag. originalContent lets

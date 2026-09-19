@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { usePreviewReadOnlyStore } from "../components/editor/previewReadOnlyStore";
+import { PreviewReadOnlyProvider } from "../components/editor/previewReadOnlyContext";
 import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -21,7 +21,7 @@ function heading(text = "Motion Playground"): HTMLElement {
   return element;
 }
 
-function mount(onCommit = vi.fn(), onPause = vi.fn()) {
+function mount(onCommit = vi.fn(), onPause = vi.fn(), readOnly = false) {
   const controls: { current: InlineTextEditControls | null } = { current: null };
   function Probe() {
     controls.current = useInlineTextEdit({ onCommit, onPause });
@@ -30,7 +30,13 @@ function mount(onCommit = vi.fn(), onPause = vi.fn()) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  act(() => root.render(<Probe />));
+  act(() =>
+    root.render(
+      <PreviewReadOnlyProvider readOnly={readOnly}>
+        <Probe />
+      </PreviewReadOnlyProvider>,
+    ),
+  );
   return { controls: () => controls.current!, root, onCommit, onPause };
 }
 
@@ -555,9 +561,8 @@ describe("useInlineTextEdit with styled runs", () => {
   });
 
   it("refuses to open an edit while the preview is read-only", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
     const element = heading();
-    const { controls, root, onCommit, onPause } = mount();
+    const { controls, root, onCommit, onPause } = mount(vi.fn(), vi.fn(), true);
     let opened = true;
     act(() => {
       opened = controls().start(element);
@@ -567,6 +572,5 @@ describe("useInlineTextEdit with styled runs", () => {
     expect(onPause).not.toHaveBeenCalled();
     expect(onCommit).not.toHaveBeenCalled();
     act(() => root.unmount());
-    usePreviewReadOnlyStore.setState({ readOnly: false });
   });
 });

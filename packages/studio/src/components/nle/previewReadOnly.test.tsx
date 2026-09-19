@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreviewOverlays } from "./PreviewOverlays";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
-import { usePreviewReadOnlyStore } from "../editor/previewReadOnlyStore";
+import { PreviewReadOnlyProvider } from "../editor/previewReadOnlyContext";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -68,18 +68,19 @@ vi.mock("../editor/SnapToolbar", () => ({ SnapToolbar: () => null }));
 let root: Root;
 let host: HTMLDivElement;
 
-function mount(node: React.ReactNode): void {
+function mount(node: React.ReactNode, readOnly = false): void {
   host = document.createElement("div");
   iframeRef.current = document.createElement("iframe");
   document.body.append(host, iframeRef.current);
   root = createRoot(host);
-  act(() => root.render(node));
+  act(() =>
+    root.render(<PreviewReadOnlyProvider readOnly={readOnly}>{node}</PreviewReadOnlyProvider>),
+  );
 }
 
 afterEach(() => {
   act(() => root.unmount());
   previewState.captionEditMode = false;
-  usePreviewReadOnlyStore.setState({ readOnly: false });
   document.body.replaceChildren();
 });
 
@@ -95,8 +96,7 @@ describe("PreviewOverlays with the preview read-only", () => {
   });
 
   it("does not mount the motion path editor", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    mount(overlays());
+    mount(overlays(), true);
     expect(has("motion-path")).toBe(false);
     expect(has("dom-edit-overlay")).toBe(true);
   });
@@ -109,15 +109,17 @@ describe("PreviewOverlays with the preview read-only", () => {
 
   it("does not mount the caption editor, and selection stays on the canvas overlay", () => {
     previewState.captionEditMode = true;
-    usePreviewReadOnlyStore.setState({ readOnly: true });
-    mount(overlays());
+    mount(overlays(), true);
     expect(has("caption-overlay")).toBe(false);
     expect(has("dom-edit-overlay")).toBe(true);
   });
 });
 
 describe("usePreviewBlockDrop with the preview read-only", () => {
-  function dropOnPreview(onBlockDrop: (name: string, pos: { left: number; top: number }) => void) {
+  function dropOnPreview(
+    onBlockDrop: (name: string, pos: { left: number; top: number }) => void,
+    readOnly = false,
+  ) {
     const stage = document.createElement("div");
     stage.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100 }) as DOMRect;
     let handlers: ReturnType<typeof usePreviewBlockDrop> | null = null;
@@ -129,7 +131,7 @@ describe("usePreviewBlockDrop with the preview read-only", () => {
       });
       return null;
     }
-    mount(<Probe />);
+    mount(<Probe />, readOnly);
     const event = {
       clientX: 50,
       clientY: 50,
@@ -150,9 +152,8 @@ describe("usePreviewBlockDrop with the preview read-only", () => {
   });
 
   it("does not place a dropped block", () => {
-    usePreviewReadOnlyStore.setState({ readOnly: true });
     const onBlockDrop = vi.fn();
-    const event = dropOnPreview(onBlockDrop);
+    const event = dropOnPreview(onBlockDrop, true);
     expect(onBlockDrop).not.toHaveBeenCalled();
     expect(event.preventDefault).not.toHaveBeenCalled();
   });

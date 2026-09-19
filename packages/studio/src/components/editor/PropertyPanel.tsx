@@ -37,7 +37,7 @@ import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { isAudioDomElement } from "../../utils/timelineInspector";
-import { useManualEditDisabledFlags } from "./previewReadOnlyStore";
+import { useManualEditDisabledFlags } from "./previewReadOnlyContext";
 
 // Re-export helpers that external consumers import from this module
 export {

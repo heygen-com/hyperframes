@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
-import { usePreviewReadOnly } from "../editor/previewReadOnlyStore";
+import { usePreviewReadOnly } from "../editor/previewReadOnlyContext";
 
 interface UsePreviewBlockDropOptions {
   portrait?: boolean;
