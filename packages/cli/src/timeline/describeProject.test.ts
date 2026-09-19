@@ -188,6 +188,24 @@ describe("absolute main-timeline time", () => {
     expect(host.children.find((c) => c.id === "nested")).toMatchObject({ absStart: 2, absEnd: 4 });
   });
 
+  it("resolves a media start given as an expression like any other clip, not as a literal", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-timeline-expr-"));
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(join(dir, "index.html"), INVERSION_INDEX);
+    writeFileSync(
+      join(dir, "compositions", "scene.html"),
+      INVERSION_SCENE.replace(
+        "</video>",
+        `</video><video id="after" src="a.mp4" data-start="nested + 1" data-duration="1" data-track-index="1"></video>`,
+      ),
+    );
+    const host = describeProject(join(dir, "index.html"))
+      .tracks.flatMap((t) => t.rows)
+      .find((r) => r.id === "host")!;
+    // nested ends at local 3, so "nested + 1" is local 4; the host at 5 puts it at 9 on the main timeline.
+    expect(host.children.find((c) => c.id === "after")).toMatchObject({ start: 4, absStart: 9 });
+  });
+
   it("clamps a negative media start to 0 when the host starts at 0, as the runtime does", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-timeline-neg0-"));
     writeFileSync(
