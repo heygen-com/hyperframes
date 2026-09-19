@@ -57,7 +57,7 @@ playback; missing it triggers a lint warning).
 `AbsoluteFill` is just a styled div in Remotion. Translate to a div with
 `position:absolute; inset:0` and copy through any other style props.
 
-## `<Sequence>` → time-windowed div
+## `<Sequence>` → sub-composition host
 
 ```tsx
 <Sequence from={0} durationInFrames={90}>
@@ -65,15 +65,42 @@ playback; missing it triggers a lint warning).
 </Sequence>
 ```
 
+The root `#stage` only holds a host per scene; the scene's markup, styles
+and timeline live in their own sub-composition file, so the Studio timeline
+gets one readable row per scene and the lint has no nested structure to flag.
+
 ```html
-<div data-start="0" data-duration="3" data-track-index="0">
-  <!-- TitleCard children inlined -->
-</div>
+<!-- index.html -->
+<div
+  id="scene-1"
+  class="clip"
+  data-composition-id="scene-1"
+  data-composition-src="compositions/scene-1.html"
+  data-start="0"
+  data-duration="3"
+  data-track-index="0"
+></div>
+```
+
+```html
+<!-- compositions/scene-1.html: TitleCard children inlined, timeline keyed "scene-1", local time starts at 0 -->
+<template id="scene-1-template">
+  <div data-composition-id="scene-1" data-width="1280" data-height="720" data-duration="3">
+    <!-- TitleCard children -->
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["scene-1"] = tl;
+    </script>
+  </div>
+</template>
 ```
 
 Convert frames to seconds: `from/fps`, `durationInFrames/fps`. Pick a
 `data-track-index` per parallel rendering layer (background = 0,
 overlays = 1, audio = 2, etc.). Sequential scenes can share an index.
+Inside the sub-composition, time is local: a tween that started at `F/fps`
+in the root starts at `0` here. Asset paths are relative to the
+sub-composition file (`../assets/x.png`).
 
 ## Nested `<Sequence>` flattens
 

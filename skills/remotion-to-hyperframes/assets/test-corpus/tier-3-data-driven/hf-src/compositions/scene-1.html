@@ -1,0 +1,52 @@
+<template id="scene-1-template">
+  <div data-composition-id="scene-1" data-width="1280" data-height="720" data-duration="3">
+    <style>
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      .scene-1 {
+        flex-direction: column;
+      }
+      .scene-1 .title {
+        font-size: 160px;
+        font-weight: 900;
+        letter-spacing: 0.05em;
+        transform: scale(0);
+      }
+      .scene-1 .subtitle {
+        font-size: 36px;
+        font-weight: 400;
+        color: #9ca3af;
+        margin-top: 24px;
+        opacity: 0;
+      }
+    </style>
+    <div class="scene scene-1">
+      <div class="title">STARGAZED</div>
+      <div class="subtitle">by HeyGen</div>
+    </div>
+    <script>
+      // Remotion: <Sequence 0..90> TitleScene. Frame -> time at 30 fps.
+      const tl = gsap.timeline({ paused: true });
+      const scene = document.querySelector(".scene-1");
+      tl.set(scene, { opacity: 1 }, 0);
+      // spring({damping:12, stiffness:100, mass:1}) -> back.out(1.4) ~0.7s
+      tl.to(scene.querySelector(".title"), { scale: 1, duration: 0.7, ease: "back.out(1.4)" }, 0);
+      // interpolate(frame, [20,40], [0,1]) -> 0.667s..1.333s linear
+      tl.fromTo(
+        scene.querySelector(".subtitle"),
+        { opacity: 0 },
+        { opacity: 1, duration: 0.667, ease: "none" },
+        0.667,
+      );
+      tl.set(scene, { opacity: 0 }, 3);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-1"] = tl;
+    </script>
+  </div>
+</template>

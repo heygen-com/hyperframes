@@ -27,12 +27,12 @@ details (timing, transitions, etc.).
 
 See [sequencing.md](sequencing.md) for nesting and stagger details.
 
-| Remotion                                   | HyperFrames                                                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `<Sequence from={F} durationInFrames={D}>` | `<div data-start="<F/fps>" data-duration="<D/fps>" data-track-index="N">`                                 |
-| `<Series>` + `<Series.Sequence>`           | siblings with sequential `data-start` values                                                              |
-| `<Loop durationInFrames={D}>`              | not a primitive — emit a bounded GSAP repeat from the available duration                                  |
-| `<Freeze frame={F}>`                       | drop the wrapper; HF doesn't have running animation outside the seek-driven timeline so freeze is a no-op |
+| Remotion                                   | HyperFrames                                                                                                                                                                                                                 |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<Sequence from={F} durationInFrames={D}>` | a host `<div data-composition-src="compositions/<name>.html" data-start="<F/fps>" data-duration="<D/fps>" data-track-index="N">` in the root, its content in that sub-composition file (see [sequencing.md](sequencing.md)) |
+| `<Series>` + `<Series.Sequence>`           | siblings with sequential `data-start` values                                                                                                                                                                                |
+| `<Loop durationInFrames={D}>`              | not a primitive — emit a bounded GSAP repeat from the available duration                                                                                                                                                    |
+| `<Freeze frame={F}>`                       | drop the wrapper; HF doesn't have running animation outside the seek-driven timeline so freeze is a no-op                                                                                                                   |
 
 ## Timing
 

@@ -1,0 +1,31 @@
+<template id="title-scene-template">
+  <div data-composition-id="title-scene" data-width="1280" data-height="720" data-duration="3">
+    <style>
+      .title {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 160px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        opacity: 0;
+      }
+    </style>
+    <div class="title">HELLO</div>
+    <script>
+      // Translation of Remotion's
+      //   interpolate(frame, [0, 15, 75, 90], [0, 1, 1, 0]) at fps=30
+      // into a paused GSAP timeline keyed in seconds.
+      const tl = gsap.timeline({ paused: true });
+      const target = document.querySelector(".title");
+      tl.to(target, { opacity: 1, duration: 0.5, ease: "none" }, 0);
+      tl.to(target, { opacity: 1, duration: 2.0, ease: "none" }, 0.5);
+      tl.to(target, { opacity: 0, duration: 0.5, ease: "none" }, 2.5);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["title-scene"] = tl;
+    </script>
+  </div>
+</template>
