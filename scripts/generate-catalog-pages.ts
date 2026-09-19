@@ -25,6 +25,7 @@ import {
 } from "../packages/core/src/registry/types.js";
 import { withHostedDefaults } from "./registry-hosted-assets.ts";
 import { declaredVariables } from "./catalog/component-variables.ts";
+import { usesWebgpu } from "./docs-catalog-shared.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -848,17 +849,16 @@ function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): stri
 }
 
 /** True when the live payload draws with WebGPU, so a browser without an adapter cannot play it. */
-function usesWebgpu(kind: ItemKind, name: string): boolean {
-  const html = (JSON.parse(readFileSync(payloadPath(kind, name), "utf-8")) as { html?: string })
-    .html;
-  return /navigator\.gpu|WebGPURenderer/.test(html ?? "");
+function payloadUsesWebgpu(kind: ItemKind, name: string): boolean {
+  const { html } = JSON.parse(readFileSync(payloadPath(kind, name), "utf-8")) as { html?: string };
+  return usesWebgpu(html ?? "");
 }
 
 /** What the stage shows when the player cannot run the composition: a flag notice, or the recorded video. */
 function stageProps(kind: ItemKind, manifest: RegistryItem): string[] {
   if (hasPayload(kind, manifest.name)) {
     // The recorded clip is the fallback for a browser with no WebGPU adapter.
-    if (!manifest.preview?.video || !usesWebgpu(kind, manifest.name)) return [];
+    if (!manifest.preview?.video || !payloadUsesWebgpu(kind, manifest.name)) return [];
     return [...recordedProps(kind, manifest), "  webgpu"];
   }
   const flag = unsupportedFlag(kind, manifest.name);

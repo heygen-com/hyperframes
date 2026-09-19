@@ -11,6 +11,7 @@ import {
   readJson,
   resolveDocsRoot,
   slug,
+  usesWebgpu,
 } from "./docs-catalog-shared.mjs";
 
 const { root, docs } = resolveDocsRoot(process.argv[2]);
@@ -22,7 +23,7 @@ function statusOf(man) {
 }
 
 function isHeavy(html) {
-  return /getContext\(\s*["']webgl2?["']|THREE\.|navigator\.gpu|WebGPURenderer/.test(html);
+  return /getContext\(\s*["']webgl2?["']|THREE\./.test(html) || usesWebgpu(html);
 }
 
 // The one preview rule: a composition that needs a Chrome flag shows its recorded video, every

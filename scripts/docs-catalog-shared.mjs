@@ -20,6 +20,11 @@ export function getCatalogTab(config) {
   return config.navigation.tabs.find((t) => t.tab === "Catalog");
 }
 
+/** True when the composition draws with WebGPU, which a browser without an adapter cannot play. */
+export function usesWebgpu(html) {
+  return /navigator\.gpu|WebGPURenderer/.test(html);
+}
+
 // A composition is eligible for live preview the same way the gallery's own inventory
 // decides it: a paused GSAP timeline registered for seeking. A mounted sub-composition is fine: the
 // player mounts it at run time. Callers that only need the yes/no can ignore which reason came back.

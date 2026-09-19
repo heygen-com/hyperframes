@@ -2042,12 +2042,15 @@ export const CatalogDetail = ({
   const [hasAdapter, setHasAdapter] = useState(null);
   useEffect(() => {
     if (!webgpu) return;
-    const request = typeof navigator !== "undefined" && navigator.gpu ? navigator.gpu.requestAdapter() : null;
-    Promise.resolve(request)
+    // A request that never settles must not leave the stage blank.
+    const noAdapter = new Promise((resolve) => setTimeout(resolve, 3000, null));
+    Promise.race([navigator.gpu?.requestAdapter() ?? null, noAdapter])
       .then((adapter) => setHasAdapter(Boolean(adapter)))
       .catch(() => setHasAdapter(false));
   }, [webgpu]);
   const adapterMissing = webgpu && hasAdapter === false;
+  // Edits reach a mounted player only, so the panel goes when the clip stands in for it.
+  const tunePanel = hasTune && !adapterMissing;
   let webgpuStage = player;
   if (webgpu && hasAdapter === null) webgpuStage = <div className="aspect-video w-full" />;
   if (adapterMissing) webgpuStage = recorded;
@@ -2098,7 +2101,7 @@ export const CatalogDetail = ({
           </div>
         </div>
 
-        <div className="hf-ve-main" data-tune={hasTune ? "true" : "false"}>
+        <div className="hf-ve-main" data-tune={tunePanel ? "true" : "false"}>
           <div className="hf-ve-stage">
             {stageNode}
             <div className="hf-ve-caption">
@@ -2107,7 +2110,7 @@ export const CatalogDetail = ({
             </div>
           </div>
 
-          {hasTune && (
+          {tunePanel && (
             <aside className="hf-ve-tune" aria-label="Tune">
               <div className="hf-ve-tune-inner">
                 <div className="hf-ve-tune-head">
