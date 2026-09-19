@@ -41,8 +41,8 @@ type StripBars = [Bars, Bars];
 
 const MASTER_LABEL = "Master";
 
-/** Where the fill turns yellow, then red, on the same piecewise dB scale the marks use. */
-const YELLOW_AT = markFraction(-6);
+/** Where the fill turns amber, then red, on the same piecewise dB scale the marks use. */
+const AMBER_AT = markFraction(-6);
 const RED_AT = markFraction(-3);
 
 function useStrips(): Strip[] {
@@ -109,7 +109,7 @@ function paintPeak(el: HTMLElement | null, peak: number): void {
   el.style.setProperty("transform", peak >= 1 ? "translateY(1px)" : "none");
 }
 
-/** The fill is a fixed green/yellow/red backdrop; painting only moves the dark
+/** The fill is a fixed green/amber/red backdrop; painting only moves the dark
  *  mask that covers the unlit top portion, so a loud peak lights the real red
  *  band instead of tinting a flat colour brighter. */
 function paint(bars: StripBars | undefined, channels: Pair): void {
@@ -177,11 +177,11 @@ function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<
     <div className="relative h-full w-[18px] overflow-hidden rounded-[2px] bg-neutral-900">
       <div
         className="absolute inset-x-0 bottom-0 bg-green-500"
-        style={{ height: `${YELLOW_AT * 100}%` }}
+        style={{ height: `${AMBER_AT * 100}%` }}
       />
       <div
         className="absolute inset-x-0 bg-amber-500"
-        style={{ bottom: `${YELLOW_AT * 100}%`, height: `${(RED_AT - YELLOW_AT) * 100}%` }}
+        style={{ bottom: `${AMBER_AT * 100}%`, height: `${(RED_AT - AMBER_AT) * 100}%` }}
       />
       <div
         className="absolute inset-x-0 top-0 bg-red-500"
