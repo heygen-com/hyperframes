@@ -2743,6 +2743,11 @@ export function initSandboxRuntimeModular(): void {
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
   window.__hf.releasePausedMedia = releasePausedMedia;
+  window.__hf.audioMeter = {
+    start: () => webAudio.startMetering(),
+    stop: () => webAudio.stopMetering(),
+    read: () => webAudio.readLevels(),
+  };
 
   // Same predicate the media cache uses, so the paused side sees exactly the
   // media the transport drives. Reads attributes only; no cache rebuild.

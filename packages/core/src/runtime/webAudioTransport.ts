@@ -8,6 +8,7 @@ import {
 import { VOLUME_RANGE } from "../audioAutomation.js";
 import { audioGroupOf, readAudioGroupVolume, resolveGroupElement } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
+import { createLevelTap, type LevelTap, type StereoLevel } from "./levelTap.js";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
 import { readElementPlaybackRate } from "./media.js";
@@ -150,6 +151,10 @@ export class WebAudioTransport {
     string,
     {
       input: GainNode;
+      /** Where the bus meets master; the level meter taps here. */
+      output: GainNode;
+      /** False once the group's element is gone from the document. */
+      isPresent(): boolean;
       /** Post-FX fader: `data-volume` plus the volume lane. */
       fader: GainNode;
       muteGain: GainNode;
@@ -162,6 +167,10 @@ export class WebAudioTransport {
       dispose(): void;
     }
   >();
+  // Level taps exist only between `startMetering()` and `stopMetering()`.
+  private _metering = false;
+  private _masterTap: LevelTap | null = null;
+  private _groupTaps = new Map<string, LevelTap>();
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
   // `_rate` composition-seconds per wallclock-second since.
@@ -177,6 +186,7 @@ export class WebAudioTransport {
       this._masterGain = this._ctx.createGain();
       this._masterGain.connect(this._ctx.destination);
       this.applyMasterGain();
+      if (this._metering) this.attachMasterTap();
       return true;
     } catch {
       return false;
@@ -454,6 +464,8 @@ export class WebAudioTransport {
 
     this._groups.set(groupId, {
       input,
+      output,
+      isPresent: () => resolveEl() !== null,
       fader,
       muteGain,
       fx,
@@ -485,7 +497,42 @@ export class WebAudioTransport {
         }
       },
     });
+    this.attachGroupTap(groupId, output);
     return input;
+  }
+
+  startMetering(): void {
+    this._metering = true;
+    this.attachMasterTap();
+    for (const [id, group] of this._groups) this.attachGroupTap(id, group.output);
+  }
+
+  stopMetering(): void {
+    this._metering = false;
+    this._masterTap?.dispose();
+    this._masterTap = null;
+    for (const tap of this._groupTaps.values()) tap.dispose();
+    this._groupTaps.clear();
+  }
+
+  readLevels(): { master: StereoLevel; groups: Record<string, StereoLevel> } {
+    const groups: Record<string, StereoLevel> = {};
+    for (const [id, tap] of this._groupTaps) {
+      if (this._groups.get(id)?.isPresent()) groups[id] = tap.read();
+    }
+    return { master: this._masterTap?.read() ?? { l: 0, r: 0 }, groups };
+  }
+
+  private attachMasterTap(): void {
+    if (this._ctx && this._masterGain && !this._masterTap) {
+      this._masterTap = createLevelTap(this._ctx, this._masterGain);
+    }
+  }
+
+  private attachGroupTap(id: string, output: GainNode): void {
+    if (this._metering && this._ctx && !this._groupTaps.has(id)) {
+      this._groupTaps.set(id, createLevelTap(this._ctx, output));
+    }
   }
 
   /**
@@ -780,6 +827,7 @@ export class WebAudioTransport {
 
   destroy(): void {
     this.stopAll();
+    this.stopMetering();
     for (const group of this._groups.values()) group.dispose();
     this._groups.clear();
     this._bufferCache.clear();

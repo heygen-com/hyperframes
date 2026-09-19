@@ -161,3 +161,13 @@ describe("timeline zoom pin persistence", () => {
     expect(prefs.timelineManualZoomPercent).toBeUndefined();
   });
 });
+
+describe("audioMetersVisible preference", () => {
+  it("round-trips and ignores a non-boolean", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ audioMetersVisible: false }, storage);
+    expect(readStudioUiPreferences(storage).audioMetersVisible).toBe(false);
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ audioMetersVisible: "no" }));
+    expect(readStudioUiPreferences(storage).audioMetersVisible).toBeUndefined();
+  });
+});

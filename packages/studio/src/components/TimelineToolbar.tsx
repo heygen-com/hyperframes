@@ -4,6 +4,7 @@ import {
   Magnet,
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
+  SpeakerHigh,
   Waves,
 } from "@phosphor-icons/react";
 import {
@@ -28,6 +29,8 @@ import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
+import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
+import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
@@ -141,6 +144,9 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
   const setThumbnailMode = usePlayerStore((s) => s.setThumbnailMode);
   const thumbnailsVisible = thumbnailMode === "adaptive";
+  const audioMetersVisible = useAudioMetersVisible((s) => s.visible);
+  const setAudioMetersVisible = useAudioMetersVisible((s) => s.setVisible);
+  const projectHasAudio = useProjectHasAudio();
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
@@ -249,6 +255,19 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               <Waves size={16} weight="bold" aria-hidden="true" />
             </button>
           </Tooltip>
+          {projectHasAudio && (
+            <Tooltip label={audioMetersVisible ? "Hide audio meters" : "Show audio meters"}>
+              <button
+                type="button"
+                onClick={() => setAudioMetersVisible(!audioMetersVisible)}
+                aria-label="Toggle audio meters"
+                aria-pressed={audioMetersVisible}
+                className={audioMetersVisible ? flatActive : flatIdle}
+              >
+                <SpeakerHigh size={16} weight="bold" aria-hidden="true" />
+              </button>
+            </Tooltip>
+          )}
           {/* Always rendered (CapCut-style): with no keyframeable selection the
               button fades to a disabled state instead of unmounting, so the
               toolbar layout never shifts. */}
