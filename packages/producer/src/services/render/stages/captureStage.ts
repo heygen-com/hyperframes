@@ -194,7 +194,7 @@ export function inspectDiskCaptureHeadroom(
   return { available: false, estimatedBytes, freeBytes };
 }
 
-function diskCaptureShortfallError(
+export function diskCaptureShortfallError(
   needBytes: number,
   freeBytes: number,
   framesDir: string,

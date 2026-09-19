@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import { createRenderJob } from "../../renderOrchestrator.js";
+import { DEFAULT_CONFIG, classifyCaptureFailure } from "@hyperframes/engine";
+import { createRenderJob, isTransientCaptureRetryEligible } from "../../renderOrchestrator.js";
 import { formatCaptureFrameName } from "../../../utils/paths.js";
 
 // Mock only the engine session primitives; `classifyCaptureFailure` stays
@@ -43,6 +43,7 @@ vi.mock("node:fs", async (importOriginal) => {
 import {
   assertDiskCaptureHeadroom,
   createDiskCaptureProjection,
+  diskCaptureShortfallError,
   measureCaptureFrameBytes,
   estimateDiskCaptureBytes,
   inspectDiskCaptureHeadroom,
@@ -274,6 +275,16 @@ describe("runCaptureStage measured disk projection (both branches)", () => {
       /measured from the first 10 frames/,
     );
     expect(captureFrame).toHaveBeenCalledTimes(10);
+    expect(createCaptureSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("a measured shortfall is never classified as a retryable browser death", () => {
+    const shortfall = diskCaptureShortfallError(10e9, 1e9, "/frames", "measured");
+    const kind = classifyCaptureFailure(shortfall);
+    expect(kind).not.toBe("transient_browser");
+    expect(isTransientCaptureRetryEligible(kind, [{ startFrame: 10, endFrame: 20 }], 0)).toBe(
+      false,
+    );
   });
 
   it("parallel: the progress callback raises the same shortfall from worker dirs", async () => {
