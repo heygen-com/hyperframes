@@ -1,19 +1,6 @@
 /**
- * Select — Base UI's select in the same box as Input.
- *
- * Studio still has native `<select>` elements, which cannot be styled to match
- * anything around them: the popup is the operating system's, so the radius, the
- * surface and the type all belong to someone else. This one shares `fieldBase`
- * with Input and NumberField, so the three read as the same control, and the
- * popup wears the menu surface every other floating panel in Studio wears.
- *
- * The trigger keeps `role="combobox"`, which is what both hotkey selector lists
- * already recognise, so a global shortcut stays out of an open select the same
- * way it stayed out of a native one (KTD13).
- *
- * Options are data, not children: a select whose items are JSX invites a
- * consumer to put a control inside one, and then keyboard typeahead and the
- * value display have to guess at the label.
+ * Select: Base UI select in Input's box. The trigger keeps `role="combobox"`, which both hotkey selector
+ * lists match. Options are data, not children, so typeahead and the value display can read labels.
  */
 
 import { Select as BaseSelect } from "@base-ui/react/select";

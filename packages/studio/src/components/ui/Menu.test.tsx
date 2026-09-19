@@ -1,22 +1,5 @@
 // @vitest-environment happy-dom
-/**
- * Menu, ContextMenu and Popover.
- *
- * Two kinds of check live here, and they fail for different reasons.
- *
- * The behaviour tests pin what the primitives owe their callers: arrow keys
- * skip a disabled item, a radio group reports exactly one `aria-checked`, a
- * text field inside a Popover keeps its own keys, and an outside press that a
- * parent swallows in the bubble phase still dismisses. That last one is U3's
- * finding re-asserted on the shipped component rather than on a spike fixture.
- *
- * The class test is the same shape as `Button.test.tsx`: Tailwind has no strict
- * mode for markup, so a class nobody defines styles nothing in silence. Every
- * class these components emit is compiled against Studio's real stylesheet and
- * a class that produces no selector fails, naming itself.
- *
- * happy-dom has no layout, so nothing here asserts a pixel or a position.
- */
+/** Menu, ContextMenu and Popover: key/aria behaviour, dismissal, and that emitted classes resolve. */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import React, { act, useState } from "react";
@@ -68,15 +51,8 @@ function press(target: Element): void {
 }
 
 /**
- * A mouse click, spelled out.
- *
- * `HTMLElement.click()` looks like the obvious way to open a menu and is the
- * wrong one here: it dispatches a bare `click` with no pointer event before it,
- * which Base UI reads as a KEYBOARD activation. A keyboard-opened menu
- * pre-highlights its first item, per the ARIA menu pattern, so every arrow-key
- * assertion written on top of `.click()` would be off by one against what a
- * user with a mouse actually sees. Spelling the sequence out keeps these tests
- * describing the pointer case, which is how every menu in Studio is opened.
+ * A mouse click, spelled out: bare `.click()` reads as keyboard activation to Base UI,
+ * which pre-highlights the first item and shifts every arrow-key assertion by one.
  */
 function clickWithMouse(target: Element): void {
   const init = { bubbles: true, cancelable: true, composed: true, detail: 1 };
@@ -107,11 +83,7 @@ const trigger = () => one<HTMLElement>('[data-testid="trigger"]', "trigger");
 const popup = () => document.querySelector<HTMLElement>('[role="menu"]');
 const items = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 
-/**
- * The shape a Studio element menu has: actions, a hairline, a destructive one.
- * `disabled` marks whichever label is passed, so one component serves both the
- * plain arrow-key test and the disabled-item test.
- */
+/** A Studio element menu: actions, a hairline, a destructive item; `disabled` marks the passed label. */
 function ActionMenu({
   activated,
   disable,
@@ -330,11 +302,8 @@ describe("Popover", () => {
 
 describe("hotkey classification", () => {
   it("classifies menu rows and popover contents the way the menus they replace were", async () => {
-    // KTD13. `typingTarget` and `playbackShortcuts` gate every global hotkey on
-    // exact role strings. Today's menus render `<button role="menuitem">` and
-    // `<button role="menuitemradio">`, which both selector lists already match
-    // through `button`. Base UI renders a `<div>` with the same roles, so the
-    // roles have to carry the classification on their own.
+    // `typingTarget` and `playbackShortcuts` match exact role strings; Base UI renders
+    // a `<div>` with those roles, so the roles alone must carry the classification.
     render(
       <>
         <Menu trigger={<button data-testid="trigger">Actions</button>} aria-label="Actions">
@@ -374,13 +343,8 @@ describe("hotkey classification", () => {
 });
 
 /**
- * Nothing here re-checks that these components' classes resolve: the token gate
- * (`styles/tokenGate.test.ts`) already compiles Studio's stylesheet against
- * every class its non-test sources claim, `Menu.tsx` and `Popover.tsx`
- * included. A second copy of that check would be one more thing to keep in step
- * for no extra coverage.
- *
- * What the gate cannot see is what the compiled rule DOES, which is AE4.
+ * Class resolution is covered by `styles/tokenGate.test.ts`; this checks what the compiled rule
+ * does (AE4).
  */
 describe("open motion", () => {
   let compileStudioCss: (candidates: string[]) => string;

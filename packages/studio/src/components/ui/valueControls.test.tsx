@@ -1,23 +1,5 @@
 // @vitest-environment happy-dom
-/**
- * The five value controls: Input, NumberField, Select, Slider, Toggle.
- *
- * Three things are worth a test here and the rest is Base UI's own suite:
- *
- *  1. Where a value gets written. One drag is one commit and one telemetry
- *     event, not one per pixel (KTD11). The telemetry half runs through the
- *     real sink, not a stub, because the 600 ms coalescing window is part of
- *     the contract being kept and a stub would assert nothing about it.
- *  2. That every class the controls emit resolves. Tailwind drops a class it
- *     cannot compile in silence, so the only judge is Tailwind.
- *  3. That both hotkey selector lists classify each control the way the native
- *     input it replaces was classified (KTD13). A control that lands on a
- *     different role leaks or swallows global shortcuts with nothing to notice.
- *
- * happy-dom has no layout, so the slider's control rect is stubbed where a
- * pointer drag needs one. What these controls look like is the screenshot
- * script's job, not this file's.
- */
+/** Value controls: one drag is one commit and one telemetry event; classes resolve; hotkey roles match. */
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";

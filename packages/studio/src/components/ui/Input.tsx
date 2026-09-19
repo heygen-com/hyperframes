@@ -1,19 +1,6 @@
 /**
- * Input — a boxed text field wearing Studio's tokens.
- *
- * R10 is the reason this exists: an inspector value has to read as an input.
- * Today several of them are bare text on a panel background, indistinguishable
- * from their own label until you click one. `fieldBase` below is the boundary:
- * a real border, a real background, a real focus ring, and it is shared with
- * NumberField and Select so the three boxes are the same box.
- *
- * The draft/commit contract is the inspector's, kept as-is: typing moves a
- * local draft, Enter and blur commit it, Escape abandons it. Nothing is written
- * to the composition per keystroke.
- *
- * `onTrack` fires once per committed change, never per keystroke (KTD11). The
- * primitive does not know about design-panel telemetry; a consumer passes the
- * `useTrackDesignInput` call it already had.
+ * Input: a boxed text field. Typing edits a local draft; Enter and blur commit it,
+ * Escape abandons it. `onTrack` fires once per commit, never per keystroke.
  */
 
 import { Input as BaseInput } from "@base-ui/react/input";
@@ -22,11 +9,8 @@ import { cn } from "./cn";
 import type { PreviewState } from "./Button";
 
 /**
- * The shared field look: the visible boundary R10 asks for, plus the hover,
- * focus and invalid states. Every interactive look is written twice, once as
- * the real state and once as `data-[preview-state=…]`, so a gallery shot can
- * show it without a pointer. `valueControls.test.tsx` asserts the two lists stay in
- * step, the way `Button.test.tsx` does for buttons.
+ * Shared field look (also used by NumberField and Select). Each interactive state is written
+ * twice, real and `data-[preview-state=...]`; `valueControls.test.tsx` asserts the lists match.
  */
 export const fieldBase = cn(
   "flex min-w-0 items-center gap-1.5 h-ctl px-2 rounded-md",

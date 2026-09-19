@@ -1,18 +1,6 @@
 /**
- * Popover — the same floating chrome as `Menu`, with no item semantics.
- *
- * The split is deliberate (KTD5). A flat list of actions is a menu: it owns the
- * arrow keys, typeahead and Enter, and every child has to be an item. A surface
- * with modes, a text field or a form is not: the arrow keys belong to whatever
- * is focused inside it. AssetContextMenu has rename and delete-confirm modes
- * with an embedded input, and the SnapToolbar's grid-spacing panel is a small
- * form; both are popovers, and putting them in a menu would take their keys
- * away.
- *
- * What they share is the look: `popupSurface` from `Menu.tsx` carries the
- * radius, the surface colour, the hairline ring and the open motion, so a
- * settings panel and a context menu cannot drift apart. Only the shadow differs
- * (`--shadow-popover` sits a step further off the page than `--shadow-menu`).
+ * Popover: `Menu`'s floating chrome (`popupSurface`) without item semantics, so arrow keys
+ * stay with whatever is focused inside (rename inputs, forms). Only the shadow differs.
  */
 
 import { Popover as BasePopover } from "@base-ui/react/popover";

@@ -1,12 +1,6 @@
 /**
- * Toggle — Base UI's switch wearing Studio's tokens.
- *
- * A switch, not a checkbox: it takes effect immediately, there is no form to
- * submit, and `role="switch"` is what assistive tech should hear. That role is
- * also why `typingTarget.ts` grew an entry in this PR (KTD13): the native
- * checkboxes this replaces matched its `input` selector, and a `<button
- * role="switch">` would silently have started leaking Space to the global
- * playback shortcut instead of flipping.
+ * Toggle: a switch, not a checkbox (immediate effect). `role="switch"` needed an entry in
+ * `typingTarget.ts` so Space is not leaked to the global playback shortcut.
  */
 
 import { Switch } from "@base-ui/react/switch";

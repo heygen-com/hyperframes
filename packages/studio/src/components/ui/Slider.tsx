@@ -1,21 +1,6 @@
 /**
- * Slider — Base UI's slider carrying the inspector's draft/commit contract.
- *
- * Two callbacks, and the difference between them is the whole point:
- *
- *  - `onPreview` fires continuously while the thumb moves. It is for the live
- *    canvas preview and writes nothing durable.
- *  - `onCommit` fires at a boundary: releasing a drag, a settled keyboard step,
- *    a press on the track. `onTrack` fires with it, exactly once (KTD11), which
- *    is what makes one drag one telemetry event no matter how many pixels it
- *    crossed.
- *
- * Right-click aborts a drag in flight and puts the value back where it started
- * (KTD8). Base UI has no cancel API for a running drag, but it hands every
- * change an `eventDetails.cancel()`, so an aborted drag stops applying moves
- * while the button is still down, and the pre-drag value is re-committed if a
- * preview already advanced it. Escape does the same thing, because the control
- * this replaces answered both.
+ * Slider: `onPreview` fires while the thumb moves and writes nothing durable; `onCommit` (with `onTrack`, once)
+ * fires at a boundary. Right-click or Escape aborts a drag via `eventDetails.cancel()` and restores the start value.
  */
 
 import { Slider as BaseSlider } from "@base-ui/react/slider";

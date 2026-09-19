@@ -17,11 +17,7 @@ const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
   "[role='checkbox']",
   "[role='combobox']",
   "[role='menuitem']",
-  // A radio row inside a menu. The hand-rolled SpeedMenu spelled it as a
-  // `<button role="menuitemradio">`, so `button` above happened to catch it;
-  // the shared Menu's radio item is a `<div>` with the same role, and nothing
-  // else here matches it. Without this line the playback shortcuts would claim
-  // arrow keys and Space out of an open speed menu.
+  // Base UI's menu radio item is a `<div>`, so `button` above no longer catches it.
   "[role='menuitemradio']",
   "[role='radio']",
   "[role='slider']",

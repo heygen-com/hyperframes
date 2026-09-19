@@ -1,32 +1,6 @@
 /**
- * Menu and ContextMenu — Base UI's menus wearing Studio's tokens.
- *
- * Studio has six hand-rolled menus today. Each one re-decides the same things:
- * a surface colour, a radius, a shadow, which key moves the highlight, whether
- * a right-click opens at the pointer, and how an outside press dismisses it.
- * This file decides them once.
- *
- * Three things are worth knowing before reading the code:
- *
- *  - **Dismissal is plain Base UI, with no wrapper.** Studio's canvas overlay
- *    calls `stopPropagation()` on its own bubble-phase pointer handlers, which
- *    is why `useContextMenuDismiss` had to listen in the capture phase. Base UI
- *    registers its outside-press listeners on `document` with capture set, so
- *    an upstream bubble-phase stop cannot starve them. U3 proved that over the
- *    real overlay; `Menu.test.tsx` re-asserts it on this component.
- *
- *  - **`trigger` is rendered, not wrapped.** Both menus take the caller's own
- *    element through Base UI's `render` prop, the way `Tooltip` does. A wrapper
- *    would need a box of its own to position against, and a `display: contents`
- *    wrapper has none.
- *
- *  - **`container` exists for shadow roots.** Studio mounts surfaces inside
- *    shadow roots; a portal that always lands on `<body>` would drop the popup
- *    out of the host's stylesheet.
- *
- * The open motion names `duration-open`, the token that zeroes itself under
- * `prefers-reduced-motion` (see `theme.css`), so a menu cannot use the token
- * and forget the reduced-motion case.
+ * Menu and ContextMenu on Base UI. Dismissal is plain Base UI (capture-phase listeners survive the overlay's
+ * `stopPropagation`); `trigger` is rendered, not wrapped; `container` exists for shadow roots.
  */
 
 import { ContextMenu as BaseContextMenu } from "@base-ui/react/context-menu";
@@ -42,11 +16,7 @@ type StyledProps<T extends ElementType> = Omit<ComponentPropsWithoutRef<T>, "cla
   className?: string;
 };
 
-/**
- * Forces the settled open look for a gallery shot, so a screenshot cannot catch
- * the popup mid-transition. CSS-only: the open state itself stays controlled by
- * the caller or by Base UI.
- */
+/** Forces the settled open look for a gallery shot; CSS-only, open state stays controlled. */
 export type PopupPreviewState = "open";
 
 /** Where the portal puts the popup. `null` keeps it inline, next to its trigger. */
@@ -57,14 +27,8 @@ const SIDE_OFFSET = 6;
 const VIEWPORT_MARGIN = 8;
 
 /**
- * The chrome every floating panel in Studio shares: surface, radius, hairline
- * ring, and the open motion. `Popover` wears this too, which is what makes a
- * context menu and a settings panel read as the same system. Each caller adds
- * its own shadow token (`shadow-menu` or `shadow-popover`).
- *
- * `data-starting-style` and `data-ending-style` are Base UI's transition
- * attributes; the popup is mounted with them set, so a plain CSS transition is
- * enough and no animation library is involved.
+ * Chrome shared by every floating panel (`Popover` too); callers add their own shadow token.
+ * `data-starting-style`/`data-ending-style` are Base UI's transition attributes.
  */
 export const popupSurface = cn(
   "rounded-lg border border-border-input bg-surface",
@@ -80,11 +44,7 @@ const POPUP_LAYER = "z-200";
 
 const menuPopup = cn(popupSurface, "min-w-36 p-1 shadow-menu");
 
-/**
- * One row. The highlight hangs off `data-highlighted`, which Base UI sets from
- * keyboard and pointer alike, so the row the eye sees and the row Enter
- * activates cannot disagree.
- */
+/** One row. `data-highlighted` is set by keyboard and pointer alike, so the seen row is the Enter row. */
 const itemBase = cn(
   "flex cursor-default select-none items-center justify-between gap-6 rounded-sm px-2 py-1.5",
   "text-step-11 whitespace-nowrap text-text-1",
@@ -168,11 +128,7 @@ interface ContextMenuProps
   children: ReactNode;
 }
 
-/**
- * A menu opened by right click or long press, at the pointer. `side` and
- * `align` are not offered: the anchor is the pointer, so there is nothing to
- * sit beside.
- */
+/** Opened by right click or long press at the pointer, so `side` and `align` are not offered. */
 export function ContextMenu({
   trigger,
   children,
@@ -200,13 +156,7 @@ export function ContextMenu({
   );
 }
 
-/**
- * A keyboard shortcut hint. Mono and tabular so a column of them lines up, and
- * dimmer than the label because it is a reminder, not an action.
- *
- * `MenuItem`'s `shortcut` prop renders this, and it is exported for the one
- * case the prop cannot cover: an item whose hint is not a plain string.
- */
+/** Keyboard shortcut hint, mono and tabular; exported for hints that are not a plain string. */
 export function MenuShortcut({ className, ...props }: StyledProps<"span">) {
   return (
     <span
@@ -226,13 +176,7 @@ interface MenuItemProps extends StyledProps<typeof BaseMenu.Item> {
 }
 
 /** One action. `disabled` items are skipped by the arrow keys, not just dimmed. */
-export function MenuItem({
-  shortcut,
-  tone = "default",
-  className,
-  children,
-  ...props
-}: MenuItemProps) {
+export function MenuItem({ shortcut, tone, className, children, ...props }: MenuItemProps) {
   return (
     <BaseMenu.Item className={cn(itemBase, tone === "danger" && itemDanger, className)} {...props}>
       <span className="truncate">{children}</span>
@@ -241,11 +185,7 @@ export function MenuItem({
   );
 }
 
-/**
- * A single-choice group (SpeedMenu's playback rates). Selection is reported as
- * `aria-checked` on each item, which is the state assistive tech reads and the
- * one the dot indicator is drawn from.
- */
+/** Single-choice group; selection is `aria-checked` on each item, which the dot indicator draws from. */
 export function MenuRadioGroup(props: ComponentPropsWithoutRef<typeof BaseMenu.RadioGroup>) {
   return <BaseMenu.RadioGroup {...props} />;
 }
