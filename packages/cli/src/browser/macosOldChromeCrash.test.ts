@@ -1,7 +1,10 @@
+import { CHROME_VERSION } from "./manager.js";
 import { describe, it, expect } from "vitest";
 import {
   isMacosOldChromeCrashError,
   macosOldChromeCrashRemediation,
+  macosOldChromeRefusal,
+  macosRefusesManagedChrome,
 } from "./macosOldChromeCrash.js";
 
 describe("isMacosOldChromeCrashError", () => {
@@ -96,5 +99,42 @@ describe("macosOldChromeCrashRemediation", () => {
     expect(remediation).toMatch(/HYPERFRAMES_BROWSER_PATH/);
     expect(remediation).toMatch(/PRODUCER_HEADLESS_SHELL_PATH/);
     expect(remediation).toMatch(/chrome-headless-shell@150/);
+  });
+});
+
+describe("macosOldChromeRefusal", () => {
+  it("names the pinned major and the working override", () => {
+    expect(macosOldChromeRefusal()).toBe(
+      "macOS 12 cannot run Chrome 152: upgrade macOS or set HYPERFRAMES_BROWSER_PATH.",
+    );
+  });
+});
+
+describe("macosRefusesManagedChrome", () => {
+  const managed = {
+    executablePath: `/c/chrome-headless-shell/mac-${CHROME_VERSION}/chrome-headless-shell`,
+    source: "cache",
+  };
+  it("refuses the pinned build below macOS 13", () => {
+    expect(macosRefusesManagedChrome(managed, "darwin", "21.6.0")).toBe(true);
+  });
+  it.each([
+    ["macOS 13", managed, "darwin", "22.1.0"],
+    ["a user-supplied browser", { ...managed, source: "env" }, "darwin", "21.6.0"],
+    [
+      "another build",
+      { executablePath: "/c/mac-150.0.7422.0/chrome", source: "cache" },
+      "darwin",
+      "21.6.0",
+    ],
+    [
+      "a system browser",
+      { executablePath: "/Applications/Google Chrome.app/x", source: "system" },
+      "darwin",
+      "21.6.0",
+    ],
+    ["another platform", managed, "linux", "21.6.0"],
+  ])("passes %s", (_name, browser, platform, release) => {
+    expect(macosRefusesManagedChrome(browser, platform as NodeJS.Platform, release)).toBe(false);
   });
 });

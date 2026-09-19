@@ -33,9 +33,13 @@
  * symbol-name signal is macOS-version-specific by construction:
  * `_kVTCompressionPropertyKey_ReferenceBufferCount` only exists on
  * macOS 13+, so if a user's dyld cannot find it, their host is <13.
- * That means we do not need a separate `os.release()` gate — the
- * signal itself is the version discriminator.
+ * The crash path needs no `os.release()` gate; the signal is the
+ * discriminator. `macosRefusesManagedChrome` checks the release because
+ * it acts before any launch.
  */
+
+import { release as osRelease } from "node:os";
+import { CHROME_VERSION } from "./manager.js";
 
 const DYLD_SYMBOL_NOT_FOUND = /Symbol not found:/i;
 const MACOS_13_ONLY_SYMBOL = /_kVTCompressionPropertyKey_ReferenceBufferCount/;
@@ -53,21 +57,38 @@ export function isMacosOldChromeCrashError(errorMessage: string): boolean {
   return MACOS_13_ONLY_SYMBOL.test(errorMessage) || VIDEO_TOOLBOX.test(errorMessage);
 }
 
+export const MACOS_OLD_CHROME_REMEDIATION = [
+  "The pinned Chromium build requires macOS 13+; on macOS 12 or older, install an older",
+  "chrome-headless-shell and point hyperframes at it:",
+  "",
+  "  npx @puppeteer/browsers install chrome-headless-shell@150",
+  '  export HYPERFRAMES_BROWSER_PATH="$HOME/.cache/puppeteer/chrome-headless-shell/mac-150.0.7422.0/chrome-headless-shell-mac-x64/chrome-headless-shell"',
+  "",
+  "(PRODUCER_HEADLESS_SHELL_PATH works as an alias for the same override.)",
+  "Any working chrome-headless-shell build resolves this — the exact version above is one",
+  "known-good macOS-12 combination. Alternatively, point HYPERFRAMES_BROWSER_PATH at your",
+  'installed Google Chrome ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")',
+  "to fall back to the screenshot capture path.",
+].join("\n");
+
 export function macosOldChromeCrashRemediation(errorMessage: string): string | undefined {
   if (process.platform !== "darwin") return undefined;
   if (!isMacosOldChromeCrashError(errorMessage)) return undefined;
   return [
     "chrome-headless-shell crashed at launch (macOS dyld: Symbol not found in VideoToolbox).",
-    "The pinned Chromium build requires macOS 13+; on macOS 12 or older, install an older",
-    "chrome-headless-shell and point hyperframes at it:",
-    "",
-    "  npx @puppeteer/browsers install chrome-headless-shell@150",
-    '  export HYPERFRAMES_BROWSER_PATH="$HOME/.cache/puppeteer/chrome-headless-shell/mac-150.0.7422.0/chrome-headless-shell-mac-x64/chrome-headless-shell"',
-    "",
-    "(PRODUCER_HEADLESS_SHELL_PATH works as an alias for the same override.)",
-    "Any working chrome-headless-shell build resolves this — the exact version above is one",
-    "known-good macOS-12 combination. Alternatively, point HYPERFRAMES_BROWSER_PATH at your",
-    'installed Google Chrome ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")',
-    "to fall back to the screenshot capture path.",
+    MACOS_OLD_CHROME_REMEDIATION,
   ].join("\n");
 }
+
+/** Darwin 22 is macOS 13. Only the pinned HF-managed build is refused; any other binary is the user's choice. */
+export function macosRefusesManagedChrome(
+  browser: { executablePath: string; source: string },
+  platform = process.platform,
+  release = osRelease(),
+): boolean {
+  if (platform !== "darwin" || Number.parseInt(release, 10) >= 22) return false;
+  return browser.source !== "env" && browser.executablePath.includes(CHROME_VERSION);
+}
+
+export const macosOldChromeRefusal = (): string =>
+  `macOS 12 cannot run Chrome ${CHROME_VERSION.split(".")[0]}: upgrade macOS or set HYPERFRAMES_BROWSER_PATH.`;

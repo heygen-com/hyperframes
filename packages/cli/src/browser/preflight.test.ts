@@ -10,6 +10,7 @@ import {
   runEnvironmentChecks,
 } from "./preflight.js";
 import * as manager from "./manager.js";
+import { macosOldChromeRefusal } from "./macosOldChromeCrash.js";
 import * as linuxDeps from "./linuxDeps.js";
 
 const runProcess = vi.hoisted(() => vi.fn());
@@ -27,6 +28,12 @@ vi.mock("../utils/cancellableProcess.js", async (importOriginal) => {
         ? actual.runCancellableProcess(command, args, options)
         : runProcess(command, args, options),
   };
+});
+
+const darwinRelease = vi.hoisted(() => ({ value: undefined as string | undefined }));
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return { ...actual, release: () => darwinRelease.value ?? actual.release() };
 });
 
 describe("runEnvironmentChecks", () => {
@@ -231,6 +238,30 @@ describe("runEnvironmentChecks", () => {
       );
     } finally {
       findBrowser.mockRestore();
+    }
+  });
+
+  it("refuses the pinned managed Chrome before launch on macOS 12", async () => {
+    const originalPlatform = process.platform;
+    darwinRelease.value = "21.6.0";
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: `/cache/chrome-headless-shell/mac-${manager.CHROME_VERSION}/chrome-headless-shell`,
+      source: "cache",
+    });
+    try {
+      const result = await runEnvironmentChecks({ includeBrowser: true });
+      const chrome = result.outcomes.find((outcome) => outcome.name === "Chrome");
+      expect(chrome).toMatchObject({ ok: false, level: "error", detail: macosOldChromeRefusal() });
+      expect(result.browser).toBeUndefined();
+      expect(runProcess).not.toHaveBeenCalledWith(
+        expect.stringContaining("chrome-headless-shell"),
+        ["--version"],
+        expect.anything(),
+      );
+    } finally {
+      darwinRelease.value = undefined;
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     }
   });
 

@@ -2,6 +2,11 @@ import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
+import {
+  macosOldChromeRefusal,
+  MACOS_OLD_CHROME_REMEDIATION,
+  macosRefusesManagedChrome,
+} from "./macosOldChromeCrash.js";
 import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, getFFmpegInstallHint } from "./ffmpeg.js";
 import {
   chromeDepsInstallCommand,
@@ -275,6 +280,31 @@ async function chromeLaunchOutcome(
   }
 }
 
+const macosOldChromeOutcome = (): EnvironmentCheckOutcome => ({
+  name: "Chrome",
+  ok: false,
+  level: "error",
+  title: "Chrome cannot run on this macOS",
+  detail: macosOldChromeRefusal(),
+  hint: MACOS_OLD_CHROME_REMEDIATION,
+});
+
+async function resolveBrowserForCheck(signal?: AbortSignal) {
+  // A corrupt/partial browser cache (stub files where a version dir is
+  // expected, missing executable, malformed metadata) makes findBrowser throw.
+  // That is the exact condition this check exists to report, so treat any
+  // failure as "Chrome not found" rather than letting it crash the caller
+  // (notably `doctor`, which is documented to exit 0 even when checks fail).
+  try {
+    return signal
+      ? await ensureBrowser({ preferManagedChrome: true, signal })
+      : await findBrowser();
+  } catch {
+    if (signal?.aborted) signal.throwIfAborted();
+    return undefined;
+  }
+}
+
 async function checkChrome(
   browserPath?: string,
   signal?: AbortSignal,
@@ -303,20 +333,8 @@ async function checkChrome(
     };
   }
 
-  // A corrupt/partial browser cache (stub files where a version dir is
-  // expected, missing executable, malformed metadata) makes findBrowser throw.
-  // That is the exact condition this check exists to report, so treat any
-  // failure as "Chrome not found" rather than letting it crash the caller
-  // (notably `doctor`, which is documented to exit 0 even when checks fail).
-  let info: Awaited<ReturnType<typeof findBrowser>>;
-  try {
-    info = signal
-      ? await ensureBrowser({ preferManagedChrome: true, signal })
-      : await findBrowser();
-  } catch {
-    if (signal?.aborted) signal.throwIfAborted();
-    info = undefined;
-  }
+  const info = await resolveBrowserForCheck(signal);
+  if (info && macosRefusesManagedChrome(info)) return macosOldChromeOutcome();
   if (info) {
     return chromeLaunchOutcome(
       info.executablePath,
