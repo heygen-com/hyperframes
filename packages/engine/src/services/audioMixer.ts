@@ -364,7 +364,7 @@ function missingSourceMessage(
   baseDir: string,
   resolvedPath: string,
 ): string {
-  const relativePath = relative(baseDir, resolvedPath);
+  const relativePath = relative(baseDir, resolvedPath).replace(/\\/g, "/");
   const insideProject = !relativePath.startsWith("..") && !isAbsolute(relativePath);
   const authored = /^([\\/]|[A-Za-z]:)/.test(src) ? "" : `src="${src}" `;
   return `Source not found for audio element ${elementId}: ${authored}resolved to ${
