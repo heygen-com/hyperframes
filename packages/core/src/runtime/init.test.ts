@@ -3075,6 +3075,22 @@ describe("initSandboxRuntimeModular", () => {
       expect(window.__hf?.durationSource?.pendingClips).toBe(1);
     });
 
+    it("stays at zero while a loaded Lottie has registered no animation, instead of locking in the clip's length", () => {
+      const lottieWindow = window as Window & { lottie?: unknown };
+      lottieWindow.lottie = { getRegisteredAnimations: () => [] };
+      try {
+        mountRoot('<div class="clip" data-start="0" data-duration="2"></div>');
+        expect(window.__player?.getDuration()).toBe(0);
+        expect(window.__hf?.durationSource).toEqual({
+          source: "unresolved",
+          seconds: null,
+          pendingClips: 1,
+        });
+      } finally {
+        delete lottieWindow.lottie;
+      }
+    });
+
     it("posts the derived-length diagnostic only for a derived length", () => {
       const spy = vi.spyOn(window, "postMessage");
       const codes = () =>

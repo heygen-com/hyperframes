@@ -978,6 +978,15 @@ export function initSandboxRuntimeModular(): void {
   // A sub-composition's length comes from its own timeline, which may not be registered yet.
   const isCompositionHost = (node: Element): boolean =>
     node.hasAttribute("data-composition-id") || node.hasAttribute("data-composition-src");
+  // Lottie registers its animations from author scripts, often after the runtime is ready, and
+  // nothing in the DOM says when. A loaded Lottie library or a declared source means a length
+  // that has not been registered yet, so it counts as a pending clip like media does.
+  const hasUnregisteredLottie = (rootEl: Element): boolean => {
+    const lottieWindow = window as Window & { lottie?: unknown; DotLottie?: unknown };
+    return Boolean(
+      lottieWindow.lottie || lottieWindow.DotLottie || rootEl.querySelector("[data-lottie-src]"),
+    );
+  };
   const resolveContentDerivedDuration = () => {
     const rootEl = resolveRootCompositionElement();
     if (!rootEl)
@@ -998,6 +1007,7 @@ export function initSandboxRuntimeModular(): void {
       if (duration != null) clipEnds.push(Math.max(0, start) + duration);
       else if (isMediaElement(node) || isCompositionHost(node)) clipEnds.push(null);
     }
+    if (hasUnregisteredLottie(rootEl)) clipEnds.push(null);
     const result = resolveCompositionDuration({
       authoredDurationSeconds: null,
       clipEndsSeconds: clipEnds,
