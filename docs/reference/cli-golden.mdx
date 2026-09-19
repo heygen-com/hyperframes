@@ -1,0 +1,126 @@
+---
+title: "Golden baseline gate"
+sidebarTitle: "Golden baselines"
+description: "The golden/ directory convention, the check --golden and --update-golden flags, the golden.json manifest, the diff artifacts, and the JSON summary agents read."
+---
+
+Use this reference for the exact contract of the golden baseline regression
+gate: where baselines live, every flag and manifest field, what the gate writes
+on failure, and the JSON shape agents consume. For the workflow — when to
+commit baselines and how to wire the gate into CI — start with
+[Visual regression testing](/guides/visual-regression).
+
+## The convention
+
+Committed reference frames live beside the composition:
+
+```
+<project>/
+  index.html
+  golden/
+    <compositionId>/            # from the root's data-composition-id
+      golden.json               # optional manifest
+      <timeMs>.png              # one baseline per sample time (e.g. 1500.png = t=1.5s)
+```
+
+Filenames are the sample time in **milliseconds** (`Math.round(seconds * 1000)`).
+Anything that does not match `<digits>.png` is ignored by the scanner, so the
+manifest and stray notes never collide with baselines.
+
+## Commands
+
+```bash
+hyperframes check --golden           # gate: re-capture, pixel-diff, fail on regression
+hyperframes check --update-golden    # refresh baselines (runs the full check too)
+hyperframes snapshot --update-golden # refresh baselines only, no check pipeline
+hyperframes check --golden --json    # agent-readable envelope
+```
+
+| Flag                        | Command           | Meaning                                                                                            |
+| --------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- |
+| `--golden`                  | `check`           | Run the gate after the normal check pipeline; either failing makes the exit code non-zero.         |
+| `--update-golden`           | `check`, `snapshot` | Capture at the resolved sample times and (re)write `golden/<compositionId>/` plus its manifest.  |
+| `--golden-threshold <0-1>`  | `check`           | Per-channel pixel tolerance override for this run (does not enable the gate by itself).            |
+| `--at <times>`              | `snapshot`        | With `--update-golden`: explicit sample times in seconds, written into the manifest.               |
+
+Sample times resolve in precedence order: explicit `--at` (snapshot only) →
+manifest `times` → times encoded in existing baseline filenames → the snapshot
+default spread (5 evenly spaced frames with a readable end-of-timeline tail).
+
+`check --golden` with no baselines and no manifest fails with instructions to
+run `--update-golden` first — a missing baseline is never silently a pass.
+
+## The `golden.json` manifest
+
+```json
+{
+  "times": [0.5, 2, 3.5],
+  "threshold": 0.1,
+  "maxDiffRatio": 0,
+  "ignoreAntialiasing": true
+}
+```
+
+| Field                | Default | Meaning                                                                                                        |
+| -------------------- | ------- | -------------------------------------------------------------------------------------------------------------- |
+| `times`              | —       | Timeline sample times in seconds. Written automatically by `--update-golden`.                                   |
+| `threshold`          | `0.1`   | Per-channel intensity tolerance as a fraction of 255; a pixel differs only when a channel deviates more.        |
+| `maxDiffRatio`       | `0`     | Fraction of differing pixels allowed before the gate fails. `0` = fail on any counted diff.                     |
+| `ignoreAntialiasing` | `true`  | Exclude 1px rasterization edge shifts (each side finds the other's color within its own 8-neighborhood).        |
+
+A dimension change (resized canvas) always fails, regardless of `maxDiffRatio`.
+
+## Failure artifacts
+
+On regression the gate writes `golden-diff/<compositionId>/` in the project:
+
+```
+golden-diff/<compositionId>/
+  <timeMs>-current.png     # what the composition renders now
+  <timeMs>-diff.png        # red = counted diff, amber = ignored anti-aliasing, pale gray = unchanged
+  contact-sheet.jpg        # one baseline | current | diff row per failed time
+```
+
+The directory is cleared at the start of every gate run and only re-created on
+failure. Add `golden-diff/` to your `.gitignore` — it is derived output.
+
+## JSON summary
+
+With `check --golden --json`, the golden summary rides inside the normal check
+envelope, and the top-level `ok` is false when either the pipeline or the gate
+fails:
+
+```json
+{
+  "ok": false,
+  "golden": {
+    "ok": false,
+    "updated": false,
+    "compositionId": "golden-baseline",
+    "compared": 3,
+    "times": [0.5, 2, 3.5],
+    "failed": [
+      {
+        "id": "golden-baseline",
+        "time": 2,
+        "timeMs": 2000,
+        "maxDelta": 130,
+        "diffRatio": 0.009488,
+        "reason": "pixel-diff"
+      }
+    ],
+    "diffSheet": "golden-diff/golden-baseline/contact-sheet.jpg",
+    "baselines": ["golden/golden-baseline/500.png", "golden/golden-baseline/2000.png"]
+  }
+}
+```
+
+`reason` is one of `pixel-diff`, `dimension-mismatch`, or `missing-baseline`.
+`maxDelta` is the largest per-channel deviation (0–255) among counted differing
+pixels; `diffRatio` is the differing fraction of all pixels.
+
+## Example
+
+A complete runnable project lives at
+[`examples/golden-baseline`](https://github.com/heygen-com/hyperframes/tree/main/examples/golden-baseline)
+with committed baselines and a scripted regression to try.
