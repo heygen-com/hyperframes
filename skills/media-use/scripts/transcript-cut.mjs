@@ -92,10 +92,17 @@ function run() {
 
   try {
     const parts = segments.map((segment, index) => {
-      const out = join(
-        tmpDir,
-        `segment-${String(index).padStart(4, "0")}${extname(outPath) || ".mp4"}`,
-      );
+      // Intermediates carry PCM audio, not the final codec. Encoding each
+      // segment to a lossy codec separately makes the encoder pad every segment
+      // with priming silence (~25-35ms for AAC), which concat then bakes in as a
+      // gap at each cut -- a defect distinct from, and surviving, the fades
+      // below. PCM has no priming, so audio is encoded exactly once, at concat.
+      const ext = Boolean(args.copy)
+        ? extname(outPath) || ".mp4"
+        : isAudioOnly(outPath)
+          ? ".wav"
+          : ".mkv";
+      const out = join(tmpDir, `segment-${String(index).padStart(4, "0")}${ext}`);
       cutSegment(inputPath, segment, out, Boolean(args.copy));
       return out;
     });
@@ -107,9 +114,16 @@ function run() {
     // Encode to a sibling temp (same extension so ffmpeg picks the right muxer),
     // then atomic-rename so a SIGKILL mid-encode can't leave a truncated outPath.
     const tmpOut = `${outPath}.part${extname(outPath) || ".mp4"}`;
+    // --copy already produced final-codec segments, so concat can stream-copy.
+    // Otherwise the PCM intermediates are encoded here, once, for the whole file.
+    const concatCodecs = Boolean(args.copy)
+      ? ["-c", "copy"]
+      : isAudioOnly(outPath)
+        ? encodeArgsFor(extname(outPath).toLowerCase())
+        : ["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"];
     execFileSync(
       "ffmpeg",
-      ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", tmpOut],
+      ["-y", "-f", "concat", "-safe", "0", "-i", listPath, ...concatCodecs, tmpOut],
       {
         stdio: "ignore",
       },
@@ -171,15 +185,41 @@ function cutSegment(inputPath, segment, outPath, copy) {
   ];
   if (copy) {
     argv.push("-c", "copy", "-avoid_negative_ts", "make_zero");
+  } else if (extname(outPath).toLowerCase() === ".mkv") {
+    // Video intermediate: keep the picture cheap and the audio uncompressed.
+    argv.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "pcm_s16le");
+  } else if (extname(outPath).toLowerCase() === ".wav") {
+    argv.push("-c:a", "pcm_s16le");
   } else {
+    // Concat splices raw segment edges together; without a short ramp the
+    // waveform steps discontinuously at every boundary and you hear a click.
+    // Stream copy cannot filter, so --copy trades pop-free cuts for speed.
+    const fade = fadeFilterFor(segment.end - segment.start);
+    if (fade) argv.push("-af", fade);
     argv.push(...encodeArgsFor(extname(outPath).toLowerCase()));
   }
   argv.push(outPath);
   execFileSync("ffmpeg", argv, { stdio: "ignore" });
 }
 
+// 30ms in/out ramps kill the click at every concat boundary. A segment shorter
+// than 4x the ramp would spend its whole length fading, so scale down there and
+// skip entirely on a degenerate one.
+function fadeFilterFor(durationSeconds) {
+  const FADE_SECONDS = 0.03;
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0.01) return null;
+  const d = Math.min(FADE_SECONDS, durationSeconds / 4);
+  const out = round3(durationSeconds - d);
+  if (out <= 0) return null;
+  return `afade=t=in:st=0:d=${round3(d)},afade=t=out:st=${out}:d=${round3(d)}`;
+}
+
 // Codec set per output container. Audio-only outputs must not get the
 // video-centric aac/x264 set (aac inside .wav breaks timing entirely).
+function isAudioOnly(filePath) {
+  return [".wav", ".mp3", ".m4a", ".aac", ".flac"].includes(extname(filePath).toLowerCase());
+}
+
 function encodeArgsFor(ext) {
   if (ext === ".wav") return ["-c:a", "pcm_s16le"];
   if (ext === ".mp3") return ["-c:a", "libmp3lame", "-q:a", "2"];
