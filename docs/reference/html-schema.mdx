@@ -96,7 +96,7 @@ unbounded animation, and timeline-free compositions need an explicit duration.
 | --- | --- | --- |
 | `id` | Yes | Stable identifier for timing, editing, and animation |
 | `data-start` | Yes | Start in seconds or a relative timing expression |
-| `data-duration` | Yes for DOM, image, and nested-composition clips | Visible slot length in seconds |
+| `data-duration` | Yes for DOM and nested-composition clips; optional for image (3 s default), video and audio (source length) | Visible slot length in seconds |
 | `data-track-index` | No | Studio timeline lane, display only. The render never reads it and it does not prevent overlap |
 | `class="clip"` | Recommended for authored timed DOM and image elements | Layout and tooling convention. Visibility is keyed off `data-start`, but the shared `.clip` rule supplies the full-frame box |
 

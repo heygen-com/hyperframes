@@ -88,6 +88,18 @@
       "import": "./src/compositionContract.ts",
       "types": "./src/compositionContract.ts"
     },
+    "./media-duration": {
+      "bun": "./src/mediaDuration.ts",
+      "node": "./dist/mediaDuration.js",
+      "import": "./src/mediaDuration.ts",
+      "types": "./src/mediaDuration.ts"
+    },
+    "./media-duration-fixtures": {
+      "bun": "./src/mediaDurationFixtures.ts",
+      "node": "./dist/mediaDurationFixtures.js",
+      "import": "./src/mediaDurationFixtures.ts",
+      "types": "./src/mediaDurationFixtures.ts"
+    },
     "./top-level-elements": {
       "bun": "./src/topLevelElements.ts",
       "node": "./dist/topLevelElements.js",
@@ -170,6 +182,14 @@
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
+      },
+      "./media-duration": {
+        "import": "./dist/mediaDuration.js",
+        "types": "./dist/mediaDuration.d.ts"
+      },
+      "./media-duration-fixtures": {
+        "import": "./dist/mediaDurationFixtures.js",
+        "types": "./dist/mediaDurationFixtures.d.ts"
       },
       "./top-level-elements": {
         "import": "./dist/topLevelElements.js",

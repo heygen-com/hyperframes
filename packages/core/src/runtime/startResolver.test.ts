@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, beforeAll } from "vitest";
+import { DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS } from "@hyperframes/parsers/media-duration";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 
 // jsdom doesn't provide CSS.escape — polyfill it
@@ -314,6 +315,26 @@ describe("createRuntimeStartTimeResolver", () => {
 
       const resolver = createRuntimeStartTimeResolver({});
       expect(resolver.resolveDurationForElement(el)).toBe(6);
+    });
+
+    it.each([["data-start"], ["data-track-index"]])(
+      "gives an img with only %s the dropped-image default",
+      (attr) => {
+        const el = document.createElement("img");
+        el.setAttribute(attr, "1");
+        document.body.appendChild(el);
+        const resolver = createRuntimeStartTimeResolver({});
+        expect(resolver.resolveDurationForElement(el)).toBe(
+          DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS,
+        );
+      },
+    );
+
+    it("leaves a bare img with no length", () => {
+      const el = document.createElement("img");
+      document.body.appendChild(el);
+      const resolver = createRuntimeStartTimeResolver({});
+      expect(resolver.resolveDurationForElement(el)).toBeNull();
     });
 
     it("returns null when no duration info available", () => {

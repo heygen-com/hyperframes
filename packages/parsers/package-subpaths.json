@@ -80,6 +80,18 @@
       "types": "./dist/compositionContract.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./media-duration": {
+      "source": "./src/mediaDuration.ts",
+      "runtime": "./dist/mediaDuration.js",
+      "types": "./dist/mediaDuration.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./media-duration-fixtures": {
+      "source": "./src/mediaDurationFixtures.ts",
+      "runtime": "./dist/mediaDurationFixtures.js",
+      "types": "./dist/mediaDurationFixtures.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./top-level-elements": {
       "source": "./src/topLevelElements.ts",
       "runtime": "./dist/topLevelElements.js",

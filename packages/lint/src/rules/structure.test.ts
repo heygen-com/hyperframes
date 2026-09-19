@@ -12,7 +12,6 @@ async function codes(body: string, options: HyperframeLinterOptions = {}) {
 const STRUCTURE = new Set([
   "nested_structure_needs_subcomposition",
   "timeline_element_missing_timing",
-  "media_missing_duration",
   "caption_track_kind_missing",
   "multiple_caption_tracks",
 ]);
@@ -94,26 +93,18 @@ describe("legacy data-end", () => {
   });
 });
 
-describe("media_missing_duration", () => {
-  it("flags a timed img without data-duration and passes it with one", async () => {
-    const bare = await codes('<img src="a" data-start="0" />');
-    expect(has(bare, "media_missing_duration")).toBe(true);
-    const timed = await codes('<img src="a" data-start="0" data-duration="3" />');
-    expect(has(timed, "media_missing_duration")).toBe(false);
-  });
-
-  it("takes video and audio length from the file, so data-start alone passes", async () => {
-    for (const tag of ["video", "audio"]) {
+describe("media length", () => {
+  it("takes length from the file or the image default, so data-start alone passes", async () => {
+    for (const tag of ["video", "audio", "img"]) {
       const found = await codes(`<${tag} src="a" data-start="0" data-track-index="1"></${tag}>`);
-      expect(has(found, "media_missing_duration")).toBe(false);
       expect(has(found, "timeline_element_missing_timing")).toBe(false);
     }
   });
-});
 
-describe("static media", () => {
   it("does not flag a bare img with no timing attributes", async () => {
-    expect(has(await codes('<img src="bg.svg" alt="" />'), "media_missing_duration")).toBe(false);
+    expect(has(await codes('<img src="bg.svg" alt="" />'), "timeline_element_missing_timing")).toBe(
+      false,
+    );
   });
 });
 

@@ -45,8 +45,8 @@ const OPAQUE_TAGS = new Set([
 ]);
 // Never layout: their content is code or inert markup.
 const NON_LAYOUT_TAGS = new Set(["style", "script", "template", "noscript"]);
-// Their length comes from the media file, so data-start alone is enough.
-const FILE_LENGTH_TAGS = new Set(["video", "audio"]);
+// Media has a default length (the file's, or the dropped-image default), so data-start alone is enough.
+const MEDIA_TAGS = new Set(["video", "audio", "img"]);
 const NODE_ATTRS = [
   "id",
   "class",
@@ -125,32 +125,21 @@ function nestedStructureFindings(rows: TagNode[], severity: Severity): Hyperfram
 }
 
 function missingDurationFindings(rows: TagNode[], severity: Severity): HyperframeLintFinding[] {
-  // A bare img with no timing is a static layer, not a timeline clip.
-  const intendedClip = (row: TagNode) =>
-    row.tag !== "img" ||
-    row.attrs["data-start"] !== undefined ||
-    row.attrs["data-track-index"] !== undefined;
   return rows
     .filter(
       (row) =>
-        !FILE_LENGTH_TAGS.has(row.tag) &&
+        !MEDIA_TAGS.has(row.tag) &&
         row.attrs["data-duration"] === undefined &&
         row.attrs["data-end"] === undefined &&
-        !isSubCompositionHost(row) &&
-        intendedClip(row),
+        !isSubCompositionHost(row),
     )
-    .map((row) => {
-      const isImage = row.tag === "img";
-      return {
-        code: isImage ? "media_missing_duration" : "timeline_element_missing_timing",
-        severity,
-        message: isImage
-          ? `${describe(row)} is an image on the timeline without data-duration, and an image has no length of its own.`
-          : `${describe(row)} is a timeline element without data-duration, so the timeline cannot draw where it ends.`,
-        elementId: row.attrs.id,
-        fixHint: `Add data-duration (in seconds) to ${describe(row)}.`,
-      };
-    });
+    .map((row) => ({
+      code: "timeline_element_missing_timing",
+      severity,
+      message: `${describe(row)} is a timeline element without data-duration, so the timeline cannot draw where it ends.`,
+      elementId: row.attrs.id,
+      fixHint: `Add data-duration (in seconds) to ${describe(row)}.`,
+    }));
 }
 
 function captionFindings(rows: TagNode[], severity: Severity): HyperframeLintFinding[] {
