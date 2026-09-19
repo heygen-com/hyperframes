@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  createWriteStream,
   lstatSync,
   mkdtempSync,
   readFileSync,
@@ -11,8 +12,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { downloadToFile } from "./download.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, createWriteStream: vi.fn(actual.createWriteStream) };
+});
 
 function makeBytesFetch(bytes: Uint8Array, headers: Record<string, string> = {}): typeof fetch {
   return (async () =>
@@ -185,6 +191,58 @@ describe("cloud/download", () => {
       (async () => new Response(body)) as typeof fetch,
       /network interrupted/,
     );
+  });
+
+  it("waits for a pending file open to close before cleaning up a failed download", async () => {
+    const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const dest = join(dir, "out.mp4");
+    writeFileSync(dest, "previous render");
+    let releaseOpen = () => {};
+    let writerClosed = Promise.resolve();
+    const openStarted = new Promise<void>((resolveOpen) => {
+      vi.mocked(createWriteStream).mockImplementationOnce((path, options) => {
+        const writer = actual.createWriteStream(path, {
+          ...(typeof options === "object" ? options : { encoding: options }),
+          fs: {
+            open: (...args: Parameters<typeof actual.open>) => {
+              releaseOpen = () => actual.open(...args);
+              resolveOpen();
+            },
+            write: actual.write,
+            close: actual.close,
+          },
+        });
+        writerClosed = new Promise<void>((resolveClose) => writer.once("close", resolveClose));
+        return writer;
+      });
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("network interrupted"));
+      },
+    });
+    let settled = false;
+    let failure: unknown;
+    const downloading = downloadToFile("https://example/x", dest, {
+      fetchImpl: (async () => new Response(body)) as typeof fetch,
+    }).then(
+      () => {
+        settled = true;
+      },
+      (error: unknown) => {
+        failure = error;
+        settled = true;
+      },
+    );
+    await openStarted;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const settledBeforeOpen = settled;
+    releaseOpen();
+    await Promise.all([downloading, writerClosed]);
+    expect(settledBeforeOpen).toBe(false);
+    expect(failure).toEqual(new Error("network interrupted"));
+    expect(readFileSync(dest, "utf8")).toBe("previous render");
+    expect(readdirSync(dir)).toEqual(["out.mp4"]);
   });
 
   it.skipIf(process.platform === "win32")(
