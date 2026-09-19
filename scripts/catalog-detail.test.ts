@@ -466,7 +466,7 @@ test("printing keeps two decimals and drops a negative zero", () => {
 });
 
 /** The component as a page renders it: React comes from the studio workspace, the hooks are the globals Mintlify supplies. */
-async function renderDetail(slots: string[]): Promise<string> {
+async function renderDetail(slots: string[], wrapped = false): Promise<string> {
   const requireFromStudio = createRequire(
     join(dirname(fileURLToPath(import.meta.url)), "..", "packages", "studio", "package.json"),
   );
@@ -491,9 +491,14 @@ async function renderDetail(slots: string[]): Promise<string> {
     "catalog-detail.jsx",
   );
   const { CatalogDetail, CatalogSlot } = await import(pathToFileURL(snippet).href);
-  const children = slots.map((slot) =>
-    React.createElement(CatalogSlot, { slot, key: slot }, `MARK-${slot}`),
-  );
+  // Mintlify wraps every MDX child in a boundary element whose props carry no `slot`.
+  const boundary = (props: { children?: unknown }) => props.children;
+  const children = slots.map((slot) => {
+    const element = React.createElement(CatalogSlot, { slot, key: slot }, `MARK-${slot}`);
+    return wrapped
+      ? React.createElement(boundary, { name: "CatalogSlot", key: slot }, element)
+      : element;
+  });
   return renderToStaticMarkup(
     React.createElement(
       CatalogDetail,
@@ -511,15 +516,19 @@ async function renderDetail(slots: string[]): Promise<string> {
   );
 }
 
-test("the install block renders once, between the description and the preview stage", async () => {
-  const html = await renderDetail(["code", "install", "docs"]);
-  const at = (needle: string) => html.indexOf(needle);
-  assert.ok(at("X title") !== -1 && at("MARK-install") !== -1 && at('class="hf-ve-stage"') !== -1);
-  assert.ok(at("X title") < at("MARK-install"), "install comes after the title");
-  assert.ok(at("MARK-install") < at('class="hf-ve-stage"'), "install comes before the stage");
-  assert.equal(html.split("MARK-install").length - 1, 1, "install is rendered once");
-  assert.ok(at("MARK-docs") > at('class="hf-ve-stage"'), "the other slots stay below the stage");
-});
+for (const wrapped of [false, true]) {
+  test(`the install block renders once, between the description and the preview stage (${wrapped ? "as Mintlify wraps children" : "bare slots"})`, async () => {
+    const html = await renderDetail(["code", "install", "docs"], wrapped);
+    const at = (needle: string) => html.indexOf(needle);
+    assert.ok(
+      at("X title") !== -1 && at("MARK-install") !== -1 && at('class="hf-ve-stage"') !== -1,
+    );
+    assert.ok(at("X title") < at("MARK-install"), "install comes after the title");
+    assert.ok(at("MARK-install") < at('class="hf-ve-stage"'), "install comes before the stage");
+    assert.equal(html.split("MARK-install").length - 1, 1, "install is rendered once");
+    assert.ok(at("MARK-docs") > at('class="hf-ve-stage"'), "the other slots stay below the stage");
+  });
+}
 
 test("the tabs are Preview, Code, Snippet, Docs with Preview selected", async () => {
   const html = await renderDetail(["install"]);

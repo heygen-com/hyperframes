@@ -2055,8 +2055,15 @@ export const CatalogDetail = ({
   else if (!webgpu && (video || needsFlag)) caption = "Recorded preview";
 
   // The install command belongs above the preview, so its slot is lifted out of the tab body.
+  // Mintlify hands each MDX child over wrapped in a component boundary, so the slot name is found by descending.
+  const slotOf = (node) => {
+    for (let cur = node; React.isValidElement(cur); cur = React.Children.toArray(cur.props.children)[0]) {
+      if (cur.props.slot) return cur.props.slot;
+    }
+    return null;
+  };
   const allSlots = React.Children.toArray(children);
-  const installSlot = allSlots.find((child) => child?.props?.slot === "install") ?? null;
+  const installSlot = allSlots.find((child) => slotOf(child) === "install") ?? null;
   const otherSlots = allSlots.filter((child) => child !== installSlot);
 
   const seconds = meta.duration ? `${meta.duration} s` : null;
@@ -2225,9 +2232,7 @@ export const CatalogDetail = ({
           )}
         </div>
         <div className="hf-ve-body-pane hf-ve-snippet not-prose" hidden={tab !== "install"}>
-          {/* The install command sits above the preview. This is the mount element
-              carrying what the reader dialled in, assembled token by token because
-              there is no build step to highlight it at. */}
+          {/* The mount element carrying what the reader dialled in, assembled token by token (no build step to highlight it). */}
           <CodeBlock filename="index.html">
             <pre
               className="shiki shiki-themes github-light-default dark-plus"
