@@ -11,6 +11,7 @@ import {
   toDomPrecision,
   type PreviewZoomState,
 } from "./previewZoom";
+import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 interface NLEPreviewProps {
   projectId: string;
@@ -89,9 +90,10 @@ export function resolvePreviewStageSize(
   viewportHeight: number,
   compositionSize: PreviewCompositionSize | null,
   portrait: boolean | undefined,
+  gutterPx = 0,
 ): { width: number; height: number } {
-  const availableWidth = Math.max(0, viewportWidth - PREVIEW_STAGE_INSET_PX);
-  const availableHeight = Math.max(0, viewportHeight - PREVIEW_STAGE_INSET_PX);
+  const availableWidth = Math.max(0, viewportWidth - PREVIEW_STAGE_INSET_PX - 2 * gutterPx);
+  const availableHeight = Math.max(0, viewportHeight - PREVIEW_STAGE_INSET_PX - 2 * gutterPx);
   const aspectRatio =
     compositionSize && compositionSize.width > 0 && compositionSize.height > 0
       ? compositionSize.width / compositionSize.height
@@ -135,6 +137,7 @@ export const NLEPreview = memo(function NLEPreview({
     onStageRef?.(stageRef);
   }, [onStageRef]);
   const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
+  const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
   const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
@@ -164,14 +167,16 @@ export const NLEPreview = memo(function NLEPreview({
 
     const updateStageSize = () => {
       const rect = viewport.getBoundingClientRect();
-      setStageSize(resolvePreviewStageSize(rect.width, rect.height, compositionSize, portrait));
+      setStageSize(
+        resolvePreviewStageSize(rect.width, rect.height, compositionSize, portrait, gutterPx),
+      );
     };
 
     updateStageSize();
     const observer = new ResizeObserver(updateStageSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [compositionSize, portrait]);
+  }, [compositionSize, portrait, gutterPx]);
 
   const onCompositionSizeChangeRef = useRef(onCompositionSizeChange);
   onCompositionSizeChangeRef.current = onCompositionSizeChange;

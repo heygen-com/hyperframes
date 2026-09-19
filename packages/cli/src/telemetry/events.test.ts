@@ -680,6 +680,89 @@ describe("render telemetry events", () => {
     );
   });
 
+  it("maps Chrome memory and capture path observability onto render_error", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      captureChromeBrowserRssPeakMb: 210,
+      captureChromeRendererRssPeakMb: 1900,
+      captureChromeRssLastMb: 2400,
+      captureChromeGpuProcessSeenLastSample: true,
+      captureChromeMemorySamples: 42,
+      captureCapturePath: "streaming",
+      captureSegmentIndex: 3,
+      captureSegmentRetries: 1,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({
+        chrome_browser_rss_peak_mb: 210,
+        chrome_renderer_rss_peak_mb: 1900,
+        chrome_rss_last_mb: 2400,
+        gpu_process_seen_last_sample: true,
+        chrome_memory_samples: 42,
+        capture_path: "streaming",
+        segment_index: 3,
+        segment_retries: 1,
+      }),
+      undefined,
+    );
+  });
+
+  it("prefers the aggregate Chrome memory over the live sample on render_complete", () => {
+    // The live observability values are the last session's; the perf summary
+    // aggregates every worker. On success both are present and the aggregate
+    // must win, or a multi-worker render reports one worker's peak as the
+    // fleet's.
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      captureChromeBrowserRssPeakMb: 100,
+      captureChromeRendererRssPeakMb: 800,
+      captureChromeRssLastMb: 900,
+      captureChromeMemorySamples: 5,
+      chromeBrowserRssPeakMb: 210,
+      chromeRendererRssPeakMb: 1900,
+      chromeRssLastMb: 2400,
+      chromeGpuProcessSeenLastSample: true,
+      chromeMemorySamples: 42,
+    });
+
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      chrome_browser_rss_peak_mb: 210,
+      chrome_renderer_rss_peak_mb: 1900,
+      chrome_rss_last_mb: 2400,
+      gpu_process_seen_last_sample: true,
+      chrome_memory_samples: 42,
+    });
+  });
+
+  it("falls back to the live Chrome memory sample when no aggregate exists", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      captureChromeBrowserRssPeakMb: 100,
+      captureChromeMemorySamples: 5,
+      captureCapturePath: "disk",
+    });
+
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      chrome_browser_rss_peak_mb: 100,
+      chrome_memory_samples: 5,
+      capture_path: "disk",
+    });
+  });
+
   it("carries the DE parallel-router/inversion cohort on render_error (hard failure, not just self-verify revert)", () => {
     trackRenderError({
       fps: 30,

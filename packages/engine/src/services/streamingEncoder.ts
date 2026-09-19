@@ -541,11 +541,20 @@ export async function spawnStreamingEncoder(
       const closePromise = once(ffmpeg, "close", { signal: abortController.signal }).then(
         () => "exit" as const,
       );
-      const racePromise = Promise.race([drainPromise, closePromise]).catch((err: unknown) => {
+      const racePromise = Promise.race([drainPromise, closePromise]).catch(async (err: unknown) => {
         if (err instanceof Error && err.name === "AbortError") {
           return "exit" as const;
         }
-        throw err;
+        // `once(stdin, "drain")` rejects with the stream's own error when
+        // ffmpeg's read end closes first — a bare `write EPIPE` (darwin/
+        // linux) or `write EOF` (win32). Rethrowing it here made that the
+        // render error, with ffmpeg's exit code and stderr discarded, so a
+        // parked write observed the same death uninformatively that an
+        // unparked one reports through `getExitError()`. Wait for the exit
+        // to settle so the caller's `ensureFrameWritten` reads the reason,
+        // then report the exit like the `close` race does.
+        await exitPromise;
+        return "exit" as const;
       });
 
       if (managed.isSettled || exitStatus !== "running") {

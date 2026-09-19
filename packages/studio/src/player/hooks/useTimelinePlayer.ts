@@ -45,6 +45,7 @@ import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../li
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
+import { safeContentDocument } from "./timelineSyncHydration";
 
 export function useTimelinePlayer() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -60,7 +61,7 @@ export function useTimelinePlayer() {
   const staticSeekAdapterRef = useRef<StaticSeekCacheEntry | null>(null);
   const staticSeekWarnedRef = useRef(false);
 
-  const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements } =
+  const { setIsPlaying, setCurrentTime, setDuration, requestTimelineReady, setElements } =
     usePlayerStore.getState();
 
   // The fixture lease belongs at this shared synchronization boundary so every
@@ -101,7 +102,11 @@ export function useTimelinePlayer() {
         setDuration(nextDuration ?? 0);
       }
       if (!state.timelineReady) {
-        setTimelineReady(true);
+        // Same gate as initializeAdapter's own readiness wait: this is the
+        // message-based fallback for compositions that report their duration
+        // via clip manifest rather than the direct adapter, and it must not
+        // enable Play any earlier than that path does.
+        requestTimelineReady(safeContentDocument(iframeRef.current));
       }
 
       // Asynchronously enrich media elements still missing sourceDuration
@@ -120,7 +125,7 @@ export function useTimelinePlayer() {
         },
       );
     },
-    [setElements, setTimelineReady, setDuration],
+    [setElements, requestTimelineReady, setDuration],
   );
 
   // Pre-existing dispatcher complexity — surfaced by this PR's line shifts, not new logic.
@@ -425,7 +430,7 @@ export function useTimelinePlayer() {
       syncTimelineElements,
       setDuration,
       setCurrentTime,
-      setTimelineReady,
+      requestTimelineReady,
       setIsPlaying,
       attachIframeShortcutListeners,
       applyPreviewAudioState,

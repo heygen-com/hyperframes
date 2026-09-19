@@ -50,6 +50,10 @@ declare global {
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
       releasePausedMedia?: (el: HTMLMediaElement) => void;
+      /** Declared-compute hold for setup no adapter can see (mesh building,
+       * shader compiles). Runtime and player hold until every promise
+       * registered here, under any key unique to your piece, resolves. */
+      buildReady?: Record<string, PromiseLike<unknown>>;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;

@@ -1,5 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 import { INSERT_BOUNDARY_BAND } from "./timelineLayout";
+import { isMainTrackElement } from "./timelineZones";
 
 /**
  * Keep a landing track inside the dragged clip's kind-zone: visual clips stay in
@@ -138,6 +139,32 @@ export function resolveZoneDropPlacement(input: {
     return { track: desired, insertRow };
   }
   return { track: placement.track, insertRow: null };
+}
+
+function landsOnMainTrack(landingTrack: number, isAudio: boolean): boolean {
+  return isMainTrackElement({
+    id: "",
+    tag: isAudio ? "audio" : "video",
+    start: 0,
+    duration: 0,
+    track: landingTrack,
+  });
+}
+
+/** An existing clip newly landing on an empty main track commits at start=0.
+ *  No-op once the main track holds another clip, off the main track, or for
+ *  a clip already resident there. `others` excludes the landing clip itself. */
+export function resolveMainTrackDropStart(
+  others: readonly TimelineElement[],
+  originTrack: number,
+  landingTrack: number,
+  isAudio: boolean,
+  desiredStart: number,
+): number {
+  if (originTrack === landingTrack || !landsOnMainTrack(landingTrack, isAudio)) {
+    return desiredStart;
+  }
+  return others.some(isMainTrackElement) ? desiredStart : 0;
 }
 
 /**

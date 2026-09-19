@@ -452,6 +452,7 @@ function buildMissingCompositionEntry(params: {
     start: window.start,
     duration: window.duration,
     track: timing.trackIndex,
+    authoredTrack: timing.trackIndex,
     domId: optionalNonEmpty(element.id),
     hfId: optionalNonEmpty(element.getAttribute("data-hf-id")),
     selector,

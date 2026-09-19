@@ -86,7 +86,6 @@ function timelineElement(input: {
     parentCompositionId: null,
     compositionAncestors: ["root"],
     sourceFile: input.sourceFile ?? "index.html",
-    timingSource: "authored",
   };
 }
 

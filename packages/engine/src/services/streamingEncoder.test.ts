@@ -951,6 +951,44 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     expect(result.success).toBe(false);
   });
 
+  it("writeFrame resolves false with the exit reason readable when stdin errors while parked on drain", async () => {
+    // This is the field `write EPIPE`: ffmpeg dies while the writer waits for
+    // back-pressure to clear. Node's once(stdin,"drain") rejects with the
+    // stream error, which used to escape writeFrame as the render error and
+    // bury ffmpeg's exit code and stderr.
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-epipe-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    proc.stdin.write = (_chunk: Buffer): boolean => false;
+    proc.stderr.emit("data", Buffer.from("x264 [error]: malformed input\n"));
+
+    const writePromise = encoder.writeFrame(validJpeg);
+    await Promise.resolve();
+    expect(proc.stdin.listenerCount("drain")).toBe(1);
+
+    // stdin errors first; the child's close lands a tick later, as it does
+    // in the field (the OS closes the pipe before Node delivers `close`).
+    proc.stdin.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+    setTimeout(() => proc.emit("close", 1), 5);
+
+    // Resolves, never rejects — and by the time it does, the exit has settled
+    // so ensureFrameWritten can read the reason synchronously.
+    await expect(writePromise).resolves.toBe(false);
+    expect(encoder.getExitStatus()).toBe("error");
+    expect(encoder.getExitError()).toMatch(/code 1/);
+    expect(encoder.getExitError()).toContain("malformed input");
+    expect(proc.stdin.listenerCount("drain")).toBe(0);
+
+    const result = await encoder.close();
+    expect(result.success).toBe(false);
+  });
+
   it("writeFrame resolves false when close fires after write returns false before await attaches listeners", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

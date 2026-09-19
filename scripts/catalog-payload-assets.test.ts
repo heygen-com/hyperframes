@@ -7,6 +7,7 @@ import {
   externalizeDataUris,
   hostItemDirectory,
   localReferences,
+  MAX_HOSTED_DIRECTORY_BYTES,
   probableReferences,
   processAssets,
   withBaseHref,
@@ -250,9 +251,9 @@ describe("hostItemDirectory", () => {
     // time, so the layout has to survive, not just the files.
     const dir = project({ "compositions/components/lava.png": Buffer.from([1]), "demo.html": "x" });
     const out = target();
-    const base = hostItemDirectory(dir, out.dir, "/public/catalog/items/x/");
+    const result = hostItemDirectory(dir, out.dir, "/public/catalog/items/x/");
 
-    assert.equal(base, "/public/catalog/items/x/");
+    assert.deepEqual(result, { status: "hosted", baseHref: "/public/catalog/items/x/" });
     assert.ok(existsSync(join(out.dir, "compositions/components/lava.png")));
   });
 
@@ -268,7 +269,15 @@ describe("hostItemDirectory", () => {
     const dir = project({ "scene.glb": Buffer.from([3]) });
     const out = target();
 
-    assert.equal(hostItemDirectory(dir, out.dir, "/base/"), "");
+    assert.deepEqual(hostItemDirectory(dir, out.dir, "/base/"), { status: "not-needed" });
+  });
+
+  it("reports over-budget distinctly from not-needed when the directory exceeds the cap", () => {
+    const dir = project({ "big.png": Buffer.alloc(MAX_HOSTED_DIRECTORY_BYTES + 1) });
+    const out = target();
+
+    assert.deepEqual(hostItemDirectory(dir, out.dir, "/base/"), { status: "over-budget" });
+    assert.equal(existsSync(join(out.dir, "big.png")), false);
   });
 });
 

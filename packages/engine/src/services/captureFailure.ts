@@ -125,10 +125,24 @@ function hasIoOperationFailure(message: string): boolean {
   );
 }
 
+/**
+ * A write to a pipe whose reader has gone: EPIPE on darwin/linux, EOF on
+ * win32 (libuv reports a closed named pipe as UV_EOF), ECONNRESET on a
+ * socket. All three mean the streaming encoder died under us, which is an io
+ * fact about the host, not an authoring defect in the composition.
+ */
+const BROKEN_PIPE_MESSAGE = /\bwrite (?:EPIPE|EOF|ECONNRESET)\b/;
+
 function ioError(error: unknown, message: string): boolean {
   const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
   return (
-    Boolean(code && /^(?:EACCES|EEXIST|EIO|EMFILE|ENFILE|ENOENT|ENOSPC|EPERM|EROFS)$/.test(code)) ||
+    Boolean(
+      code &&
+      /^(?:EACCES|ECONNRESET|EEXIST|EIO|EMFILE|ENFILE|ENOENT|ENOSPC|EOF|EPERM|EPIPE|EROFS)$/.test(
+        code,
+      ),
+    ) ||
+    BROKEN_PIPE_MESSAGE.test(message) ||
     hasIoOperationFailure(message)
   );
 }

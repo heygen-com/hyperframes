@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.46",
+  "version": "0.8.50",
   "description": "",
   "repository": {
     "type": "git",
@@ -69,6 +69,12 @@
       "node": "./dist/mediaTiming.js",
       "import": "./src/mediaTiming.ts",
       "types": "./src/mediaTiming.ts"
+    },
+    "./composition-readiness": {
+      "bun": "./src/compositionReadiness.ts",
+      "node": "./dist/compositionReadiness.js",
+      "import": "./src/compositionReadiness.ts",
+      "types": "./src/compositionReadiness.ts"
     },
     "./editing": {
       "bun": "./src/editing/affordances.ts",
@@ -433,6 +439,10 @@
       "./media-timing": {
         "import": "./dist/mediaTiming.js",
         "types": "./dist/mediaTiming.d.ts"
+      },
+      "./composition-readiness": {
+        "import": "./dist/compositionReadiness.js",
+        "types": "./dist/compositionReadiness.d.ts"
       },
       "./editing": {
         "import": "./dist/editing/affordances.js",

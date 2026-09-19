@@ -94,6 +94,7 @@ export function trackEvent(
       is_tty: sys.is_tty,
       sandbox_runtime: sys.sandbox_runtime ?? undefined,
       agent_runtime: sys.agent_runtime ?? undefined,
+      execution_harness_hint: sys.execution_harness_hint ?? undefined,
       // New-agent discovery signals — populated only when agent_runtime is null.
       agent_hint: sys.agent_hint ?? undefined,
       term_program: sys.term_program ?? undefined,
@@ -111,8 +112,8 @@ export function trackEvent(
       // next run: `durable` (loaded from a preexisting config), `unknown`
       // (minted+persisted this run — an ephemeral HOME is indistinguishable
       // from a genuine first run), `process_only` (not persisted). Install-
-      // grain metrics should count only durable identities; the identity-
-      // churn workloads (fresh id per run) are never durable.
+      // grain metrics must also consider environment and repeated-day use:
+      // a short-lived container can persist its id between two CLI processes.
       identity_persistence: getIdentityPersistence(),
       // Outcome of the identity-establishing config write; absent when that
       // path did not write (including a durable id loaded from disk).

@@ -6,8 +6,7 @@
 //
 // index.html is a *standalone* composition (root <div id="root"> directly in
 // <body>, no <template> wrapper — template is for sub-comps). Structure is
-// modeled on the canonical fixture packages/studio/fixtures/storyboard-sample/
-// index.html and the authoritative head/audio template in
+// modeled on the canonical fixture project index.html and the authoritative head/audio template in
 // packages/core/docs/quickstart-template.html. Frame mount order = STORYBOARD
 // document order. Transitions are NOT written here — the transitions injector
 // mutates this file afterward (data-start/duration/track-index + GSAP).

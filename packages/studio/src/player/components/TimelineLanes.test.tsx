@@ -70,6 +70,8 @@ interface RenderLanesOptions {
   draggedClip?: DraggedClipState | null;
   onToggleTrackHidden?: TimelineEditCallbacks["onToggleTrackHidden"];
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
+  hoveredClip?: string | null;
+  renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
 }
 
 function renderLanes(options: RenderLanesOptions = {}): {
@@ -135,7 +137,8 @@ function renderLanes(options: RenderLanesOptions = {}): {
           laneCounts={laneCounts}
           selectedElementId={null}
           selectedElementIds={next.selectedElementIds ?? new Set()}
-          hoveredClip={null}
+          hoveredClip={next.hoveredClip ?? null}
+          renderClipContent={next.renderClipContent}
           draggedClip={next.draggedClip ?? null}
           draggedElement={null}
           multiDragPreview={next.multiDragPreview ?? null}
@@ -392,6 +395,24 @@ describe("TimelineLanes selection", () => {
 
     expect(view.setSelectedElementId).toHaveBeenCalledWith(selected.id);
     expect(view.onSelectElement).toHaveBeenCalledWith(selected);
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes clip thumbnails", () => {
+  it("asks for the same frames at rest, hovered and selected", () => {
+    const rich: unknown[] = [];
+    const renderClipContent = vi.fn(
+      (_el: TimelineElement, _style: unknown, context: { rich: boolean }) => {
+        rich.push(context.rich);
+        return null;
+      },
+    );
+    const elements = [element("clip-a", TRACK_A)];
+    const view = renderLanes({ elements, renderClipContent });
+    view.rerender({ elements, renderClipContent, hoveredClip: "clip-a" });
+    view.rerender({ elements, renderClipContent, selectedElementIds: new Set(["clip-a"]) });
+    expect(new Set(rich)).toEqual(new Set([false]));
     act(() => view.root.unmount());
   });
 });

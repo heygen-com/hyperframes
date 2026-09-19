@@ -10,6 +10,8 @@ interface CompositionsTabProps {
   projectId: string;
   compositions: string[];
   activeComposition: string | null;
+  /** The project's root composition (same value App.tsx auto-opens on load), or null if none. */
+  masterCompositionPath?: string | null;
   onSelect: (comp: string) => void;
   onRenderComposition?: (comp: string) => void;
   onAddToTimeline?: (comp: string) => void;
@@ -117,6 +119,7 @@ function CompCard({
   projectId,
   comp,
   isActive,
+  isRoot,
   onSelect,
   onRender,
   isRendering,
@@ -127,6 +130,7 @@ function CompCard({
   projectId: string;
   comp: string;
   isActive: boolean;
+  isRoot: boolean;
   onSelect: () => void;
   onRender?: () => void;
   isRendering?: boolean;
@@ -298,6 +302,15 @@ function CompCard({
       >
         <div className="flex items-center gap-1">
           <span className="text-[11px] font-medium text-neutral-300 truncate">{name}</span>
+          {isRoot && (
+            <span
+              aria-label="Root composition — opens automatically on load"
+              title="Root composition — opens automatically on load"
+              className="flex-shrink-0 rounded-full bg-neutral-700/60 px-1.5 py-px text-[8px] font-bold uppercase tracking-wide text-neutral-300"
+            >
+              Root
+            </span>
+          )}
           {lintInfo && lintInfo.count > 0 && (
             <span
               aria-label={`${lintInfo.count} lint finding${lintInfo.count === 1 ? "" : "s"}`}
@@ -368,6 +381,7 @@ export const CompositionsTab = memo(function CompositionsTab({
   projectId,
   compositions,
   activeComposition,
+  masterCompositionPath = null,
   onSelect,
   onRenderComposition,
   onAddToTimeline,
@@ -391,6 +405,7 @@ export const CompositionsTab = memo(function CompositionsTab({
           projectId={projectId}
           comp={comp}
           isActive={activeComposition === comp}
+          isRoot={comp === masterCompositionPath}
           onSelect={() => onSelect(comp)}
           onRender={onRenderComposition ? () => onRenderComposition(comp) : undefined}
           onAddToTimeline={onAddToTimeline ? () => onAddToTimeline(comp) : undefined}

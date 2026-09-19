@@ -35,6 +35,32 @@ describe("disk capture capacity", () => {
     ).toThrow(/may need ~0\.8 MB.*0\.8 MB is free.*--low-memory-mode/s);
   });
 
+  it("tells the user which routes still use disk capture, not a dead env var", () => {
+    const landscape = {
+      width: 1920,
+      height: 1080,
+      fps: { num: 30, den: 1 },
+      format: "jpeg" as const,
+    };
+    let message = "";
+    try {
+      assertDiskCaptureHeadroom("/tmp/frames", 9000, landscape, () => 10 * 1e9);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("Disk capture may need");
+    expect(message).toContain("--workers 1");
+    expect(message).toContain("--low-memory-mode");
+    // Every override that can land an otherwise-streaming render here, so the
+    // message explains the case the reader is actually in. The duration cap
+    // matters because it sends even a --workers 1 render to disk, which the
+    // pre-Phase-1 wording told them to "fix" with --workers 1.
+    expect(message).toContain("HF_CAPTURE_PARALLEL_STREAM=true");
+    expect(message).toContain("PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED=true");
+    expect(message).toContain("png-sequence");
+    expect(message).not.toContain("PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS if streaming");
+  });
+
   it("exposes the same 90% headroom decision to fallback planning", () => {
     const estimatedBytes = estimateDiskCaptureBytes(10, captureOptions);
 

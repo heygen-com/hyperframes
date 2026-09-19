@@ -20,10 +20,15 @@ export interface StudioUiPreferences {
   recentBlocks?: string[];
   snapEnabled?: boolean;
   gridVisible?: boolean;
+  rulerVisible?: boolean;
+  safeMarginsVisible?: boolean;
   gridSpacing?: number;
   snapToGrid?: boolean;
   /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
   timelineSnapEnabled?: boolean;
+  /** Keeps the main track gapless: deleting a clip closes the gap. Distinct
+   *  from `timelineSnapEnabled` ("Magnet", drag/trim snapping). */
+  rippleEditEnabled?: boolean;
   /** Transport + ruler readout mode: timecode or frame number. */
   timeDisplayMode?: TimelineTimeDisplayMode;
   /**
@@ -59,11 +64,15 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
+function storageKeyFor(projectId: string | null): string {
+  return projectId ? `${STUDIO_UI_PREFERENCES_KEY}:${projectId}` : STUDIO_UI_PREFERENCES_KEY;
+}
+
 // fallow-ignore-next-line complexity
-function readStorage(storage: Storage | null): StudioUiPreferences {
+function readStorage(storage: Storage | null, key: string): StudioUiPreferences {
   if (!storage) return {};
   try {
-    const raw = storage.getItem(STUDIO_UI_PREFERENCES_KEY);
+    const raw = storage.getItem(key);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return {};
@@ -127,6 +136,12 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     if (typeof parsed.gridVisible === "boolean") {
       preferences.gridVisible = parsed.gridVisible;
     }
+    if (typeof parsed.rulerVisible === "boolean") {
+      preferences.rulerVisible = parsed.rulerVisible;
+    }
+    if (typeof parsed.safeMarginsVisible === "boolean") {
+      preferences.safeMarginsVisible = parsed.safeMarginsVisible;
+    }
     if (typeof parsed.gridSpacing === "number" && Number.isFinite(parsed.gridSpacing)) {
       preferences.gridSpacing = parsed.gridSpacing;
     }
@@ -135,6 +150,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.timelineSnapEnabled === "boolean") {
       preferences.timelineSnapEnabled = parsed.timelineSnapEnabled;
+    }
+    if (typeof parsed.rippleEditEnabled === "boolean") {
+      preferences.rippleEditEnabled = parsed.rippleEditEnabled;
     }
     if (parsed.timeDisplayMode === "time" || parsed.timeDisplayMode === "frame") {
       preferences.timeDisplayMode = parsed.timeDisplayMode;
@@ -157,21 +175,30 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
   }
 }
 
-export function readStudioUiPreferences(storage: Storage | null = getBrowserStorage()) {
-  return readStorage(storage);
+/** `projectId` opts a caller into a per-project entry (falls back once to the
+ *  shared entry so a project's first read isn't blank). Defaults to `null`:
+ *  most callers read once at mount, never on a live project switch. */
+export function readStudioUiPreferences(
+  storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = null,
+): StudioUiPreferences {
+  const scoped = readStorage(storage, storageKeyFor(projectId));
+  if (!projectId || Object.keys(scoped).length > 0) return scoped;
+  return readStorage(storage, STUDIO_UI_PREFERENCES_KEY);
 }
 
 export function writeStudioUiPreferences(
   patch: StudioUiPreferences,
   storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = null,
 ) {
   if (!storage) return;
   try {
     const next = {
-      ...readStorage(storage),
+      ...readStudioUiPreferences(storage, projectId),
       ...patch,
     };
-    storage.setItem(STUDIO_UI_PREFERENCES_KEY, JSON.stringify(next));
+    storage.setItem(storageKeyFor(projectId), JSON.stringify(next));
   } catch {
     /* localStorage may be unavailable or full */
   }

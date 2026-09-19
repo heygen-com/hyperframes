@@ -6,6 +6,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   ENCODER_PRESETS,
   appendLockedGopArgs,
+  buildConcatArgs,
   buildEncoderArgs,
   getEncoderPreset,
   lockedGopCodecParams,
@@ -1716,5 +1717,27 @@ describe("buildEncoderArgs HDR color space", () => {
     expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt2020");
     expect(args[args.indexOf("-color_trc:v") + 1]).toBe("smpte2084");
     expect(args.indexOf("-x265-params")).toBe(-1);
+  });
+});
+
+describe("buildConcatArgs", () => {
+  it("stream-copies the concat list and writes provenance before the output", () => {
+    const args = buildConcatArgs("/w/concat-list.txt", "/w/video-only.mp4");
+    expect(args.slice(0, 8)).toEqual([
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      "/w/concat-list.txt",
+      "-c",
+      "copy",
+    ]);
+    // Provenance must land between the copy flags and the output path: the
+    // concat demuxer drops the per-chunk container metadata, so this file is
+    // the only place it can be re-asserted.
+    expect(args).toEqual(expect.arrayContaining(renderProvenanceArgs("/w/video-only.mp4")));
+    expect(args.at(-2)).toBe("-y");
+    expect(args.at(-1)).toBe("/w/video-only.mp4");
   });
 });

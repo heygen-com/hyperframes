@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { Browser, PuppeteerNode } from "puppeteer-core";
+import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 
 import type { CaptureMode } from "./browserLeasePool.js";
 
@@ -18,6 +18,9 @@ import {
   _setPuppeteerForTests,
   acquireBrowser,
   buildChromeArgs,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
+  WebGpuUnavailableError,
   drainBrowserPool,
   forceReleaseBrowser,
   releaseBrowser,
@@ -187,6 +190,88 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).toContain("--disable-gpu");
     expect(args).toContain("--use-angle=swiftshader");
     expect(args).not.toContain("--use-angle=metal");
+  });
+
+  it("adds the WebGPU flag for a declaring composition even in software mode", () => {
+    const args = buildChromeArgs({ ...base, requiresWebGpu: true }, { browserGpuMode: "software" });
+    expect(args).toContain("--enable-unsafe-webgpu");
+    expect(args).toContain("--use-angle=swiftshader");
+  });
+
+  it("is byte-identical to the requiresWebGpu-absent case for a non-declaring composition", () => {
+    expect(buildChromeArgs({ ...base, requiresWebGpu: false })).toEqual(buildChromeArgs(base));
+  });
+});
+
+describe("compositionRequiresWebGpu", () => {
+  it("detects the explicit WebGPU capability marker on the composition root", () => {
+    expect(
+      compositionRequiresWebGpu(
+        '<div data-requires-webgpu data-composition-id="gpu" data-duration="2"></div>',
+      ),
+    ).toBe(true);
+    expect(compositionRequiresWebGpu('<div data-composition-id="dom"></div>')).toBe(false);
+  });
+
+  it("reads only the composition root tag and stays linear on repeated '<'", () => {
+    expect(
+      compositionRequiresWebGpu('<p data-requires-webgpu></p><div data-composition-id="a"></div>'),
+    ).toBe(false);
+    expect(
+      compositionRequiresWebGpu('<div data-composition-id="a" title="x<y" data-requires-webgpu>'),
+    ).toBe(true);
+    const started = performance.now();
+    expect(compositionRequiresWebGpu("<".repeat(200_000))).toBe(false);
+    expect(compositionRequiresWebGpu("<a'".repeat(100_000))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
+describe("assertWebGpuAdapterAvailable", () => {
+  const pageWithAdapter = (hasAdapter: boolean) =>
+    ({ evaluate: vi.fn().mockResolvedValue(hasAdapter) }) as unknown as Page;
+
+  it("no-ops for a composition that does not require WebGPU, regardless of adapter", () => {
+    const page = pageWithAdapter(false);
+    return expect(assertWebGpuAdapterAvailable(page, false)).resolves.toBeUndefined();
+  });
+
+  it("resolves when a WebGPU adapter is obtainable", () => {
+    const page = pageWithAdapter(true);
+    return expect(assertWebGpuAdapterAvailable(page, true)).resolves.toBeUndefined();
+  });
+
+  it("throws naming the requirement when no adapter is obtainable", async () => {
+    const page = pageWithAdapter(false);
+    await expect(assertWebGpuAdapterAvailable(page, true)).rejects.toThrow("data-requires-webgpu");
+  });
+
+  describe("in-page adapter check (real callback, stubbed navigator.gpu)", () => {
+    const runInPage = {
+      evaluate: (fn: (t: number) => unknown, t: number) => fn(t),
+    } as unknown as Page;
+    const stubAdapter = (adapter: unknown) =>
+      vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => adapter } });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("accepts a hardware adapter", async () => {
+      stubAdapter({ info: { isFallbackAdapter: false } });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).resolves.toBeUndefined();
+    });
+
+    it("refuses a software fallback adapter such as swiftshader", async () => {
+      stubAdapter({ info: { isFallbackAdapter: true } });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+    });
+
+    it("refuses a host with no navigator.gpu", async () => {
+      vi.stubGlobal("navigator", {});
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+    });
   });
 });
 
@@ -534,6 +619,8 @@ describe("resolveHeadlessShellPath", () => {
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+        const label = `execFileSync(bun --eval) ${hostPlatform}/${hostArch} [compatible]`;
+        console.time(label);
         const stdout = execFileSync(
           "bun",
           [
@@ -542,6 +629,7 @@ describe("resolveHeadlessShellPath", () => {
           ],
           { encoding: "utf8", env },
         );
+        console.timeEnd(label);
 
         expect(stdout).toBe(expectedBinary);
       } finally {
@@ -578,6 +666,8 @@ describe("resolveHeadlessShellPath", () => {
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+        const label = `execFileSync(bun --eval) ${hostPlatform}/${hostArch} [unsupported]`;
+        console.time(label);
         const stdout = execFileSync(
           "bun",
           [
@@ -586,6 +676,7 @@ describe("resolveHeadlessShellPath", () => {
           ],
           { encoding: "utf8", env },
         );
+        console.timeEnd(label);
 
         expect(stdout).toBe("");
       } finally {
@@ -618,6 +709,7 @@ describe("resolveHeadlessShellPath", () => {
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+      console.time("execFileSync(bun --eval) reuse-cache");
       const stdout = execFileSync(
         "bun",
         [
@@ -626,6 +718,7 @@ describe("resolveHeadlessShellPath", () => {
         ],
         { encoding: "utf8", env },
       );
+      console.timeEnd("execFileSync(bun --eval) reuse-cache");
 
       expect(stdout).toBe(binary);
     } finally {

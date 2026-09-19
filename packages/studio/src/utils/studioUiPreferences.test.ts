@@ -37,6 +37,21 @@ describe("studio UI preferences", () => {
     });
   });
 
+  it("remembers the ruler and safe-margin toggles and drops non-boolean values", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ rulerVisible: true, safeMarginsVisible: false }, storage);
+    expect(readStudioUiPreferences(storage)).toEqual({
+      rulerVisible: true,
+      safeMarginsVisible: false,
+    });
+
+    storage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({ rulerVisible: "yes", safeMarginsVisible: 1 }),
+    );
+    expect(readStudioUiPreferences(storage)).toEqual({});
+  });
+
   it("ignores malformed stored values", () => {
     const storage = createStorage();
     storage.setItem(
@@ -73,6 +88,20 @@ describe("timelineSnapEnabled preference", () => {
   });
 });
 
+describe("rippleEditEnabled preference", () => {
+  it("round-trips through storage", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ rippleEditEnabled: false }, storage);
+    expect(readStudioUiPreferences(storage).rippleEditEnabled).toBe(false);
+  });
+
+  it("ignores non-boolean values", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ rippleEditEnabled: "yes" }));
+    expect(readStudioUiPreferences(storage).rippleEditEnabled).toBeUndefined();
+  });
+});
+
 describe("thumbnailMode preference", () => {
   it("round-trips the adaptive mode", () => {
     const storage = createStorage();
@@ -84,6 +113,34 @@ describe("thumbnailMode preference", () => {
     const storage = createStorage();
     storage.setItem("hf-studio-ui-preferences", JSON.stringify({ thumbnailsEnabled: false }));
     expect(readStudioUiPreferences(storage).thumbnailMode).toBe("hidden");
+  });
+});
+
+describe("per-project scoping", () => {
+  it("keeps two projects' preferences independent", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ leftWidth: 300 }, storage, "alpha");
+    writeStudioUiPreferences({ leftWidth: 500 }, storage, "beta");
+
+    expect(readStudioUiPreferences(storage, "alpha").leftWidth).toBe(300);
+    expect(readStudioUiPreferences(storage, "beta").leftWidth).toBe(500);
+  });
+
+  it("a project with nothing saved yet inherits the pre-scoping global entry once", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ leftWidth: 600 }));
+
+    expect(readStudioUiPreferences(storage, "gamma").leftWidth).toBe(600);
+  });
+
+  it("stops inheriting the global entry once the project has its own write", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ leftWidth: 600 }));
+
+    writeStudioUiPreferences({ leftWidth: 250 }, storage, "gamma");
+
+    expect(readStudioUiPreferences(storage, "gamma").leftWidth).toBe(250);
+    expect(readStudioUiPreferences(storage, null).leftWidth).toBe(600);
   });
 });
 

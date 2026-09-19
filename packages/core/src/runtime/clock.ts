@@ -16,6 +16,10 @@ export type AudioClockSource =
       currentTimeSeconds: number;
     };
 
+/** GSAP's own `lagSmoothing` default — see the PR body for why this clock needs its own copy. */
+const STALL_THRESHOLD_MS = 500;
+const STALL_ADJUSTED_LAG_MS = 33;
+
 export class TransportClock {
   private _baseTime = 0;
   private _playStartMs: number | null = null;
@@ -23,6 +27,8 @@ export class TransportClock {
   private _duration = Infinity;
   private _nowMs: () => number;
   private _audioSource: AudioClockSource | null = null;
+  /** Wall-clock time of the last `now()` read while playing; null while paused. */
+  private _lastReadMs: number | null = null;
 
   constructor(opts?: {
     initialTime?: number;
@@ -39,8 +45,10 @@ export class TransportClock {
   now(): number {
     if (this._playStartMs === null) return this._baseTime;
 
-    // Audio-master: when an audio source is attached, derive time
-    // from it. Drift is impossible because audio IS the clock.
+    // Audio-master: drift is impossible because audio IS the clock. Clearing
+    // `_lastReadMs` (not stamping it) means the next monotonic read starts
+    // fresh from `_playStartMs` instead of a timestamp audio just made
+    // meaningless — see the PR body.
     if (this._audioSource) {
       let audioTime: number | null = null;
       if ("currentTimeSeconds" in this._audioSource) {
@@ -55,6 +63,7 @@ export class TransportClock {
         }
       }
       if (audioTime !== null) {
+        this._lastReadMs = null;
         if (Number.isFinite(this._duration) && audioTime >= this._duration) {
           return this._duration;
         }
@@ -63,6 +72,7 @@ export class TransportClock {
     }
 
     // Monotonic fallback
+    this._applyStallCorrection();
     const elapsed = (this._nowMs() - this._playStartMs) / 1000;
     const t = this._baseTime + elapsed * this._rate;
     if (Number.isFinite(this._duration) && t >= this._duration) {
@@ -71,10 +81,28 @@ export class TransportClock {
     return Math.max(0, t);
   }
 
+  /** Folds a >500ms gap since the last read into `_playStartMs` so it's never reported as played time. */
+  private _applyStallCorrection(): void {
+    if (this._playStartMs === null) return;
+    const nowMs = this._nowMs();
+    if (this._lastReadMs !== null) {
+      const gapMs = nowMs - this._lastReadMs;
+      if (gapMs > STALL_THRESHOLD_MS) {
+        this._playStartMs += gapMs - STALL_ADJUSTED_LAG_MS;
+      }
+    }
+    this._lastReadMs = nowMs;
+  }
+
   play(): boolean {
     if (this._playStartMs !== null) return false;
     if (Number.isFinite(this._duration) && this._baseTime >= this._duration) return false;
     this._playStartMs = this._nowMs();
+    // Not a stall: the gap since the clock was last read (possibly a long
+    // paused idle) says nothing about lost playback time, since none was
+    // playing. `_applyStallCorrection` treats null as "nothing to compare
+    // against yet" and starts the window fresh from the next read.
+    this._lastReadMs = null;
     return true;
   }
 
@@ -92,6 +120,9 @@ export class TransportClock {
     this._baseTime = clamped;
     if (this._playStartMs !== null) {
       this._playStartMs = this._nowMs();
+      // Same reasoning as `play()`: the seek itself, not any elapsed gap
+      // since the last read, is why the reported time is moving now.
+      this._lastReadMs = null;
     }
   }
 
@@ -104,6 +135,7 @@ export class TransportClock {
     if (this._playStartMs !== null) {
       this._baseTime = this.now();
       this._playStartMs = this._nowMs();
+      this._lastReadMs = null;
     }
     this._rate = safe;
   }
@@ -131,6 +163,9 @@ export class TransportClock {
     if (this._audioSource && this._playStartMs !== null) {
       this._baseTime = this.now();
       this._playStartMs = this._nowMs();
+      // Falling back to monotonic timing fresh, same reasoning as `play()`:
+      // any gap while audio was the time source is not a monotonic stall.
+      this._lastReadMs = null;
     }
     this._audioSource = null;
   }

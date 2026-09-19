@@ -565,6 +565,71 @@ export async function encodeFramesFromDir(
   };
 }
 
+export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
+  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  // The concat demuxer does not carry per-input container metadata into the
+  // output, so provenance is re-asserted on the concatenated file.
+  appendRenderProvenanceArgs(args, outputPath);
+  args.push("-y", outputPath);
+  return args;
+}
+
+/**
+ * Sequence rather than a timestamp: two lists written in the same millisecond
+ * into one directory would otherwise collide, and a concat that reads another
+ * render's list produces a silently wrong video rather than an error.
+ */
+let concatListSeq = 0;
+
+function writeConcatList(dir: string, inputPaths: readonly string[]): string {
+  concatListSeq += 1;
+  const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
+  const body = inputPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n");
+  writeFileSync(listPath, body, "utf-8");
+  return listPath;
+}
+
+/**
+ * Stream-copy `inputPaths` (closed-GOP, same codec/params) into one file.
+ * Used by the in-process chunked encode and by segmented capture.
+ *
+ * `externalInterruption` distinguishes an ffmpeg killed from outside (SIGTERM
+ * / SIGKILL from a supervisor or OOM killer) from a genuine encode error;
+ * callers map it to a retryable failure reason.
+ */
+export async function concatVideoFiles(
+  inputPaths: readonly string[],
+  outputPath: string,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegEncodeTimeout">>,
+): Promise<{ success: true } | { success: false; error: string; externalInterruption: boolean }> {
+  const [firstInput] = inputPaths;
+  if (firstInput === undefined) {
+    return { success: false, error: "concatVideoFiles: no inputs", externalInterruption: false };
+  }
+  mkdirSync(dirname(outputPath), { recursive: true });
+  // The list lives with the inputs, not with the output: concurrent encodes
+  // get their own chunk directory but can share an output directory.
+  // The list is left on disk deliberately: it is removed with the work dir,
+  // and `--debug` keeps both so a bad concat can be reproduced from its list.
+  const listPath = writeConcatList(dirname(firstInput), inputPaths);
+  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+  const result = await runFfmpeg(buildConcatArgs(listPath, outputPath), {
+    signal,
+    timeout: encodeTimeout,
+  });
+  if (result.success) return { success: true };
+  return {
+    success: false,
+    error: appendEncodeTimeoutMessage(
+      `Chunk concat failed: ${result.stderr.slice(-400)}`,
+      result.terminationReason === "deadline",
+      encodeTimeout,
+    ),
+    externalInterruption: isExternalFfmpegInterruption(result),
+  };
+}
+
 export async function encodeFramesChunkedConcat(
   framesDir: string,
   framePattern: string,
@@ -657,31 +722,7 @@ export async function encodeFramesChunkedConcat(
     chunkPaths.push(chunkPath);
   }
 
-  const concatListPath = join(chunkDir, "concat-list.txt");
-  const concatInput = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
-  writeFileSync(concatListPath, concatInput, "utf-8");
-
-  const concatArgs = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
-  // The concat demuxer does not carry per-chunk container metadata into the
-  // output, so the chunks' provenance is dropped here even though every chunk
-  // carries it. Re-assert on the concatenated file: for a no-audio mov/webm
-  // this is the last container write, since mux is skipped and applyFaststart
-  // only copies those two formats.
-  appendRenderProvenanceArgs(concatArgs, outputPath);
-  concatArgs.push("-y", outputPath);
-  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-  const concatProcessResult = await runFfmpeg(concatArgs, { signal, timeout: encodeTimeout });
-  const concatResult = {
-    success: concatProcessResult.success,
-    error: concatProcessResult.success
-      ? undefined
-      : appendEncodeTimeoutMessage(
-          `Chunk concat failed: ${concatProcessResult.stderr.slice(-400)}`,
-          concatProcessResult.terminationReason === "deadline",
-          encodeTimeout,
-        ),
-  };
-
+  const concatResult = await concatVideoFiles(chunkPaths, outputPath, signal, config);
   if (!concatResult.success) {
     return {
       success: false,
@@ -690,9 +731,7 @@ export async function encodeFramesChunkedConcat(
       framesEncoded: 0,
       fileSize: 0,
       error: concatResult.error,
-      failureReason: isExternalFfmpegInterruption(concatProcessResult)
-        ? "external_interruption"
-        : undefined,
+      failureReason: concatResult.externalInterruption ? "external_interruption" : undefined,
     };
   }
 

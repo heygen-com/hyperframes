@@ -217,7 +217,6 @@ describe("track-area breathing pad y-math", () => {
       scrollTop: 0,
       contentOrigin: GUTTER,
       pixelsPerSecond: 100,
-      duration: 60,
       rowHeights: baseRows(3),
       trackOrder: [0, 1, 2],
     };

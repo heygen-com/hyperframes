@@ -1275,7 +1275,8 @@ describe("TimelineClipDiamonds", () => {
     expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
     const ease = host.querySelector<HTMLButtonElement>("[data-keyframe-ease-button]")!;
     expect(ease.getAttribute("aria-label")).toBe("Edit none easing after 10s");
-    expect(ease.classList.contains("opacity-0")).toBe(true);
+    expect(ease.getAttribute("title")).toBe("Edit none easing");
+    expect(ease.classList.contains("opacity-40")).toBe(true);
     act(() => ease.click());
     expect(onSelectSegment).toHaveBeenCalledOnce();
     expect(usePlayerStore.getState().requestedSeekTime).toBeNull();
@@ -1315,6 +1316,17 @@ describe("TimelineClipDiamonds", () => {
     expect(ease).not.toBeNull();
     expect(ease?.className).not.toContain("before:h-6");
     expect(ease?.style.width).toBe("16px");
+    act(() => root.unmount());
+  });
+
+  it("keeps the ease button hover-only on a segment too narrow to show it at rest", () => {
+    // Same narrow clip as above: showing the button at rest here would sit on
+    // top of both diamonds instead of clear of them.
+    const { host, root } = renderSegmentLane(false, 40);
+    const ease = host.querySelector<HTMLButtonElement>("[data-keyframe-ease-button]");
+
+    expect(ease?.classList.contains("opacity-0")).toBe(true);
+    expect(ease?.classList.contains("opacity-40")).toBe(false);
     act(() => root.unmount());
   });
 

@@ -5,6 +5,7 @@ import { getSystemTotalMb } from "@hyperframes/engine";
 import {
   detectAgentRuntime,
   detectAgentHints,
+  detectExecutionHarnessHint,
   detectSandboxRuntime,
   type AgentRuntime,
   type SandboxRuntime,
@@ -50,6 +51,8 @@ export interface SystemMeta {
    * null when no agent is detected.
    */
   agent_runtime: AgentRuntime;
+  /** Observed harness context, independent of agent attribution; null if absent. */
+  execution_harness_hint: "harbor" | null;
   /**
    * New-agent discovery signals for the agent_runtime=null bucket, so an agent
    * we have no rule for surfaces on its own instead of vanishing into null.
@@ -95,6 +98,7 @@ export function getSystemMeta(): SystemMeta {
     is_tty: Boolean(process.stdout?.isTTY),
     sandbox_runtime: detectSandboxRuntime(),
     agent_runtime,
+    execution_harness_hint: detectExecutionHarnessHint(),
     agent_hint: hints.agent_hint,
     term_program: hints.term_program,
     agent_env_hints: hints.agent_env_hints,

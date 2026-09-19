@@ -336,4 +336,13 @@ describe("createRenderPlan", () => {
       expect(plan.hfEnvOverrides).not.toContain("HF_SHADER_WORKER_ENTRY");
     });
   });
+
+  it("defaults the segmented resume flags off and reads --resume / --keep-segments", () => {
+    const off = createRenderPlan({ dir: projectDir });
+    expect(off.resumeSegments).toBe(false);
+    expect(off.keepSegments).toBe(false);
+    const on = createRenderPlan({ dir: projectDir, resume: true, "keep-segments": true });
+    expect(on.resumeSegments).toBe(true);
+    expect(on.keepSegments).toBe(true);
+  });
 });

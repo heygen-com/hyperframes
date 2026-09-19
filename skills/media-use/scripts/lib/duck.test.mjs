@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { duckKeyframes, speechSpans } from "./duck.mjs";
+import { duckKeyframes, duckLane, speechSpans } from "./duck.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, "..", "audio-duck.mjs");
@@ -75,6 +75,28 @@ test("duckKeyframes shapes attack and release from base volume", () => {
       { time: 5, volume: 0.6, duration: 0.4 },
     ],
   );
+});
+
+test("duckLane turns composition-time keyframes into clip-local ramps", () => {
+  const keyframes = [
+    { time: 3, volume: 0.15, duration: 0.15 },
+    { time: 5, volume: 0.6, duration: 0.4 },
+  ];
+  assert.deepEqual(duckLane(keyframes, { clipStart: 1, baseVolume: 0.6 }), {
+    version: 1,
+    lanes: [
+      {
+        target: "volume",
+        points: [
+          { t: 0, v: 0.6 },
+          { t: 2, v: 0.6 },
+          { t: 2.15, v: 0.15 },
+          { t: 4, v: 0.15 },
+          { t: 4.4, v: 0.6 },
+        ],
+      },
+    ],
+  });
 });
 
 test("--json spans match --merge-gap semantics exactly", () => {

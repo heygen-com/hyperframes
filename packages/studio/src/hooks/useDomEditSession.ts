@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { isAudioDomElement } from "../utils/timelineInspector";
-import type { SelectElementOptions, TimelineElement } from "../player";
+import type { TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
@@ -21,25 +21,15 @@ import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { membersForDelete } from "./domEditDeleteMembers";
+import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
+import type { DomEditTimelineParams } from "./useDomSelectionTypes";
 // Re-exported: the delete rule lives in its own module now, and callers (and its
 // own test) have always imported it from here.
 export { membersForDelete };
 
-export interface UseDomEditSessionParams {
-  projectId: string | null;
-  activeCompPath: string | null;
-  compIdToSrc: Map<string, string>;
-  captionEditMode: boolean;
+export interface UseDomEditSessionParams extends DomEditTimelineParams {
   compositionLoading: boolean;
-  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  timelineElements: TimelineElement[];
-  getTimelineSelectionSet: () => ReadonlySet<string>;
-  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
-  setTimelineSelectionSet: (ids: Set<string>) => void;
-  setRightCollapsed: (collapsed: boolean) => void;
-  setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   isRecordingRef?: React.RefObject<boolean>;
   refreshPreviewDocumentVersion: () => void;
@@ -68,6 +58,9 @@ export interface UseDomEditSessionParams {
   sdkSession?: Composition | null;
   publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
+  /** The timeline context menu's delete op — a canvas selection that IS a
+   *  timeline row hands off here instead of the REST remove-elements path. */
+  handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
 }
 
 export function useDomEditSession({
@@ -109,6 +102,7 @@ export function useDomEditSession({
   sdkSession,
   publishSdkSession,
   forceReloadSdkSession,
+  handleTimelineElementsDelete,
 }: UseDomEditSessionParams) {
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
   void _setRefreshKey;
@@ -260,11 +254,9 @@ export function useDomEditSession({
     forceReloadSdkSession,
     onTrySdkPersist: sdkSession
       ? (selection, operations, originalContent, targetPath, options) => {
-          // Resolver shadow runs regardless of the cutover flag — decoupled tripwire.
-          // Pass originalContent so the runtime-node filter can suppress hf-ids
-          // absent from source (script-created nodes the SDK can't model), and
-          // the paths so cross-file edits (session models only the active comp)
-          // skip instead of emitting structural element_not_found noise.
+          // Decoupled tripwire, runs regardless of the cutover flag. originalContent lets
+          // the runtime-node filter suppress hf-ids absent from source (script-created
+          // nodes); the paths let a cross-file edit skip instead of a false not-found.
           runResolverShadow(sdkSession, selection.hfId, operations, originalContent, {
             targetPath,
             compositionPath: activeCompPath,
@@ -298,9 +290,8 @@ export function useDomEditSession({
             publishSession: publishSdkSession,
           })
       : undefined,
-    // Resolver shadow for the z-index reorder edit: it takes the server path (no
-    // SDK persist), but the tripwire is decoupled from cutover — record whether
-    // the SDK resolves each reordered element (the reorderElements op's targets).
+    // Z-index reorder takes the server path (no SDK persist); this decoupled
+    // tripwire still records whether the SDK resolves each reordered target.
     onReorderShadow: sdkSession
       ? (targets: string[]) => {
           // Single-flight: every target in one reorder batch shares the same file, so
@@ -326,21 +317,33 @@ export function useDomEditSession({
     reloadPreview,
     clearDomSelection,
     forceReloadSdkSession,
+    timelineElements,
   });
 
   const handleDomEditElementDelete = useCallback(
     async (selection: DomEditSelection, options?: { expandGroup?: boolean }) => {
-      // Same structural edit the timeline delete refuses mid-recording, so it
-      // refuses here too — this is now the path a Delete press takes whenever
-      // the canvas holds a selection.
+      // Same structural edit the timeline delete refuses mid-recording.
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
       const members = membersForDelete(selection, domEditGroupSelectionsRef.current, options);
+      // A selection that is itself timeline rows shares the context menu's delete op.
+      const timelineTargets = timelineElementsForDelete(members, timelineElements);
+      if (timelineTargets) {
+        await handleTimelineElementsDelete(timelineTargets);
+        return;
+      }
       await handleDomEditElementsDelete(members);
     },
-    [domEditGroupSelectionsRef, handleDomEditElementsDelete, isRecordingRef, showToast],
+    [
+      domEditGroupSelectionsRef,
+      handleDomEditElementsDelete,
+      handleTimelineElementsDelete,
+      isRecordingRef,
+      showToast,
+      timelineElements,
+    ],
   );
 
   const handleGroupSelection = useCallback(() => {
@@ -351,14 +354,8 @@ export function useDomEditSession({
       showToast("Select at least 2 elements to group", "info");
       return;
     }
-    // A layout group is a positioned wrapper: it takes the members' bounding
-    // box, rebases each child's left/top against it, and adopts the topmost
-    // z-index. An <audio> clip has no box — offsetWidth/Height are 0 — so
-    // grouping audio produced a 0x0 div with inline left/top written onto
-    // elements that have never been laid out, and the timeline gained a
-    // wrapper standing for nothing audible. The audio answer to "these clips
-    // belong together" is an <hf-audio-group> bus, which the timeline's own FX
-    // pointer creates, so the refusal names it rather than just declining.
+    // A layout group takes the members' bounding box; audio has no box (0x0),
+    // so it groups into an <hf-audio-group> bus via the track's FX pointer instead.
     if (members.some((m) => isAudioDomElement(m.element))) {
       showToast(
         members.every((m) => isAudioDomElement(m.element))

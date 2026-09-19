@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// fallow-ignore-file code-duplication
 import { describe, expect, it, vi } from "vitest";
 import {
   applyPreviewAudioFlags,
@@ -53,6 +54,27 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
 
     expect(entry).toBeDefined();
     expect(entry?.hfId).toBeUndefined();
+  });
+
+  it("carries the resolved track onto authoredTrack, so splitting a recovered composition host can't drift to a new row", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div
+          data-composition-id="scene-c"
+          data-composition-src="scenes/c.html"
+          data-track-index="2"
+          data-start="0"
+          data-duration="5"
+        ></div>
+      </div>
+    `);
+
+    const { missing } = buildMissingCompositionElements(doc, window as IframeWindow, [], 10);
+    const entry = missing[0];
+
+    expect(entry).toBeDefined();
+    expect(entry?.track).toBe(2);
+    expect(entry?.authoredTrack).toBe(2);
   });
 });
 

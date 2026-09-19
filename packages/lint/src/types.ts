@@ -46,6 +46,8 @@ export type HyperframeLinterOptions = {
    * render time — the font will silently fall back to whatever the OS provides.
    */
   distributed?: boolean;
+  /** Who is running the lint: Studio raises the structure rules to errors, the CLI keeps them warnings. */
+  host?: "studio" | "cli";
 };
 
 // A rule is a function: receives parsed context, returns zero or more findings.

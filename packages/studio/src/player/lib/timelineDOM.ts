@@ -17,8 +17,6 @@ import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
   getTimelineElementDisplayLabel,
-  getImplicitTimelineLayerLabel,
-  isImplicitTimelineLayerCandidate,
   getTimelineElementSelector,
   getTimelineElementSourceFile,
   getTimelineElementSelectorIndex,
@@ -203,63 +201,6 @@ export function createTimelineElementFromManifestClip(params: {
   return entry;
 }
 
-export function createImplicitTimelineLayersFromDOM(
-  doc: Document,
-  rootDuration: number,
-  existingElements: readonly TimelineElement[] = [],
-): TimelineElement[] {
-  if (!Number.isFinite(rootDuration) || rootDuration <= 0) return [];
-  const rootComp = doc.querySelector("[data-composition-id]");
-  if (!rootComp) return [];
-
-  const existingKeys = new Set(existingElements.map(getTimelineElementIdentity));
-  const maxTrack = existingElements.reduce(
-    (max, element) => Math.max(max, Number.isFinite(element.track) ? element.track : 0),
-    -1,
-  );
-  const layers: TimelineElement[] = [];
-
-  for (const child of Array.from(rootComp.children)) {
-    if (!isImplicitTimelineLayerCandidate(rootComp, child)) continue;
-
-    const selector = getTimelineElementSelector(child);
-    if (!selector) continue;
-    const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
-    const sourceFile = getTimelineElementSourceFile(child);
-    const label = getImplicitTimelineLayerLabel(child);
-    const identity = buildTimelineElementIdentity({
-      preferredId: child.id || null,
-      label,
-      fallbackIndex: existingElements.length + layers.length,
-      domId: child.id || undefined,
-      selector,
-      selectorIndex,
-      sourceFile,
-    });
-    if (existingKeys.has(identity.key) || existingKeys.has(identity.id)) continue;
-
-    layers.push({
-      domId: child.id || undefined,
-      hfId: child.getAttribute("data-hf-id") || undefined,
-      zIndex: readTimelineElementZIndex(child),
-      duration: rootDuration,
-      id: identity.id,
-      key: identity.key,
-      label,
-      selector,
-      selectorIndex,
-      sourceFile,
-      stackingContextId: resolveCssStackingContextId(child),
-      start: 0,
-      tag: child.tagName.toLowerCase(),
-      timingSource: "implicit",
-      track: maxTrack + 1 + layers.length,
-    });
-  }
-
-  return layers;
-}
-
 /**
  * Parse [data-start] elements from a Document into TimelineElement[].
  * Shared helper — used by onIframeLoad fallback, handleMessage, and enrichMissingCompositions.
@@ -330,7 +271,6 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selectorIndex,
       sourceFile,
       stackingContextId: resolveCssStackingContextId(el),
-      timingSource: "authored",
       zIndex: readTimelineElementZIndex(el),
     };
 
@@ -399,7 +339,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     els.push(entry);
   });
 
-  return [...els, ...createImplicitTimelineLayersFromDOM(doc, rootDuration, els)];
+  return els;
 }
 
 // ---------------------------------------------------------------------------

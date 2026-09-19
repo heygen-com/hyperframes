@@ -42,6 +42,8 @@ import {
   buildChromeArgs,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
   type BrowserLease,
   type CaptureMode,
 } from "./browserManager.js";
@@ -82,6 +84,12 @@ import type {
 } from "../types.js";
 import { cloneCaptureWarnings } from "./captureWarning.js";
 import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
+import {
+  createChromeMemorySampler,
+  type ChromeMemorySampler,
+  type ChromePids,
+} from "./chromeMemorySampler.js";
+import { sampleProcessRss } from "../utils/processRss.js";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -97,6 +105,8 @@ export interface CaptureSession {
   options: CaptureOptions;
   serverUrl: string;
   outputDir: string;
+  /** The composition served at `serverUrl` declares `data-requires-webgpu`. */
+  requiresWebGpu?: boolean;
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
   /**
@@ -112,6 +122,8 @@ export interface CaptureSession {
   lastFrameAbsoluteIndex?: number;
   /** Count of frames served from a reused buffer (dedup telemetry). */
   staticDedupCount?: number;
+  /** Live Chrome memory sampler; started in initializeSession, stopped in closeCaptureSession. */
+  chromeMemory?: ChromeMemorySampler;
   /**
    * Resolved sub-frame motion-blur plan, or undefined when off. Set once by
    * `resolveSessionMotionBlur` at the end of initialization, where the capture mode has
@@ -1250,8 +1262,18 @@ export async function createCaptureSession(
     !drawElementTransparent
       ? "beginframe"
       : "screenshot";
+  // Callers that already have the HTML pass options.requiresWebGpu; others
+  // fall back to fetching the server about to be navigated to anyway. A
+  // fetch failure defaults to false — the real page.goto moments later
+  // still fails loudly if the server is actually down.
+  const requiresWebGpu =
+    options.requiresWebGpu ??
+    (await fetch(`${serverUrl}/index.html`, { signal: AbortSignal.timeout(5_000) })
+      .then((res) => res.text())
+      .then(compositionRequiresWebGpu)
+      .catch(() => false));
   const chromeArgs = buildChromeArgs(
-    { width: options.width, height: options.height, captureMode: preMode },
+    { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
     { ...config, browserGpuMode: resolvedGpuMode },
   );
 
@@ -1264,6 +1286,7 @@ export async function createCaptureSession(
     onBeforeCapture,
     config,
     useDrawElement,
+    requiresWebGpu,
   });
 }
 
@@ -1275,6 +1298,7 @@ interface CaptureSessionConstructionInput {
   onBeforeCapture: BeforeCaptureHook | null;
   config?: Partial<EngineConfig>;
   useDrawElement: boolean;
+  requiresWebGpu?: boolean;
 }
 
 async function constructCaptureSessionWithRollback(
@@ -1328,6 +1352,7 @@ async function constructCaptureSession(
     onBeforeCapture,
     config,
     useDrawElement,
+    requiresWebGpu,
     onPageCreated,
   } = input;
   const { browser, captureMode } = browserLease;
@@ -1452,6 +1477,7 @@ async function constructCaptureSession(
     serverUrl,
     outputDir,
     onBeforeCapture,
+    requiresWebGpu,
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
@@ -1528,7 +1554,7 @@ export function formatConsoleDiagnostic(
   return { text: `${prefix} ${text}`, suppressHostLog: false };
 }
 
-const HF_READY_DIAGNOSTIC_EXPR = `(function() {
+export const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
   var hf = window.__hf;
   var player = window.__player;
   var renderReady = !!window.__renderReady;
@@ -1537,6 +1563,26 @@ const HF_READY_DIAGNOSTIC_EXPR = `(function() {
   var hasTimeline = !!(window.__timelines && Object.keys(window.__timelines).length > 0);
   var root = document.querySelector("[data-composition-id]");
   var declaredDuration = root ? Number(root.getAttribute("data-duration")) : -1;
+  var registry = (window.__hf && window.__hf.buildReady) || {};
+  var keys = Object.keys(registry);
+  // A microtask race mis-sorts a non-native thenable (extra adoption tick)
+  // and rejects the whole expression on a rejected entry. Settling each
+  // key onto its own record and waiting one macrotask avoids both.
+  var settled = {};
+  if (keys.length > 0) {
+    keys.forEach(function(key) {
+      Promise.resolve(registry[key]).then(
+        function() { settled[key] = "resolved"; },
+        function() { settled[key] = "rejected"; },
+      );
+    });
+    await new Promise(function(r) { setTimeout(r, 0); });
+  }
+  // A thenable resolving via its own setTimeout(0) can still misreport as
+  // pending here (macrotask registration order, not resolution order) — a
+  // narrow case that self-corrects on the next ~1s diagnostic tick.
+  var pendingBuildReadyKeys = keys.filter(function(key) { return !settled[key]; });
+  var rejectedBuildReadyKeys = keys.filter(function(key) { return settled[key] === "rejected"; });
   return {
     renderReady: renderReady,
     hasHf: !!hf,
@@ -1545,11 +1591,12 @@ const HF_READY_DIAGNOSTIC_EXPR = `(function() {
     duration: duration,
     hasTimeline: hasTimeline,
     declaredDuration: declaredDuration,
+    pendingBuildReadyKeys: pendingBuildReadyKeys,
+    rejectedBuildReadyKeys: rejectedBuildReadyKeys,
   };
 })()`;
 
-// fallow-ignore-next-line complexity
-function buildZeroDurationDiagnostic(diag: {
+export interface HfDiagnostic {
   renderReady: boolean;
   hasHf: boolean;
   hasSeek: boolean;
@@ -1557,8 +1604,26 @@ function buildZeroDurationDiagnostic(diag: {
   duration: number;
   hasTimeline: boolean;
   declaredDuration: number;
-}): string {
+  pendingBuildReadyKeys: string[];
+  rejectedBuildReadyKeys: string[];
+}
+
+// fallow-ignore-next-line complexity
+export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   const hints: string[] = [];
+  if (diag.pendingBuildReadyKeys.length > 0) {
+    hints.push(
+      `window.__hf.buildReady never resolved for: ${diag.pendingBuildReadyKeys.join(", ")}. ` +
+        "The runtime holds render-ready until every registered buildReady promise settles — " +
+        "find where the composition registers that key and confirm it actually resolves.",
+    );
+  }
+  if (diag.rejectedBuildReadyKeys.length > 0) {
+    hints.push(
+      `window.__hf.buildReady rejected for: ${diag.rejectedBuildReadyKeys.join(", ")}. ` +
+        "That key's build promise failed rather than hanging — find why it rejects.",
+    );
+  }
   if (!diag.hasPlayer) {
     hints.push("window.__player was never set — the HyperFrames runtime did not initialize.");
   }
@@ -1587,16 +1652,6 @@ function buildZeroDurationDiagnostic(diag: {
     `data-duration: ${diag.declaredDuration > 0 ? diag.declaredDuration + "s" : "not set"}\n` +
     (hints.length > 0 ? hints.map((h) => `  → ${h}`).join("\n") : "")
   );
-}
-
-interface HfDiagnostic {
-  renderReady: boolean;
-  hasHf: boolean;
-  hasSeek: boolean;
-  hasPlayer: boolean;
-  duration: number;
-  hasTimeline: boolean;
-  declaredDuration: number;
 }
 
 async function evaluateHfDiagnostic(page: Page): Promise<HfDiagnostic> {
@@ -2214,6 +2269,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
       throw error;
     }
+    await assertWebGpuAdapterAvailable(page, session.requiresWebGpu ?? false);
   };
 
   if (session.captureMode === "screenshot") {
@@ -3810,6 +3866,79 @@ async function captureFrameSurface(
 function finalizeSessionInit(session: CaptureSession): void {
   session.motionBlur = resolveSessionMotionBlur(session);
   session.isInitialized = true;
+  startChromeMemorySampler(session);
+}
+
+/** Shape of one `SystemInfo.getProcessInfo` row; only the fields we read. */
+export interface CdpProcessInfoRow {
+  type: string;
+  id: number;
+  cpuTime: number;
+}
+
+/** Group Chrome child pids by role. `browser` comes from puppeteer, not CDP. */
+export function classifyChromeProcesses(
+  browserPid: number | undefined,
+  processInfo: readonly CdpProcessInfoRow[],
+): ChromePids {
+  const renderers: number[] = [];
+  const gpu: number[] = [];
+  for (const row of processInfo) {
+    if (row.type === "renderer") renderers.push(row.id);
+    else if (row.type === "GPU") gpu.push(row.id);
+  }
+  return browserPid === undefined ? { renderers, gpu } : { browser: browserPid, renderers, gpu };
+}
+
+/** The slice of a CDP session `readChromePids` needs. */
+interface ProcessInfoCdpSession {
+  send(method: "SystemInfo.getProcessInfo"): Promise<{
+    processInfo: readonly CdpProcessInfoRow[];
+  }>;
+  detach(): Promise<void>;
+}
+
+/**
+ * Chrome pids for one browser. `SystemInfo.getProcessInfo` is served ONLY by
+ * the browser target — a page-target session rejects with "is only supported
+ * on the browser target", which the sampler would swallow into a permanently
+ * empty reading. Hence the explicit browser-session factory.
+ */
+export async function readChromePids(
+  browserPid: number | undefined,
+  createBrowserCdpSession: () => Promise<ProcessInfoCdpSession>,
+): Promise<ChromePids> {
+  const cdp = await createBrowserCdpSession();
+  try {
+    const info = await cdp.send("SystemInfo.getProcessInfo");
+    return classifyChromeProcesses(browserPid, info.processInfo);
+  } finally {
+    await cdp.detach().catch(() => {});
+  }
+}
+
+const CHROME_MEMORY_SAMPLE_MS_DEFAULT = 2_000;
+
+function resolveChromeMemorySampleMs(): number {
+  const raw = process.env.HF_CHROME_MEMORY_SAMPLE_MS;
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed >= 250 ? parsed : CHROME_MEMORY_SAMPLE_MS_DEFAULT;
+}
+
+function startChromeMemorySampler(session: CaptureSession): void {
+  if (session.chromeMemory) return;
+  if (process.env.HF_CHROME_MEMORY_SAMPLER === "false") return;
+  const sampler = createChromeMemorySampler({
+    intervalMs: resolveChromeMemorySampleMs(),
+    onSample: session.options.onMemorySample,
+    sampleRss: (pids) => sampleProcessRss(pids),
+    getPids: () =>
+      readChromePids(session.browser.process()?.pid, () =>
+        session.browser.target().createCDPSession(),
+      ),
+  });
+  session.chromeMemory = sampler;
+  sampler.start();
 }
 
 /** Choose how many samples this frame gets when the plan is adaptive: the floor with
@@ -4408,6 +4537,12 @@ export async function discardWarmupCapture(
 }
 
 export async function closeCaptureSession(session: CaptureSession): Promise<void> {
+  if (session.chromeMemory) {
+    session.chromeMemory.stop();
+    // One last sample so the summary reflects the session's end state, not a
+    // point up to `intervalMs` earlier. Best effort; the page may be gone.
+    await session.chromeMemory.sampleOnce();
+  }
   // Realized static-dedup telemetry: how much the cache actually helped this
   // render (vs the prediction logged at arm time). Both capture paths
   // (sequential orchestrator + parallel workers) close their session here, so
@@ -4705,6 +4840,11 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     beginFrameHasDamage: session.beginFrameHasDamageCount,
     captureMode: session.captureMode,
     gpuRenderer: session.gpuRenderer,
+    chromeBrowserRssPeakMb: session.chromeMemory?.stats().browserRssPeakMb,
+    chromeRendererRssPeakMb: session.chromeMemory?.stats().rendererRssPeakMb,
+    chromeRssLastMb: session.chromeMemory?.stats().rssLastMb,
+    chromeGpuProcessSeenLastSample: session.chromeMemory?.stats().gpuProcessSeenLastSample,
+    chromeMemorySamples: session.chromeMemory?.stats().samples,
     deGateReason: session.deGateReason,
     deFallbackTrigger: session.deFallbackTrigger,
     deWorkerEncode: session.workerEncodeEnabled ?? false,

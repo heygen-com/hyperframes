@@ -338,6 +338,8 @@ Timeline math: distinct tracks overlap by 0.5s with opposing opacity envelopes. 
 
 Timeline math: lane `t` is clip-local authored time: fade-in 0–1, duck down 2–2.2, hold 2.2–3, duck up 3–3.2, fade-out 4–5. Source math: source selection still uses core attributes. Audio follows: the explicit down-hold-up envelope affects this separate audio track. Owner: `/hyperframes-audio`. Limit: automation is not source retiming.
 
+**One rule for volume over time: use the lane.** `lint` accepts a timeline tween on `volume` too, but when a track has both, the lane wins and the tween is ignored (`audio_volume_double_automation`). Never add a lane to a track that already has a `volume` tween, and never add a tween to a track that has a lane; edit the one that exists. To ramp 0.1 to 0.5 over ten seconds, write `{"t":0,"v":0.1},{"t":10,"v":0.5}`. `t` is seconds from the clip's own start, so a ramp past `data-duration` never finishes: check the clip's length before choosing the times. `data-volume` stays as the static level of the clip and combines with nothing else you author here.
+
 ## Audio alignment
 
 ```html
@@ -364,3 +366,74 @@ Timeline math: lane `t` is clip-local authored time: fade-in 0–1, duck down 2�
 ```
 
 Timeline math: picture and sound share start/duration. Source math: both consume four source seconds. Audio follows: identical timing, range, and rate on the separate audio track. Owner: `/hyperframes-core` + `/hyperframes-audio`. Limit: no waveform auto-sync or drift correction.
+
+## Align a sound to an on-screen event
+
+```html
+<audio
+  id="sfx-click-3"
+  src="click.mp3"
+  data-start="7.48"
+  data-duration="0.07"
+  data-track-index="103"
+  data-volume="0.85"
+></audio>
+```
+
+Timeline math: an audio element in the root composition has `data-start` in absolute root time; audio inside a scene file uses scene-local time and the host's `data-start` is added for you. An event inside a sub-composition happens at the host's `data-start` plus the event's local time in that sub-composition's own timeline, so `data-start = host start + local time`. Move only the audio's `data-start`; leave the picture alone. Source math: if the sound's transient is not at the file's first sample, subtract that lead-in from `data-start` (or trim it with `data-media-start`). Audio follows: nothing links audio to picture, so re-derive after every retime of the host. Owner: `/hyperframes-core`. Limit: no waveform auto-sync; for a beat grid use `hyperframes beats` and place each start on a beat time.
+
+## Copy a group of clips to another time
+
+```html
+<audio
+  id="sfx-click-0"
+  src="click.mp3"
+  data-start="1.6"
+  data-duration="0.07"
+  data-track-index="100"
+></audio>
+<audio
+  id="sfx-type-0"
+  src="typenew.mp3"
+  data-start="7.8"
+  data-duration="0.57"
+  data-track-index="109"
+></audio>
+<audio
+  id="sfx-click-0-copy"
+  src="click.mp3"
+  data-start="41.6"
+  data-duration="0.07"
+  data-track-index="186"
+></audio>
+<audio
+  id="sfx-type-0-copy"
+  src="typenew.mp3"
+  data-start="47.8"
+  data-duration="0.57"
+  data-track-index="187"
+></audio>
+```
+
+Timeline math: pick the clips first and say which ones you picked (by id) if the request does not match the file exactly; then add one `delta` to every member's `data-start`, so relative spacing is preserved (here `delta = 40`). Give each copy a new unique `id` and the next unused `data-track-index`; keep `src`, `data-duration`, `data-media-start`, `data-volume` and any `data-automation` as they are. Leave the originals untouched. Check the copies still end inside the composition's duration. Owner: `/hyperframes-core`. Limit: copies of a `<video>` or a sub-composition host follow the same rule, and a copied sub-composition needs its own host `id`.
+
+## Swap a media file
+
+```html
+<video
+  id="hero"
+  src="assets/product-v2.mp4"
+  data-start="2"
+  data-duration="4"
+  data-media-start="0"
+  data-track-index="0"
+  muted
+  playsinline
+></video>
+```
+
+Timeline math: change only `src`. Source math: reset `data-media-start` to the offset you want in the NEW file, and set `data-duration` no longer than the new file's remaining length (probe it with `ffprobe`). Audio follows: a separate `<audio>` that pointed at the old file needs the same `src` swap. Keep `id`, `data-start`, `data-track-index` and any `data-automation` so nothing else moves. Run `lint`: `audio_src_not_found` and `media_src_kind_mismatch` catch a wrong path or kind. Owner: `/hyperframes-core`. Limit: a still swapped for a video (or the reverse) is a tag change, not a swap.
+
+## Split a section and change its speed
+
+Timeline math: a section that is a sub-composition or a group of clips has no `data-playback-rate` of its own to set; split it by giving each half its own host or clips and shift everything after the cut by the length change. New length of a part = old length / rate. Every later `data-start` (clips, audio, root-timeline tweens) moves by the same delta. Source math: `<video>` and `<audio>` parts use `data-playback-rate` (0.1 to 5, constant) per the constant-speed recipe above, with matching audio. Limit: a speed ramp (a rate that changes within one clip) is not in the format; approximate with several constant-rate parts or preprocess a derived asset through `/media-use`. Say which you did, and do not invent a rate attribute.

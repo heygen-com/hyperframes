@@ -74,9 +74,21 @@ export function mdxStringAttribute(name: string, value: string): string {
   return `${name}="${escaped}"`;
 }
 
-/** Has a preview payload been built for this item? */
+function payloadPath(kind: ItemKind, name: string): string {
+  return join(payloadRoot, typeDir(kind), `${name}.json`);
+}
+
+/** Has a real, playable preview payload been built for this item? */
 function hasPayload(kind: ItemKind, name: string): boolean {
-  return existsSync(join(payloadRoot, typeDir(kind), `${name}.json`));
+  return existsSync(payloadPath(kind, name)) && unsupportedFlag(kind, name) === null;
+}
+
+/** The Chrome flag this item's payload needs to render live, if any. */
+function unsupportedFlag(kind: ItemKind, name: string): string | null {
+  const path = payloadPath(kind, name);
+  if (!existsSync(path)) return null;
+  const payload = JSON.parse(readFileSync(path, "utf-8")) as { unsupported?: string };
+  return payload.unsupported ?? null;
 }
 
 /**
@@ -339,31 +351,36 @@ function textureLabel(slug: string): string {
     .join(" ");
 }
 
+// Ordered so a more specific needle (e.g. "wood-floor") is tried before the
+// substring it contains ("wood"); first match wins, same as the if-chain this replaced.
+const TEXTURE_SAMPLE_WORDS: [needle: string, word: string][] = [
+  ["brick", "BRICK"],
+  ["concrete", "CONCRETE"],
+  ["plaster", "PLASTER"],
+  ["rock", "ROCK"],
+  ["onyx", "ONYX"],
+  ["marble", "MARBLE"],
+  ["travertine", "STONE"],
+  ["paving", "STONE"],
+  ["tiles", "TILE"],
+  ["ground", "GROUND"],
+  ["road", "ROAD"],
+  ["asphalt", "ASPHALT"],
+  ["wood-floor", "FLOOR"],
+  ["wood", "WOOD"],
+  ["bark", "BARK"],
+  ["diamond", "PLATE"],
+  ["metal", "METAL"],
+  ["lava", "LAVA"],
+  ["grass", "GRASS"],
+  ["carpet", "WOVEN"],
+  ["fabric", "FABRIC"],
+  ["snow", "SNOW"],
+  ["leather", "LEATHER"],
+];
+
 function textureSampleWord(slug: string): string {
-  if (slug.includes("brick")) return "BRICK";
-  if (slug.includes("concrete")) return "CONCRETE";
-  if (slug.includes("plaster")) return "PLASTER";
-  if (slug.includes("rock")) return "ROCK";
-  if (slug.includes("onyx")) return "ONYX";
-  if (slug.includes("marble")) return "MARBLE";
-  if (slug.includes("travertine")) return "STONE";
-  if (slug.includes("paving")) return "STONE";
-  if (slug.includes("tiles")) return "TILE";
-  if (slug.includes("ground")) return "GROUND";
-  if (slug.includes("road")) return "ROAD";
-  if (slug.includes("asphalt")) return "ASPHALT";
-  if (slug.includes("wood-floor")) return "FLOOR";
-  if (slug.includes("wood")) return "WOOD";
-  if (slug.includes("bark")) return "BARK";
-  if (slug.includes("diamond")) return "PLATE";
-  if (slug.includes("metal")) return "METAL";
-  if (slug.includes("lava")) return "LAVA";
-  if (slug.includes("grass")) return "GRASS";
-  if (slug.includes("carpet")) return "WOVEN";
-  if (slug.includes("fabric")) return "FABRIC";
-  if (slug.includes("snow")) return "SNOW";
-  if (slug.includes("leather")) return "LEATHER";
-  return slug.toUpperCase();
+  return TEXTURE_SAMPLE_WORDS.find(([needle]) => slug.includes(needle))?.[1] ?? slug.toUpperCase();
 }
 
 function textureMaskUrlFor(manifest: RegistryItem, texture: string): string {
@@ -896,6 +913,17 @@ function previewSection(
 ): string[] {
   if (textureGroups.length > 0) return generateTexturePreview(manifest, textureGroups);
 
+  const flag = unsupportedFlag(kind, manifest.name);
+  // A recorded video still plays without the flag, so it wins over the notice.
+  if (flag && !manifest.preview?.video) {
+    return [
+      `<div className="w-full aspect-video rounded-xl border border-dashed flex items-center justify-center text-sm text-zinc-500">`,
+      `  Needs <code>chrome://flags/#${flag}</code> to render live`,
+      `</div>`,
+      "",
+    ];
+  }
+
   // A built payload plays the real composition, and takes precedence over both
   // iframe paths below. The variables explorer is parked rather than wired up:
   // its preview document is an `.html` file the docs host does not publish, so
@@ -1029,6 +1057,7 @@ function footerSection(
   return footer;
 }
 
+// fallow-ignore-next-line complexity
 function generateItemMdx(
   kind: ItemKind,
   manifest: RegistryItem,
@@ -1343,18 +1372,17 @@ function main(): void {
     // catalog landing page from the sidebar entirely.
     const isGeneratedPage = (p: unknown): boolean =>
       typeof p === "string" && /^catalog\/(blocks|components)\//.test(p);
-    // Has to recurse: a section holds groups rather than pages, so a check that
-    // only reads `pages` finds nothing generated in one, keeps it as if a human
-    // had written it, and appends a fresh copy on every run.
-    const holdsGeneratedPages = (node: unknown): boolean => {
-      if (isGeneratedPage(node)) return true;
-      if (!node || typeof node !== "object") return false;
+    // Recurses because a section holds groups, not pages. Keeps hand-written pages
+    // (catalog/index) even when they share a group with generated ones.
+    const withoutGeneratedPages = (node: unknown): unknown[] => {
+      if (isGeneratedPage(node)) return [];
+      if (!node || typeof node !== "object") return [node];
       const g = node as { pages?: unknown[] };
-      return (g.pages ?? []).some(holdsGeneratedPages);
+      if (!g.pages) return [node];
+      const pages = g.pages.flatMap(withoutGeneratedPages);
+      return pages.length > 0 ? [{ ...g, pages }] : [];
     };
-    const handAddedGroups: unknown[] = (existing?.groups ?? []).filter(
-      (g: unknown) => !holdsGeneratedPages(g),
-    );
+    const handAddedGroups = (existing?.groups ?? []).flatMap(withoutGeneratedPages);
 
     const catalogTab = {
       tab: "Catalog",

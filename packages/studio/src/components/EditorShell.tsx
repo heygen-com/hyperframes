@@ -30,8 +30,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   left: ReactNode;
   /** Right panel (inspector/design) or null when collapsed, in the top row. */
   right: ReactNode;
-  /** Hide the whole shell (e.g. while the storyboard view is active). */
-  hidden?: boolean;
   timelineToolbar: ReactNode;
   renderClipContent: RenderClipContent;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void> | void;
@@ -55,6 +53,10 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
     files: File[],
     placement?: TimelineDropPlacement,
   ) => Promise<void> | void;
+  onCopyClip: () => boolean;
+  onPasteClip: () => Promise<void>;
+  onDuplicateClip: () => Promise<boolean>;
+  canPasteClip: () => boolean;
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowMotionPath: boolean;
@@ -72,7 +74,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
 export function EditorShell({
   left,
   right,
-  hidden,
   timelineToolbar,
   renderClipContent,
   handleTimelineElementDelete,
@@ -93,6 +94,10 @@ export function EditorShell({
   handleTimelineElementSplit,
   handleRazorSplit,
   handleRazorSplitAll,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowMotionPath,
@@ -149,7 +154,7 @@ export function EditorShell({
   });
 
   return (
-    <div className={`flex flex-col flex-1 min-h-0${hidden ? " hidden" : ""}`}>
+    <div className="flex flex-col flex-1 min-h-0">
       <TimelineEditProvider value={timelineEditCallbacks}>
         <NLEProvider
           projectId={projectId}
@@ -181,6 +186,10 @@ export function EditorShell({
             onBlockDrop={handleTimelineBlockDrop}
             onCompositionDrop={handleTimelineCompositionDrop}
             onDeleteElement={handleTimelineElementDelete}
+            onCopyClip={onCopyClip}
+            onPasteClip={onPasteClip}
+            onDuplicateClip={onDuplicateClip}
+            canPasteClip={canPasteClip}
             previewOverlay={
               <PreviewOverlays
                 shouldShowMotionPath={shouldShowMotionPath}
@@ -219,6 +228,10 @@ interface EditorShellBodyProps {
     placement: TimelineDropPlacement,
   ) => Promise<void> | void;
   onDeleteElement: (element: TimelineElement) => Promise<void> | void;
+  onCopyClip: () => boolean;
+  onPasteClip: () => Promise<void>;
+  onDuplicateClip: () => Promise<boolean>;
+  canPasteClip: () => boolean;
 }
 
 function EditorShellBody({
@@ -235,6 +248,10 @@ function EditorShellBody({
   onBlockDrop,
   onCompositionDrop,
   onDeleteElement,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
 }: EditorShellBodyProps) {
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
 
@@ -289,6 +306,10 @@ function EditorShellBody({
         onBlockDrop={onBlockDrop}
         onCompositionDrop={onCompositionDrop}
         onDeleteElement={onDeleteElement}
+        onCopyClip={onCopyClip}
+        onPasteClip={onPasteClip}
+        onDuplicateClip={onDuplicateClip}
+        canPasteClip={canPasteClip}
         onSelectTimelineElement={onSelectTimelineElement}
         timelineFooter={
           captionEditMode ? (

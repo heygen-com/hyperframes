@@ -126,9 +126,15 @@ export function getHistoryShortcutLabel(action: "undo" | "redo"): string {
   return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
 }
 
-type ElementMatchSelection = Pick<
+export type ElementMatchSelection = Pick<
   DomEditSelection,
-  "id" | "selector" | "selectorIndex" | "sourceFile" | "compositionSrc" | "isCompositionHost"
+  | "id"
+  | "hfId"
+  | "selector"
+  | "selectorIndex"
+  | "sourceFile"
+  | "compositionSrc"
+  | "isCompositionHost"
 >;
 
 function matchesByDomId(
@@ -139,6 +145,17 @@ function matchesByDomId(
   if (!selection.id) return false;
   return (
     element.domId === selection.id && (element.sourceFile || "index.html") === selectionSourceFile
+  );
+}
+
+function matchesByHfId(
+  selection: ElementMatchSelection,
+  element: TimelineElement,
+  selectionSourceFile: string,
+): boolean {
+  if (!selection.hfId) return false;
+  return (
+    element.hfId === selection.hfId && (element.sourceFile || "index.html") === selectionSourceFile
   );
 }
 
@@ -172,13 +189,21 @@ export function findMatchingTimelineElementId(
   // scan let `.find()` stop at an EARLIER, unrelated host that merely shares
   // the compositionSrc, before the scan ever reached the correct id/selector
   // match further down the list — collapsing every repeated host to the
-  // first one. Try id, then selector, across the WHOLE list first; only fall
-  // back to the coarser compositionSrc-only match when neither identifies a
-  // specific element.
+  // first one. Try id, then hfId, then selector, across the WHOLE list
+  // first; only fall back to the coarser compositionSrc-only match when
+  // none of them identifies a specific element.
   const byId = selection.id
     ? elements.find((el) => matchesByDomId(selection, el, selectionSourceFile))
     : undefined;
   if (byId) return byId.key ?? byId.id;
+
+  // hfId is the stable content-hash id every element gets regardless of
+  // whether it has a real DOM id — the only correlator for an element like
+  // an ungroup child that has neither an authored id nor a selector.
+  const byHfId = selection.hfId
+    ? elements.find((el) => matchesByHfId(selection, el, selectionSourceFile))
+    : undefined;
+  if (byHfId) return byHfId.key ?? byHfId.id;
 
   const bySelector = selection.selector
     ? elements.find((el) => matchesBySelector(selection, el))
@@ -196,6 +221,17 @@ export function findMatchingTimelineElementId(
   }
 
   return null;
+}
+
+// The element's track: authored if given, else the runtime's already-resolved
+// fallback — always rounded to an integer index either way. Shared by the
+// group/ungroup and razor-split flows so they can't drift out of sync again.
+export function resolveElementTrack(
+  element: Pick<TimelineElement, "authoredTrack" | "track">,
+): number {
+  return Math.round(
+    Number.isFinite(element.authoredTrack) ? (element.authoredTrack as number) : element.track,
+  );
 }
 
 /**

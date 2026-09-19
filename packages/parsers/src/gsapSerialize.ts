@@ -57,6 +57,8 @@ export interface GsapAnimation {
   properties: Record<string, number | string>;
   fromProperties?: Record<string, number | string>;
   duration?: number;
+  /** A `duration` was authored but is not a static number: unknown, not the 0.5s default. */
+  durationUnresolved?: boolean;
   ease?: string;
   /** Non-editable GSAP config (stagger, yoyo, repeat, etc.) preserved for round-trips. */
   extras?: Record<string, unknown>;

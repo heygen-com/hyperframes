@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchModifierKey, dispatchPlainKey } from "./useAppHotkeys";
+import { dispatchModifierKey, dispatchPlainKey } from "./appHotkeysDispatch";
 import { usePlayerStore } from "../player/store/playerStore";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
@@ -274,6 +274,28 @@ describe("dispatchModifierKey — Cmd+C/Cmd+V arbitration", () => {
     const e = chord("v");
     dispatchModifierKey(e, "v", cb);
     expect(cb.handlePaste).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe('dispatchPlainKey — "A" returns to select while the razor is armed', () => {
+  afterEach(() => {
+    usePlayerStore.setState({ activeTool: "select" });
+  });
+
+  it("returns to the select tool, matching CapCut's keybinding", () => {
+    usePlayerStore.setState({ activeTool: "razor" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("does not intercept plain \"a\" when the razor isn't armed, leaving playback's seek-to-in-point live", () => {
+    usePlayerStore.setState({ activeTool: "select" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
     expect(e.defaultPrevented).toBe(false);
   });
 });

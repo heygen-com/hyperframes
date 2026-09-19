@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { reseekPreviewAtTime } from "../player/hooks/timelineSyncHydration";
-import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
+import { useTimelineRowElements } from "../player/hooks/useTimelineRowElements";
 import { applySoftReloadFinalization } from "../utils/gsapSoftReload";
 import {
   timelineTrackOrder,
@@ -295,7 +295,7 @@ export function useTimelineTrackVisibilityEditing({
   // virtual sub-comp children carry their own (display.track + idx) track numbers,
   // so filtering the raw store list by a virtual track number would hide the wrong
   // outer-scene sibling sharing that index.
-  const expandedElements = useExpandedTimelineElements();
+  const expandedElements = useTimelineRowElements();
   return useCallback(
     async (track: number, hidden: boolean, displayNumber?: number | null) => {
       if (isRecordingRef?.current) {
@@ -354,15 +354,7 @@ export function useTimelineElementVisibilityEditing({
   elementKey: string | readonly string[],
   hidden: boolean,
 ) => Promise<void> {
-  // Resolve against the EXPANDED rows, not the raw store list — a nested
-  // sub-composition child has no entry of its own in the raw list (only its
-  // host does), so an elementKey for such a child (the
-  // `sourceFile#domId`-shaped virtual key `resolveTimelineIdForSelection`
-  // falls back to) would never match anything there and Hide All would
-  // silently no-op for it. The expanded list synthesizes a real, patchable
-  // TimelineElement (with matching key/domId/sourceFile) for each visible
-  // child whenever its host is currently expanded.
-  const expandedElements = useExpandedTimelineElements();
+  const expandedElements = useTimelineRowElements();
   return useCallback(
     async (elementKey: string | readonly string[], hidden: boolean) => {
       if (isRecordingRef?.current) {
@@ -371,6 +363,11 @@ export function useTimelineElementVisibilityEditing({
       }
       const pid = projectIdRef.current;
       if (!pid) return;
+      const keys = typeof elementKey === "string" ? [elementKey] : elementKey;
+      if (!expandedElements.some((item) => keys.includes(item.key ?? item.id))) {
+        showToast("This element is inside a sub-composition and has no timeline row to hide.");
+        return;
+      }
       try {
         await toggleTimelineElementHidden({
           projectId: pid,

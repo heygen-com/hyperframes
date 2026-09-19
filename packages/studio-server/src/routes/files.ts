@@ -201,12 +201,17 @@ interface AtomicCutTarget {
   playbackStart?: number;
   playbackRate?: number;
   isComposition?: boolean;
+  track?: number;
 }
 
 interface AtomicCutFileRequest {
   path: string;
   expectedVersion: string;
   targets: AtomicCutTarget[];
+}
+
+function isOptionalInteger(value: unknown): value is number | undefined {
+  return value === undefined || Number.isInteger(value);
 }
 
 function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
@@ -218,7 +223,8 @@ function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
     Number.isFinite(target.splitTime) &&
     Number.isFinite(target.elementStart) &&
     Number.isFinite(target.elementDuration) &&
-    Number(target.elementDuration) > 0
+    Number(target.elementDuration) > 0 &&
+    isOptionalInteger(target.track)
   );
 }
 
@@ -2106,6 +2112,7 @@ async function foldAtomicCutFile(
       playbackStart: cut.playbackStart,
       playbackRate: cut.playbackRate,
       stampPlaybackStart: cut.isComposition,
+      track: cut.track,
     });
     if (!split.matched || !split.newId) {
       return c.json(
@@ -2938,7 +2945,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           typeof r?.left === "number" &&
           Number.isFinite(r.left) &&
           typeof r?.top === "number" &&
-          Number.isFinite(r.top),
+          Number.isFinite(r.top) &&
+          isOptionalInteger(r?.track),
       );
     if (!allNumeric) {
       return c.json({ error: "bbox and rebase coordinates must be finite numbers" }, 400);
@@ -2992,8 +3000,21 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const ctx = await resolveFileMutationContext(c, adapter, "unwrap-elements");
     if ("error" in ctx) return ctx.error;
 
-    const parsed = await parseMutationBody<{ target?: MutationTarget }>(c);
+    const parsed = await parseMutationBody<{
+      target?: MutationTarget;
+      childTracks?: Array<{ target?: MutationTarget; track?: number }>;
+    }>(c);
     if ("error" in parsed) return parsed.error;
+
+    const rawChildTracks = parsed.body.childTracks ?? [];
+    if (!rawChildTracks.every((entry) => isOptionalInteger(entry?.track))) {
+      return c.json({ error: "childTracks track must be a finite integer" }, 400);
+    }
+    const childTracks = rawChildTracks
+      .filter((entry): entry is { target: MutationTarget; track?: number } =>
+        Boolean(entry?.target),
+      )
+      .map((entry) => ({ target: entry.target, track: entry.track }));
 
     let originalContent: string;
     try {
@@ -3001,7 +3022,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     } catch {
       return c.json({ error: "not found" }, 404);
     }
-    const result = unwrapElementsFromHtml(originalContent, parsed.target);
+    const result = unwrapElementsFromHtml(originalContent, parsed.target, childTracks);
     if (!result.unwrapped) {
       return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
     }

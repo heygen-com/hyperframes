@@ -34,11 +34,9 @@ describe("buildTimelineGroupResizeMembers (legacy 36413da7f semantics)", () => {
     expect(buildTimelineGroupResizeMembers([a, locked], keys("a", "b"), "a", "end")).toBeNull();
   });
 
-  it("degrades when a member is implicitly timed or has no patch target", () => {
+  it("degrades when a member has no patch target", () => {
     const a = el("a");
-    const implicit = el("b", { timingSource: "implicit" });
     const noTarget = el("c", { domId: undefined, selector: undefined });
-    expect(buildTimelineGroupResizeMembers([a, implicit], keys("a", "b"), "a", "end")).toBeNull();
     expect(buildTimelineGroupResizeMembers([a, noTarget], keys("a", "c"), "a", "end")).toBeNull();
   });
 

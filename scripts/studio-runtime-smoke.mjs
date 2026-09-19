@@ -41,17 +41,6 @@ const GET_RESPONSES = new Map([
   [`${PROJECT_PATH}/thumbnail/index.html`, text(SMOKE_THUMBNAIL_SVG, "image/svg+xml")],
   [`${PROJECT_PATH}/renders`, json({ renders: [] })],
   [`${PROJECT_PATH}/lint`, json({ findings: [] })],
-  [
-    `${PROJECT_PATH}/storyboard`,
-    json({
-      exists: false,
-      path: "STORYBOARD.md",
-      globals: { extra: {} },
-      frames: [],
-      warnings: [],
-      script: { exists: false, path: "SCRIPT.md", content: "" },
-    }),
-  ],
   [`${PROJECT_PATH}/selection`, json({ selection: null, updatedAt: null })],
   ["/api/registry/blocks", json([])],
   ["/api/fonts", json({ fonts: [] })],

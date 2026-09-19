@@ -56,7 +56,6 @@ function renderHarness(
     api = useTimelineAssetDrop({
       scrollRef: { current: scroll },
       ppsRef: { current: 40 },
-      durationRef: { current: 120 },
       trackOrderRef: { current: tracks },
       rowGeometryRef: { current: geometry },
       contentOrigin: 0,
@@ -138,7 +137,6 @@ describe("useTimelineAssetDrop", () => {
   it("drops once on a model row outside the mounted window and appends below the last row", () => {
     const onAssetDrop = vi.fn();
     const view = renderHarness(onAssetDrop);
-    usePlayerStore.getState().setCurrentTime(12.5);
     view.scroll.scrollTop = view.scroll.scrollHeight - view.scroll.clientHeight;
     const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
 
@@ -148,8 +146,26 @@ describe("useTimelineAssetDrop", () => {
     });
 
     expect(onAssetDrop).toHaveBeenCalledTimes(1);
-    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 12.5, track: 100 });
+    // pps=40, clientX=400 -> 10s at the pointer, not the playhead.
+    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 10, track: 100 });
     expect(view.api.isDragOver).toBe(false);
+    act(() => view.root.unmount());
+  });
+
+  it("places the drop at the pointer x, ignoring the playhead", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    usePlayerStore.getState().setCurrentTime(50);
+    const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
+
+    act(() => {
+      view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
+      view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
+    });
+
+    // pps=40, clientX=80 -> 2s, far from the 50s playhead: proves start tracks
+    // the drop position, not usePlayerStore.currentTime.
+    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 2, track: 0 });
     act(() => view.root.unmount());
   });
 
@@ -190,7 +206,8 @@ describe("useTimelineAssetDrop", () => {
     });
 
     expect(onAssetDrop).not.toHaveBeenCalled();
-    expect(onBlockDrop).toHaveBeenCalledExactlyOnceWith("title-card", { start: 0, track: 0 });
+    // pps=40, clientX=400 -> 10s at the pointer.
+    expect(onBlockDrop).toHaveBeenCalledExactlyOnceWith("title-card", { start: 10, track: 0 });
     act(() => view.root.unmount());
   });
 
@@ -201,6 +218,37 @@ describe("useTimelineAssetDrop", () => {
 
     act(() => window.dispatchEvent(new Event("dragend")));
     expect(view.api.isDragOver).toBe(false);
+    act(() => view.root.unmount());
+  });
+
+  it("previews the exact placement the drop commits, and clears it after", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    const payload = JSON.stringify({ path: "assets/a.png" });
+
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer(payload), 400, 100)));
+    const preview = view.api.dropPreview;
+    expect(preview).toEqual({ start: 10, track: 0 });
+
+    act(() => view.api.handleAssetDrop(dragEvent(assetTransfer(payload), 400, 100)));
+    expect(onAssetDrop).toHaveBeenCalledExactlyOnceWith("assets/a.png", preview);
+    expect(view.api.dropPreview).toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("moves the preview with the pointer and drops it when the drag leaves", () => {
+    const view = renderHarness(vi.fn());
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 800, 100)));
+    expect(view.api.dropPreview?.start).toBe(20);
+
+    act(() =>
+      view.api.handleAssetDragLeave({
+        relatedTarget: null,
+        currentTarget: document.body,
+      } as unknown as React.DragEvent),
+    );
+    expect(view.api.dropPreview).toBeNull();
     act(() => view.root.unmount());
   });
 });

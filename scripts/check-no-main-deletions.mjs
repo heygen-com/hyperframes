@@ -36,7 +36,18 @@ const BASE_FLAG = "--base";
  * Entries are for deletions that are NOT renames — git already pairs those on
  * its own. Remove an entry once its deletion has landed on the base.
  */
+const STORYBOARD_VIEW_REASON =
+  "owner-directed removal of the Studio storyboard view; its only readers were deleted with it";
+
 export const ALLOWED_DELETIONS = new Map([
+  [
+    "packages/studio/src/components/StudioGlobalDragOverlay.tsx",
+    "the full-screen drop-to-add box is replaced by a landing preview on the timeline; no remaining references",
+  ],
+  [
+    "docs/snippets/catalog-overview-player.jsx",
+    "#4051 removes the Catalog overview's only consumer of this snippet (replaced by the browse-grid mount); confirmed unreferenced repo-wide before deleting",
+  ],
   [
     "packages/studio/src/hooks/useSdkSession.test.ts",
     "tests only shouldReloadSdkSession, a function with no production callers removed with the preview reload fix",
@@ -157,6 +168,56 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/store/groupLevels.ts",
     "#3454 deliberately removes group level-meter state",
   ],
+  [
+    "docs/public/catalog/components/texture-mask-text.json",
+    "the item's directory exceeds the host budget and now falls back to its recorded video; the stale payload had no <base href> and dead relative asset references, so removing it is the fix, not the regression",
+  ],
+  [
+    "packages/studio/src/player/hooks/useExpandedTimelineElements.ts",
+    "the timeline shows top-level rows only, so the child-row expansion hook is replaced by useTimelineRowElements",
+  ],
+  [
+    "packages/studio/src/player/hooks/useExpandedTimelineElements.test.ts",
+    "tests for the removed child-row expansion hook",
+  ],
+  ...[
+    "docs/studio/storyboard.mdx",
+    "packages/studio-server/src/routes/storyboard.test.ts",
+    "packages/studio-server/src/routes/storyboard.ts",
+    "packages/studio/fixtures/storyboard-sample/README.md",
+    "packages/studio/fixtures/storyboard-sample/SCRIPT.md",
+    "packages/studio/fixtures/storyboard-sample/STORYBOARD.md",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/01-hook.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/02-problem.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/03-feature.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/04-proof.html",
+    "packages/studio/fixtures/storyboard-sample/index.html",
+    "packages/studio/src/components/storyboard/AgentChatMessageButton.test.tsx",
+    "packages/studio/src/components/storyboard/AgentChatMessageButton.tsx",
+    "packages/studio/src/components/storyboard/FramePoster.test.tsx",
+    "packages/studio/src/components/storyboard/FramePoster.tsx",
+    "packages/studio/src/components/storyboard/StoryboardDirection.tsx",
+    "packages/studio/src/components/storyboard/StoryboardFrameFocus.tsx",
+    "packages/studio/src/components/storyboard/StoryboardFrameTile.tsx",
+    "packages/studio/src/components/storyboard/StoryboardGrid.tsx",
+    "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
+    "packages/studio/src/components/storyboard/StoryboardReviewGuide.tsx",
+    "packages/studio/src/components/storyboard/StoryboardScriptPanel.tsx",
+    "packages/studio/src/components/storyboard/StoryboardSourceEditor.tsx",
+    "packages/studio/src/components/storyboard/StoryboardStatusLegend.tsx",
+    "packages/studio/src/components/storyboard/StoryboardView.tsx",
+    "packages/studio/src/components/storyboard/StoryboardViewModeGuard.test.tsx",
+    "packages/studio/src/components/storyboard/frameComments.test.ts",
+    "packages/studio/src/components/storyboard/frameComments.ts",
+    "packages/studio/src/components/storyboard/frameStatus.ts",
+    "packages/studio/src/components/storyboard/storyboardReviewStage.test.ts",
+    "packages/studio/src/components/storyboard/storyboardReviewStage.ts",
+    "packages/studio/src/components/storyboard/useFrameComments.ts",
+    "packages/studio/src/contexts/ViewModeContext.tsx",
+    "packages/studio/src/hooks/useProjectSignaturePoll.test.tsx",
+    "packages/studio/src/hooks/useProjectSignaturePoll.ts",
+    "packages/studio/src/hooks/useStoryboard.ts",
+  ].map((path) => [path, STORYBOARD_VIEW_REASON]),
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

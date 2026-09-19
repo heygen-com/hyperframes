@@ -54,7 +54,8 @@ export function resolveEnabledSdkFamilies(
 ): ReadonlySet<StudioSdkOperationFamily> {
   if (!masterEnabled) return new Set();
   const raw = env["VITE_STUDIO_SDK_CUTOVER_FAMILIES"];
-  if (typeof raw !== "string" || raw.trim() === "") return new Set();
+  // Unset/blank = every family. The list exists to RESTRICT (kill switch per family).
+  if (typeof raw !== "string" || raw.trim() === "") return new Set(STUDIO_SDK_OPERATION_FAMILIES);
   const requested = raw
     .split(",")
     .map((family) => family.trim())
@@ -85,8 +86,9 @@ export function renderStudioSdkCutoverReport(): string {
   return [
     "# Studio SDK cutover report",
     "",
-    "Master flag: `VITE_STUDIO_SDK_CUTOVER_ENABLED=true`",
-    "Family flag: `VITE_STUDIO_SDK_CUTOVER_FAMILIES=dom,timing,...`",
+    "Default: SDK persist ON for every family. Kill switches:",
+    "  `VITE_STUDIO_SDK_CUTOVER_ENABLED=false` (all families → server path)",
+    "  `VITE_STUDIO_SDK_CUTOVER_FAMILIES=dom,timing` (only listed families → SDK; rest → server)",
     "",
     "A family graduates only after zero unexplained resolver/serialization divergences over its agreed corpus and soak window.",
     "",

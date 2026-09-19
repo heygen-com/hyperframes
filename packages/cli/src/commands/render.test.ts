@@ -321,6 +321,113 @@ describe("renderLocal browser GPU config", () => {
     ).rejects.toMatchObject({ name: "CliRuntimeError" });
   });
 
+  it("prints the full finding on a default-entry-mismatch abort even without --lint-verbose", async () => {
+    const lintResult = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: false,
+            errorCount: 1,
+            warningCount: 0,
+            infoCount: 0,
+            findings: [
+              {
+                code: "blank_root_with_standalone_composition",
+                severity: "error" as const,
+                message: "The default index.html composition has no renderable content",
+                fixHint: "Move the authored composition into index.html",
+              },
+            ],
+          },
+        },
+      ],
+      totalErrors: 1,
+      totalWarnings: 0,
+      totalInfos: 0,
+    };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(
+      runRenderLint(
+        {
+          project: { dir: "/tmp/project" },
+          entryFile: undefined,
+          renderTarget: "/tmp/project/index.html",
+          strictErrors: false,
+          strictAll: false,
+          effectiveQuiet: false,
+          lintVerbose: false,
+        } as never,
+        async () => lintResult,
+      ),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+
+    const output = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("blank_root_with_standalone_composition");
+    expect(output).toContain("The default index.html composition has no renderable content");
+    logSpy.mockRestore();
+  });
+
+  it("prints a one-line summary by default, and full findings when lintVerbose is set", async () => {
+    const lintResult = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: true,
+            errorCount: 0,
+            warningCount: 1,
+            infoCount: 0,
+            findings: [
+              { code: "some_warning", severity: "warning" as const, message: "a warning" },
+            ],
+          },
+        },
+      ],
+      totalErrors: 0,
+      totalWarnings: 1,
+      totalInfos: 0,
+    };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runRenderLint(
+      {
+        project: { dir: "/tmp/project" },
+        entryFile: undefined,
+        renderTarget: "/tmp/project/index.html",
+        strictErrors: false,
+        strictAll: false,
+        effectiveQuiet: false,
+        lintVerbose: false,
+      } as never,
+      async () => lintResult,
+    );
+    const summaryOutput = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(summaryOutput).toContain("1 warning(s)");
+    expect(summaryOutput).not.toContain("some_warning");
+
+    logSpy.mockClear();
+    await runRenderLint(
+      {
+        project: { dir: "/tmp/project" },
+        entryFile: undefined,
+        renderTarget: "/tmp/project/index.html",
+        strictErrors: false,
+        strictAll: false,
+        effectiveQuiet: false,
+        lintVerbose: true,
+      } as never,
+      async () => lintResult,
+    );
+    const verboseOutput = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(verboseOutput).toContain("some_warning");
+
+    logSpy.mockRestore();
+  });
+
   function setEnv(key: string, value: string) {
     if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
     process.env[key] = value;

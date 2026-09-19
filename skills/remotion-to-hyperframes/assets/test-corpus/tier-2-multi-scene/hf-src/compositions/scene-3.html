@@ -1,0 +1,36 @@
+<template id="scene-3-template">
+  <div data-composition-id="scene-3" data-width="1280" data-height="720" data-duration="2">
+    <style>
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      .outro {
+        font-size: 100px;
+        font-weight: 600;
+        color: #ffffff;
+      }
+    </style>
+    <div class="scene">
+      <div class="outro">Goodbye</div>
+    </div>
+    <script>
+      // Scene 3 (4-6s, local 0-2s): opacity 0->1 over 1s, linear.
+      const tl = gsap.timeline({ paused: true });
+      const scene = document.querySelector(".scene");
+      tl.set(scene, { opacity: 1 }, 0);
+      tl.fromTo(
+        scene.querySelector(".outro"),
+        { opacity: 0 },
+        { opacity: 1, duration: 1.0, ease: "none" },
+        0,
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-3"] = tl;
+    </script>
+  </div>
+</template>

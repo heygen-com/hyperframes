@@ -28,17 +28,12 @@ export const examples: Example[] = [
     "Disable auto-proxying of browser-hostile video codecs (HEVC, ProRes, AV1)",
     "hyperframes preview --no-proxy",
   ],
+  [
+    "Show full lint findings on startup instead of the summary line",
+    "hyperframes preview --lint-verbose",
+  ],
 ];
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  readlinkSync,
-  symlinkSync,
-  unlinkSync,
-} from "node:fs";
-import { parseStoryboard, STORYBOARD_FILENAME } from "@hyperframes/core/storyboard";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -54,7 +49,7 @@ import {
   validateRemoteDebuggingPortDeps,
 } from "../utils/openBrowser.js";
 import { lintProject } from "../utils/lintProject.js";
-import { formatLintFindings } from "../utils/lintFormat.js";
+import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   activeServerOnPort,
   findPortAndServe,
@@ -175,6 +170,11 @@ export default defineCommand({
     "kill-all": {
       type: "boolean",
       description: "Kill all active preview servers and exit",
+      default: false,
+    },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings on startup (default: a one-line summary)",
       default: false,
     },
     open: {
@@ -352,7 +352,7 @@ export default defineCommand({
           );
           return;
         }
-        printStudioSummary(project.name, previewBaseUrl(status.port), project.dir, {
+        printStudioSummary(project.name, previewBaseUrl(status.port), {
           details: [`Background preview running (PID ${status.pid}).`, `Log: ${status.logPath}`],
         });
         return;
@@ -420,7 +420,12 @@ export default defineCommand({
     const lintResult = await lintProject(dir);
     if (!args.json && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
       console.log();
-      for (const line of formatLintFindings(lintResult)) console.log(line);
+      const verbose = Boolean(args["lint-verbose"]);
+      for (const line of formatLintStartupMessage(
+        lintResult,
+        verbose ? { kind: "verbose" } : { kind: "summary", pointer: "studio" },
+      ))
+        console.log(line);
       console.log();
     }
 
@@ -533,7 +538,7 @@ export default defineCommand({
         );
       } else {
         clack.intro(c.bold("hyperframes preview"));
-        printStudioSummary(projectName, url, dir, {
+        printStudioSummary(projectName, url, {
           details: [
             background.type === "reused"
               ? "Reusing the background server already running for this project."
@@ -543,7 +548,7 @@ export default defineCommand({
           footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
         });
       }
-      openStudioBrowser(url, projectName, dir, {
+      openStudioBrowser(url, projectName, {
         noOpen,
         browserPath,
         userDataDir,
@@ -1167,47 +1172,19 @@ function compactSelectionPayload(selection: StudioSelectionSnapshot): CompactSel
   };
 }
 
-// Land the browser on the Storyboard view while the project is still planning
-// or sketching — the timeline only becomes the right landing once frames are
-// animated (or the storyboard never tracked statuses at all, e.g. beat plans).
-export function studioLandingSearch(projectDir: string): string {
-  const storyboardPath = join(projectDir, STORYBOARD_FILENAME);
-  if (!existsSync(storyboardPath)) return "";
-  let frames;
-  try {
-    frames = parseStoryboard(readFileSync(storyboardPath, "utf8")).frames;
-  } catch {
-    return "";
-  }
-  // Sketch review in progress — the board is the review surface.
-  if (frames.some((f) => f.status === "built")) return "?view=storyboard";
-  // Pure planning stage: frames declare src paths but none are built yet.
-  const srcs = frames
-    .map((f) => f.src)
-    .filter((s): s is string => typeof s === "string" && s.length > 0);
-  const planning =
-    frames.length > 0 &&
-    frames.every((f) => f.status === "outline") &&
-    srcs.length > 0 &&
-    !srcs.some((s) => existsSync(join(projectDir, s)));
-  return planning ? "?view=storyboard" : "";
-}
-
-// The full Studio URL to open or hand to the user: status-aware landing view
-// plus the project hash route. `url` never carries a trailing slash (both the
-// embedded server and the Vite `Local:` match strip it).
-export function studioDeepLink(url: string, projectName: string, projectDir: string): string {
-  return `${url}/${studioLandingSearch(projectDir)}#project/${encodeURIComponent(projectName)}`;
+// The full Studio URL to open or hand to the user. `url` never carries a
+// trailing slash (both the embedded server and the Vite `Local:` match strip it).
+export function studioDeepLink(url: string, projectName: string): string {
+  return `${url}/#project/${encodeURIComponent(projectName)}`;
 }
 
 export function studioSummaryUrls(
   projectName: string,
   serverUrl: string,
-  projectDir: string,
 ): { serverUrl: string; studioUrl: string } {
   return {
     serverUrl,
-    studioUrl: studioDeepLink(serverUrl, projectName, projectDir),
+    studioUrl: studioDeepLink(serverUrl, projectName),
   };
 }
 
@@ -1252,20 +1229,15 @@ function previewLifecycleSession(options: {
     port: options.port,
     pid: options.pid,
     serverUrl,
-    studioUrl: studioDeepLink(serverUrl, options.projectName, options.projectDir),
+    studioUrl: studioDeepLink(serverUrl, options.projectName),
     ready: true,
     ...(options.logPath ? { logPath: options.logPath } : {}),
   };
 }
 
-function openStudioBrowser(
-  url: string,
-  projectName: string,
-  projectDir: string,
-  options?: BrowserLaunchOptions,
-): void {
+function openStudioBrowser(url: string, projectName: string, options?: BrowserLaunchOptions): void {
   if (options?.noOpen) return;
-  openBrowser(studioDeepLink(url, projectName, projectDir), {
+  openBrowser(studioDeepLink(url, projectName), {
     browserPath: options?.browserPath,
     userDataDir: options?.userDataDir,
     remoteDebuggingPort: options?.remoteDebuggingPort,
@@ -1276,10 +1248,9 @@ function openStudioBrowser(
 function printStudioSummary(
   projectName: string,
   serverUrl: string,
-  projectDir: string,
   opts: { details?: string[]; footer?: string } = {},
 ): void {
-  const urls = studioSummaryUrls(projectName, serverUrl, projectDir);
+  const urls = studioSummaryUrls(projectName, serverUrl);
   console.log();
   console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
   console.log(`  ${c.dim("Studio")}    ${c.accent(urls.studioUrl)}`);
@@ -1392,11 +1363,11 @@ function attachStudioReadyHandler(
       );
     } else {
       spinner.stop(c.success("Studio running"));
-      printStudioSummary(projectName, url, projectDir, {
+      printStudioSummary(projectName, url, {
         footer: "Press Ctrl+C to stop",
       });
     }
-    openStudioBrowser(url, projectName, projectDir, options);
+    openStudioBrowser(url, projectName, options);
     child.stdout.removeListener("data", handleOutput);
     child.stderr.removeListener("data", handleOutput);
   }
@@ -1617,11 +1588,11 @@ async function runEmbeddedMode(
       );
     } else {
       s.stop(c.success("Already running"));
-      printStudioSummary(pName, url, dir, {
+      printStudioSummary(pName, url, {
         details: ["Reusing existing server. Use --force-new to start a fresh instance."],
       });
     }
-    openStudioBrowser(url, pName, dir, options);
+    openStudioBrowser(url, pName, options);
     return;
   }
 
@@ -1635,7 +1606,7 @@ async function runEmbeddedMode(
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${result.port} instead`)}`);
       console.log();
     }
-    printStudioSummary(pName, url, dir, {
+    printStudioSummary(pName, url, {
       details: [
         "Edit with your AI agent — it has HyperFrames skills installed.",
         "Changes reload automatically in the studio.",
@@ -1643,7 +1614,7 @@ async function runEmbeddedMode(
       footer: "Press Ctrl+C to stop",
     });
   }
-  openStudioBrowser(url, pName, dir, options);
+  openStudioBrowser(url, pName, options);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the

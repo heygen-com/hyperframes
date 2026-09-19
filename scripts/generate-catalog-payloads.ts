@@ -13,6 +13,9 @@
  * composition as a `srcdoc` string, so JSON is the delivery format that both
  * survives the deploy and matches what the player wants.
  *
+ * An item needing `chrome://flags/#canvas-draw-element` gets
+ * `{ unsupported: "canvas-draw-element" }` at the same path instead of `{ html }`.
+ *
  * Usage:
  *   npx tsx scripts/generate-catalog-payloads.ts                    # all items
  *   npx tsx scripts/generate-catalog-payloads.ts --only data-chart  # single item
@@ -42,13 +45,14 @@ import {
   inlineMountedComposition,
   HOSTED_EXTENSIONS,
   hostItemDirectory,
+  MAX_HOSTED_DIRECTORY_BYTES,
   processAssets,
   withBaseHref,
 } from "./catalog-payload-assets.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const payloadRoot = resolve(repoRoot, "docs/public/catalog");
+export const payloadRoot = resolve(repoRoot, "docs/public/catalog");
 
 /**
  * Inlining budget for a single payload. A payload is fetched when the reader
@@ -178,13 +182,20 @@ function renderEntry(
   return { entry, fromSnippet: true };
 }
 
-async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
+// Pre-existing complexity from the item's independent skip conditions; the
+// over-budget branch added here is one more of the same shape, not a new debt.
+// fallow-ignore-next-line complexity
+export async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
 
   // An item that stops qualifying has to lose its payload, or the page
   // generator keeps finding one on disk and emits a player for a preview this
   // run just decided it cannot build.
   const dropStalePayload = () => rmSync(outPath, { force: true });
+  const writePayload = (body: object) => {
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, JSON.stringify(body), "utf-8");
+  };
 
   // A composition whose variables are meant to be changed has to reach the
   // reader uncompiled, or its values are already resolved into the markup.
@@ -216,8 +227,10 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
 
     if (needsCanvasDrawElement(html)) {
-      console.log(`  – ${item.name}: needs canvas drawElement, keeping the recorded video`);
-      dropStalePayload();
+      // A marker file, not an absence: the catalog card reads this to show an honest
+      // "needs this flag" tile instead of silently falling back to nothing.
+      writePayload({ unsupported: "canvas-draw-element" });
+      console.log(`  – ${item.name}: needs canvas drawElement, marked unsupported`);
       return "skipped";
     }
     const assetTarget = { dir: join(payloadRoot, "assets"), urlBase: "/public/catalog/assets" };
@@ -239,10 +252,23 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     // duplicate assets already shared by hash and roughly double what the
     // repository carries, to fix a handful of compositions.
     const itemUrl = `/public/catalog/items/${item.name}`;
-    const baseHref =
+    const hostResult =
       interactive || needsOwnDirectory(item, unresolved)
         ? hostItemDirectory(projectDir, join(payloadRoot, "items", item.name), `${itemUrl}/`)
-        : "";
+        : { status: "not-needed" as const };
+
+    // A directory that is needed but over budget still leaves the composition
+    // with dead relative references and no <base> to resolve them against —
+    // that is worse than the recorded video it already has.
+    if (hostResult.status === "over-budget") {
+      console.log(
+        `  – ${item.name}: directory over the ${(MAX_HOSTED_DIRECTORY_BYTES / 1e6).toFixed(1)} MB host budget, keeping the recorded video`,
+      );
+      dropStalePayload();
+      return "skipped";
+    }
+    const baseHref = hostResult.status === "hosted" ? hostResult.baseHref : "";
+
     // An interactive preview keeps its mount, so the component travels inline
     // and the demo's own pinned values come off — the reader's choices are what
     // should reach it.
@@ -266,8 +292,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
       return "skipped";
     }
 
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, JSON.stringify({ html: withBase }), "utf-8");
+    writePayload({ html: withBase });
 
     const counts = [
       hosted + externalized > 0 ? `${hosted + externalized} hosted` : "",

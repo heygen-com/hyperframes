@@ -27,6 +27,12 @@ const spawnStreamingEncoder = mock(async () => ({
 let failCaptureFrameToBuffer = false;
 let failInitializeSession = false;
 let hangParallelUntilAbort = false;
+// Which phase the wedged worker reports. frame_capture = past init, wedged in
+// a capture call (the watchdog's job); session_init = still booting (not).
+let hangParallelPhase: "session_init" | "frame_capture" = "frame_capture";
+let failWorkerTransient = false;
+let injectedWorkerFailure: Error | null = null;
+const reorderAbortCalls: unknown[] = [];
 let hangSequentialUntilStall = false;
 let sessionWorkerEncodeEnabled = false;
 let captureSessionMode: "drawelement" | "screenshot" = "drawelement";
@@ -73,7 +79,9 @@ mock.module("@hyperframes/engine", () => ({
   createFrameReorderBuffer: () => ({
     waitForFrame: async () => {},
     advanceTo: () => {},
-    abort: () => {},
+    abort: (reason: unknown) => {
+      reorderAbortCalls.push(reason);
+    },
   }),
   distributeFrames: () => [],
   distributeFramesInterleaved: () => [],
@@ -86,7 +94,25 @@ mock.module("@hyperframes/engine", () => ({
     _hook: unknown,
     signal?: AbortSignal,
     onProgress?: (progress: unknown) => void,
+    _onFrameBuffer?: unknown,
+    _config?: unknown,
+    hooks?: { onWorkerFailure?: (failure: Error) => void },
   ) => {
+    if (failWorkerTransient) {
+      // One worker's Chrome died. The engine reports the ORIGINAL failure
+      // through the hook, then the pool rejects with its flattened summary.
+      // That ordering is the engine's contract, pinned without a browser by
+      // parallelCoordinator.test.ts "createPoolFailureHandler"; this mock
+      // only replays it.
+      injectedWorkerFailure = Object.assign(
+        new Error("Protocol error (Page.captureScreenshot): Target closed"),
+        { kind: "transient_browser" },
+      );
+      hooks?.onWorkerFailure?.(injectedWorkerFailure);
+      throw new Error(
+        "[Parallel] Capture failed: Worker 1: Protocol error (Page.captureScreenshot): Target closed",
+      );
+    }
     if (hangParallelUntilAbort) {
       onProgress?.({
         totalFrames: 100,
@@ -98,7 +124,7 @@ mock.module("@hyperframes/engine", () => ({
         ]),
         latestWorkerPhase: {
           workerId: 0,
-          phase: "session_init",
+          phase: hangParallelPhase,
           browserExecutable: "C:/Chrome/chrome.exe",
           browserVersion: "Chrome/152.0.7977.30",
           canvasDrawElement: true,
@@ -284,6 +310,7 @@ describe("runCaptureStreamingStage", () => {
       ...baseInput,
       totalFrames: 100,
       plan: { ...baseInput.plan, workerCount: 2, forceParallelStream: true },
+      parallelCaptureLabel: "screenshot",
     };
 
     let caught: unknown;
@@ -299,12 +326,92 @@ describe("runCaptureStreamingStage", () => {
 
     expect(caught).toBeInstanceOf(Error);
     // A stalled render must surface as a stall (→ pinned fallback), never as
-    // the raw "[Parallel] Capture failed" or a cancellation.
+    // the raw "[Parallel] Capture failed" or a cancellation. Typed, so the
+    // orchestrator's retry gate recognises it on any routing.
+    expect((caught as Error).name).toBe("ParallelCaptureStallError");
     expect((caught as Error).message).toContain("stalled");
-    expect((caught as Error).message).toContain("phase=session_init");
+    // The label is the caller's capture mode, not a hard-coded "drawElement":
+    // screenshot-cohort stalls were being triaged as drawElement bugs.
+    expect((caught as Error).message).toContain("Parallel screenshot capture stalled");
+    expect((caught as Error).message).not.toContain("drawElement");
+    expect((caught as Error).message).toContain("phase=frame_capture");
     expect((caught as Error).message).toContain("Chrome/152.0.7977.30");
     // Parent signal never fired, so the orchestrator won't read this as a cancel.
     expect(input.abortSignal).toBeUndefined();
+  });
+
+  it("does not arm the watchdog while every worker is still initialising", async () => {
+    // Browsers launching and sub-composition timelines settling can take
+    // longer than the stall window on a heavy composition. Counting that as
+    // no-progress made the watchdog fail exactly the long renders it guards.
+    hangParallelUntilAbort = true;
+    hangParallelPhase = "session_init";
+    const prev = process.env.HF_DE_STALL_MS;
+    process.env.HF_DE_STALL_MS = "50";
+    const controller = new AbortController();
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const baseInput = createInput(cfg);
+    const input = {
+      ...baseInput,
+      totalFrames: 100,
+      plan: { ...baseInput.plan, workerCount: 2, forceParallelStream: true },
+      abortSignal: controller.signal,
+    };
+
+    let caught: unknown;
+    const run = runCaptureStreamingStage(input).catch((error: unknown) => {
+      caught = error;
+    });
+    // Five stall windows with no frame and no phase change past init.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    controller.abort();
+    await run;
+
+    hangParallelUntilAbort = false;
+    hangParallelPhase = "frame_capture";
+    if (prev === undefined) delete process.env.HF_DE_STALL_MS;
+    else process.env.HF_DE_STALL_MS = prev;
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).not.toContain("stalled");
+  });
+
+  it("releases the writer with the dead worker's own error, not a stall", async () => {
+    // A transient Chrome death in one interleaved worker. Before, peers parked
+    // in the ordered writer until the watchdog relabelled it a stall a minute
+    // later; the original transient error — the one the orchestrator knows how
+    // to retry — was lost.
+    failWorkerTransient = true;
+    reorderAbortCalls.length = 0;
+    const prev = process.env.HF_DE_STALL_MS;
+    process.env.HF_DE_STALL_MS = "600000";
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const baseInput = createInput(cfg);
+    const input = {
+      ...baseInput,
+      totalFrames: 100,
+      plan: { ...baseInput.plan, workerCount: 2, forceParallelStream: true },
+    };
+
+    let caught: unknown;
+    try {
+      await runCaptureStreamingStage(input);
+    } catch (error) {
+      caught = error;
+    } finally {
+      failWorkerTransient = false;
+      if (prev === undefined) delete process.env.HF_DE_STALL_MS;
+      else process.env.HF_DE_STALL_MS = prev;
+    }
+
+    // The exact failure object the engine reported — not the pool's flattened
+    // "[Parallel] Capture failed: …" string, and not a stall.
+    expect(caught).toBe(injectedWorkerFailure);
+    expect((caught as Error).message).not.toContain("stalled");
+    // Parked peers were released with that same error.
+    expect(reorderAbortCalls).toEqual([injectedWorkerFailure]);
   });
 
   it("does not relabel a genuine parent-abort as a stall", async () => {

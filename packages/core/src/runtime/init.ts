@@ -77,6 +77,7 @@ import {
 import { installStudioCustomEase } from "./customEase";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { MEDIA_START_BASIS_ATTR } from "../mediaTiming";
+import { settleCompositionReadiness } from "../compositionReadiness";
 import {
   clearRuntimeData,
   setRuntimeData,
@@ -148,6 +149,50 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
     rawFpsSource,
     rawFps,
     fallbackReason: config.fpsFallbackReason,
+  };
+}
+
+function samePromiseSet(a: PromiseLike<unknown>[], b: PromiseLike<unknown>[] | null): boolean {
+  return b !== null && a.length === b.length && a.every((p, i) => p === b[i]);
+}
+
+// `Promise.all` allocates a fresh promise every call, so comparing ITS
+// identity across repeat polls is never stable — that re-arms a `.then()`
+// on every poll and never lets the caller observe "settled", even once the
+// underlying work is done. Compares the source promises themselves instead.
+function createSettledTracker(
+  collectPromises: () => PromiseLike<unknown>[],
+  onSettled: () => void,
+  onError: (err: unknown) => void,
+): () => boolean {
+  let tracked: PromiseLike<unknown>[] | null = null;
+  let settled = true;
+  return () => {
+    const promises = collectPromises();
+    if (promises.length === 0) {
+      tracked = null;
+      settled = true;
+      return true;
+    }
+    if (samePromiseSet(promises, tracked)) return settled;
+    tracked = promises;
+    settled = false;
+    const combined: PromiseLike<unknown> =
+      promises.length === 1 ? promises[0]! : Promise.all(promises);
+    void Promise.resolve(combined).then(
+      () => {
+        if (tracked !== promises) return;
+        settled = true;
+        onSettled();
+      },
+      (err) => {
+        if (tracked !== promises) return;
+        settled = true;
+        onError(err);
+        onSettled();
+      },
+    );
+    return settled;
   };
 }
 
@@ -2714,6 +2759,8 @@ export function initSandboxRuntimeModular(): void {
   // transport tick. A plain count misses same-count swaps (one sub-comp unloads
   // as another loads), so the signature keys on id+tag in document order.
   let clipTreeSignature = "";
+  let assetsReadyStarted = false;
+  let assetsSettled = false;
   let liveRootDurationOverrideSeconds = 0;
   const computeClipTreeSignature = (): string => {
     let sig = "";
@@ -2763,7 +2810,15 @@ export function initSandboxRuntimeModular(): void {
       clipTreeSignature = currentSignature;
     }
 
-    postRuntimeMessage(payload);
+    postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
+    if (!assetsReadyStarted) {
+      assetsReadyStarted = true;
+      settleCompositionReadiness(document, ({ timedOut }) => {
+        if (state.tornDown) return;
+        assetsSettled = true;
+        postRuntimeMessage({ source: "hf-preview", type: "assets-ready", timedOut });
+      });
+    }
     scheduleRootStageLayoutDiagnostics();
   };
 
@@ -2815,67 +2870,50 @@ export function initSandboxRuntimeModular(): void {
   let maybePublishRenderReady = () => {
     window.__renderReady = false;
   };
+
   // Internal adapter-readiness tracking. Adapters with outstanding async work
   // (Three.js `DefaultLoadingManager`, future fetch/font/image detectors) expose
   // a `getReadyPromise()` method; the runtime waits for whatever they return
   // before publishing render-ready. This is purely internal — there is no
   // authored-code-facing flag (LLMs should not need to know about render
   // readiness, the framework handles async asset gating automatically).
-  let trackedAdapterReadyPromise: PromiseLike<unknown> | null = null;
-  let trackedAdapterReadySettled = true;
-
-  const collectAdapterReadyPromises = (): PromiseLike<unknown>[] => {
-    const promises: PromiseLike<unknown>[] = [];
-    for (const adapter of state.deterministicAdapters) {
-      const getter = adapter.getReadyPromise;
-      if (typeof getter !== "function") continue;
-      try {
-        const p = getter();
-        if (p) promises.push(p);
-      } catch (err) {
-        // A throwing readiness gate must not permanently block render; swallow
-        // and continue, matching the rest of the runtime's adapter-resilience
-        // pattern.
-        swallow("runtime.init.adapterReady", err);
-      }
-    }
-    return promises;
-  };
-
-  const isAdapterReadinessSettled = (): boolean => {
-    const promises = collectAdapterReadyPromises();
-    if (promises.length === 0) {
-      trackedAdapterReadyPromise = null;
-      trackedAdapterReadySettled = true;
-      return true;
-    }
-    // Combine multiple adapter promises so we only attach a single resume
-    // handler. Identity is stable as long as the inputs are stable (each
-    // adapter is expected to return the same promise on repeat calls while
-    // its work is in flight).
-    const firstPromise = promises[0];
-    if (!firstPromise) return true;
-    const combined: PromiseLike<unknown> =
-      promises.length === 1 ? firstPromise : Promise.all(promises);
-    if (combined !== trackedAdapterReadyPromise) {
-      trackedAdapterReadyPromise = combined;
-      trackedAdapterReadySettled = false;
-      void Promise.resolve(combined).then(
-        () => {
-          if (trackedAdapterReadyPromise !== combined) return;
-          trackedAdapterReadySettled = true;
-          maybePublishRenderReady();
-        },
-        (err) => {
-          if (trackedAdapterReadyPromise !== combined) return;
-          trackedAdapterReadySettled = true;
+  const isAdapterReadinessSettled = createSettledTracker(
+    () => {
+      const promises: PromiseLike<unknown>[] = [];
+      for (const adapter of state.deterministicAdapters) {
+        const getter = adapter.getReadyPromise;
+        if (typeof getter !== "function") continue;
+        try {
+          const p = getter();
+          if (p) promises.push(p);
+        } catch (err) {
+          // A throwing readiness gate must not permanently block render; swallow
+          // and continue, matching the rest of the runtime's adapter-resilience
+          // pattern.
           swallow("runtime.init.adapterReady", err);
-          maybePublishRenderReady();
-        },
+        }
+      }
+      return promises;
+    },
+    () => maybePublishRenderReady(),
+    (err) => swallow("runtime.init.adapterReady", err),
+  );
+
+  // window.__hf.buildReady[key]: a piece registers a promise for setup no
+  // adapter can observe (mesh building, shader compiles). Waited the same
+  // way as adapter readiness, so render and preview both hold on it.
+  const isBuildReadinessSettled = createSettledTracker(
+    () => {
+      const registry = window.__hf?.buildReady;
+      if (!registry) return [];
+      return Object.values(registry).filter(
+        (p): p is PromiseLike<unknown> =>
+          p != null && typeof (p as PromiseLike<unknown>).then === "function",
       );
-    }
-    return trackedAdapterReadySettled;
-  };
+    },
+    () => maybePublishRenderReady(),
+    (err) => swallow("runtime.init.buildReady", err),
+  );
 
   if (!externalCompositionsReady) {
     const compositionLoaderParams = {
@@ -3251,6 +3289,10 @@ export function initSandboxRuntimeModular(): void {
     // second call here is cheap.
     runAdapters("discover", state.currentTime);
     if (!isAdapterReadinessSettled()) {
+      window.__renderReady = false;
+      return;
+    }
+    if (!isBuildReadinessSettled()) {
       window.__renderReady = false;
       return;
     }
@@ -4179,6 +4221,10 @@ export function initSandboxRuntimeModular(): void {
       }
     }
     state.deterministicAdapters = [];
+    // A stale, never-resolved buildReady promise from the torn-down composition
+    // would otherwise permanently block render-ready for whatever loads next
+    // into this window, since window.__hf itself is never reset.
+    if (window.__hf?.buildReady) window.__hf.buildReady = {};
     for (const cleanup of runtimeCleanupCallbacks.splice(0)) {
       try {
         cleanup();

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveStudioBooleanEnvFlag } from "./manualEditingAvailability";
+import { STUDIO_SDK_OPERATION_FAMILIES } from "../../utils/sdkCutoverPolicy";
 
 async function loadAvailabilityWithEnv(env: Record<string, string | undefined>) {
   vi.resetModules();
@@ -87,5 +88,23 @@ describe("manual editing availability", () => {
       VITE_STUDIO_FLAT_INSPECTOR_ENABLED: "false",
     });
     expect(off.STUDIO_FLAT_INSPECTOR_ENABLED).toBe(false);
+  });
+
+  it("defaults SDK cutover on for every family", async () => {
+    const all = await loadAvailabilityWithEnv({});
+    expect(all.STUDIO_SDK_CUTOVER_ENABLED).toBe(true);
+    expect(all.STUDIO_SDK_CUTOVER_FAMILIES).toEqual(new Set(STUDIO_SDK_OPERATION_FAMILIES));
+  });
+
+  it("honors the SDK cutover kill switches", async () => {
+    const off = await loadAvailabilityWithEnv({ VITE_STUDIO_SDK_CUTOVER_ENABLED: "false" });
+    expect(off.STUDIO_SDK_CUTOVER_ENABLED).toBe(false);
+    expect(off.STUDIO_SDK_CUTOVER_FAMILIES.size).toBe(0);
+
+    const subset = await loadAvailabilityWithEnv({
+      VITE_STUDIO_SDK_CUTOVER_FAMILIES: "dom,timing",
+    });
+    expect(subset.STUDIO_SDK_CUTOVER_ENABLED).toBe(true);
+    expect(subset.STUDIO_SDK_CUTOVER_FAMILIES).toEqual(new Set(["dom", "timing"]));
   });
 });

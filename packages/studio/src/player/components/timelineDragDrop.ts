@@ -4,7 +4,6 @@ import {
   parseTimelineCompositionPayload,
   TIMELINE_COMPOSITION_MIME,
 } from "../../utils/timelineCompositionDrop";
-import { usePlayerStore } from "../store/playerStore";
 import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 import {
@@ -15,7 +14,6 @@ import {
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
   ppsRef: RefObject<number>;
-  durationRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
@@ -53,11 +51,6 @@ function invokeDropCallback(callback: () => Promise<void> | void): void {
   }
 }
 
-function resolveDropStart(usePointerStart: boolean, pointerStart: number): number {
-  if (usePointerStart) return pointerStart;
-  return Math.max(0, usePlayerStore.getState().currentTime);
-}
-
 function applyFileDrop(
   transfer: DataTransfer,
   onFileDrop: TimelineDropCallbacks["onFileDrop"],
@@ -87,17 +80,14 @@ function applyTypedJsonDrop(
 }
 
 /**
- * Dropping an asset/file/block onto the timeline places it at the PLAYHEAD —
- * start is the current playhead time, only the track comes from the drop y.
- * Deliberate product choice (user preference, 2026-07-09): every add lands at
- * the playhead regardless of drop x, like CapCut's add-to-timeline. External
- * OS file drops and internal asset drops share this same placement path, so
- * both land identically.
+ * Dropping an asset/file/block/composition onto the timeline places it at the
+ * exact time and track it was dropped on, like CapCut (pointer placement on
+ * every track but the magnetic main track). Supersedes the prior playhead
+ * decision (#2291); playhead adds stay available, see useAddAssetAtPlayhead.
  */
 export function useTimelineAssetDrop({
   scrollRef,
   ppsRef,
-  durationRef,
   trackOrderRef,
   rowGeometryRef,
   contentOrigin,
@@ -108,6 +98,7 @@ export function useTimelineAssetDrop({
   sessionEpoch,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dropPreview, setDropPreview] = useState<TimelinePlacement | null>(null);
   const dragPointerRef = useRef<{ clientX: number; clientY: number; sessionEpoch: number } | null>(
     null,
   );
@@ -152,6 +143,28 @@ export function useTimelineAssetDrop({
     [scrollRef, sessionEpoch, stepAutoScroll],
   );
 
+  const resolveDropPlacement = useCallback(
+    (clientX: number, clientY: number): TimelinePlacement => {
+      const scroll = scrollRef.current;
+      const rect = scroll?.getBoundingClientRect();
+      return resolveTimelineAssetDrop(
+        {
+          rectLeft: rect?.left ?? 0,
+          rectTop: rect?.top ?? 0,
+          scrollLeft: scroll?.scrollLeft ?? 0,
+          scrollTop: scroll?.scrollTop ?? 0,
+          contentOrigin,
+          pixelsPerSecond: ppsRef.current,
+          rowHeights: rowGeometryRef.current.rowHeights,
+          trackOrder: trackOrderRef.current,
+        },
+        clientX,
+        clientY,
+      );
+    },
+    [scrollRef, ppsRef, trackOrderRef, rowGeometryRef, contentOrigin],
+  );
+
   const handleAssetDragOver = useCallback(
     (e: React.DragEvent) => {
       const types = Array.from(e.dataTransfer.types);
@@ -164,15 +177,20 @@ export function useTimelineAssetDrop({
       e.dataTransfer.dropEffect = "copy";
       activeDropEpochRef.current = sessionEpoch;
       setIsDragOver(true);
+      const next = resolveDropPlacement(e.clientX, e.clientY);
+      setDropPreview((prev) =>
+        prev?.start === next.start && prev.track === next.track ? prev : next,
+      );
       syncAutoScroll(e.clientX, e.clientY);
     },
-    [sessionEpoch, syncAutoScroll],
+    [resolveDropPlacement, sessionEpoch, syncAutoScroll],
   );
 
   const clearDropPreview = useCallback(() => {
     activeDropEpochRef.current = null;
     stopAutoScroll();
     setIsDragOver(false);
+    setDropPreview(null);
   }, [stopAutoScroll]);
 
   const handleAssetDragLeave = useCallback(
@@ -184,49 +202,21 @@ export function useTimelineAssetDrop({
     [clearDropPreview],
   );
 
-  const resolveDropPlacement = useCallback(
-    (clientX: number, clientY: number, usePointerStart = false): TimelinePlacement => {
-      const scroll = scrollRef.current;
-      const rect = scroll?.getBoundingClientRect();
-      const pointer = resolveTimelineAssetDrop(
-        {
-          rectLeft: rect?.left ?? 0,
-          rectTop: rect?.top ?? 0,
-          scrollLeft: scroll?.scrollLeft ?? 0,
-          scrollTop: scroll?.scrollTop ?? 0,
-          contentOrigin,
-          pixelsPerSecond: ppsRef.current,
-          duration: durationRef.current,
-          clampStartToDuration: !usePointerStart,
-          rowHeights: rowGeometryRef.current.rowHeights,
-          trackOrder: trackOrderRef.current,
-        },
-        clientX,
-        clientY,
-      );
-      return {
-        start: resolveDropStart(usePointerStart, pointer.start),
-        track: pointer.track,
-      };
-    },
-    [scrollRef, ppsRef, durationRef, trackOrderRef, rowGeometryRef, contentOrigin],
-  );
-
   const handleAssetDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       const canCommit = activeDropEpochRef.current === sessionEpoch;
       clearDropPreview();
       if (!canCommit) return;
+      const placement = resolveDropPlacement(e.clientX, e.clientY);
+
       const compositionPayload = parseTimelineCompositionPayload(
         e.dataTransfer.getData(TIMELINE_COMPOSITION_MIME),
       );
       if (compositionPayload && onCompositionDrop) {
-        const placement = resolveDropPlacement(e.clientX, e.clientY, true);
         invokeDropCallback(() => onCompositionDrop(compositionPayload.sourcePath, placement));
         return;
       }
-      const placement = resolveDropPlacement(e.clientX, e.clientY);
 
       if (applyFileDrop(e.dataTransfer, onFileDrop, placement)) return;
       if (applyTypedJsonDrop(e.dataTransfer, TIMELINE_ASSET_MIME, "path", onAssetDrop, placement)) {
@@ -256,6 +246,7 @@ export function useTimelineAssetDrop({
 
   return {
     isDragOver,
+    dropPreview,
     handleAssetDragOver,
     handleAssetDragLeave,
     handleAssetDrop,

@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
-import { Image, Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
+import {
+  Image,
+  Magnet,
+  MagnifyingGlassMinus,
+  MagnifyingGlassPlus,
+  Waves,
+} from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -126,6 +132,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
+  const rippleEditEnabled = usePlayerStore((s) => s.rippleEditEnabled);
+  const setRippleEditEnabled = usePlayerStore((s) => s.setRippleEditEnabled);
   const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
   const setAutoKeyframeEnabled = usePlayerStore((s) => s.setAutoKeyframeEnabled);
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
@@ -226,6 +234,23 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               className={timelineSnapEnabled ? flatActive : flatIdle}
             >
               <Magnet size={16} weight="bold" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip
+            label={
+              rippleEditEnabled
+                ? "Ripple on — keeps the main track gapless"
+                : "Ripple off — deleting a main-track clip leaves a gap"
+            }
+          >
+            <button
+              type="button"
+              onClick={() => setRippleEditEnabled(!rippleEditEnabled)}
+              aria-label="Toggle ripple edit"
+              aria-pressed={rippleEditEnabled}
+              className={rippleEditEnabled ? flatActive : flatIdle}
+            >
+              <Waves size={16} weight="bold" aria-hidden="true" />
             </button>
           </Tooltip>
           {/* Always rendered (CapCut-style): with no keyframeable selection the

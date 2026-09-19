@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildZeroDurationDiagnostic,
   classifyConsoleScriptFailure,
   DrawElementVerificationError,
   formatHttpErrorDiagnostic,
@@ -7,6 +8,7 @@ import {
   formatNavigationFailureDiagnostic,
   formatNavigationStartDiagnostic,
   formatRequestFailureDiagnostic,
+  HF_READY_DIAGNOSTIC_EXPR,
   getDrawElementVerificationDetails,
   isFontResourceError,
   isDrawElementVerificationError,
@@ -355,5 +357,103 @@ describe("DrawElementVerificationError details", () => {
       { kind: "psnr", frameIndex: 5, failedDb: 12.1, verifyThresholdDb: 32 },
     );
     expect(getDrawElementVerificationDetails(adversarial)?.kind).toBe("psnr");
+  });
+});
+
+describe("buildZeroDurationDiagnostic", () => {
+  const baseDiag = {
+    renderReady: false,
+    hasHf: true,
+    hasSeek: true,
+    hasPlayer: true,
+    duration: 0,
+    hasTimeline: true,
+    declaredDuration: 6,
+    pendingBuildReadyKeys: [] as string[],
+    rejectedBuildReadyKeys: [] as string[],
+  };
+
+  it("names the stuck buildReady key instead of blaming GSAP/data-duration", () => {
+    const message = buildZeroDurationDiagnostic({
+      ...baseDiag,
+      pendingBuildReadyKeys: ["heavy-mesh"],
+    });
+    expect(message).toContain("window.__hf.buildReady never resolved for: heavy-mesh");
+  });
+
+  it("lists every stuck key when more than one is pending", () => {
+    const message = buildZeroDurationDiagnostic({
+      ...baseDiag,
+      pendingBuildReadyKeys: ["heavy-mesh", "shader-warmup"],
+    });
+    expect(message).toContain(
+      "window.__hf.buildReady never resolved for: heavy-mesh, shader-warmup",
+    );
+  });
+
+  it("omits the buildReady hint entirely when nothing is pending or rejected", () => {
+    const message = buildZeroDurationDiagnostic(baseDiag);
+    expect(message).not.toContain("buildReady");
+  });
+
+  it("names a rejected buildReady key separately from a pending one", () => {
+    const message = buildZeroDurationDiagnostic({
+      ...baseDiag,
+      pendingBuildReadyKeys: ["heavy-mesh"],
+      rejectedBuildReadyKeys: ["shader-warmup"],
+    });
+    expect(message).toContain("window.__hf.buildReady never resolved for: heavy-mesh");
+    expect(message).toContain("window.__hf.buildReady rejected for: shader-warmup");
+  });
+});
+
+describe("HF_READY_DIAGNOSTIC_EXPR (evaluated as real JS, not via a fake fixture)", () => {
+  // The expression is a Puppeteer page.evaluate string, never executed by
+  // any other test. Running it here through `new Function` against a fake
+  // window/document exercises its actual settle/reject logic in-process.
+  async function runDiagnosticExpr(buildReady: Record<string, unknown>): Promise<{
+    pendingBuildReadyKeys: string[];
+    rejectedBuildReadyKeys: string[];
+  }> {
+    const fakeWindow = {
+      __hf: { seek: () => {}, duration: 0, buildReady },
+      __player: {},
+      __renderReady: false,
+      __timelines: {},
+    };
+    const fakeDocument = { querySelector: () => null };
+    const run = new Function("window", "document", `return ${HF_READY_DIAGNOSTIC_EXPR}`) as (
+      win: unknown,
+      doc: unknown,
+    ) => Promise<{
+      pendingBuildReadyKeys: string[];
+      rejectedBuildReadyKeys: string[];
+    }>;
+    return run(fakeWindow, fakeDocument);
+  }
+
+  it("does not reject the whole diagnostic when a buildReady entry rejects", async () => {
+    const result = await runDiagnosticExpr({ heavy: Promise.reject(new Error("boom")) });
+    expect(result.rejectedBuildReadyKeys).toEqual(["heavy"]);
+    expect(result.pendingBuildReadyKeys).toEqual([]);
+  });
+
+  it("reports a settled non-native thenable as resolved, not pending", async () => {
+    const settledThenable = { then: (res: (v: unknown) => void) => res(1) };
+    const result = await runDiagnosticExpr({ heavy: settledThenable });
+    expect(result.pendingBuildReadyKeys).toEqual([]);
+    expect(result.rejectedBuildReadyKeys).toEqual([]);
+  });
+
+  it("reports a genuinely pending promise as pending", async () => {
+    const result = await runDiagnosticExpr({ heavy: new Promise(() => {}) });
+    expect(result.pendingBuildReadyKeys).toEqual(["heavy"]);
+    expect(result.rejectedBuildReadyKeys).toEqual([]);
+  });
+
+  it("returns empty arrays for a composition with no buildReady registrations", async () => {
+    const result = await runDiagnosticExpr({});
+    expect(result.pendingBuildReadyKeys).toEqual([]);
+    expect(result.rejectedBuildReadyKeys).toEqual([]);
   });
 });

@@ -36,6 +36,10 @@ export const examples: Example[] = [
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
   ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
   [
+    "Show full lint findings instead of the summary line",
+    "hyperframes render --lint-verbose --output out.mp4",
+  ],
+  [
     "Relocate frame cache off C: (Windows) or another small partition",
     "hyperframes render --frames-cache-dir D:/hf-cache --output out.mp4",
   ],
@@ -243,6 +247,11 @@ export default defineCommand({
       description: "Suppress verbose output",
       default: false,
     },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings instead of the summary line",
+      default: false,
+    },
     debug: {
       type: "boolean",
       description:
@@ -345,6 +354,22 @@ export default defineCommand({
         "Timeout in ms for the composition player to become ready. " +
         "Increase for complex compositions on slow hardware. Default: 45000 (45 s). " +
         "Env: PRODUCER_PLAYER_READY_TIMEOUT_MS.",
+    },
+    resume: {
+      type: "boolean",
+      description:
+        "Segmented capture only (HF_SEGMENTED_CAPTURE=true): reuse segments a " +
+        "previous run of the same composition and settings already finished, " +
+        "recorded in renders/.hf-segments/<hash>/segments.json. Each reused " +
+        "segment is re-validated before it is skipped.",
+      default: false,
+    },
+    "keep-segments": {
+      type: "boolean",
+      description:
+        "Segmented capture only: keep renders/.hf-segments/<hash> after a " +
+        "successful render instead of deleting it.",
+      default: false,
     },
     "low-memory-mode": {
       type: "boolean",
@@ -461,6 +486,10 @@ export interface RenderOptions {
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
   debug?: boolean;
+  /** Segmented capture: reuse a prior run's validated segments. */
+  resumeSegments?: boolean;
+  /** Segmented capture: keep the segment directory after success. */
+  keepSegments?: boolean;
   bestEffort?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
@@ -1040,6 +1069,8 @@ async function executeLocalRender(
       outputResolution: options.outputResolution,
       outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
       debug: options.debug,
+      resumeSegments: options.resumeSegments,
+      keepSegments: options.keepSegments,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
     },
   });
@@ -1742,6 +1773,11 @@ function trackRenderMetrics(
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),
+    chromeBrowserRssPeakMb: perf?.chromeMemory?.browserRssPeakMb,
+    chromeRendererRssPeakMb: perf?.chromeMemory?.rendererRssPeakMb,
+    chromeRssLastMb: perf?.chromeMemory?.rssLastMb,
+    chromeGpuProcessSeenLastSample: perf?.chromeMemory?.gpuProcessSeenLastSample,
+    chromeMemorySamples: perf?.chromeMemory?.samples,
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,

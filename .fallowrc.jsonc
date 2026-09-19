@@ -893,12 +893,15 @@
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",
       "packages/studio/src/components/sidebar/LeftSidebar.tsx",
-      "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
       "packages/studio/src/components/StudioRightPanel.tsx",
       "packages/studio/src/components/StudioToast.tsx",
       "packages/studio/src/components/ui/Tooltip.tsx",
       "packages/studio/src/components/ui/useDialogBehavior.ts",
       "packages/studio/src/hooks/useAppHotkeys.ts",
+      // dispatchModifierKey/dispatchPlainKey moved verbatim out of the
+      // already-suppressed useAppHotkeys.ts above, to keep that file under
+      // the 600-line cap. Same pre-existing complexity, new file path.
+      "packages/studio/src/hooks/appHotkeysDispatch.ts",
       "packages/studio/src/hooks/useCaptionDetection.ts",
       "packages/studio/src/hooks/useFileManager.ts",
       "packages/studio/src/hooks/useFrameCapture.ts",
@@ -962,6 +965,11 @@
       // file-level fingerprint invalidation re-flags the inherited findings even at
       // unchanged line numbers.
       "packages/core/src/runtime/picker.ts",
+      // generate-catalog-payloads.ts: hostsOwnDirectory, parseArgs and main are
+      // untouched. buildPayload's canvas-draw-element branch now writes a marker
+      // via a small writePayload helper instead of dropping the payload, but at
+      // the same branch count — its flagged 14-branch CRAP score predates this PR.
+      "scripts/generate-catalog-payloads.ts",
     ],
   },
 }

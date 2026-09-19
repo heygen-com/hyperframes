@@ -39,12 +39,22 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
   playheadRef: React.RefObject<HTMLDivElement | null>;
   /** Gap strips: loud on gap-menu-row hover, quiet on the selected clip's lane. */
   laneGapStrips: TimelineLaneGapStrips[];
+  /** Landing spot of an outside drag in progress, or null. */
+  dropPreview: { start: number; track: number } | null;
 }
+
+// A dropped clip's length is unknown until it lands; the preview shows a default.
+const DROP_PREVIEW_SECONDS = 3;
 
 export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
   const { draggedClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
+  const dropTrackIndex = props.dropPreview
+    ? displayTrackOrder.indexOf(props.dropPreview.track)
+    : -1;
+  // A track not in the order is a new track, drawn one row past the last lane.
+  const dropRowIndex = dropTrackIndex < 0 ? displayTrackOrder.length : dropTrackIndex;
   const draggedRowHeight = getTimelineRowHeight(draggedRowIndex, props.rowHeights);
   // A clip bar in an EXPANDED row still renders at TRACK_H (the property lanes
   // occupy the rest of the row — see TimelineLanes' clipHeight), so the drag
@@ -163,6 +173,26 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             left: props.contentOrigin + draggedClip.previewStart * props.pps,
             width: Math.max(draggedClip.element.duration * props.pps, 4),
             height: draggedClipHeight,
+            border: "1px solid rgba(60,230,172,0.55)",
+            background: "rgba(60,230,172,0.12)",
+            borderRadius: 4,
+            zIndex: 30,
+          }}
+        />
+      )}
+
+      {/* Drop preview: where an asset or file dragged in from outside will land
+          (a row past the last lane means a new track). */}
+      {props.dropPreview && (
+        <div
+          aria-hidden="true"
+          data-testid="timeline-drop-preview"
+          className="absolute pointer-events-none"
+          style={{
+            top: getTimelineRowTop(dropRowIndex, props.rowHeights) + CLIP_Y,
+            left: props.contentOrigin + props.dropPreview.start * props.pps,
+            width: DROP_PREVIEW_SECONDS * props.pps,
+            height: TRACK_H - CLIP_Y * 2,
             border: "1px solid rgba(60,230,172,0.55)",
             background: "rgba(60,230,172,0.12)",
             borderRadius: 4,

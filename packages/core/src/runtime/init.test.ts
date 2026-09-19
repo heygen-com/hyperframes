@@ -196,6 +196,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
+    delete window.__hf;
     delete window.gsap;
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -2532,7 +2533,8 @@ describe("initSandboxRuntimeModular", () => {
     expect(player).toBeDefined();
 
     player?.play();
-    raf.step(1_000);
+    // Sub-threshold steps: the stall policy treats one big unread jump as a stall.
+    for (let steps = 0; steps < 4; steps++) raf.step(250);
 
     expect(player?.isPlaying()).toBe(true);
     expect(player?.getTime()).toBeCloseTo(1, 1);
@@ -2825,6 +2827,94 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(10);
   });
 
+  it("waits for window.__hf.buildReady before publishing render readiness", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+    };
+
+    // Same registration shape a composition uses: a promise it resolves once
+    // its own heavy setup (mesh build, shader compile) is actually drawable.
+    let resolveBuild: () => void = () => {};
+    const buildPromise = new Promise<void>((resolve) => {
+      resolveBuild = resolve;
+    });
+    window.__hf = window.__hf || {};
+    window.__hf.buildReady = { frost: buildPromise };
+
+    initSandboxRuntimeModular();
+
+    // Player ready, render NOT ready because the declared build is pending.
+    expect(window.__playerReady).toBe(true);
+    expect(window.__renderReady).toBe(false);
+
+    resolveBuild();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(window.__renderReady).toBe(true);
+  });
+
+  it("settles window.__hf.buildReady with two or more registered keys", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(10) };
+
+    // A multi-key registry rebuilds a fresh Promise.all on every poll; a
+    // settled-tracker that compares that combined promise's identity (rather
+    // than the source promises) never observes "settled" and hangs forever.
+    window.__hf = window.__hf || {};
+    window.__hf.buildReady = { a: Promise.resolve(), b: Promise.resolve() };
+
+    initSandboxRuntimeModular();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(window.__renderReady).toBe(true);
+  });
+
+  it("clears a stale buildReady entry on teardown so the next init isn't blocked by it", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    window.__hf = window.__hf || {};
+    // Simulates a composition that registered a build hold and was torn down
+    // (piece removed, project swapped) before that promise ever resolved.
+    window.__hf.buildReady = { stale: new Promise<void>(() => {}) };
+
+    initSandboxRuntimeModular();
+    window.__hfRuntimeTeardown?.();
+
+    // A fresh composition loads into the same window without registering
+    // anything under "stale" — the leftover promise must not still be polled.
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(window.__renderReady).toBe(true);
+  });
+
   it("sets __renderReady even without a GSAP timeline (CSS/WAAPI compositions)", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -3002,6 +3092,42 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(seekTimes.length).toBeGreaterThanOrEqual(2);
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
+  });
+
+  it("posts assets-ready once, after the timeline, and only once a pending image settles", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "5");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    const img = document.createElement("img");
+    const decodes: Array<() => void> = [];
+    Object.defineProperty(img, "complete", { value: false, configurable: true });
+    img.decode = () => new Promise<void>((resolve) => decodes.push(resolve));
+    root.appendChild(img);
+    document.body.appendChild(root);
+    window.__timelines = { root: createMockTimeline(5) };
+    const outbound: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message === "object" && message !== null) {
+        outbound.push(message as Record<string, unknown>);
+      }
+    });
+
+    initSandboxRuntimeModular();
+    const types = () => outbound.map((m) => m.type);
+    expect(outbound.find((m) => m.type === "timeline")?.assetsReady).toBe(false);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(types()).not.toContain("assets-ready");
+
+    decodes.forEach((resolve) => resolve());
+    await vi.waitFor(() => expect(types()).toContain("assets-ready"));
+    window.__player!.renderSeek(1);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(types().filter((t) => t === "assets-ready")).toHaveLength(1);
+    expect(decodes).toHaveLength(1);
+    expect(types().indexOf("assets-ready")).toBeGreaterThan(types().indexOf("timeline"));
   });
 
   it("accepts replayed transport controls when the bridge announces ready without duplicate listeners", () => {

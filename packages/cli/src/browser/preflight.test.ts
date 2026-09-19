@@ -88,10 +88,14 @@ describe("runEnvironmentChecks", () => {
         const deadline = Date.now() + 2_000;
         while (probePid === undefined && Date.now() < deadline) {
           try {
-            probePid = Number(readFileSync(pidPath, "utf8").trim());
+            // Shell `>` redirection creates (truncates) the file before `echo $$`
+            // writes to it — a read can land on that empty window and parse to 0.
+            const pid = Number(readFileSync(pidPath, "utf8").trim());
+            if (Number.isInteger(pid) && pid > 0) probePid = pid;
           } catch {
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            // pid file not created yet
           }
+          if (probePid === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
         }
         expect(probePid).toBeGreaterThan(0);
 

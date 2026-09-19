@@ -95,39 +95,101 @@ function enclosingTopLevel(statements: Node[], start: number, end: number): Node
   return null;
 }
 
-function isHelperDeclNamed(stmt: Node, names: Set<string>): boolean {
-  if (stmt.type === "FunctionDeclaration") return names.has(stmt.id?.name);
-  if (stmt.type === "VariableDeclaration") {
-    return (stmt.declarations ?? []).some((d: Node) => names.has(d.id?.name));
-  }
-  return false;
+/** A statement that only declares a function: its tweens run when something calls it, not here. */
+function declaresFunction(stmt: Node): boolean {
+  if (stmt.type === "FunctionDeclaration") return true;
+  return (
+    stmt.type === "VariableDeclaration" &&
+    (stmt.declarations ?? []).some((d: Node) =>
+      ["FunctionExpression", "ArrowFunctionExpression"].includes(d.init?.type),
+    )
+  );
+}
+
+/** Names a top-level function or variable statement declares. */
+function declaredNames(stmt: Node): string[] {
+  if (stmt.type === "FunctionDeclaration") return stmt.id?.name ? [stmt.id.name] : [];
+  if (stmt.type !== "VariableDeclaration") return [];
+  return (stmt.declarations ?? []).flatMap((d: Node) => (d.id?.name ? [d.id.name] : []));
+}
+
+/** Whole-identifier match; `\b` cannot anchor on `$` or non-ASCII letters, so the boundary is explicit. */
+function mentionsIdentifier(text: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{ID_Continue}$])${escaped}(?![\\p{ID_Continue}$])`, "u").test(text);
 }
 
 /**
- * Rewrite `script` so top-level helper calls / loops that build the timeline
- * become explicit literal tweens. Returns the original script unchanged when
- * there is nothing statically-resolvable to unroll.
+ * Helper declarations that nothing left in the script still references. Liveness is read from the
+ * remaining source, not inferred from what the parser expanded, so a call it did not expand keeps its helper.
  */
+function unreferencedHelperDecls(
+  statements: Node[],
+  script: string,
+  unrolled: Set<Node>,
+  helperNames: Set<string>,
+) {
+  let live = statements.filter((stmt) => !unrolled.has(stmt));
+  const dead: Node[] = [];
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const decl of live) {
+      const names = declaredNames(decl);
+      if (names.length === 0 || !names.every((n) => helperNames.has(n))) continue;
+      const others = live.filter((s) => s !== decl).map((s) => script.slice(s.start, s.end));
+      if (names.some((n) => others.some((text) => mentionsIdentifier(text, n)))) continue;
+      dead.push(decl);
+      live = live.filter((s) => s !== decl);
+      changed = true;
+    }
+  }
+  return dead;
+}
+
+/** A literal tween cannot encode an unknown start, duration or selector, so those statements stay as authored. */
+function dropStatementsWithUnknownTiming(byStatement: Map<Node, GsapAnimation[]>): void {
+  for (const [stmt, anims] of byStatement) {
+    if (
+      anims.some(
+        (a) => a.durationUnresolved || a.resolvedStart === undefined || a.hasUnresolvedSelector,
+      )
+    ) {
+      byStatement.delete(stmt);
+    }
+  }
+}
+
+/**
+ * Group computed animations by their top-level statement. Null when a tween originates inside a
+ * function declaration: a call site could then mix expandable and unexpandable tweens.
+ */
+function groupByTopLevelStatement(computed: GsapAnimation[], statements: Node[]) {
+  const byStatement = new Map<Node, GsapAnimation[]>();
+  const helperNames = new Set<string>();
+  for (const anim of computed) {
+    const [s, e] = anim.provenance!.sourceRange!;
+    const stmt = enclosingTopLevel(statements, s, e);
+    if (stmt && declaresFunction(stmt)) return null;
+    if (!stmt) continue; // nested origin — leave it; can't map to a top-level edit
+    if (anim.provenance?.fn) helperNames.add(anim.provenance.fn);
+    const list = byStatement.get(stmt) ?? [];
+    list.push(anim);
+    byStatement.set(stmt, list);
+  }
+  return { byStatement, helperNames };
+}
+
+/** Rewrite top-level helper calls and loops into literal tweens; unchanged when nothing can be unrolled. */
 export function unrollComputedTimeline(script: string): string {
   const parsed = parseGsapScriptAcorn(script);
   const computed = parsed.animations.filter((a) => isComputed(a) && a.provenance?.sourceRange);
   if (computed.length === 0) return script;
 
   const statements = topLevelStatements(script);
-
-  // Group computed animations by the top-level statement that produced them,
-  // preserving source order within each group.
-  const byStatement = new Map<Node, GsapAnimation[]>();
-  const helperNames = new Set<string>();
-  for (const anim of computed) {
-    if (anim.provenance?.fn) helperNames.add(anim.provenance.fn);
-    const [s, e] = anim.provenance!.sourceRange!;
-    const stmt = enclosingTopLevel(statements, s, e);
-    if (!stmt) continue; // nested origin — leave it; can't map to a top-level edit
-    const list = byStatement.get(stmt) ?? [];
-    list.push(anim);
-    byStatement.set(stmt, list);
-  }
+  const grouped = groupByTopLevelStatement(computed, statements);
+  if (!grouped) return script;
+  const { byStatement, helperNames } = grouped;
+  dropStatementsWithUnknownTiming(byStatement);
   if (byStatement.size === 0) return script;
 
   const ms = new MagicString(script);
@@ -135,9 +197,13 @@ export function unrollComputedTimeline(script: string): string {
     const literals = anims.map((a) => serializeTweenStatement(parsed.timelineVar, a)).join("\n");
     ms.overwrite(stmt.start, stmt.end, literals);
   }
-  // Drop the now-dead helper declarations.
-  for (const stmt of statements) {
-    if (isHelperDeclNamed(stmt, helperNames)) ms.remove(stmt.start, stmt.end);
+  for (const decl of unreferencedHelperDecls(
+    statements,
+    script,
+    new Set(byStatement.keys()),
+    helperNames,
+  )) {
+    ms.remove(decl.start, decl.end);
   }
   return ms.toString();
 }

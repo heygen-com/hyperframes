@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
+import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { usePreviewGuidesStore } from "./previewGuidesStore";
 
 const SNAP_DEFAULTS = {
   snapEnabled: true,
@@ -39,6 +40,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
   const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
   const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
   const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
+  const guides = usePreviewGuidesStore();
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -116,6 +118,28 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           <Path size={16} weight={motionPathArmed ? "fill" : "regular"} />
         </button>
       )}
+      {(
+        [
+          ["rulerVisible", "Ruler", Ruler],
+          ["safeMarginsVisible", "Safe margins", FrameCorners],
+        ] as const
+      ).map(([key, label, Icon]) => (
+        <button
+          key={key}
+          type="button"
+          className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
+            guides[key]
+              ? "bg-studio-accent/20 text-studio-accent"
+              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
+          }`}
+          onClick={() => guides.toggle(key)}
+          title={`${label} ${guides[key] ? "on" : "off"}`}
+          aria-label={`Toggle ${label.toLowerCase()}`}
+          aria-pressed={guides[key]}
+        >
+          <Icon size={16} weight={guides[key] ? "fill" : "regular"} />
+        </button>
+      ))}
       <button
         type="button"
         className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${

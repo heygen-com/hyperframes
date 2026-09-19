@@ -54,6 +54,7 @@ export class ShaderLoaderState {
     this._el.frameRow.style.visibility = "hidden";
   }
 
+  // fallow-ignore-next-line unused-class-member, complexity
   update(status: ShaderTransitionState, loadingMode: string): void {
     if (loadingMode !== "player") {
       this.reset();
@@ -63,6 +64,9 @@ export class ShaderLoaderState {
       this.hide();
       return;
     }
+    // showAssetsLoading() may have left "Loading assets" here for a prior
+    // show; this path owns the label whenever it's the one drawing the panel.
+    this._el.root.setAttribute("aria-label", "Preparing scene transitions");
 
     const progress =
       typeof status.progress === "number" && Number.isFinite(status.progress) ? status.progress : 0;
@@ -86,6 +90,7 @@ export class ShaderLoaderState {
 
     this._el.fill.style.transform = `scaleX(${ratio})`;
 
+    // fallow-ignore-next-line code-duplication
     this._el.transitionValue.textContent =
       status.currentTransition !== undefined && status.transitionTotal !== undefined
         ? `${status.currentTransition}/${status.transitionTotal}`
@@ -111,6 +116,17 @@ export class ShaderLoaderState {
     this.show();
   }
 
+  /** Second reason to show the same overlay — reuses the shader-transition
+   *  panel's DOM rather than drawing a second one. */
+  showAssetsLoading(): void {
+    this.reset();
+    this._el.title.textContent = "Loading assets";
+    this._el.detail.textContent = "Waiting for images, video and fonts to finish loading.";
+    this._el.root.setAttribute("aria-label", "Loading assets");
+    this.show();
+  }
+
+  // fallow-ignore-next-line unused-class-member
   get hideTimeout(): ReturnType<typeof setTimeout> | null {
     return this._hideTimeout;
   }

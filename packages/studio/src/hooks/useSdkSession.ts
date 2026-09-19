@@ -181,7 +181,15 @@ export function useSdkSession(
 
     readProjectFileOptional(projectId, activeCompPath)
       .then(async (content) => {
-        if (cancelled || typeof content !== "string") return;
+        if (cancelled) return;
+        if (typeof content !== "string") {
+          // No SDK session follows, so EVERY cutover chokepoint below takes the
+          // server path and emits nothing — the shadow never runs either. This
+          // is the only place a missing session can originate, so a broken read
+          // would otherwise be a silent, total SDK bypass.
+          trackStudioEvent("sdk_session_unavailable", { stage: "read" });
+          return;
+        }
         // No persist queue: Studio's writeProjectFile (via sdkCutover's
         // persistSdkSerialize) is the SINGLE writer. Wiring the SDK persist
         // queue too would double-write the file (queue auto-writes on every
@@ -206,6 +214,7 @@ export function useSdkSession(
           )
         ) {
           disposeSdkSession(comp);
+          trackStudioEvent("sdk_session_unavailable", { stage: "ownership" });
           return;
         }
         const displaced = ownedSessionRef.current;
@@ -215,8 +224,17 @@ export function useSdkSession(
         setOwnedSession(installed);
         if (displaced && displaced.session !== comp) disposeSdkSession(displaced.session);
       })
-      .catch(() => {
-        if (!cancelled && generationRef.current === generation) setOwnedSession(null);
+      .catch((error: unknown) => {
+        if (!cancelled && generationRef.current === generation) {
+          setOwnedSession(null);
+          // openComposition threw (unparseable composition, OOM) — same total
+          // bypass as the read failure above, but this one is a real defect
+          // rather than a missing file. Carry the message; it is the only clue.
+          trackStudioEvent("sdk_session_unavailable", {
+            stage: "open",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       });
 
     return () => {

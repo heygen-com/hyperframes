@@ -20,6 +20,7 @@ import {
 } from "./timelineGroupEditing";
 import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
+import { resolveDragLandingStart } from "./timelineDragLanding";
 
 /** Snap-target builder closure supplied by the hook (closes over refs + store). */
 type BuildSnapTargets = (
@@ -200,12 +201,18 @@ export function computeDragPreview(
     nextMove.track,
     ctx,
   );
+  const placed = { ...drag, previewStart, previewTrack, insertRow };
+  const snappedStart = resolveDragLandingStart(placed, {
+    elements,
+    trackOrder,
+    selectedKeys,
+  });
   return {
     ...drag,
     started: true,
     pointerClientX: clientX,
     pointerClientY: clientY,
-    previewStart,
+    previewStart: snappedStart,
     previewTrack,
     // The lane the POINTER aims at (pre-collision): the commit reads it to tell a
     // deliberate vertical lane change from a horizontal drag merely bumped sideways.

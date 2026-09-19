@@ -6,6 +6,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
+import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
@@ -148,7 +149,9 @@ export function useBlockHandlers({
           previewIframe: previewIframeRef.current,
           currentTime: usePlayerStore.getState().currentTime,
         }),
-      );
+      ).then((result) => {
+        if (result) selectAndRevealTimelineElement(result.hostKey);
+      });
     },
     [projectId, blockCtx, previewIframeRef, runBlockInstall],
   );
@@ -184,7 +187,9 @@ export function useBlockHandlers({
           previewIframe: previewIframeRef.current,
           currentTime: usePlayerStore.getState().currentTime,
         }),
-      );
+      ).then((result) => {
+        if (result) selectAndRevealTimelineElement(result.hostKey);
+      });
     },
     [projectId, blockCtx, previewIframeRef, runBlockInstall],
   );

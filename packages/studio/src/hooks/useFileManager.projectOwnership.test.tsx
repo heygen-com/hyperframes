@@ -7,7 +7,6 @@ vi.mock("./useFileTree", () => ({
   useFileTree: () => ({
     projectDir: "",
     fileTree: [],
-    setFileTree: vi.fn(),
     fileTreeLoaded: true,
     refreshFileTree: vi.fn(async () => {}),
     compositions: [],

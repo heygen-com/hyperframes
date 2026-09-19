@@ -711,6 +711,17 @@ function isGsapTimelineCall(node: any): boolean {
 interface TimelineDefaults {
   ease?: string;
   duration?: number;
+  durationUnresolved?: boolean;
+}
+
+/** True when the vars argument may carry a duration that static evaluation could not read. */
+function hasUnknownDuration(varsNode: any, scope: ScopeBindings): boolean {
+  if (!varsNode) return false;
+  if (varsNode.type !== "ObjectExpression") return true;
+  const props: any[] = varsNode.properties ?? [];
+  if (props.some((p) => p.type === "SpreadElement")) return true;
+  const prop = props.find((p) => isObjectProperty(p) && propKeyName(p) === "duration");
+  return prop !== undefined && typeof resolveNode(prop.value, scope) !== "number";
 }
 
 // How the timeline is referred to in source. `identifier` is the canonical
@@ -782,7 +793,10 @@ function extractTimelineDefaults(
     const key = propKeyName(prop);
     const val = resolveNode(prop.value, scope);
     if (key === "ease" && typeof val === "string") result.ease = val;
-    if (key === "duration" && typeof val === "number") result.duration = val;
+    if (key === "duration") {
+      if (typeof val === "number") result.duration = val;
+      else result.durationUnresolved = true;
+    }
   }
   return Object.keys(result).length > 0 ? result : undefined;
 }
@@ -1326,6 +1340,8 @@ function tweenCallToAnimation(
   if (duration === undefined && keyframesData) {
     duration = computeKeyframesTotalDuration(call.varsArg, scope, source);
   }
+  const durationUnresolved =
+    call.method !== "set" && duration === undefined && hasUnknownDuration(call.varsArg, scope);
 
   // Relabel object-proxy / empty-target tweens so they don't read as bare
   // __unresolved__: a dwell/hold spacer or an onUpdate-driven DOM channel (#5/#11).
@@ -1385,6 +1401,7 @@ function tweenCallToAnimation(
   if (keyframesData) anim.keyframes = keyframesData;
   if (motionPathResult) anim.arcPath = motionPathResult.arcPath;
   if (hasUnresolvedKeyframes) anim.hasUnresolvedKeyframes = true;
+  if (durationUnresolved) anim.durationUnresolved = true;
   if (selector === "__unresolved__") anim.hasUnresolvedSelector = true;
   if (provenance) anim.provenance = provenance;
   return anim;
@@ -1601,8 +1618,9 @@ function applyTimelineDefaults(
   if (!defaults) return;
   for (const anim of anims) {
     if (anim.method === "set") continue;
-    if (anim.duration === undefined && defaults.duration !== undefined) {
-      anim.duration = defaults.duration;
+    if (anim.duration === undefined && !anim.durationUnresolved) {
+      if (defaults.duration !== undefined) anim.duration = defaults.duration;
+      else if (defaults.durationUnresolved) anim.durationUnresolved = true;
     }
     if (anim.ease === undefined && defaults.ease !== undefined) {
       anim.ease = defaults.ease;
@@ -1669,6 +1687,9 @@ function resolveTimelinePositions(
 ): void {
   let cursor = 0;
   let prevStart = 0;
+  // Once a tween's start or duration is unknown, the timeline end is unknown:
+  // every later position that reads the cursor, the previous start or a label is unresolved.
+  let cursorKnown = true;
   const labels = new Map<string, number>();
   // Interleave addLabel definitions with tweens by source order so labels are
   // available exactly when later tweens reference them.
@@ -1678,6 +1699,7 @@ function resolveTimelinePositions(
   const defineLabel = (def: AddLabelDef): void => {
     let value: number;
     if (typeof def.position === "number") value = def.position;
+    else if (!cursorKnown) return;
     else if (typeof def.position === "string") {
       value = resolveLabelPosition(def.position, labels, cursor) ?? cursor;
     } else value = cursor; // no position ⇒ end of timeline
@@ -1700,8 +1722,11 @@ function resolveTimelinePositions(
     }
 
     const duration = anim.method === "set" ? 0 : (anim.duration ?? GSAP_DEFAULT_DURATION);
-    const start = resolveAnimStart(anim, cursor, prevStart, labels);
+    const readsCursor = anim.implicitPosition || typeof anim.position !== "number";
+    const start =
+      cursorKnown || !readsCursor ? resolveAnimStart(anim, cursor, prevStart, labels) : null;
 
+    if (start == null || anim.durationUnresolved) cursorKnown = false;
     if (start != null) {
       anim.resolvedStart = Math.max(0, start);
       prevStart = anim.resolvedStart;

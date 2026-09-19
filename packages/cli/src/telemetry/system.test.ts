@@ -8,6 +8,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("getSystemMeta execution context", () => {
+  it("retains a harness marker after the child agent is recognized", async () => {
+    const savedEnv = { ...process.env };
+    try {
+      process.env["CLAUDECODE"] = "1";
+      process.env["HARBOR_AGENT"] = "private-harness-value";
+      const { getSystemMeta } = await import("./system.js");
+      const meta = getSystemMeta();
+      expect(meta.agent_runtime).toBe("claude_code");
+      expect(meta.execution_harness_hint).toBe("harbor");
+      expect(meta.agent_env_hints).toBeNull();
+      expect(JSON.stringify(meta)).not.toContain("private-harness-value");
+    } finally {
+      process.env = savedEnv;
+    }
+  });
+});
+
 describe("getAvailableMemoryMb", () => {
   it("parses vm_stat on macOS to compute available memory", async () => {
     vi.doMock("node:os", async () => ({

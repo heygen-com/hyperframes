@@ -25,6 +25,7 @@ import {
   closeOrphanedProbeForRetry,
   describeMemoryExhaustion,
   executeDiskCaptureWithAdaptiveRetry,
+  explainStreamingEncodeGate,
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
   extractStandaloneEntryFromIndex,
@@ -41,6 +42,10 @@ import {
   shouldRetryViaPinnedFallback,
   isDeRendererStallError,
   isSequentialCaptureStallError,
+  isParallelCaptureStallError,
+  isParallelStreamForced,
+  fallbackCaptureModeLabel,
+  isRetryableEncoderDeath,
   scanElementTags,
   envInt,
   isDeParallelRouterEnabled,
@@ -52,12 +57,17 @@ import {
   shouldClampDefaultDrawElement,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  isCaptureParallelStreamRouterEnabled,
+  shouldSegmentCapture,
+  SEGMENTED_MIN_SECONDS_AFTER_SOAK,
+  resolveParallelCaptureMode,
   shouldStreamParallelCapture,
   shouldUseStreamingEncode,
   resolveObservedCaptureMode,
   createCaptureObservabilityUpdater,
 } from "./renderOrchestrator.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
+import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
 import { resolveCompositeTransfer, shouldUseLayeredComposite } from "./hdrCompositor.js";
 import {
@@ -586,23 +596,130 @@ describe("shouldUseStreamingEncode", () => {
     );
   });
 
-  it("keeps renders over the configured max duration on normal encoding", () => {
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240)).toBe(true);
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(false);
+  it("ignores the duration cap unless streamingEncodeDurationCapEnabled is true", () => {
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 3600)).toBe(true);
     expect(
       shouldUseStreamingEncode(
-        { enableStreamingEncode: true, streamingEncodeMaxDurationSeconds: 120 },
+        { ...streamingEnabledConfig, streamingEncodeDurationCapEnabled: true },
+        "mp4",
+        1,
+        240.001,
+      ),
+    ).toBe(false);
+    expect(
+      shouldUseStreamingEncode(
+        {
+          enableStreamingEncode: true,
+          streamingEncodeMaxDurationSeconds: 120,
+          streamingEncodeDurationCapEnabled: true,
+        },
         "mp4",
         1,
         120.001,
       ),
     ).toBe(false);
+    expect(
+      shouldUseStreamingEncode(
+        { ...streamingEnabledConfig, streamingEncodeDurationCapEnabled: true },
+        "mp4",
+        1,
+        240,
+      ),
+    ).toBe(true);
   });
 
   it("keeps long single-worker renders streaming in low-memory mode", () => {
     expect(
       shouldUseStreamingEncode({ ...streamingEnabledConfig, lowMemoryMode: true }, "mp4", 1, 411),
     ).toBe(true);
+  });
+});
+
+describe("explainStreamingEncodeGate", () => {
+  const cfg = {
+    enableStreamingEncode: true,
+    streamingEncodeMaxDurationSeconds: 240,
+    lowMemoryMode: false,
+  };
+
+  it("names the reason for every decision", () => {
+    expect(
+      explainStreamingEncodeGate({ ...cfg, enableStreamingEncode: false }, "mp4", 1, 10),
+    ).toEqual({ enabled: false, reason: "disabled_by_config" });
+    expect(explainStreamingEncodeGate(cfg, "png-sequence", 1, 10)).toEqual({
+      enabled: false,
+      reason: "format_excluded",
+    });
+    expect(explainStreamingEncodeGate(cfg, "gif", 1, 10)).toEqual({
+      enabled: false,
+      reason: "format_excluded",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 1, 0)).toEqual({
+      enabled: false,
+      reason: "invalid_duration",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 1, Number.NaN)).toEqual({
+      enabled: false,
+      reason: "invalid_duration",
+    });
+    expect(
+      explainStreamingEncodeGate(
+        { ...cfg, streamingEncodeDurationCapEnabled: true },
+        "mp4",
+        1,
+        300,
+      ),
+    ).toEqual({ enabled: false, reason: "duration_cap" });
+    expect(
+      explainStreamingEncodeGate(
+        { ...cfg, streamingEncodeDurationCapEnabled: true, lowMemoryMode: true },
+        "mp4",
+        1,
+        300,
+      ),
+    ).toEqual({ enabled: true, reason: "low_memory_mode" });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 3, 300, true)).toEqual({
+      enabled: true,
+      reason: "parallel_forced",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 1, 300)).toEqual({
+      enabled: true,
+      reason: "single_worker",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 2, 300)).toEqual({
+      enabled: false,
+      reason: "multi_worker",
+    });
+  });
+
+  it("low-memory mode only bypasses the cap; it never streams an unforced multi-worker render", () => {
+    // `--low-memory-mode --workers 4` is a real combination (only the
+    // single-worker pin is bypassed by an explicit worker count). The
+    // contiguous-chunk parallel writer stalls, so the gate must still say no.
+    expect(
+      explainStreamingEncodeGate(
+        { ...cfg, streamingEncodeDurationCapEnabled: true, lowMemoryMode: true },
+        "mp4",
+        4,
+        300,
+      ),
+    ).toEqual({ enabled: false, reason: "multi_worker" });
+  });
+
+  it("agrees with shouldUseStreamingEncode on every input", () => {
+    const cases: Array<[typeof cfg, "mp4" | "webm" | "gif", number, number, boolean]> = [
+      [cfg, "mp4", 1, 10, false],
+      [cfg, "mp4", 2, 10, false],
+      [cfg, "mp4", 2, 10, true],
+      [cfg, "gif", 1, 10, false],
+      [{ ...cfg, enableStreamingEncode: false }, "mp4", 1, 10, false],
+    ];
+    for (const [c, format, workers, duration, force] of cases) {
+      expect(shouldUseStreamingEncode(c, format, workers, duration, force)).toBe(
+        explainStreamingEncodeGate(c, format, workers, duration, force).enabled,
+      );
+    }
   });
 });
 
@@ -3207,6 +3324,131 @@ describe("sequential capture stall recovery", () => {
   });
 });
 
+describe("resolveParallelCaptureMode", () => {
+  const beginframe = {
+    platform: "linux" as NodeJS.Platform,
+    headlessShell: true,
+    forceScreenshot: false,
+    deviceScaleFactor: 1,
+  };
+
+  it("reports beginframe only for linux headless-shell at DPR 1 without forceScreenshot", () => {
+    expect(resolveParallelCaptureMode(beginframe)).toBe("beginframe");
+  });
+
+  it("reports screenshot wherever the engine's preMode would", () => {
+    expect(resolveParallelCaptureMode({ ...beginframe, platform: "darwin" })).toBe("screenshot");
+    expect(resolveParallelCaptureMode({ ...beginframe, platform: "win32" })).toBe("screenshot");
+    // System Chrome on linux: resolveObservedCaptureMode calls this beginframe,
+    // the engine launches screenshot. Getting this wrong would default-enable
+    // the router for a cohort whose real path is the screenshot one.
+    expect(resolveParallelCaptureMode({ ...beginframe, headlessShell: false })).toBe("screenshot");
+    expect(resolveParallelCaptureMode({ ...beginframe, forceScreenshot: true })).toBe("screenshot");
+    // Supersampling: BeginFrame ignores deviceScaleFactor, so preMode falls back.
+    expect(resolveParallelCaptureMode({ ...beginframe, deviceScaleFactor: 2 })).toBe("screenshot");
+  });
+
+  it("treats an unset deviceScaleFactor as 1", () => {
+    expect(resolveParallelCaptureMode({ ...beginframe, deviceScaleFactor: undefined })).toBe(
+      "beginframe",
+    );
+  });
+});
+
+describe("shouldSegmentCapture", () => {
+  const base = {
+    env: {} as Record<string, string | undefined>,
+    durationSeconds: 900,
+    outputFormat: "mp4",
+    layeredOrEffectRoute: false,
+    streamingOk: true,
+  };
+
+  it("does not route on duration until the soak flip", () => {
+    // The threshold ships disabled: the release that introduces the route
+    // must not also change which route every long render takes.
+    expect(shouldSegmentCapture(base)).toBe(false);
+    expect(shouldSegmentCapture({ ...base, durationSeconds: 36_000 })).toBe(false);
+  });
+
+  it("routes long mp4/mov renders once a threshold is set", () => {
+    const env = { HF_SEGMENTED_MIN_SECONDS: String(SEGMENTED_MIN_SECONDS_AFTER_SOAK) };
+    expect(shouldSegmentCapture({ ...base, env })).toBe(true);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "mov" })).toBe(true);
+    expect(shouldSegmentCapture({ ...base, env, durationSeconds: 599 })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, durationSeconds: 600 })).toBe(true);
+  });
+
+  it("is forced at any duration by the explicit opt-in", () => {
+    expect(
+      shouldSegmentCapture({
+        ...base,
+        durationSeconds: 5,
+        env: { HF_SEGMENTED_CAPTURE: "true" },
+      }),
+    ).toBe(true);
+  });
+
+  it("honours the kill switch and the exclusions", () => {
+    const env = { HF_SEGMENTED_MIN_SECONDS: "60" };
+    expect(shouldSegmentCapture({ ...base, env: { ...env, HF_SEGMENTED_CAPTURE: "false" } })).toBe(
+      false,
+    );
+    // The kill switch beats the force flag's other spellings too.
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_CAPTURE: "off" } })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "webm" })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "png-sequence" })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "hls" })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, layeredOrEffectRoute: true })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, streamingOk: false })).toBe(false);
+    // Even the explicit force cannot route an excluded output.
+    expect(
+      shouldSegmentCapture({
+        ...base,
+        env: { HF_SEGMENTED_CAPTURE: "true" },
+        outputFormat: "webm",
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores an unparseable threshold rather than routing on it", () => {
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_MIN_SECONDS: "soon" } })).toBe(
+      false,
+    );
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_MIN_SECONDS: "-5" } })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_MIN_SECONDS: "0" } })).toBe(true);
+  });
+});
+
+describe("isCaptureParallelStreamRouterEnabled", () => {
+  it("is on by default only where capture will run BeginFrame", () => {
+    expect(isCaptureParallelStreamRouterEnabled({}, "beginframe")).toBe(true);
+    // macOS/Windows screenshot capture stays opt-in: its opt-in cohort runs a
+    // 5.5% error rate against a ~1.1% baseline (stall watchdog / EPIPE class).
+    expect(isCaptureParallelStreamRouterEnabled({}, "screenshot")).toBe(false);
+    expect(
+      isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: "" }, "screenshot"),
+    ).toBe(false);
+  });
+
+  it("honours the explicit opt-in for either mode", () => {
+    expect(
+      isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: "true" }, "screenshot"),
+    ).toBe(true);
+    expect(
+      isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: " TRUE " }, "screenshot"),
+    ).toBe(true);
+  });
+
+  it("honours the kill switch, using the same off-spellings as the DE router", () => {
+    for (const off of ["false", "FALSE", "0", "off", "no"]) {
+      expect(
+        isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: off }, "beginframe"),
+      ).toBe(false);
+    }
+  });
+});
+
 describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {
   const eligible = {
     routerEnabled: true,
@@ -3221,7 +3463,7 @@ describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () =>
     expect(shouldStreamParallelCapture(eligible)).toBe(true);
   });
 
-  it("is disabled by default (kill switch off is the shipped default)", () => {
+  it("honours the kill switch when the caller passes routerEnabled=false", () => {
     expect(shouldStreamParallelCapture({ ...eligible, routerEnabled: false })).toBe(false);
   });
 
@@ -3458,5 +3700,134 @@ describe("createCaptureObservabilityUpdater", () => {
     const { observability, update } = seed("win32", false);
     update({ workerCount: 4 });
     expect(observability.workerCount).toBe(4);
+  });
+});
+
+describe("parallel stall and encoder death: retry eligibility on default routing", () => {
+  it("recognises the parallel stall by name or by message", () => {
+    const named = Object.assign(new Error("anything"), { name: "ParallelCaptureStallError" });
+    expect(isParallelCaptureStallError(named)).toBe(true);
+    expect(
+      isParallelCaptureStallError(
+        new Error(
+          "[Render] Parallel screenshot capture stalled: no frame progress for 60000ms (stuck at 0/9000).",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isParallelCaptureStallError(
+        new Error(
+          "[Render] Parallel BeginFrame capture stalled after 60000ms with no frame progress",
+        ),
+      ),
+    ).toBe(true);
+    // The sequential stall has its own predicate and its own fallback shape.
+    expect(
+      isParallelCaptureStallError(
+        new Error("[Render] Sequential screenshot capture stalled: no frame progress for 60000ms"),
+      ),
+    ).toBe(false);
+    expect(isParallelCaptureStallError("[Render] Parallel screenshot capture stalled")).toBe(false);
+  });
+
+  it("retries an encoder death only once frames had started, and never a host interruption", () => {
+    const died = (frame: number) =>
+      new Error(
+        `Streaming encoder exited before frame ${frame} was written: FFmpeg exited with code 1`,
+      );
+    // Frames 0 and 1: the encoder rejected its own arguments or first input.
+    // That reproduces on a fresh ffmpeg, so a retry only doubles the time.
+    expect(isRetryableEncoderDeath(died(0))).toBe(false);
+    expect(isRetryableEncoderDeath(died(1))).toBe(false);
+    expect(isRetryableEncoderDeath(died(2))).toBe(true);
+    expect(isRetryableEncoderDeath(died(4831))).toBe(true);
+    // Same prefix, but typed as a host lifecycle interruption: the producer
+    // that owns this render retries that, not the capture stage.
+    expect(
+      isRetryableEncoderDeath(
+        new EncoderInterruptedError("Streaming encoder exited before frame 4831 was written", "x"),
+      ),
+    ).toBe(false);
+    expect(isRetryableEncoderDeath(new Error("Segment 3 encode failed: boom"))).toBe(false);
+    expect(isRetryableEncoderDeath("Streaming encoder exited before frame 9 was written")).toBe(
+      false,
+    );
+  });
+
+  it("routes both through the pinned fallback with no pinned routing", () => {
+    const base = {
+      isVerifyError: false,
+      isCancellation: false,
+      deWorkerInversion: undefined,
+      deParallelRouter: undefined,
+    };
+    // Default routing alone retries nothing…
+    expect(shouldRetryViaPinnedFallback(base)).toBe(false);
+    // …so each of these has to be its own gate, like the sequential stall.
+    expect(shouldRetryViaPinnedFallback({ ...base, isParallelCaptureStall: true })).toBe(true);
+    expect(shouldRetryViaPinnedFallback({ ...base, isEncoderDeath: true })).toBe(true);
+    // Cancellation and host interruption still win.
+    expect(
+      shouldRetryViaPinnedFallback({ ...base, isParallelCaptureStall: true, isCancellation: true }),
+    ).toBe(false);
+    expect(
+      shouldRetryViaPinnedFallback({ ...base, isEncoderDeath: true, isEncoderInterrupted: true }),
+    ).toBe(false);
+  });
+});
+
+describe("fallbackCaptureModeLabel: trace label when no probe session is open", () => {
+  it("labels a non-Linux multi-worker render screenshot, not beginframe", () => {
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: false,
+        platform: "darwin",
+      }),
+    ).toBe("screenshot");
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: false,
+        platform: "win32",
+      }),
+    ).toBe("screenshot");
+  });
+
+  it("keeps beginframe for Linux and honours forced screenshot and drawElement", () => {
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: false,
+        platform: "linux",
+      }),
+    ).toBe("beginframe");
+    expect(
+      fallbackCaptureModeLabel({ forceScreenshot: true, useDrawElement: true, platform: "linux" }),
+    ).toBe("screenshot");
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: true,
+        platform: "darwin",
+      }),
+    ).toBe("drawelement");
+  });
+});
+
+describe("isParallelStreamForced: the plan carries the manual interleave opt-in", () => {
+  const flagsOff = { deParallelStreamForced: false, captureParallelStreamForced: false };
+
+  it("folds HF_DE_PARALLEL_STREAM=true into the plan flag so the retry drops to one worker", () => {
+    expect(isParallelStreamForced({ HF_DE_PARALLEL_STREAM: "true" }, flagsOff)).toBe(true);
+  });
+
+  it("otherwise follows the two routers' flags", () => {
+    expect(isParallelStreamForced({}, flagsOff)).toBe(false);
+    expect(isParallelStreamForced({ HF_DE_PARALLEL_STREAM: "false" }, flagsOff)).toBe(false);
+    expect(isParallelStreamForced({}, { ...flagsOff, deParallelStreamForced: true })).toBe(true);
+    expect(isParallelStreamForced({}, { ...flagsOff, captureParallelStreamForced: true })).toBe(
+      true,
+    );
   });
 });

@@ -113,7 +113,10 @@ export interface StudioApiAdapter {
   getProjectSignature?: (projectDir: string) => string;
 
   /** Lint a single HTML string. */
-  lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
+  lint(
+    html: string,
+    opts?: { filePath?: string; isSubComposition?: boolean },
+  ): Promise<LintResult> | LintResult;
 
   /**
    * Lint the complete project, including relationships between files. Official

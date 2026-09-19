@@ -47,6 +47,15 @@ export interface TimelineGroupCommitOptions {
   coalesceKey?: string;
   /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
   coalesceMs?: number;
+  /** Overrides the default "Move timeline clips" undo-history label. Coalescing
+   *  keeps the LAST entry's label (editHistory.ts), so a mechanical follow-up
+   *  move folded into another gesture's coalesceKey (e.g. the ripple after a
+   *  delete) should carry that gesture's own label, not its own. */
+  label?: string;
+  /** Skips this call's own generic failure toast (the error is still logged
+   *  to the console) — for a caller that shows its own more specific message
+   *  on the same failure, so the user isn't told about one action twice. */
+  suppressFailureToast?: boolean;
 }
 
 interface UseTimelineGroupEditingOptions {
@@ -272,21 +281,22 @@ export function useTimelineGroupEditing({
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
       const coalesceMs = options?.coalesceMs;
-      return enqueueGroupOperation("Move timeline clips", async (projectId) => {
+      const label = options?.label ?? "Move timeline clips";
+      return enqueueGroupOperation(label, async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({ start: change.start })),
           eligible: changes.every((change) => change.track == null),
           needsExtension,
-          label: "Move timeline clips",
+          label,
           coalesceKey,
           coalesceMs,
         });
         if (!handledBySdk) {
           await persistServerBatch(
             projectId,
-            "Move timeline clips",
+            label,
             changes.map((change) => ({
               element: change.element,
               buildPatches: (original, target) =>
@@ -315,7 +325,7 @@ export function useTimelineGroupEditing({
             projectId,
             iframe: previewIframeRef.current,
             reloadPreview,
-            label: "Move timeline clips",
+            label,
             errorLabel: "Failed to shift GSAP positions",
             coalesceKey,
             recordEdit,
@@ -336,7 +346,11 @@ export function useTimelineGroupEditing({
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
         rollbackDuration();
-        showToast(getStudioSaveErrorMessage(error), "error");
+        if (options?.suppressFailureToast) {
+          console.error("[Timeline] group move failed to persist", error);
+        } else {
+          showToast(getStudioSaveErrorMessage(error), "error");
+        }
         throw error;
       });
     },

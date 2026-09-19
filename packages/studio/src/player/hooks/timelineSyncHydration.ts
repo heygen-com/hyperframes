@@ -14,12 +14,12 @@ import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import type { ClipTree } from "@hyperframes/core/runtime/clipTree";
+import { topLevelElements, type StructureNode } from "@hyperframes/parsers/top-level-elements";
 import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import { groupInfoFor } from "../lib/timelineGroupInfo";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   buildStandaloneRootTimelineElement,
-  createImplicitTimelineLayersFromDOM,
   createTimelineElementFromManifestClip,
   getTimelineElementSelector,
   parseTimelineFromDOM,
@@ -137,6 +137,28 @@ export function collectSubCompositionDomChildren(
   return out;
 }
 
+interface DomStructureNode extends StructureNode<DomStructureNode> {
+  id: string;
+}
+
+function toStructureNode(el: Element): DomStructureNode {
+  const attrs: Record<string, string> = {};
+  for (const attr of Array.from(el.attributes)) attrs[attr.name] = attr.value;
+  return {
+    tag: el.tagName,
+    attrs,
+    id: el.id,
+    children: Array.from(el.children).map(toStructureNode),
+  };
+}
+
+/** DOM ids of the timeline's rows, by the definition the structure lint shares; null when there is no readable root. */
+export function collectTopLevelElementIds(doc: Document | null): Set<string> | null {
+  const root = doc?.querySelector("[data-composition-id]");
+  if (!root) return null;
+  return new Set(topLevelElements(toStructureNode(root)).flatMap((n) => (n.id ? [n.id] : [])));
+}
+
 /** The host-element `data-*` state one element carries, or null when it has none. */
 function readSubCompositionHostState(el: Element): SubCompositionHostState | null {
   const state: SubCompositionHostState = {};
@@ -215,27 +237,24 @@ export function buildTimelineElementsFromClips(
 }
 
 /**
- * The clamped manifest elements plus the layers that exist only in the DOM.
- * Both halves need the same resolved duration, which is why they land together.
- */
-export function withImplicitDomLayers(
-  els: readonly TimelineElement[],
-  iframeDoc: Document | null,
-  effectiveDuration: number,
-): TimelineElement[] {
-  const clamped = clampElementsToDuration(els, effectiveDuration);
-  if (!iframeDoc || effectiveDuration <= 0) return clamped;
-  return [
-    ...clamped,
-    ...createImplicitTimelineLayersFromDOM(iframeDoc, effectiveDuration, clamped),
-  ];
-}
-
-/**
  * Drop elements that start past the composition's end and trim the ones that
  * straddle it. A non-positive duration means "not known yet" — pass through
  * untouched rather than clamping everything to nothing.
  */
+/** Commits the manifest elements, including none. An empty manifest carries a 1s floor, not a duration. */
+export function syncManifestTimeline(
+  els: readonly TimelineElement[],
+  manifestDuration: number,
+  storeDuration: number,
+  sync: (els: TimelineElement[], duration?: number) => void,
+): void {
+  const hasDuration = manifestDuration > 0 && els.length > 0;
+  sync(
+    clampElementsToDuration(els, hasDuration ? manifestDuration : storeDuration),
+    hasDuration ? manifestDuration : undefined,
+  );
+}
+
 function clampElementsToDuration(
   els: readonly TimelineElement[],
   effectiveDuration: number,

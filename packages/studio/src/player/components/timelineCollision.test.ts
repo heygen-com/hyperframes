@@ -5,6 +5,7 @@ import {
   isInsertAllowedForZone,
   isLaneFree,
   resolveInsertRow,
+  resolveMainTrackDropStart,
   resolvePlacement,
   resolveZoneDropPlacement,
   timeRangesOverlap,
@@ -491,5 +492,27 @@ describe("resolveZoneDropPlacement (the whole drop decision, no same-track overl
     });
     expect(result.insertRow).not.toBeNull();
     expect(result).toEqual({ track: 0, insertRow: 1 });
+  });
+});
+
+describe("resolveMainTrackDropStart (magnetic first clip on an empty main track)", () => {
+  it("snaps to 0 when landing on an empty main track", () => {
+    expect(resolveMainTrackDropStart([], 1, 0, false, 7)).toBe(0);
+  });
+
+  it("leaves the drop start alone once the main track already holds another clip", () => {
+    expect(resolveMainTrackDropStart([el("other", 0, 0, 3)], 1, 0, false, 7)).toBe(7);
+  });
+
+  it("leaves the drop start alone when landing off the main track", () => {
+    expect(resolveMainTrackDropStart([], 1, 2, false, 7)).toBe(7);
+  });
+
+  it("a clip already resident on the main track doing a horizontal move is a no-op", () => {
+    expect(resolveMainTrackDropStart([], 0, 0, false, 7)).toBe(7);
+  });
+
+  it("an audio clip landing on track 0 is not the main track (visual zone only)", () => {
+    expect(resolveMainTrackDropStart([], 1, 0, true, 7)).toBe(7);
   });
 });

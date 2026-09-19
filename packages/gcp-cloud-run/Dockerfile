@@ -112,6 +112,14 @@ RUN bun -e 'import { buildChromeArgs } from "./packages/engine/src/services/brow
       --executable-path /opt/chrome/chrome-headless-shell \
       --launch-args-json /tmp/hf-gcp-chrome-args.json
 
+# Reports whether this exact pinned binary gets a hardware WebGPU adapter. A software-only
+# host reports "no usable adapter" without failing the build; its WebGPU compositions refuse
+# to render at run time. A real script file, not an inline `bun -e` eval: the eval's
+# synthetic `/app/[eval]` path can't resolve the workspace-hoisted `puppeteer-core`.
+COPY packages/aws-lambda/scripts/probe-webgpu-adapter.ts packages/aws-lambda/scripts/probe-webgpu-adapter.ts
+RUN bun packages/aws-lambda/scripts/probe-webgpu-adapter.ts \
+      --executable-path /opt/chrome/chrome-headless-shell
+
 # CI targets `beginframe-contract` directly, so pin/probe changes do not need
 # the full monorepo build merely to verify browser capability. The deployable
 # image continues from the already-proven binary and installed workspaces.

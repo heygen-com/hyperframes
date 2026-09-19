@@ -244,6 +244,13 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // linkedom's HTMLCanvasElement constructor calls createCanvas(300, 150)
+      // from the Node-only `canvas` package, behind a
+      // `try { require('canvas') } catch { shim }` guard. A bundler resolves
+      // that require statically, so the catch never fires and createCanvas is
+      // undefined — every composition containing a <canvas> then throws inside
+      // openComposition and silently loses its SDK session. See the stub.
+      canvas: resolve(__dirname, "src/shims/canvasBrowserStub.js"),
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
       "@hyperframes/studio-server/source-mutation": resolve(
         __dirname,

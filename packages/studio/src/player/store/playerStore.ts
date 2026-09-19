@@ -19,6 +19,7 @@ import {
 import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
+import { createPlaybackReadinessSlice, resetPlaybackReadinessState } from "./readinessSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -54,12 +55,15 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState
-  extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice, EditingModeSlice {
+type PlayerStoreSlices = KeyframeSlice &
+  AutomationSelectionSlice &
+  ThumbnailSlice &
+  EditingModeSlice &
+  ReturnType<typeof createPlaybackReadinessSlice>;
+interface PlayerState extends PlayerStoreSlices {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
-  timelineReady: boolean;
   /** Increments exactly once when the Studio switches to a different project. */
   timelineSessionEpoch: number;
   /** Project owning the current timeline session; null outside a project-scoped reset. */
@@ -104,14 +108,14 @@ interface PlayerState
   /** Timeline magnet toggle — when false, clip drags/trims/drops never snap. */
   timelineSnapEnabled: boolean;
   setTimelineSnapEnabled: (enabled: boolean) => void;
+  /** Keeps the main track gapless on delete; distinct from the magnet above. */
+  rippleEditEnabled: boolean;
+  setRippleEditEnabled: (enabled: boolean) => void;
   /** Transport + ruler readout: timecode ("time") or frame number ("frame"). */
   timeDisplayMode: TimelineTimeDisplayMode;
   setTimeDisplayMode: (mode: TimelineTimeDisplayMode) => void;
-  /**
-   * Pin the timeline zoom to its current visual scale before a duration-changing
-   * edit, so a subsequent duration change (which recomputes fit-pps) stops
-   * rescaling every clip. No-op once already pinned (mode is "manual").
-   */
+  /** Pin the timeline zoom to its current scale before a duration change, so
+   *  it stops rescaling every clip. No-op once already pinned. */
   pinTimelineZoom: (currentPixelsPerSecond: number, fitPixelsPerSecond: number) => void;
   /** The timeline's live pixels-per-second + fit basis, published by <Timeline>. */
   timelinePps: number;
@@ -129,7 +133,6 @@ interface PlayerState
   setAudioMuted: (muted: boolean) => void;
   setAudioVolume: (volume: number) => void;
   setLoopEnabled: (enabled: boolean) => void;
-  setTimelineReady: (ready: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
@@ -146,26 +149,16 @@ interface PlayerState
   /** Clears project data without creating a new hard-project session. */
   reset: () => void;
 
-  /**
-   * Request a seek from outside the player loop (e.g. Layers panel).
-   * useTimelinePlayer subscribes and calls adapter.seek() + liveTime.notify().
-   */
+  /** Request a seek from outside the player loop (e.g. Layers panel);
+   *  useTimelinePlayer subscribes and calls adapter.seek() + liveTime.notify(). */
   requestedSeekTime: number | null;
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
 
-  /**
-   * Request the transport start or stop from outside the player loop.
-   *
-   * The FX rack auditions a preset by writing it to the running graph, which is
-   * silent while the transport is paused — so hovering one has to start
-   * playback, and leaving has to put the playhead back where it was. Hovering is
-   * not an edit and must not cost the author their place.
-   *
-   * A nonce rather than a bare boolean: two hovers in a row both want play, and
-   * without it the second request is indistinguishable from the first having
-   * already been served.
-   */
+  /** Request the transport start or stop from outside the player loop: the FX
+   *  rack starts playback to audition a preset (silent while paused) and
+   *  restores the playhead on leave, without costing the author their place.
+   *  A nonce, not a bare boolean, so two hovers in a row both register. */
   playbackRequest: { playing: boolean; returnTo: number | null; nonce: number } | null;
   requestPlayback: (playing: boolean, returnTo?: number | null) => void;
   clearPlaybackRequest: () => void;
@@ -207,6 +200,8 @@ interface PlayerState
   clipManifest: ClipManifestClip[] | null;
   setClipManifest: (clips: ClipManifestClip[] | null) => void;
   clipParentMap: Map<string, string>;
+  topLevelIds: ReadonlySet<string> | null;
+  setTopLevelIds: (ids: ReadonlySet<string> | null) => void;
   setClipParentMap: (map: Map<string, string>) => void;
   /**
    * Sub-composition DOM descendants (groups + their children) that have no
@@ -260,7 +255,7 @@ export function createTimelineResetState() {
     isPlaying: false,
     currentTime: 0,
     duration: 0,
-    timelineReady: false,
+    ...resetPlaybackReadinessState(),
     beatDragging: false,
     elements: [],
     selectedElementId: null,
@@ -295,6 +290,7 @@ export function createTimelineResetState() {
     beatPersist: null,
     clipManifest: null,
     clipParentMap: new Map<string, string>(),
+    topLevelIds: null,
     domClipChildren: [],
     subCompositionHostState: new Map<string, SubCompositionHostState>(),
   };
@@ -304,7 +300,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
   duration: 0,
-  timelineReady: false,
   timelineSessionEpoch: 0,
   timelineProjectId: null,
   beatDragging: false,
@@ -333,6 +328,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   ...createAutomationSelectionSlice(set),
   ...createEditingModeSlice(set),
+  ...createPlaybackReadinessSlice(set),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
@@ -441,6 +437,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setClipManifest: (clips) => set({ clipManifest: clips }),
   clipParentMap: new Map(),
   setClipParentMap: (map) => set({ clipParentMap: map }),
+  topLevelIds: null,
+  setTopLevelIds: (ids) => set({ topLevelIds: ids }),
   domClipChildren: [],
   setDomClipChildren: (children) => set({ domClipChildren: children }),
   subCompositionHostState: new Map(),
@@ -471,6 +469,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setTimelineSnapEnabled: (enabled) => {
     writeStudioUiPreferences({ timelineSnapEnabled: enabled });
     set({ timelineSnapEnabled: enabled });
+  },
+  rippleEditEnabled: readStudioUiPreferences().rippleEditEnabled ?? true, // default on
+  setRippleEditEnabled: (enabled) => {
+    writeStudioUiPreferences({ rippleEditEnabled: enabled });
+    set({ rippleEditEnabled: enabled });
   },
   timeDisplayMode: readStudioUiPreferences().timeDisplayMode ?? "time",
   setTimeDisplayMode: (mode) => {
@@ -521,7 +524,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   bumpZEditVersion: () => set((state) => ({ zEditVersion: state.zEditVersion + 1 })),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
-  setTimelineReady: (ready) => set({ timelineReady: ready }),
   setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
   // A genuine single selection: always collapse the set to just this element. User

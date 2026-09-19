@@ -189,6 +189,30 @@ function aggregateDrawElement(
   };
 }
 
+function maxDefined(values: Array<number | undefined>): number | undefined {
+  const present = values.filter((v): v is number => typeof v === "number");
+  return present.length > 0 ? Math.max(...present) : undefined;
+}
+
+/**
+ * Chrome memory across capture sessions: max of per-session peaks, sum of the
+ * last samples. Sessions that never produced a reading are excluded so
+ * `samples: 0` cannot be published alongside another worker's real peaks.
+ */
+function aggregateChromeMemory(perfs: CapturePerfSummary[]): RenderPerfSummary["chromeMemory"] {
+  const sampled = perfs.filter((p) => (p.chromeMemorySamples ?? 0) > 0);
+  if (sampled.length === 0) return undefined;
+  return {
+    browserRssPeakMb: maxDefined(sampled.map((p) => p.chromeBrowserRssPeakMb)),
+    rendererRssPeakMb: maxDefined(sampled.map((p) => p.chromeRendererRssPeakMb)),
+    // Last samples are per session; summing approximates the whole fleet's
+    // footprint at the end of capture (workers run concurrently).
+    rssLastMb: sampled.reduce((sum, p) => sum + (p.chromeRssLastMb ?? 0), 0),
+    gpuProcessSeenLastSample: sampled.some((p) => p.chromeGpuProcessSeenLastSample === true),
+    samples: sampled.reduce((sum, p) => sum + (p.chromeMemorySamples ?? 0), 0),
+  };
+}
+
 function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
   if (perfs.length === 0) return undefined;
   const armed = perfs.some((p) => p.staticDedupArmed);
@@ -357,6 +381,7 @@ export function buildRenderPerfSummary(input: {
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
+    chromeMemory: aggregateChromeMemory(input.dedupPerfs),
     beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,

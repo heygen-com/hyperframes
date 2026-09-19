@@ -194,9 +194,16 @@ export function assertDiskCaptureHeadroom(
   throw new Error(
     `Disk capture may need ~${(headroom.estimatedBytes / 1e6).toFixed(1)} MB of temporary frame storage, ` +
       `but only ${(headroom.freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
-      "Re-run with --low-memory-mode to stream frames, raise " +
-      "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS if streaming is supported, " +
-      "or free up disk space.",
+      "Disk capture stores every frame as raw RGBA. mp4/mov renders stream instead: " +
+      "always at --workers 1, and multi-worker on Linux BeginFrame capture. " +
+      "This render landed on disk because the output is png-sequence or gif, because it " +
+      "is multi-worker screenshot capture (opt in with HF_CAPTURE_PARALLEL_STREAM=true), " +
+      "or because streaming was switched off: HF_CAPTURE_PARALLEL_STREAM=false, " +
+      "PRODUCER_ENABLE_STREAMING_ENCODE=false, or the duration cap " +
+      "(PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED=true) on a render longer than " +
+      "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS. HDR and shader-transition renders " +
+      "never reach this check; they run their own compositor. " +
+      "Re-run with --workers 1, use --low-memory-mode, or free up disk space.",
   );
 }
 

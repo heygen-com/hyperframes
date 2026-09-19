@@ -76,7 +76,6 @@ const FOLLOW_UPS: readonly FollowUpQuestion[] = [
       { label: "Layers panel", hint: "The layer tree on the right" },
       { label: "Variables panel", hint: "Composition variables on the right" },
       { label: "Blocks browser", hint: "The block library in the sidebar" },
-      { label: "Storyboard mode", hint: "The storyboard view next to Preview" },
       { label: "Caption editing", hint: "Editing caption words and presets in Studio" },
       { label: "Render history", hint: "The list of past exports" },
       { label: "Nothing", hint: "It all earns its place" },

@@ -149,8 +149,10 @@
           });
         };
 
-        document.getElementById("hw-pt-path").setAttribute("d", CONFIG.d);
-        if (CONFIG.showGuide) document.getElementById("hw-pt-guide").setAttribute("d", CONFIG.d);
+        var pathEl = document.getElementById("hw-pt-path");
+        var guide = document.getElementById("hw-pt-guide");
+        pathEl.setAttribute("d", CONFIG.d);
+        if (CONFIG.showGuide) guide.setAttribute("d", CONFIG.d);
         document.getElementById("hw-pt-text").setAttribute("font-size", CONFIG.fontSize);
 
         /* per-char tspans along the path */
@@ -165,7 +167,6 @@
         var tl = gsap.timeline({ paused: true });
 
         /* guide draws first, then the handwriting types along it */
-        var guide = document.getElementById("hw-pt-guide");
         if (CONFIG.showGuide) {
           var glen = guide.getTotalLength();
           gsap.set(guide, { strokeDasharray: "2 14", strokeDashoffset: glen });

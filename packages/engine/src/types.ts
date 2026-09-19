@@ -5,6 +5,7 @@
  * as video must expose `window.__hf` implementing the HfProtocol interface.
  */
 import type { Fps } from "@hyperframes/core";
+import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
 import type { MotionBlurOptions } from "./services/motionBlur.js";
 
 /**
@@ -134,6 +135,15 @@ export interface CaptureOptions {
    * self-verification) MUST prefer this over `__hf.duration`.
    */
   compositionDurationSeconds?: number;
+  /** The composition declares `data-requires-webgpu`; skips createCaptureSession's own fetch. */
+  requiresWebGpu?: boolean;
+  /**
+   * Live Chrome memory samples during capture (browser/renderer RSS peaks,
+   * last total, GPU process presence). Invoked from an unref'd interval; must
+   * not throw. The producer forwards these to capture observability so a
+   * crash mid-render still reports the last known memory state.
+   */
+  onMemorySample?: (stats: ChromeMemoryStats) => void;
   /**
    * Frame rate as an exact rational. Integer fps is `{ num: 30, den: 1 }`;
    * NTSC is `{ num: 30000, den: 1001 }`. Captures are scheduled by the
@@ -351,6 +361,14 @@ export interface CapturePerfSummary {
    * see `classifyGpuRenderer`.
    */
   gpuRenderer?: string;
+  // ── Chrome process memory (spec: long-form render capture, Phase −1).
+  // Undefined when the sampler was disabled (HF_CHROME_MEMORY_SAMPLER=false)
+  // or never produced a successful sample. ──
+  chromeBrowserRssPeakMb?: number;
+  chromeRendererRssPeakMb?: number;
+  chromeRssLastMb?: number;
+  chromeGpuProcessSeenLastSample?: boolean;
+  chromeMemorySamples?: number;
   /**
    * Low-cardinality init-time gate that routed a drawElement-eligible session
    * to the baseline: `swiftshader` | `css_effect:<fx>` | `at_risk_timeline` |
