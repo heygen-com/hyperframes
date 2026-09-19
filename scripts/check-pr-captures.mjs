@@ -220,7 +220,7 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 /** url -> hash for every capture in a section, or a problem for each one that could not be read. */
 async function hashCaptures(name, section, download) {
-  const results = await Promise.all(
+  return Promise.all(
     captureUrls(section).map(async (url) => {
       try {
         return { name, url, hash: sha256(await download(url)) };
@@ -229,7 +229,6 @@ async function hashCaptures(name, section, download) {
       }
     }),
   );
-  return results;
 }
 
 /** Every After asset must differ by content hash from every Before asset; an unreadable download is a problem. */
