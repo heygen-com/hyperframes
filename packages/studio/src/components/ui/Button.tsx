@@ -110,7 +110,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ) : icon ? (
           <span className="flex-shrink-0">{icon}</span>
         ) : null}
-        {children && <span>{children}</span>}
+        {children}
       </button>
     );
   },
