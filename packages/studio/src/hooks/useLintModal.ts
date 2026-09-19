@@ -96,10 +96,7 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
 
   const findingsByElement = useMemo(() => groupFindings((f) => f.elementId), [groupFindings]);
   const findingsByFile = useMemo(() => groupFindings((f) => f.file), [groupFindings]);
-  const hasLintError = useMemo(
-    () => backgroundFindings.some((f) => f.severity === "error"),
-    [backgroundFindings],
-  );
+  const hasLintError = backgroundFindings.some((f) => f.severity === "error");
 
   // Sync lint findings directly to the player store — eliminates the
   // mirroring useEffect that was previously in App.tsx.
