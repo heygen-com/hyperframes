@@ -685,6 +685,8 @@ export const CatalogDetail = ({
 .hf-ve-body-pane .code-block pre,
 .hf-ve-slots [data-slot="code"] pre { max-height: 560px; overflow: auto; }
 .hf-ve-slots[data-tab="docs"] > [data-slot="docs"] { max-height: 720px; overflow: auto; padding-right: 8px; }
+/* Mintlify renders a paragraph as an inline span; only its own wrapper makes it a block. */
+.hf-ve-slots [data-slot] span[data-as="p"] { display: block; margin: 1.25em 0; }
 @media (max-width: 640px) {
   .hf-ve-actions { width: 100%; }
   .hf-ve-action { flex: 1 1 calc(50% - 8px); justify-content: center; }
