@@ -16,14 +16,6 @@ import {
 
 const { root, docs } = resolveDocsRoot(process.argv[2]);
 
-// Items allowed without a live preview, each with the reason it has none.
-const NO_LIVE = new Map([
-  [
-    "heygen-avatar-promo-card",
-    "its source videos are not on the CDN yet; a maintainer runs host-registry-assets",
-  ],
-]);
-
 function leafPaths(tab) {
   const paths = [];
   const walk = (pages) => {
@@ -92,10 +84,10 @@ for (const item of data.items) {
     `Missing gallery preview policy for ${item.id}`,
   );
   assert.ok(
-    item.preview.mode !== "still" || NO_LIVE.has(item.id),
+    item.preview.mode !== "still",
     `${item.id} has neither a live payload nor a Chrome-flag reason for its recorded video`,
   );
-  if (item.preview.mode === "video" && !NO_LIVE.has(item.id)) {
+  if (item.preview.mode === "video") {
     assert.ok(item.video, `Missing hover video for ${item.id}`);
     const file = path.join(docs, "public/catalog", `${item.kind}s`, `${item.id}.json`);
     const payload = fs.existsSync(file) ? readJson(file) : {};

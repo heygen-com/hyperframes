@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Canopy Part Title"
   description="Leaves sweep through the frame and part to reveal the headline."
   variables={[{"id":"headline1","type":"string","label":"Headline 1","default":"Understory"},{"id":"headline2","type":"string","label":"Headline 2","default":"Move slowly"},{"id":"font","type":"string","label":"Headline font","default":"Helvetica"},{"id":"fontWeight","type":"number","label":"Font weight","default":900,"min":100,"max":900,"step":100},{"id":"fontSize","type":"number","label":"Font size (1 = auto-fit)","default":1,"min":0.3,"max":2,"step":0.01},{"id":"letterSpacing","type":"number","label":"Letter spacing (em)","default":0.01,"min":-0.2,"max":1,"step":0.01},{"id":"background","type":"color","label":"Background","default":"#020805"},{"id":"leafCount","type":"number","label":"Leaves per sweep","default":170,"min":40,"max":320,"step":1},{"id":"stayCount","type":"number","label":"Leaves left behind","default":5,"min":0,"max":20,"step":1},{"id":"sweepSpeed","type":"number","label":"Sweep speed","default":1,"min":0.3,"max":3,"step":0.05},{"id":"retainedBreeze","type":"number","label":"Retained leaf breeze","default":1,"min":0,"max":2,"step":0.05}]}
-  meta={{"duration":12,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":1377}}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":1394}}
   attribution={{"path":"registry/blocks/canopy-part-title","tags":["3d-motion","title-card","leaves","organic","depth-of-field","two-headlines","sweep"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/canopy-part-title/canopy-part-title.html"
@@ -1384,6 +1384,19 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       renderer.compile(scene, camera);
       renderAt(0);
       renderAt(window.__hfThreeTime ?? (tl ? tl.time() : 0));
+      /* Draw across the timeline and flush the GPU before ready, so shader links
+         and texture uploads land in the readiness gate, not the first visible frames. */
+      async function warmGpu() {
+        const dur = tl ? tl.duration() : 0;
+        for (const f of [0.25, 0.5, 0.75]) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          renderAt(dur * f);
+        }
+        renderAt(tl ? tl.time() : 0);
+        renderer.getContext().finish();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
       if (document.fonts && document.fonts.ready) {
         window.__cptReady = Promise.all([
           document.fonts.load(`${FONT_WEIGHT} 100px "${FONT}"`).catch(() => {}),
@@ -1394,8 +1407,12 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             plane1.retex(HEADLINE1);
             plane2.retex(HEADLINE2);
             renderAt(tl ? tl.time() : 0);
+            return warmGpu();
           })
           .catch(() => {});
+        window.__hf.buildReady["canopy-part-title"] = window.__cptReady;
+      } else {
+        window.__hf.buildReady["canopy-part-title"] = warmGpu();
       }
     </script>
   </body>
