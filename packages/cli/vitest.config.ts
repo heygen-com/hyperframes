@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { defineConfig } from "vitest/config";
@@ -6,8 +6,8 @@ import { defineConfig } from "vitest/config";
 // Windows: sharp's first text render builds Fontconfig's cache for every OS font (about 9 s on a
 // fresh runner). Set here, before workers fork, because an in-process env write never reaches it.
 if (process.platform === "win32") {
-  const dir = join(tmpdir(), "hf-vitest-fontconfig");
-  mkdirSync(dir, { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), "hf-vitest-fontconfig-"));
+  process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
   copyFileSync(
     join(process.env.WINDIR ?? "C:\\Windows", "Fonts", "arial.ttf"),
     join(dir, "arial.ttf"),
