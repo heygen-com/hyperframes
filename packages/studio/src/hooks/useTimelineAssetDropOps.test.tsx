@@ -122,5 +122,6 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     const [, written] = writeProjectFile.mock.calls[0] as [string, string];
     expect(written).toContain('id="b" data-start="0" data-track-index="2"');
     expect(written).toContain('id="hidden" data-start="0" data-track-index="1"');
+    expect(written).toMatch(/<video id="clip"[^>]*data-track-index="1"/);
   });
 });
