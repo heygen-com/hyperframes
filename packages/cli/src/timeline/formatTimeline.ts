@@ -13,6 +13,22 @@ function bar(row: TimelineRow, total: number): string {
   return " ".repeat(from) + fill.repeat(width) + " ".repeat(BAR_WIDTH - from - width);
 }
 
+/** Never "unauthored": says either the resolved length's source or why one is pending. */
+function durationNote(row: TimelineRow): string | false {
+  switch (row.durationSource) {
+    case "media":
+    case "default":
+      return `duration=${row.durationSource}`;
+    case "inner":
+      return "duration=inferred";
+    case "pending":
+      return `pending: ${row.pendingReason}`;
+    case "authored":
+    case null:
+      return false;
+  }
+}
+
 function details(row: TimelineRow): string {
   const lanes = row.lanes.map(
     (l) => `${l.target}[${l.points.map((p) => `${n(p.t)}:${n(p.v)}`).join(" ")}]`,
@@ -22,7 +38,7 @@ function details(row: TimelineRow): string {
     row.volume !== null && `vol=${row.volume}`,
     row.playbackRate !== null && `rate=${n(row.playbackRate)}`,
     row.audioGroup && `group=${row.audioGroup}`,
-    !row.durationAuthored && "duration=unauthored",
+    durationNote(row),
     row.sourceFile && !row.children.length && "children=unread",
     row.laneError && `lanes unreadable: ${row.laneError}`,
     ...lanes,

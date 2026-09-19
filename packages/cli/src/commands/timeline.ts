@@ -23,7 +23,7 @@ export default defineCommand({
   async run({ args }) {
     const project = resolveProject(args.dir);
     ensureDOMParser();
-    const timeline = describeProject(project.indexPath);
+    const timeline = await describeProject(project.indexPath);
     console.log(
       args.json ? JSON.stringify(withMeta({ timeline }), null, 2) : formatTimeline(timeline),
     );

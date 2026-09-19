@@ -125,5 +125,4 @@ export const PENDING_MEDIA_DURATION_READERS = [
   "engine/src/services/audioMixer.ts",
   "parsers/src/htmlParser.ts (defaults to 5s, reads only data-media-start)",
   "studio (timelineDOM.ts, timelineElementHelpers.ts, useTimelineSyncCallbacks.ts)",
-  "cli/src/timeline/describeProject.ts describeRow (#4138)",
 ] as const;
