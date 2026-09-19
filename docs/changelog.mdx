@@ -9,6 +9,120 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.51"
+  description="Released - 2026-09-19"
+  tags={["Release", "Studio", "Core", "CLI"]}
+>
+Speed ramps land end to end: a rate lane in `data-automation` that renders with the same source-time mapping as the preview. A composition with no authored length now takes it from its clips, and `hyperframes timeline` prints a project's tracks and clips from the CLI.
+
+## Features
+
+- **Studio:** Studio now records why a composition could not be opened for editing, so the remaining cases can be diagnosed ([ff078accd](https://github.com/heygen-com/hyperframes/commit/ff078accda05ed2a48abad2cfd23d375d824037e), [#4161](https://github.com/heygen-com/hyperframes/pull/4161)).
+- **Core:** A composition with no authored length takes it from its clips ([fa44d7621](https://github.com/heygen-com/hyperframes/commit/fa44d7621d3aa664761731322a6cda62b1444b58), [#4174](https://github.com/heygen-com/hyperframes/pull/4174)).
+- **Studio:** Dock engine for a movable Studio layout, not yet wired in ([dc9469244](https://github.com/heygen-com/hyperframes/commit/dc94692441d6aaf4ed56531ba1f88ac4c48b76b0), [#4165](https://github.com/heygen-com/hyperframes/pull/4165)).
+- **Core:** Video, audio and image length come from one shared resolver ([09aadd86a](https://github.com/heygen-com/hyperframes/commit/09aadd86a5b87805bb4917604199e4367627d8d7), [#4166](https://github.com/heygen-com/hyperframes/pull/4166)).
+- **Engine:** Render speed ramps with the same source-time mapping as the preview ([bdecae066](https://github.com/heygen-com/hyperframes/commit/bdecae066a1a9a1f270b29378975b5a1830de4b0), [#4143](https://github.com/heygen-com/hyperframes/pull/4143)).
+- **Core:** Speed ramps as a rate lane in data-automation ([7f452ad27](https://github.com/heygen-com/hyperframes/commit/7f452ad27656f14e58403069190c1856b1a91a0b), [#4129](https://github.com/heygen-com/hyperframes/pull/4129)).
+- **Studio:** Trimming a clip shows the snap guide and the frame at the dragged edge ([86667203c](https://github.com/heygen-com/hyperframes/commit/86667203ce14adc398326fe75bd5af81a1dd6436), [#4163](https://github.com/heygen-com/hyperframes/pull/4163)).
+- **Studio:** Move every design value into one theme file ([339dc7602](https://github.com/heygen-com/hyperframes/commit/339dc76026b90828d29700ff13edcb3e364852c3), [#3621](https://github.com/heygen-com/hyperframes/pull/3621)).
+- **Studio:** The Lint badge pulses while an error finding exists ([f50df3767](https://github.com/heygen-com/hyperframes/commit/f50df37671b9a43c2e0c5cdb915c23ed5560787c), [#4152](https://github.com/heygen-com/hyperframes/pull/4152)).
+- **CLI:** Hyperframes timeline prints a project's tracks and clips ([0a5c23517](https://github.com/heygen-com/hyperframes/commit/0a5c235173ddcc1118e68eb6d84d0b01b6895aa6), [#4138](https://github.com/heygen-com/hyperframes/pull/4138)).
+- **Studio:** Upgrade Studio to Tailwind CSS v4 ([68b61675e](https://github.com/heygen-com/hyperframes/commit/68b61675ed4debabe1cbd453b9b926cf76451b5f), [#3618](https://github.com/heygen-com/hyperframes/pull/3618)).
+- **Parsers:** Detect where the gsap timeline disagrees with timing attributes ([144e8023c](https://github.com/heygen-com/hyperframes/commit/144e8023c661377a10f7f0022d955b42c1962d70), [#4147](https://github.com/heygen-com/hyperframes/pull/4147)).
+- **Producer:** One router predicate for segmented capture, multi-worker allowed ([f78c3cb8d](https://github.com/heygen-com/hyperframes/commit/f78c3cb8d4f73e06dc336e0f9b4e7caf56124725)).
+- **Producer:** Capture segments with N parallel workers off a shared queue ([4e4cfe7ee](https://github.com/heygen-com/hyperframes/commit/4e4cfe7ee50a2d6b7fb6dfe2060a8a59a2ab72c3)).
+- **Producer:** Wire the segment browser-recycle cadence and retry telemetry ([c87b4d1b4](https://github.com/heygen-com/hyperframes/commit/c87b4d1b47999433ce41159b9624c94543df4bc5)).
+- **Producer:** Recycle the browser between segments and retry target loss once ([7d214e96e](https://github.com/heygen-com/hyperframes/commit/7d214e96ece9a8ec8ff3733a9fbdfecf92ef66cb)).
+- **Producer:** Target-loss classifier and browser recycle cadence ([61223223d](https://github.com/heygen-com/hyperframes/commit/61223223d40f58772595854d29e71eff9b62aa91)).
+- **Render:** --resume and --keep-segments for segmented capture ([a560f498c](https://github.com/heygen-com/hyperframes/commit/a560f498cd5cff01935e2ef5f89d0ca57c5fda68)).
+- **Producer:** Segmented stage skips validated segments and reports completions ([8c14169ef](https://github.com/heygen-com/hyperframes/commit/8c14169efd2810324c1a90775c6278485c878729)).
+- **Producer:** Segment manifest with content-addressed plan hash ([5daaae849](https://github.com/heygen-com/hyperframes/commit/5daaae849877174d750670d09000ecc746388d0f)).
+- **Producer:** Route long renders to segmented capture behind HF_SEGMENTED_CAPTURE ([4b54b5d26](https://github.com/heygen-com/hyperframes/commit/4b54b5d26f4e3f0600c82fbdbca0335ac5637610)).
+- **Producer:** Sequential segmented capture stage ([8391abd67](https://github.com/heygen-com/hyperframes/commit/8391abd672809c0891600aab834167f4add9d1ea)).
+- **Producer:** Sdr_segmented capture plan kind ([d7398517b](https://github.com/heygen-com/hyperframes/commit/d7398517bd013588168b312670377ee1c7e655da)).
+- **Producer:** Segment planner for long-form capture ([9c3cff496](https://github.com/heygen-com/hyperframes/commit/9c3cff4960baf8eb19f55fc5ca195de3d9d7f01e)).
+- **Producer:** Stream multi-worker BeginFrame renders by default ([1ae359ca0](https://github.com/heygen-com/hyperframes/commit/1ae359ca004f889fba243c188c79301ab38606b1)).
+- **CLI:** Emit Chrome memory, capture path and segment fields on render events ([ddbc9a8a9](https://github.com/heygen-com/hyperframes/commit/ddbc9a8a98a3f79d2304fb3e6a2c3d85e0548fcb)).
+- **Producer:** Carry Chrome memory and capture path on observability and perf summary ([119dafc00](https://github.com/heygen-com/hyperframes/commit/119dafc005f8817a79973d688b1a236bb412928b)).
+- **Engine:** Sample Chrome process memory per capture session ([428922162](https://github.com/heygen-com/hyperframes/commit/428922162d48fb50321328c98faea921d9ce7731)).
+- **Engine:** Chrome memory sampler with live onMemorySample capture option ([53403a589](https://github.com/heygen-com/hyperframes/commit/53403a589608446cab82ac5b385b5002c4e24e95)).
+- **Engine:** Zero-dependency per-pid RSS sampler (ps / tasklist) ([bc70156f0](https://github.com/heygen-com/hyperframes/commit/bc70156f0073ca08c59bc7a701971ce2e44cda93)).
+- **Lint:** Flag nested structure, missing timing and caption tracks on the root composition ([b44f1f85d](https://github.com/heygen-com/hyperframes/commit/b44f1f85dcf08a3a4d75171328d224c29451905f), [#4146](https://github.com/heygen-com/hyperframes/pull/4146)).
+- **Producer:** Stream long single-worker renders; name the streaming gate reason ([c8b21c965](https://github.com/heygen-com/hyperframes/commit/c8b21c965bd0fd0579f530468efbf183d6e6ef58)).
+- **Engine:** Add streamingEncodeDurationCapEnabled config flag, default off ([68a605c82](https://github.com/heygen-com/hyperframes/commit/68a605c8261265b270e459b78f1e46e722c919f2)).
+
+## Fixes
+
+- **CLI:** Timeline lists every clip of a kind in one flat list, nested ones included ([ac0d8ced2](https://github.com/heygen-com/hyperframes/commit/ac0d8ced2a19f2ef9700e57f5b2d2297992cb9e9), [#4173](https://github.com/heygen-com/hyperframes/pull/4173)).
+- **Runtime:** A finished film rests on its last frame instead of a blank one ([f4e00ce2b](https://github.com/heygen-com/hyperframes/commit/f4e00ce2b52591bd901d937debb1922b321cb0d7), [#4158](https://github.com/heygen-com/hyperframes/pull/4158)).
+- **Engine:** Audio source-not-found names the file and shares one src resolver with lint ([3f3f3b7f1](https://github.com/heygen-com/hyperframes/commit/3f3f3b7f10a68a1a0ce2aa54eb745b1776525930), [#4172](https://github.com/heygen-com/hyperframes/pull/4172)).
+- **CLI:** Timeline reports real media durations instead of unauthored ([7597b80c9](https://github.com/heygen-com/hyperframes/commit/7597b80c950f22ab61dcc5fec4bb59e37f05fe64), [#4169](https://github.com/heygen-com/hyperframes/pull/4169)).
+- **CLI:** A failed docker render names the container's last error ([45f92e557](https://github.com/heygen-com/hyperframes/commit/45f92e55725364003718b7e3c36e05179dcbf43a), [#4168](https://github.com/heygen-com/hyperframes/pull/4168)).
+- **Producer:** Stop disk capture early when frames cannot fit on disk ([35a4fe1da](https://github.com/heygen-com/hyperframes/commit/35a4fe1da7e6564693fbc96996eeaa96836a2ca5), [#4164](https://github.com/heygen-com/hyperframes/pull/4164)).
+- **Studio:** Dropping an asset between or above timeline rows opens a new row ([c2ca2291c](https://github.com/heygen-com/hyperframes/commit/c2ca2291cab668d8ffca15021e3843494c8bdd9f), [#4160](https://github.com/heygen-com/hyperframes/pull/4160)).
+- **CLI:** Install onnxruntime-node and google-genai on first use ([e8fdfd0d6](https://github.com/heygen-com/hyperframes/commit/e8fdfd0d65a0fdf2fb4d574b00d66bc5025c9cfa), [#4156](https://github.com/heygen-com/hyperframes/pull/4156)).
+- **Lint:** Video and audio take their length from the file, only an img needs data-duration ([17b0c2689](https://github.com/heygen-com/hyperframes/commit/17b0c268963d45487b7d3d51e622f292d6808abe), [#4154](https://github.com/heygen-com/hyperframes/pull/4154)).
+- **Producer:** Retry a dead browser tab once on the single-worker capture path ([73f39862f](https://github.com/heygen-com/hyperframes/commit/73f39862f2019a13d9a36f635c808e5cba7fc57e), [#4162](https://github.com/heygen-com/hyperframes/pull/4162)).
+- **Studio:** Button children lay out with the consumer's gap ([0915affe9](https://github.com/heygen-com/hyperframes/commit/0915affe979797430cb4add359b4a92edc0b7ce4), [#4159](https://github.com/heygen-com/hyperframes/pull/4159)).
+- **Engine:** Make urlDownloader retry tests independent of wall-clock time ([607775bb3](https://github.com/heygen-com/hyperframes/commit/607775bb3aa4475873e2e62587ca136c15823d86), [#4155](https://github.com/heygen-com/hyperframes/pull/4155)).
+- **Parsers:** Unroll keeps tween order and label positions the parser read ([559e57d29](https://github.com/heygen-com/hyperframes/commit/559e57d2959f72cb35724013f1517cdc3c0b65d2), [#4157](https://github.com/heygen-com/hyperframes/pull/4157)).
+- **Producer:** Concat directly on a full segmented resume and document the retry surface ([7b65cb98e](https://github.com/heygen-com/hyperframes/commit/7b65cb98e7c5b5ed0579415ddb1656e58574119a)).
+- **Producer:** Record the manual interleave opt-in on the plan so its retry drops to one worker ([bcb2544e7](https://github.com/heygen-com/hyperframes/commit/bcb2544e7af460b57a238fa49a3be90e9ab196e1)).
+- **Engine:** Pin the pool's worker-failure contract and survive a throwing hook ([439bdbd77](https://github.com/heygen-com/hyperframes/commit/439bdbd7744325d4c55179089ad26e0a0d939e70)).
+- **Producer:** Label a non-Linux multi-worker trace as screenshot, not beginframe ([0d4560748](https://github.com/heygen-com/hyperframes/commit/0d4560748b035a53780165f36c1ea37eed70aa9a)).
+- **Producer:** Retry parallel stalls and mid-stream encoder death on default routing ([b05072342](https://github.com/heygen-com/hyperframes/commit/b05072342a279ed45dd84906d3e7ae5824224bfa)).
+- **Producer:** Retry an interleaved parallel-stream plan at one worker, never N contiguous ([9d72e7fa2](https://github.com/heygen-com/hyperframes/commit/9d72e7fa2359ff05be5791a93bb291984bf48a77)).
+- **Producer:** Type the parallel stall, arm its watchdog after init, propagate worker death ([9acf96d03](https://github.com/heygen-com/hyperframes/commit/9acf96d036b0337e316f7f95b06c5f4121c17778)).
+- **Engine:** A worker death is pool-fatal on the streaming path ([527355451](https://github.com/heygen-com/hyperframes/commit/52735545164adf966e032bb1ae0e659b5dcb160d)).
+- **Engine:** Classify a broken encoder pipe as io, not authoring ([95cbf5663](https://github.com/heygen-com/hyperframes/commit/95cbf566347b93f3e61487cfdee0f645e0df0a10)).
+- **Engine:** Keep ffmpeg's exit reason when it dies under a parked write ([69024e17d](https://github.com/heygen-com/hyperframes/commit/69024e17d193dc6af714ff9b8baab225eafd033b)).
+- **Producer:** Call closeCaptureSession through its live binding in segmented defaults ([763ea8f97](https://github.com/heygen-com/hyperframes/commit/763ea8f97f5a6ade110d53f938ba1275cf3e5b47)).
+- **Producer,cli:** Hash every byte-affecting segment input; pin the resume-flag plumbing ([e7c4eb52b](https://github.com/heygen-com/hyperframes/commit/e7c4eb52b9d2154f7db210905d087667e21a5928)).
+- **CLI:** Pass the segmented resume flags from the plan into render options ([ae6aedf1c](https://github.com/heygen-com/hyperframes/commit/ae6aedf1cac0af6f3934ead40f746e4f48ce993a)).
+- **Producer:** Drop the closed probe reference when segmented capture falls back to streaming ([cb2894211](https://github.com/heygen-com/hyperframes/commit/cb289421104aabefc1e3fa3b617787cdee1f6350)).
+- **Producer:** Disk preflight names only causes that reach it; refresh the router field's docstring ([5f373894d](https://github.com/heygen-com/hyperframes/commit/5f373894d097ae4140add2e6e99981188a30533f)).
+- **Engine:** Read Chrome process info from the browser target, not the page ([2cf8024a7](https://github.com/heygen-com/hyperframes/commit/2cf8024a7c2568782ed5972f5ca4630eb65b3580)).
+- **Engine:** SampleOnce() joins an in-flight sample instead of skipping it ([a35168edd](https://github.com/heygen-com/hyperframes/commit/a35168edddabe97860fb9164ea53ea27c9600154)).
+- **Engine:** Read `/proc/<pid>/status` for RSS on linux instead of shelling out to ps ([3cee3b94f](https://github.com/heygen-com/hyperframes/commit/3cee3b94f7b8b6053b63d6c6bea383af7a6d5af3)).
+- **Producer:** Point the disk-capture preflight at routes that actually stream ([457687e77](https://github.com/heygen-com/hyperframes/commit/457687e77c4fd75300acbafcfb5c30e72287c218)).
+
+## Docs & Examples
+
+- **Skills:** An agent adds media with the duration Studio gives a dropped file ([2f2457339](https://github.com/heygen-com/hyperframes/commit/2f245733950db623903ec16f3e3bbea8d2bd2f95), [#4144](https://github.com/heygen-com/hyperframes/pull/4144)).
+- **Skills:** The agent presents a tailor-made storyboard instead of a Studio board ([1a9668b6d](https://github.com/heygen-com/hyperframes/commit/1a9668b6d65d3223430de570016e0028ab89a6c0), [#4150](https://github.com/heygen-com/hyperframes/pull/4150)).
+- **Long Form:** Point the fixture README at the ticket, not a plans path ([072750168](https://github.com/heygen-com/hyperframes/commit/072750168d2373d2e06752053c810d9902725c72)).
+- **Long Form:** Fault-injection validation of the R3 retry paths ([17cf030b9](https://github.com/heygen-com/hyperframes/commit/17cf030b93467605aebd899d6a708aaf1fcec1f2)).
+- **Long Form:** Record the adversarial review outcome and the retry target per routing ([ee3d6418f](https://github.com/heygen-com/hyperframes/commit/ee3d6418f7e8ba42e0a3985cb9ff8efc1d5ce3cf)).
+- **Long Form:** Gate the R3 route on the PRINFRA-694 fixture, record the hardening ([77dd1da8d](https://github.com/heygen-com/hyperframes/commit/77dd1da8da031ee124ffaba49bbad8e6b0f8d9bd)).
+- **CLI:** Document segmented capture and record the Phase 2d gate ([c4ccd9d6a](https://github.com/heygen-com/hyperframes/commit/c4ccd9d6a2090739bbf4d6daa33c26bbcc87f4f9)).
+- **CLI:** Document the parallel-stream router and its capture-mode split ([bc2a8b5e0](https://github.com/heygen-com/hyperframes/commit/bc2a8b5e0d6e7189f75dbcd99098c8be9526ba88)).
+- **Skills:** One owner doc for everyday edits and a hyperframes-studio skill ([2db126d4c](https://github.com/heygen-com/hyperframes/commit/2db126d4c8c5506cc6679a7332645fa6cfb0dde8), [#4125](https://github.com/heygen-com/hyperframes/pull/4125)).
+- **CLI:** The streaming duration cap is off by default; document the flag ([c038b087e](https://github.com/heygen-com/hyperframes/commit/c038b087e1d9dc03c737537a856c8acedaf4f4c0)).
+- **Engine,producer:** Describe the opt-in duration cap where the gate's callers read it ([172cac433](https://github.com/heygen-com/hyperframes/commit/172cac433d46610378e46e607951c868968a0af8)).
+
+## Catalog
+
+- **Registry:** Blur an element by marking it, not by calling a function ([752b55278](https://github.com/heygen-com/hyperframes/commit/752b55278986089636aaf3b2eb113d1da2f037d7), [#4045](https://github.com/heygen-com/hyperframes/pull/4045)).
+
+## Internal
+
+- Require before and after captures on studio and player PRs ([a94466256](https://github.com/heygen-com/hyperframes/commit/a94466256ee0d59ac33b0866b74320b8460fb93c), [#4131](https://github.com/heygen-com/hyperframes/pull/4131)).
+- **Windows:** A run superseded by a newer push no longer reports a failed aggregator ([e3bf76af6](https://github.com/heygen-com/hyperframes/commit/e3bf76af6736968bdc26879695609460ae8d60be), [#4149](https://github.com/heygen-com/hyperframes/pull/4149)).
+- **Producer:** Drop the unused worker count from the segmented router predicate ([80d12f8c9](https://github.com/heygen-com/hyperframes/commit/80d12f8c9e4e36c922d25de4bf8680bb2ef7bd63)).
+- **Producer:** Record the Phase 2c gate result ([79a4b02d7](https://github.com/heygen-com/hyperframes/commit/79a4b02d78b722e47e26ae5c2d736c0176a329e1)).
+- **Producer:** Record the Phase 2a gate result and its real pass criteria ([7000e3294](https://github.com/heygen-com/hyperframes/commit/7000e3294250003592ea2cf4aa4f15ef92b0d01a)).
+- **Engine:** Extract concatVideoFiles from the chunked encoder ([46d852cc9](https://github.com/heygen-com/hyperframes/commit/46d852cc9338f835be1c47b51b30562edeef6712)).
+- **Engine:** Pin the unref'd sampler interval via a cast-free timer seam ([7cf57fa42](https://github.com/heygen-com/hyperframes/commit/7cf57fa42e558c4fbf9a9d225630d084be14f21e)).
+- **Engine:** Fix readonly array type in the pid-filter test ([1862c3439](https://github.com/heygen-com/hyperframes/commit/1862c34399e9b7b62d7c52fc0cb4e7f8d6fc6939)).
+- **Engine:** Pin the pid filter, dedup and tasklist memory guard in sampleProcessRss ([645cbdce4](https://github.com/heygen-com/hyperframes/commit/645cbdce4eac2a3cc08738e9d6b30ed7afcbc8a5)).
+- **Studio:** Remove the storyboard view and its Storyboard/Preview switch ([a25da94b7](https://github.com/heygen-com/hyperframes/commit/a25da94b771cad984c028f609b6c5303c43b5d3e), [#4140](https://github.com/heygen-com/hyperframes/pull/4140)).
+- **Producer:** Add long-form render fixture generator and manual gate notes ([ac946ef11](https://github.com/heygen-com/hyperframes/commit/ac946ef11bb08461e88eb5ab8390d62d89db7dff)).
+- **Producer:** Reject non-boolean streamingEncodeDurationCapEnabled snapshots ([bf2604410](https://github.com/heygen-com/hyperframes/commit/bf26044104849b226b82bc3c36cc06d19a2314a0)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.50...v0.8.51).
+</Update>
+
+<Update
   label="HyperFrames v0.8.50"
   description="Released - 2026-09-19"
   tags={["Release", "Studio", "Skills", "Player"]}
