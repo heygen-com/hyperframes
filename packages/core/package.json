@@ -257,6 +257,12 @@
       "import": "./src/runtime/protocol.ts",
       "types": "./src/runtime/protocol.ts"
     },
+    "./runtime/clip-window": {
+      "bun": "./src/runtime/clipWindow.ts",
+      "node": "./dist/runtime/clipWindow.js",
+      "import": "./src/runtime/clipWindow.ts",
+      "types": "./src/runtime/clipWindow.ts"
+    },
     "./runtime/stacking-context": {
       "bun": "./src/runtime/stackingContext.ts",
       "node": "./dist/runtime/stackingContext.js",
@@ -570,6 +576,10 @@
       "./runtime/protocol": {
         "import": "./dist/runtime/protocol.js",
         "types": "./dist/runtime/protocol.d.ts"
+      },
+      "./runtime/clip-window": {
+        "import": "./dist/runtime/clipWindow.js",
+        "types": "./dist/runtime/clipWindow.d.ts"
       },
       "./runtime/stacking-context": {
         "import": "./dist/runtime/stackingContext.js",

@@ -1002,6 +1002,17 @@ describe("initSandboxRuntimeModular", () => {
       expect(video.play).not.toHaveBeenCalled();
     });
 
+    it("keeps a nested clip visible when its summed end falls one ulp short of the timeline duration", () => {
+      const root = buildRoot();
+      // GSAP reports 0.8 for a 0.7s tween followed by a 0.1s tween; the authored end sums to 0.7999999999999999.
+      const nested = addClip(root, 0.7, 0.1);
+      window.__timelines = { main: createMockTimeline(0.8) };
+      initSandboxRuntimeModular();
+
+      window.__player?.renderSeek(0.8);
+      expect(nested.style.visibility).toBe("visible");
+    });
+
     it("still hides a clip that ended before the composition duration", () => {
       const root = buildRoot();
       const earlyClip = addClip(root, 0, 2.5);

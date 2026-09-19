@@ -4,10 +4,16 @@ import {
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
-  syncRuntimeMedia,
+  syncRuntimeMedia as syncRuntimeMediaWithDuration,
 } from "./media";
 import type { RuntimeMediaClip } from "./media";
 import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
+
+// Most cases predate the terminal rule and run with no composition end to hold at.
+const syncRuntimeMedia = (
+  params: Omit<Parameters<typeof syncRuntimeMediaWithDuration>[0], "getCompositionDuration"> &
+    Partial<Pick<Parameters<typeof syncRuntimeMediaWithDuration>[0], "getCompositionDuration">>,
+) => syncRuntimeMediaWithDuration({ getCompositionDuration: () => 0, ...params });
 
 function createVideo(attrs: Record<string, string>): HTMLVideoElement {
   const el = document.createElement("video");

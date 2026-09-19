@@ -256,7 +256,7 @@ export function syncRuntimeMedia(params: {
   forceSync?: boolean;
   /** Lets a video clip that runs to the composition end hold its last frame at the terminal time.
    *  A thunk, because deriving the duration is only worth it for a clip past its own end. */
-  getCompositionDuration?: () => number;
+  getCompositionDuration: () => number;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
   for (const clip of params.clips) {
@@ -271,7 +271,6 @@ export function syncRuntimeMedia(params: {
       isNonLoopVideo &&
       !inWindow &&
       params.timeSeconds >= clip.end &&
-      params.getCompositionDuration !== undefined &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
     let relTime =
       sourceTimeAt(clipRate, Math.min(params.timeSeconds, clip.end) - clip.start) + clip.mediaStart;

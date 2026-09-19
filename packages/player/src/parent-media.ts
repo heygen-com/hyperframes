@@ -11,6 +11,7 @@
 
 import { selectMediaObserverTargets } from "./mediaObserverScope.js";
 import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.js";
+import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 
 /** Minimum absolute drift before a currentTime correction is attempted. */
@@ -138,8 +139,7 @@ export class ParentMediaManager {
   // window until the next mirrorTime tick gates them off.
   private _playEntryIfActive(m: ProxyEntry): void {
     this._refreshEntryBounds(m);
-    const relTime = this._getCurrentTime() - m.start;
-    if (relTime < 0 || relTime >= m.duration) return;
+    if (!this._inWindow(m, this._getCurrentTime())) return;
     this._playEntry(m);
   }
 
@@ -148,7 +148,7 @@ export class ParentMediaManager {
   private _refreshEntryBounds(m: ProxyEntry): void {
     if (!m.source?.isConnected) return;
     // Guard against a malformed (non-numeric) attribute parsing to NaN: an NaN
-    // duration makes every `relTime >= m.duration` window check false, so the
+    // duration makes every window check pass, so the
     // gate never closes and the proxy plays past its clip end.
     const timing = readClipTiming(m.source);
     m.start = timing.start ?? 0;
@@ -158,8 +158,12 @@ export class ParentMediaManager {
 
   // Pause the proxy outside its clip window; resume it on re-entry during
   // parent-owned playback. Returns whether the proxy is within the window.
-  private _gateEntryPlayback(m: ProxyEntry, relTime: number): boolean {
-    if (relTime < 0 || relTime >= m.duration) {
+  private _inWindow(m: ProxyEntry, timeSeconds: number): boolean {
+    return isInClipWindow(timeSeconds, m.start, m.start + m.duration);
+  }
+
+  private _gateEntryPlayback(m: ProxyEntry, timeSeconds: number): boolean {
+    if (!this._inWindow(m, timeSeconds)) {
       if (!m.el.paused) m.el.pause();
       m.driftSamples = 0;
       return false;
@@ -187,8 +191,7 @@ export class ParentMediaManager {
       // Re-read live bounds so a trim/move just before a paused scrub gates and
       // positions against the current clip window, not the adopt-time one.
       this._refreshEntryBounds(m);
-      const relTime = timeInSeconds - m.start;
-      if (relTime >= 0 && relTime < m.duration) m.el.currentTime = relTime;
+      if (this._inWindow(m, timeInSeconds)) m.el.currentTime = timeInSeconds - m.start;
     }
   }
 
@@ -202,9 +205,8 @@ export class ParentMediaManager {
   scrubAll(timeInSeconds: number): void {
     for (const m of this._entries) {
       this._refreshEntryBounds(m);
-      const relTime = timeInSeconds - m.start;
-      if (relTime >= 0 && relTime < m.duration) {
-        m.el.currentTime = relTime;
+      if (this._inWindow(m, timeInSeconds)) {
+        m.el.currentTime = timeInSeconds - m.start;
         this._playEntry(m);
       } else if (!m.el.paused) {
         m.el.pause();
@@ -222,8 +224,8 @@ export class ParentMediaManager {
     const force = options?.force === true;
     for (const m of this._entries) {
       this._refreshEntryBounds(m);
+      if (!this._gateEntryPlayback(m, timelineSeconds)) continue;
       const relTime = timelineSeconds - m.start;
-      if (!this._gateEntryPlayback(m, relTime)) continue;
       if (Math.abs(m.el.currentTime - relTime) > MIRROR_DRIFT_THRESHOLD_SECONDS) {
         m.driftSamples += 1;
         if (force || m.driftSamples >= MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES) {
