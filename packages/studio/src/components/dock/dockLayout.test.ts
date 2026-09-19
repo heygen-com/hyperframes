@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { createDockview, type DockviewApi } from "dockview-react";
+import type { DockviewApi } from "dockview-react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applySideMinimums,
@@ -8,6 +8,7 @@ import {
   defaultSideWidths,
   sideMinimumWidth,
 } from "./dockLayout";
+import { mountBareDockview } from "./dockTestHarness";
 
 class ResizeObserverStub {
   observe() {}
@@ -55,14 +56,9 @@ describe("defaultSideWidths", () => {
 });
 
 describe("applySideMinimums", () => {
-  let host: HTMLElement;
   let api: DockviewApi;
   beforeEach(() => {
-    host = document.createElement("div");
-    document.body.append(host);
-    api = createDockview(host, {
-      createComponent: () => ({ element: document.createElement("div"), init() {}, dispose() {} }),
-    });
+    ({ api } = mountBareDockview());
   });
   afterEach(() => {
     api.dispose();

@@ -13,7 +13,7 @@ function splitAxis(sash: HTMLElement): Axis {
 }
 
 /** Dockview draws sashes as bare divs; make each one a focusable separator. */
-export function decorateSashes(root: HTMLElement) {
+function decorateSashes(root: HTMLElement) {
   for (const sash of root.querySelectorAll<HTMLElement>(".dv-sash")) {
     const axis = splitAxis(sash);
     sash.tabIndex = 0;

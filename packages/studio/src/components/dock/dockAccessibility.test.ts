@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
-import { createDockview, type DockviewApi } from "dockview-react";
+import type { DockviewApi } from "dockview-react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mountBareDockview } from "./dockTestHarness";
 import { installDockAccessibility } from "./dockAccessibility";
 import { applySideMinimums, buildEditLayout } from "./dockLayout";
 
@@ -17,15 +18,7 @@ let api: DockviewApi;
 let dispose: () => void;
 
 beforeEach(() => {
-  host = document.createElement("div");
-  document.body.append(host);
-  api = createDockview(host, {
-    createComponent: () => ({
-      element: document.createElement("div"),
-      init() {},
-      dispose() {},
-    }),
-  });
+  ({ host, api } = mountBareDockview());
   api.layout(1200, 700);
   buildEditLayout(api, 1200);
   applySideMinimums(api, 1200);
