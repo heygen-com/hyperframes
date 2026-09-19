@@ -42,7 +42,7 @@ const GSAP_METHODS = new Set(["set", "to", "from", "fromTo"]);
 const MAX_DEPTH = 8;
 const MAX_ITERS = 512;
 
-function isFunctionNode(node: Node): boolean {
+export function isFunctionNode(node: Node): boolean {
   return !!node && FUNCTION_TYPES.has(node.type);
 }
 
@@ -192,7 +192,7 @@ function timelineRootName(call: Node): string | null {
   return obj?.type === "Identifier" ? obj.name : null;
 }
 
-function isTimelineRooted(call: Node, timelineVar: string): boolean {
+export function isTimelineRooted(call: Node, timelineVar: string): boolean {
   if (timelineRootName(call) !== timelineVar) return false;
   return (
     call.callee?.property?.type === "Identifier" && GSAP_METHODS.has(call.callee.property.name)

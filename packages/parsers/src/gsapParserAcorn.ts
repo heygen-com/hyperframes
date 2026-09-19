@@ -1802,9 +1802,9 @@ function callSiteStart(call: TweenCallInfo): number | undefined {
 }
 
 function compareCallOrder(a: TweenCallInfo, b: TweenCallInfo): number {
-  const as = callSiteStart(a);
-  const bs = callSiteStart(b);
-  if (as !== undefined && bs !== undefined && as !== bs) return as - bs;
+  const aSite = callSiteStart(a);
+  const bSite = callSiteStart(b);
+  if (aSite !== undefined && bSite !== undefined && aSite !== bSite) return aSite - bSite;
   const ao = a.node.__hfOrder;
   const bo = b.node.__hfOrder;
   if (ao !== undefined && bo !== undefined) return ao - bo;

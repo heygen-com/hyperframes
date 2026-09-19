@@ -162,17 +162,15 @@ ${call};`;
         parseGsapScriptAcorn(script).animations.map((a) => [a.targetSelector, a.resolvedStart]),
       );
 
-    it("resolves helper tweens in source order among literal tweens", () => {
-      const script = `const tl = gsap.timeline();
+    const script = `const tl = gsap.timeline();
 function fade(s) { tl.to(s, { opacity: 0, duration: 1 }); }
 fade("#a"); tl.to("#c", { x: 1, duration: 1 }); fade("#b");`;
+
+    it("resolves helper tweens in source order among literal tweens", () => {
       expect(starts(script)).toEqual({ "#a": 0, "#c": 1, "#b": 2 });
     });
 
     it("unrolls to a script whose tweens start at the same times", () => {
-      const script = `const tl = gsap.timeline();
-function fade(s) { tl.to(s, { opacity: 0, duration: 1 }); }
-fade("#a"); tl.to("#c", { x: 1, duration: 1 }); fade("#b");`;
       expect(starts(unrollComputedTimeline(script))).toEqual(starts(script));
     });
   });
@@ -187,6 +185,17 @@ fade("#a", 1);`;
   it("leaves a loop as authored when its body sets state outside the timeline", () => {
     const script = `const tl = gsap.timeline();
 for (let i = 0; i < 2; i++) { gsap.set("#x", { opacity: 0 }); tl.to("#x", { opacity: 1, duration: 1 }, i); }`;
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
+
+  it.each([
+    ["a tl.call callback", "tl.call(() => window.hit++, [], at);"],
+    ["a label", 'tl.addLabel("mark", at);'],
+    ["a call chained after a tween", "tl.to(sel, { opacity: 1, duration: 1 }, at).call(() => {});"],
+  ])("leaves a helper as authored when it adds %s", (_case, body) => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { ${body} }
+fade("#a", 1);`;
     expect(unrollComputedTimeline(script)).toBe(script);
   });
 });
