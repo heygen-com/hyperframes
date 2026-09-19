@@ -74,22 +74,39 @@ test("the Studio skill's safe boxes equal the preview's", async () => {
   assert.match(skill, new RegExp(`Title-safe\\s*\\|\\s*${title}%`));
 });
 
-test("the add-media recipe matches Studio's own drop defaults", async () => {
+async function addMediaFacts() {
   const helpers = await read("packages/studio/src/utils/studioHelpers.ts");
   const defaults = helpers.match(/DEFAULT_TIMELINE_ASSET_DURATION[^=]*=\s*\{([^}]*)\}/)?.[1] ?? "";
   const secs = (kind) => defaults.match(new RegExp(`${kind}:\\s*(\\d+(?:\\.\\d+)?)`))?.[1];
   const section = (await read(OWNER)).split("## Add media")[1]?.split("\n## ")[0] ?? "";
+  const image = section.match(/<img[\s\S]*?\/>/)?.[0] ?? "";
+  return { secs, section, image };
+}
+
+test("the add-media recipe uses Studio's default durations", async () => {
+  const { secs, section, image } = await addMediaFacts();
   assert.ok(secs("image"), "could not read Studio's image default");
   assert.match(section, new RegExp(`Image: \`data-duration="${secs("image")}"\``));
   assert.match(section, new RegExp(`\`${secs("video")}\` only when the length cannot be read`));
-  const image = section.match(/<img[\s\S]*?\/>/)?.[0] ?? "";
   assert.match(image, new RegExp(`data-duration="${secs("image")}"`));
+});
+
+test("the add-media recipe uses Studio's full-frame geometry", async () => {
+  const { section, image } = await addMediaFacts();
   const dropOps = await read("packages/studio/src/hooks/useTimelineAssetDropOps.ts");
-  assert.match(dropOps, /fitTimelineAssetGeometry\(\s*null,/, "Studio centres by natural size now; update the doc");
+  assert.match(
+    dropOps,
+    /fitTimelineAssetGeometry\(\s*null,/,
+    "Studio centres by natural size now; update the doc",
+  );
   assert.match(section, /fill the whole frame/);
   assert.match(image, /left: 0px; top: 0px; width: 1920px; height: 1080px/);
+});
+
+test("the add-media example carries every attribute Studio's drop writes", async () => {
+  const { image } = await addMediaFacts();
   const drop = await read("packages/studio/src/utils/timelineAssetDrop.ts");
-  for (const attr of ["class=\"clip\"", "data-start", "data-duration", "data-track-index"]) {
+  for (const attr of ['class="clip"', "data-start", "data-duration", "data-track-index"]) {
     assert.ok(drop.includes(attr), `Studio no longer writes ${attr}`);
     assert.ok(image.includes(attr.split("=")[0]), `doc example lacks ${attr}`);
   }
