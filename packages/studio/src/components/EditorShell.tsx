@@ -65,7 +65,10 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   isGestureRecording?: boolean;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
-  /** Host layer painted over the preview; place it with `usePreviewCompositionRect`. */
+  /**
+   * Host layer over the preview, positioned with `usePreviewCompositionRect`. Hidden in
+   * fullscreen and during a block preview; below the selection overlay past z-index 10.
+   */
   gestureOverlay?: ReactNode;
 }
 
