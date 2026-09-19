@@ -714,10 +714,13 @@ interface TimelineDefaults {
   durationUnresolved?: boolean;
 }
 
-function hasNonLiteralDuration(objectNode: any, scope: ScopeBindings): boolean {
-  const prop = objectNode?.properties?.find(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === "duration",
-  );
+/** True when the vars argument may carry a duration that static evaluation could not read. */
+function hasUnknownDuration(varsNode: any, scope: ScopeBindings): boolean {
+  if (!varsNode) return false;
+  if (varsNode.type !== "ObjectExpression") return true;
+  const props: any[] = varsNode.properties ?? [];
+  if (props.some((p) => p.type === "SpreadElement")) return true;
+  const prop = props.find((p) => isObjectProperty(p) && propKeyName(p) === "duration");
   return prop !== undefined && typeof resolveNode(prop.value, scope) !== "number";
 }
 
@@ -1338,9 +1341,7 @@ function tweenCallToAnimation(
     duration = computeKeyframesTotalDuration(call.varsArg, scope, source);
   }
   const durationUnresolved =
-    duration === undefined &&
-    call.varsArg?.type === "ObjectExpression" &&
-    hasNonLiteralDuration(call.varsArg, scope);
+    call.method !== "set" && duration === undefined && hasUnknownDuration(call.varsArg, scope);
 
   // Relabel object-proxy / empty-target tweens so they don't read as bare
   // __unresolved__: a dwell/hold spacer or an onUpdate-driven DOM channel (#5/#11).
@@ -1617,7 +1618,7 @@ function applyTimelineDefaults(
   if (!defaults) return;
   for (const anim of anims) {
     if (anim.method === "set") continue;
-    if (anim.duration === undefined) {
+    if (anim.duration === undefined && !anim.durationUnresolved) {
       if (defaults.duration !== undefined) anim.duration = defaults.duration;
       else if (defaults.durationUnresolved) anim.durationUnresolved = true;
     }

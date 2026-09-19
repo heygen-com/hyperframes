@@ -104,6 +104,21 @@ function isHelperDeclNamed(stmt: Node, names: Set<string>): boolean {
 }
 
 /**
+ * A literal tween cannot encode an unknown start or duration, so those statements stay as authored,
+ * and so do the helpers they still call.
+ */
+function dropStatementsWithUnknownTiming(
+  byStatement: Map<Node, GsapAnimation[]>,
+  helperNames: Set<string>,
+): void {
+  for (const [stmt, anims] of byStatement) {
+    if (!anims.some((a) => a.durationUnresolved || a.resolvedStart === undefined)) continue;
+    byStatement.delete(stmt);
+    for (const a of anims) if (a.provenance?.fn) helperNames.delete(a.provenance.fn);
+  }
+}
+
+/**
  * Rewrite `script` so top-level helper calls / loops that build the timeline
  * become explicit literal tweens. Returns the original script unchanged when
  * there is nothing statically-resolvable to unroll.
@@ -128,12 +143,7 @@ export function unrollComputedTimeline(script: string): string {
     list.push(anim);
     byStatement.set(stmt, list);
   }
-  // A literal tween cannot encode an unknown start or duration, so leave that statement as authored.
-  for (const [stmt, anims] of byStatement) {
-    if (anims.some((a) => a.durationUnresolved || a.resolvedStart === undefined)) {
-      byStatement.delete(stmt);
-    }
-  }
+  dropStatementsWithUnknownTiming(byStatement, helperNames);
   if (byStatement.size === 0) return script;
 
   const ms = new MagicString(script);

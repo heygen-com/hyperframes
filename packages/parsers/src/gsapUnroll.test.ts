@@ -67,4 +67,14 @@ fade("#a", 1);
 fade("#b", 2);`;
     expect(unrollComputedTimeline(script)).toBe(script);
   });
+
+  it("still unrolls a sibling statement whose timing is fully known", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at, len) { tl.to(sel, { opacity: 1, duration: len }, at); }
+fade("#a", 1, LEN);
+fade("#b", 2, 0.5);`;
+    const out = unrollComputedTimeline(script);
+    expect(out).toContain('fade("#a", 1, LEN);');
+    expect(out).toContain("duration: 0.5");
+  });
 });

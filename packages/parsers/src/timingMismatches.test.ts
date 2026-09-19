@@ -74,6 +74,47 @@ describe("timingMismatches", () => {
   });
 });
 
+describe("timingMismatches edge cases", () => {
+  it("flags a from tween that starts before data-start", () => {
+    const r = timingMismatches(comp(clip("a", 2, 3), `tl.from("#a",{opacity:0,duration:1},0);`));
+    expect(r.findings).toMatchObject([
+      { kind: "tween-outside-window", tweenStart: 0, dataStart: 2 },
+    ]);
+  });
+
+  it("reports a non-numeric data-start as unresolved, not a finding", () => {
+    const html = comp(
+      `<div id="a" data-start="other + 1" data-duration="2"></div>`,
+      `tl.to("#a",{x:1,duration:1},9);`,
+    );
+    expect(timingMismatches(html)).toEqual({
+      findings: [],
+      unresolved: [{ selector: "#a", reason: "start-attribute" }],
+    });
+  });
+
+  it("reports a staggered tween as unresolved", () => {
+    const html = comp(clip("a", 0, 5), `tl.to("#a",{x:1,duration:1,stagger:0.2},9);`);
+    expect(timingMismatches(html).unresolved).toEqual([{ selector: "#a", reason: "stagger" }]);
+  });
+
+  it("ignores off-timeline global sets and sub-composition hosts", () => {
+    const html = comp(
+      `<div id="h" data-composition-id="sub" data-start="1" data-duration="2"></div><div id="u"></div>`,
+      `gsap.set("#u",{opacity:0});tl.to("#h",{x:1,duration:1},8);`,
+    );
+    expect(timingMismatches(html).findings).toEqual([]);
+  });
+
+  it("reports an untimed animated element once however many tweens target it", () => {
+    const html = comp(
+      `<div id="b"></div>`,
+      `tl.to("#b",{x:1,duration:1},0);tl.to("#b",{y:1,duration:1},1);`,
+    );
+    expect(timingMismatches(html).findings).toHaveLength(1);
+  });
+});
+
 describe("parseGsapScriptAcorn unresolved duration", () => {
   const starts = (script: string) =>
     parseGsapScriptAcorn(script).animations.map((a) => a.resolvedStart);
@@ -104,5 +145,29 @@ describe("parseGsapScriptAcorn unresolved duration", () => {
       `const tl = gsap.timeline({defaults:{duration:D}});tl.to("#a",{x:1});`,
     ).animations;
     expect(a?.durationUnresolved).toBe(true);
+  });
+  it.each([
+    ["a vars variable", `const v = makeVars(); tl.to("#a", v); tl.to("#b", {x:1});`],
+    ["a vars call", `tl.to("#a", makeVars()); tl.to("#b", {x:1});`],
+    ["a spread", `tl.to("#a", {x:1, ...opts}); tl.to("#b", {x:1});`],
+  ])("treats %s as an unknown duration", (_name, script) => {
+    const [, b] = parseGsapScriptAcorn(`const tl = gsap.timeline();${script}`).animations;
+    expect(b?.resolvedStart).toBeUndefined();
+  });
+
+  it("ignores a duration on a set, which GSAP never reads", () => {
+    const [set, next] = parseGsapScriptAcorn(
+      `const tl = gsap.timeline();tl.set("#a",{opacity:0,duration:D},0);tl.to("#b",{x:1,duration:1});`,
+    ).animations;
+    expect(set?.durationUnresolved).toBeUndefined();
+    expect(next?.resolvedStart).toBe(0);
+  });
+
+  it("does not let a timeline default duration stand in for an authored non-static one", () => {
+    const [a] = parseGsapScriptAcorn(
+      `const tl = gsap.timeline({defaults:{duration:3}});tl.to("#a",{x:1,duration:D});`,
+    ).animations;
+    expect(a).toMatchObject({ durationUnresolved: true });
+    expect(a?.duration).toBeUndefined();
   });
 });
