@@ -45,6 +45,14 @@ export const ALLOWED_DELETIONS = new Map([
     "the full-screen drop-to-add box is replaced by a landing preview on the timeline; no remaining references",
   ],
   [
+    "packages/studio/postcss.config.js",
+    "Tailwind v4 migration: postcss replaced by @tailwindcss/vite",
+  ],
+  [
+    "packages/studio/tailwind.config.js",
+    "Tailwind v4 migration: config moves into styles/studio.css via @theme",
+  ],
+  [
     "docs/snippets/catalog-overview-player.jsx",
     "#4051 removes the Catalog overview's only consumer of this snippet (replaced by the browse-grid mount); confirmed unreferenced repo-wide before deleting",
   ],
