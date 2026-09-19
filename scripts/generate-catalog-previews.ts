@@ -76,54 +76,57 @@ export interface CatalogItem {
 
 // ── Discovery ──────────────────────────────────────────────────────────────
 
+// Blocks and components only: examples use the existing generate-template-previews.ts.
+const catalogKinds: { kind: ItemKind; dir: string }[] = [
+  { kind: "block", dir: join(registryDir, "blocks") },
+  { kind: "component", dir: join(registryDir, "components") },
+];
+
+function compositionEntry(manifestPath: string, name: string): string {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  const compFile = manifest.files?.find(
+    (f: { type: string }) => f.type === "hyperframes:composition",
+  );
+  return compFile?.path ?? `${name}.html`;
+}
+
+/** Authored demos show transparent overlays against representative media. */
+function resolveEntryFile(kind: ItemKind, sourceDir: string, name: string): string | undefined {
+  if (existsSync(join(sourceDir, "demo.html"))) return "demo.html";
+  if (kind === "component") return undefined;
+  return compositionEntry(join(sourceDir, "registry-item.json"), name);
+}
+
+function itemFromDir(kind: ItemKind, dir: string, name: string): CatalogItem | undefined {
+  const sourceDir = join(dir, name);
+  if (!existsSync(join(sourceDir, "registry-item.json"))) return undefined;
+  const entryFile = resolveEntryFile(kind, sourceDir, name);
+  if (entryFile === undefined || !existsSync(join(sourceDir, entryFile))) return undefined;
+  return { name, kind, sourceDir, entryFile };
+}
+
+function itemsOfKind(kind: ItemKind, dir: string, nameFilter: string | null): CatalogItem[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && (!nameFilter || e.name === nameFilter))
+    .flatMap((e) => itemFromDir(kind, dir, e.name) ?? []);
+}
+
+function failItemNotFound(nameFilter: string): never {
+  const allNames = discoverItems(null, null).map((i) => i.name);
+  console.error(`Item "${nameFilter}" not found. Available: ${allNames.join(", ")}`);
+  process.exit(1);
+}
+
 export function discoverItems(
   kindFilter: ItemKind | null,
   nameFilter: string | null,
 ): CatalogItem[] {
-  const items: CatalogItem[] = [];
+  const items = catalogKinds
+    .filter(({ kind }) => !kindFilter || kindFilter === kind)
+    .flatMap(({ kind, dir }) => itemsOfKind(kind, dir, nameFilter));
 
-  // Blocks and components only — examples use the existing generate-template-previews.ts.
-  const kinds: { kind: ItemKind; dir: string }[] = [
-    { kind: "block", dir: join(registryDir, "blocks") },
-    { kind: "component", dir: join(registryDir, "components") },
-  ];
-
-  for (const { kind, dir } of kinds) {
-    if (kindFilter && kindFilter !== kind) continue;
-    if (!existsSync(dir)) continue;
-
-    for (const e of readdirSync(dir, { withFileTypes: true })) {
-      if (!e.isDirectory()) continue;
-      if (nameFilter && e.name !== nameFilter) continue;
-
-      const sourceDir = join(dir, e.name);
-      const manifestPath = join(sourceDir, "registry-item.json");
-      if (!existsSync(manifestPath)) continue;
-
-      // Authored demos show transparent overlays against representative media.
-      let entryFile: string;
-      if (existsSync(join(sourceDir, "demo.html"))) {
-        entryFile = "demo.html";
-      } else if (kind === "component") {
-        continue;
-      } else {
-        const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-        const compFile = manifest.files?.find(
-          (f: { type: string }) => f.type === "hyperframes:composition",
-        );
-        entryFile = compFile?.path ?? `${e.name}.html`;
-      }
-
-      if (!existsSync(join(sourceDir, entryFile))) continue;
-      items.push({ name: e.name, kind, sourceDir, entryFile });
-    }
-  }
-
-  if (nameFilter && items.length === 0) {
-    const allNames = discoverItems(null, null).map((i) => i.name);
-    console.error(`Item "${nameFilter}" not found. Available: ${allNames.join(", ")}`);
-    process.exit(1);
-  }
+  if (nameFilter && items.length === 0) failItemNotFound(nameFilter);
 
   return items;
 }
@@ -268,114 +271,105 @@ export interface PrepareOptions {
   hostedAssets?: "download" | "cdn";
 }
 
-export async function prepareProjectDir(
-  item: CatalogItem,
-  options: PrepareOptions = {},
-): Promise<string> {
-  const tmpDir = createCatalogPreviewTempDir(item.name);
-  cpSync(item.sourceDir, tmpDir, { recursive: true });
-  await materializeHostedAssets(tmpDir, options.hostedAssets);
-  mirrorRegistryTargets(tmpDir);
+/** A registration inside <template> stays inert until mounted, so it does not make the file standalone. */
+function hasTimeline(entryContent: string): boolean {
+  return entryContent.replace(/<template\b[\s\S]*?<\/template>/gi, "").includes("__timelines");
+}
 
-  // The HyperFrames producer navigates to index.html at the project root.
-  // Blocks and component demos are standalone HTML files, not index.html.
-  // If the entry file is a standalone HTML (has its own timeline registration),
-  // just rename it to index.html. Otherwise create a wrapper.
-  if (!existsSync(join(tmpDir, "index.html")) && existsSync(join(tmpDir, item.entryFile))) {
-    const entryContent = readFileSync(join(tmpDir, item.entryFile), "utf-8");
-    // A registration inside <template> does NOT make the file standalone: the
-    // template's markup and scripts stay inert until a host composition mounts
-    // it via data-composition-src. Rendering such a block as index.html paints
-    // a blank page and fails with "Composition has zero duration", so match on
-    // the document with template content removed and let those blocks fall
-    // through to the wrapper below.
-    const hasTimeline = entryContent
-      .replace(/<template\b[\s\S]*?<\/template>/gi, "")
-      .includes("__timelines");
-    if (hasTimeline) {
-      // Standalone block — copy to index.html and render directly.
-      // For social overlays with transparent backgrounds, inject a dark bg
-      // so the overlay card is visible against something.
-      let content = entryContent;
-      const hasSocialTag = (() => {
-        try {
-          const m = JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8"));
-          return (m.tags ?? []).includes("social");
-        } catch {
-          return false;
-        }
-      })();
-      if (hasSocialTag) {
-        // Dark bg for transparent overlays
-        if (content.includes("background: transparent")) {
-          content = content.replace("background: transparent", "background: #1a1a2e");
-        }
-        // Reposition bottom-anchored overlays to center for preview.
-        // Social overlays use "bottom: Npx" positioning — replace with
-        // "top: 50%; transform: translate(-50%, -50%)" for a centered preview.
-        content = content.replace(
-          /bottom:\s*\d+px;\s*\n(\s*)left:\s*50%;\s*\n(\s*)transform:\s*translateX\(-50%\)/,
-          "top: 50%;\n$1left: 50%;\n$2transform: translate(-50%, -50%)",
-        );
-        // Scale down large centered cards (like Spotify) that use
-        // margin-based centering with large negative margins.
-        if (/margin-top:\s*-[3-9]\d\dpx/.test(content)) {
-          content = content.replace(
-            /(<body[^>]*>)/,
-            "$1\n<style>body { transform: scale(0.55); transform-origin: center center; }</style>",
-          );
-        }
-      }
-      writeFileSync(join(tmpDir, "index.html"), content, "utf-8");
-    }
+function hasSocialTag(tmpDir: string): boolean {
+  try {
+    const m = JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8"));
+    return (m.tags ?? []).includes("social");
+  } catch {
+    return false;
   }
-  if (!existsSync(join(tmpDir, "index.html"))) {
-    // One read for every field the wrapper needs. A malformed manifest cannot
-    // reach here — `discoverItems` parses the same file without a guard — so
-    // the only case this absorbs is the file being absent, which is what each
-    // `??` default below already stood for.
-    const manifest: {
-      dimensions?: { width?: number; height?: number };
-      duration?: number;
-      tags?: string[];
-      files?: { path?: string; target?: string }[];
-    } = (() => {
-      try {
-        return JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8"));
-      } catch {
-        return {};
-      }
-    })();
+}
 
-    const width = manifest.dimensions?.width ?? 1920;
-    const height = manifest.dimensions?.height ?? 1080;
-    const duration = manifest.duration ?? 5;
+/** Transparent overlays get a dark backdrop, a centred position, and a scale-down for big cards. */
+function styleSocialOverlay(html: string): string {
+  let content = html;
+  if (content.includes("background: transparent")) {
+    content = content.replace("background: transparent", "background: #1a1a2e");
+  }
+  content = content.replace(
+    /bottom:\s*\d+px;\s*\n(\s*)left:\s*50%;\s*\n(\s*)transform:\s*translateX\(-50%\)/,
+    "top: 50%;\n$1left: 50%;\n$2transform: translate(-50%, -50%)",
+  );
+  if (/margin-top:\s*-[3-9]\d\dpx/.test(content)) {
+    content = content.replace(
+      /(<body[^>]*>)/,
+      "$1\n<style>body { transform: scale(0.55); transform-origin: center center; }</style>",
+    );
+  }
+  return content;
+}
 
-    // Dark background for social overlays so transparent cards are visible.
-    const tags = manifest.tags ?? [];
-    const isSocialOverlay = tags.includes("social") || tags.includes("overlay");
-    const bgColor = options.uiFragment ? "#0a0a0a" : isSocialOverlay ? "#1a1a2e" : "#ffffff";
+function writeStandaloneIndex(tmpDir: string, entryContent: string): void {
+  if (!hasTimeline(entryContent)) return;
+  const content = hasSocialTag(tmpDir) ? styleSocialOverlay(entryContent) : entryContent;
+  writeFileSync(join(tmpDir, "index.html"), content, "utf-8");
+}
 
-    // Mount the mirrored install-layout copy when one exists. Blocks reference
-    // their own assets the way they will after `hyperframes add`
-    // (`../assets/background.jpeg` from `compositions/`), which only resolves
-    // from the target path — the flat source copy at the project root resolves
-    // it outside the project and silently renders without the asset.
-    const entryTarget = manifest.files?.find((f) => f.path === item.entryFile)?.target;
-    const entrySrc =
-      entryTarget && existsSync(join(tmpDir, entryTarget)) ? entryTarget : item.entryFile;
+/** The producer navigates to index.html: a standalone entry file is copied to it. */
+function promoteStandaloneEntry(tmpDir: string, entryFile: string): void {
+  if (existsSync(join(tmpDir, "index.html")) || !existsSync(join(tmpDir, entryFile))) return;
+  writeStandaloneIndex(tmpDir, readFileSync(join(tmpDir, entryFile), "utf-8"));
+}
 
-    // `inset: 0` is load-bearing. The runtime positions a mount absolutely and
-    // leaves it to size itself, so without it the mount shrinks to the
-    // component plus padding and there is nothing for centring to centre in.
-    // `place-items: center stretch` centres it vertically while letting it span
-    // the width, so a component's own alignment variable still reads.
-    const staging = options.uiFragment
-      ? `\n    [data-composition-src] { inset: 0; display: grid; place-items: center stretch; box-sizing: border-box; padding: ${Math.round(height / 11)}px; }`
-      : "";
-    const theme = options.uiFragment ? ' data-hf-theme="dark"' : "";
+interface WrapperManifest {
+  dimensions?: { width?: number; height?: number };
+  duration?: number;
+  tags?: string[];
+  files?: { path?: string; target?: string }[];
+}
 
-    const wrapper = `<!doctype html>
+/** `discoverItems` already parsed this file unguarded, so only an absent file is absorbed. */
+function readWrapperManifest(tmpDir: string): WrapperManifest {
+  try {
+    return JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function wrapperBackground(tags: string[], uiFragment: boolean | undefined): string {
+  if (uiFragment) return "#0a0a0a";
+  return tags.includes("social") || tags.includes("overlay") ? "#1a1a2e" : "#ffffff";
+}
+
+function manifestSize(manifest: WrapperManifest): { width: number; height: number } {
+  const dims = manifest.dimensions ?? {};
+  return { width: dims.width ?? 1920, height: dims.height ?? 1080 };
+}
+
+/**
+ * Mount the mirrored install-layout copy when one exists: blocks reference assets the way they
+ * will after `hyperframes add`, which only resolves from the target path.
+ */
+function wrapperEntrySrc(tmpDir: string, manifest: WrapperManifest, entryFile: string): string {
+  const target = manifest.files?.find((f) => f.path === entryFile)?.target;
+  return target && existsSync(join(tmpDir, target)) ? target : entryFile;
+}
+
+interface WrapperSpec {
+  name: string;
+  entrySrc: string;
+  width: number;
+  height: number;
+  duration: number;
+  bgColor: string;
+  uiFragment: boolean | undefined;
+}
+
+function renderWrapperHtml(spec: WrapperSpec): string {
+  const { name, entrySrc, width, height, duration, bgColor, uiFragment } = spec;
+  // `inset: 0` keeps the mount from shrinking to its content; `center stretch` centres vertically only.
+  const staging = uiFragment
+    ? `\n    [data-composition-src] { inset: 0; display: grid; place-items: center stretch; box-sizing: border-box; padding: ${Math.round(height / 11)}px; }`
+    : "";
+  const theme = uiFragment ? ' data-hf-theme="dark"' : "";
+
+  return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -385,7 +379,7 @@ export async function prepareProjectDir(
 </head>
 <body>
   <div data-composition-id="preview-root" data-width="${width}" data-height="${height}" data-start="0" data-duration="${duration}"${theme}>
-    <div data-composition-id="${item.name}" data-composition-src="${entrySrc}" data-start="0" data-duration="${duration}" data-track-index="0" data-width="${width}" data-height="${height}"></div>
+    <div data-composition-id="${name}" data-composition-src="${entrySrc}" data-start="0" data-duration="${duration}" data-track-index="0" data-width="${width}" data-height="${height}"></div>
   </div>
   <script>
     window.__timelines = window.__timelines || {};
@@ -393,15 +387,45 @@ export async function prepareProjectDir(
   </script>
 </body>
 </html>`;
-    writeFileSync(join(tmpDir, "index.html"), wrapper, "utf-8");
-  }
+}
 
+function writeWrapperIndex(
+  tmpDir: string,
+  item: CatalogItem,
+  uiFragment: boolean | undefined,
+): void {
+  const manifest = readWrapperManifest(tmpDir);
+  const wrapper = renderWrapperHtml({
+    name: item.name,
+    entrySrc: wrapperEntrySrc(tmpDir, manifest, item.entryFile),
+    ...manifestSize(manifest),
+    duration: manifest.duration ?? 5,
+    bgColor: wrapperBackground(manifest.tags ?? [], uiFragment),
+    uiFragment,
+  });
+  writeFileSync(join(tmpDir, "index.html"), wrapper, "utf-8");
+}
+
+async function compileIndex(tmpDir: string, compile: boolean | undefined): Promise<void> {
   const indexPath = join(tmpDir, "index.html");
   const indexHtml = readFileSync(indexPath, "utf-8");
-  if (options.compile !== false && indexHtml.includes("data-composition-src")) {
-    const compiled = await compileForRender(tmpDir, indexPath, join(tmpDir, "_downloads"));
-    writeFileSync(indexPath, compiled.html, "utf-8");
-  }
+  if (compile === false || !indexHtml.includes("data-composition-src")) return;
+  const compiled = await compileForRender(tmpDir, indexPath, join(tmpDir, "_downloads"));
+  writeFileSync(indexPath, compiled.html, "utf-8");
+}
+
+export async function prepareProjectDir(
+  item: CatalogItem,
+  options: PrepareOptions = {},
+): Promise<string> {
+  const tmpDir = createCatalogPreviewTempDir(item.name);
+  cpSync(item.sourceDir, tmpDir, { recursive: true });
+  await materializeHostedAssets(tmpDir, options.hostedAssets);
+  mirrorRegistryTargets(tmpDir);
+
+  promoteStandaloneEntry(tmpDir, item.entryFile);
+  if (!existsSync(join(tmpDir, "index.html"))) writeWrapperIndex(tmpDir, item, options.uiFragment);
+  await compileIndex(tmpDir, options.compile);
 
   return tmpDir;
 }
@@ -508,43 +532,77 @@ function encodeForWeb(input: string, output: string): void {
 
 // ── CLI ────────────────────────────────────────────────────────────────────
 
-function parseArgs(): { only: string | null; type: ItemKind | null; skipVideo: boolean } {
-  let only: string | null = null;
-  let type: ItemKind | null = null;
-  let skipVideo = false;
+interface CliArgs {
+  only: string | null;
+  type: ItemKind | null;
+  skipVideo: boolean;
+}
 
-  for (let i = 2; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-    if (arg === "--only" && process.argv[i + 1]) {
-      i++;
-      only = process.argv[i] ?? null;
-    }
-    if (arg === "--type" && process.argv[i + 1]) {
-      i++;
-      const val = process.argv[i];
-      if (val === "block" || val === "component") {
-        type = val;
-      } else {
-        console.error(`Invalid --type: "${val}". Must be block or component.`);
-        process.exit(1);
-      }
-    }
-    if (arg === "--skip-video") skipVideo = true;
+function parseKind(value: string): ItemKind {
+  if (value === "block" || value === "component") return value;
+  console.error(`Invalid --type: "${value}". Must be block or component.`);
+  process.exit(1);
+}
+
+type FlagSetter = (args: CliArgs, value: string) => void;
+
+const setOnly: FlagSetter = (args, value) => {
+  args.only = value;
+};
+
+const setType: FlagSetter = (args, value) => {
+  args.type = parseKind(value);
+};
+
+const valueFlags = new Map<string | undefined, FlagSetter>([
+  ["--only", setOnly],
+  ["--type", setType],
+]);
+
+/** Apply the flag at the head of argv and return how many tokens it used. */
+function applyFlag(args: CliArgs, flag: string | undefined, next: string | undefined): number {
+  if (flag === "--skip-video") args.skipVideo = true;
+  const setValue = valueFlags.get(flag);
+  if (!setValue || !next) return 1;
+  setValue(args, next);
+  return 2;
+}
+
+function parseArgs(): CliArgs {
+  const args: CliArgs = { only: null, type: null, skipVideo: false };
+  for (let i = 2; i < process.argv.length; ) {
+    i += applyFlag(args, process.argv[i], process.argv[i + 1]);
   }
+  return args;
+}
 
-  return { only, type, skipVideo };
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : `${err}`;
 }
 
 /** A missing WebGPU adapter is the runner, not the item: it keeps its committed poster and video. */
 function reportItemFailure(item: CatalogItem, err: unknown): void {
-  const message = err instanceof Error ? err.message : String(err);
-  if (MISSING_ADAPTER.test(message)) {
-    console.log(
-      `  – ${item.name}: no WebGPU adapter on this runner, keeping its committed poster and video`,
-    );
+  const message = describeError(err);
+  if (!MISSING_ADAPTER.test(message)) {
+    console.error(`  ✗ ${item.name}: ${message}`);
     return;
   }
-  console.error(`  ✗ ${item.name}: ${message}`);
+  console.log(
+    `  – ${item.name}: no WebGPU adapter on this runner, keeping its committed poster and video`,
+  );
+}
+
+async function generateItem(item: CatalogItem, skipVideo: boolean): Promise<void> {
+  console.log(`[${item.kind}] ${item.name}`);
+  const projectDir = await prepareProjectDir(item);
+  try {
+    await generateThumbnail(item, projectDir);
+    if (!skipVideo) await generateVideo(item, projectDir);
+  } catch (err) {
+    reportItemFailure(item, err);
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true });
+  }
 }
 
 async function main(): Promise<void> {
@@ -555,20 +613,7 @@ async function main(): Promise<void> {
     `Generating catalog previews for ${items.length} item(s)${skipVideo ? " (thumbnails only)" : " + videos"}...\n`,
   );
 
-  for (const item of items) {
-    console.log(`[${item.kind}] ${item.name}`);
-    const projectDir = await prepareProjectDir(item);
-    try {
-      await generateThumbnail(item, projectDir);
-      if (!skipVideo) {
-        await generateVideo(item, projectDir);
-      }
-    } catch (err) {
-      reportItemFailure(item, err);
-    } finally {
-      rmSync(projectDir, { recursive: true, force: true });
-    }
-  }
+  for (const item of items) await generateItem(item, skipVideo);
 
   console.log("\nDone.");
 }
