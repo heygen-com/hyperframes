@@ -251,7 +251,7 @@ const fromMap = async (url) => {
   return Buffer.from(bytesByUrl[url]);
 };
 const bodyWith = (before, after) => `## Before\n${before}\n\n## After\n${after}\n`;
-const clean = { unreadable: [], identical: [], refused: [] };
+const clean = { unreadable: [], identical: [], refused: [], notices: [] };
 const dupes = (body) => duplicateCaptureProblems(body, fromMap);
 
 test("an After asset with different bytes than every Before asset passes", async () => {
@@ -643,4 +643,16 @@ test("exactly twelve capture links are accepted, shared links count once, markdo
     async (u) => (seen.push(u), Buffer.from(u)),
   );
   assert.deepEqual(seen, [OLD, NEW, sameBytes]);
+});
+
+test("an http attachment link is refused, an external media link is only noted", async () => {
+  const insecure = OLD.replace("https:", "http:");
+  const external = "https://example.com/clip.mp4";
+  const both = await duplicateCaptureProblems(bodyWith(insecure, `${NEW} ${external}`), fromMap);
+  assert.equal(both.refused.length, 1);
+  assert.match(both.refused[0], /use the https link/);
+  assert.deepEqual(both.notices, [`not compared, not a GitHub attachment: ${external}`]);
+  const sameExternal = await duplicateCaptureProblems(bodyWith(external, external), fromMap);
+  assert.equal(sameExternal.refused.length, 0);
+  assert.equal(sameExternal.notices.length, 2);
 });

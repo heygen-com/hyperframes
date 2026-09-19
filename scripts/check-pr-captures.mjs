@@ -208,58 +208,79 @@ class NonRetryable extends Error {}
 /** Our own byte cap tripped: unlike a failed download, this never justifies skipping the check. */
 export class LimitExceeded extends NonRetryable {}
 
+/** The next hop of a redirect, refused unless it stays on https and on a GitHub asset host. */
+function trustedNextHop(response, current) {
+  const next = new URL(response.headers.get("location") ?? "", current);
+  if (next.protocol === "https:" && TRUSTED_REDIRECT_HOST.test(next.hostname)) return next.href;
+  throw new NonRetryable(`redirected to ${next.hostname}, which is not a GitHub asset host`);
+}
+
 /** One GET, following redirects only to hosts that serve GitHub attachments. */
 async function fetchTrusted(url, fetchImpl, signal) {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const response = await fetchImpl(current, {
-      redirect: "manual",
-      signal,
-    });
+    const response = await fetchImpl(current, { redirect: "manual", signal });
     if (!REDIRECT_STATUSES.has(response.status)) return response;
-    const next = new URL(response.headers.get("location") ?? "", current);
-    if (next.protocol !== "https:" || !TRUSTED_REDIRECT_HOST.test(next.hostname)) {
-      throw new NonRetryable(`redirected to ${next.hostname}, which is not a GitHub asset host`);
-    }
-    current = next.href;
+    current = trustedNextHop(response, current);
   }
   throw new NonRetryable("too many redirects");
 }
 
-/** The body, refusing once this asset or the shared budget of the whole check runs out of bytes. */
-async function readCapped(response, budget) {
+/** Collects chunks, refusing once this asset or the shared budget of the whole check runs out of bytes. */
+function cappedCollector(budget) {
   const chunks = [];
   let size = 0;
-  const take = (chunk) => {
-    size += chunk.byteLength;
-    budget.left -= chunk.byteLength;
-    if (size > MAX_ASSET_BYTES) throw new LimitExceeded(`larger than ${MAX_ASSET_BYTES} bytes`);
-    if (budget.left < 0)
-      throw new LimitExceeded(`captures together exceed ${MAX_TOTAL_BYTES} bytes`);
-    chunks.push(Buffer.from(chunk));
+  return {
+    size: () => size,
+    bytes: () => Buffer.concat(chunks),
+    take(chunk) {
+      size += chunk.byteLength;
+      budget.left -= chunk.byteLength;
+      if (size > MAX_ASSET_BYTES) throw new LimitExceeded(`larger than ${MAX_ASSET_BYTES} bytes`);
+      if (budget.left < 0)
+        throw new LimitExceeded(`captures together exceed ${MAX_TOTAL_BYTES} bytes`);
+      chunks.push(Buffer.from(chunk));
+    },
   };
+}
+
+async function drainBody(response, take) {
+  if (!response.body?.getReader) return take(await response.arrayBuffer());
+  const reader = response.body.getReader();
   try {
-    if (response.body?.getReader) {
-      const reader = response.body.getReader();
-      try {
-        for (let part = await reader.read(); !part.done; part = await reader.read()) {
-          take(part.value);
-        }
-      } finally {
-        await reader.cancel().catch(() => {});
-      }
-    } else {
-      take(await response.arrayBuffer());
-    }
+    for (let part = await reader.read(); !part.done; part = await reader.read()) take(part.value);
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
+/** The body as bytes; an attempt that fails for any reason but our own cap gives its bytes back. */
+async function readCapped(response, budget) {
+  const collector = cappedCollector(budget);
+  try {
+    await drainBody(response, collector.take);
   } catch (error) {
-    if (!(error instanceof LimitExceeded)) budget.left += size;
+    if (!(error instanceof LimitExceeded)) budget.left += collector.size();
     throw error;
   }
-  return Buffer.concat(chunks);
+  return collector.bytes();
 }
 
 const isRetryableStatus = (status) => status === 429 || status >= 500;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** One attempt: the bytes, or a NonRetryable for a final status, or a plain Error for a retryable one. */
+async function attemptDownload(url, fetchImpl, signal, budget) {
+  const response = await fetchTrusted(url, fetchImpl, signal);
+  if (response.ok) return readCapped(response, budget);
+  const message = `HTTP ${response.status}`;
+  throw isRetryableStatus(response.status) ? new Error(message) : new NonRetryable(message);
+}
+
+async function waitForRetry(attempt, sleep, signal) {
+  if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
+  if (signal.aborted) throw new NonRetryable(`not finished within ${DOWNLOAD_DEADLINE_MS} ms`);
+}
 
 /** The bytes behind a capture URL; a 429, 5xx or network error is retried with backoff, any other status is final. */
 export async function downloadAsset(
@@ -271,15 +292,11 @@ export async function downloadAsset(
   const signal = AbortSignal.timeout(DOWNLOAD_DEADLINE_MS);
   let failure;
   for (let attempt = 0; attempt < DOWNLOAD_ATTEMPTS; attempt++) {
-    if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
-    if (signal.aborted) throw new NonRetryable(`not finished within ${DOWNLOAD_DEADLINE_MS} ms`);
+    await waitForRetry(attempt, sleep, signal);
     try {
-      const response = await fetchTrusted(url, fetchImpl, signal);
-      if (response.ok) return await readCapped(response, budget);
-      failure = new Error(`HTTP ${response.status}`);
-      if (!isRetryableStatus(response.status)) throw failure;
+      return await attemptDownload(url, fetchImpl, signal, budget);
     } catch (error) {
-      if (error instanceof NonRetryable || error === failure) throw error;
+      if (error instanceof NonRetryable) throw error;
       failure = error;
     }
   }
@@ -315,40 +332,83 @@ async function hashCaptures(name, urls, download) {
   return hashed;
 }
 
-/** Every After asset must differ by content hash from every Before asset; an unreadable download is a problem. */
-export async function duplicateCaptureProblems(body, download) {
+const noProblems = () => ({ unreadable: [], identical: [], refused: [], notices: [] });
+
+const linkLimitProblem = (urls) =>
+  new Set(urls).size > MAX_CAPTURES
+    ? {
+        ...noProblems(),
+        refused: [`more than ${MAX_CAPTURES} capture links; attach fewer, longer clips`],
+      }
+    : null;
+
+const perCheckDownloader = () => {
   const budget = { left: MAX_TOTAL_BYTES };
-  download ??= (url) => downloadAsset(url, fetch, pause, budget);
+  return (url) => downloadAsset(url, fetch, pause, budget);
+};
+
+const identicalPairs = (befores, afters) =>
+  afters.flatMap((asset) =>
+    befores
+      .filter((old) => old.hash === asset.hash)
+      .map((old) => `After asset ${asset.url} is byte-identical to Before asset ${old.url}`),
+  );
+
+async function compareCaptures(beforeUrls, afterUrls, download) {
+  const shared = afterUrls.filter((url) => beforeUrls.includes(url));
+  const unshared = (urls) => urls.filter((url) => !shared.includes(url));
+  const befores = await hashCaptures("Before", unshared(beforeUrls), download);
+  const afters = await hashCaptures("After", unshared(afterUrls), download);
+  const problems = [...befores, ...afters].filter((asset) => asset.problem);
+  const sameLink = shared.map((url) => `After asset ${url} is the same link as a Before asset`);
+  return {
+    unreadable: problems.filter((asset) => !asset.refused).map((asset) => asset.problem),
+    identical: [
+      ...sameLink,
+      ...identicalPairs(
+        befores.filter((asset) => asset.hash),
+        afters.filter((asset) => asset.hash),
+      ),
+    ],
+    refused: problems.filter((asset) => asset.refused).map((asset) => asset.problem),
+  };
+}
+
+const trimmedLinks = (section) =>
+  (section.text.match(ANY_URL) ?? []).map((raw) => raw.replace(TRAILING_PUNCTUATION, ""));
+
+/** Media links the hash comparison cannot see: an http attachment is a typo to fix, any other host is only noted. */
+function uncomparable(sections) {
+  const skipped = sections.flatMap(trimmedLinks).filter(isMediaUrl);
+  const comparable = new Set(sections.flatMap(captureUrls));
+  const rest = skipped.filter((raw) => !comparable.has(raw.split(/[?#]/)[0]));
+  const insecure = rest.filter(
+    (raw) => parseUrl(raw)?.protocol === "http:" && isAttachmentUrl(parseUrl(raw)),
+  );
+  return {
+    refused: insecure.map((raw) => `${raw} is an http link; use the https link of the attachment`),
+    notices: rest
+      .filter((raw) => !insecure.includes(raw))
+      .map((raw) => `not compared, not a GitHub attachment: ${raw}`),
+  };
+}
+
+/** Every After asset must differ by content hash from every Before asset; an unreadable download is a problem. */
+export async function duplicateCaptureProblems(body, download = perCheckDownloader()) {
   const sections = parseSections(body);
   const before = findSection(sections, "before");
   const after = findSection(sections, "after");
-  if (!before || !after) return { unreadable: [], identical: [], refused: [] };
+  if (!before || !after) return noProblems();
   const beforeUrls = captureUrls(before);
-  const sharedUrls = captureUrls(after).filter((url) => beforeUrls.includes(url));
-  const distinctUrls = new Set([...beforeUrls, ...captureUrls(after)]);
-  if (distinctUrls.size > MAX_CAPTURES) {
-    const refused = [`more than ${MAX_CAPTURES} capture links; attach fewer, longer clips`];
-    return { unreadable: [], identical: [], refused };
-  }
-  const unshared = (urls) => urls.filter((url) => !sharedUrls.includes(url));
-  const befores = await hashCaptures("Before", unshared(beforeUrls), download);
-  const afters = await hashCaptures("After", unshared(captureUrls(after)), download);
-  const problems = [...befores, ...afters].filter((asset) => asset.problem);
-  const unreadable = problems.filter((asset) => !asset.refused);
-  const refused = problems.filter((asset) => asset.refused);
-  const hashedBefores = befores.filter((asset) => asset.hash);
-  const identical = afters
-    .filter((asset) => asset.hash)
-    .flatMap((asset) =>
-      hashedBefores
-        .filter((old) => old.hash === asset.hash)
-        .map((old) => `After asset ${asset.url} is byte-identical to Before asset ${old.url}`),
-    );
-  const sameUrl = sharedUrls.map((url) => `After asset ${url} is the same link as a Before asset`);
+  const afterUrls = captureUrls(after);
+  const tooMany = linkLimitProblem([...beforeUrls, ...afterUrls]);
+  if (tooMany) return tooMany;
+  const compared = await compareCaptures(beforeUrls, afterUrls, download);
+  const skipped = uncomparable([before, after]);
   return {
-    unreadable: unreadable.map((asset) => asset.problem),
-    identical: [...sameUrl, ...identical],
-    refused: refused.map((asset) => asset.problem),
+    ...compared,
+    refused: [...compared.refused, ...skipped.refused],
+    notices: skipped.notices,
   };
 }
 
@@ -393,37 +453,44 @@ export const isFork = (env) => Boolean(env.HEAD_REPO) && env.HEAD_REPO !== env.B
 export const blocking = (unreadable, mustFix, env) =>
   mustFix.length > 0 || (unreadable.length > 0 && !isFork(env));
 
+function printList(heading, problems, out = console.error) {
+  if (problems.length === 0) return;
+  out(heading);
+  for (const problem of problems) out(`  - ${problem}`);
+}
+
+function reportCaptureProblems({ unreadable, identical, refused, notices }, env) {
+  const skipped =
+    "Skipped the duplicate-capture comparison: this PR is from a fork and a capture could not be downloaded without a token, which a fork cannot have.";
+  if (isFork(env)) printList(skipped, unreadable, console.log);
+  else printList("A capture could not be downloaded to compare:", unreadable);
+  printList(
+    "A capture under After is the same file as one under Before; re-attach the real After recording:",
+    identical,
+  );
+  printList("The capture comparison hit a limit of this check:", refused);
+  printList("Links the duplicate check could not compare:", notices, console.log);
+}
+
+const prFromEnv = (env) => ({ body: env.PR_BODY ?? "", number: env.PR_NUMBER ?? "<number>" });
+const findProblems = (body, files) =>
+  files.length > 0 ? duplicateCaptureProblems(body) : noProblems();
+
 async function main() {
   const args = process.argv.slice(2);
   const numstat = readNumstat(flag(args, "--base", "origin/main"), flag(args, "--head", "HEAD"));
-  const body = process.env.PR_BODY ?? "";
+  const { body, number } = prFromEnv(process.env);
   const files = parseNumstat(numstat);
   const { ok, problems } = evaluate({ body, files });
   if (!ok) {
-    printFailure(problems, process.env.PR_NUMBER ?? "<number>");
+    printFailure(problems, number);
     process.exit(1);
   }
-  const none = { unreadable: [], identical: [], refused: [] };
-  const { unreadable, identical, refused } =
-    files.length > 0 ? await duplicateCaptureProblems(body) : none;
-  if (unreadable.length > 0 && isFork(process.env)) {
-    console.log("Skipped the duplicate-capture comparison: this PR is from a fork and a capture");
-    console.log("could not be downloaded without a token, which a fork cannot have.");
-    for (const problem of unreadable) console.log(`  - ${problem}`);
-  } else if (unreadable.length > 0) {
-    console.error("A capture could not be downloaded to compare:");
-    for (const problem of unreadable) console.error(`  - ${problem}`);
+  const found = await findProblems(body, files);
+  reportCaptureProblems(found, process.env);
+  if (blocking(found.unreadable, [...found.identical, ...found.refused], process.env)) {
+    process.exit(1);
   }
-  if (identical.length > 0) {
-    console.error("A capture under After is the same file as one under Before:");
-    for (const problem of identical) console.error(`  - ${problem}`);
-    console.error("Re-attach the real After recording; a Before clip under After proves nothing.");
-  }
-  if (refused.length > 0) {
-    console.error("The capture comparison hit a limit of this check:");
-    for (const problem of refused) console.error(`  - ${problem}`);
-  }
-  if (blocking(unreadable, [...identical, ...refused], process.env)) process.exit(1);
   console.log("packages/studio and packages/player: captures present, or nothing to show.");
 }
 
