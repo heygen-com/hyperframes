@@ -8,8 +8,8 @@ import {
   formatNumericValue,
   formatTimingValue,
   parseNumericValue,
-  stripQueryAndHash,
 } from "./propertyPanelHelpers";
+import { resolveProjectAssetPath } from "../../utils/projectAssetPath";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
 import { AutomationToggle } from "./propertyPanelFxControls";
@@ -90,24 +90,29 @@ export function FlatMediaSection({
   const objectPosition = styles["object-position"] || "center";
 
   const srcAttr = el.getAttribute("src") ?? "";
+  const authoredSrc = el.getAttribute("data-hf-authored-src") ?? "";
   const [copied, setCopied] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeProgress, setRemoveProgress] = useState<BackgroundRemovalProgress | null>(null);
   const [createPlate, setCreatePlate] = useState(false);
   const [quality, setQuality] = useState<"fast" | "balanced" | "best">("balanced");
 
-  const absoluteSrc =
-    projectDir && srcAttr && !srcAttr.startsWith("http") ? `${projectDir}/${srcAttr}` : srcAttr;
+  const sourceFile = element.sourceFile || "index.html";
   const projectSrc =
-    srcAttr && !/^(?:https?:|data:|blob:)/i.test(srcAttr)
-      ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
-      : "";
+    resolveProjectAssetPath(authoredSrc, sourceFile) ??
+    resolveProjectAssetPath(srcAttr, sourceFile) ??
+    "";
+  const displaySrc = projectSrc || authoredSrc || srcAttr;
+  const absoluteSrc =
+    projectDir && displaySrc && !displaySrc.startsWith("http") && !displaySrc.startsWith("data:")
+      ? `${projectDir}/${displaySrc}`
+      : displaySrc;
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
 
   useEffect(() => {
     setRemoveProgress(null);
     setCreatePlate(false);
-  }, [srcAttr]);
+  }, [srcAttr, authoredSrc]);
 
   const applyCutoutResult = async (result: BackgroundRemovalResult) => {
     await onSetHtmlAttribute("src", result.outputPath);
@@ -148,7 +153,7 @@ export function FlatMediaSection({
         <span className="flex min-w-0 items-center gap-2">
           <span className="h-5 w-8 shrink-0 rounded-[3px] bg-panel-surface" />
           <span className="min-w-0 truncate font-mono text-[11px] text-panel-text-0">
-            {srcAttr}
+            {displaySrc}
           </span>
         </span>
         <button

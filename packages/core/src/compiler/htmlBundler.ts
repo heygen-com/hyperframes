@@ -1204,7 +1204,19 @@ export async function bundleToSingleHtml(
       // Keep the project-relative URL; render/check servers already expose it.
       if (isExternalSvgFragmentUse(el, attr, value)) continue;
       const inlined = maybeInlineRelativeAssetUrl(value, projectDir);
-      if (inlined) el.setAttribute(attr, inlined);
+      if (inlined) {
+        // Preview/export bundles inline relative media into data URLs. Keep the
+        // project-relative path so Studio tools (remove-background, copy path)
+        // can still resolve the authored asset after inlining.
+        if (
+          attr === "src" &&
+          !el.hasAttribute("data-hf-authored-src") &&
+          ["img", "video", "audio", "source"].includes(el.tagName.toLowerCase())
+        ) {
+          el.setAttribute("data-hf-authored-src", value);
+        }
+        el.setAttribute(attr, inlined);
+      }
     }
   }
   for (const el of [...document.querySelectorAll("[srcset]")]) {
