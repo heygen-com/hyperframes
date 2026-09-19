@@ -1993,8 +1993,36 @@ export const CatalogDetail = ({
       title={`${compositionId} preview`}
     />
   );
+  const recordedRef = useRef(null);
+  // Lazy initializer so the first render already knows the preference; pause,
+  // removeAttribute and load are what stop a clip that was already playing.
+  const [reduced, setReduced] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = (event) => setReduced(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  useEffect(() => {
+    const clip = recordedRef.current;
+    if (!reduced || !clip) return;
+    clip.pause();
+    clip.removeAttribute("src");
+    clip.load();
+  }, [reduced]);
   const recorded = video ? (
-    <video className="block aspect-video w-full object-cover" src={video} poster={poster} autoPlay muted loop playsInline />
+    <video
+      ref={recordedRef}
+      className="block aspect-video w-full object-cover"
+      src={reduced ? undefined : video}
+      poster={poster}
+      autoPlay={!reduced}
+      muted
+      loop={!reduced}
+      playsInline
+    />
   ) : null;
   const stageNode = recorded ?? flagNotice ?? player;
 
@@ -2002,125 +2030,127 @@ export const CatalogDetail = ({
   const size = meta.width && meta.height ? `${meta.width}×${meta.height}` : null;
 
   return (
-    <div className="hf-ve not-prose my-4">
+    <div className="hf-ve my-4">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
-      <header className="hf-ve-head-title">
-        <h1>{title}</h1>
-        {description && <p>{description}</p>}
-      </header>
+      <div className="not-prose">
+        <header className="hf-ve-head-title">
+          <h1>{title}</h1>
+          {description && <p>{description}</p>}
+        </header>
 
-      <div className="hf-ve-bar">
-        <div className="hf-ve-meta">
-          {seconds && (
-            <span>
-              <b>{seconds}</b> duration
-            </span>
-          )}
-          {size && <b>{size}</b>}
-          {hasTune && (
-            <span>
-              <b>{variables.length}</b> {variables.length === 1 ? "variable" : "variables"}
-            </span>
-          )}
-          {meta.category && <b>{meta.category}</b>}
-          {meta.badge && <span className="hf-ve-badge">{meta.badge}</span>}
-        </div>
-        <div className="hf-ve-actions">
-          <CopyAction id="agent" label="Copy agent request" text={agentRequest} primary />
-          <CopyAction id="wiring" label="Copy wiring" text={mountText} />
-          <CopyAction id="link" label="Copy link" text={() => window.location.href} />
-          {rawUrl && (
-            <a className="hf-ve-action" href={rawUrl} target="_blank" rel="noopener noreferrer">
-              Raw
-            </a>
-          )}
-        </div>
-      </div>
-
-      <div className="hf-ve-main" data-tune={hasTune ? "true" : "false"}>
-        <div className="hf-ve-stage">
-          {stageNode}
-          <div className="hf-ve-caption">
-            {(seconds || size) && <span>{[seconds, size && `${size} preview`].filter(Boolean).join(" · ")}</span>}
-            <span>{video || needsFlag ? "Recorded preview" : "Live composition · HyperFrames Player"}</span>
+        <div className="hf-ve-bar">
+          <div className="hf-ve-meta">
+            {seconds && (
+              <span>
+                <b>{seconds}</b> duration
+              </span>
+            )}
+            {size && <b>{size}</b>}
+            {hasTune && (
+              <span>
+                <b>{variables.length}</b> {variables.length === 1 ? "variable" : "variables"}
+              </span>
+            )}
+            {meta.category && <b>{meta.category}</b>}
+            {meta.badge && <span className="hf-ve-badge">{meta.badge}</span>}
+          </div>
+          <div className="hf-ve-actions">
+            <CopyAction id="agent" label="Copy agent request" text={agentRequest} primary />
+            <CopyAction id="wiring" label="Copy wiring" text={mountText} />
+            <CopyAction id="link" label="Copy link" text={() => window.location.href} />
+            {rawUrl && (
+              <a className="hf-ve-action" href={rawUrl} target="_blank" rel="noopener noreferrer">
+                Raw
+              </a>
+            )}
           </div>
         </div>
 
-        {hasTune && (
-          <aside className="hf-ve-tune" aria-label="Tune">
-            <div className="hf-ve-tune-inner">
-              <div className="hf-ve-tune-head">
-                Tune <small>{variables.length} {variables.length === 1 ? "variable" : "variables"}</small>
-              </div>
-              <div className="hf-ve-tune-list">
-                {variables.map((v) => (
-                  <div key={v.id}>
-                    <div className="hf-ve-row">
-                      <label className="hf-ve-label">{v.label ?? v.id}</label>
-                      <span className="hf-ve-value">{readout(v, values[v.id])}</span>
-                    </div>
-                    {control(
-                      v,
-                      values[v.id],
-                      (next) => setValues((prev) => ({ ...prev, [v.id]: next })),
-                      notes[v.id],
-                      (note) => setNotes((prev) => ({ ...prev, [v.id]: note })),
-                      setTyping,
-                    )}
-                    {v.description && <p className="hf-ve-desc">{v.description}</p>}
-                  </div>
-                ))}
-              </div>
-              <div className="hf-ve-tune-foot">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setValues(defaults);
-                    setNotes({});
-                  }}
-                  disabled={!dirty}
-                  className="hf-ve-btn hf-ve-tint"
-                >
-                  Reset
-                </button>
-                <CopyAction
-                  id="json"
-                  label="Copy JSON"
-                  text={() => JSON.stringify(dirty ? changedValues() : defaults, null, 2)}
-                />
-                <CopyAction id="render" label="Copy render cmd" text={renderCommand} />
-              </div>
+        <div className="hf-ve-main" data-tune={hasTune ? "true" : "false"}>
+          <div className="hf-ve-stage">
+            {stageNode}
+            <div className="hf-ve-caption">
+              {(seconds || size) && <span>{[seconds, size && `${size} preview`].filter(Boolean).join(" · ")}</span>}
+              <span>{video || needsFlag ? "Recorded preview" : "Live composition · HyperFrames Player"}</span>
             </div>
-          </aside>
-        )}
-      </div>
+          </div>
 
-      <div className="hf-ve-tabs hf-ve-tabs-row" role="tablist">
-        {TABS.map(([id, label, note]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            data-on={tab === id}
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className="hf-ve-tab hf-ve-tint"
-          >
-            {label}
-            {note ? <small>{note}</small> : null}
-          </button>
-        ))}
+          {hasTune && (
+            <aside className="hf-ve-tune" aria-label="Tune">
+              <div className="hf-ve-tune-inner">
+                <div className="hf-ve-tune-head">
+                  Tune <small>{variables.length} {variables.length === 1 ? "variable" : "variables"}</small>
+                </div>
+                <div className="hf-ve-tune-list">
+                  {variables.map((v) => (
+                    <div key={v.id}>
+                      <div className="hf-ve-row">
+                        <label className="hf-ve-label">{v.label ?? v.id}</label>
+                        <span className="hf-ve-value">{readout(v, values[v.id])}</span>
+                      </div>
+                      {control(
+                        v,
+                        values[v.id],
+                        (next) => setValues((prev) => ({ ...prev, [v.id]: next })),
+                        notes[v.id],
+                        (note) => setNotes((prev) => ({ ...prev, [v.id]: note })),
+                        setTyping,
+                      )}
+                      {v.description && <p className="hf-ve-desc">{v.description}</p>}
+                    </div>
+                  ))}
+                </div>
+                <div className="hf-ve-tune-foot">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setValues(defaults);
+                      setNotes({});
+                    }}
+                    disabled={!dirty}
+                    className="hf-ve-btn hf-ve-tint"
+                  >
+                    Reset
+                  </button>
+                  <CopyAction
+                    id="json"
+                    label="Copy JSON"
+                    text={() => JSON.stringify(dirty ? changedValues() : defaults, null, 2)}
+                  />
+                  <CopyAction id="render" label="Copy render cmd" text={renderCommand} />
+                </div>
+              </div>
+            </aside>
+          )}
+        </div>
+
+        <div className="hf-ve-tabs hf-ve-tabs-row" role="tablist">
+          {TABS.map(([id, label, note]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              data-on={tab === id}
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className="hf-ve-tab hf-ve-tint"
+            >
+              {label}
+              {note ? <small>{note}</small> : null}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="hf-ve-body">
-        {/* The generator files each section under a named slot. They are shown by
-            CSS on the tab attribute rather than sorted here, because the shape MDX
-            hands a component's children is not something to introspect. */}
-        <div className="hf-ve-slots" data-tab={tab}>
+        {/* Slots are shown by CSS on the tab attribute, not sorted here: MDX's child
+            shape is not worth introspecting. Frame-mode pages have no prose wrapper,
+            so the slots carry their own. */}
+        <div className="hf-ve-slots prose prose-gray dark:prose-invert" data-tab={tab}>
           {children}
         </div>
-        <div className="hf-ve-body-pane hf-ve-about" hidden={tab !== "preview"}>
+        <div className="hf-ve-body-pane hf-ve-about not-prose" hidden={tab !== "preview"}>
           <h3>About</h3>
           {about && <p>{about}</p>}
           {attribution && (
@@ -2151,7 +2181,7 @@ export const CatalogDetail = ({
             </p>
           )}
         </div>
-        <div className="hf-ve-body-pane hf-ve-snippet" hidden={tab !== "install"}>
+        <div className="hf-ve-body-pane hf-ve-snippet not-prose" hidden={tab !== "install"}>
           {/* The plain command above is generated before anyone touches a knob.
               These two carry what the reader dialled in, so copying installs the
               piece already tuned. Assembled token by token because there is no

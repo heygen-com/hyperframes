@@ -81,6 +81,7 @@ type ItemKind = "block" | "component";
 interface SourceMetadata {
   authorUrl?: string;
   sourcePrompt?: string;
+  stability?: string;
 }
 
 interface TextureGroup {
@@ -971,7 +972,7 @@ function detailOpening(
     width: dims?.width,
     height: dims?.height,
     category: groupForItem({ name: manifest.name, type: kind, tags: manifest.tags ?? [] }),
-    badge: manifest.stability === "experimental" ? "Experimental" : "Stable",
+    badge: source.stability === "experimental" ? "Experimental" : "Stable",
     codeLines: file ? file.source.split("\n").length : undefined,
   };
   const attribution = {
