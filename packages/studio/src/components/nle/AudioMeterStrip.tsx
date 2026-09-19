@@ -230,8 +230,8 @@ function Fader({
   );
 
   const nudge = useCallback(
-    (delta: number) => onCommit(Math.max(0, Math.min(1, volume + delta))),
-    [onCommit, volume],
+    (delta: number) => onCommit(fractionToLevel(Math.max(0, Math.min(1, fraction + delta)))),
+    [onCommit, fraction],
   );
 
   return (
@@ -243,7 +243,7 @@ function Fader({
       aria-orientation="vertical"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(Math.min(volume, 1) * 100)}
+      aria-valuenow={Math.round(fraction * 100)}
       onPointerDown={(e: ReactPointerEvent<HTMLDivElement>) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         draggingRef.current = true;

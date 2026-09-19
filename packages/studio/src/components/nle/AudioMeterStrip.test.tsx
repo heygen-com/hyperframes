@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { TimelineElement } from "../../player/store/timelineElement";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
+import { fractionToLevel, levelToFraction } from "../../utils/audioMeterMath";
 import { AudioMeterStrip } from "./AudioMeterStrip";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -166,11 +167,10 @@ describe("AudioMeterStrip", () => {
         new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientY: 25 }),
       );
     });
-    expect(onSetAudioGroupAttributeLive).toHaveBeenCalledWith(
-      "vo",
-      "data-volume",
-      expect.any(String),
-    );
+    // clientY 25 on a 0..100 track (stubTrackRect) is fraction 0.75; asserting
+    // the exact computed value (not just "a string") also catches a NaN regression.
+    const expectedVolume = String(fractionToLevel(0.75));
+    expect(onSetAudioGroupAttributeLive).toHaveBeenCalledWith("vo", "data-volume", expectedVolume);
     expect(onSetAudioGroupAttributeQuiet).not.toHaveBeenCalled();
     act(() => {
       groupFader.dispatchEvent(
@@ -180,7 +180,7 @@ describe("AudioMeterStrip", () => {
     expect(onSetAudioGroupAttributeQuiet).toHaveBeenCalledWith(
       "vo",
       "data-volume",
-      expect.any(String),
+      expectedVolume,
       "Set volume",
     );
 
@@ -200,5 +200,33 @@ describe("AudioMeterStrip", () => {
 
     Element.prototype.setPointerCapture = originalPointerCapture;
     restoreRect();
+  });
+
+  it("nudges a consistent step in the visual (dB-scale) position, and aria-valuenow tracks the thumb", () => {
+    usePlayerStore.setState({ elements: [clip({})], audioVolume: 0.5 });
+    const { host } = mount();
+    const masterFader = host.querySelector<HTMLElement>('[aria-label="Master volume"]')!;
+    const startFraction = levelToFraction(0.5);
+    expect(masterFader.getAttribute("aria-valuenow")).toBe(String(Math.round(startFraction * 100)));
+
+    act(() => {
+      masterFader.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    });
+    const afterUp = usePlayerStore.getState().audioVolume;
+    const fractionAfterUp = levelToFraction(afterUp);
+    // A flat step in raw volume (the old, buggy behaviour) would move the
+    // visual position by a very different amount depending on where it starts;
+    // stepping in fraction space keeps every step visually the same size.
+    expect(fractionAfterUp - startFraction).toBeCloseTo(0.02, 6);
+    expect(masterFader.getAttribute("aria-valuenow")).toBe(
+      String(Math.round(fractionAfterUp * 100)),
+    );
+
+    act(() => usePlayerStore.setState({ audioVolume: 0.5 }));
+    act(() => {
+      masterFader.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
+    const afterDown = usePlayerStore.getState().audioVolume;
+    expect(startFraction - levelToFraction(afterDown)).toBeCloseTo(0.02, 6);
   });
 });
