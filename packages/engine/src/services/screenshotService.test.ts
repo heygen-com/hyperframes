@@ -258,6 +258,16 @@ describe("injectVideoFramesBatch replacement layout", () => {
             "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
         },
       ]);
+      computedStyle.opacity = "0.25";
+      computedStyle.filter = "blur(2px)";
+      computedStyle.transform = "translateX(10px)";
+      await injectVideoFramesBatch(page, [
+        {
+          videoId: "clip",
+          dataUri:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+        },
+      ]);
     } finally {
       globals.window = previousWindow;
       globals.document = previousDocument;
@@ -273,8 +283,11 @@ describe("injectVideoFramesBatch replacement layout", () => {
     expect(img?.style.right).toBe("auto");
     expect(img?.style.bottom).toBe("auto");
     expect(img?.style.inset).toBe("auto");
-    expect(redraw).toHaveBeenCalledOnce();
-    expect(events).toEqual(["decode", "redraw"]);
+    expect(img?.style.opacity).toBe("0.25");
+    expect(img?.style.filter).toBe("blur(2px)");
+    expect(img?.style.transform).toBe("translateX(10px)");
+    expect(redraw).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(["decode", "redraw", "redraw"]);
   });
 });
 
