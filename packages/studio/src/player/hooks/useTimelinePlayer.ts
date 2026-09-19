@@ -3,6 +3,7 @@ import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerS
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { useShadowPreviewReload } from "./useShadowPreviewReload";
 import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { logReload } from "../../utils/reloadDebug";
@@ -38,7 +39,17 @@ import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
 
-export function useTimelinePlayer() {
+export interface UseTimelinePlayerOptions {
+  /** Runs right after a reloaded preview becomes the live iframe. */
+  onShadowPromoted?: () => void;
+  /** A reload was abandoned (cause in the message); the previous preview is still showing. */
+  onPreviewReloadFailed?: (message: string) => void;
+}
+
+export function useTimelinePlayer({
+  onShadowPromoted,
+  onPreviewReloadFailed,
+}: UseTimelinePlayerOptions = {}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
   const probeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -119,19 +130,23 @@ export function useTimelinePlayer() {
     [setElements, requestTimelineReady, setDuration],
   );
 
-  const getAdapter = useCallback((): PlaybackAdapter | null => {
-    try {
-      const iframe = iframeRef.current;
-      const win = iframe?.contentWindow as IframeWindow | null;
-      if (!iframe || !win) return null;
-      return resolvePlaybackAdapter(iframe, win, {
-        cache: staticSeekAdapterRef,
-        warned: staticSeekWarnedRef,
-      });
-    } catch {
-      return null;
-    }
-  }, []);
+  const getAdapter = useCallback(
+    (overrideIframe?: HTMLIFrameElement | null): PlaybackAdapter | null => {
+      try {
+        // undefined means "no override"; an explicit null override means "no adapter".
+        const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
+        const win = iframe?.contentWindow as IframeWindow | null;
+        if (!iframe || !win) return null;
+        return resolvePlaybackAdapter(iframe, win, {
+          cache: staticSeekAdapterRef,
+          warned: staticSeekWarnedRef,
+        });
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
 
   const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
     rafRef,
@@ -361,6 +376,32 @@ export function useTimelinePlayer() {
       attachIframeShortcutListeners,
       applyPreviewAudioState,
     });
+
+  // Full-reload edits load behind a hidden shadow iframe (useShadowPreviewReload.ts).
+  const {
+    previewSlots,
+    onShadowIframeLoad,
+    onShadowReadyChange,
+    onShadowError,
+    setShadowIframeNode,
+    beginShadowReload,
+    resetPreviewSlots,
+  } = useShadowPreviewReload({
+    iframeRef,
+    getAdapter,
+    pendingSeekRef,
+    isRefreshingRef,
+    syncTimelineElements,
+    setDuration,
+    setCurrentTime,
+    requestTimelineReady,
+    setIsPlaying,
+    attachIframeShortcutListeners,
+    applyPreviewAudioState,
+    onPromoted: onShadowPromoted,
+    onReloadFailed: onPreviewReloadFailed,
+  });
+
   const saveSeekPosition = useCallback(() => {
     // Never DEGRADE the saved position. Overlapping reloads (e.g. an external
     // file drop = upload reload + insert reload back-to-back) call this while
@@ -390,22 +431,15 @@ export function useTimelinePlayer() {
     if (!iframe) return;
     logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
     saveSeekPosition();
-    // Hide the iframe across the full reload so the user never sees the reloading
-    // document's RAW DOM (every clip stacked and visible) in the window between the
-    // new document parsing and the runtime initializing + seeking. initializeAdapter
-    // reveals it again right after its restore seek renders the correct frame.
-    // Tradeoff: this shows the parent stage background (a brief "freeze"/blank, on
-    // the order of the reload time ~100-300ms) INSTEAD of the all-clips flash. A
-    // blank is far less jarring than a burst of every asset appearing at once.
-    // Only the FULL-reload edits (drops/inserts) hit this — timing edits now take
-    // the soft-reload path and never touch refreshPlayer.
-    iframe.style.visibility = "hidden";
+    // The old iframe is no longer navigated away, so stop its playback (and audio) here.
+    getAdapter()?.pause();
+    // The live iframe is never hidden; the reload loads in a shadow and is promoted once painted.
     const src = iframe.src;
     const url = new URL(src, window.location.origin);
     url.searchParams.set("_t", String(Date.now()));
     applyPreviewVariablesToUrl(url);
-    iframe.src = url.toString();
-  }, [saveSeekPosition]);
+    beginShadowReload(url.toString());
+  }, [saveSeekPosition, getAdapter, beginShadowReload]);
   const getAdapterRef = useRef(getAdapter);
   getAdapterRef.current = getAdapter;
 
@@ -483,5 +517,11 @@ export function useTimelinePlayer() {
     refreshPlayer,
     saveSeekPosition,
     resetPlayer,
+    previewSlots,
+    onShadowIframeLoad,
+    onShadowReadyChange,
+    onShadowError,
+    setShadowIframeNode,
+    resetPreviewSlots,
   };
 }

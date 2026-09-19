@@ -54,25 +54,36 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function mountPlayer() {
+type PlayerProps = Parameters<typeof Player>[0];
+
+async function mountPlayer(props: Partial<PlayerProps> = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => {
-    root?.render(
-      createElement(Player, {
-        directUrl: "/api/projects/demo/preview",
-        onLoad: vi.fn(),
-        suppressLoadingOverlay: true,
-      }),
-    );
-    await Promise.resolve();
-  });
+  const render = () =>
+    act(async () => {
+      root?.render(
+        createElement(Player, {
+          directUrl: "/api/projects/demo/preview",
+          onLoad: vi.fn(),
+          suppressLoadingOverlay: true,
+          ...props,
+        }),
+      );
+      await Promise.resolve();
+    });
+  await render();
 
   const player = host.querySelector<TestHyperframesPlayer>("hyperframes-player");
   if (!player) throw new Error("player did not mount");
-  return { host, player };
+  const rerender = (next: Partial<PlayerProps>) => {
+    Object.assign(props, next);
+    return render();
+  };
+  return { host, player, rerender };
 }
+
+const twoFrames = () => act(async () => void (await new Promise((r) => setTimeout(r, 80))));
 
 function createAudioIframe() {
   const iframe = document.createElement("iframe");
@@ -152,6 +163,76 @@ describe("preview errors", () => {
     const retryUrl = new URL(player.getAttribute("src") ?? "", window.location.origin);
     expect(retryUrl.searchParams.get("_hfStudioRetry")).toBe("1");
     expect(host.querySelector('[data-testid="composition-preview-error"]')).toBeNull();
+  });
+});
+
+describe("callbacks after the player is already mounted", () => {
+  it("runs the latest onLoad on a later load, not the one captured at mount", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { player, rerender } = await mountPlayer({ onLoad: first });
+    await rerender({ onLoad: second });
+
+    act(
+      () => void (player as TestHyperframesPlayer).iframeElement.dispatchEvent(new Event("load")),
+    );
+
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it("reports the preview error cause", async () => {
+    const onPreviewError = vi.fn();
+    const { player } = await mountPlayer({ onPreviewError });
+    act(() => {
+      player.dispatchEvent(new CustomEvent("error", { detail: { message: "boom" } }));
+    });
+    expect(onPreviewError).toHaveBeenCalledWith("boom");
+  });
+});
+
+describe("ready to show", () => {
+  const loadAndReady = (player: TestHyperframesPlayer) =>
+    act(() => {
+      player.iframeElement.dispatchEvent(new Event("load"));
+      player.dispatchEvent(new Event("ready"));
+    });
+  const shaderState = (player: TestHyperframesPlayer, loading: boolean) =>
+    act(() => {
+      player.dispatchEvent(
+        new CustomEvent("shadertransitionstate", {
+          detail: { state: { loading, ready: !loading } },
+        }),
+      );
+    });
+
+  it("holds while the shader transition loader is up and fires once it clears", async () => {
+    const onReadyToShowChange = vi.fn();
+    const { player } = await mountPlayer({ onReadyToShowChange });
+    const el = player as TestHyperframesPlayer;
+
+    shaderState(el, true);
+    loadAndReady(el);
+    shaderState(el, true);
+    await twoFrames();
+    expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
+
+    shaderState(el, false);
+    await twoFrames();
+    expect(onReadyToShowChange).toHaveBeenLastCalledWith(true);
+
+    shaderState(el, true);
+    expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("does not fire for a document that failed to load", async () => {
+    const onReadyToShowChange = vi.fn();
+    const { player } = await mountPlayer({ onReadyToShowChange });
+    act(() => {
+      player.dispatchEvent(new CustomEvent("error", { detail: { message: "boom" } }));
+    });
+    await twoFrames();
+    expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
   });
 });
 

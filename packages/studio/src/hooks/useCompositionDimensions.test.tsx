@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it } from "vitest";
 import { useCompositionDimensions } from "./useCompositionDimensions";
+import { usePreviewIframeStore } from "../player/store/previewIframeStore";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -43,5 +44,42 @@ it("accepts only the current preview frame and rejects foreign or missing sender
     host.remove();
     preview.remove();
     foreign.remove();
+  }
+});
+
+it("re-reads the size from the promoted iframe's document", () => {
+  const host = document.createElement("div");
+  const a = document.createElement("iframe");
+  const b = document.createElement("iframe");
+  document.body.append(host, a, b);
+  const ref = { current: a };
+  const root = createRoot(host);
+  const setRoot = (frame: HTMLIFrameElement, width: number, height: number) => {
+    const el = frame.contentDocument!.createElement("div");
+    el.setAttribute("data-composition-id", "main");
+    el.setAttribute("data-width", String(width));
+    el.setAttribute("data-height", String(height));
+    frame.contentDocument!.body.append(el);
+  };
+  setRoot(a, 1920, 1080);
+  setRoot(b, 1080, 1920);
+  function Harness() {
+    return JSON.stringify(useCompositionDimensions(ref));
+  }
+  try {
+    act(() => usePreviewIframeStore.getState().setIframe(a));
+    act(() => root.render(<Harness />));
+    expect(host.textContent).toBe('{"width":1920,"height":1080}');
+    act(() => {
+      ref.current = b;
+      usePreviewIframeStore.getState().setIframe(b);
+    });
+    expect(host.textContent).toBe('{"width":1080,"height":1920}');
+  } finally {
+    act(() => root.unmount());
+    usePreviewIframeStore.setState({ iframe: null });
+    host.remove();
+    a.remove();
+    b.remove();
   }
 });

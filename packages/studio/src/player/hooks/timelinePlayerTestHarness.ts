@@ -3,7 +3,7 @@
 import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { vi } from "vitest";
-import { useTimelinePlayer } from "./useTimelinePlayer";
+import { useTimelinePlayer, type UseTimelinePlayerOptions } from "./useTimelinePlayer";
 import { usePlayerStore } from "../store/playerStore";
 
 export type TimelinePlayerApi = ReturnType<typeof useTimelinePlayer>;
@@ -13,29 +13,52 @@ export function resetPlayerStore() {
   usePlayerStore.setState({ requestedSeekTime: null });
 }
 
-function TimelinePlayerHarness({ onValue }: { onValue: (value: TimelinePlayerApi) => void }) {
-  const value = useTimelinePlayer();
+function TimelinePlayerHarness({
+  onValue,
+  options,
+}: {
+  onValue: (value: TimelinePlayerApi) => void;
+  options?: UseTimelinePlayerOptions;
+}) {
+  const value = useTimelinePlayer(options);
   useEffect(() => {
     onValue(value);
   }, [onValue, value]);
   return null;
 }
 
-export function renderTimelinePlayerHarness() {
-  let api: TimelinePlayerApi | null = null;
+/** `api` is the first render's snapshot; `getApi()` returns the latest render's value. */
+export function renderTimelinePlayerHarness(options?: UseTimelinePlayerOptions) {
+  let latest: TimelinePlayerApi | null = null;
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
 
   act(() => {
-    root.render(React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }));
+    root.render(
+      React.createElement(TimelinePlayerHarness, { onValue: (value) => (latest = value), options }),
+    );
   });
 
-  if (!api) throw new Error("useTimelinePlayer did not mount");
-  return { api: api as TimelinePlayerApi, root };
+  if (!latest) throw new Error("useTimelinePlayer did not mount");
+  const rerender = (next?: UseTimelinePlayerOptions) =>
+    act(() => {
+      root.render(
+        React.createElement(TimelinePlayerHarness, {
+          onValue: (value) => (latest = value),
+          options: next,
+        }),
+      );
+    });
+  return {
+    api: latest as TimelinePlayerApi,
+    getApi: () => latest as TimelinePlayerApi,
+    root,
+    rerender,
+  };
 }
 
-function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
+export function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   Object.defineProperty(iframe, "contentWindow", { value: iframeWindow, configurable: true });
   Object.defineProperty(iframe, "contentDocument", {
@@ -53,7 +76,7 @@ export function attachIframeWindow(api: TimelinePlayerApi, iframeWindow: Record<
   });
 }
 
-function makeAdapterWindow(
+export function makeAdapterWindow(
   options: {
     postMessage?: (message: unknown, targetOrigin: string) => void;
     timelines?: Record<string, unknown>;

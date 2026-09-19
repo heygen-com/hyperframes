@@ -60,6 +60,12 @@ export function PreviewPane({
     togglePlay,
     seek,
     onIframeLoad,
+    previewSlots,
+    onShadowIframeLoad,
+    onShadowReadyChange,
+    onShadowError,
+    setShadowIframeNode,
+    resetPreviewSlots,
     compositionStack,
     handleNavigateComposition,
     setCompositionLoading,
@@ -131,6 +137,12 @@ export function PreviewPane({
             projectId={projectId}
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
+            previewSlots={previewSlots}
+            onShadowIframeLoad={onShadowIframeLoad}
+            onShadowReadyChange={onShadowReadyChange}
+            onShadowError={onShadowError}
+            setShadowIframeNode={setShadowIframeNode}
+            resetPreviewSlots={resetPreviewSlots}
             onCompositionLoadingChange={setCompositionLoading}
             portrait={portrait}
             directUrl={directUrl}
