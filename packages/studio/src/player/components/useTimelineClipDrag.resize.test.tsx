@@ -543,6 +543,22 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     h.unmount();
   });
 
+  it("leaves the playhead where playback is when a trim is released while playing", async () => {
+    usePlayerStore.setState({ currentTime: 1.25, isPlaying: true });
+    const onSeek = vi.fn((t: number) => usePlayerStore.setState({ currentTime: t }));
+    const a = el("a", { start: 1, duration: 2 });
+    const h = renderResizeHarness([a], [], { onSeek });
+    h.startResize(a, "end");
+    h.movePointer(50);
+    h.movePointer(120);
+    const callsBeforeRelease = onSeek.mock.calls.length;
+    await h.dropPointer();
+    expect(onSeek).toHaveBeenCalledTimes(callsBeforeRelease);
+    expect(onSeek).not.toHaveBeenCalledWith(1.25, expect.anything());
+    usePlayerStore.setState({ isPlaying: false });
+    h.unmount();
+  });
+
   it("draws no guide and seeks to the rendered edge when a group member clamps the trim", () => {
     const onSeek = vi.fn();
     const a = el("a", { start: 0, duration: 4 });

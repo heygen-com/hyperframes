@@ -359,7 +359,10 @@ export function useTimelineClipDrag({
       clipDragScrollRaf.current = 0;
     }
     if (trimSeekOriginRef.current != null) {
-      onSeekRef.current?.(trimSeekOriginRef.current, { keepPlaying: true });
+      // Paused: put the playhead back. Playing: leave it, a backward jump would rewind live playback.
+      if (!usePlayerStore.getState().isPlaying) {
+        onSeekRef.current?.(trimSeekOriginRef.current, { keepPlaying: true });
+      }
       trimSeekOriginRef.current = null;
     }
     // Gesture teardown: drop frozen caches so the next gesture reads fresh state.
