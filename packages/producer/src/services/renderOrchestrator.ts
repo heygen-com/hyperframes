@@ -208,7 +208,7 @@ import { shouldUseLayeredComposite } from "./hdrCompositor.js";
 import { resolveCaptureImageFormat } from "./render/captureImageFormat.js";
 import { assertMotionBlurSupported } from "./render/motionBlurRoute.js";
 
-function sampleDirectoryBytes(dir: string): number {
+export function sampleDirectoryBytes(dir: string): number {
   let total = 0;
   const stack: string[] = [dir];
   while (stack.length > 0) {

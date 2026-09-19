@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
@@ -14,6 +14,7 @@ const captureFrame = vi.fn();
 const closeCaptureSession = vi.fn(async () => {});
 const verifyDiskDrawElementSamples = vi.fn(async () => {});
 const getCapturePerfSummary = vi.fn(() => ({}));
+const executeParallelCapture = vi.fn();
 
 vi.mock("@hyperframes/engine", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/engine")>();
@@ -25,11 +26,24 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
     closeCaptureSession: (...args: unknown[]) => closeCaptureSession(...args),
     verifyDiskDrawElementSamples: (...args: unknown[]) => verifyDiskDrawElementSamples(...args),
     getCapturePerfSummary: (...args: unknown[]) => getCapturePerfSummary(...args),
+    executeParallelCapture: (...args: unknown[]) => executeParallelCapture(...args),
+    mergeWorkerFrames: async () => {},
+  };
+});
+
+const freeBytes = vi.fn<(path: string) => { bavail: number; bsize: number }>();
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    statfsSync: (path: string) => freeBytes(path) ?? actual.statfsSync(path),
   };
 });
 
 import {
   assertDiskCaptureHeadroom,
+  createDiskCaptureProjection,
+  measureCaptureFrameBytes,
   estimateDiskCaptureBytes,
   inspectDiskCaptureHeadroom,
   runCaptureStage,
@@ -55,13 +69,19 @@ describe("disk capture capacity", () => {
     format: "jpeg" as const,
   };
 
+  const pngOptions = { ...captureOptions, format: "png" as const };
+
   it("estimates output-resolution frame storage conservatively", () => {
-    expect(estimateDiskCaptureBytes(10, captureOptions)).toBe(800_000);
+    expect(estimateDiskCaptureBytes(10, pngOptions)).toBe(800_000);
+  });
+
+  it("estimates jpeg frames well below the raw RGBA model", () => {
+    expect(estimateDiskCaptureBytes(10, captureOptions)).toBe(100_000);
   });
 
   it("fails before capture when estimated frames exceed available headroom", () => {
     expect(() =>
-      assertDiskCaptureHeadroom("/render/captured-frames", 10, captureOptions, () => 800_000),
+      assertDiskCaptureHeadroom("/render/captured-frames", 10, pngOptions, () => 800_000),
     ).toThrow(/may need ~0\.8 MB.*0\.8 MB is free.*--low-memory-mode/s);
   });
 
@@ -70,7 +90,7 @@ describe("disk capture capacity", () => {
       width: 1920,
       height: 1080,
       fps: { num: 30, den: 1 },
-      format: "jpeg" as const,
+      format: "png" as const,
     };
     let message = "";
     try {
@@ -92,28 +112,27 @@ describe("disk capture capacity", () => {
   });
 
   it("exposes the same 90% headroom decision to fallback planning", () => {
-    const estimatedBytes = estimateDiskCaptureBytes(10, captureOptions);
+    const estimatedBytes = estimateDiskCaptureBytes(10, pngOptions);
 
     expect(
       inspectDiskCaptureHeadroom(
         "/render/captured-frames",
         10,
-        captureOptions,
+        pngOptions,
         () => estimatedBytes / 0.9 - 1,
       ),
     ).toEqual({ available: false, estimatedBytes, freeBytes: estimatedBytes / 0.9 - 1 });
     expect(
-      inspectDiskCaptureHeadroom("/render/captured-frames", 10, captureOptions, () => null)
-        .available,
+      inspectDiskCaptureHeadroom("/render/captured-frames", 10, pngOptions, () => null).available,
     ).toBe(true);
   });
 
-  it("rejects the reported 5318-frame landscape disk route with 45 GiB free", () => {
+  it("rejects the reported 5318-frame landscape png disk route with 45 GiB free", () => {
     const landscape = {
       width: 1920,
       height: 1080,
       fps: { num: 30, den: 1 },
-      format: "jpeg" as const,
+      format: "png" as const,
     };
     const headroom = inspectDiskCaptureHeadroom(
       "/render/captured-frames",
@@ -124,6 +143,169 @@ describe("disk capture capacity", () => {
 
     expect(headroom.estimatedBytes).toBe(5318 * 1920 * 1080 * 4);
     expect(headroom.available).toBe(false);
+  });
+
+  it("lets the same 5318-frame landscape route through as jpeg", () => {
+    const landscape = { ...captureOptions, width: 1920, height: 1080, deviceScaleFactor: 1 };
+    expect(
+      inspectDiskCaptureHeadroom("/render/captured-frames", 5318, landscape, () => 45 * 1024 ** 3)
+        .available,
+    ).toBe(true);
+  });
+});
+
+describe("createDiskCaptureProjection", () => {
+  it("throws a measured shortfall once ten frames show the remainder cannot fit", () => {
+    const measure = vi.fn(() => 10e6);
+    const check = createDiskCaptureProjection({
+      framesDir: "/frames",
+      totalFrames: 1010,
+      measureBytes: measure,
+      freeDiskBytes: () => 500e6,
+    });
+    check(9);
+    expect(measure).not.toHaveBeenCalled();
+    expect(() => check(10)).toThrow(
+      /~1000\.0 MB.*measured from the first 10 frames.*500\.0 MB is free at \/frames/s,
+    );
+    expect(() => check(11)).not.toThrow();
+  });
+
+  it("does not spend its one check on an empty measurement", () => {
+    let bytes = 0;
+    const check = createDiskCaptureProjection({
+      framesDir: "/frames",
+      totalFrames: 1010,
+      measureBytes: () => bytes,
+      freeDiskBytes: () => 500e6,
+    });
+    expect(() => check(10)).not.toThrow();
+    bytes = 10e6;
+    expect(() => check(11)).toThrow(/measured from the first/);
+  });
+
+  it("measures frames in retry-batch worker dirs as well as capture-attempt dirs", () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-measure-"));
+    try {
+      const framesDir = join(workDir, "captured-frames");
+      for (const dir of [
+        framesDir,
+        join(workDir, "capture-attempt-0", "worker-0"),
+        join(workDir, "retry-1-batch-0-worker-0"),
+      ]) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "frame_000001.jpg"), Buffer.alloc(1000));
+      }
+      expect(measureCaptureFrameBytes(workDir, framesDir)).toBe(3000);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stays quiet when the projected remainder fits", () => {
+    const check = createDiskCaptureProjection({
+      framesDir: "/frames",
+      totalFrames: 1010,
+      measureBytes: () => 10e6,
+      freeDiskBytes: () => 5000e6,
+    });
+    expect(() => check(10)).not.toThrow();
+  });
+});
+
+describe("runCaptureStage measured disk projection (both branches)", () => {
+  const roots: string[] = [];
+  const oneMb = Buffer.alloc(1_000_000);
+  const makeInput = (workerCount: number, workDir: string, framesDir: string) => ({
+    fileServer: { url: "http://localhost:0" } as never,
+    workDir,
+    framesDir,
+    job: createRenderJob({ fps: { num: 30, den: 1 }, quality: "draft" }),
+    totalFrames: 20,
+    cfg: DEFAULT_CONFIG,
+    plan: { workerCount, forceScreenshot: false },
+    log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+    probeSession: null,
+    captureAttempts: [],
+    dedupPerfs: [],
+    buildCaptureOptions: () => ({
+      width: 64,
+      height: 64,
+      fps: { num: 30, den: 1 },
+      format: "jpeg" as const,
+    }),
+    createRenderVideoFrameInjector: () => null,
+    abortSignal: undefined,
+    assertNotAborted: () => {},
+  });
+  const makeDirs = () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-disk-projection-"));
+    const framesDir = join(workDir, "captured-frames");
+    mkdirSync(framesDir);
+    roots.push(workDir);
+    return { workDir, framesDir };
+  };
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    createCaptureSession.mockReset();
+    captureFrame.mockReset();
+    executeParallelCapture.mockReset();
+    freeBytes.mockReset();
+    closeCaptureSession.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("sequential: stops after ten frames when the measured remainder cannot fit", async () => {
+    const { workDir, framesDir } = makeDirs();
+    // 8 MB free: passes the static jpeg estimate, fails the 10 MB measured remainder.
+    freeBytes.mockReturnValue({ bavail: 8_000_000, bsize: 1 });
+    createCaptureSession.mockResolvedValue({
+      isInitialized: false,
+      browserConsoleBuffer: [],
+      options: { captureBeyondViewport: false, format: "jpeg" },
+      workerEncodeEnabled: false,
+      outputDir: framesDir,
+    });
+    captureFrame.mockImplementation(async (_s: unknown, index: number) => {
+      writeFileSync(join(framesDir, formatCaptureFrameName(index, "jpg")), oneMb);
+    });
+
+    await expect(runCaptureStage(makeInput(1, workDir, framesDir))).rejects.toThrow(
+      /measured from the first 10 frames/,
+    );
+    expect(captureFrame).toHaveBeenCalledTimes(10);
+  });
+
+  it("parallel: the progress callback raises the same shortfall from worker dirs", async () => {
+    const { workDir, framesDir } = makeDirs();
+    freeBytes.mockReturnValue({ bavail: 8_000_000, bsize: 1 });
+    executeParallelCapture.mockImplementation(
+      async (
+        _url: string,
+        attemptWorkDir: string,
+        _tasks: unknown,
+        _opts: unknown,
+        _hook: unknown,
+        _signal: unknown,
+        onProgress: (p: {
+          capturedFrames: number;
+          totalFrames: number;
+          activeWorkers: number;
+        }) => void,
+      ) => {
+        const workerDir = join(attemptWorkDir, "worker-0");
+        mkdirSync(workerDir, { recursive: true });
+        for (let i = 0; i < 10; i++) {
+          writeFileSync(join(workerDir, formatCaptureFrameName(i, "jpg")), oneMb);
+        }
+        onProgress({ capturedFrames: 10, totalFrames: 20, activeWorkers: 2 });
+        return [];
+      },
+    );
+
+    await expect(runCaptureStage(makeInput(2, workDir, framesDir))).rejects.toThrow(
+      /measured from the first 10 frames/,
+    );
   });
 });
 

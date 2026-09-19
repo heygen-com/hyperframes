@@ -37,7 +37,8 @@
  * the stages can import them without reaching back into the orchestrator.
  */
 
-import { statfsSync } from "node:fs";
+import { existsSync, readdirSync, statfsSync } from "node:fs";
+import { join } from "node:path";
 import {
   classifyCaptureFailure,
   frameFileExtension,
@@ -63,6 +64,7 @@ import {
   executeDiskCaptureWithAdaptiveRetry,
   findMissingFrameRanges,
   isTransientCaptureRetryEligible,
+  sampleDirectoryBytes,
   type CaptureAttemptSummary,
   type ProgressCallback,
   type RenderJob,
@@ -142,6 +144,11 @@ export function shouldAllowAdaptiveCaptureRetry(
   return workerCount > 1;
 }
 
+/** Jpeg frames are far smaller than raw pixels; this divisor is a conservative bound. */
+const JPEG_RAW_RGBA_DIVISOR = 8;
+/** Frames captured before the measured projection replaces the static estimate. */
+const DISK_PROJECTION_SAMPLE_FRAMES = 10;
+
 export function estimateDiskCaptureBytes(
   totalFrames: number,
   captureOptions: CaptureOptions,
@@ -149,7 +156,19 @@ export function estimateDiskCaptureBytes(
   const scale = captureOptions.deviceScaleFactor ?? 1;
   const outputWidth = Math.ceil(captureOptions.width * scale);
   const outputHeight = Math.ceil(captureOptions.height * scale);
-  return Math.ceil(totalFrames) * outputWidth * outputHeight * 4;
+  const rawBytes = Math.ceil(totalFrames) * outputWidth * outputHeight * 4;
+  return frameFileExtension(captureOptions.format) === "jpg"
+    ? Math.ceil(rawBytes / JPEG_RAW_RGBA_DIVISOR)
+    : rawBytes;
+}
+
+function freeDiskBytesAt(path: string): number | null {
+  try {
+    const stat = statfsSync(path);
+    return stat.bavail * stat.bsize;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -165,14 +184,7 @@ export function inspectDiskCaptureHeadroom(
   framesDir: string,
   totalFrames: number,
   captureOptions: CaptureOptions,
-  freeDiskBytes: (path: string) => number | null = (path) => {
-    try {
-      const stat = statfsSync(path);
-      return stat.bavail * stat.bsize;
-    } catch {
-      return null;
-    }
-  },
+  freeDiskBytes: (path: string) => number | null = freeDiskBytesAt,
 ): DiskCaptureHeadroom {
   const freeBytes = freeDiskBytes(framesDir);
   const estimatedBytes = estimateDiskCaptureBytes(totalFrames, captureOptions);
@@ -180,6 +192,32 @@ export function inspectDiskCaptureHeadroom(
     return { available: true, estimatedBytes, freeBytes };
   }
   return { available: false, estimatedBytes, freeBytes };
+}
+
+function diskCaptureShortfallError(
+  needBytes: number,
+  freeBytes: number,
+  framesDir: string,
+  basis: "estimate" | "measured",
+): Error {
+  const basisNote =
+    basis === "measured"
+      ? ` (measured from the first ${DISK_PROJECTION_SAMPLE_FRAMES} frames)`
+      : "";
+  return new Error(
+    `Disk capture may need ~${(needBytes / 1e6).toFixed(1)} MB of temporary frame storage${basisNote}, ` +
+      `but only ${(freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
+      "Disk capture stores every frame as an image file (JPEG, or PNG for alpha). mp4/mov renders stream instead: " +
+      "always at --workers 1, and multi-worker on Linux BeginFrame capture. " +
+      "This render landed on disk because the output is png-sequence or gif, because it " +
+      "is multi-worker screenshot capture (opt in with HF_CAPTURE_PARALLEL_STREAM=true), " +
+      "or because streaming was switched off: HF_CAPTURE_PARALLEL_STREAM=false, " +
+      "PRODUCER_ENABLE_STREAMING_ENCODE=false, or the duration cap " +
+      "(PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED=true) on a render longer than " +
+      "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS. HDR and shader-transition renders " +
+      "never reach this check; they run their own compositor. " +
+      "Re-run with --workers 1, use --low-memory-mode, or free up disk space.",
+  );
 }
 
 export function assertDiskCaptureHeadroom(
@@ -195,20 +233,54 @@ export function assertDiskCaptureHeadroom(
     freeDiskBytes,
   );
   if (headroom.available) return;
-  throw new Error(
-    `Disk capture may need ~${(headroom.estimatedBytes / 1e6).toFixed(1)} MB of temporary frame storage, ` +
-      `but only ${(headroom.freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
-      "Disk capture stores every frame as raw RGBA. mp4/mov renders stream instead: " +
-      "always at --workers 1, and multi-worker on Linux BeginFrame capture. " +
-      "This render landed on disk because the output is png-sequence or gif, because it " +
-      "is multi-worker screenshot capture (opt in with HF_CAPTURE_PARALLEL_STREAM=true), " +
-      "or because streaming was switched off: HF_CAPTURE_PARALLEL_STREAM=false, " +
-      "PRODUCER_ENABLE_STREAMING_ENCODE=false, or the duration cap " +
-      "(PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED=true) on a render longer than " +
-      "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS. HDR and shader-transition renders " +
-      "never reach this check; they run their own compositor. " +
-      "Re-run with --workers 1, use --low-memory-mode, or free up disk space.",
+  throw diskCaptureShortfallError(
+    headroom.estimatedBytes,
+    headroom.freeBytes,
+    framesDir,
+    "estimate",
   );
+}
+
+/** Frame bytes written so far: the merged frames dir plus every capture attempt's worker dirs. */
+export function measureCaptureFrameBytes(workDir: string, framesDir: string): number {
+  let total = sampleDirectoryBytes(framesDir);
+  if (!existsSync(workDir)) return total;
+  for (const attempt of readdirSync(workDir)) {
+    if (/^retry-\d+-batch-\d+-worker-\d+$/.test(attempt)) {
+      total += sampleDirectoryBytes(join(workDir, attempt));
+      continue;
+    }
+    if (!/^capture-attempt-\d+$/.test(attempt)) continue;
+    const attemptDir = join(workDir, attempt);
+    for (const name of readdirSync(attemptDir)) {
+      if (/^worker-\d+$/.test(name)) total += sampleDirectoryBytes(join(attemptDir, name));
+    }
+  }
+  return total;
+}
+
+/** Per-frame callback: after the sample frames, throws if the projected remainder exceeds 90% of free space. */
+export function createDiskCaptureProjection(input: {
+  framesDir: string;
+  totalFrames: number;
+  measureBytes: () => number;
+  freeDiskBytes?: (path: string) => number | null;
+}): (capturedFrames: number) => void {
+  const { framesDir, totalFrames, measureBytes, freeDiskBytes = freeDiskBytesAt } = input;
+  let checked = false;
+  return (capturedFrames) => {
+    if (checked || capturedFrames < DISK_PROJECTION_SAMPLE_FRAMES) return;
+    const measured = measureBytes();
+    if (measured <= 0) return;
+    checked = true;
+    const remaining = totalFrames - capturedFrames;
+    const freeBytes = freeDiskBytes(framesDir);
+    if (remaining <= 0 || freeBytes === null) return;
+    const needBytes = Math.ceil((measured / capturedFrames) * remaining);
+    if (needBytes > freeBytes * 0.9) {
+      throw diskCaptureShortfallError(needBytes, freeBytes, framesDir, "measured");
+    }
+  };
 }
 
 export async function runCaptureStage(input: CaptureStageInput): Promise<CaptureStageResult> {
@@ -270,6 +342,11 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
 
   const captureOptions = buildCaptureOptions();
   assertDiskCaptureHeadroom(framesDir, totalFrames, captureOptions);
+  const checkDiskProjection = createDiskCaptureProjection({
+    framesDir,
+    totalFrames,
+    measureBytes: () => measureCaptureFrameBytes(workDir, framesDir),
+  });
 
   if (workerCount > 1) {
     // Parallel capture. When `frameRange` is set (distributed chunk), pass
@@ -290,6 +367,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       dedupPerfs,
       onProgress: (progress) => {
         job.framesRendered = progress.capturedFrames;
+        checkDiskProjection(progress.capturedFrames);
         const frameProgress = progress.capturedFrames / progress.totalFrames;
         const progressPct = 25 + frameProgress * 45;
 
@@ -321,7 +399,12 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       probeSession = null;
     }
   } else {
-    const sequential = await runSequentialDiskCapture(input, captureOptions, captureCfg);
+    const sequential = await runSequentialDiskCapture(
+      input,
+      captureOptions,
+      captureCfg,
+      checkDiskProjection,
+    );
     probeSession = null;
     lastBrowserConsole = sequential.lastBrowserConsole;
     captureBeyondViewport = sequential.captureBeyondViewport;
@@ -339,6 +422,7 @@ async function runSequentialDiskCapture(
   input: CaptureStageInput,
   captureOptions: CaptureOptions,
   captureCfg: EngineConfig,
+  checkDiskProjection: (capturedFrames: number) => void,
 ): Promise<SequentialCaptureResult> {
   const {
     fileServer,
@@ -389,7 +473,13 @@ async function runSequentialDiskCapture(
       assertNotAborted();
       lastBrowserConsole = session.browserConsoleBuffer;
 
-      await captureSessionFrames(session, { input, rangeStart, rangeEnd, resumeFrom });
+      await captureSessionFrames(session, {
+        input,
+        rangeStart,
+        rangeEnd,
+        resumeFrom,
+        checkDiskProjection,
+      });
       break;
       // This must mirror streaming capture: catch wraps the original failure with
       // browser diagnostics, finally only handles cleanup.
@@ -471,16 +561,18 @@ interface SequentialFrameLoop {
   rangeStart: number;
   rangeEnd: number;
   resumeFrom: number;
+  checkDiskProjection: (capturedFrames: number) => void;
 }
 
 async function captureSessionFrames(
   session: CaptureSession,
-  { input, rangeStart, rangeEnd, resumeFrom }: SequentialFrameLoop,
+  { input, rangeStart, rangeEnd, resumeFrom, checkDiskProjection }: SequentialFrameLoop,
 ): Promise<void> {
   const { job, framesDir, dedupPerfs, assertNotAborted, onProgress } = input;
   const rangeFrames = rangeEnd - rangeStart;
   const reportFrame = (fileIndex: number): void => {
     job.framesRendered = fileIndex + 1;
+    checkDiskProjection(fileIndex + 1);
     // Keep status cadence identical to the streaming sequential path; the
     // capture error wrapper below must remain separate from finally so it
     // can throw with the browser console before cleanup overwrites flow.

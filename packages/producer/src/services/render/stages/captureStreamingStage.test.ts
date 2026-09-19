@@ -179,6 +179,7 @@ mock.module("../../renderOrchestrator.js", () => ({
   executeDiskCaptureWithAdaptiveRetry: async () => [],
   findMissingFrameRanges: () => [],
   isTransientCaptureRetryEligible: () => false,
+  sampleDirectoryBytes: () => 0,
   resolveCompositeTransfer: () => "srgb",
 }));
 
