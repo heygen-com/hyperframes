@@ -45,6 +45,10 @@ export const ALLOWED_DELETIONS = new Map([
     "the full-screen drop-to-add box is replaced by a landing preview on the timeline; no remaining references",
   ],
   [
+    "packages/studio/src/components/PanelTabButton.tsx",
+    "replaced by the shared Tabs primitive in RightPanelTabs; no remaining references",
+  ],
+  [
     "packages/studio/postcss.config.js",
     "Tailwind v4 migration: postcss replaced by @tailwindcss/vite",
   ],

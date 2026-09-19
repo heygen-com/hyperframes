@@ -3,7 +3,6 @@ import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
-import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { isTypingTarget } from "../utils/typingTarget";
 import { useCaptionStore } from "../captions/store";
 import {
@@ -11,13 +10,17 @@ import {
   isCaptionPreviewVisible,
 } from "../captions/components/CaptionOverlayUtils";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
-import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import {
   type HotkeyCallbacks,
   dispatchModifierKey,
   dispatchPlainKey,
   handleUndoRedoKey,
 } from "./appHotkeysDispatch";
+import {
+  useEditHistoryActions,
+  type EditHistoryHandle,
+  type UseEditHistoryActionsOptions,
+} from "./useEditHistoryActions";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   try {
@@ -69,28 +72,6 @@ function tryApplyBeatHistory(
 
 // ── Types ──
 
-interface HistoryResult {
-  ok: boolean;
-  reason?: string;
-  label?: string;
-  paths?: string[];
-  /** Per-file restored/previous content, used to soft-apply the preview. */
-  files?: Record<string, { previous: string; restored: string }>;
-}
-interface HistoryFileCallbacks {
-  readFile: (path: string) => Promise<string>;
-  writeFile: (path: string, content: string) => Promise<void>;
-  serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
-}
-interface EditHistoryHandle {
-  undo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
-  redo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
-  state: {
-    undo: ReadonlyArray<{ createdAt: number }>;
-    redo: ReadonlyArray<{ createdAt: number }>;
-  };
-}
-
 interface UseAppHotkeysParams {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
@@ -105,10 +86,7 @@ interface UseAppHotkeysParams {
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   showToast: (message: string, tone?: "error" | "info") => void;
-  syncHistoryPreviewAfterApply: (restore: {
-    paths?: string[];
-    files?: Record<string, { previous: string; restored: string }>;
-  }) => Promise<void>;
+  syncHistoryPreviewAfterApply: UseEditHistoryActionsOptions["syncHistoryPreviewAfterApply"];
   waitForPendingDomEditSaves: () => Promise<void>;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   handleCopy: () => boolean;
@@ -165,22 +143,18 @@ export function useAppHotkeys({
 
   // ── Undo / Redo ──
 
-  const readHistoryFile = useCallback(
-    (path: string): Promise<string> =>
-      path === STUDIO_MOTION_PATH ? readOptionalProjectFile(path) : readProjectFile(path),
-    [readOptionalProjectFile, readProjectFile],
-  );
-  const writeHistoryFile = useCallback(
-    async (path: string, content: string): Promise<void> => {
-      await writeProjectFile(path, content);
-    },
-    [writeProjectFile],
-  );
-  const serializeHistoryFiles = useCallback(
-    <T>(paths: readonly string[], task: () => Promise<T>) =>
-      serializeStudioFileMutations(writeProjectFile, paths, task),
-    [writeProjectFile],
-  );
+  const fileHistory = useEditHistoryActions({
+    editHistory,
+    readOptionalProjectFile,
+    readProjectFile,
+    writeProjectFile,
+    showToast,
+    syncHistoryPreviewAfterApply,
+    waitForPendingDomEditSaves,
+    onAfterUndoRedo,
+    activeCompPath,
+    forceReloadSdkSession,
+  });
 
   const applyHistory = useCallback(
     async (direction: "undo" | "redo") => {
@@ -204,42 +178,9 @@ export function useAppHotkeys({
       // Beat edits interleave with file history by timestamp; handle them first.
       if (tryApplyBeatHistory(direction, editHistory.state, showToast)) return;
 
-      await waitForPendingDomEditSaves();
-      const result = await editHistory[direction]({
-        readFile: readHistoryFile,
-        writeFile: writeHistoryFile,
-        serialize: serializeHistoryFiles,
-      });
-      if (!result.ok && result.reason === "content-mismatch") {
-        showToast(
-          `File changed outside Studio. ${direction === "undo" ? "Undo" : "Redo"} history was not applied.`,
-          "info",
-        );
-        return;
-      }
-      if (result.ok && result.label) {
-        onAfterUndoRedo?.();
-        // If the active composition was among the written files, force-reload
-        // the SDK session so its in-memory doc matches the reverted content.
-        if (activeCompPath && result.paths?.includes(activeCompPath)) {
-          forceReloadSdkSession?.();
-        }
-        await syncHistoryPreviewAfterApply({ paths: result.paths, files: result.files });
-        showToast(`${direction === "undo" ? "Undid" : "Redid"} ${result.label}`, "info");
-      }
+      await fileHistory[direction]();
     },
-    [
-      editHistory,
-      readHistoryFile,
-      showToast,
-      syncHistoryPreviewAfterApply,
-      waitForPendingDomEditSaves,
-      writeHistoryFile,
-      serializeHistoryFiles,
-      onAfterUndoRedo,
-      activeCompPath,
-      forceReloadSdkSession,
-    ],
+    [editHistory.state, fileHistory, showToast],
   );
 
   const handleUndo = useCallback(() => applyHistory("undo"), [applyHistory]);
