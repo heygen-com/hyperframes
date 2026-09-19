@@ -90,6 +90,18 @@ describe("describeProject", () => {
     rmSync(join(dir, "..", "hf-outside.html"));
   });
 
+  it("reads a sub-composition whose folder name starts with two dots", () => {
+    const index = project();
+    mkdirSync(join(dir, "..scenes"));
+    writeFileSync(join(dir, "..scenes", "s.html"), TITLE);
+    writeFileSync(
+      index,
+      `<div data-composition-id="m"><div id="s" data-composition-src="..scenes/s.html" data-start="0" data-duration="1"></div></div>`,
+    );
+    const [row] = describeProject(index).tracks.flatMap((t) => t.rows);
+    expect(row!.children.length).toBe(2);
+  });
+
   it("does not follow a symlink out of the project", () => {
     const index = project();
     const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));

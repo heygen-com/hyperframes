@@ -1,5 +1,5 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
   parseAutomation,
@@ -138,7 +138,7 @@ function realFileInside(projectDir: string, path: string): string | null {
   try {
     const real = realpathSync(path);
     const inside = relative(realpathSync(projectDir), real);
-    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return null;
     return statSync(real).isFile() ? real : null;
   } catch {
     return null;
