@@ -191,6 +191,7 @@ jobs:
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run verify:catalog-payloads --changed origin/main
+      - run: bun run check:catalog-drift
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
   # the changed files. The default `--gate new-only` means existing legacy

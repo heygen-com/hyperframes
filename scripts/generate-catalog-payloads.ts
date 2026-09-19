@@ -58,7 +58,10 @@ import {
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-export const payloadRoot = resolve(repoRoot, "docs/public/catalog");
+// The drift check points this at a temp dir to generate without touching the committed tree.
+export const payloadRoot = resolve(
+  process.env.CATALOG_PAYLOAD_ROOT ?? resolve(repoRoot, "docs/public/catalog"),
+);
 
 /**
  * Inlining budget for a single payload. A payload is fetched when the reader
