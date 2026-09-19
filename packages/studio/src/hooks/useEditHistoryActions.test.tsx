@@ -3,6 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { useEditHistoryActions } from "./useEditHistoryActions";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,5 +68,23 @@ describe("useEditHistoryActions", () => {
       "info",
     );
     expect(deps.syncHistoryPreviewAfterApply).not.toHaveBeenCalled();
+  });
+
+  it("waits for pending saves first and reads the motion file through the optional reader", async () => {
+    const { deps, actions } = mount({ ok: true, label: "Move clip", paths: ["index.html"] });
+    const order: string[] = [];
+    deps.waitForPendingDomEditSaves.mockImplementation(async () => void order.push("wait"));
+    deps.editHistory.undo.mockImplementation(async (cb) => {
+      order.push("undo");
+      await cb.readFile(STUDIO_MOTION_PATH);
+      await cb.readFile("index.html");
+      await cb.serialize?.(["index.html"], async () => order.push("serialized"));
+      return { ok: true };
+    });
+    await act(() => actions.undo());
+    expect(order).toEqual(["wait", "undo", "serialized"]);
+    expect(deps.readOptionalProjectFile).toHaveBeenCalledWith(STUDIO_MOTION_PATH);
+    expect(deps.readProjectFile).toHaveBeenCalledWith("index.html");
+    expect(deps.readProjectFile).not.toHaveBeenCalledWith(STUDIO_MOTION_PATH);
   });
 });
