@@ -92,6 +92,7 @@ import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
+import { createStderrTail, DockerRenderExitError } from "../utils/dockerStderrTail.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import {
@@ -828,13 +829,18 @@ async function renderDocker(
 
   try {
     await new Promise<void>((resolvePromise, reject) => {
+      const stderrTail = createStderrTail();
+      // stderr is piped so the failure can name its cause; it is still echoed live.
       const child = spawn("docker", dockerArgs, {
-        // When quiet, still show stderr so container errors surface
-        stdio: options.quiet ? ["pipe", "pipe", "inherit"] : "inherit",
+        stdio: options.quiet ? ["pipe", "pipe", "pipe"] : ["inherit", "inherit", "pipe"],
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        process.stderr.write(chunk);
+        stderrTail.push(chunk.toString());
       });
       child.on("close", (code) => {
         if (code === 0) resolvePromise();
-        else reject(new Error(`Docker render exited with code ${code}`));
+        else reject(new DockerRenderExitError(code, stderrTail.tail()));
       });
       child.on("error", (err) => reject(err));
     });
