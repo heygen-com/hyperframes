@@ -861,6 +861,83 @@ describe("ffprobe missing-binary fallback", () => {
   });
 });
 
+describe("analyzeKeyframeIntervals single keyframe", () => {
+  afterEach(() => {
+    vi.doUnmock("child_process");
+    vi.resetModules();
+  });
+
+  function videoProbe(streamDuration: string, containerDuration: string): SpawnOutcome {
+    return {
+      kind: "exit",
+      code: 0,
+      stdout: JSON.stringify({
+        streams: [
+          {
+            codec_type: "video",
+            codec_name: "h264",
+            width: 640,
+            height: 360,
+            r_frame_rate: "30/1",
+            pix_fmt: "yuv420p",
+            duration: streamDuration,
+          },
+        ],
+        format: { duration: containerDuration },
+      }),
+    };
+  }
+
+  it("treats the video-stream duration as the interval when only one keyframe exists", async () => {
+    const { spawn } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "0.000000\n" },
+      videoProbe("10.000000", "10.000000"),
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    await expect(analyzeKeyframeIntervals("/tmp/single-gop.mp4")).resolves.toEqual({
+      avgIntervalSeconds: 10,
+      maxIntervalSeconds: 10,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+  });
+
+  it("uses the video stream, not the container, when audio outlasts the picture", async () => {
+    const { spawn } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "0.000000\n" },
+      videoProbe("1.000000", "10.000000"),
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    await expect(analyzeKeyframeIntervals("/tmp/short-video-long-audio.mp4")).resolves.toEqual({
+      avgIntervalSeconds: 1,
+      maxIntervalSeconds: 1,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("stays silent for zero keyframes", async () => {
+    const { spawn, calls } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    await expect(analyzeKeyframeIntervals("/tmp/still.png")).resolves.toEqual({
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 0,
+      isProblematic: false,
+    });
+    expect(calls.length).toBe(1);
+  });
+});
+
 describe("ffprobe option separator", () => {
   afterEach(() => {
     vi.resetModules();

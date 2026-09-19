@@ -1018,12 +1018,27 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .map((line) => parseFloat(line.trim()))
     .filter((t) => Number.isFinite(t));
 
-  if (timestamps.length < 2) {
+  if (timestamps.length === 0) {
     return {
       avgIntervalSeconds: 0,
       maxIntervalSeconds: 0,
-      keyframeCount: timestamps.length,
+      keyframeCount: 0,
       isProblematic: false,
+    };
+  }
+
+  if (timestamps.length === 1) {
+    // One keyframe means one GOP spanning the whole stream: every seek past
+    // 0 decodes from the start. The video stream's duration, not the
+    // container's, is the interval; a 1s picture in a 10s audio container
+    // has a 1s GOP.
+    const { videoStreamDurationSeconds } = await extractMediaMetadata(filePath);
+    const interval = Math.round(videoStreamDurationSeconds * 100) / 100;
+    return {
+      avgIntervalSeconds: interval,
+      maxIntervalSeconds: interval,
+      keyframeCount: 1,
+      isProblematic: videoStreamDurationSeconds > 2,
     };
   }
 
