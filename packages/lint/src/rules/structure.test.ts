@@ -41,6 +41,12 @@ describe("nested_structure_needs_subcomposition", () => {
     );
     expect(has(found, "nested_structure_needs_subcomposition")).toBe(false);
   });
+  it("ignores style, script and template content inside a timed element", async () => {
+    const found = await codes(
+      '<div class="clip" data-start="0" data-duration="3">hi<style>.a{}</style><script>1</script><template><div></div></template></div>',
+    );
+    expect(has(found, "nested_structure_needs_subcomposition")).toBe(false);
+  });
   it("descends an untimed wrapper to reach the timed element", async () => {
     const found = await codes(
       '<div id="stage"><div class="clip" data-start="0" data-duration="3"><p>x</p></div></div>',
@@ -59,7 +65,7 @@ describe("severity follows the host", () => {
 });
 
 describe("timeline_element_missing_timing", () => {
-  it("flags a timed element with no duration and passes one with a duration", async () => {
+  it("flags a timed element with no duration, passes one with a duration and a sub-composition host without one", async () => {
     expect(
       has(
         await codes('<div class="clip" data-start="0">x</div>'),
@@ -71,7 +77,7 @@ describe("timeline_element_missing_timing", () => {
         await codes('<div data-composition-id="a" data-start="0"></div>'),
         "timeline_element_missing_timing",
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       has(
         await codes('<div class="clip" data-start="0" data-duration="2">x</div>'),
@@ -126,5 +132,10 @@ describe("caption rules", () => {
       cap('data-track-kind="captions" data-track-index="5"');
     expect(has(await codes(two), "multiple_caption_tracks")).toBe(true);
     expect(has(await codes(one), "multiple_caption_tracks")).toBe(false);
+  });
+  it("does not count a caption row without a lane as a second track", async () => {
+    const mixed =
+      cap('data-track-kind="captions" data-track-index="5"') + cap('data-track-kind="captions"');
+    expect(has(await codes(mixed), "multiple_caption_tracks")).toBe(false);
   });
 });

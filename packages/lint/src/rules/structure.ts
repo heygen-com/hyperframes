@@ -43,6 +43,8 @@ const OPAQUE_TAGS = new Set([
   "iframe",
   "object",
 ]);
+// Never layout: their content is code or inert markup.
+const NON_LAYOUT_TAGS = new Set(["style", "script", "template", "noscript"]);
 const MEDIA_TAGS = new Set(["img", "video", "audio"]);
 const NODE_ATTRS = [
   "id",
@@ -92,6 +94,7 @@ function buildTree(ctx: LintContext): TagNode | null {
 function hasNestedStructure(node: TagNode): TagNode | null {
   if (OPAQUE_TAGS.has(node.tag)) return null;
   for (const child of node.children) {
+    if (NON_LAYOUT_TAGS.has(child.tag)) continue;
     if (!INLINE_TEXT_TAGS.has(child.tag)) return child;
     const deeper = hasNestedStructure(child);
     if (deeper) return deeper;
@@ -126,7 +129,10 @@ function missingDurationFindings(rows: TagNode[], severity: Severity): Hyperfram
     row.attrs["data-start"] !== undefined ||
     row.attrs["data-track-index"] !== undefined;
   return rows
-    .filter((row) => row.attrs["data-duration"] === undefined && intendedClip(row))
+    .filter(
+      (row) =>
+        row.attrs["data-duration"] === undefined && !isSubCompositionHost(row) && intendedClip(row),
+    )
     .map((row) => {
       const isMedia = MEDIA_TAGS.has(row.tag);
       return {
@@ -153,7 +159,7 @@ function captionFindings(rows: TagNode[], severity: Severity): HyperframeLintFin
       fixHint: `Add data-track-kind="captions" to ${describe(row)}.`,
     }));
   const lanes = new Set(
-    captionRows.map((row) => row.attrs["data-track-index"] ?? row.attrs["data-track"] ?? ""),
+    captionRows.flatMap((row) => row.attrs["data-track-index"] ?? row.attrs["data-track"] ?? []),
   );
   if (lanes.size > 1) {
     findings.push({
