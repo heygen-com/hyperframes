@@ -129,8 +129,11 @@ function buildAtempoFilter(playbackRate: number): string | null {
   return stages.map((stage) => `atempo=${formatFilterNumber(stage)}`).join(",");
 }
 
-function preparedAudioOutputArgs(srcPath: string, playbackRate: number): Promise<string[]> {
-  return stereoOutputArgs(srcPath).then((channelArgs) => {
+function preparedAudioOutputArgs(
+  srcPath: string,
+  playbackRate: number,
+): Promise<{ args: string[]; channels: number }> {
+  return sourceChannelOutputArgs(srcPath).then(({ channelArgs, channels }) => {
     const filters: string[] = [];
     const outputArgs: string[] = [];
     if (channelArgs[0] === "-af" && channelArgs[1]) {
@@ -141,7 +144,7 @@ function preparedAudioOutputArgs(srcPath: string, playbackRate: number): Promise
     const atempo = buildAtempoFilter(playbackRate);
     if (atempo) filters.push(atempo);
     if (filters.length > 0) outputArgs.push("-af", filters.join(","));
-    return outputArgs;
+    return { args: outputArgs, channels };
   });
 }
 
@@ -178,19 +181,28 @@ const MAX_VOLUME_SEGMENTS = 32;
  */
 const VOLUME_SIMPLIFY_EPSILON = 0.005;
 
-// `-ac 2` uses FFmpeg's default mono-to-stereo rematrix, which attenuates a
-// mono source by 3 dB. Explicitly map front-center into both stereo channels;
-// native stereo sources have FL/FR and pass through unchanged.
+// Mono stays mono until the mixer knows whether any track requires stereo.
+// When stereo is required, the final mix applies this unity map so preview's
+// per-channel amplitude contract remains intact without inflating mono-only
+// programme loudness by 3 LU.
 const STEREO_CHANNEL_FILTER = "pan=stereo|FL=FL+FC|FR=FR+FC";
 
-async function stereoOutputArgs(srcPath: string): Promise<string[]> {
+async function sourceChannelOutputArgs(
+  srcPath: string,
+): Promise<{ channelArgs: string[]; channels: number }> {
   try {
     const { channels } = await extractAudioMetadata(srcPath);
-    if (channels === 1) return ["-af", STEREO_CHANNEL_FILTER];
+    if (channels === 1) return { channelArgs: [], channels: 1 };
   } catch {
     // Preserve the previous FFmpeg conversion path when metadata probing fails.
   }
-  return ["-ac", "2"];
+  return { channelArgs: ["-ac", "2"], channels: 2 };
+}
+
+function mixInputChannelFilter(tracks: readonly AudioTrack[], index: number): string {
+  const track = tracks[index];
+  if (!track || track.channels !== 1) return "";
+  return tracks.some((candidate) => candidate.channels > 1) ? `,${STEREO_CHANNEL_FILTER}` : "";
 }
 
 /**
@@ -308,6 +320,7 @@ interface ExtractResult {
   durationMs: number;
   error?: string;
   failure?: AudioProcessingFailure;
+  channels?: number;
 }
 
 function boundedDetail(message: string, maxLength = 2_000): string {
@@ -598,8 +611,8 @@ async function extractAudioFromVideo(
   if (options?.startTime !== undefined) args.push("-ss", String(options.startTime));
   if (options?.duration !== undefined) args.push("-t", String(options.duration * playbackRate));
   args.push("-i", videoPath);
-  const outputArgs = await preparedAudioOutputArgs(videoPath, playbackRate);
-  args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
+  const preparedOutput = await preparedAudioOutputArgs(videoPath, playbackRate);
+  args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...preparedOutput.args);
   if (playbackRate !== 1 && options?.duration !== undefined) {
     args.push("-t", String(options.duration));
   }
@@ -633,7 +646,12 @@ async function extractAudioFromVideo(
       failure,
     };
   }
-  return { success: true, outputPath, durationMs: result.durationMs };
+  return {
+    success: true,
+    outputPath,
+    durationMs: result.durationMs,
+    channels: preparedOutput.channels,
+  };
 }
 
 async function prepareAudioTrack(
@@ -649,7 +667,7 @@ async function prepareAudioTrack(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const normalizedPlaybackRate = normalizePlaybackRate(playbackRate);
-  const outputArgs = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate);
+  const preparedOutput = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate);
 
   const args = [
     "-ss",
@@ -662,7 +680,7 @@ async function prepareAudioTrack(
     "pcm_s16le",
     "-ar",
     "48000",
-    ...outputArgs,
+    ...preparedOutput.args,
   ];
   if (normalizedPlaybackRate !== 1) args.push("-t", String(duration));
   args.push("-y", outputPath);
@@ -692,6 +710,7 @@ async function prepareAudioTrack(
     durationMs: result.durationMs,
     error: failure?.detail,
     failure,
+    channels: preparedOutput.channels,
   };
 }
 
@@ -781,6 +800,7 @@ async function mixAudioTracks(
       // can run over what follows but never past the end of the video.
       const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
+      const channelFilter = mixInputChannelFilter(tracks, i);
       // `apad` then `atrim` is the portable pad-to-length shape: PR #2769 moved
       // off `apad=whole_dur=` because some FFmpeg builds reject that option
       // outright ("Error applying option 'whole_dur': Option not found").
@@ -793,7 +813,7 @@ async function mixAudioTracks(
       // 7.0.2, an 8.x nightly and 8.1.1; the un-reset form is wrong on the
       // middle two.
       filterParts.push(
-        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
+        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter}${channelFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
       );
     });
 
@@ -965,11 +985,12 @@ async function mixGroupMembers(
       const delayMs = Math.round(track.start * 1000);
       const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreKeyframes);
+      const channelFilter = mixInputChannelFilter(memberTracks, i);
       // Same `asetpts=N/SR/TB` as the master mix above, for the same reason and
       // on the same builds: these are delayed branches padded to length and then
       // amix'd, so without the renumbering a delayed member lands at t=0 and a
       // group of four or more loses its last one.
-      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
+      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter}${channelFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
     });
   const mixInputs = memberTracks.map((_, i) => `[a${i}]`).join("");
 
@@ -1192,6 +1213,7 @@ export async function processCompositionAudio(
         }
 
         let audioSrcPath = srcPath;
+        let preparedChannels = 2;
         if (element.type === "video") {
           const extractedPath = join(workDir, `${element.id}-extracted.wav`);
           const extractResult = await extractAudioFromVideo(
@@ -1221,6 +1243,7 @@ export async function processCompositionAudio(
             return;
           }
           audioSrcPath = extractedPath;
+          preparedChannels = extractResult.channels ?? 2;
         } else {
           const trimmedPath = join(workDir, `${element.id}-trimmed.wav`);
           const prepResult = await prepareAudioTrack(
@@ -1248,6 +1271,7 @@ export async function processCompositionAudio(
             return;
           }
           audioSrcPath = trimmedPath;
+          preparedChannels = prepResult.channels ?? 2;
         }
 
         // Apply the track's FX chain to the dry, trimmed audio, before volume
@@ -1327,6 +1351,7 @@ export async function processCompositionAudio(
           end: element.end,
           mediaStart: element.mediaStart,
           duration: element.end - element.start,
+          channels: preparedChannels,
           // Gain is already in the samples when baked, so mix at unity.
           volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
           volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
@@ -1503,6 +1528,7 @@ export async function processCompositionAudio(
         end: totalDuration,
         mediaStart: 0,
         duration: totalDuration,
+        channels: memberTracks.some((track) => track.channels > 1) ? 2 : 1,
         volume: bakedEnvelope ? 1.0 : meta.volume,
         // Same fallback an ungrouped track gets: when the envelope could not be
         // baked into the samples, hand the keyframes to the outer mix's volume
