@@ -1,104 +1,24 @@
 // @vitest-environment happy-dom
 
-import React, { act, useEffect } from "react";
-import { createRoot } from "react-dom/client";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useTimelinePlayer } from "./useTimelinePlayer";
+import type { useTimelinePlayer } from "./useTimelinePlayer";
+import {
+  attachIframeAdapter,
+  attachIframeWindow,
+  renderTimelinePlayerHarness,
+  resetPlayerStore,
+} from "./timelinePlayerTestHarness";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import { setTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-
-function resetPlayerStore() {
-  usePlayerStore.getState().reset();
-  usePlayerStore.setState({ requestedSeekTime: null });
-}
-
-function TimelinePlayerHarness({
-  onValue,
-}: {
-  onValue: (value: ReturnType<typeof useTimelinePlayer>) => void;
-}) {
-  const value = useTimelinePlayer();
-  useEffect(() => {
-    onValue(value);
-  }, [onValue, value]);
-  return null;
-}
-
-function renderTimelinePlayerHarness() {
-  let api: ReturnType<typeof useTimelinePlayer> | null = null;
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-
-  act(() => {
-    root.render(React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }));
-  });
-
-  if (!api) throw new Error("useTimelinePlayer did not mount");
-  return { api, root };
-}
 
 afterEach(() => {
   setTimelinePerformanceFixtureLease(false);
   document.body.innerHTML = "";
   resetPlayerStore();
 });
-
-function attachIframeWindow(
-  api: ReturnType<typeof useTimelinePlayer>,
-  iframeWindow: Record<string, unknown>,
-): void {
-  const iframe = document.createElement("iframe");
-  Object.defineProperty(iframe, "contentWindow", {
-    value: iframeWindow,
-    configurable: true,
-  });
-  Object.defineProperty(iframe, "contentDocument", {
-    value: document.implementation.createHTMLDocument("preview"),
-    configurable: true,
-  });
-  act(() => {
-    api.iframeRef.current = iframe;
-    api.onIframeLoad();
-  });
-}
-
-function attachIframeAdapter(
-  api: ReturnType<typeof useTimelinePlayer>,
-  options: {
-    postMessage?: (message: unknown, targetOrigin: string) => void;
-    timelines?: Record<string, unknown>;
-    duration?: number;
-  } = {},
-) {
-  let currentTime = 0;
-  let playing = false;
-  const adapter = {
-    play: vi.fn(() => {
-      playing = true;
-    }),
-    pause: vi.fn(() => {
-      playing = false;
-    }),
-    seek: (time: number) => {
-      currentTime = time;
-    },
-    getTime: () => currentTime,
-    getDuration: () => options.duration ?? 30,
-    isPlaying: () => playing,
-  };
-  attachIframeWindow(api, {
-    __player: adapter,
-    __timelines: options.timelines,
-    postMessage: options.postMessage ?? (() => {}),
-    scrollTo: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  });
-  return adapter;
-}
 
 function renderAttachedTimelinePlayer() {
   const { api, root } = renderTimelinePlayerHarness();

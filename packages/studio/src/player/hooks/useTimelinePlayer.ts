@@ -3,6 +3,7 @@ import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerS
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { logReload } from "../../utils/reloadDebug";
 
@@ -24,18 +25,8 @@ export {
 } from "../lib/playbackShortcuts";
 
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
-import {
-  getAdapterDuration,
-  wrapTimeline,
-  getDefaultStaticSeekPlaybackClock,
-  releaseStaticSeekCache,
-  resolveStaticSeekFallback,
-  type StaticSeekCacheEntry,
-} from "../lib/playbackAdapter";
-import {
-  readTimelineDurationFromDocument,
-  mergeTimelineElementsPreservingDowngrades,
-} from "../lib/timelineDOM";
+import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
+import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
 import { normalizeToZones } from "../components/timelineZones";
 import { applyPreviewAudioFlags, setPreviewPlaybackRate } from "../lib/timelineIframeHelpers";
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
@@ -128,80 +119,15 @@ export function useTimelinePlayer() {
     [setElements, requestTimelineReady, setDuration],
   );
 
-  // Pre-existing dispatcher complexity — surfaced by this PR's line shifts, not new logic.
-  // fallow-ignore-next-line complexity
   const getAdapter = useCallback((): PlaybackAdapter | null => {
     try {
       const iframe = iframeRef.current;
       const win = iframe?.contentWindow as IframeWindow | null;
       if (!iframe || !win) return null;
-
-      const playerAdapter =
-        win.__player && typeof win.__player.play === "function" ? win.__player : null;
-      const docDuration = readTimelineDurationFromDocument(iframe.contentDocument);
-      const adapterDur = getAdapterDuration(playerAdapter);
-
-      if (adapterDur > 0 && docDuration <= adapterDur) {
-        releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-        return playerAdapter;
-      }
-
-      let timelineAdapter: PlaybackAdapter | null = null;
-      if (win.__timeline) {
-        const adapter = wrapTimeline(win.__timeline);
-        const dur = getAdapterDuration(adapter);
-        if (dur > 0 && docDuration <= dur) {
-          releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-          return adapter;
-        }
-        if (dur > 0) timelineAdapter ??= adapter;
-      }
-
-      if (win.__timelines) {
-        const keys = Object.keys(win.__timelines);
-        if (keys.length > 0) {
-          // Resolve the root composition id from the DOM — the outermost [data-composition-id]
-          // is the master; otherwise Object.keys() order lets a sub-composition hijack transport.
-          const rootId = iframe?.contentDocument
-            ?.querySelector("[data-composition-id]")
-            ?.getAttribute("data-composition-id");
-          const key = rootId && rootId in win.__timelines ? rootId : keys[keys.length - 1];
-          const adapter = wrapTimeline(win.__timelines[key]);
-          const dur = getAdapterDuration(adapter);
-          if (dur > 0 && docDuration <= dur) {
-            releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-            return adapter;
-          }
-          if (dur > 0) timelineAdapter ??= adapter;
-        }
-      }
-
-      // The document timeline extends past every native adapter's duration.
-      // Wrap the best available adapter with the effective duration so the
-      // seek slider, seek clamping, and duration display cover the full range.
-      const bestAdapter = playerAdapter ?? timelineAdapter;
-      const effectiveDuration = Math.max(
-        usePlayerStore.getState().duration,
-        docDuration,
-        adapterDur,
-      );
-      if (
-        bestAdapter &&
-        effectiveDuration > 0 &&
-        ("renderSeek" in bestAdapter || typeof bestAdapter.seek === "function")
-      ) {
-        return resolveStaticSeekFallback({
-          cache: staticSeekAdapterRef,
-          warned: staticSeekWarnedRef,
-          bestAdapter,
-          effectiveDuration,
-          docDuration,
-          clock: getDefaultStaticSeekPlaybackClock(win),
-          getPlaybackRate: () => usePlayerStore.getState().playbackRate,
-        });
-      }
-
-      return bestAdapter;
+      return resolvePlaybackAdapter(iframe, win, {
+        cache: staticSeekAdapterRef,
+        warned: staticSeekWarnedRef,
+      });
     } catch {
       return null;
     }
