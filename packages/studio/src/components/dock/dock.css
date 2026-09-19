@@ -1,23 +1,23 @@
 @import "dockview-react/dist/styles/dockview.css";
 
 .hf-dock {
-  --dv-group-view-background-color: theme("colors.panel.bg");
-  --dv-tabs-and-actions-container-background-color: theme("colors.panel.surface");
-  --dv-activegroup-visiblepanel-tab-background-color: theme("colors.panel.bg");
-  --dv-activegroup-hiddenpanel-tab-background-color: theme("colors.panel.surface");
-  --dv-inactivegroup-visiblepanel-tab-background-color: theme("colors.panel.bg");
-  --dv-inactivegroup-hiddenpanel-tab-background-color: theme("colors.panel.surface");
-  --dv-activegroup-visiblepanel-tab-color: theme("colors.panel.text-1");
-  --dv-activegroup-hiddenpanel-tab-color: theme("colors.panel.text-3");
-  --dv-inactivegroup-visiblepanel-tab-color: theme("colors.panel.text-2");
-  --dv-inactivegroup-hiddenpanel-tab-color: theme("colors.panel.text-4");
-  --dv-tab-divider-color: theme("colors.panel.border");
-  --dv-separator-border: theme("colors.panel.border");
-  --dv-paneview-header-border-color: theme("colors.panel.border");
-  --dv-sash-color: theme("colors.panel.hover");
-  --dv-active-sash-color: theme("colors.panel.accent");
-  --dv-drag-over-background-color: theme("colors.panel.accent / 12%");
-  --dv-drag-over-border-color: theme("colors.panel.accent");
+  --dv-group-view-background-color: var(--color-panel-bg);
+  --dv-tabs-and-actions-container-background-color: var(--color-panel-surface);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--color-panel-bg);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--color-panel-surface);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-panel-bg);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--color-panel-surface);
+  --dv-activegroup-visiblepanel-tab-color: var(--color-panel-text-1);
+  --dv-activegroup-hiddenpanel-tab-color: var(--color-panel-text-3);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--color-panel-text-2);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--color-panel-text-4);
+  --dv-tab-divider-color: var(--color-panel-border);
+  --dv-separator-border: var(--color-panel-border);
+  --dv-paneview-header-border-color: var(--color-panel-border);
+  --dv-sash-color: var(--color-panel-hover);
+  --dv-active-sash-color: var(--color-panel-accent);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--color-panel-accent) 12%, transparent);
+  --dv-drag-over-border-color: var(--color-panel-accent);
   --dv-tab-font-size: 11px;
   --dv-tabs-and-actions-container-font-size: 11px;
 }
