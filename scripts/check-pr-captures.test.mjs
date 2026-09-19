@@ -241,67 +241,144 @@ test("a heading or media URL must match whole, not as a substring", () => {
 const OLD = "https://github.com/user-attachments/assets/aaaaaaaa-0000-4000-8000-000000000001";
 const NEW = "https://github.com/user-attachments/assets/bbbbbbbb-0000-4000-8000-000000000002";
 const sameBytes = "https://github.com/user-attachments/assets/cccccccc-0000-4000-8000-000000000003";
-const bytesByUrl = { [OLD]: "old", [NEW]: "new", [sameBytes]: "old" };
+const OLD2 = "https://github.com/user-attachments/assets/eeeeeeee-0000-4000-8000-000000000005";
+const bytesByUrl = { [OLD]: "old", [NEW]: "new", [sameBytes]: "old", [OLD2]: "older" };
 const fromMap = async (url) => {
   if (!(url in bytesByUrl)) throw new Error("HTTP 404");
   return Buffer.from(bytesByUrl[url]);
 };
 const bodyWith = (before, after) => `## Before\n${before}\n\n## After\n${after}\n`;
+const clean = { unreadable: [], identical: [] };
+const dupes = (body) => duplicateCaptureProblems(body, fromMap);
 
 test("an After asset with different bytes than every Before asset passes", async () => {
-  assert.deepEqual(
-    await duplicateCaptureProblems(bodyWith(`[a](${OLD})`, `[b](${NEW})`), fromMap),
-    [],
-  );
+  assert.deepEqual(await dupes(bodyWith(`[a](${OLD})`, `[b](${NEW})`)), clean);
 });
 
 test("an After asset with the same bytes as a Before asset fails, even under another URL", async () => {
-  const problems = await duplicateCaptureProblems(
-    bodyWith(`[a](${OLD})`, `[b](${sameBytes})`),
-    fromMap,
-  );
-  assert.deepEqual(problems, [`After asset ${sameBytes} is byte-identical to Before asset ${OLD}`]);
+  const { identical } = await dupes(bodyWith(`[a](${OLD})`, `[b](${sameBytes})`));
+  assert.deepEqual(identical, [
+    `After asset ${sameBytes} is byte-identical to Before asset ${OLD}`,
+  ]);
 });
 
 test("the same URL under both headings fails", async () => {
-  const problems = await duplicateCaptureProblems(bodyWith(`[a](${OLD})`, `[b](${OLD})`), fromMap);
-  assert.equal(problems.length, 1);
+  const { identical } = await dupes(bodyWith(`[a](${OLD})`, `[b](${OLD})`));
+  assert.equal(identical.length, 1);
+});
+
+test("a duplicate of the second Before asset is found, not only of the first", async () => {
+  const { identical } = await dupes(bodyWith(`[a](${OLD2})\n[b](${OLD})`, `[c](${sameBytes})`));
+  assert.deepEqual(identical, [
+    `After asset ${sameBytes} is byte-identical to Before asset ${OLD}`,
+  ]);
 });
 
 test("one duplicate among several After assets is still found", async () => {
-  const problems = await duplicateCaptureProblems(
-    bodyWith(`[a](${OLD})`, `[b](${NEW})\n[c](${sameBytes})`),
-    fromMap,
-  );
-  assert.deepEqual(problems, [`After asset ${sameBytes} is byte-identical to Before asset ${OLD}`]);
+  const { identical } = await dupes(bodyWith(`[a](${OLD})`, `[b](${NEW})\n[c](${sameBytes})`));
+  assert.deepEqual(identical, [
+    `After asset ${sameBytes} is byte-identical to Before asset ${OLD}`,
+  ]);
 });
 
 test("an asset that cannot be downloaded is a problem, not a pass", async () => {
   const missing = "https://github.com/user-attachments/assets/dddddddd-0000-4000-8000-000000000004";
-  const problems = await duplicateCaptureProblems(
-    bodyWith(`[a](${OLD})`, `[b](${missing})`),
-    fromMap,
-  );
-  assert.deepEqual(problems, [`could not download After asset ${missing}: HTTP 404`]);
+  const { unreadable } = await dupes(bodyWith(`[a](${OLD})`, `[b](${missing})`));
+  assert.deepEqual(unreadable, [`could not download After asset ${missing}: HTTP 404`]);
 });
 
 test("a body without both headings has nothing to compare", async () => {
-  assert.deepEqual(await duplicateCaptureProblems(`## Before\n[a](${OLD})`, fromMap), []);
+  assert.deepEqual(await dupes(`## Before\n[a](${OLD})`), clean);
 });
 
-test("downloadAsset retries a failed response and gives up after three attempts", async () => {
+test("a URL that is not a GitHub attachment is never fetched", async () => {
+  const fetched = [];
+  const spy = async (url) => (fetched.push(url), Buffer.from("x"));
+  const other = "http://169.254.169.254/latest/x.png";
+  await duplicateCaptureProblems(bodyWith(`![a](${other})`, `![b](${other})`), spy);
+  assert.deepEqual(fetched, []);
+});
+
+const ok = () => ({
+  ok: true,
+  status: 200,
+  arrayBuffer: async () => new TextEncoder().encode("x").buffer,
+});
+const noSleep = async () => {};
+
+test("downloadAsset retries a 5xx or a network error with backoff and stops after three attempts", async () => {
+  const outcomes = [{ ok: false, status: 502 }, new Error("socket hang up"), ok()];
   let calls = 0;
+  const sleeps = [];
   const flaky = async () => {
-    calls += 1;
-    if (calls < 3) return { ok: false, status: 502 };
-    return { ok: true, arrayBuffer: async () => new TextEncoder().encode("x").buffer };
+    const next = outcomes[calls++];
+    if (next instanceof Error) throw next;
+    return next;
   };
-  assert.equal((await downloadAsset(OLD, flaky)).toString(), "x");
+  assert.equal((await downloadAsset(OLD, flaky, async (ms) => sleeps.push(ms))).toString(), "x");
   assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [1000, 3000]);
   calls = 0;
   await assert.rejects(
-    downloadAsset(OLD, async () => (calls++, { ok: false, status: 500 })),
+    downloadAsset(OLD, async () => (calls++, { ok: false, status: 500 }), noSleep),
     /HTTP 500/,
   );
   assert.equal(calls, 3);
+});
+
+test("downloadAsset does not retry a 404 or 403", async () => {
+  for (const status of [404, 403]) {
+    let calls = 0;
+    await assert.rejects(
+      downloadAsset(OLD, async () => (calls++, { ok: false, status }), noSleep),
+      new RegExp(`HTTP ${status}`),
+    );
+    assert.equal(calls, 1);
+  }
+});
+
+const redirect = (location) => ({ ok: false, status: 302, headers: new Headers({ location }) });
+
+test("downloadAsset follows a redirect to signed storage but not to another host", async () => {
+  const signed = "https://github-production-user-asset.s3.amazonaws.com/1/clip.mp4?X-Amz=1";
+  const seen = [];
+  const viaS3 = async (url) => (seen.push(url), url === OLD ? redirect(signed) : ok());
+  assert.equal((await downloadAsset(OLD, viaS3, noSleep)).toString(), "x");
+  assert.deepEqual(seen, [OLD, signed]);
+
+  const internal = "https://metadata.internal.example/latest/x.png";
+  const toInternal = async (url) => (seen.push(url), redirect(internal));
+  seen.length = 0;
+  await assert.rejects(downloadAsset(OLD, toInternal, noSleep), /not a GitHub asset host/);
+  assert.deepEqual(seen, [OLD]);
+});
+
+test("downloadAsset asks for manual redirects so every hop is checked", async () => {
+  let asked;
+  await downloadAsset(OLD, async (_url, init) => ((asked = init.redirect), ok()), noSleep);
+  assert.equal(asked, "manual");
+});
+
+test("a redirect over plain http is refused even to a trusted host", async () => {
+  const insecure = "http://github.com/user-attachments/assets/x";
+  await assert.rejects(
+    downloadAsset(OLD, async () => redirect(insecure), noSleep),
+    /not a GitHub asset host/,
+  );
+});
+
+test("the duplicate check is skipped when the PR touches neither package", () => {
+  const dir = mkdtempSync(join(tmpdir(), "captures-gate-"));
+  const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
+  git("init", "-q", "-b", "main");
+  git("-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base");
+  const copy = join(dir, "check.mjs");
+  copyFileSync(new URL("./check-pr-captures.mjs", import.meta.url), copy);
+  const body = bodyWith(`[a](${OLD})`, `[b](${OLD})`);
+  const result = spawnSync("node", [copy, "--base", "main", "--head", "HEAD"], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, PR_BODY: body },
+  });
+  assert.equal(result.status, 0, result.stderr);
 });

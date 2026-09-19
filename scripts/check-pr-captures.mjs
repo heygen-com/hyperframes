@@ -193,27 +193,61 @@ export function evaluate({ body, files }) {
 
 const DOWNLOAD_ATTEMPTS = 3;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
+const RETRY_DELAYS_MS = [1000, 3000];
+const MAX_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+/** An attachment redirects from github.com to signed storage; a redirect anywhere else is not followed. */
+const TRUSTED_REDIRECT_HOST = /(^|\.)(github\.com|githubusercontent\.com|amazonaws\.com)$/;
 
-/** The bytes behind a capture URL; retried, because a required check must not flake on one bad response. */
-export async function downloadAsset(url, fetchImpl = fetch) {
+class NonRetryable extends Error {}
+
+/** One GET, following redirects only to hosts that serve GitHub attachments. */
+async function fetchTrusted(url, fetchImpl) {
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response = await fetchImpl(current, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+    });
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+    const next = new URL(response.headers.get("location") ?? "", current);
+    if (next.protocol !== "https:" || !TRUSTED_REDIRECT_HOST.test(next.hostname)) {
+      throw new NonRetryable(`redirected to ${next.hostname}, which is not a GitHub asset host`);
+    }
+    current = next.href;
+  }
+  throw new NonRetryable("too many redirects");
+}
+
+const isRetryableStatus = (status) => status === 429 || status >= 500;
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The bytes behind a capture URL; a 429, 5xx or network error is retried with backoff, any other status is final. */
+export async function downloadAsset(url, fetchImpl = fetch, sleep = pause) {
   let failure;
-  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < DOWNLOAD_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
     try {
-      const response = await fetchImpl(url, {
-        redirect: "follow",
-        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-      });
+      const response = await fetchTrusted(url, fetchImpl);
       if (response.ok) return Buffer.from(await response.arrayBuffer());
       failure = new Error(`HTTP ${response.status}`);
+      if (!isRetryableStatus(response.status)) throw failure;
     } catch (error) {
+      if (error instanceof NonRetryable || error === failure) throw error;
       failure = error;
     }
   }
   throw failure;
 }
 
+/** Only GitHub attachment URLs are downloaded: a body must not make the runner fetch an arbitrary host. */
 const captureUrls = (section) => [
-  ...new Set((section.text.match(ANY_URL) ?? []).filter(isMediaUrl)),
+  ...new Set(
+    (section.text.match(ANY_URL) ?? []).filter((raw) => {
+      const url = parseUrl(raw);
+      return url !== null && isAttachmentUrl(url);
+    }),
+  ),
 ];
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -236,7 +270,7 @@ export async function duplicateCaptureProblems(body, download = downloadAsset) {
   const sections = parseSections(body);
   const before = findSection(sections, "before");
   const after = findSection(sections, "after");
-  if (!before || !after) return [];
+  if (!before || !after) return { unreadable: [], identical: [] };
   const [befores, afters] = await Promise.all([
     hashCaptures("Before", before, download),
     hashCaptures("After", after, download),
@@ -250,7 +284,7 @@ export async function duplicateCaptureProblems(body, download = downloadAsset) {
         .filter((old) => old.hash === asset.hash)
         .map((old) => `After asset ${asset.url} is byte-identical to Before asset ${old.url}`),
     );
-  return [...unreadable.map((asset) => asset.problem), ...identical];
+  return { unreadable: unreadable.map((asset) => asset.problem), identical };
 }
 
 export function attachCommand(prNumber) {
@@ -299,13 +333,18 @@ async function main() {
     printFailure(problems, process.env.PR_NUMBER ?? "<number>");
     process.exit(1);
   }
-  const duplicates = files.length > 0 ? await duplicateCaptureProblems(body) : [];
-  if (duplicates.length > 0) {
-    console.error("A capture under After is the same file as one under Before:");
-    for (const problem of duplicates) console.error(`  - ${problem}`);
-    console.error("Re-attach the real After recording; a Before clip under After proves nothing.");
-    process.exit(1);
+  const none = { unreadable: [], identical: [] };
+  const { unreadable, identical } = files.length > 0 ? await duplicateCaptureProblems(body) : none;
+  if (unreadable.length > 0) {
+    console.error("A capture could not be downloaded to compare:");
+    for (const problem of unreadable) console.error(`  - ${problem}`);
   }
+  if (identical.length > 0) {
+    console.error("A capture under After is the same file as one under Before:");
+    for (const problem of identical) console.error(`  - ${problem}`);
+    console.error("Re-attach the real After recording; a Before clip under After proves nothing.");
+  }
+  if (unreadable.length + identical.length > 0) process.exit(1);
   console.log("packages/studio and packages/player: captures present, or nothing to show.");
 }
 
