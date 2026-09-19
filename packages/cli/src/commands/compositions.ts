@@ -10,7 +10,7 @@ export const examples: Example[] = [
 import { c } from "../ui/colors.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
-import { resolveStart } from "../utils/resolveStart.js";
+import { resolveReferencedStart } from "@hyperframes/engine";
 import { withMeta } from "../utils/updateCheck.js";
 
 interface CompositionInfo {
@@ -78,7 +78,7 @@ export function parseCompositions(html: string, baseDir: string): CompositionInf
 
     timedChildren.forEach((el) => {
       elementCount++;
-      const start = resolveStart(doc, el, startCache, visiting);
+      const start = resolveReferencedStart(doc, el, startCache, visiting);
       const endAttr = el.getAttribute("data-end");
       const durationAttr = el.getAttribute("data-duration");
 
@@ -148,7 +148,7 @@ export function parseSubComposition(
     const visiting = new Set<Element>();
     timedEls.forEach((el) => {
       elementCount = Math.max(elementCount, timedEls.length);
-      const start = resolveStart(doc, el, startCache, visiting);
+      const start = resolveReferencedStart(doc, el, startCache, visiting);
       const endAttr = el.getAttribute("data-end");
       const durAttr = el.getAttribute("data-duration");
 

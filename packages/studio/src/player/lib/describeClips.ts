@@ -3,7 +3,7 @@ import type { TimelineElement } from "../store/playerStore";
 import { elementAutomationLanes } from "../components/automationLaneData";
 import { byStart, formatClipLine, type ClipFact } from "@hyperframes/core/clip-facts";
 export { byStart } from "@hyperframes/core/clip-facts";
-export type { ClipFact, ClipLane } from "@hyperframes/core/clip-facts";
+export type { ClipFact } from "@hyperframes/core/clip-facts";
 
 /** The store holds preview URLs; the agent edits project files, so drop the origin and preview prefix. */
 function projectRelativeSrc(src: string): string {
