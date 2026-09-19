@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useDockLayoutStore, visiblePanelInZone } from "../components/dock/dockLayoutStore";
 
-/** Opens the Slideshow panel when the file becomes a slideshow and closes it when it stops being one; a user's own close, and a restored layout's placement, stick. */
+/** Opens the Slideshow panel when the file becomes a slideshow, closes it when it stops being one.
+ * A user's own close, and a restored layout's placement, stick. */
 export function useSlideshowDockPanel(isSlideshowComposition: boolean) {
   const controller = useDockLayoutStore((state) => state.controller);
   const wasSlideshow = useRef(false);
