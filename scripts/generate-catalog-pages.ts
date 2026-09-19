@@ -24,6 +24,7 @@ import {
   ITEM_TYPE_DIRS,
 } from "../packages/core/src/registry/types.js";
 import { withHostedDefaults } from "./registry-hosted-assets.ts";
+import { declaredVariables } from "./catalog/component-variables.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -783,6 +784,14 @@ function itemVariables(manifest: RegistryItem): ItemVariable[] {
   return Array.isArray(raw) ? raw : [];
 }
 
+/** The manifest's variables, else what the composition itself declares on its root. */
+function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[] {
+  const declared = itemVariables(manifest);
+  if (declared.length > 0) return declared;
+  const file = primarySource(kind, manifest);
+  return file ? (declaredVariables(file.source) as ItemVariable[]) : [];
+}
+
 /** The catalog shelf an item sits on, one function for the nav and the page's category. */
 // fallow-ignore-next-line complexity
 function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
@@ -958,7 +967,7 @@ function detailOpening(
 ): string[] {
   const source = manifest as RegistryItem & SourceMetadata;
   const file = primarySource(kind, manifest);
-  const variables = live ? withHostedDefaults(itemVariables(manifest), manifest) : [];
+  const variables = live ? withHostedDefaults(tunableVariables(kind, manifest), manifest) : [];
   const dims = "dimensions" in manifest ? manifest.dimensions : undefined;
   const duration = "duration" in manifest ? manifest.duration : undefined;
   const meta = {

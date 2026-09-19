@@ -1107,11 +1107,11 @@ That writes `compositions/code-snippet-solarized-light.html`, plus 1 supporting 
 
 <CatalogSlot slot="docs">
 
-## Usage
+## Add it to your video
 
-After installing, add the block to your host composition:
+It runs for 11 seconds at 1920×1080. Paste this into your composition:
 
-```html
+```html index.html
 <div
   data-composition-id="code-snippet-solarized-light"
   data-composition-src="compositions/code-snippet-solarized-light.html"
@@ -1123,13 +1123,8 @@ After installing, add the block to your host composition:
 ></div>
 ```
 
-## Features
-
-- Full VS Code workbench recreation — activity bar, sidebar, explorer tree, editor tabs, breadcrumbs, terminal panel, status bar
-- Per-character typing animation with cursor tracking and active line highlight
-- Colors sourced from official `microsoft/vscode` built-in theme JSON
-- 3D perspective tilt at the end of the typing sequence
-- Terminal panel with mock test output
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 

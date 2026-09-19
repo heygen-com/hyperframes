@@ -300,13 +300,24 @@ That writes `compositions/tiktok-follow.html`, plus 1 supporting file under `ass
 
 <CatalogSlot slot="docs">
 
-## Usage
+## Add it to your video
 
-After installing, add the block to your host composition:
+It runs for 4.5 seconds at 1080×1920. Paste this into your composition:
 
-```html
-<div data-composition-id="tiktok-follow" data-composition-src="compositions/tiktok-follow.html" data-start="0" data-duration="4.5" data-track-index="1" data-width="1080" data-height="1920"></div>
+```html index.html
+<div
+  data-composition-id="tiktok-follow"
+  data-composition-src="compositions/tiktok-follow.html"
+  data-start="0"
+  data-duration="4.5"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 

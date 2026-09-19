@@ -496,13 +496,24 @@ That writes one file: `compositions/flowchart-vertical.html`.
 
 <CatalogSlot slot="docs">
 
-## Usage
+## Add it to your video
 
-After installing, add the block to your host composition:
+It runs for 12 seconds at 1440×2560. Paste this into your composition:
 
-```html
-<div data-composition-id="flowchart-vertical" data-composition-src="compositions/flowchart-vertical.html" data-start="0" data-duration="12" data-track-index="1" data-width="1440" data-height="2560"></div>
+```html index.html
+<div
+  data-composition-id="flowchart-vertical"
+  data-composition-src="compositions/flowchart-vertical.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1440"
+  data-height="2560"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
