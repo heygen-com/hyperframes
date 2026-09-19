@@ -66,11 +66,11 @@ function placeDrop(
   geometry: Parameters<typeof resolveTimelineAssetDrop>[0],
   clientX: number,
   clientY: number,
-  types: readonly string[],
+  // Blocks and compositions are written by their own installers, which only take a track.
+  canInsertTrack: boolean,
 ): TimelinePlacement {
   const placement = resolveTimelineAssetDrop(geometry, clientX, clientY);
-  // Blocks and compositions are written by their own installers, which only take a track.
-  if (!types.includes("Files") && !types.includes(TIMELINE_ASSET_MIME)) return placement;
+  if (!canInsertTrack) return placement;
   const contentY = clientY - geometry.rectTop + geometry.scrollTop;
   const insertRow = resolveDropInsertRow(contentY, geometry.rowHeights, geometry.trackOrder.length);
   return insertRow == null ? placement : { ...placement, insertRow };
@@ -177,7 +177,7 @@ export function useTimelineAssetDrop({
   );
 
   const resolveDropPlacement = useCallback(
-    (clientX: number, clientY: number, types: readonly string[]): TimelinePlacement => {
+    (clientX: number, clientY: number, canInsertTrack: boolean): TimelinePlacement => {
       const scroll = scrollRef.current;
       const rect = scroll?.getBoundingClientRect();
       return placeDrop(
@@ -193,7 +193,7 @@ export function useTimelineAssetDrop({
         },
         clientX,
         clientY,
-        types,
+        canInsertTrack,
       );
     },
     [scrollRef, ppsRef, trackOrderRef, rowGeometryRef, contentOrigin],
@@ -211,7 +211,7 @@ export function useTimelineAssetDrop({
       e.dataTransfer.dropEffect = "copy";
       activeDropEpochRef.current = sessionEpoch;
       setIsDragOver(true);
-      const next = resolveDropPlacement(e.clientX, e.clientY, types);
+      const next = resolveDropPlacement(e.clientX, e.clientY, hasFiles || hasAsset);
       setDropPreview((prev) =>
         prev?.start === next.start && prev.track === next.track && prev.insertRow === next.insertRow
           ? prev
@@ -244,10 +244,11 @@ export function useTimelineAssetDrop({
       const canCommit = activeDropEpochRef.current === sessionEpoch;
       clearDropPreview();
       if (!canCommit) return;
+      const types = Array.from(e.dataTransfer.types);
       const placement = resolveDropPlacement(
         e.clientX,
         e.clientY,
-        Array.from(e.dataTransfer.types),
+        types.includes("Files") || types.includes(TIMELINE_ASSET_MIME),
       );
 
       const compositionPayload = parseTimelineCompositionPayload(

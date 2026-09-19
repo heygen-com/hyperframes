@@ -26,6 +26,18 @@ import { extendRootDurationInSource } from "../utils/rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
 
+/** The first uploaded file opens the new track (if asked); the rest land on the lane it landed on. */
+function fileDropPlacement(
+  index: number,
+  next: { start: number; track: number },
+  firstInsertRow: number | null | undefined,
+  landedTrack: number | undefined,
+): TimelineDropPlacement {
+  return index === 0
+    ? { ...next, insertRow: firstInsertRow }
+    : { ...next, track: landedTrack ?? next.track };
+}
+
 interface UseTimelineAssetDropOpsOptions {
   projectIdRef: MutableRefObject<string | null>;
   activeCompPath: string | null;
@@ -189,15 +201,12 @@ export function useTimelineAssetDropOps({
         placement ?? { start: 0, track: 0 },
         durations,
       );
-      // The first file opens the new track; the rest go on the lane it was written to.
       let landedTrack: number | undefined;
       for (const [index, assetPath] of uploaded.entries()) {
         const next = placements[index] ?? placements[0];
         const track = await dropAssetAt(
           assetPath,
-          index === 0
-            ? { ...next, insertRow: placement?.insertRow }
-            : { ...next, track: landedTrack ?? next.track },
+          fileDropPlacement(index, next, placement?.insertRow, landedTrack),
           durations[index],
         );
         if (index === 0) landedTrack = track;

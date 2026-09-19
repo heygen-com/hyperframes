@@ -1,6 +1,10 @@
 import type { TimelineElement } from "../player";
 import { layoutAfterTrackInsert } from "../player/components/timelineDragLanding";
 import { canMoveTimelineElement } from "../player/components/timelineAuthoredMoveTarget";
+import { timelineTrackOrder } from "../player/components/timelineTrackDisplay";
+import { applyPatchByTarget, readAttributeByTarget } from "./sourcePatcher";
+import { buildPatchTarget } from "../hooks/timelineEditingHelpers";
+import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 
 export interface DropTrackInsertPlan {
   /** Lane the dropped clip is written on. */
@@ -18,7 +22,7 @@ export function planDropTrackInsert(input: {
   dropped: Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
 }): DropTrackInsertPlan | null {
   const { elements, targetPath, insertRow, dropped } = input;
-  const trackOrder = [...new Set(elements.map((e) => e.track))].sort((a, b) => a - b);
+  const trackOrder = timelineTrackOrder(elements);
   const newElement: TimelineElement = {
     ...dropped,
     key: dropped.id,
@@ -45,22 +49,19 @@ export function planDropTrackInsert(input: {
   return track == null ? null : { track, renumbers };
 }
 
-const TRACK_ATTR_RE = /data-track-index="[^"]*"/;
-
-/** Rewrite `data-track-index` on each renumbered clip's opening tag, found by its stable id. */
+/** Rewrite `data-track-index` on each renumbered clip's opening tag, via the shared source patcher. */
 export function applyTrackRenumbers(source: string, plan: DropTrackInsertPlan): string {
   let out = source;
   for (const { element, track } of plan.renumbers) {
-    const id = element.hfId
-      ? `data-hf-id="${element.hfId}"`
-      : `id="${element.domId ?? element.id}"`;
-    const tagRe = new RegExp(`<[^<>]*\\b${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^<>]*>`);
-    const match = tagRe.exec(out);
-    if (!match || !TRACK_ATTR_RE.test(match[0])) {
+    const target = buildPatchTarget(element);
+    if (!target || readAttributeByTarget(out, target, "track-index") === undefined) {
       throw new Error(`Cannot renumber the track of "${element.id}" in the source`);
     }
-    const patched = match[0].replace(TRACK_ATTR_RE, `data-track-index="${track}"`);
-    out = out.slice(0, match.index) + patched + out.slice(match.index + match[0].length);
+    out = applyPatchByTarget(out, target, {
+      type: "attribute",
+      property: "track-index",
+      value: formatTimelineAttributeNumber(track),
+    });
   }
   return out;
 }

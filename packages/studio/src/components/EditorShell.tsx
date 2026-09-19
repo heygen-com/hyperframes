@@ -16,12 +16,12 @@ import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
 import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPreviewSync";
 import { StudioAgentTools } from "../webmcp/StudioAgentTools";
+import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
 
 type RenderClipContent = (
   element: TimelineElement,
   style: { clip: string; label: string },
 ) => ReactNode;
-type TimelineDropPlacement = Pick<TimelineElement, "start" | "track">;
 
 // The seven move/resize/split/razor handlers come from TimelineEditCallbackDeps
 // (shared with useTimelineEditCallbacks); the rest are drop + wiring props.
