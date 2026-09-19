@@ -223,6 +223,7 @@ interface ThumbnailBrowserSession {
 
 async function getThumbnailBrowser(
   requestedGpuMode: BrowserGpuMode,
+  isShuttingDown: () => boolean,
 ): Promise<ThumbnailBrowserSession | null> {
   if (
     _thumbnailBrowserLease?.browser.connected &&
@@ -242,6 +243,7 @@ async function getThumbnailBrowser(
 
   _thumbnailBrowserInitializing = (async () => {
     try {
+      if (isShuttingDown()) return null;
       const { ensureBrowser } = await import("../browser/manager.js");
       const { acquireBrowser, buildChromeArgs } = await import("@hyperframes/engine");
       let executablePath: string | undefined;
@@ -286,7 +288,12 @@ async function getThumbnailBrowser(
   return _thumbnailBrowserInitializing;
 }
 
-export async function closeThumbnailBrowser(): Promise<void> {
+async function closeThumbnailBrowser(): Promise<void> {
+  // A launch kicked off just before this call is not yet reflected in
+  // _thumbnailBrowserLease; awaiting it here is what lets shutdown() close a
+  // browser that was mid-launch when the stop signal arrived, instead of
+  // leaving it to finish launching, unreferenced, after the process exits.
+  if (_thumbnailBrowserInitializing) await _thumbnailBrowserInitializing.catch(() => {});
   if (!_thumbnailBrowserLease) return;
   const lease = _thumbnailBrowserLease;
   _thumbnailBrowserLease = null;
@@ -315,6 +322,8 @@ export interface StudioServerOptions {
 export interface StudioServer {
   app: Hono;
   watcher: ProjectWatcher;
+  /** Cancels in-flight renders, then closes every browser this server owns. */
+  shutdown(): Promise<void>;
   /** Exposed for tests: the adapter handed to the shared studio API (carries
    * the resolved `autoProxy` flag the preview routes read). */
   adapter: PreviewApiAdapter;
@@ -388,6 +397,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       cachedProjectSignature = null;
     }
   });
+
+  const inFlightRenders = new Map<AbortController, Promise<void>>();
+  // Set synchronously by shutdown() before any await, so a render or
+  // thumbnail request already queued behind it sees the flag instead of
+  // launching a browser shutdown() has no way to know about and close.
+  let shuttingDown = false;
 
   const adapter: PreviewApiAdapter = {
     // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
@@ -467,6 +482,15 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     rendersDir: () => join(projectDir, "renders"),
 
     startRender(opts): RenderJobState {
+      if (shuttingDown) {
+        return {
+          id: opts.jobId,
+          status: "failed",
+          progress: 0,
+          outputPath: opts.outputPath,
+          error: "Studio server is shutting down",
+        };
+      }
       // The render POST is a request boundary like any other. Without this an
       // already-open Studio tab keeps rendering under the posture cached when
       // the server booted.
@@ -482,7 +506,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
       // Run render asynchronously, mutating the state object
       const startTime = Date.now();
-      (async () => {
+      const run = (async () => {
         let renderJob: RenderJob | undefined;
         const removeCancelledOutput = () => {
           // User-initiated cancel: not a failure. Remove any output so the
@@ -569,6 +593,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           }
         }
       })();
+      inFlightRenders.set(abortController, run);
+      const forget = () => void inFlightRenders.delete(abortController);
+      run.then(forget, forget);
 
       return state;
     },
@@ -584,9 +611,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const session = await getThumbnailBrowser(browserGpuMode);
+      const session = await getThumbnailBrowser(browserGpuMode, () => shuttingDown);
       if (!session) {
-        console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
+        if (!shuttingDown) {
+          console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
+        }
         return null;
       }
       const sourcePath = join(opts.project.dir, opts.compPath);
@@ -991,5 +1020,16 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return c.html(html, 200, { "Cache-Control": "no-cache" });
   });
 
-  return { app, watcher, adapter };
+  const shutdown = async (): Promise<void> => {
+    shuttingDown = true;
+    const renders = [...inFlightRenders];
+    for (const [abortController] of renders) abortController.abort();
+    const { killTrackedProcesses, drainBrowserPool } = await import("@hyperframes/engine");
+    killTrackedProcesses();
+    await Promise.allSettled(renders.map(([, done]) => done));
+    await closeThumbnailBrowser().catch(() => {});
+    await drainBrowserPool().catch(() => {});
+  };
+
+  return { app, watcher, adapter, shutdown };
 }
