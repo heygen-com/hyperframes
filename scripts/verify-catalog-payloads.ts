@@ -65,8 +65,9 @@ function payloadFiles(
   });
 }
 
-/** The page error a WebGPU piece throws in a browser with no adapter. */
-export const MISSING_ADAPTER = /no WebGPU adapter/i;
+/** What a WebGPU piece reports in a browser with no adapter (frost: "no WebGPU adapter", liquid glass: "WebGPU not available"). */
+export const MISSING_ADAPTER =
+  /no WebGPU adapter|WebGPU (is )?(not available|unavailable|not supported)|failed to request .*adapter/i;
 
 /** Whether the item's manifest declares the "webgpu" tag, the one owner of "needs a WebGPU adapter". */
 export function declaresWebgpu(kindDir: string, item: string): boolean {
@@ -76,12 +77,28 @@ export function declaresWebgpu(kindDir: string, item: string): boolean {
   return tags?.includes("webgpu") ?? false;
 }
 
-/** A WebGPU piece cannot draw in a CI browser with no adapter, and whatever library reports that
- * does so in its own words. So a declared piece's page errors and console errors are the environment;
- * its failed or 404 requests still count, as does every failure of an undeclared piece. */
-export function withoutWebgpuRuntimeErrors(webgpu: boolean, failures: string[]): string[] {
+/** The tag says whether an item may lack an adapter; the wording says which lines are that absence.
+ * A declared item's other page or console errors, and every failed request, still count. */
+export function withoutWebgpuAbsence(webgpu: boolean, failures: string[]): string[] {
   if (!webgpu) return failures;
-  return failures.filter((failure) => !/^(pageerror|console\.error): /.test(failure));
+  const isAbsence = (failure: string) =>
+    /^(pageerror|console\.error): /.test(failure) && MISSING_ADAPTER.test(failure);
+  return failures.filter((failure) => !isAbsence(failure));
+}
+
+/** What still counts as a failure for one item once the environment's own noise is set aside. */
+export function remainingFailures(kindDir: string, item: string, failures: string[]): string[] {
+  return withoutAbortedMedia(withoutWebgpuAbsence(declaresWebgpu(kindDir, item), failures));
+}
+
+export type Payload = { kind: "live"; html: string } | { kind: "marker"; reason: string };
+
+/** A payload file holds either the live html or a marker saying why the item has none. */
+export function parsePayload(text: string): Payload {
+  const { html, unsupported } = JSON.parse(text) as { html?: string; unsupported?: string };
+  return html === undefined
+    ? { kind: "marker", reason: unsupported ?? "unknown marker" }
+    : { kind: "live", html };
 }
 
 /** Chrome aborts a media element's first request when it reissues it as range requests (or when
@@ -150,17 +167,13 @@ type VerifyBrowser = Awaited<ReturnType<typeof launchVerifyBrowser>>;
 
 /** Loads one payload and prints its result; true when it failed. A marker payload has nothing to load. */
 async function checkOne(browser: VerifyBrowser, origin: string, item: string, path: string) {
-  const payload = JSON.parse(readFileSync(path, "utf-8")) as {
-    html?: string;
-    unsupported?: string;
-  };
-  if (payload.html === undefined) {
-    console.log(`- ${item} (no live payload: ${payload.unsupported})`);
+  const payload = parsePayload(readFileSync(path, "utf-8"));
+  if (payload.kind === "marker") {
+    console.log(`- ${item} (no live payload: ${payload.reason})`);
     return false;
   }
   const checked = await checkPageLoads(browser, origin, payload.html);
-  const declared = declaresWebgpu(basename(dirname(path)), item);
-  const failures = withoutAbortedMedia(withoutWebgpuRuntimeErrors(declared, checked.failures));
+  const failures = remainingFailures(basename(dirname(path)), item, checked.failures);
   console.log(`${failures.length > 0 ? "✗" : "✓"} ${item}`);
   for (const failure of failures) console.log(`    ${failure}`);
   return failures.length > 0;

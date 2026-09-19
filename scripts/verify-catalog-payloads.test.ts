@@ -4,7 +4,9 @@ import {
   declaresWebgpu,
   itemsFromDiff,
   withoutAbortedMedia,
-  withoutWebgpuRuntimeErrors,
+  parsePayload,
+  remainingFailures,
+  withoutWebgpuAbsence,
 } from "./verify-catalog-payloads.ts";
 
 describe("itemsFromDiff", () => {
@@ -32,20 +34,44 @@ describe("declaresWebgpu", () => {
   });
 });
 
-describe("withoutWebgpuRuntimeErrors", () => {
+describe("withoutWebgpuAbsence", () => {
   const network = "404 GET http://localhost/public/catalog/x.png";
-  const wordings = [
+  const absent = [
     "pageerror: Frost: no WebGPU adapter",
+    "console.error: LiquidGlass: WebGPU not available",
     "console.error: Failed to request adapter",
-    "pageerror: Cannot read properties of null (reading 'createShaderModule')",
   ];
+  const unrelated = "pageerror: ReferenceError: liquid is not defined";
 
-  it("passes a declared item whatever wording its page and console errors use", () => {
-    assert.deepEqual(withoutWebgpuRuntimeErrors(true, [...wordings, network]), [network]);
+  it("passes a declared item's WebGPU-absent errors and keeps everything else", () => {
+    assert.deepEqual(withoutWebgpuAbsence(true, [...absent, unrelated, network]), [
+      unrelated,
+      network,
+    ]);
   });
 
   it("fails an undeclared item with the same wording", () => {
-    assert.deepEqual(withoutWebgpuRuntimeErrors(false, wordings), wordings);
+    assert.deepEqual(withoutWebgpuAbsence(false, absent), absent);
+  });
+});
+
+describe("remainingFailures", () => {
+  const absent = "console.error: LiquidGlass: WebGPU not available";
+
+  it("forgives by the item's own manifest tag in the right folder", () => {
+    assert.deepEqual(remainingFailures("blocks", "liquid-glass-widgets", [absent]), []);
+    assert.deepEqual(remainingFailures("blocks", "glass-shard-title", [absent]), [absent]);
+    assert.deepEqual(remainingFailures("components", "liquid-glass-widgets", [absent]), [absent]);
+  });
+});
+
+describe("parsePayload", () => {
+  it("tells a live payload from a marker", () => {
+    assert.deepEqual(parsePayload('{"html":"<p></p>"}'), { kind: "live", html: "<p></p>" });
+    assert.deepEqual(parsePayload('{"unsupported":"canvas-draw-element"}'), {
+      kind: "marker",
+      reason: "canvas-draw-element",
+    });
   });
 });
 

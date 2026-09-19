@@ -41,6 +41,13 @@ for (const name of blocks) {
     }
   });
 
+  test(`${name}: the variable count in SKILL.md matches its Variables table`, () => {
+    const { skill } = readBlock(name);
+    const declared = Number(firstMatch(skill, /(\d+) variables/));
+    const rows = skill.split("## Variables")[1]?.split(/\n## /)[0]?.match(/^\| `/gm)?.length;
+    assert.equal(rows, declared);
+  });
+
   test(`${name}: its mount and render paths are the composition file the manifest installs`, () => {
     const { files, skill } = readBlock(name);
     const target = files.find((file) => file.type === "hyperframes:composition")?.target;

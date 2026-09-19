@@ -5,7 +5,7 @@ description: A chain of bevelled cuboids rides a travelling wave as a content ca
 
 # Cuboid Carousel
 
-Rounded, bevelled cuboids carrying card content fly in from the right as one rigid group, cruise with a per-cuboid rotation stagger, decelerate to a hero hold, then exit left. Spacing is derived from the cuboid dimensions and the largest reachable X half-extent, so cuboids can never overlap. Forty-nine variables carry the original DialKit schema: geometry, materials, lights, shadows, backdrop, camera and every segment duration and easing. Cards come from the built-in list or a JSON variable.
+Rounded, bevelled cuboids carrying card content fly in from the right as one rigid group, cruise with a per-cuboid rotation stagger, decelerate to a hero hold, then exit left. Spacing is derived from the cuboid dimensions and the largest reachable X half-extent, so cuboids can never overlap. Forty variables carry the original DialKit schema: geometry, materials, lights, shadows, backdrop, camera and every segment duration and easing. Cards come from the built-in list or a JSON variable.
 
 Composition id: `cuboid-carousel`. Duration 6.666666666666667 s at 30 fps, 1920×1080.
 
