@@ -81,6 +81,7 @@ export function openBrowser(url: string, options: OpenBrowserOptions = {}): void
     const child = spawn(options.browserPath, args, {
       detached: true,
       stdio: "ignore",
+      windowsHide: true,
     });
     child.on("error", () => {});
     child.unref();
