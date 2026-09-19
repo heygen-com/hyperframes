@@ -418,6 +418,7 @@ describe("commitPlacementDrop: one undo step for the move and every cut", () => 
     const project = await drop(1, "overwrite", [a]);
     // d [1,3) inside a [0,4): head [0,1), tail [3,4) reading the source from 3s.
     expect(project.doc()).toEqual({
+      b: { start: 4, duration: 4, playbackStart: 1 },
       a: { start: 0, duration: 1 },
       "a-split": { start: 3, duration: 1, playbackStart: 3 },
       d: { start: 1, duration: 2 },
@@ -430,6 +431,7 @@ describe("commitPlacementDrop: one undo step for the move and every cut", () => 
     const project = await drop(6, "insert", [b]);
     // d [6,8) into b [4,8): head [4,6), tail [8,10) reading the source from 3s.
     expect(project.doc()).toEqual({
+      a: { start: 0, duration: 4 },
       b: { start: 4, duration: 2, playbackStart: 1 },
       "b-split": { start: 8, duration: 2, playbackStart: 3 },
       d: { start: 6, duration: 2 },
