@@ -62,16 +62,6 @@ export const CatalogSlot = ({ slot, children }) => (
   </div>
 );
 
-/** Resolves false, never rejects: no gpu, a null adapter, a throw of either kind, or no answer in time. */
-function hasWebgpuAdapter(gpu, timeoutMs) {
-  const probe = new Promise((resolve) => resolve(gpu?.requestAdapter())).then(
-    (adapter) => Boolean(adapter),
-    () => false,
-  );
-  const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs, false));
-  return Promise.race([probe, timeout]);
-}
-
 export const CatalogDetail = ({
   previewSrc,
   compositionId,
@@ -2050,6 +2040,17 @@ export const CatalogDetail = ({
   ) : null;
   // null until the adapter request settles, so the player never mounts on a browser that cannot run it.
   const [hasAdapter, setHasAdapter] = useState(null);
+  // Mintlify evaluates only a snippet's exports, so this helper lives inside the component.
+  // BEGIN hasWebgpuAdapter: resolves false, never rejects (no gpu, null adapter, sync or async throw, no answer in time).
+  const hasWebgpuAdapter = (gpu, timeoutMs) => {
+    const probe = new Promise((resolve) => resolve(gpu?.requestAdapter())).then(
+      (adapter) => Boolean(adapter),
+      () => false,
+    );
+    const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs, false));
+    return Promise.race([probe, timeout]);
+  };
+  // END hasWebgpuAdapter
   useEffect(() => {
     if (webgpu) hasWebgpuAdapter(navigator.gpu, 3000).then(setHasAdapter);
   }, [webgpu]);

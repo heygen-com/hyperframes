@@ -252,10 +252,10 @@ describe("WebGPU stage fallback props", () => {
 describe("WebGPU adapter probe", () => {
   const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-detail.jsx"), "utf-8");
   const fn = source.slice(
-    source.indexOf("function hasWebgpuAdapter"),
-    source.indexOf("export const CatalogDetail"),
+    source.indexOf("const hasWebgpuAdapter"),
+    source.indexOf("// END hasWebgpuAdapter"),
   );
-  const probe = runInNewContext(`${fn}; hasWebgpuAdapter`, { setTimeout, Promise }) as (
+  const probe = runInNewContext(`${fn} hasWebgpuAdapter`, { setTimeout, Promise }) as (
     gpu: unknown,
     ms: number,
   ) => Promise<boolean>;
@@ -276,6 +276,16 @@ describe("WebGPU adapter probe", () => {
       { requestAdapter: () => new Promise(() => {}) },
     ];
     for (const gpu of cases) assert.equal(await probe(gpu, 30), false);
+  });
+});
+
+describe("snippet scope", () => {
+  it("has no top-level helper outside its exports, because Mintlify only evaluates exports", () => {
+    const source = readFileSync(
+      join(here, "..", "docs", "snippets", "catalog-detail.jsx"),
+      "utf-8",
+    );
+    assert.deepEqual(source.match(/^(?:function|const|let|var|class) .*/gm), null);
   });
 });
 
