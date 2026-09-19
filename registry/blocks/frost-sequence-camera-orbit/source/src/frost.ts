@@ -837,6 +837,11 @@ export function create(o: FrostOptions): FrostInstance {
     }
     if (o.rig) logoRig = new LogoRig(world, { ...o.rig, retarget: (k) => retarget(k, true) });
     (window as any).__fb = { world, renderer: r, D, sim, clock };
+    // draw frame 0 now so every pipeline compiles inside the readiness gate, not at the first visible seek
+    for (const f of [0.25, 0.5, 0.75, 0]) {
+      renderAt(f * durationOf(S));
+      while (pendingGpu) await pendingGpu;
+    }
     log("world");
   })();
 

@@ -827,14 +827,27 @@
       window.__timelines["cuboid-carousel"] = tl;
 
       renderAt(0);
-      if (document.fonts && document.fonts.ready) {
-        document.fonts.ready
-          .then(() => {
-            buildChain();
-            renderAt(S.t);
-          })
-          .catch(() => {});
+      /* Draw across the timeline and flush the GPU before ready, so shader links
+         and texture uploads land in the readiness gate, not the first visible frames. */
+      async function warmGpu() {
+        for (const f of [0.25, 0.5, 0.75]) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          renderAt(DUR * f);
+        }
+        renderAt(S.t);
+        renderer.getContext().finish();
       }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["cuboid-carousel"] = (
+        document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()
+      )
+        .then(() => {
+          buildChain();
+          renderAt(S.t);
+          return warmGpu();
+        })
+        .catch(() => {});
     </script>
     <script>
       /* Standalone playback: open this file with ?play (add &loop to repeat).

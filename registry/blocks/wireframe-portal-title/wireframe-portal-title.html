@@ -1578,6 +1578,20 @@
       window.__wptRender = renderScene;
       const tl = window.__timelines["wireframe-portal-title"];
       renderScene(tl ? tl.time() : 0);
+      /* The portal is closed at t=0 and draws nothing, so the first real draw would
+         link every shader mid-playback. Draw across the timeline and flush the GPU
+         before ready instead. */
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["wireframe-portal-title"] = (async () => {
+        const warmDur = tl ? tl.duration() : 0;
+        for (const f of [0.3, 0.5, 0.7]) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          renderScene(warmDur * f);
+        }
+        renderScene(tl ? tl.time() : 0);
+        renderer.getContext().finish();
+      })();
     </script>
   </body>
 </html>
