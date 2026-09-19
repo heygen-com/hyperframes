@@ -213,3 +213,21 @@ describe("disabled states", () => {
     expect(button?.getAttribute("aria-disabled")).toBe("true");
   });
 });
+
+describe("children layout", () => {
+  it("makes label and shortcut direct flex items so the button gap applies between them", () => {
+    const host = mountHost(
+      <Button icon={<svg />}>
+        <span>Export</span>
+        <kbd>⌘E</kbd>
+      </Button>,
+    );
+    const button = host.querySelector("button");
+
+    expect(Array.from(button?.children ?? []).map((child) => child.tagName)).toEqual([
+      "SPAN",
+      "SPAN",
+      "KBD",
+    ]);
+  });
+});
