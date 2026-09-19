@@ -3,6 +3,7 @@
 // usage: node scripts/check-pr-captures.mjs --base origin/main --head <sha>; the body arrives in the env (see main).
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -190,6 +191,69 @@ export function evaluate({ body, files }) {
   return { ok: false, problems: [...verdict.problems, ...captures] };
 }
 
+const DOWNLOAD_ATTEMPTS = 3;
+const DOWNLOAD_TIMEOUT_MS = 30_000;
+
+/** The bytes behind a capture URL; retried, because a required check must not flake on one bad response. */
+export async function downloadAsset(url, fetchImpl = fetch) {
+  let failure;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetchImpl(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      });
+      if (response.ok) return Buffer.from(await response.arrayBuffer());
+      failure = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      failure = error;
+    }
+  }
+  throw failure;
+}
+
+const captureUrls = (section) => [
+  ...new Set((section.text.match(ANY_URL) ?? []).filter(isMediaUrl)),
+];
+
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/** url -> hash for every capture in a section, or a problem for each one that could not be read. */
+async function hashCaptures(name, section, download) {
+  const results = await Promise.all(
+    captureUrls(section).map(async (url) => {
+      try {
+        return { name, url, hash: sha256(await download(url)) };
+      } catch (error) {
+        return { name, url, problem: `could not download ${name} asset ${url}: ${error.message}` };
+      }
+    }),
+  );
+  return results;
+}
+
+/** Every After asset must differ by content hash from every Before asset; an unreadable download is a problem. */
+export async function duplicateCaptureProblems(body, download = downloadAsset) {
+  const sections = parseSections(body);
+  const before = findSection(sections, "before");
+  const after = findSection(sections, "after");
+  if (!before || !after) return [];
+  const [befores, afters] = await Promise.all([
+    hashCaptures("Before", before, download),
+    hashCaptures("After", after, download),
+  ]);
+  const unreadable = [...befores, ...afters].filter((asset) => asset.problem);
+  const hashedBefores = befores.filter((asset) => asset.hash);
+  const identical = afters
+    .filter((asset) => asset.hash)
+    .flatMap((asset) =>
+      hashedBefores
+        .filter((old) => old.hash === asset.hash)
+        .map((old) => `After asset ${asset.url} is byte-identical to Before asset ${old.url}`),
+    );
+  return [...unreadable.map((asset) => asset.problem), ...identical];
+}
+
 export function attachCommand(prNumber) {
   return `gh pr edit ${prNumber} --attach ./before.png --attach ./after.png`;
 }
@@ -226,18 +290,25 @@ function printFailure(problems, prNumber) {
   );
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   const numstat = readNumstat(flag(args, "--base", "origin/main"), flag(args, "--head", "HEAD"));
   const body = process.env.PR_BODY ?? "";
-  const { ok, problems } = evaluate({ body, files: parseNumstat(numstat) });
-  if (ok) {
-    console.log("packages/studio and packages/player: captures present, or nothing to show.");
-    return;
+  const files = parseNumstat(numstat);
+  const { ok, problems } = evaluate({ body, files });
+  if (!ok) {
+    printFailure(problems, process.env.PR_NUMBER ?? "<number>");
+    process.exit(1);
   }
-  printFailure(problems, process.env.PR_NUMBER ?? "<number>");
-  process.exit(1);
+  const duplicates = files.length > 0 ? await duplicateCaptureProblems(body) : [];
+  if (duplicates.length > 0) {
+    console.error("A capture under After is the same file as one under Before:");
+    for (const problem of duplicates) console.error(`  - ${problem}`);
+    console.error("Re-attach the real After recording; a Before clip under After proves nothing.");
+    process.exit(1);
+  }
+  console.log("packages/studio and packages/player: captures present, or nothing to show.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href)
-  main();
+  await main();
