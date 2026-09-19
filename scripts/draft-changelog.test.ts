@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   escapeForMdx,
+  findSkippedReleaseTags,
   parseArgs,
   parseCommit,
   renderCommitBullet,
@@ -106,5 +107,45 @@ describe("draft changelog rendering", () => {
       renderMdxCommitBullet(parsed).includes("Support \\<Update\\> blocks with \\{tags\\}"),
     );
     assert.ok(renderCommitBullet(parsed).includes("Support <Update> blocks with {tags}"));
+  });
+});
+
+describe("skipped release tags", () => {
+  const TAGS = ["0.8.49", "0.8.50", "0.8.51"];
+
+  it("names a tag the baseline skipped", () => {
+    // The v0.8.52 cut: a stale local v0.8.51 was unreachable, so describe fell
+    // back to v0.8.50 and the draft re-listed ~100 already-released commits.
+    assert.deepEqual(findSkippedReleaseTags(TAGS, "v0.8.50", "0.8.52"), ["0.8.51"]);
+  });
+
+  it("passes when the baseline is the immediately preceding release", () => {
+    assert.deepEqual(findSkippedReleaseTags(TAGS, "v0.8.51", "0.8.52"), []);
+  });
+
+  it("excludes the baseline and the release being drafted", () => {
+    // Both ends are exclusive: v0.8.50 is the baseline and v0.8.51 is the
+    // release, so neither counts as skipped.
+    assert.deepEqual(findSkippedReleaseTags(TAGS, "v0.8.50", "0.8.51"), []);
+  });
+
+  it("reports every skipped release in ascending order", () => {
+    assert.deepEqual(findSkippedReleaseTags(TAGS, "v0.8.48", "0.8.52"), [
+      "0.8.49",
+      "0.8.50",
+      "0.8.51",
+    ]);
+  });
+
+  it("compares numerically, not lexically", () => {
+    // "0.8.9" > "0.8.10" as strings; a string sort would miss this entirely.
+    assert.deepEqual(findSkippedReleaseTags(["0.8.9", "0.8.10"], "v0.8.8", "0.8.11"), [
+      "0.8.9",
+      "0.8.10",
+    ]);
+  });
+
+  it("accepts a baseline with or without the v prefix", () => {
+    assert.deepEqual(findSkippedReleaseTags(TAGS, "0.8.50", "0.8.52"), ["0.8.51"]);
   });
 });
