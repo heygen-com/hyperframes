@@ -177,6 +177,7 @@ describe("runEnvironmentChecks", () => {
       versionMajor: 7,
     });
     expect(result.browserVersionMajor).toBe(7);
+    expect(result.browserInstall).toMatchObject({ pathAscii: true });
   });
 
   it("reports Chrome as not found (no throw) when browser discovery throws on a corrupt cache", async () => {

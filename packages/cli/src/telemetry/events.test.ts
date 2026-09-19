@@ -396,6 +396,34 @@ describe("render telemetry events", () => {
     expect(props.browser_version_major).toBe(118);
   });
 
+  it("carries the browser install path facts on both render events, never the path", () => {
+    const browserInstall = {
+      build: "152.0.7928.2",
+      pathAscii: false,
+      pathLength: "200_to_259",
+      drive: "windows_other",
+    } as const;
+    trackRenderComplete({
+      durationMs: 1,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      browserInstall,
+    });
+    trackRenderError({ fps: 30, quality: "draft", docker: false, browserInstall });
+    for (const call of trackEvent.mock.calls) {
+      const props = call[1] as Record<string, unknown>;
+      expect(props).toMatchObject({
+        browser_build: "152.0.7928.2",
+        browser_path_ascii: false,
+        browser_path_length: "200_to_259",
+        browser_path_drive: "windows_other",
+      });
+      expect(Object.keys(props)).not.toContain("browser_path");
+    }
+  });
+
   it("omits toolchain majors on a Docker render", () => {
     trackRenderComplete({ durationMs: 1, fps: 30, quality: "draft", docker: true, gpu: false });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;

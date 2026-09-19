@@ -93,6 +93,7 @@ import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { createStderrTail, DockerRenderExitError } from "../utils/dockerStderrTail.js";
+import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import {
@@ -470,6 +471,7 @@ export interface RenderOptions {
   /** Major FFmpeg/Chrome version from local preflight (telemetry only); absent on Docker renders. */
   ffmpegVersionMajor?: number;
   browserVersionMajor?: number;
+  browserInstall?: BrowserInstallFacts;
   /** HLS target segment length in seconds; ignored unless `format` is `"hls"`. */
   hlsSegmentSeconds?: number;
   workers?: number;
@@ -946,6 +948,7 @@ async function executeLocalRender(
     ...options,
     ffmpegVersionMajor: preflight.ffmpegVersionMajor,
     browserVersionMajor: preflight.browserVersionMajor,
+    browserInstall: preflight.browserInstall,
   };
   cancellation.checkAncestors();
   cancellation.signal.throwIfAborted();
@@ -1211,6 +1214,7 @@ function renderEnvironmentTelemetryPayload(
   return {
     ffmpegVersionMajor: options.ffmpegVersionMajor,
     browserVersionMajor: options.browserVersionMajor,
+    browserInstall: options.browserInstall,
   };
 }
 
