@@ -423,10 +423,12 @@ Write exactly what Studio writes when a person drops a file on the timeline, so 
 
 - **Image: `data-duration="3"`.** A still has no length of its own, so it gets 3 seconds. Without a `data-duration` it never ends and stays on screen for the rest of the composition.
 - **Video and audio: the file's own length** in seconds (`ffprobe -v error -show_entries format=duration -of csv=p=0 file`); `5` only when the length cannot be read. Studio rounds to hundredths.
-- **Start: the playhead or the requested time, never a silent `0`.** Studio's asset-panel Add uses the playhead time on track `0`; a drop uses the drop point. Several files dropped together run end to end from the first start.
+- **Start: the playhead or the requested time, never a silent `0`.** Studio's asset-panel Add uses the playhead time on track `0`; a drop uses the drop point.
 - Give every clip `id`, `class="clip"`, `data-start`, `data-duration` and `data-track-index`. Video is `muted playsinline`; audio carries `data-volume="1"`.
-- Then make sure the root composition's `data-duration` is at least `data-start + data-duration`; Studio extends it, an agent must too, or the clip lies past the end and never plays.
-- Images and video sit absolutely positioned, `object-fit: contain`, centred at their natural size (scaled down to fit): `left = (frameWidth - width) / 2`, `top = (frameHeight - height) / 2`. Below, an 800x600 still in a 1920x1080 frame.
+- Then make sure the root composition's `data-duration` is at least `data-start + data-duration`: Studio raises a declared root duration to cover the new clip, so an agent must too, or the clip lies past the end and never plays.
+- **Images and video fill the whole frame**: absolutely positioned at `left: 0; top: 0`, `width` and `height` equal to the composition's `data-width` and `data-height`, `object-fit: contain`. Studio does not know a dropped file's natural size, so it does not centre a smaller one.
+- `z-index` is the number of top-level clips already in that file plus one (at least `1`); later clips stack above earlier ones.
+- Several files dropped together share the drop's track and run end to end.
 
 ```html
 <img
@@ -436,7 +438,7 @@ Write exactly what Studio writes when a person drops a file on the timeline, so 
   data-start="4"
   data-duration="3"
   data-track-index="1"
-  style="position: absolute; left: 560px; top: 240px; width: 800px; height: 600px; object-fit: contain; z-index: 2"
+  style="position: absolute; left: 0px; top: 0px; width: 1920px; height: 1080px; object-fit: contain; z-index: 2"
 />
 ```
 
