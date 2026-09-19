@@ -99,6 +99,7 @@ test("the add-media recipe uses Studio's default durations", async () => {
   assert.match(section, /`data-start` is enough/);
   assert.doesNotMatch(section, /ffprobe/);
   assert.match(section, /root composition's `data-duration` is at least/);
+  assert.match(section, new RegExp(`${imageSecs} for an image unless you set another`));
   assert.doesNotMatch(image, /data-duration/);
 });
 

@@ -10,7 +10,7 @@ A clip is any DOM element with `data-start` and, where required, `data-duration`
 - **Sub-composition hosts** — `<div>` with `data-composition-src`. Always require `data-duration`.
 - **Video clips** — `<video>` with `muted` and `playsinline`. Duration can default to media length.
 - **Audio clips** — `<audio>`. Duration can default to media length.
-- **Image clips** — `<img>`. Always require `data-duration`.
+- **Image clips** — `<img>`. `data-duration` is optional and defaults to 3 seconds; write it only for another length.
 
 Add `class="clip"` to authored visual clips. The runtime does not read it, but the scaffold's shared `.clip { position: absolute; inset: 0 }` rule is what gives a scene its full-frame box, Studio treats it as an edit hint, and `lint` warns without it.
 
