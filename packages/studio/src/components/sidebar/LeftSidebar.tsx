@@ -330,6 +330,11 @@ export const LeftSidebar = memo(
                       }
                     >
                       {lintFindingCount}
+                      <span className="sr-only">
+                        {lintHasError
+                          ? " lint findings, including errors"
+                          : " lint findings, warnings only"}
+                      </span>
                     </span>
                   )}
                 </button>

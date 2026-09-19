@@ -45,6 +45,16 @@ describe("useLintModal hasLintError", () => {
     expect(latest?.hasLintError).toBe(false);
   });
 
+  it("is true for a mixed error and warning list", async () => {
+    await mountWithLint(
+      lintResponse([
+        { severity: "warning", message: "soft" },
+        { severity: "error", message: "nested" },
+      ]),
+    );
+    expect(latest?.hasLintError).toBe(true);
+  });
+
   it("is true when the manual lint itself fails, matching the badge count", async () => {
     await mountWithLint(async () => {
       throw new Error("offline");

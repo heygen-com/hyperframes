@@ -96,7 +96,7 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
 
   const findingsByElement = useMemo(() => groupFindings((f) => f.elementId), [groupFindings]);
   const findingsByFile = useMemo(() => groupFindings((f) => f.file), [groupFindings]);
-  // Same list the badge count reads, so the pulse and the number cannot disagree.
+  // Reads the list the badge count reads: the manual result when present, else the background one.
   const hasLintError = (lintModal ?? backgroundFindings).some((f) => f.severity === "error");
 
   // Sync lint findings directly to the player store — eliminates the

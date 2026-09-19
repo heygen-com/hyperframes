@@ -46,11 +46,13 @@ describe("LeftSidebar lint badge", () => {
     expect(badge?.dataset.lintBadge).toBe("error");
     expect(badge?.className).toContain("animate-pulse");
     expect(badge?.className).toContain("motion-reduce:animate-none");
+    expect(badge?.textContent).toContain("including errors");
   });
 
   it("stays still when the findings are warnings only", () => {
     const badge = renderBadge(false);
     expect(badge?.dataset.lintBadge).toBe("warning");
     expect(badge?.className).not.toContain("animate-pulse");
+    expect(badge?.textContent).toContain("warnings only");
   });
 });
