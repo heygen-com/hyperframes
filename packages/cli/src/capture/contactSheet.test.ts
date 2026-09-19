@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createContactSheet,
   createScrollContactSheet,
@@ -13,24 +13,6 @@ import {
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-contact-sheet-test-"));
 }
-
-// Windows: Fontconfig would scan every OS font on the first label render. Give it one
-// copied font instead, so labels still draw and the scan is one file.
-const fontconfigDir =
-  process.platform === "win32" ? mkdtempSync(join(tmpdir(), "hf-fontconfig-")) : null;
-if (fontconfigDir) {
-  const fontsDir = join(process.env.WINDIR ?? "C:\\Windows", "Fonts");
-  copyFileSync(join(fontsDir, "arial.ttf"), join(fontconfigDir, "arial.ttf"));
-  const fontconfigFile = join(fontconfigDir, "fonts.conf");
-  writeFileSync(
-    fontconfigFile,
-    `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><dir>${fontconfigDir}</dir><cachedir>${fontconfigDir}</cachedir></fontconfig>`,
-  );
-  process.env.FONTCONFIG_FILE = fontconfigFile;
-}
-afterAll(() => {
-  if (fontconfigDir) rmSync(fontconfigDir, { recursive: true, force: true });
-});
 
 describe("createContactSheet", () => {
   it("writes PNG output when the output path uses a .png extension", async () => {
@@ -111,7 +93,7 @@ describe("createContactSheet", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, 20_000);
+  }, 60_000);
 });
 
 describe("contact-sheet capture budget", () => {
