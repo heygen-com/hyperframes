@@ -1,9 +1,10 @@
 // UI primitives
-export { Button, buttonBase, buttonVariants } from "./components/ui/Button";
+export { Button, buttonBase, buttonSizes, buttonVariants } from "./components/ui/Button";
 export type { ButtonSize, ButtonVariant, PreviewState } from "./components/ui/Button";
 export { IconButton } from "./components/ui/IconButton";
 export { Tab, TabPanel, Tabs, TabsList } from "./components/ui/Tabs";
 export { Tooltip } from "./components/ui/Tooltip";
+export { HyperframesLogo } from "./components/StudioHeader";
 export { cn } from "./components/ui/cn";
 export {
   ContextMenu,

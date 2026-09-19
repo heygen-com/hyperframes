@@ -27,6 +27,7 @@
       "types": "./src/styles/tailwind-preset.ts"
     },
     "./theme.css": "./src/styles/theme.css",
+    "./styles.css": "./src/styles/studio.css",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -41,6 +42,7 @@
         "types": "./dist/styles/tailwind-preset.d.ts"
       },
       "./theme.css": "./src/styles/theme.css",
+      "./styles.css": "./dist/styles.css",
       "./package.json": "./package.json"
     },
     "main": "./dist/index.js",
