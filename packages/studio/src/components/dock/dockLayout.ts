@@ -43,13 +43,7 @@ function sideZone(group: DockviewApi["groups"][number]): "left" | "right" | null
   return allSide && first && first !== "center" ? first : null;
 }
 
-/**
- * Idempotent: re-run whenever the window resizes, a panel is added or moved, or a layout is
- * restored. Dockview keeps a constraint once set, so every group is rewritten each time: the
- * preview floor for any group holding the preview, the side minimum for the rest. Side-only
- * groups also shrink to their default width on a narrow window, because dockview keeps stale
- * widths when minimums drop after layout.
- */
+/** Idempotent; rewrites every group's minimum, since dockview keeps a constraint once set. */
 export function applySideMinimums(api: DockviewApi, dockWidth = window.innerWidth) {
   const minimumWidth = sideMinimumWidth(dockWidth);
   const cap = defaultSideWidths(dockWidth);
