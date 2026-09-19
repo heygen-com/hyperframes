@@ -158,17 +158,19 @@ async function checkAll(
   return failed;
 }
 
-async function main(): Promise<void> {
-  const { only, changed } = parseArgs();
-  const items = payloadFiles(only, changed ? changedItems(changed) : null);
-  if (items.length === 0 && changed) {
+function reportNoPayloads(only: string | null, changed: string | null): void {
+  if (changed) {
     console.log(`No catalog payload differs from ${changed}; nothing to verify.`);
     return;
   }
-  if (items.length === 0) {
-    console.error(only ? `No payload found for "${only}".` : "No payloads found.");
-    process.exit(1);
-  }
+  console.error(only ? `No payload found for "${only}".` : "No payloads found.");
+  process.exit(1);
+}
+
+async function main(): Promise<void> {
+  const { only, changed } = parseArgs();
+  const items = payloadFiles(only, changed ? changedItems(changed) : null);
+  if (items.length === 0) return reportNoPayloads(only, changed);
 
   const { origin, close } = await startServer();
   console.log(`Checking ${items.length} catalog payload(s) in headless Chrome...\n`);

@@ -170,18 +170,23 @@ function extractAndRemoveScript(
 /** Script text loads hosted assets by their local name, and the payload has no such file: point
  * each at its CDN URL. `assetCall` is the bundle's base-joining helper, which takes the name
  * relative to `assets/`. Throws when a name is still there, so a rebuild that renames things fails loudly. */
+function withHostedRef(text: string, ref: string, url: string, assetCall?: string): string {
+  const bare = ref.replace(/^assets\//, "");
+  let out = text.split(`"${ref}"`).join(`"${url}"`);
+  if (assetCall) out = out.split(`${assetCall}("${bare}")`).join(`"${url}"`);
+  if (bare !== ref && out.includes(`"${bare}"`)) {
+    throw new Error(`catalog-script-inlining: "${ref}" is still loaded by its local name.`);
+  }
+  return out;
+}
+
 export function withHostedRefs(text: string, projectDir: string, assetCall?: string): string {
   const manifest = JSON.parse(
     readFileSync(join(projectDir, "registry-item.json"), "utf-8"),
   ) as RegistryItem;
   let out = text;
   for (const [ref, url] of hostedUrlByReference(manifest)) {
-    out = out.split(`"${ref}"`).join(`"${url}"`);
-    const bare = ref.replace(/^assets\//, "");
-    if (assetCall) out = out.split(`${assetCall}("${bare}")`).join(`"${url}"`);
-    if (bare !== ref && out.includes(`"${bare}"`)) {
-      throw new Error(`catalog-script-inlining: "${ref}" is still loaded by its local name.`);
-    }
+    out = withHostedRef(out, ref, url, assetCall);
   }
   return out;
 }
