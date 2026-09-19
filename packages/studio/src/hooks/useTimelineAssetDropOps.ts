@@ -108,7 +108,6 @@ export function useTimelineAssetDropOps({
         const { source: sourceWithRoom, track } = resolveDropTrack({
           source: originalContent,
           elements: relevantElements,
-          targetPath: resolvedTargetPath,
           placement,
           dropped: {
             id: newId,

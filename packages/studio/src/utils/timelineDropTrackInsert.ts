@@ -17,18 +17,21 @@ export interface DropTrackInsertPlan {
  *  Null when a locked clip would have to move. */
 export function planDropTrackInsert(input: {
   elements: TimelineElement[];
-  targetPath: string;
   insertRow: number;
   dropped: Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
 }): DropTrackInsertPlan | null {
-  const { elements, targetPath, insertRow, dropped } = input;
+  const { elements, insertRow, dropped } = input;
   const trackOrder = timelineTrackOrder(elements);
   const newElement: TimelineElement = {
     ...dropped,
     key: dropped.id,
     // Parked on an existing lane so it adds no lane of its own to the topology.
     track: trackOrder[0] ?? 0,
-    sourceFile: targetPath,
+    // sameSourceFile compares this raw field, and every element already in
+    // `elements` shares the target file's own value (often undefined for the
+    // main document) — borrow it instead of stamping the resolved path string,
+    // or the new clip reads as a foreign file and nothing is writable.
+    sourceFile: elements[0]?.sourceFile,
   };
   const layout = layoutAfterTrackInsert(newElement, dropped.start, insertRow, null, {
     elements: [...elements, newElement],
@@ -70,18 +73,12 @@ export function applyTrackRenumbers(source: string, plan: DropTrackInsertPlan): 
 export function resolveDropTrack(input: {
   source: string;
   elements: TimelineElement[];
-  targetPath: string;
   placement: { track: number; insertRow?: number | null };
   dropped: Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
 }): { source: string; track: number } {
-  const { source, elements, targetPath, placement, dropped } = input;
+  const { source, elements, placement, dropped } = input;
   if (placement.insertRow == null) return { source, track: placement.track };
-  const plan = planDropTrackInsert({
-    elements,
-    targetPath,
-    insertRow: placement.insertRow,
-    dropped,
-  });
+  const plan = planDropTrackInsert({ elements, insertRow: placement.insertRow, dropped });
   if (!plan) throw new Error("Cannot open a new track here: a locked clip would have to move.");
   return { source: applyTrackRenumbers(source, plan), track: plan.track };
 }

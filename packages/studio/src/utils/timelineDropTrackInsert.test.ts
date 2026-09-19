@@ -17,7 +17,9 @@ function clip(id: string, track: number, start: number): TimelineElement {
     authoredTrack: track,
     hfId: `hf-${id}`,
     domId: id,
-    sourceFile: "index.html",
+    // The main document's own elements carry no sourceFile (see sameSourceFile
+    // in timelineAuthoredTrack.ts) — an explicit string here would mask the bug
+    // where the dropped element was tagged with the resolved path instead.
   };
 }
 
@@ -32,7 +34,7 @@ const source = elements
 
 describe("planDropTrackInsert", () => {
   it("opens a lane between two rows and pushes the lanes below down", () => {
-    const plan = planDropTrackInsert({ elements, targetPath: "index.html", insertRow: 1, dropped });
+    const plan = planDropTrackInsert({ elements, insertRow: 1, dropped });
     expect(plan?.track).toBe(1);
     expect(plan?.renumbers.map((r) => [r.element.id, r.track])).toEqual([
       ["b", 2],
@@ -41,10 +43,20 @@ describe("planDropTrackInsert", () => {
   });
 
   it("opens a lane above the first row", () => {
-    const plan = planDropTrackInsert({ elements, targetPath: "index.html", insertRow: 0, dropped });
+    const plan = planDropTrackInsert({ elements, insertRow: 0, dropped });
     expect(plan?.track).toBe(0);
     expect(plan?.renumbers.map((r) => [r.element.id, r.track])).toEqual([
       ["a", 1],
+      ["b", 2],
+      ["c", 3],
+    ]);
+  });
+
+  it("still renumbers when the peers' own sourceFile is a real path, not undefined", () => {
+    const subComp = elements.map((e) => ({ ...e, sourceFile: "sub.html" }));
+    const plan = planDropTrackInsert({ elements: subComp, insertRow: 1, dropped });
+    expect(plan?.track).toBe(1);
+    expect(plan?.renumbers.map((r) => [r.element.id, r.track])).toEqual([
       ["b", 2],
       ["c", 3],
     ]);
@@ -53,7 +65,7 @@ describe("planDropTrackInsert", () => {
 
 describe("applyTrackRenumbers", () => {
   it("rewrites only the renumbered clips' data-track-index", () => {
-    const plan = planDropTrackInsert({ elements, targetPath: "index.html", insertRow: 1, dropped });
+    const plan = planDropTrackInsert({ elements, insertRow: 1, dropped });
     const out = applyTrackRenumbers(source, plan!);
     const tracks = [...out.matchAll(/id="(\w)"[^>]*data-track-index="(\d+)"/g)].map((m) => [
       m[1],
@@ -67,7 +79,7 @@ describe("applyTrackRenumbers", () => {
   });
 
   it("throws when a clip's opening tag is missing", () => {
-    const plan = planDropTrackInsert({ elements, targetPath: "index.html", insertRow: 1, dropped });
+    const plan = planDropTrackInsert({ elements, insertRow: 1, dropped });
     expect(() => applyTrackRenumbers("<div></div>", plan!)).toThrow(/Cannot renumber/);
   });
 });
@@ -77,7 +89,6 @@ describe("resolveDropTrack", () => {
     const out = resolveDropTrack({
       source,
       elements,
-      targetPath: "index.html",
       placement: { track: 2 },
       dropped,
     });
@@ -88,7 +99,6 @@ describe("resolveDropTrack", () => {
     const out = resolveDropTrack({
       source,
       elements,
-      targetPath: "index.html",
       placement: { track: 1, insertRow: 1 },
       dropped,
     });
@@ -102,7 +112,6 @@ describe("resolveDropTrack", () => {
       resolveDropTrack({
         source,
         elements: locked,
-        targetPath: "index.html",
         placement: { track: 1, insertRow: 1 },
         dropped,
       }),
