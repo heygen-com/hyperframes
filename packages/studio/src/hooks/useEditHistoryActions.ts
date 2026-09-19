@@ -31,10 +31,7 @@ export interface UseEditHistoryActionsOptions {
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   showToast: (message: string, tone?: "error" | "info") => void;
-  syncHistoryPreviewAfterApply: (restore: {
-    paths?: string[];
-    files?: Record<string, { previous: string; restored: string }>;
-  }) => Promise<void>;
+  syncHistoryPreviewAfterApply: (restore: Pick<HistoryResult, "paths" | "files">) => Promise<void>;
   waitForPendingDomEditSaves: () => Promise<void>;
   onAfterUndoRedo?: () => void;
   /** Active composition path — decides whether undo/redo must resync the SDK session. */
@@ -61,12 +58,6 @@ export function useEditHistoryActions({
       path === STUDIO_MOTION_PATH ? readOptionalProjectFile(path) : readProjectFile(path),
     [readOptionalProjectFile, readProjectFile],
   );
-  const writeHistoryFile = useCallback(
-    async (path: string, content: string): Promise<void> => {
-      await writeProjectFile(path, content);
-    },
-    [writeProjectFile],
-  );
   const serializeHistoryFiles = useCallback(
     <T>(paths: readonly string[], task: () => Promise<T>) =>
       serializeStudioFileMutations(writeProjectFile, paths, task),
@@ -75,17 +66,15 @@ export function useEditHistoryActions({
 
   const apply = useCallback(
     async (direction: "undo" | "redo") => {
+      const [noun, verb] = direction === "undo" ? ["Undo", "Undid"] : ["Redo", "Redid"];
       await waitForPendingDomEditSaves();
       const result = await editHistory[direction]({
         readFile: readHistoryFile,
-        writeFile: writeHistoryFile,
+        writeFile: writeProjectFile,
         serialize: serializeHistoryFiles,
       });
       if (!result.ok && result.reason === "content-mismatch") {
-        showToast(
-          `File changed outside Studio. ${direction === "undo" ? "Undo" : "Redo"} history was not applied.`,
-          "info",
-        );
+        showToast(`File changed outside Studio. ${noun} history was not applied.`, "info");
         return;
       }
       if (result.ok && result.label) {
@@ -94,7 +83,7 @@ export function useEditHistoryActions({
           forceReloadSdkSession?.();
         }
         await syncHistoryPreviewAfterApply({ paths: result.paths, files: result.files });
-        showToast(`${direction === "undo" ? "Undid" : "Redid"} ${result.label}`, "info");
+        showToast(`${verb} ${result.label}`, "info");
       }
     },
     [
@@ -103,7 +92,7 @@ export function useEditHistoryActions({
       showToast,
       syncHistoryPreviewAfterApply,
       waitForPendingDomEditSaves,
-      writeHistoryFile,
+      writeProjectFile,
       serializeHistoryFiles,
       onAfterUndoRedo,
       activeCompPath,
