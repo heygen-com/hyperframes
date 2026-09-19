@@ -17,7 +17,7 @@
       "source": "./src/styles/theme.css",
       "runtime": "./src/styles/theme.css",
       "types": null,
-      "environments": ["browser", "bun", "node"]
+      "environments": ["browser"]
     },
     "./package.json": {
       "source": "./package.json",
