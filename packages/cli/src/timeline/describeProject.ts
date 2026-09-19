@@ -196,15 +196,21 @@ async function resolveMediaRowDuration(
     };
   }
   const probe = await probeSource(scope, el, tag);
-  const result = resolveMediaDuration({
-    ...input,
-    sourceDurationSeconds: probe.ok ? probe.seconds : null,
-  });
+  const measured = probe.ok && probe.seconds > 0 ? probe.seconds : null;
+  const result = resolveMediaDuration({ ...input, sourceDurationSeconds: measured });
   return {
     duration: result.seconds ?? 0,
     durationSource: result.source,
-    pendingReason: result.source === "pending" ? (probe.ok ? null : probe.reason) : null,
+    pendingReason: result.source === "pending" ? pendingReason(probe, result.reason) : null,
   };
+}
+
+/** Why a media row is pending: the probe's failure, or that it opened but reported no length. */
+function pendingReason(probe: ProbeResult, resolverReason: string | undefined): string {
+  if (!probe.ok) return probe.reason;
+  return probe.seconds > 0
+    ? (resolverReason ?? "source duration unavailable")
+    : "source reports no duration";
 }
 
 const roundMs = (v: number) => Math.round(v * 1000) / 1000;

@@ -33,10 +33,16 @@ const INDEX = `<html><body>
 const TITLE = `<template><div data-composition-id="title"><h1 id="t1" data-start="0" data-duration="2">Hi</h1><h2 id="t2" data-start="t1 + 0.5" data-duration="1">There</h2></div></template>`;
 
 let dir = "";
-const rowsOf = async (html: string, withSting = false) => {
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+const rowsOf = async (html: string, withSting = false, setup?: (root: string) => void) => {
   const index = project();
   writeFileSync(index, html);
   if (withSting) copyFileSync(REAL_AUDIO, join(dir, "sting.mp3"));
+  setup?.(dir);
   const timeline = await describeProject(index);
   return { rows: timeline.tracks.flatMap((t) => t.rows), text: formatTimeline(timeline) };
 };
@@ -174,6 +180,39 @@ describe("describeProject", () => {
     }
     rmSync(outside, { recursive: true, force: true });
     rmSync(join(dir, "..", "hf-parent-media.mp3"));
+  });
+
+  it("reports a still image used as a video source as pending, not a measured zero", async () => {
+    const { rows, text } = await rowsOf(
+      `<div data-composition-id="m"><video id="v" src="still.png" data-start="0"></video></div>`,
+      false,
+      (root) => writeFileSync(join(root, "still.png"), TINY_PNG),
+    );
+    expect(rows[0]).toMatchObject({
+      durationSource: "pending",
+      pendingReason: "source reports no duration",
+      duration: 0,
+    });
+    expect(text).toContain("pending: source reports no duration");
+  });
+
+  it("does not probe a media src that is a symlink out of the project", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    try {
+      copyFileSync(REAL_AUDIO, join(outside, "secret.mp3"));
+      const { rows } = await rowsOf(
+        `<div data-composition-id="m"><audio id="a" src="link.mp3" data-start="0"></audio></div>`,
+        false,
+        (root) => symlinkSync(join(outside, "secret.mp3"), join(root, "link.mp3")),
+      );
+      expect(rows[0]).toMatchObject({
+        durationSource: "pending",
+        pendingReason: "source file not found",
+        duration: 0,
+      });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("gives an image with no authored duration the resolver's default length", async () => {
@@ -450,14 +489,17 @@ const hasJq = (() => {
   }
 })();
 
-const runOneLiner = async (line: string): Promise<string> =>
-  execFileSync("bash", ["-c", line], {
-    env: {
-      ...process.env,
-      TL: JSON.stringify({ timeline: await describeProject(inversionProject()) }),
-    },
-    encoding: "utf8",
-  });
+const runOneLiner = async (line: string): Promise<string> => {
+  const own = inversionProject();
+  try {
+    return execFileSync("bash", ["-c", line], {
+      env: { ...process.env, TL: JSON.stringify({ timeline: await describeProject(own) }) },
+      encoding: "utf8",
+    });
+  } finally {
+    rmSync(dirname(own), { recursive: true, force: true });
+  }
+};
 
 describe("skill query one-liners", () => {
   it("documents four node one-liners, each answering from the fixture", async () => {
