@@ -1,28 +1,28 @@
 ---
 title: "Code Snippet - Light+"
 description: "VS Code workbench with per-character typing animation in the Light+ theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/code-snippet-light-plus.json"
+  compositionId="code-snippet-light-plus"
+  compositionSrc="compositions/code-snippet-light-plus.html"
+  title="Code Snippet - Light+"
+  description="VS Code workbench with per-character typing animation in the Light+ theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar."
+  variables={[]}
+  meta={{"duration":11,"width":1920,"height":1080,"category":"Code Snippets","badge":"Stable","codeLines":1056}}
+  attribution={{"path":"registry/blocks/code-snippet-light-plus","tags":["code","developer","showcase","vscode"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/code-snippet-light-plus/code-snippet-light-plus.html"
+>
 
-<InstallCommand command="npx hyperframes add code-snippet-light-plus" item="code-snippet-light-plus" />
+<CatalogSlot slot="code">
 
-That writes `compositions/code-snippet-light-plus.html`, plus 1 supporting file under `assets/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="code-snippet-light-plus preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/code-snippet-light-plus.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-light-plus.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="code-snippet-light-plus.html">
-
-```html
+```html code-snippet-light-plus.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -33,6 +33,7 @@ That writes `compositions/code-snippet-light-plus.html`, plus 1 supporting file 
   <body>
     <template id="vscode-light-plus-template">
       <div
+        id="root"
         class="vscode-theme-scene"
         data-composition-id="vscode-light-plus"
         data-width="1920"
@@ -160,7 +161,7 @@ That writes `compositions/code-snippet-light-plus.html`, plus 1 supporting file 
               sans-serif;
           }
 
-          .vscode-theme-scene {
+          #root {
             --activity-bg: #181818;
             --activity-fg: #d7d7d7;
             --activity-muted: #868686;
@@ -201,7 +202,7 @@ That writes `compositions/code-snippet-light-plus.html`, plus 1 supporting file 
             overflow: hidden;
             background:
               linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.32)),
-              url("../assets/background.jpeg") center / cover no-repeat;
+              url("assets/background.jpeg") center / cover no-repeat;
             color: var(--editor-fg);
           }
 
@@ -1080,13 +1081,23 @@ That writes `compositions/code-snippet-light-plus.html`, plus 1 supporting file 
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add code-snippet-light-plus" item="code-snippet-light-plus" />
 
-```html
+That writes `compositions/code-snippet-light-plus.html`, plus 1 supporting file under `assets/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 11 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
 <div
   data-composition-id="code-snippet-light-plus"
   data-composition-src="compositions/code-snippet-light-plus.html"
@@ -1098,13 +1109,8 @@ After installing, add the block to your host composition:
 ></div>
 ```
 
-## Features
-
-- Full VS Code workbench recreation — activity bar, sidebar, explorer tree, editor tabs, breadcrumbs, terminal panel, status bar
-- Per-character typing animation with cursor tracking and active line highlight
-- Colors sourced from official `microsoft/vscode` built-in theme JSON
-- 3D perspective tilt at the end of the typing sequence
-- Terminal panel with mock test output
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -1115,3 +1121,7 @@ Tagged `code` `developer` `showcase` `vscode`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

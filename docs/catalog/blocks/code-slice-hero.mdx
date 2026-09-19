@@ -1,0 +1,603 @@
+---
+title: "Code Slice Hero"
+description: "A tiled headline surface flips cell by cell under a sweeping depth field to reveal the rear headline."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/code-slice-hero.json"
+  compositionId="code-slice-hero"
+  compositionSrc="compositions/code-slice-hero/code-slice-hero.html"
+  title="Code Slice Hero"
+  description="A tiled headline surface flips cell by cell under a sweeping depth field to reveal the rear headline."
+  variables={[{"id":"headline","type":"string","label":"Copy - Front headline","default":"MAKE IT","maxLength":32},{"id":"reverseHeadline","type":"string","label":"Copy - Rear headline","default":"MATTER.","maxLength":32},{"id":"direction","type":"enum","label":"Motion - Sweep direction","default":"left-to-right","options":[{"value":"left-to-right","label":"Left to right"},{"value":"right-to-left","label":"Right to left"}]},{"id":"sweepDuration","type":"number","label":"Motion - Sweep duration","default":4.2,"min":2.6,"max":4.5,"step":0.05,"unit":"s"},{"id":"sweepEaseStrength","type":"number","label":"Motion - Sweep easing strength","default":3,"min":0,"max":3,"step":0.05,"description":"0 = linear. Higher values start faster and slow more strongly toward the end."},{"id":"flipDuration","type":"number","label":"Motion - Each tile flip","default":0.75,"min":0.65,"max":1.65,"step":0.05,"unit":"s"},{"id":"cursorRadius","type":"number","label":"Cursor - Influence radius","default":210,"min":160,"max":480,"step":10,"unit":"px"},{"id":"cursorFalloff","type":"number","label":"Cursor - Influence falloff","default":1.4,"min":0.4,"max":3.5,"step":0.05},{"id":"cursorDepth","type":"number","label":"Cursor - Depth (+ toward camera)","default":80,"min":-320,"max":320,"step":10,"unit":"px"},{"id":"tiltStrength","type":"number","label":"Cursor - Pull / tilt strength","default":55,"min":0,"max":55,"step":1,"unit":"deg"},{"id":"noiseStrength","type":"number","label":"Motion - Organic variation","default":2,"min":0,"max":2,"step":0.05},{"id":"flipBounce","type":"number","label":"Motion - Elastic flip bounce","default":0.15,"min":0,"max":0.8,"step":0.05},{"id":"cellSize","type":"number","label":"Slices - Square cell size","default":112,"min":24,"max":120,"step":4,"unit":"px"},{"id":"formationScale","type":"number","label":"Slices - Local formation scale","default":1,"min":0.94,"max":1,"step":0.001},{"id":"fontSize","type":"number","label":"Type - Maximum size","default":310,"min":160,"max":480,"step":5,"unit":"px"},{"id":"behindColor","type":"color","label":"Surface - Behind-tile background","default":"#212121"},{"id":"shadowStrength","type":"number","label":"Surface - Cast shadow strength","default":0.19,"min":0,"max":0.65,"step":0.01},{"id":"shadowSoftness","type":"number","label":"Surface - Cast shadow softness","default":4,"min":0.5,"max":4,"step":0.1,"unit":"px"}]}
+  meta={{"duration":8,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":532}}
+  attribution={{"path":"registry/blocks/code-slice-hero","tags":["3d-motion","transition","typography","tiles","flip","webgl2","shadows","two-headlines"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/code-slice-hero/code-slice-hero.html"
+>
+
+<CatalogSlot slot="code">
+
+```html code-slice-hero.html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"headline","type":"string","label":"Copy - Front headline","default":"MAKE IT","maxLength":32},{"id":"reverseHeadline","type":"string","label":"Copy - Rear headline","default":"MATTER.","maxLength":32},{"id":"direction","type":"enum","label":"Motion - Sweep direction","default":"left-to-right","options":[{"value":"left-to-right","label":"Left to right"},{"value":"right-to-left","label":"Right to left"}]},{"id":"sweepDuration","type":"number","label":"Motion - Sweep duration","default":4.2,"min":2.6,"max":4.5,"step":0.05,"unit":"s"},{"id":"sweepEaseStrength","type":"number","label":"Motion - Sweep easing strength","default":3,"min":0,"max":3,"step":0.05,"description":"0 = linear. Higher values start faster and slow more strongly toward the end."},{"id":"flipDuration","type":"number","label":"Motion - Each tile flip","default":0.75,"min":0.65,"max":1.65,"step":0.05,"unit":"s"},{"id":"cursorRadius","type":"number","label":"Cursor - Influence radius","default":210,"min":160,"max":480,"step":10,"unit":"px"},{"id":"cursorFalloff","type":"number","label":"Cursor - Influence falloff","default":1.4,"min":0.4,"max":3.5,"step":0.05},{"id":"cursorDepth","type":"number","label":"Cursor - Depth (+ toward camera)","default":80,"min":-320,"max":320,"step":10,"unit":"px"},{"id":"tiltStrength","type":"number","label":"Cursor - Pull / tilt strength","default":55,"min":0,"max":55,"step":1,"unit":"deg"},{"id":"noiseStrength","type":"number","label":"Motion - Organic variation","default":2,"min":0,"max":2,"step":0.05},{"id":"flipBounce","type":"number","label":"Motion - Elastic flip bounce","default":0.15,"min":0,"max":0.8,"step":0.05},{"id":"cellSize","type":"number","label":"Slices - Square cell size","default":112,"min":24,"max":120,"step":4,"unit":"px"},{"id":"formationScale","type":"number","label":"Slices - Local formation scale","default":1,"min":0.94,"max":1,"step":0.001},{"id":"fontSize","type":"number","label":"Type - Maximum size","default":310,"min":160,"max":480,"step":5,"unit":"px"},{"id":"behindColor","type":"color","label":"Surface - Behind-tile background","default":"#212121"},{"id":"shadowStrength","type":"number","label":"Surface - Cast shadow strength","default":0.19,"min":0,"max":0.65,"step":0.01},{"id":"shadowSoftness","type":"number","label":"Surface - Cast shadow softness","default":4,"min":0.5,"max":4,"step":0.1,"unit":"px"}]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Code Slice Hero</title>
+    <script src="assets/gsap-3.14.2.min.js"></script>
+    <script src="shadows.js"></script>
+    <script src="surface.js"></script>
+    <style>
+      @font-face {
+        font-family: SliceGeist;
+        src: url("./assets/Geist-Bold.ttf") format("truetype");
+        font-weight: 700;
+        font-display: block;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        background: #fff;
+      }
+      #csh-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #fff;
+      }
+      #csh-stage {
+        position: absolute;
+        inset: 0;
+      }
+      #csh-flat {
+        position: absolute;
+        inset: 0;
+        background: #fff var(--csh-front) no-repeat 0 0 / 1920px 1080px;
+      }
+      .csh-accessible {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="csh-root"
+      data-composition-id="code-slice-hero"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="csh-stage"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="1"
+        aria-hidden="true"
+      ></section>
+      <div id="csh-flat" aria-hidden="true"></div>
+      <h1 id="csh-accessible" class="csh-accessible"></h1>
+    </div>
+    <script>
+      (() => {
+        "use strict";
+        const W = 1920,
+          H = 1080,
+          DURATION = 8,
+          SWEEP_START = 1.35;
+        const schema = JSON.parse(
+          document.documentElement.getAttribute("data-composition-variables"),
+        );
+        const defaults = Object.fromEntries(schema.map((v) => [v.id, v.default]));
+        const values = { ...defaults, ...(window.__hyperframes?.getVariables?.() || {}) };
+        const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+        const number = (key, a, b) =>
+          Number.isFinite(Number(values[key])) ? clamp(Number(values[key]), a, b) : defaults[key];
+        const smooth = (v) => {
+          const u = clamp(v);
+          return u * u * u * (10 + u * (-15 + 6 * u));
+        };
+        const headline = String(values.headline ?? defaults.headline)
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 32);
+        const reverseHeadline = String(values.reverseHeadline ?? defaults.reverseHeadline)
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 32);
+        const direction = values.direction === "right-to-left" ? -1 : 1;
+        const cellSize = Math.round(number("cellSize", 24, 120));
+        const columns = Math.ceil(W / cellSize),
+          rows = Math.ceil(H / cellSize);
+        const gridX = Math.floor((W - columns * cellSize) / 2),
+          gridY = Math.floor((H - rows * cellSize) / 2);
+        const formationScale = number("formationScale", 0.94, 1);
+        const sweepPower = 1 + number("sweepEaseStrength", 0, 3);
+        const sweepDuration = number("sweepDuration", 2.6, 4.5),
+          flipDuration = number("flipDuration", 0.65, 1.65);
+        const cursorRadius = number("cursorRadius", 160, 480),
+          tiltStrength = number("tiltStrength", 0, 55);
+        const cursorDepth = number("cursorDepth", -320, 320);
+        const cursorFalloff = number("cursorFalloff", 0.4, 3.5);
+        const fieldReach = cursorRadius * Math.sqrt(-Math.log(0.06) / cursorFalloff);
+        const noiseStrength = number("noiseStrength", 0, 2),
+          flipBounce = number("flipBounce", 0, 0.8);
+        const maxFont = number("fontSize", 160, 480);
+        // Match the workbench color control: both #RGB and #RRGGBB are valid.
+        const rawBehindColor = String(values.behindColor ?? "")
+          .trim()
+          .toLowerCase();
+        const behindColor = /^#[0-9a-f]{3}$/.test(rawBehindColor)
+          ? "#" +
+            rawBehindColor
+              .slice(1)
+              .split("")
+              .map((c) => c + c)
+              .join("")
+          : /^#[0-9a-f]{6}$/.test(rawBehindColor)
+            ? rawBehindColor
+            : "#ffffff";
+        const shadowStrength = number("shadowStrength", 0, 0.65),
+          shadowSoftness = number("shadowSoftness", 0.5, 4);
+        const stage = document.getElementById("csh-stage"),
+          root = document.getElementById("csh-root");
+        const accessible = document.getElementById("csh-accessible"),
+          flat = document.getElementById("csh-flat");
+        const tiles = [],
+          cells = [];
+        const cursorLeft = -cursorRadius * 1.8,
+          cursorSpan = W + cursorRadius * 3.6;
+        let disposed = false,
+          timeline,
+          lastTime = 0,
+          finishTime = 0;
+        let firstMotion = SWEEP_START,
+          lastMotion = DURATION,
+          lastRenderedTime = NaN,
+          frameMode;
+        let surface;
+        const renderStats = { evaluatedTiles: 0, drawCalls: 0, restTiles: 0 };
+
+        // Shared front and rear surfaces, as in Code Slice Hero's UV windows.
+        // Raster alpha selects flip eligibility only, never a moving mask.
+        function textSurface(text) {
+          const canvas = document.createElement("canvas");
+          canvas.width = W;
+          canvas.height = H;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          let size = maxFont;
+          ctx.font = `700 ${size}px SliceGeist`;
+          const measured = ctx.measureText(text);
+          if (measured.width > W - 320) size *= (W - 320) / measured.width;
+          ctx.font = `700 ${size}px SliceGeist`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          const box = ctx.measureText(text);
+          const baseline = H / 2 + (box.actualBoundingBoxAscent - box.actualBoundingBoxDescent) / 2;
+          ctx.fillStyle = "#101010";
+          ctx.fillText(text, W / 2, baseline);
+          const ink = ctx.getImageData(0, 0, W, H).data;
+          let inkPixels = 0;
+          for (let i = 3; i < ink.length; i += 4) if (ink[i] > 0) inkPixels++;
+          ctx.globalCompositeOperation = "destination-over";
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, W, H);
+          return { canvas, ink, inkPixels, url: canvas.toDataURL("image/png"), size };
+        }
+
+        function countInk(ink, x0, y0, x1, y1) {
+          let count = 0;
+          for (let y = Math.max(0, y0); y < Math.min(H, y1); y++)
+            for (let x = Math.max(0, x0); x < Math.min(W, x1); x++) {
+              if (ink[(y * W + x) * 4 + 3] > 0) count++;
+            }
+          return count;
+        }
+
+        // These independent hashes are the experiment's actual per-purpose seeds.
+        function hash(col, row, a, b) {
+          const v = Math.sin(col * a + row * b) * 43758.5453;
+          return v - Math.floor(v);
+        }
+
+        // Same Gaussian^falloff + smooth cutoff as the source hover (falloff 1.4).
+        // Distances are in composition pixels, so the field stays circular even
+        // when square cell size / grid density changes.
+        function fieldAt(x, y, cursorX, cursorY) {
+          const distanceSquared = (x - cursorX) ** 2 + (y - cursorY) ** 2;
+          const raw = Math.exp((-cursorFalloff * distanceSquared) / (cursorRadius * cursorRadius));
+          const u = clamp((raw - 0.06) / 0.94);
+          return u * u * (3 - 2 * u);
+        }
+
+        // One analytic ease-out and its inverse drive every passage/window time.
+        // Strength zero preserves linear travel exactly; strength one is quadratic.
+        const easeSweep = (u) =>
+          sweepPower === 1 ? clamp(u) : 1 - Math.pow(1 - clamp(u), sweepPower);
+        const inverseSweep = (u) =>
+          sweepPower === 1 ? clamp(u) : 1 - Math.pow(1 - clamp(u), 1 / sweepPower);
+        function cursorTimeAtX(x) {
+          const rank = (direction === 1 ? x - cursorLeft : W - x - cursorLeft) / cursorSpan;
+          return SWEEP_START + sweepDuration * inverseSweep(rank);
+        }
+        function cursorAt(time) {
+          const progress = easeSweep((time - SWEEP_START) / sweepDuration);
+          return {
+            x: cursorLeft + cursorSpan * (direction === 1 ? progress : 1 - progress),
+            y: H / 2,
+            z: cursorDepth,
+          };
+        }
+
+        function poseAt(tile, time) {
+          const t = clamp(time, 0, DURATION);
+          const progress = tile.active ? clamp((t - tile.flipStart) / tile.flipDuration) : 0;
+          const turn = smooth(progress / 0.64);
+          // Analytic damped oscillation: overshoot, return past 180, settle exactly.
+          // The attack/tail both have zero slope, so bounce=0 is a clean half-turn.
+          const ringT = clamp((progress - 0.64) / 0.36);
+          const ringEnvelope =
+            smooth(ringT / 0.12) * Math.exp(-3.3 * ringT) * (1 - smooth((ringT - 0.72) / 0.28));
+          const bounce = flipBounce * 36 * Math.sin(ringT * Math.PI * 3.3) * ringEnvelope;
+          const flight = Math.sin(Math.PI * progress) ** 0.7;
+          const cursor = cursorAt(t);
+          const radial = fieldAt(tile.cx, tile.cy, cursor.x, cursor.y);
+          const automatic = t >= SWEEP_START && t <= SWEEP_START + sweepDuration;
+          // A short approach replaces the long, separate anticipation phase.
+          const approach = smooth((t - tile.passTime + 0.2) / 0.16);
+          const pull =
+            (automatic ? radial * approach * (1 - smooth(progress / 0.32)) : 0) *
+            (tile.active ? 1 : 0.55);
+          const dx = cursor.x - tile.cx,
+            dy = cursor.y - tile.cy;
+          const variation = noiseStrength * Math.max(pull, flight * tile.peak);
+          // Continuous deterministic oscillations, not random-at-render-time jitter.
+          const n1 = Math.sin(t * 5.7 + tile.phase),
+            n2 = Math.sin(t * 10.3 + tile.phase * 1.71);
+          const jitter = variation * (n1 * 0.7 + n2 * 0.3);
+          const formation = Math.max(pull, flight * (0.55 + 0.45 * tile.peak));
+          // CSS positive Z points toward the camera. The prior 2D tilt signs
+          // depressed the cursor-facing edge despite lifting the tile center.
+          // A signed depth field now raises that edge for a positive cursor Z;
+          // moving the cursor through the plane smoothly reverses this torque.
+          const depthGain = cursor.z / 160;
+          const pullTiltX =
+            depthGain *
+            ((dy / cursorRadius) * tiltStrength * 1.6 * pull +
+              tile.seedX * tiltStrength * 0.16 * pull);
+          // Ink yaw cannot reverse against its half-turn after cursor passage.
+          // Release its seeded torque over 80 ms; blank tiles retain signed pull.
+          const yawDx = tile.active ? direction * Math.max(0, -direction * dx) : -dx;
+          const yawHandoff = tile.active ? 1 - smooth((t - tile.passTime + 0.04) / 0.12) : 1;
+          const pullTiltY =
+            depthGain *
+            ((yawDx / cursorRadius) * tiltStrength * 1.8 * pull +
+              tile.seedY * tiltStrength * 0.12 * pull) *
+            yawHandoff;
+          const pullZ = (tiltStrength / 30) * cursor.z * 0.45 * pull;
+          const rx = pullTiltX + tile.seedX * variation * 3 * flight + jitter;
+          const ry = direction * (180 * turn + bounce) + pullTiltY + jitter * 0.7;
+          const rz = tile.seedZ * variation * (2.3 * flight + 1.2 * pull) + jitter * 0.35;
+          return {
+            x: clamp(dx * 0.08 * pull, -tile.width * 0.18, tile.width * 0.18) + jitter * 0.2,
+            y: clamp(dy * 0.07 * pull, -tile.height * 0.11, tile.height * 0.11) + jitter * 0.16,
+            z: pullZ + 17 * flight * tile.peak,
+            cursorDepth: cursor.z,
+            pullTiltX,
+            pullTiltY,
+            pullZ,
+            rx,
+            ry,
+            rz,
+            turn,
+            bounce,
+            radial,
+            pull,
+            peak: tile.peak,
+            formation,
+            scale: 1 - (1 - formationScale) * formation,
+            shade: 1 - 0.12 * Math.abs(Math.sin((ry * Math.PI) / 180)) - 0.018 * formation,
+          };
+        }
+
+        function setRest(tile, rear) {
+          const rest = tile.active && rear ? 1 : 0;
+          if (tile.restState === rest) return;
+          tile.restState = rest;
+          surface.set(tile.index, {
+            x: 0,
+            y: 0,
+            z: 0,
+            rx: 0,
+            ry: rest * direction * 180,
+            rz: 0,
+            scale: 1,
+            formation: 0,
+            shade: 1,
+          });
+        }
+
+        function renderAt(time) {
+          if (disposed) return;
+          lastTime = clamp(time, 0, DURATION);
+          if (lastTime === lastRenderedTime) return;
+          lastRenderedTime = lastTime;
+          renderStats.evaluatedTiles = 0;
+          renderStats.drawCalls = 0;
+          renderStats.restTiles = 0;
+          const mode =
+            lastTime <= firstMotion ? "front" : lastTime >= lastMotion ? "rear" : "moving";
+          if (mode !== frameMode) {
+            frameMode = mode;
+            stage.style.visibility = mode === "moving" ? "visible" : "hidden";
+            flat.style.visibility = mode === "moving" ? "hidden" : "visible";
+            if (mode !== "moving")
+              flat.style.backgroundImage = `var(--csh-${mode === "front" ? "front" : "back"})`;
+          }
+          // One unsegmented atlas is shown only while EVERY tile is flat. This
+          // removes compositor hairlines in the workbench's scaled first frame.
+          // It is hidden for the whole active wave: no backing text or mask fade.
+          for (const tile of tiles) {
+            if (mode !== "moving" || lastTime < tile.motionStart || lastTime > tile.motionEnd) {
+              setRest(tile, mode === "rear" || lastTime > tile.flipStart + tile.flipDuration);
+              renderStats.restTiles++;
+              continue;
+            }
+            tile.restState = null;
+            surface.set(tile.index, poseAt(tile, lastTime));
+            renderStats.evaluatedTiles++;
+          }
+          if (mode === "moving") renderStats.drawCalls = surface.draw();
+          const copy =
+            lastTime < SWEEP_START + sweepDuration / 2 + flipDuration / 2
+              ? headline
+              : reverseHeadline;
+          if (accessible.textContent !== copy) accessible.textContent = copy;
+          stage.dataset.time = lastTime.toFixed(4);
+        }
+
+        function build() {
+          if (disposed) return;
+          const front = textSurface(headline),
+            back = textSurface(reverseHeadline);
+          root.style.setProperty("--csh-front", `url("${front.url}")`);
+          root.style.setProperty("--csh-back", `url("${back.url}")`);
+          let coveredFront = 0,
+            coveredBack = 0;
+          firstMotion = Infinity;
+          lastMotion = 0;
+          for (let row = 0; row < rows; row++)
+            for (let col = 0; col < columns; col++) {
+              // One exhaustive integer pixel partition. No alpha threshold, corner
+              // sampling, skipped row, or per-letter box can punch holes in the type.
+              const x = gridX + col * cellSize,
+                x1 = x + cellSize;
+              const y = gridY + row * cellSize,
+                y1 = y + cellSize;
+              const frontInk = countInk(front.ink, x, y, x1, y1),
+                backInk = countInk(back.ink, x, y, x1, y1);
+              coveredFront += frontInk;
+              coveredBack += backInk;
+              const cell = {
+                col,
+                row,
+                x,
+                y,
+                width: x1 - x,
+                height: y1 - y,
+                frontInk,
+                backInk,
+                active: frontInk + backInk > 0,
+              };
+              cells.push(cell);
+              // Build the whole square surface. White cells participate in radial
+              // lift/tilt at a restrained strength, but progress is locked to zero
+              // above so they never enter the headline's half-turn or bounce.
+              const cx = x + cell.width / 2,
+                cy = y + cell.height / 2;
+              const peak = fieldAt(cx, cy, cx, H / 2);
+              const passTime = cursorTimeAtX(cx);
+              const columnSeconds = Math.abs(
+                cursorTimeAtX(cx + cellSize / 2) - cursorTimeAtX(cx - cellSize / 2),
+              );
+              // The turn starts at passage, with at most 12 ms of seeded stagger.
+              const flipStart =
+                passTime +
+                hash(col, row, 269.5, 183.3) *
+                  Math.min(0.012, columnSeconds * 0.08) *
+                  Math.min(noiseStrength, 1);
+              const duration = flipDuration * (1 + 0.18 * (1 - peak));
+              const tile = {
+                ...cell,
+                index: tiles.length,
+                cx,
+                cy,
+                peak,
+                passTime,
+                flipStart,
+                flipDuration: duration,
+                phase: hash(col, row, 127.1, 311.7) * Math.PI * 2,
+                seedX: hash(col, row, 419.2, 371.9) * 2 - 1,
+                seedY: hash(col, row, 37.7, 631.5) * 2 - 1,
+                seedZ: hash(col, row, 97.3, 127.9) * 2 - 1,
+              };
+              // The Gaussian is exactly zero outside this circle. Precompute each
+              // cell's entry/exit times once, independent of playback history.
+              const dy = cy - H / 2;
+              let enter = Infinity,
+                exit = -Infinity;
+              if (Math.abs(dy) < fieldReach) {
+                const dx = Math.sqrt(fieldReach * fieldReach - dy * dy);
+                enter = Math.max(
+                  SWEEP_START,
+                  passTime - 0.2,
+                  cursorTimeAtX(direction === 1 ? cx - dx : cx + dx),
+                );
+                exit = Math.min(
+                  SWEEP_START + sweepDuration,
+                  cursorTimeAtX(direction === 1 ? cx + dx : cx - dx),
+                );
+              }
+              tile.motionStart = Math.min(enter, tile.active ? flipStart : Infinity);
+              tile.motionEnd = Math.max(exit, tile.active ? flipStart + duration : -Infinity);
+              firstMotion = Math.min(firstMotion, tile.motionStart);
+              lastMotion = Math.max(lastMotion, tile.motionEnd);
+              if (tile.active) finishTime = Math.max(finishTime, flipStart + duration);
+              tiles.push(tile);
+            }
+          const inkTiles = tiles.filter((tile) => tile.active);
+          root.style.backgroundColor = behindColor;
+          surface = window.CodeSliceSurface(stage, front.canvas, back.canvas, tiles, {
+            behindColor,
+            shadowStrength,
+            shadowSoftness,
+          });
+          const state = { time: 0 };
+          timeline = gsap.timeline({ paused: true });
+          timeline.to(
+            state,
+            {
+              time: DURATION,
+              duration: DURATION,
+              ease: "none",
+              onUpdate: () => renderAt(state.time),
+            },
+            0,
+          );
+          timeline
+            .addLabel("seamless-front", 0)
+            .addLabel("cursor-sweep", SWEEP_START)
+            .addLabel("cursor-passed", SWEEP_START + sweepDuration)
+            .addLabel("seamless-rear", finishTime);
+          window.__timelines = window.__timelines || {};
+          window.__timelines["code-slice-hero"] = timeline;
+          window.__codeSliceHero = {
+            duration: DURATION,
+            cellSize,
+            columns,
+            rows,
+            activeCount: tiles.length,
+            flipCount: inkTiles.length,
+            backgroundCount: tiles.length - inkTiles.length,
+            copy: [headline, reverseHeadline],
+            fontSizes: [front.size, back.size],
+            finishTime,
+            coverage: {
+              front: { inkPixels: front.inkPixels, covered: coveredFront },
+              back: { inkPixels: back.inkPixels, covered: coveredBack },
+            },
+            cells,
+            cursorAt,
+            cursorTimeAtX,
+            sweepEaseStrength: sweepPower - 1,
+            renderStats,
+            shadowStats: surface.shadowStats,
+            behindColor,
+            renderer: "webgl2-instanced",
+            sample: (time) =>
+              tiles.map((tile) => ({
+                col: tile.col,
+                row: tile.row,
+                flips: tile.active,
+                passTime: tile.passTime,
+                flipStart: tile.flipStart,
+                flipDuration: tile.flipDuration,
+                ...poseAt(tile, time),
+              })),
+            renderAt,
+          };
+          renderAt(0);
+        }
+
+        // The cursor is imaginary and belongs exclusively to the timeline.
+        // No mouse/pointer input or wall-clock accumulation can affect a frame.
+        function seek(event) {
+          if (!timeline || typeof event.detail?.time !== "number") return;
+          const time = clamp(event.detail.time, 0, DURATION);
+          timeline.totalTime(time, true);
+          renderAt(time);
+        }
+        window.addEventListener("hf-seek", seek);
+        window.__codeSliceInstance = {
+          dispose() {
+            disposed = true;
+            timeline?.kill();
+            surface?.dispose();
+            window.removeEventListener("hf-seek", seek);
+            stage.replaceChildren();
+            tiles.length = 0;
+            cells.length = 0;
+            root.style.removeProperty("--csh-front");
+            root.style.removeProperty("--csh-back");
+          },
+        };
+        window.__codeSliceReady = document.fonts.load("700 420px SliceGeist").then(build);
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add code-slice-hero" item="code-slice-hero" />
+
+That writes `compositions/code-slice-hero/code-slice-hero.html`, plus 7 supporting files under `compositions/code-slice-hero/assets/` and `compositions/code-slice-hero/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 8 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="code-slice-hero"
+  data-composition-src="compositions/code-slice-hero/code-slice-hero.html"
+  data-start="0"
+  data-duration="8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `3d-motion` `transition` `typography` `tiles` `flip` `webgl2` `shadows` `two-headlines`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

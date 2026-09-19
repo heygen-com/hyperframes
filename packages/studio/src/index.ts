@@ -30,6 +30,7 @@ export type { ToggleProps } from "./components/ui/Toggle";
 
 // NLE Layout
 export { EditorShell } from "./components/EditorShell";
+export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
@@ -48,6 +49,10 @@ export {
   formatTime,
 } from "./player";
 export type { TimelineElement } from "./player";
+
+// Host overlays: draw over the preview in composition coordinates (see EditorShellProps.gestureOverlay)
+export { usePreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
+export type { PreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
 
 // Editor
 export { SourceEditor } from "./components/editor/SourceEditor";

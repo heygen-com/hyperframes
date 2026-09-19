@@ -257,6 +257,20 @@
             "pages": [
               "catalog/index",
               {
+                "group": "3D motion",
+                "tag": "7",
+                "expanded": false,
+                "pages": [
+                  "catalog/blocks/canopy-part-title",
+                  "catalog/blocks/code-slice-hero",
+                  "catalog/blocks/cuboid-carousel",
+                  "catalog/blocks/frost-sequence-camera-orbit",
+                  "catalog/blocks/glass-shard-title",
+                  "catalog/blocks/orbit-card",
+                  "catalog/blocks/wireframe-portal-title"
+                ]
+              },
+              {
                 "group": "Carousels",
                 "tag": "25",
                 "expanded": false,

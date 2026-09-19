@@ -1,28 +1,28 @@
 ---
 title: "Code Scroll To Line"
 description: "The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/code-scroll.json"
+  compositionId="code-scroll"
+  compositionSrc="compositions/code-scroll.html"
+  title="Code Scroll To Line"
+  description="The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules."
+  variables={[]}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"Code Animations","badge":"Stable","codeLines":1560}}
+  attribution={{"path":"registry/blocks/code-scroll","tags":["code","code-animation","scroll","developer"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/code-scroll/code-scroll.html"
+>
 
-<InstallCommand command="npx hyperframes add code-scroll" item="code-scroll" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/code-scroll.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="code-scroll preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/code-scroll.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-scroll.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="code-scroll.html">
-
-```html
+```html code-scroll.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -1585,15 +1585,36 @@ That writes one file: `compositions/code-scroll.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add code-scroll" item="code-scroll" />
 
-```html
-<div data-composition-id="code-scroll" data-composition-src="compositions/code-scroll.html" data-start="0" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes one file: `compositions/code-scroll.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="code-scroll"
+  data-composition-src="compositions/code-scroll.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -1604,3 +1625,7 @@ Tagged `code` `code-animation` `scroll` `developer`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

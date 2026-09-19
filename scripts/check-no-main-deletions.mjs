@@ -192,6 +192,102 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/hooks/useExpandedTimelineElements.test.ts",
     "tests for the removed child-row expansion hook",
   ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k1.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k3.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k4.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r2k0.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r2k2.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/bgm.m4a",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/eb-garamond-latin-400-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/eb-garamond-latin-700-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-400-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-500-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-600-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "docs/public/catalog/assets/0743c9b7b918b0d9.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/0ad78008621fe77d.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/1d083f9292fdd0f8.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/202dcdfded4c9ff5.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/44b382d4775c2bb8.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/5a88ad5abfd02f99.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/61facab3428ae59c.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/6fef5557664470a3.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/7254a2cfd76b60b5.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/bd3c8b0cb5fa618c.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/d0ff80e331a5ebdb.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/df3dc3536491ffca.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/e234267390ffd6ff.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
   ...[
     "docs/studio/storyboard.mdx",
     "packages/studio-server/src/routes/storyboard.test.ts",

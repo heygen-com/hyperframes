@@ -256,6 +256,24 @@ describe("resolveConfig", () => {
   describe("explainDrawElementDisabled (names the silent refusals)", () => {
     const base = { browserGpuMode: "hardware" as const, workerEncode: true };
 
+    it("turns fast capture off by default on a host capped at Chrome 150, unless opted in", () => {
+      const args = {
+        useDrawElement: true,
+        platform: "darwin" as const,
+        browserGpuMode: "hardware" as const,
+        workerEncode: true,
+        chromeCeiling: 150,
+      };
+      expect(resolveDefaultDrawElement({ ...args, explicitOptIn: false })).toBe(false);
+      expect(resolveDefaultDrawElement({ ...args, explicitOptIn: true })).toBe(true);
+      expect(
+        resolveDefaultDrawElement({ ...args, chromeCeiling: undefined, explicitOptIn: false }),
+      ).toBe(true);
+      expect(explainDrawElementDisabled({ ...base, platform: "darwin", chromeCeiling: 150 })).toBe(
+        "old_chrome",
+      );
+    });
+
     it("names each refusal", () => {
       expect(explainDrawElementDisabled({ ...base, platform: "linux" })).toBe(
         "unsupported_platform",
