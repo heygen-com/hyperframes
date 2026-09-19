@@ -122,3 +122,15 @@ test("the add-media example carries every attribute Studio's drop writes", async
     assert.ok(image.includes(attr.split("=")[0]), `doc example lacks ${attr}`);
   }
 });
+
+test("the video and audio add-media examples carry no data-duration and keep the clip attributes", async () => {
+  const { section } = await addMediaSection();
+  for (const tag of ["video", "audio"]) {
+    const example = section.match(new RegExp(`<${tag}[\\s\\S]*?</${tag}>`))?.[0] ?? "";
+    assert.ok(example, `no <${tag}> example`);
+    assert.doesNotMatch(example, /data-duration/, `${tag} example must not author a duration`);
+    for (const attr of ["id=", 'class="clip"', "data-start", "data-track-index"]) {
+      assert.ok(example.includes(attr), `${tag} example lacks ${attr}`);
+    }
+  }
+});

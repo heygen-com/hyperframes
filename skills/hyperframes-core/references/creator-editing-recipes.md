@@ -421,7 +421,7 @@ Timeline math: pick the clips first and say which ones you picked (by id) if the
 
 ## Add media (image, video, audio)
 
-Write exactly what Studio writes when a person drops a file on the timeline, so an agent-added clip behaves the same as a dropped one. Studio's source of truth is `DEFAULT_TIMELINE_ASSET_DURATION` in `packages/studio/src/utils/studioHelpers.ts` and `buildTimelineAssetInsertHtml` in `packages/studio/src/utils/timelineAssetDrop.ts`; a test keeps this section equal to them.
+Write what Studio writes when a person drops a file on the timeline, so an agent-added clip behaves the same as a dropped one; the one difference is that video and audio need no `data-duration`. Studio's source of truth is `DEFAULT_TIMELINE_ASSET_DURATION` in `packages/studio/src/utils/studioHelpers.ts` and `buildTimelineAssetInsertHtml` in `packages/studio/src/utils/timelineAssetDrop.ts`; a test keeps this section equal to them.
 
 - **Image: `data-duration="3"`.** A still has no length of its own, so it gets 3 seconds. Without a `data-duration` it never ends and stays on screen for the rest of the composition.
 - **Video and audio: `data-start` is enough.** The length comes from the media itself. An authored `data-duration` shorter than the file is a trim, never a requirement; leave it out unless the request asks for a shorter clip.
