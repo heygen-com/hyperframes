@@ -20,32 +20,38 @@
     {
       "path": "assets/av_r1k1.mp4",
       "target": "assets/av_r1k1.mp4",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/833c8e5e6e9ddd7f.mp4"
     },
     {
       "path": "assets/av_r1k3.mp4",
       "target": "assets/av_r1k3.mp4",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/1602b62222b3812c.mp4"
     },
     {
       "path": "assets/av_r1k4.mp4",
       "target": "assets/av_r1k4.mp4",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/3b524891a8beee03.mp4"
     },
     {
       "path": "assets/av_r2k0.mp4",
       "target": "assets/av_r2k0.mp4",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/70e17234ad8c5b70.mp4"
     },
     {
       "path": "assets/av_r2k2.mp4",
       "target": "assets/av_r2k2.mp4",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/a49b79d1a6e960ed.mp4"
     },
     {
       "path": "assets/bgm.m4a",
       "target": "assets/bgm.m4a",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/1eac5085ebc8b25e.m4a"
     },
     {
       "path": "assets/heygen-logo.svg",
@@ -55,17 +61,20 @@
     {
       "path": "assets/fonts/inter-latin-400-normal.woff2",
       "target": "assets/fonts/inter-latin-400-normal.woff2",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/8909904ab6c872eb.woff2"
     },
     {
       "path": "assets/fonts/inter-latin-500-normal.woff2",
       "target": "assets/fonts/inter-latin-500-normal.woff2",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/f3779f1efccc4bdc.woff2"
     },
     {
       "path": "assets/fonts/inter-latin-600-normal.woff2",
       "target": "assets/fonts/inter-latin-600-normal.woff2",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/f9a06e79cd3a2a20.woff2"
     },
     {
       "path": "assets/fonts/inter-LICENSE.txt",
@@ -75,12 +84,14 @@
     {
       "path": "assets/fonts/eb-garamond-latin-400-normal.woff2",
       "target": "assets/fonts/eb-garamond-latin-400-normal.woff2",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/b63448e2680a0dbd.woff2"
     },
     {
       "path": "assets/fonts/eb-garamond-latin-700-normal.woff2",
       "target": "assets/fonts/eb-garamond-latin-700-normal.woff2",
-      "type": "hyperframes:asset"
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/5d0f8a497a48fd2a.woff2"
     },
     {
       "path": "assets/fonts/eb-garamond-LICENSE.txt",
