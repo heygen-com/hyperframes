@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,31 +41,6 @@ describe("createContactSheet", () => {
         .png()
         .toFile(b);
 
-      // DIAGNOSTIC (temporary): first text render in a fresh process, with and without a Fontconfig file
-      // present at process start (a mid-process env write may not reach the native library on Windows).
-      const probe = `const sharp=require("sharp");const t=Date.now();sharp(Buffer.from('<svg width="64" height="26"><text x="8" y="18" font-family="Arial,sans-serif" font-size="13">A</text></svg>')).png().toBuffer().then(()=>console.log("child first text render ms",Date.now()-t));`;
-      for (const [label, env] of [
-        ["child without override", { ...process.env, FONTCONFIG_FILE: "" }],
-        ["child with override at start", { ...process.env }],
-      ] as const) {
-        const out = spawnSync(process.execPath, ["-e", probe], {
-          env,
-          encoding: "utf8",
-          cwd: process.cwd(),
-        });
-        console.log(label, out.stdout.trim(), out.stderr.trim().slice(0, 200));
-      }
-      // DIAGNOSTIC (temporary): which first-use step costs the ~4 s on Windows.
-      const svg = (inner: string) => Buffer.from(`<svg width="64" height="26">${inner}</svg>`);
-      console.time("first svg without text");
-      await sharp(svg('<rect width="64" height="26" fill="#1a1a1a"/>')).png().toBuffer();
-      console.timeEnd("first svg without text");
-      console.time("first svg with text");
-      await sharp(svg('<text x="8" y="18" font-family="Arial,sans-serif" font-size="13">A</text>'))
-        .png()
-        .toBuffer();
-      console.timeEnd("first svg with text");
-      console.time("createContactSheet");
       await createContactSheet([a, b], out, {
         cols: 2,
         cellWidth: 16,
@@ -74,7 +48,6 @@ describe("createContactSheet", () => {
         labels: ["A", "B"],
         maxImages: 2,
       });
-      console.timeEnd("createContactSheet");
 
       // format alone would pass even if the SVG label overlay silently drew
       // nothing (e.g. Fontconfig misconfigured): the label band (default
