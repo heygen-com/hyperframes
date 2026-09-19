@@ -95,6 +95,17 @@ function enclosingTopLevel(statements: Node[], start: number, end: number): Node
   return null;
 }
 
+/** A statement that only declares a function: its tweens run when something calls it, not here. */
+function declaresFunction(stmt: Node): boolean {
+  if (stmt.type === "FunctionDeclaration") return true;
+  return (
+    stmt.type === "VariableDeclaration" &&
+    (stmt.declarations ?? []).some((d: Node) =>
+      ["FunctionExpression", "ArrowFunctionExpression"].includes(d.init?.type),
+    )
+  );
+}
+
 function isHelperDeclNamed(stmt: Node, names: Set<string>): boolean {
   if (stmt.type === "FunctionDeclaration") return names.has(stmt.id?.name);
   if (stmt.type === "VariableDeclaration") {
@@ -109,20 +120,40 @@ function isHelperDeclNamed(stmt: Node, names: Set<string>): boolean {
  */
 function dropStatementsWithUnknownTiming(
   byStatement: Map<Node, GsapAnimation[]>,
-  helperNames: Set<string>,
+  keptHelpers: Set<string>,
 ): void {
   for (const [stmt, anims] of byStatement) {
     if (!anims.some((a) => a.durationUnresolved || a.resolvedStart === undefined)) continue;
     byStatement.delete(stmt);
-    for (const a of anims) if (a.provenance?.fn) helperNames.delete(a.provenance.fn);
+    for (const a of anims) if (a.provenance?.fn) keptHelpers.add(a.provenance.fn);
   }
 }
 
 /**
- * Rewrite `script` so top-level helper calls / loops that build the timeline
- * become explicit literal tweens. Returns the original script unchanged when
- * there is nothing statically-resolvable to unroll.
+ * Group computed animations by the top-level statement that produced them, in source order.
+ * Origins inside a function declaration are nested: they stay as authored and keep their helper.
  */
+function groupByTopLevelStatement(computed: GsapAnimation[], statements: Node[]) {
+  const byStatement = new Map<Node, GsapAnimation[]>();
+  const helperNames = new Set<string>();
+  const keptHelpers = new Set<string>();
+  for (const anim of computed) {
+    const [s, e] = anim.provenance!.sourceRange!;
+    const stmt = enclosingTopLevel(statements, s, e);
+    const fn = anim.provenance?.fn;
+    if (!stmt || declaresFunction(stmt)) {
+      if (fn) keptHelpers.add(fn);
+      continue;
+    }
+    if (fn) helperNames.add(fn);
+    const list = byStatement.get(stmt) ?? [];
+    list.push(anim);
+    byStatement.set(stmt, list);
+  }
+  return { byStatement, helperNames, keptHelpers };
+}
+
+/** Rewrite top-level helper calls and loops into literal tweens; unchanged when nothing can be unrolled. */
 export function unrollComputedTimeline(script: string): string {
   const parsed = parseGsapScriptAcorn(script);
   const computed = parsed.animations.filter((a) => isComputed(a) && a.provenance?.sourceRange);
@@ -130,20 +161,8 @@ export function unrollComputedTimeline(script: string): string {
 
   const statements = topLevelStatements(script);
 
-  // Group computed animations by the top-level statement that produced them,
-  // preserving source order within each group.
-  const byStatement = new Map<Node, GsapAnimation[]>();
-  const helperNames = new Set<string>();
-  for (const anim of computed) {
-    if (anim.provenance?.fn) helperNames.add(anim.provenance.fn);
-    const [s, e] = anim.provenance!.sourceRange!;
-    const stmt = enclosingTopLevel(statements, s, e);
-    if (!stmt) continue; // nested origin — leave it; can't map to a top-level edit
-    const list = byStatement.get(stmt) ?? [];
-    list.push(anim);
-    byStatement.set(stmt, list);
-  }
-  dropStatementsWithUnknownTiming(byStatement, helperNames);
+  const { byStatement, helperNames, keptHelpers } = groupByTopLevelStatement(computed, statements);
+  dropStatementsWithUnknownTiming(byStatement, keptHelpers);
   if (byStatement.size === 0) return script;
 
   const ms = new MagicString(script);
@@ -152,6 +171,7 @@ export function unrollComputedTimeline(script: string): string {
     ms.overwrite(stmt.start, stmt.end, literals);
   }
   // Drop the now-dead helper declarations.
+  for (const name of keptHelpers) helperNames.delete(name);
   for (const stmt of statements) {
     if (isHelperDeclNamed(stmt, helperNames)) ms.remove(stmt.start, stmt.end);
   }

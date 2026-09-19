@@ -75,6 +75,20 @@ fade("#a", 1, LEN);
 fade("#b", 2, 0.5);`;
     const out = unrollComputedTimeline(script);
     expect(out).toContain('fade("#a", 1, LEN);');
+    expect(out).toContain("function fade");
     expect(out).toContain("duration: 0.5");
+  });
+
+  it("leaves a nested helper chain declared and callable", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { tl.to(sel, { opacity: 1, duration: 1 }, at); }
+function pop(sel, at) { fade(sel, at); }
+pop("#a", 1);
+fade("#b", 2);`;
+    const out = unrollComputedTimeline(script);
+    expect(out).toContain("function pop");
+    expect(out).toContain("function fade");
+    expect(out).toContain('pop("#a", 1);');
+    expect(out).not.toContain('tl.to("#a"');
   });
 });
