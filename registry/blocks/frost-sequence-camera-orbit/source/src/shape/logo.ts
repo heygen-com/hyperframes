@@ -1,10 +1,6 @@
-// `logo` shape: load an SVG, round its corners, extrude it with a bevel, crease the normals, and
-// voxelise a signed distance grid with three-mesh-bvh so the raycast, interior sampling, particle
-// normals and material raymarch work exactly like the primitives.
-//
-// FROST: loadLogo() is split into loadLogoShapes() + extrudeShapes() + voxelize() so headline outlines
-// (shape/text.ts) go through the identical pipeline, and so several shapes can be voxelised over one
-// shared `bound` (the composition swaps distance fields inside one live texture).
+// `logo` shape: load an SVG, round corners, extrude with a bevel, crease normals, voxelise a signed distance grid
+// (three-mesh-bvh) so raycast, sampling and raymarch match the primitives. FROST: loadLogo() is split into
+// loadLogoShapes() + extrudeShapes() + voxelize() so headlines share the pipeline and several shapes share one `bound`.
 import { unionOutlines } from "./unionOutlines";
 import * as THREE from "three/webgpu";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
@@ -114,9 +110,8 @@ export async function loadLogoShapes(
 }
 
 /**
- * Round every outline's corners (radius `P.cornerRadius * ref`), extrude with a bevel (depth and bevel as
- * fractions of `ref`), merge, crease the normals and centre the result. `ref` is the mark's width for the
- * logo and the font size for a headline.
+ * Round outline corners (radius `P.cornerRadius * ref`), extrude with a bevel (depth and bevel as fractions of
+ * `ref`), merge, crease normals and centre. `ref` is the mark's width for the logo, the font size for a headline.
  */
 export function extrudeShapes(
   raw: THREE.Shape[],
@@ -172,7 +167,7 @@ export function halfExtents(geo: THREE.BufferGeometry) {
   return half;
 }
 
-/** The texture samples [-sampleBound, sampleBound]^3; bound retains the shared simulation domain and distance encoding range. */
+/** The texture samples [-sampleBound, sampleBound]^3; bound keeps the shared simulation domain and distance range. */
 export function makeLogoSDF(
   data3: Float32Array,
   n: number,
@@ -224,13 +219,10 @@ export function makeLogoSDF(
 }
 
 /**
- * Voxel SDF over the cube [-bound, bound]^3 at `res` per axis: unsigned distance from the BVH closest point,
- * sign from ray parity along z per grid column (a ray from below the cube crosses the closed surface an odd
- * number of times before every interior voxel). The experiment took the sign from the closest face's normal,
- * which is wrong near edges and bevels; those mis-signed voxels read as solid to the erosion field and could
- * never be cut, so slivers of surface survived every break (visible at the full 192 field, hidden by the
- * coarser lite field). `bound` is supplied so several shapes share one field; the closest-point query is
- * capped a few voxels past the surface (a far voxel is outside for these thin extrusions).
+ * Voxel SDF over [-bound, bound]^3 at `res` per axis: unsigned BVH closest-point distance, sign from ray parity
+ * along z (odd crossings = interior). The closest face's normal gives wrong signs near edges and bevels; those
+ * voxels read as solid and never erode, leaving slivers (visible at the full 192 field). The closest-point
+ * query is capped a few voxels past the surface (far voxels are outside for these thin extrusions).
  */
 export function voxelize(
   geo: THREE.BufferGeometry,

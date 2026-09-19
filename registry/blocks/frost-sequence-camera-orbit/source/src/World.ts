@@ -162,7 +162,7 @@ export class World {
   private gpuTimerLast = -Infinity;
   private readonly renderSize = new THREE.Vector2();
   private readonly adaptiveResolution = new AdaptiveResolution();
-  /** ?offscreen=1 renders into a render target instead of the canvas (headless checks: presenting kills SwiftShader devices). */
+  /** ?offscreen=1 renders into a render target, not the canvas (presenting kills headless SwiftShader devices). */
   private offscreenRT: THREE.RenderTarget | null = FLAGS.has("offscreen")
     ? new THREE.RenderTarget(16, 16, {
         depthBuffer: false,
@@ -370,16 +370,15 @@ export class World {
 
   /** FROST: called after the camera is final for this frame and before the post graph renders. */
   onBeforeRender: ((t: number) => void) | null = null;
-  /** FROST: called after the rig placed the object group and before its world matrix is used (the composition's own object motion). */
+  /** Called after the rig places the object group, before its world matrix is used (the object motion). */
   onBeforeSimulation: ((t: number, dt: number) => void) | null = null;
   onObjectTransform: ((t: number) => void) | null = null;
   /** Authored camera evaluates after the current target matrix, before interaction and render. */
   onCameraTransform: ((t: number) => void) | null = null;
 
   /**
-   * One frame: input -> rig -> simulation compute -> post render.
-   * FROST: the composition supplies the clock (t, dt) instead of performance.now(), so every step is a pure
-   * function of the timeline; `render` false advances the simulation without drawing (fast-forward after a seek).
+   * One frame: input -> rig -> simulation compute -> post render. The composition supplies the clock (t, dt),
+   * not performance.now(), so each step is pure; `render` false advances without drawing (fast-forward after a seek).
    */
   frame(t: number, dt: number, render = true) {
     clock.t = t;

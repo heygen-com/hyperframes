@@ -51,9 +51,8 @@ export const hash11 = Fn(([x]: [N]) => {
 });
 
 /**
- * Decorrelated per-particle random in [0,1) from a seed in [0,1) and a small integer channel `k`.
- * (hash11 on small inputs is a smooth function of its argument, which made "random" grain rotations
- * correlate with the seed.)
+ * Decorrelated per-particle random in [0,1) from a seed in [0,1) and a small integer channel `k`
+ * (hash11 on small inputs is smooth in its argument, which correlated grain rotations with the seed).
  */
 export const hashSeed = (seed: N, k: number) =>
   hash31(
@@ -180,9 +179,8 @@ export const voronoiCell8 = Fn(([p, seed]: [N, N]) => {
 });
 
 /**
- * Distance to the nearest Voronoi cell boundary (true plane distance, IQ-style second pass).
- * Boundaries whose pair-hash exceeds `coverage` are culled (so cells are not fully enclosed).
- * Returns vec4( boundary normal (3), distance ).
+ * Distance to the nearest Voronoi cell boundary (true plane distance, IQ-style second pass); boundaries whose
+ * pair-hash exceeds `coverage` are culled so cells are not fully enclosed. Returns vec4(boundary normal (3), distance).
  */
 export const voronoiEdge = Fn(([p, seed, coverage]: [N, N, N]) => {
   const ip = floor(p).toVar();

@@ -2,23 +2,10 @@ import { LogoRig, type LogoRigOptions } from "./rig/LogoRig";
 export { setRendererProfile } from "./rewrite";
 import { RW, rwMetrics } from "./rewrite";
 import { voxelizeGPU } from "./shape/gpuSdf";
-// Frost — the ice-logo effect as a HyperFrames block driver.
-//
-// Sequence (all motion on the object group; the camera never moves):
-//   the extruded SVG mark ▸ turns and comes closer while a diagonal slice starts a break front that crosses the
-//   whole shape ▸ the shards fly back and heal into headline 1 (extruded, bevelled, facing the camera) ▸
-//   headline 1 turns away and breaks ▸ the shards heal into headline 2 ▸ headline 2 comes in close, breaks,
-//   and the shards fade out to an empty frame.
-//
-// Everything under src/ except this file, assets.ts, cache.ts, dials/store.ts and shape/text.ts is the
-// experiment's own source; the edits are marked `FROST:` in place (README.md lists them). The reveal uses the
-// experiment's own healing: every grain carries a home inside the shape and rebuilds the ice where it lands.
-// A headline is a second shape whose distance field is swapped into the live field texture, starts fully
-// eroded, and hands its interior positions to the shards already in flight.
-//
-// Determinism: the frame at time t is "the state after round(t * 60) fixed 1/60 s steps from a fresh world,
-// with every scheduled event fired in the step its time rounds to". Forward seeks step to t; backward seeks
-// reset and replay; a real seek re-renders the last 12 steps so TRAA history is converged.
+// Frost: the ice-logo effect as a HyperFrames block driver. All motion is on the object group; the camera never moves.
+// Mark -> break front -> headline 1 -> break -> headline 2 -> break -> empty frame; each headline is a second shape
+// whose distance field is swapped into the live field texture, starts fully eroded and heals in from the shards.
+// Deterministic: frame t = round(t * 60) fixed 1/60 s steps; backward seeks reset and replay. Edits marked `FROST:`.
 import * as THREE from "three/webgpu";
 import { World } from "./World";
 import { MATERIAL_FEATURES, featureId } from "./ice/features";
@@ -105,7 +92,7 @@ export interface FrostOptions {
   height: number;
   /** two headlines, each as lines */
   headlines: [string[], string[]];
-  /** headline extrusion: block width (world units), line height (em), depth / bevel / corner as fractions of the font size */
+  /** headline extrusion: block width (world units), line height (em), depth / bevel / corner as font-size fractions */
   text: {
     width: number;
     lineHeight: number;
@@ -120,7 +107,7 @@ export interface FrostOptions {
   deformation?: Deformation;
   pose: Pose;
   shards: Shards;
-  /** the experiment's own tunables (Erosion / Ice / Powder / Healing / Lighting / Post folders), id -> value; see TUNABLES */
+  /** the experiment's own tunables (Erosion / Ice / Powder / Healing / Lighting / Post folders), id -> value */
   tune: Record<string, number | string | boolean>;
   quality: "full" | "lite";
   upscaler: "fsr1" | "taau" | "bilinear" | "native";
@@ -555,7 +542,7 @@ export function create(o: FrostOptions): FrostInstance {
     Pf.adaptiveSteps = sourceMaterial.performance.adaptiveSteps;
     applyTune(o.tune);
     if (o.quality === "lite") {
-      // defaults.ts: `if (LITE) { ... }` — headless / software-GPU checks: shrink everything heavy after the tuned values
+      // Mirrors defaults.ts `if (LITE)`: headless / software-GPU checks shrink everything heavy after the tuned values
       D.shape.segments = 96;
       D.ice.cracks.steps = 6;
       D.ice.cracks.fineCracks = false; // Lite reduces cost without overriding the explicit dispersion control.
@@ -566,7 +553,7 @@ export function create(o: FrostOptions): FrostInstance {
     }
     healOff();
   }
-  /** shards stay out: nothing schedules a return (hero 07 baked: healDelay 0 / returnAfter 3 would pull them back at once) */
+  /** shards stay out: nothing schedules a return (baked healDelay 0 / returnAfter 3 would pull them back at once) */
   function healOff() {
     D.healing.healDelay = 1e9;
     D.healing.returnAfter = 0;
@@ -845,12 +832,10 @@ export function create(o: FrostOptions): FrostInstance {
     log("world");
   })();
 
-  // ---------------------------------------------------------------------------------------------
-  // object motion: ONE continuous path. yaw(t) = constant drift + idle sway + a smooth turn step per break
-  // with matched velocity and acceleration at the boundaries; pitch and depth rise through the
-  // break and ease back during formation. The continuous drift runs underneath. A headline faces the camera by construction: its object
-  // frame carries the inverse of this rotation at the moment its formation settles (see retarget), so the
-  // group can keep turning and the text still lands square to the camera.
+  // object motion: one continuous path. yaw(t) = constant drift + idle sway + a smooth turn step per break
+  // (velocity/acceleration matched at boundaries); pitch and depth rise through a break, ease back during formation.
+  // A headline faces the camera by construction: its object frame carries the inverse of this rotation when its
+  // formation settles (see retarget), so the group keeps turning and the text still lands square.
   let poseAt = makePoseAt(S, P);
   function rebuildKeys() {
     poseAt = makePoseAt(S, P);

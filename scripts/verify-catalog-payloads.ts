@@ -1,9 +1,7 @@
 #!/usr/bin/env tsx
-// Loads every generated docs-catalog payload in real headless Chrome and
-// fails on any 404 or page error a static markup scan can't see.
-//
+// Loads every generated docs-catalog payload in headless Chrome; fails on a 404 or page error.
 // Usage: npx tsx scripts/verify-catalog-payloads.ts [--only <item>] [--changed <git-ref>]
-//   --changed limits the check to payloads that differ from <git-ref>, which is what CI runs.
+// --changed checks only payloads that differ from <git-ref>, which is what CI runs.
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";

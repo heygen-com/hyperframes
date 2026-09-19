@@ -213,9 +213,12 @@ ${gsapLoaderJs(vendorUrls)}
 (0,eval)(${jsStringLiteral(compositionScriptText)});
 })();
 })();</script>`;
-  let out = withoutComposition.replace("__CATALOG_BOOTSTRAP__", () => bootstrap);
-  out = replaceOnce(out, `<script src="assets/frost.js"></script>`, "", "frost.js script tag");
-  return out;
+  return replaceOnce(
+    withoutComposition.replace("__CATALOG_BOOTSTRAP__", () => bootstrap),
+    `<script src="assets/frost.js"></script>`,
+    "",
+    "frost.js script tag",
+  );
 }
 
 function inlineGlassScripts(html: string, projectDir: string): string {
@@ -372,7 +375,7 @@ type ScriptInliner = (
 
 const SCRIPT_INLINERS: Record<string, ScriptInliner> = {
   "frost-sequence-camera-orbit": inlineFrostScripts,
-  "glass-shard-title": (html, projectDir) => inlineGlassScripts(html, projectDir),
+  "glass-shard-title": inlineGlassScripts,
   "cuboid-carousel": inlineCuboidScripts,
   "orbit-card": inlineOrbitScripts,
   "code-slice-hero": inlineCodeSliceScripts,

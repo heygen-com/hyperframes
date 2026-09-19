@@ -44,7 +44,7 @@ type N = any;
 export const MAX_SEGMENTS = 12;
 
 export class ErosionField {
-  /** FROST: floor (object units) for the erodable shell just outside the distance-field surface; set before construction. */
+  /** Floor (object units) for the erodable shell just outside the distance-field surface; set before construction. */
   static extraShell = 0;
   readonly res: number;
   readonly bound: number;
@@ -494,9 +494,8 @@ export class ErosionField {
   }
 
   /**
-   * FROST: the shape behind `this.shape.sdfNode` changed (the live distance-field texture was overwritten):
-   * re-bake the crack / break-cell helpers for it, reset the heal grid and every cell counter, and start the
-   * field either solid (`fill` false) or fully eroded (`fill` true, healed in by the returning grains).
+   * The shape behind `this.shape.sdfNode` changed: re-bake the crack / break-cell helpers, reset the heal grid
+   * and cell counters, start solid (`fill` false) or fully eroded (`fill` true, healed in by returning grains).
    */
   rebake(renderer: THREE.WebGPURenderer, fill: boolean) {
     const u = this.u,
@@ -593,8 +592,8 @@ export class ErosionField {
       u.brushNoise.value = E.brushNoise;
       u.brushNoiseScale.value = E.brushNoiseScale;
       u.cellSnap.value = E.cellSnap;
-      // FROST: softness 0 makes the capsule falloff smoothstep(r, r, d) — undefined in WGSL and evaluating to 1 everywhere
-      // here, which eroded the whole shape in one frame; keep a sliver of softness
+      // Softness 0 makes the capsule falloff smoothstep(r, r, d): undefined in WGSL, 1 everywhere here (whole
+      // shape eroded in one frame); keep a sliver of softness.
       u.brushSoftness.value = Math.max(E.brushSoftness, 0.02);
     }
     if (segCount > 0) {

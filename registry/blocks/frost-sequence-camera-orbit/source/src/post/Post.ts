@@ -293,8 +293,8 @@ export function createPost(o: PostGraphOptions) {
 
   function setFrame(index: number) {
     if (temporal) {
-      // Pinned three 0.185.1 TRAA/TAAU use a 31-entry jitter cycle and seed
-      // history on resize. Tie jitter to composition time, discard stale seek history.
+      // Pinned three 0.185.1 temporal AA uses a 31-entry jitter cycle and seeds history on resize.
+      // Tie jitter to composition time, discard stale seek history.
       temporal._jitterIndex = ((index % 31) + 31) % 31;
       if (index !== lastRenderFrame + 1) temporal._historyRenderTarget.setSize(1, 1);
     }

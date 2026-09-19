@@ -1,7 +1,6 @@
 /**
- * Keeps the render workload inside a frame budget by changing only pixel density. Effects,
- * simulation rates and scene content stay untouched. Adjustments are quantised and hysteretic so
- * render targets are not continually resized around the target frame rate.
+ * Keeps the render workload inside a frame budget by changing only pixel density (effects, simulation
+ * rates and content untouched). Adjustments are quantised and hysteretic so targets are not resized constantly.
  */
 export class AdaptiveResolution {
   private ratio = 0;
@@ -49,9 +48,8 @@ export class AdaptiveResolution {
   }
 
   /**
-   * Plans a split-resolution frame. `sourceRatio` is the effective DPR paid by the scene pass;
-   * `outputRatio` is the canvas/final-post DPR. With split output disabled they are identical,
-   * which preserves the previous whole-frame scaling path for comparison and fallback.
+   * Plans a split-resolution frame. `sourceRatio` is the DPR paid by the scene pass; `outputRatio` is the
+   * canvas/final-post DPR. With split output disabled they are identical (whole-frame scaling fallback).
    */
   updateScene(
     now: number,

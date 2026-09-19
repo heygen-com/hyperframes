@@ -1055,12 +1055,9 @@ export class Powder {
       atomicStore(densityAt(i), uint(0));
     })().compute(G * G * G, [64]);
 
-    // FROST: after a retarget every grain that is out (active, healing or waiting) is in flight toward a cell of
-    // the new shape: count them so the last one home still triggers that cell's restore
-    // - a grain still in flight (active / healing) is counted toward its new cell;
-    // - a landed (waiting) grain is home already: it goes dormant at its new home (it can never arrive again);
-    // - dormant and ghost grains sit inside the new, fully eroded shape: their threshold is raised so the filled
-    //   field does not eject them (restoreThresholds() re-arms them for the next break)
+    // FROST: after a retarget, in-flight grains (active/healing) count toward their new cell so the last one home
+    // restores it; landed (waiting) grains go dormant at their new home; dormant/ghost grains sit in the eroded
+    // shape, threshold raised to keep the filled field from ejecting them (restoreThresholds() re-arms).
     this.nodes.retargetCount = Fn(() => {
       const M = B.meta.element(i),
         R = B.rest.element(i),

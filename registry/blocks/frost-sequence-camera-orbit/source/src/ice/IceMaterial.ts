@@ -195,12 +195,9 @@ export function createIceMaterial({
   const lightDir = new THREE.Vector3();
   const objectRotation = new THREE.Quaternion();
   let settingsVersion = -1;
-  // Render the existing raymarched solid-ice path directly. DoubleSide draws
-  // this back-face proxy first, then covers it with the separate front-shell
-  // finish until the erosion sweep discards that shell. BackSide keeps the
-  // original interior shading and exposes it from the intact first frame.
-  // cutRes still finds the first remaining solid along the ray; cutHit discards
-  // the proxy when that ray contains no ice, including during assembly/breakup.
+  // Render the raymarched solid-ice path directly: BackSide keeps the original interior shading, visible from the
+  // intact first frame (DoubleSide would draw this proxy first, then cover it with the front-shell finish).
+  // cutRes finds the first remaining solid along the ray; cutHit discards the proxy when the ray holds no ice.
   material.side = THREE.BackSide;
   material.transparent = false;
   material.metalness = 0;

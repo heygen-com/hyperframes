@@ -115,9 +115,8 @@ export class Interaction {
   }
 
   /**
-   * FROST: a break front. A band the full length of the slice path (extended by half a bound each way) travels
-   * outward from it on both sides, eroding everything it passes, so the break started by the slice continues
-   * without a pause until the whole shape is gone. `reach` in bounds; the eject direction stays the slice's.
+   * Break front: a band the full slice-path length (plus half a bound each way) travels outward on both sides,
+   * eroding all it passes until the shape is gone. `reach` in bounds; eject direction stays the slice's.
    */
   front(opts: {
     from: [number, number, number];

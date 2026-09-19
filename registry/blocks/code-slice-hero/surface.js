@@ -1,4 +1,4 @@
-/* One shared pair of text atlases, one instance buffer, one surface draw plus one batched receiver-shadow draw per seek. */
+/* One shared pair of text atlases, one instance buffer, one surface draw and one batched shadow draw per seek. */
 window.CodeSliceSurface = function (stage, front, back, tiles, options) {
   "use strict";
   const canvas = document.createElement("canvas");

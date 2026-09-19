@@ -1,6 +1,5 @@
-// FROST: headline outlines as THREE.Shape[] in world units, from a TTF via opentype.js (kerning applied),
-// so a headline goes through exactly the same extrusion / bevel / corner rounding / SDF voxelisation as the
-// SVG mark (shape/logo.ts extrudeShapes + voxelize).
+// Headline outlines as THREE.Shape[] in world units, from a TTF via opentype.js (kerning applied); same
+// extrusion / bevel / rounding / SDF voxelisation as the SVG mark (shape/logo.ts extrudeShapes + voxelize).
 import * as THREE from "three/webgpu";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import opentype from "opentype.js";
