@@ -143,4 +143,16 @@ fadeIn();`;
 for (let i = 0; i < 3; i++) { tl.to("#item" + i, { opacity: 1, duration: 1 }, i); }`;
     expect(unrollComputedTimeline(script)).toBe(script);
   });
+
+  it.each([
+    ["a $-prefixed name", "$fade(1)"],
+    ["a longer name ending in the helper name", "xfade(1)"],
+    ["a name that continues with a $", "fade$(1)"],
+  ])("does not read %s as a reference to fade", (_case, call) => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { tl.to(sel, { opacity: 1, duration: 1 }, at); }
+fade("#b", 2);
+${call};`;
+    expect(unrollComputedTimeline(script)).not.toContain("function fade");
+  });
 });
