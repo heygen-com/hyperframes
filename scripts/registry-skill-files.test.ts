@@ -12,7 +12,7 @@ interface ManifestFile {
 
 function skillFilesTable(skill: string): string[] {
   const section = skill.split("## Files")[1]?.split(/\n## /)[0] ?? "";
-  return [...section.matchAll(/^- `([^`]+)`/gm)].map((match) => match[1]);
+  return [...section.matchAll(/^- `([^`]+)`/gm)].map((match) => match[1] ?? "");
 }
 
 const blocks = readdirSync(BLOCKS).filter((name) => existsSync(join(BLOCKS, name, "SKILL.md")));

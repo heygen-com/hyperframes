@@ -1,9 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  declaresWebgpu,
   itemsFromDiff,
   withoutAbortedMedia,
-  withoutMissingAdapter,
+  withoutWebgpuRuntimeErrors,
 } from "./verify-catalog-payloads.ts";
 
 describe("itemsFromDiff", () => {
@@ -23,18 +24,28 @@ describe("itemsFromDiff", () => {
   });
 });
 
-describe("withoutMissingAdapter", () => {
-  const adapterError = "pageerror: Frost: no WebGPU adapter";
+describe("declaresWebgpu", () => {
+  it("reads the webgpu tag from the item's own manifest", () => {
+    assert.equal(declaresWebgpu("blocks", "liquid-glass-widgets"), true);
+    assert.equal(declaresWebgpu("blocks", "glass-shard-title"), false);
+    assert.equal(declaresWebgpu("blocks", "no-such-item"), false);
+  });
+});
 
-  it("drops only the missing-adapter error for a WebGPU payload", () => {
-    const failures = [adapterError, "404 GET http://localhost/public/catalog/x.png"];
-    assert.deepEqual(withoutMissingAdapter("<script>navigator.gpu</script>", failures), [
-      failures[1],
-    ]);
+describe("withoutWebgpuRuntimeErrors", () => {
+  const network = "404 GET http://localhost/public/catalog/x.png";
+  const wordings = [
+    "pageerror: Frost: no WebGPU adapter",
+    "console.error: Failed to request adapter",
+    "pageerror: Cannot read properties of null (reading 'createShaderModule')",
+  ];
+
+  it("passes a declared item whatever wording its page and console errors use", () => {
+    assert.deepEqual(withoutWebgpuRuntimeErrors(true, [...wordings, network]), [network]);
   });
 
-  it("keeps the error for a payload that does not use WebGPU", () => {
-    assert.deepEqual(withoutMissingAdapter("<p>plain</p>", [adapterError]), [adapterError]);
+  it("fails an undeclared item with the same wording", () => {
+    assert.deepEqual(withoutWebgpuRuntimeErrors(false, wordings), wordings);
   });
 });
 

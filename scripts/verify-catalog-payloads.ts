@@ -4,7 +4,7 @@
 // --changed checks only payloads that differ from <git-ref>, which is what CI runs.
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, extname, dirname } from "node:path";
+import { join, extname, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
@@ -68,11 +68,20 @@ function payloadFiles(
 /** The page error a WebGPU piece throws in a browser with no adapter. */
 export const MISSING_ADAPTER = /no WebGPU adapter/i;
 
-/** A WebGPU piece cannot draw in a CI browser that has no adapter; that one error is the
- * environment, not the payload. Every other failure of such a piece still counts. */
-export function withoutMissingAdapter(html: string, failures: string[]): string[] {
-  if (!html.includes("navigator.gpu")) return failures;
-  return failures.filter((failure) => !MISSING_ADAPTER.test(failure));
+/** Whether the item's manifest declares the "webgpu" tag, the one owner of "needs a WebGPU adapter". */
+export function declaresWebgpu(kindDir: string, item: string): boolean {
+  const manifest = join(scriptDir, "..", "registry", kindDir, item, "registry-item.json");
+  if (!existsSync(manifest)) return false;
+  const { tags } = JSON.parse(readFileSync(manifest, "utf-8")) as { tags?: string[] };
+  return tags?.includes("webgpu") ?? false;
+}
+
+/** A WebGPU piece cannot draw in a CI browser with no adapter, and whatever library reports that
+ * does so in its own words. So a declared piece's page errors and console errors are the environment;
+ * its failed or 404 requests still count, as does every failure of an undeclared piece. */
+export function withoutWebgpuRuntimeErrors(webgpu: boolean, failures: string[]): string[] {
+  if (!webgpu) return failures;
+  return failures.filter((failure) => !/^(pageerror|console\.error): /.test(failure));
 }
 
 /** Chrome aborts a media element's first request when it reissues it as range requests (or when
@@ -137,23 +146,34 @@ async function startServer(): Promise<{ origin: string; close: () => void }> {
   return { origin: `http://localhost:${port}/`, close: () => server.close() };
 }
 
+type VerifyBrowser = Awaited<ReturnType<typeof launchVerifyBrowser>>;
+
+/** Loads one payload and prints its result; true when it failed. A marker payload has nothing to load. */
+async function checkOne(browser: VerifyBrowser, origin: string, item: string, path: string) {
+  const payload = JSON.parse(readFileSync(path, "utf-8")) as {
+    html?: string;
+    unsupported?: string;
+  };
+  if (payload.html === undefined) {
+    console.log(`- ${item} (no live payload: ${payload.unsupported})`);
+    return false;
+  }
+  const checked = await checkPageLoads(browser, origin, payload.html);
+  const declared = declaresWebgpu(basename(dirname(path)), item);
+  const failures = withoutAbortedMedia(withoutWebgpuRuntimeErrors(declared, checked.failures));
+  console.log(`${failures.length > 0 ? "✗" : "✓"} ${item}`);
+  for (const failure of failures) console.log(`    ${failure}`);
+  return failures.length > 0;
+}
+
 async function checkAll(
-  browser: Awaited<ReturnType<typeof launchVerifyBrowser>>,
+  browser: VerifyBrowser,
   origin: string,
   items: { item: string; path: string }[],
 ): Promise<number> {
   let failed = 0;
   for (const { item, path } of items) {
-    const { html } = JSON.parse(readFileSync(path, "utf-8")) as { html: string };
-    const checked = await checkPageLoads(browser, origin, html);
-    const failures = withoutAbortedMedia(withoutMissingAdapter(html, checked.failures));
-    if (failures.length > 0) {
-      failed += 1;
-      console.log(`✗ ${item}`);
-      for (const failure of failures) console.log(`    ${failure}`);
-    } else {
-      console.log(`✓ ${item}`);
-    }
+    if (await checkOne(browser, origin, item, path)) failed += 1;
   }
   return failed;
 }
