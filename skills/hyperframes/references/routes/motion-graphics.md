@@ -7,5 +7,5 @@
 ## Interview
 
 - Autonomous by design: at most **one** clarifying question, owned by its director step, in the flow. No must-haves here beyond confirming the input; route directly.
-- **Run-shape:** neither — the piece is seconds long; a board and a companion session have nothing to add.
+- **Run-shape:** neither — the piece is seconds long; a storyboard and a companion session have nothing to add.
 - **Front-door capability offer:** skip it. The director's one-question limit is authoritative.

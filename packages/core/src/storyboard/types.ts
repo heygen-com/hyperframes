@@ -22,7 +22,7 @@ export const SCRIPT_FILENAME = "SCRIPT.md";
 
 /**
  * Lifecycle of a single frame. The agent advances each frame
- * `outline → built → animated`; the Studio renders progress from this.
+ * `outline → built → animated`; scripts and the agent read progress from this.
  */
 export type FrameStatus = "outline" | "built" | "animated";
 

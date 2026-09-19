@@ -53,15 +53,9 @@ ffprobe -v error -show_format -show_streams out.mp4
 
 `check` runs lint first, then uses one browser session and one seek pass to audit runtime errors, failed requests, layout, `*.motion.json` assertions, and WCAG contrast. Persistent findings gate the exit code; transient entrance or exit findings are informational. Use `--strict` to gate warnings. `validate`, `inspect`, and `layout` remain aliases for compatibility but must not appear in new instructions or scripts.
 
-## Two different preview surfaces
+## Preview before render
 
-Do not confuse these states:
-
-| Surface                   | When it may open     | Purpose                                                              |
-| ------------------------- | -------------------- | -------------------------------------------------------------------- |
-| Final composition preview | After `check` passes | Review the assembled timeline before render. Open `#project/<name>`. |
-
-The early board is not approval of the final video. Rendering always requires the final approval defined by `hyperframes/references/review-loop.md`.
+Open the final composition preview (`#project/<name>`) only after `check` passes, to review the assembled timeline. The plan in chat and the `storyboard.html` sketch sheet are not approval of the final video. Rendering always requires the final approval defined by `hyperframes/references/review-loop.md`.
 
 ## Sub-composition smoke test
 
