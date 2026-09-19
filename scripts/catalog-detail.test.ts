@@ -560,4 +560,9 @@ test("a copy button holds its label and 'Copied' in one grid cell, so the swap n
   assert.match(source, /\.hf-ve-action \{[^}]*display: inline-grid;/);
   assert.match(source, /\.hf-ve-action-label \{ grid-area: 1 \/ 1; \}/);
   assert.match(source, /\.hf-ve-action-label\[data-shown="false"\] \{ visibility: hidden; \}/);
+  assert.match(
+    source,
+    /\.hf-ve-action\[data-primary="true"\]:hover:not\(:disabled\) \{ background: var\(--ve-on-bg\);/,
+    "the primary button keeps its dark background on hover, so its white label stays readable",
+  );
 });

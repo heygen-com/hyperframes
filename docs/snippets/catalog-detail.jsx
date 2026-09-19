@@ -634,7 +634,7 @@ export const CatalogDetail = ({
 .hf-ve-action:disabled { opacity: 0.4; cursor: default; }
 .hf-ve-tune-foot .hf-ve-action { justify-content: center; white-space: nowrap; }
 .hf-ve-action[data-primary="true"] { color: var(--ve-on-fg); background: var(--ve-on-bg); }
-.hf-ve-action[data-primary="true"]:hover { opacity: 0.88; }
+.hf-ve-action[data-primary="true"]:hover:not(:disabled) { background: var(--ve-on-bg); opacity: 0.88; }
 .hf-ve-main { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1024px) {
   .hf-ve-main[data-tune="true"] { grid-template-columns: minmax(0, 1fr) 340px; }
