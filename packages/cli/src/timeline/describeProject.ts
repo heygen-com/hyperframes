@@ -1,5 +1,5 @@
-import { readFileSync, statSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
   parseAutomation,
@@ -116,9 +116,8 @@ function describeRow(scope: DocScope, node: DomNode, depth: number): TimelineRow
 }
 
 function readSubComposition(src: string, parent: DocScope): TimelineRow[] {
-  const file = resolve(parent.dir, src);
-  const inside = relative(parent.projectDir, file);
-  if (inside.startsWith("..") || !isFile(file)) return [];
+  const file = realFileInside(parent.projectDir, resolve(parent.dir, src));
+  if (!file) return [];
   const doc = new DOMParser().parseFromString(readFileSync(file, "utf-8"), "text/html");
   const template = doc.querySelector("template");
   const root = (template?.content ?? doc).querySelector("[data-composition-id]");
@@ -134,11 +133,15 @@ function readSubComposition(src: string, parent: DocScope): TimelineRow[] {
     .sort(byStart);
 }
 
-function isFile(path: string): boolean {
+/** The file's real path when it is a regular file inside the project (symlinks resolved), else null. */
+function realFileInside(projectDir: string, path: string): string | null {
   try {
-    return statSync(path).isFile();
+    const real = realpathSync(path);
+    const inside = relative(realpathSync(projectDir), real);
+    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    return statSync(real).isFile() ? real : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
