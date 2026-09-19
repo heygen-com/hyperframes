@@ -219,10 +219,8 @@ export function makeLogoSDF(
 }
 
 /**
- * Voxel SDF over [-bound, bound]^3 at `res` per axis: unsigned BVH closest-point distance, sign from ray parity
- * along z (odd crossings = interior). The closest face's normal gives wrong signs near edges and bevels; those
- * voxels read as solid and never erode, leaving slivers (visible at the full 192 field). The closest-point
- * query is capped a few voxels past the surface (far voxels are outside for these thin extrusions).
+ * Voxel SDF over [-bound, bound]^3 at `res` per axis: BVH closest-point distance, signed by z-ray parity.
+ * Face normals give wrong signs near edges and bevels, so those voxels read solid and never erode.
  */
 export function voxelize(
   geo: THREE.BufferGeometry,

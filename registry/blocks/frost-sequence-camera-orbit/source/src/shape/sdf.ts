@@ -308,7 +308,7 @@ export interface InteriorSamples {
   count: number;
 }
 
-/** Rejection-sample the shape interior. `surfaceBias` fraction of points falls within the outer `shell` fraction of thickness. */
+/** Rejection-sample the shape interior; `surfaceBias` of the points land in the outer `shell` fraction of thickness. */
 export function sampleInterior(
   s: ShapeSpec,
   count: number,
