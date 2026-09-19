@@ -180,7 +180,7 @@ function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<
         style={{ height: `${YELLOW_AT * 100}%` }}
       />
       <div
-        className="absolute inset-x-0 bg-yellow-500"
+        className="absolute inset-x-0 bg-amber-500"
         style={{ bottom: `${YELLOW_AT * 100}%`, height: `${(RED_AT - YELLOW_AT) * 100}%` }}
       />
       <div
