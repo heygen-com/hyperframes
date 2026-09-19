@@ -6,7 +6,7 @@
  */
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
@@ -355,6 +355,21 @@ interface ExtractResult {
   durationMs: number;
   error?: string;
   failure?: AudioProcessingFailure;
+}
+
+// Absolute paths are omitted: boundedDetail redacts them to end-of-line and they name the host.
+function missingSourceMessage(
+  elementId: string,
+  src: string,
+  baseDir: string,
+  resolvedPath: string,
+): string {
+  const relativePath = relative(baseDir, resolvedPath);
+  const insideProject = !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  const authored = /^([\\/]|[A-Za-z]:)/.test(src) ? "" : `src="${src}" `;
+  return `Source not found for audio element ${elementId}: ${authored}resolved to ${
+    insideProject ? relativePath : "a path outside the project"
+  }`;
 }
 
 function boundedDetail(message: string, maxLength = 2_000): string {
@@ -1164,8 +1179,7 @@ export async function processCompositionAudio(
       try {
         let srcPath = element.src;
         if (!isHttpUrl(srcPath)) {
-          // Same browser-vs-filesystem path semantics as videos — see
-          // resolveProjectRelativeSrc in videoFrameExtractor for the full why.
+          // Same browser-URL path semantics as videos.
           srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);
         }
 
@@ -1194,7 +1208,7 @@ export async function processCompositionAudio(
             owner: "user",
             retryable: false,
             elementId: element.id,
-            detail: boundedDetail(`Source not found for audio element ${element.id}`),
+            detail: boundedDetail(missingSourceMessage(element.id, element.src, baseDir, srcPath)),
           });
           return;
         }

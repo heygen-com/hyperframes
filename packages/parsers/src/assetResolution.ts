@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { isAbsolute, posix, relative, resolve } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
 
 /**
@@ -156,6 +156,42 @@ export function resolveExistingLocalAsset(
   const resolved = resolveLocalAssetCandidates(projectRoot, url).find(existsSync);
   if (!resolved) return null;
   return { resolved, rootRelativePath: relative(projectRoot, resolved) };
+}
+
+// Candidates for a variant whose join escaped the project root, re-anchored at the root.
+function reanchoredCandidates(variant: string, baseDir: string, compiledDir?: string): string[] {
+  const baseAbs = resolve(baseDir);
+  const joinedAbs = resolve(join(baseDir, variant));
+  if (joinedAbs === baseAbs || joinedAbs.startsWith(baseAbs + sep)) return [];
+  // Normalize before stripping, or `assets/../../assets/foo` becomes `assets/assets/foo`.
+  const stripped = posix.normalize(variant.replace(/\\/g, "/")).replace(/^(\.\.\/)+/, "");
+  if (!stripped || stripped === variant || stripped.startsWith("..")) return [];
+  return compiledDir
+    ? [join(compiledDir, stripped), join(baseDir, stripped)]
+    : [join(baseDir, stripped)];
+}
+
+/** Resolves a media `src` like a browser URL (`..` clamps at the project root); a miss returns the base-dir join. */
+export function resolveProjectRelativeSrc(
+  src: string,
+  baseDir: string,
+  compiledDir?: string,
+): string {
+  const qIdx = src.indexOf("?");
+  const cleanSrc = qIdx >= 0 ? src.slice(0, qIdx) : src;
+
+  // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
+  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+
+  const candidates = new Set<string>();
+  for (const variant of decodeUrlPathVariants(cleanSrc)) {
+    for (const candidate of reanchoredCandidates(variant, baseDir, compiledDir)) {
+      candidates.add(candidate);
+    }
+    if (compiledDir) candidates.add(join(compiledDir, variant));
+    candidates.add(join(baseDir, variant));
+  }
+  return [...candidates].find(existsSync) ?? join(baseDir, cleanSrc);
 }
 
 function maskRange(src: string, pattern: RegExp): string {

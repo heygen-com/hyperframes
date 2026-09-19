@@ -195,6 +195,49 @@ describe("processCompositionAudio", () => {
 
   it.each([
     {
+      src: "assets/music.mp3",
+      detail:
+        'Source not found for audio element bed: src="assets/music.mp3" resolved to assets/music.mp3',
+    },
+    {
+      src: "/assets/music.mp3",
+      detail: "Source not found for audio element bed: resolved to assets/music.mp3",
+    },
+  ])("names where a missing local audio file was looked for ($src)", async ({ src, detail }) => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-missing-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "bed",
+          src,
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        reason: "source_not_found",
+        elementId: "bed",
+        detail,
+      }),
+    ]);
+  });
+
+  it.each([
+    {
       message: "AbortError: ffprobe operation aborted",
       reason: "cancelled",
       owner: "user",

@@ -690,6 +690,20 @@ describe("audio_src_not_found with templating tokens", () => {
   it("still flags a genuinely missing local audio file", async () => {
     expect(await hasAudioSrcNotFound(audioProject("audio/missing.mp3"))).toBe(true);
   });
+
+  it("accepts an existing audio file addressed the way the renderer resolves it", async () => {
+    for (const src of [
+      "audio/bed.mp3",
+      "/audio/bed.mp3",
+      "../audio/bed.mp3",
+      "audio/bed.mp3?v=2",
+    ]) {
+      const project = audioProject(src);
+      mkdirSync(join(project, "audio"), { recursive: true });
+      writeFileSync(join(project, "audio", "bed.mp3"), "");
+      expect(await hasAudioSrcNotFound(project)).toBe(false);
+    }
+  });
 });
 
 describe("templating tokens are checked on the raw src, before cleanAssetUrl", () => {

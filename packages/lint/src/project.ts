@@ -14,6 +14,7 @@ import {
   maskNonScannableRanges,
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
+  resolveProjectRelativeSrc,
 } from "@hyperframes/parsers/asset-resolution";
 import {
   collectLocalVideoCandidates,
@@ -362,7 +363,7 @@ function lintAudioSrcNotFound(
       const rootRelative = compSrcPath
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
-      if (!resolveLocalAssetCandidates(projectDir, rootRelative).some(existsSync)) {
+      if (!existsSync(resolveProjectRelativeSrc(rootRelative, projectDir))) {
         missingSrcs.push(src);
       }
     }

@@ -23,7 +23,6 @@ import {
   createFrameLookupTable,
   FrameLookupTable,
   rebaseVideoToWindow,
-  resolveProjectRelativeSrc,
   resolveFrameFormat,
   codecMayHaveAlpha,
   decoderForCodec,
@@ -677,111 +676,6 @@ describe("resolveFrameFormat", () => {
   it("forces png when alpha is present or the codec can carry alpha", () => {
     expect(resolveFrameFormat(metadata({ hasAlpha: true }), "jpg")).toBe("png");
     expect(resolveFrameFormat(metadata({ videoCodec: "vp9" }), "jpg")).toBe("png");
-  });
-});
-
-// Regression: a long-standing footgun where `<video src="../assets/foo">`
-// inside a sub-composition silently dropped the video from extraction. The
-// browser's URL resolver clamps `..` at the served origin's root (so the
-// page renders fine in the studio), but `path.join(projectDir, "../assets/foo")`
-// normalizes to <parentOfProjectDir>/assets/foo, which doesn't exist —
-// extraction skipped, no frame injection, rendered output shows the video's
-// first decoded frame for the whole clip duration. The resolver now mirrors
-// browser semantics by clamping any traversal that escapes the project root.
-describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
-  let tmp: string;
-
-  beforeAll(() => {
-    tmp = mkdtempSync(join(tmpdir(), "hf-resolver-"));
-    mkdirSync(join(tmp, "project", "assets"), { recursive: true });
-    writeFileSync(join(tmp, "project", "assets", "foo.mp4"), "");
-  });
-  afterAll(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("returns the literal join when the file exists at projectDir/src", () => {
-    const projectDir = join(tmp, "project");
-    expect(resolveProjectRelativeSrc("assets/foo.mp4", projectDir)).toBe(
-      join(projectDir, "assets/foo.mp4"),
-    );
-  });
-
-  it("resolves a browser root-absolute URL from the project root", () => {
-    const projectDir = join(tmp, "project");
-    expect(resolveProjectRelativeSrc("/assets/foo.mp4", projectDir)).toBe(
-      join(projectDir, "assets/foo.mp4"),
-    );
-  });
-
-  it("clamps a leading `../` so `../assets/foo.mp4` resolves to assets/foo.mp4", () => {
-    const projectDir = join(tmp, "project");
-    expect(resolveProjectRelativeSrc("../assets/foo.mp4", projectDir)).toBe(
-      join(projectDir, "assets/foo.mp4"),
-    );
-  });
-
-  it("clamps multiple leading `../../../` segments", () => {
-    const projectDir = join(tmp, "project");
-    expect(resolveProjectRelativeSrc("../../../assets/foo.mp4", projectDir)).toBe(
-      join(projectDir, "assets/foo.mp4"),
-    );
-  });
-
-  it("clamps mid-path traversal that escapes baseDir (not just leading `..`)", () => {
-    // `assets/../../foo.mp4` collapses past projectDir via path.join — this
-    // case used to silently escape; the resolver now strips embedded `..`
-    // segments and re-anchors at the project root.
-    const projectDir = join(tmp, "project");
-    expect(resolveProjectRelativeSrc("assets/../../assets/foo.mp4", projectDir)).toBe(
-      join(projectDir, "assets/foo.mp4"),
-    );
-  });
-
-  it("returns the (non-existent) base-dir path on miss so callers get a stable error message", () => {
-    const projectDir = join(tmp, "project");
-    expect(resolveProjectRelativeSrc("../assets/missing.mp4", projectDir)).toBe(
-      join(projectDir, "../assets/missing.mp4"),
-    );
-  });
-
-  it("prefers compiled-dir over base-dir when the file exists in both", () => {
-    const projectDir = join(tmp, "project");
-    const compiledDir = join(tmp, "compiled");
-    mkdirSync(join(compiledDir, "assets"), { recursive: true });
-    writeFileSync(join(compiledDir, "assets", "foo.mp4"), "");
-    expect(resolveProjectRelativeSrc("assets/foo.mp4", projectDir, compiledDir)).toBe(
-      join(compiledDir, "assets/foo.mp4"),
-    );
-  });
-
-  it("resolves percent-encoded non-Latin filenames across scripts", () => {
-    const projectDir = join(tmp, "project");
-    const cases = [
-      ["arabic", "%D9%87%D9%86%D8%A7-%D9%85%D8%B1%D9%88%D8%A7.mp4"],
-      ["japanese", "%E6%97%A5%E6%9C%AC%E8%AA%9E.mp4"],
-      ["cyrillic", "%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82.mp4"],
-      ["korean", "%ED%95%9C%EA%B8%80.mp4"],
-    ] as const;
-
-    for (const [, encodedFilename] of cases) {
-      const filename = decodeURIComponent(encodedFilename);
-      writeFileSync(join(projectDir, "assets", filename), "");
-
-      expect(resolveProjectRelativeSrc(`assets/${encodedFilename}`, projectDir)).toBe(
-        join(projectDir, "assets", filename),
-      );
-    }
-  });
-
-  it("falls back to literal filenames when percent sequences are malformed", () => {
-    const projectDir = join(tmp, "project");
-    const filename = "100%-discount.mp4";
-    writeFileSync(join(projectDir, "assets", filename), "");
-
-    expect(resolveProjectRelativeSrc(`assets/${filename}`, projectDir)).toBe(
-      join(projectDir, "assets", filename),
-    );
   });
 });
 

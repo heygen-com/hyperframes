@@ -7,11 +7,11 @@
  */
 
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
-import { isAbsolute, join, posix, resolve, sep } from "path";
+import { join } from "path";
 import { parseHTML } from "linkedom";
+import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import {
   MEDIA_RENDER_ID_ATTR,
-  decodeUrlPathVariants,
   fpsToFfmpegArg,
   fpsToNumber,
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
@@ -62,6 +62,8 @@ import {
   type CacheFrameFormat,
 } from "./extractionCache.js";
 import { framePathsFromDirectory } from "./extractedFrameIndex.js";
+
+export { resolveProjectRelativeSrc };
 
 export interface VideoElement {
   id: string;
@@ -1501,71 +1503,6 @@ function sliceSupersetMember(
   }
 
   return extractedFramesFromDirectory(work, outputDir, work.videoPath, fps);
-}
-
-/**
- * Resolve a relative `<video src>` to a filesystem path the way the browser
- * resolves it as a URL. Browsers clamp `..` segments at the served origin's
- * root; `path.join(projectDir, "../assets/foo")` does not. So a sub-comp
- * `<video src="../assets/foo">` loads in the page (browser clamps to
- * `<projectDir>/assets/foo`) but the filesystem-side resolver lands at
- * `<parentOfProjectDir>/assets/foo` — file missing, extraction skipped,
- * the rendered output shows the video's first frame for the whole clip.
- *
- * The clamp covers two escape patterns: leading `..` (`../assets/foo`) AND
- * mid-path escapes (`assets/../../foo`) that `path.join` collapses past the
- * project root silently. Both fall back to a project-rooted candidate that
- * strips traversal from the resolved path.
- *
- * Returns the first existing candidate, or the base-dir join on miss so
- * the caller's `existsSync` check produces a stable error path.
- */
-export function resolveProjectRelativeSrc(
-  src: string,
-  baseDir: string,
-  compiledDir?: string,
-): string {
-  const qIdx = src.indexOf("?");
-  const cleanSrc = qIdx >= 0 ? src.slice(0, qIdx) : src;
-
-  // Preserve explicit filesystem paths when they really exist. Otherwise a
-  // leading slash is a browser origin-root URL (`/assets/foo.mp4`), which the
-  // file server serves from the project root rather than the host filesystem.
-  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
-
-  const candidates: string[] = [];
-
-  const addCandidate = (candidate: string): void => {
-    if (!candidates.includes(candidate)) candidates.push(candidate);
-  };
-
-  for (const variant of decodeUrlPathVariants(cleanSrc)) {
-    const fromCompiled = compiledDir ? join(compiledDir, variant) : null;
-    const fromBase = join(baseDir, variant);
-
-    // If the joined result escapes the project root (either via leading `..`
-    // or mid-path traversal that path.join collapsed past baseDir), retry
-    // with the basename re-anchored at the project root. This mirrors the
-    // browser URL clamp without relying on a particular `..` shape.
-    const baseAbs = resolve(baseDir);
-    const fromBaseAbs = resolve(fromBase);
-    if (!fromBaseAbs.startsWith(baseAbs + sep) && fromBaseAbs !== baseAbs) {
-      // Normalize first (`assets/../../assets/foo.mp4` → `../assets/foo.mp4`)
-      // then strip any remaining leading `..` segments. Stripping `..` from the
-      // raw input would leave dangling siblings (`assets/../../assets/foo`
-      // would become `assets/assets/foo` instead of `assets/foo`).
-      const normalized = posix.normalize(variant.replace(/\\/g, "/"));
-      const stripped = normalized.replace(/^(\.\.\/)+/, "");
-      if (stripped && stripped !== variant && !stripped.startsWith("..")) {
-        if (compiledDir) addCandidate(join(compiledDir, stripped));
-        addCandidate(join(baseDir, stripped));
-      }
-    }
-
-    if (fromCompiled) addCandidate(fromCompiled);
-    addCandidate(fromBase);
-  }
-  return candidates.find(existsSync) ?? join(baseDir, cleanSrc);
 }
 
 export async function extractAllVideoFrames(
