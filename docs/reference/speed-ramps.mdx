@@ -34,14 +34,15 @@ passes through `1` at the midpoint. A lane wins over the constant
 
 ## What stays the same everywhere
 
-The clip covers the same timeline duration whatever the speed, and the source
-frame shown at each moment comes from one function, `sourceTimeAt`, shared by
-the preview, the renderer and Studio. The render therefore shows the frames
-the preview showed.
+The source frame shown at each moment comes from one function, `sourceTimeAt`,
+which the preview and the renderer both use, so the render shows the frames the
+preview showed. Set `data-duration` on the clip to fix how long it holds the
+timeline; without it the length follows from the source and the speed.
 
-Pitch is kept. The preview leaves the browser's default pitch correction on,
-and the render time-stretches audio without changing pitch, so the sound
-matches in both.
+Pitch is kept. The preview leaves the browser's default pitch correction on.
+The render time-stretches audio in short constant-speed slices of a quarter
+second, which approximates the curve while keeping pitch, so the sound follows
+the ramp closely rather than exactly.
 
 ## Presets
 
@@ -58,5 +59,8 @@ lane on the clip in the timeline that you edit like the volume lane.
 ## Limits
 
 - Only `<video>` and `<audio>` clips carry a rate lane.
-- Speeds outside `0.1` to `10` are clamped. The viewer's transport speed
-  (`0.1` to `5`) is a separate control and multiplies with the clip's speed.
+- Speeds outside `0.1` to `10` are clamped.
+- The viewer's own transport speed is a separate control that multiplies with
+  the clip's speed, and it is narrower: the Studio speed menu offers `0.25` to
+  `2`, the player's menu offers up to `4`, and the runtime clamps a transport
+  request to `0.1` to `5`.
