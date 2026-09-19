@@ -689,7 +689,9 @@ export const CatalogDetail = ({
 .hf-ve-slots[data-tab="code"] > [data-slot="code"],
 .hf-ve-slots[data-tab="install"] > [data-slot="install"],
 .hf-ve-slots[data-tab="docs"] > [data-slot="docs"] { display: block; }
-.hf-ve-body-pane .code-block pre { max-height: 560px; overflow: auto; }
+.hf-ve-body-pane .code-block pre,
+.hf-ve-slots [data-slot="code"] pre { max-height: 560px; overflow: auto; }
+.hf-ve-slots[data-tab="docs"] > [data-slot="docs"] { max-height: 720px; overflow: auto; padding-right: 8px; }
 @media (max-width: 640px) {
   .hf-ve-actions { width: 100%; }
   .hf-ve-action { flex: 1 1 calc(50% - 8px); justify-content: center; }

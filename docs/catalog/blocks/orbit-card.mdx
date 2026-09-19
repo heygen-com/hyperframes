@@ -13,7 +13,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/orbit-card/orbit-card.html"
   title="Orbit Card"
   description="A single feature card orbits a dot sphere on approved Blender camera motion."
-  variables={[]}
+  variables={[{"id":"feature1Title","type":"string","label":"Card title","default":"Always in sync","maxLength":28},{"id":"feature1Desc","type":"string","label":"Card description","default":"Changes reach every screen the moment they happen.","maxLength":110},{"id":"feature1Accent","type":"color","label":"Card accent","default":"#4cc9ff"},{"id":"cardOrbitDegrees","type":"number","label":"Card orbit degrees","description":"Total card-only vertical orbit during Blender frames 150–180 (4.9667–5.9667 seconds). Enter 180, 360, 720, or any angle. The sphere keeps its independent spin. The final angle holds after frame 180.","default":360,"min":-36000,"max":36000,"step":1}]}
   meta={{"duration":10,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":102}}
   attribution={{"path":"registry/blocks/orbit-card","tags":["3d-motion","cards","feature-reveal","dots","orbit","blender-motion","sphere"]}}
   hasCode

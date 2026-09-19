@@ -494,20 +494,31 @@ That writes one file: `compositions/data-chart.html`.
 
 <CatalogSlot slot="docs">
 
+## Add it to your video
+
+It runs for 15 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="data-chart"
+  data-composition-src="compositions/data-chart.html"
+  data-start="0"
+  data-duration="15"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
 ## Change the colors
 
 Set these CSS variables on the block:
 
 - `--bg-color` — Background. Defaults to `#faf9f6`.
 - `--text-color` — Text color. Defaults to `#333333`.
-
-## Usage
-
-After installing, add the block to your host composition:
-
-```html
-<div data-composition-id="data-chart" data-composition-src="compositions/data-chart.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
-```
 
 {/* hf:generated-footer */}
 

@@ -893,13 +893,24 @@ That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under
   it on for you. [How it works](/guides/html-in-canvas)
 </Danger>
 
-## Usage
+## Add it to your video
 
-After installing, add the block to your host composition:
+It runs for 15 seconds at 1920×1080. Paste this into your composition:
 
-```html
-<div data-composition-id="vfx-iphone-device" data-composition-src="compositions/vfx-iphone-device.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
+```html index.html
+<div
+  data-composition-id="vfx-iphone-device"
+  data-composition-src="compositions/vfx-iphone-device.html"
+  data-start="0"
+  data-duration="15"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 

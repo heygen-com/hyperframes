@@ -263,20 +263,31 @@ That writes one file: `compositions/logo-outro.html`.
 
 <CatalogSlot slot="docs">
 
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="logo-outro"
+  data-composition-src="compositions/logo-outro.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
 ## Change the colors
 
 Set these CSS variables on the block:
 
 - `--bg-color` — Background. Defaults to `#0a0a0f`.
 - `--accent-color` — Accent. Defaults to `#1a1a1f`.
-
-## Usage
-
-After installing, add the block to your host composition:
-
-```html
-<div data-composition-id="logo-outro" data-composition-src="compositions/logo-outro.html" data-start="0" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
-```
 
 {/* hf:generated-footer */}
 

@@ -281,11 +281,11 @@ That writes one file: `compositions/code-snippet-apple-terminal-clear-dark.html`
 
 <CatalogSlot slot="docs">
 
-## Usage
+## Add it to your video
 
-After installing, add the block to your host composition:
+It runs for 12 seconds at 1920×1080. Paste this into your composition:
 
-```html
+```html index.html
 <div
   data-composition-id="code-snippet-apple-terminal-clear-dark"
   data-composition-src="compositions/code-snippet-apple-terminal-clear-dark.html"
@@ -297,14 +297,8 @@ After installing, add the block to your host composition:
 ></div>
 ```
 
-## Features
-
-- Faithful recreation of macOS Terminal.app Clear Dark profile — semi-transparent black background with white text
-- macOS window chrome with traffic light buttons and centered title bar
-- Per-character GSAP typing animation — command types out character by character
-- Output lines reveal sequentially after command executes
-- Cursor blinks three times at the end then holds steady
-- Self-contained HTML — no external assets, only GSAP CDN
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 

@@ -150,13 +150,24 @@ That writes one file: `compositions/lt-kicker-name.html`.
 
 <CatalogSlot slot="docs">
 
-## Usage
+## Add it to your video
 
-After installing, add the block to your host composition:
+It runs for 4.8 seconds at 1920×1080. Paste this into your composition:
 
-```html
-<div data-composition-id="lt-kicker-name" data-composition-src="compositions/lt-kicker-name.html" data-start="0" data-duration="4.8" data-track-index="1" data-width="1920" data-height="1080"></div>
+```html index.html
+<div
+  data-composition-id="lt-kicker-name"
+  data-composition-src="compositions/lt-kicker-name.html"
+  data-start="0"
+  data-duration="4.8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 

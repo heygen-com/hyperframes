@@ -443,44 +443,13 @@ That writes one file: `compositions/components/motion-blur.html`.
 
 <CatalogSlot slot="docs">
 
-## Usage
+## Paste it into your composition
 
-Paste the snippet into your composition, then call `attachMotionBlur()` after your GSAP tweens and before registering `window.__timelines`.
+Open `compositions/components/motion-blur.html` and copy what is inside into your own composition.
+The file opens with a comment header that walks you through it.
 
-```html
-<!-- Extend the timeline to data-duration before calling attachMotionBlur -->
-tl.set(document.body, {}, DATA_DURATION);
-
-attachMotionBlur("#my-box", tl, {
-  shutterAngle: 720,   // degrees of the frame interval the shutter is open
-  samplesPerFrame: 16, // sub-intervals of the window; 17 duplicates at 1/16 each
-});
-
-window.__timelines = window.__timelines || {};
-window.__timelines["my-composition"] = tl;
-```
-
-## How it works
-
-This is the After Effects layer Motion Blur model — temporal supersampling — synthesised inside the page, because the renderer captures one instant per frame with no shutter.
-
-1. **Sample the trajectory** — after every timeline seek, the snippet seeks the timeline (events suppressed) to one sub-frame time per window boundary, reads each target's resolved `transform` matrix, then restores the frame time. Reading the resolved matrix rather than a list of named GSAP properties is what makes every driver work: translation, scale, rotation, 3D rotation and skew all arrive in the same one value. The window is `shutterAngle / 360 / fps` seconds long and starts `shutterPhase / 360 / fps` seconds from the frame time; `samplesPerFrame` divides it into that many sub-intervals, so there are `samplesPerFrame + 1` samples and both ends of the window carry one.
-2. **Add the duplicates** — each target gets a group of DOM copies of itself, one per sample, each carrying that sample's transform at `1/N` opacity with `mix-blend-mode: plus-lighter`. plus-lighter adds premultiplied colour, so N + 1 copies at 1/N sum to the average, which is the shutter integral. The group sets `isolation: isolate`, and that is load-bearing rather than tidy: without a transparent backdrop of its own the first copy would add onto the page and blow a light background out to white. A solid translating at speed `v` becomes a box smear of length `v × shutterTime`, centred on its instantaneous position — no one-sided trail and no Gaussian halo. No single duplicate exceeds `1/N`, so the tails step down evenly; where the element travels less than its own size the copies overlap past 1 and clamp, leaving the middle solid rather than a plateau.
-3. **Composite the sharp instance on top** — the element is then drawn over the smear at full opacity, so the position the frame is actually at stays crisp and only the duplicates are faint. This is the single largest difference from a plain average, and the one that makes the result read like After Effects rather than like a long exposure.
-4. **Rest is sharp** — when every sampled transform collapses onto the current one, the group is hidden and the element renders unblurred. The group also carries the element's own opacity, so a beat that moves and fades at once fades its smear with it.
-
-The defaults come from measurement, not from the After Effects UI's nominal values. On a 1920×1080 / 30 fps export of translating text, the outermost duplicate on each side sits exactly one frame away from the frame time, with 8 evenly spaced duplicates between it and the centre — a 720° window at −360° phase, divided into 16. The staircase across a stroke steps by 0.063 ± 0.002 of the sharp text intensity per duplicate: flat 1/16, no taper toward the window edges. Replaying that export through this component scores 32.5 dB mean PSNR against it (min 27.6 over the 72 translating frames), against 24.2 dB (min 17.1) for the previous half-frame centred window.
-
-Copies follow the real trajectory, so eased and curved motion smear correctly, and every property that reaches `transform` drives the smear on its own: a beat that only scales or only turns blurs exactly as a beat that only translates does. A 3D beat reads its perspective off the element's parent and applies it per copy, because `mix-blend-mode` flattens `preserve-3d` and a copy therefore cannot inherit the parent's 3D context. Transformed ancestors are still not compensated. A copy drops the element's id but keeps its classes, so after attaching, address the element by id or by reference rather than by a class the copies also carry.
-
-## Options
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `shutterAngle` | `720` | Degrees of the frame interval the shutter is open. `720` spans two frames, the width measured off the After Effects reference; `360` spans one; `0` disables the blur |
-| `shutterPhase` | `-360` | Degrees offset of the window start from the frame time. `-360` starts the window one frame back, which with a 720° angle centres it on the frame |
-| `samplesPerFrame` | `16` | Sub-intervals of the shutter window (2–64), so `N + 1` duplicates at `1/N` opacity each. More sub-intervals close the gaps between duplicates at high speed, at the cost of one more copy of the element per frame |
-| `fps` | root `data-fps`, else `30` | Composition frame rate. Pass it explicitly when rendering with an fps override (`hyperframes render --fps`) |
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
