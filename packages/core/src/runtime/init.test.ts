@@ -124,6 +124,32 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = (() => {}) as typeof window.cancelAnimationFrame;
   });
 
+  it("publishes progress from parent ticks while the iframe animation frame is suspended", () => {
+    document.body.innerHTML = '<div data-composition-id="main" data-duration="10"></div>';
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+    const post = vi.spyOn(window.parent, "postMessage").mockImplementation(() => {});
+    let now = performance.now();
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    window.__player?.play();
+    post.mockClear();
+    now += 500;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window,
+        data: { source: "hf-parent", type: "control", action: "tick" },
+      }),
+    );
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "hf-preview",
+        type: "state",
+        isPlaying: true,
+        frame: 15,
+      }),
+      "*",
+    );
+  });
   it.each([
     ["2x", 5],
     ["0x2", 10],
