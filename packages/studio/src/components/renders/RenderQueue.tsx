@@ -18,7 +18,7 @@ export interface CompositionDimensions {
   height: number;
 }
 
-type StartRenderHandler = (
+export type StartRenderHandler = (
   format: "mp4" | "webm" | "mov",
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",

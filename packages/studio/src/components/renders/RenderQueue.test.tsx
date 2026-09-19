@@ -2,8 +2,8 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RenderQueue } from "./RenderQueue";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { RenderQueue, type StartRenderHandler } from "./RenderQueue";
 import { getPersistedRenderSettings } from "./renderSettings";
 import { buttonBase, buttonSizes, buttonVariants, cn } from "../ui";
 import { isTypingTarget } from "../../utils/typingTarget";
@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 function mountRenderQueue(
-  onStartRender: ReturnType<typeof vi.fn>,
+  onStartRender: Mock<StartRenderHandler>,
   compositionDimensions = { width: 1920, height: 1080 },
 ) {
   const host = document.createElement("div");
