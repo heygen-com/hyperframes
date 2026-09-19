@@ -962,18 +962,15 @@ export function initSandboxRuntimeModular(): void {
       if (!Number.isFinite(start) || duration == null || duration <= 0) continue;
       subCompositionEnds.push(Math.max(0, start) + duration);
     }
-    // A floor, not a resolution: the declared duration and the sub-compositions' latest end
-    // both hold, so the larger one is the floor.
-    const declaredFloor = resolveCompositionDuration({
-      authoredDurationSeconds: rootDeclaredSeconds,
-      clipEndsSeconds: [],
-    }).seconds;
-    const subCompositionFloor = resolveCompositionDuration({
+    // A floor, not a resolution: the declared duration and every sub-composition end all hold,
+    // so the latest of them is the floor.
+    const { seconds: floorSeconds } = resolveCompositionDuration({
       authoredDurationSeconds: null,
-      clipEndsSeconds: subCompositionEnds,
-    }).seconds;
-    const floorSeconds = Math.max(declaredFloor ?? 0, subCompositionFloor ?? 0);
-    return floorSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? floorSeconds : null;
+      clipEndsSeconds: [rootDeclaredSeconds, ...subCompositionEnds],
+    });
+    return floorSeconds !== null && floorSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS
+      ? floorSeconds
+      : null;
   };
 
   /** The last-resort length: the latest end among the root's timed clips, used only when no
