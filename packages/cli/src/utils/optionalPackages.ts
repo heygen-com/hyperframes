@@ -136,10 +136,12 @@ function sweepStaleStaging(dir: string): void {
     if (!entry.startsWith(prefix)) continue;
     const pid = /^(\d+)(?:-|$)/.exec(entry.slice(prefix.length))?.[1];
     if (pid === undefined || isProcessAlive(Number(pid))) continue;
+    const stale = join(parent, entry);
     try {
-      rmSync(join(parent, entry), { recursive: true, force: true });
-    } catch {
-      // Leftover cleanup is best effort: a locked stale dir must not block a viable install.
+      rmSync(stale, { recursive: true, force: true });
+    } catch (err) {
+      // Best effort: a locked stale dir must not block a viable install, but it stays visible.
+      console.error(`could not remove stale install dir ${stale}: ${(err as Error).message}`);
     }
   }
 }
