@@ -498,6 +498,7 @@ export const Timeline = memo(function Timeline({
           rangeSelection={rangeSelection}
           marqueeRect={marqueeRect}
           laneGapStrips={laneGapStrips}
+          dropPreview={assetDrop.dropPreview}
           theme={theme}
           displayTrackOrder={displayLayout.displayTrackOrder}
           rowHeights={displayLayout.displayRowHeights}

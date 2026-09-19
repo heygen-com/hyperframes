@@ -98,6 +98,7 @@ export function useTimelineAssetDrop({
   sessionEpoch,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dropPreview, setDropPreview] = useState<TimelinePlacement | null>(null);
   const dragPointerRef = useRef<{ clientX: number; clientY: number; sessionEpoch: number } | null>(
     null,
   );
@@ -142,38 +143,6 @@ export function useTimelineAssetDrop({
     [scrollRef, sessionEpoch, stepAutoScroll],
   );
 
-  const handleAssetDragOver = useCallback(
-    (e: React.DragEvent) => {
-      const types = Array.from(e.dataTransfer.types);
-      const hasFiles = types.includes("Files");
-      const hasAsset = types.includes(TIMELINE_ASSET_MIME);
-      const hasBlock = types.includes(TIMELINE_BLOCK_MIME);
-      const hasComposition = types.includes(TIMELINE_COMPOSITION_MIME);
-      if (!hasFiles && !hasAsset && !hasBlock && !hasComposition) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
-      activeDropEpochRef.current = sessionEpoch;
-      setIsDragOver(true);
-      syncAutoScroll(e.clientX, e.clientY);
-    },
-    [sessionEpoch, syncAutoScroll],
-  );
-
-  const clearDropPreview = useCallback(() => {
-    activeDropEpochRef.current = null;
-    stopAutoScroll();
-    setIsDragOver(false);
-  }, [stopAutoScroll]);
-
-  const handleAssetDragLeave = useCallback(
-    (e: React.DragEvent) => {
-      const related = e.relatedTarget;
-      if (related instanceof Node && e.currentTarget.contains(related)) return;
-      clearDropPreview();
-    },
-    [clearDropPreview],
-  );
-
   const resolveDropPlacement = useCallback(
     (clientX: number, clientY: number): TimelinePlacement => {
       const scroll = scrollRef.current;
@@ -194,6 +163,43 @@ export function useTimelineAssetDrop({
       );
     },
     [scrollRef, ppsRef, trackOrderRef, rowGeometryRef, contentOrigin],
+  );
+
+  const handleAssetDragOver = useCallback(
+    (e: React.DragEvent) => {
+      const types = Array.from(e.dataTransfer.types);
+      const hasFiles = types.includes("Files");
+      const hasAsset = types.includes(TIMELINE_ASSET_MIME);
+      const hasBlock = types.includes(TIMELINE_BLOCK_MIME);
+      const hasComposition = types.includes(TIMELINE_COMPOSITION_MIME);
+      if (!hasFiles && !hasAsset && !hasBlock && !hasComposition) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      activeDropEpochRef.current = sessionEpoch;
+      setIsDragOver(true);
+      const next = resolveDropPlacement(e.clientX, e.clientY);
+      setDropPreview((prev) =>
+        prev?.start === next.start && prev.track === next.track ? prev : next,
+      );
+      syncAutoScroll(e.clientX, e.clientY);
+    },
+    [resolveDropPlacement, sessionEpoch, syncAutoScroll],
+  );
+
+  const clearDropPreview = useCallback(() => {
+    activeDropEpochRef.current = null;
+    stopAutoScroll();
+    setIsDragOver(false);
+    setDropPreview(null);
+  }, [stopAutoScroll]);
+
+  const handleAssetDragLeave = useCallback(
+    (e: React.DragEvent) => {
+      const related = e.relatedTarget;
+      if (related instanceof Node && e.currentTarget.contains(related)) return;
+      clearDropPreview();
+    },
+    [clearDropPreview],
   );
 
   const handleAssetDrop = useCallback(
@@ -240,6 +246,7 @@ export function useTimelineAssetDrop({
 
   return {
     isDragOver,
+    dropPreview,
     handleAssetDragOver,
     handleAssetDragLeave,
     handleAssetDrop,

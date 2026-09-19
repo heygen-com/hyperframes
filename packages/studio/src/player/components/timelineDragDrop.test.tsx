@@ -220,4 +220,35 @@ describe("useTimelineAssetDrop", () => {
     expect(view.api.isDragOver).toBe(false);
     act(() => view.root.unmount());
   });
+
+  it("previews the exact placement the drop commits, and clears it after", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    const payload = JSON.stringify({ path: "assets/a.png" });
+
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer(payload), 400, 100)));
+    const preview = view.api.dropPreview;
+    expect(preview).toEqual({ start: 10, track: 0 });
+
+    act(() => view.api.handleAssetDrop(dragEvent(assetTransfer(payload), 400, 100)));
+    expect(onAssetDrop).toHaveBeenCalledExactlyOnceWith("assets/a.png", preview);
+    expect(view.api.dropPreview).toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("moves the preview with the pointer and drops it when the drag leaves", () => {
+    const view = renderHarness(vi.fn());
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 800, 100)));
+    expect(view.api.dropPreview?.start).toBe(20);
+
+    act(() =>
+      view.api.handleAssetDragLeave({
+        relatedTarget: null,
+        currentTarget: document.body,
+      } as unknown as React.DragEvent),
+    );
+    expect(view.api.dropPreview).toBeNull();
+    act(() => view.root.unmount());
+  });
 });

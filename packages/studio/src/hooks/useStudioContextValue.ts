@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useMemo, type DragEvent } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { StudioContextValue } from "../contexts/StudioContext";
 import type { RightInspectorPanes } from "../utils/studioHelpers";
@@ -116,35 +116,21 @@ export function useInspectorState(
   ]);
 }
 
-// fallow-ignore-next-line complexity
-function useDragOverlay(onImportFiles: (files: FileList) => void) {
-  const [active, setActive] = useState(false);
-  const counterRef = useRef(0);
+/** Lets an OS file drop reach `onDrop` anywhere in the shell; the timeline shows its own landing preview. */
+function useFileDropTarget(onImportFiles: (files: FileList) => void) {
   const onDragOver = useCallback((e: DragEvent) => {
     if (!e.dataTransfer.types.includes("Files")) return;
     e.preventDefault();
   }, []);
-  const onDragEnter = useCallback((e: DragEvent) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-    counterRef.current++;
-    setActive(true);
-  }, []);
-  const onDragLeave = useCallback(() => {
-    counterRef.current--;
-    if (counterRef.current === 0) setActive(false);
-  }, []);
   const onDrop = useCallback(
     (e: DragEvent) => {
-      counterRef.current = 0;
-      setActive(false);
       if (e.defaultPrevented) return;
       e.preventDefault();
       if (e.dataTransfer.files.length) onImportFiles(e.dataTransfer.files);
     },
     [onImportFiles],
   );
-  return { active, onDragOver, onDragEnter, onDragLeave, onDrop };
+  return { onDragOver, onDrop };
 }
 
 /** Global OS file drop: imports and places at the playhead position. */
@@ -156,5 +142,5 @@ export function useGlobalFileDrop(handleTimelineFileDrop: TimelineFileDropHandle
     },
     [handleTimelineFileDrop],
   );
-  return useDragOverlay(onDrop);
+  return useFileDropTarget(onDrop);
 }

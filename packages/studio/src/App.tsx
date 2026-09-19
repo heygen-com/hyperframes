@@ -342,7 +342,7 @@ export function StudioApp() {
     setConsoleErrors,
     resetErrors: resetConsoleErrors,
   } = useConsoleErrorCapture(previewIframe);
-  const dragOverlay = useGlobalFileDrop(timelineEditing.handleTimelineFileDrop);
+  const fileDrop = useGlobalFileDrop(timelineEditing.handleTimelineFileDrop);
   const handleToggleRecordingRef = useRef<() => void>(() => {});
   const domEditSessionRef = useRef(domEditSession);
   domEditSessionRef.current = domEditSession;
@@ -447,10 +447,8 @@ export function StudioApp() {
               <DomEditProvider value={domEditSession}>
                 <div
                   className="flex flex-col h-full w-full bg-neutral-950 relative"
-                  onDragOver={dragOverlay.onDragOver}
-                  onDragEnter={dragOverlay.onDragEnter}
-                  onDragLeave={dragOverlay.onDragLeave}
-                  onDrop={dragOverlay.onDrop}
+                  onDragOver={fileDrop.onDragOver}
+                  onDrop={fileDrop.onDrop}
                 >
                   <StudioHeader
                     captureFrameHref={frameCapture.captureFrameHref}
@@ -573,7 +571,6 @@ export function StudioApp() {
                     clearConsoleErrors={() => setConsoleErrors(null)}
                     domEditSession={domEditSession}
                     activeCompPath={activeCompPath}
-                    dragOverlayActive={dragOverlay.active}
                     toasts={toasts}
                     dismissToast={dismissToast}
                   />

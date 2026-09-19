@@ -38,6 +38,10 @@ const BASE_FLAG = "--base";
  */
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio/src/components/StudioGlobalDragOverlay.tsx",
+    "the full-screen drop-to-add box is replaced by a landing preview on the timeline; no remaining references",
+  ],
+  [
     "docs/snippets/catalog-overview-player.jsx",
     "#4051 removes the Catalog overview's only consumer of this snippet (replaced by the browse-grid mount); confirmed unreferenced repo-wide before deleting",
   ],
