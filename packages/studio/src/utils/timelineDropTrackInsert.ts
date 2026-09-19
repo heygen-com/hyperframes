@@ -1,7 +1,7 @@
 import type { TimelineElement } from "../player";
 import { layoutAfterTrackInsert } from "../player/components/timelineDragLanding";
 import { canMoveTimelineElement } from "../player/components/timelineAuthoredMoveTarget";
-import { timelineTrackOrder } from "../player/components/timelineTrackDisplay";
+import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
 import { applyPatchByTarget, readAttributeByTarget } from "./sourcePatcher";
 import { buildPatchTarget } from "../hooks/timelineEditingHelpers";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
@@ -17,22 +17,23 @@ export interface DropTrackInsertPlan {
  *  Null when a locked clip would have to move. */
 export function planDropTrackInsert(input: {
   elements: TimelineElement[];
+  /** The row order the timeline shows (anchor rows included), which `insertRow` indexes. */
+  trackOrder: readonly number[];
   insertRow: number;
   dropped: Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
 }): DropTrackInsertPlan | null {
-  const { elements, insertRow, dropped } = input;
-  const trackOrder = timelineTrackOrder(elements);
+  const { elements, trackOrder, insertRow, dropped } = input;
   const newElement: TimelineElement = {
     ...dropped,
     key: dropped.id,
     // Parked on an existing lane so it adds no lane of its own to the topology.
-    track: trackOrder[0] ?? 0,
+    track: elements[0]?.track ?? 0,
     // sameSourceFile compares this raw field: borrow the peers' value, not the resolved path.
     sourceFile: elements[0]?.sourceFile,
   };
   const layout = layoutAfterTrackInsert(newElement, dropped.start, insertRow, null, {
     elements: [...elements, newElement],
-    trackOrder,
+    trackOrder: [...trackOrder],
   });
   if (!layout) return null;
   const byKey = new Map(elements.map((e) => [e.key ?? e.id, e]));
@@ -70,12 +71,13 @@ export function applyTrackRenumbers(source: string, plan: DropTrackInsertPlan): 
 export function resolveDropTrack(input: {
   source: string;
   elements: TimelineElement[];
-  placement: { track: number; insertRow?: number | null };
+  placement: TimelineDropPlacement;
   dropped: Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
 }): { source: string; track: number } {
   const { source, elements, placement, dropped } = input;
   if (placement.insertRow == null) return { source, track: placement.track };
-  const plan = planDropTrackInsert({ elements, insertRow: placement.insertRow, dropped });
+  const { insertRow, trackOrder } = placement;
+  const plan = planDropTrackInsert({ elements, trackOrder, insertRow, dropped });
   if (!plan) throw new Error("Cannot open a new track here: a locked clip would have to move.");
   return { source: applyTrackRenumbers(source, plan), track: plan.track };
 }

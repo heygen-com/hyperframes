@@ -76,7 +76,9 @@ function placeDrop(
   if (!canInsertTrack) return placement;
   const contentY = clientY - geometry.rectTop + geometry.scrollTop;
   const insertRow = resolveDropInsertRow(contentY, geometry.rowHeights, geometry.trackOrder.length);
-  return insertRow == null ? placement : { ...placement, insertRow };
+  return insertRow == null
+    ? placement
+    : { ...placement, insertRow, trackOrder: geometry.trackOrder };
 }
 
 function invokeDropCallback(callback: () => Promise<void> | void): void {

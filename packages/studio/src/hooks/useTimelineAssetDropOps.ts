@@ -32,12 +32,10 @@ import { usePlayerStore } from "../player/store/playerStore";
 function fileDropPlacement(
   index: number,
   next: { start: number; track: number },
-  firstInsertRow: number | null | undefined,
+  dropped: TimelineDropPlacement | undefined,
   landedTrack: number | undefined,
 ): TimelineDropPlacement {
-  return index === 0
-    ? { ...next, insertRow: firstInsertRow }
-    : { ...next, track: landedTrack ?? next.track };
+  return index === 0 ? { ...dropped, ...next } : { ...next, track: landedTrack ?? next.track };
 }
 
 interface UseTimelineAssetDropOpsOptions {
@@ -211,7 +209,7 @@ export function useTimelineAssetDropOps({
         const next = placements[index] ?? placements[0];
         const track = await dropAssetAt(
           assetPath,
-          fileDropPlacement(index, next, placement?.insertRow, landedTrack),
+          fileDropPlacement(index, next, placement, landedTrack),
           durations[index],
         );
         if (index === 0) landedTrack = track;

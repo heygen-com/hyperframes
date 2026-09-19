@@ -116,7 +116,7 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     ]);
 
     await act(async () => {
-      await getDrop()("clip.mp4", { start: 1, track: 1, insertRow: 1 }, 2);
+      await getDrop()("clip.mp4", { start: 1, track: 1, insertRow: 1, trackOrder: [0, 2] }, 2);
     });
 
     const [, written] = writeProjectFile.mock.calls[0] as [string, string];

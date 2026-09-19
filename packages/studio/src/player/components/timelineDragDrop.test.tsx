@@ -285,7 +285,11 @@ describe("useTimelineAssetDrop new-track drops", () => {
     act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, y)));
     expect(onAssetDrop).toHaveBeenCalledWith(
       "assets/a.png",
-      expect.objectContaining({ start: 10, insertRow: 1 }),
+      expect.objectContaining({
+        start: 10,
+        insertRow: 1,
+        trackOrder: Array.from({ length: 100 }, (_, index) => index),
+      }),
     );
     act(() => view.root.unmount());
   });
