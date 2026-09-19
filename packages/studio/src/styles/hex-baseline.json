@@ -1,5 +1,5 @@
 {
-  "total": 418,
+  "total": 394,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -75,7 +75,7 @@
     "packages/studio/src/player/components/TimelineTrackHeader.tsx": 2,
     "packages/studio/src/player/components/TimelineTrackPlainHeader.tsx": 2,
     "packages/studio/src/player/components/VideoThumbnail.tsx": 6,
-    "packages/studio/src/player/components/timelineTheme.ts": 29,
+    "packages/studio/src/player/components/timelineTheme.ts": 5,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
     "packages/studio/src/styles/studio.css": 70,
     "packages/studio/src/telemetry/client.ts": 1,

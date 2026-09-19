@@ -34,7 +34,7 @@ const GROUP_MEMBER_INDENT = 14;
 const GROUP_MEMBER_TINT = "rgba(255,255,255,0.035)";
 
 /** The gutter fill for a row, tinted when it belongs to a group. */
-function gutterFill(base: string, isGroupMember: boolean): string {
+export function gutterFill(base: string, isGroupMember: boolean): string {
   return isGroupMember
     ? `linear-gradient(${GROUP_MEMBER_TINT}, ${GROUP_MEMBER_TINT}), ${base}`
     : base;

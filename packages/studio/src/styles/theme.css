@@ -46,6 +46,33 @@
   --color-brand-gradient-from: #06e3fa;
   --color-brand-gradient-to: #4fdb5e;
 
+  /* The timeline's own surfaces: darker and bluer than the shared scale, so they
+   * get their own names instead of snapping to the nearest --color-bg/-surface
+   * step (a host themes the timeline by overriding these). */
+  --timeline-shell-bg: #0a0a0b;
+  --timeline-shell-border: rgba(255, 255, 255, 0.05);
+  --timeline-ruler-border: rgba(255, 255, 255, 0.16);
+  --timeline-row-bg: #101014;
+  --timeline-row-border: rgba(255, 255, 255, 0.06);
+  --timeline-gutter-bg: #0e0f12;
+  --timeline-gutter-border: rgba(255, 255, 255, 0.1);
+  --timeline-text-primary: rgba(255, 255, 255, 0.92);
+  --timeline-text-secondary: rgba(255, 255, 255, 0.62);
+  --timeline-tick-text: rgba(255, 255, 255, 0.34);
+  --timeline-tick-major: rgba(255, 255, 255, 0.1);
+  --timeline-tick-minor: rgba(255, 255, 255, 0.06);
+  --timeline-clip-bg: #141922;
+  --timeline-clip-bg-active: #181e28;
+  --timeline-clip-border: rgba(255, 255, 255, 0.1);
+  --timeline-clip-border-hover: rgba(255, 255, 255, 0.18);
+  --timeline-clip-border-active: rgba(255, 255, 255, 0.24);
+  --timeline-handle: rgba(255, 255, 255, 0.2);
+  --timeline-resize-seam: rgba(255, 255, 255, 0.12);
+  --timeline-resize-active: rgba(255, 255, 255, 0.24);
+  --timeline-track-clip-fill: rgba(255, 255, 255, 0.055);
+  --timeline-track-clip-active: rgba(60, 230, 172, 0.16);
+  --timeline-track-label: rgba(255, 255, 255, 0.5);
+
   /* -------------------------------------------------------------- geometry */
 
   --radius-sm: 0.25rem;
