@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Other Transitions"
   description="Showcase of miscellaneous creative transitions"
   variables={[]}
-  meta={{"duration":20,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":392}}
+  meta={{"duration":20,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":395}}
   attribution={{"path":"registry/blocks/transitions-other","tags":["transition","showcase"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/transitions-other/transitions-other.html"
@@ -221,7 +221,6 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           width: 50px;
           height: 50px;
           border-radius: 50%;
-          transform: translate(-50%, -50%) scale(0);
           z-index: 50;
           opacity: 0;
           pointer-events: none;
@@ -274,6 +273,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       (function () {
         var tl = gsap.timeline({ paused: true });
         var t = 0;
+
+        // Own the full transform via GSAP from the start (not CSS), so the
+        // later scale tween below doesn't clobber the centering it never tracked.
+        gsap.set("#morph-circle", { xPercent: -50, yPercent: -50, scale: 0 });
 
         // === TITLE CARD (3s) ===
         tl.to("#title-label", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, t + 0.3);
