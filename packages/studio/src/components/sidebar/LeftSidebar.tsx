@@ -325,7 +325,7 @@ export const LeftSidebar = memo(
                       data-lint-badge={lintHasError ? "error" : "warning"}
                       className={
                         lintHasError
-                          ? "ml-1 min-w-[16px] rounded-full bg-red-500/25 px-1 text-[9px] font-bold text-red-400 animate-pulse motion-reduce:animate-none"
+                          ? "ml-1 min-w-[16px] rounded-full bg-panel-danger/25 px-1 text-[9px] font-bold text-panel-danger animate-pulse motion-reduce:animate-none"
                           : "ml-1 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[9px] font-bold text-amber-400"
                       }
                     >
