@@ -48,12 +48,31 @@ export interface TimelineRow extends ClipFact {
   absEnd: number;
   /** Project-relative path of the file that declares this clip. */
   file: string;
-  /** Clips of a sub-composition, `start`/`end` local to the host. One level only. */
-  children: TimelineRow[];
+  /** Position of this row in its own kind's `rows`. Not an id: never use it to name a clip. */
+  index: number;
+  /** True for a clip declared inside a sub-composition. */
+  nested: boolean;
+  /** Plain id of the row whose `data-composition-src` declares this clip; `null` unless `nested`. */
+  host: string | null;
+  /** Where that host row is (its kind's `rows[index]`), for hosts whose id is missing or repeated. */
+  hostRow: RowPointer | null;
+  /** Where this row's sub-composition clips are (one level only); each is a full row in its kind's `rows`. */
+  children: RowPointer[];
 }
+
+export interface RowPointer {
+  kind: TrackKind;
+  index: number;
+}
+
+/** A row before flattening: children are still row objects and refs are not assigned. */
+type ClipDraft = Omit<TimelineRow, "index" | "nested" | "host" | "hostRow" | "children"> & {
+  children: ClipDraft[];
+};
 
 export interface TimelineTrack {
   kind: TrackKind;
+  /** Every clip of this kind, nested ones included, by `absStart`. */
   rows: TimelineRow[];
 }
 
@@ -170,7 +189,7 @@ interface DurationResolution {
 
 function resolveContainerDuration(
   authored: number | null,
-  children: readonly TimelineRow[],
+  children: readonly { end: number }[],
 ): DurationResolution {
   if (authored !== null)
     return { duration: authored, durationSource: "authored", pendingReason: null };
@@ -234,7 +253,7 @@ function mainTimelineStart(scope: DocScope, el: Element, start: number): number 
   });
 }
 
-async function describeRow(scope: DocScope, node: DomNode, depth: number): Promise<TimelineRow> {
+async function describeRow(scope: DocScope, node: DomNode, depth: number): Promise<ClipDraft> {
   const { el } = node;
   const { doc, startCache } = scope;
   const start = resolveReferencedStart(doc, el, startCache, new Set());
@@ -277,7 +296,7 @@ async function readSubComposition(
   src: string,
   parent: DocScope,
   origin: number,
-): Promise<TimelineRow[]> {
+): Promise<ClipDraft[]> {
   const authored = resolve(parent.dir, src);
   const file = realFileInside(parent.projectDir, authored);
   if (!file) return [];
@@ -313,6 +332,35 @@ function realFileInside(projectDir: string, path: string): string | null {
   }
 }
 
+/** One flat, `absStart`-ordered list per kind holding every clip once; `children` become refs into those lists. */
+function flatten(top: ClipDraft[]): TimelineTrack[] {
+  const entries = [
+    ...top.map((clip) => ({ clip, host: null })),
+    ...top.flatMap((host) => host.children.map((clip) => ({ clip, host }))),
+  ];
+  const byKind = TRACK_ORDER.map((kind) => ({
+    kind,
+    entries: entries
+      .filter((e) => e.clip.trackKind === kind)
+      .sort((a, b) => a.clip.absStart - b.clip.absStart),
+  })).filter((t) => t.entries.length > 0);
+  const pointers = new Map<ClipDraft, RowPointer>(
+    byKind.flatMap((t) => t.entries.map((e, index) => [e.clip, { kind: t.kind, index }] as const)),
+  );
+  const at = (clip: ClipDraft) => pointers.get(clip)!;
+  return byKind.map(({ kind, entries: kindEntries }) => ({
+    kind,
+    rows: kindEntries.map(({ clip, host }, index) => ({
+      ...clip,
+      index,
+      nested: host !== null,
+      host: host && host.id,
+      hostRow: host && at(host),
+      children: clip.children.map(at),
+    })),
+  }));
+}
+
 /** Needs a global DOMParser (`ensureDOMParser`). Reads `index.html` and one level of sub-compositions. */
 export async function describeProject(
   indexPath: string,
@@ -337,9 +385,6 @@ export async function describeProject(
   const declared = parseNumeric(root.getAttribute("data-duration"));
   return {
     duration: declared ?? rows.reduce((max, r) => Math.max(max, r.end), 0),
-    tracks: TRACK_ORDER.map((kind) => ({
-      kind,
-      rows: rows.filter((r) => r.trackKind === kind),
-    })).filter((t) => t.rows.length > 0),
+    tracks: flatten(rows),
   };
 }
