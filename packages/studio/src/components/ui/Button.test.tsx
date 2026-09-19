@@ -215,6 +215,23 @@ describe("disabled states", () => {
 });
 
 describe("children layout", () => {
+  it("keeps label and shortcut direct flex items of the gap-bearing button without an icon", () => {
+    const host = mountHost(
+      <Button size="md">
+        <span>Export</span>
+        <kbd>⌘E</kbd>
+      </Button>,
+    );
+    const button = host.querySelector("button");
+
+    expect(button?.classList.contains("inline-flex")).toBe(true);
+    expect(button?.classList.contains("gap-1.5")).toBe(true);
+    expect(Array.from(button?.children ?? []).map((child) => child.tagName)).toEqual([
+      "SPAN",
+      "KBD",
+    ]);
+  });
+
   it("makes label and shortcut direct flex items so the button gap applies between them", () => {
     const host = mountHost(
       <Button icon={<svg />}>
