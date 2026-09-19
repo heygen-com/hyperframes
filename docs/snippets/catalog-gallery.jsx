@@ -10,6 +10,15 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     const MAX_DOM_PLAYERS = 6;
     const MAX_WEBGL_PLAYERS = 1;
     const READY_TIMEOUT_MS = 6000;
+    // BEGIN revealWhenPainted: calls reveal one frame after the player's assets have settled (the player fires assetsready within 8 s).
+    const revealWhenPainted = (player, reveal) => {
+        const paint = () => requestAnimationFrame(reveal);
+        if (player.assetsReady)
+            paint();
+        else
+            player.addEventListener('assetsready', paint, { once: true });
+    };
+    // END revealWhenPainted
     async function ensurePlayerDefined() {
         if (customElements.get('hyperframes-player'))
             return;
@@ -300,9 +309,14 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 player.addEventListener('ready', () => {
                     clearTimeout(readyTimer);
                     player.seek(REST_SECONDS);
-                    host.dataset.ready = 'true';
-                    if (state.hover)
-                        player.play();
+                    // The poster stays visible until the composition has painted, not merely until its runtime is ready.
+                    revealWhenPainted(player, () => {
+                        if (mountsRef.current.get(item.href) !== state)
+                            return;
+                        host.dataset.ready = 'true';
+                        if (state.hover)
+                            player.play();
+                    });
                 }, { once: true });
                 player.setAttribute('srcdoc', html);
                 state.player = player;

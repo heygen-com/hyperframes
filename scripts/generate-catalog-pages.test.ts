@@ -302,3 +302,49 @@ describe("stageProps recorded-clip guard", () => {
     assert.deepEqual(stageProps("block", { ...frost, preview: undefined }), []);
   });
 });
+
+describe("tile reveal", () => {
+  const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-gallery.jsx"), "utf-8");
+  const fn = source.slice(
+    source.indexOf("const revealWhenPainted"),
+    source.indexOf("// END revealWhenPainted"),
+  );
+  const frames: Array<() => void> = [];
+  const revealWhenPainted = runInNewContext(`${fn} revealWhenPainted`, {
+    requestAnimationFrame: (cb: () => void) => frames.push(cb),
+  }) as (player: unknown, reveal: () => void) => void;
+  const player = (assetsReady: boolean) => {
+    const target = new EventTarget();
+    return Object.assign(target, { assetsReady });
+  };
+
+  it("keeps the poster until assetsready plus one frame, not at runtime ready", () => {
+    frames.length = 0;
+    const p = player(false);
+    let revealed = 0;
+    revealWhenPainted(p, () => revealed++);
+    p.dispatchEvent(new Event("ready"));
+    assert.equal(revealed + frames.length, 0);
+    p.dispatchEvent(new Event("assetsready"));
+    assert.equal(revealed, 0);
+    frames.forEach((f) => f());
+    assert.equal(revealed, 1);
+  });
+
+  it("reveals after one frame when the assets were already settled", () => {
+    frames.length = 0;
+    let revealed = 0;
+    revealWhenPainted(player(true), () => revealed++);
+    frames.forEach((f) => f());
+    assert.equal(revealed, 1);
+  });
+
+  it("wires the reveal into the ready handler and not a bare data-ready flip", () => {
+    const handler = source.slice(
+      source.indexOf("addEventListener('ready'"),
+      source.indexOf("player.setAttribute('srcdoc'"),
+    );
+    assert.match(handler, /revealWhenPainted\(/);
+    assert.doesNotMatch(handler.split("revealWhenPainted")[0], /dataset\.ready = 'true'/);
+  });
+});
