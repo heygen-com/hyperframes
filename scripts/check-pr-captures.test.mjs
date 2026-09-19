@@ -616,7 +616,7 @@ test("the CLI fails a fork PR that hits a limit of the check", () => {
     bodyWith(links.join("\n"), NEW),
   );
   assert.equal(result.status, 1, result.stdout + result.stderr);
-  assert.match(result.stderr, /limit of this check/);
+  assert.match(result.stderr, /cannot pass as it stands/);
 });
 
 test("exactly twelve capture links are accepted, shared links count once, markdown wrappers are stripped", async () => {
@@ -655,4 +655,25 @@ test("an http attachment link is refused, an external media link is only noted",
   const sameExternal = await duplicateCaptureProblems(bodyWith(external, external), fromMap);
   assert.equal(sameExternal.refused.length, 0);
   assert.equal(sameExternal.notices.length, 2);
+});
+
+test("a link with an explicit port or upper-case host is compared, not reported as skipped", async () => {
+  const odd = NEW.replace("https://github.com", "https://GitHub.com:443");
+  const result = await duplicateCaptureProblems(bodyWith(OLD, odd), fromMap);
+  assert.deepEqual(result.notices, []);
+});
+
+test("a cap trip does not give its bytes back to the budget", async () => {
+  const budget = { left: 300 * MB };
+  await assert.rejects(downloadAsset(OLD, async () => streamOf(60 * MB, 60 * MB), noSleep, budget));
+  assert.ok(budget.left < 300 * MB - 100 * MB);
+});
+
+test("the CLI passes on notices alone", () => {
+  const result = runCli(
+    { HEAD_REPO: "a/r", BASE_REPO: "a/r" },
+    bodyWith("https://example.com/a.mp4", "https://example.com/b.mp4"),
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /not compared/);
 });

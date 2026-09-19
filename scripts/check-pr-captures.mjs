@@ -303,13 +303,16 @@ export async function downloadAsset(
   throw failure;
 }
 
+/** The asset a link names: query, fragment and default port do not change it. */
+const linkIdentity = (url) => (url === null ? "" : `${url.origin}${url.pathname}`);
+
 /** Only GitHub attachment URLs are downloaded: a body must not make the runner fetch an arbitrary host. */
 const captureUrls = (section) => [
   ...new Set(
     (section.text.match(ANY_URL) ?? [])
       .map((raw) => parseUrl(raw.replace(TRAILING_PUNCTUATION, "")))
       .filter((url) => url !== null && url.protocol === "https:" && isAttachmentUrl(url))
-      .map((url) => `${url.origin}${url.pathname}`),
+      .map(linkIdentity),
   ),
 ];
 
@@ -381,7 +384,7 @@ const trimmedLinks = (section) =>
 function uncomparable(sections) {
   const skipped = sections.flatMap(trimmedLinks).filter(isMediaUrl);
   const comparable = new Set(sections.flatMap(captureUrls));
-  const rest = skipped.filter((raw) => !comparable.has(raw.split(/[?#]/)[0]));
+  const rest = skipped.filter((raw) => !comparable.has(linkIdentity(parseUrl(raw))));
   const insecure = rest.filter(
     (raw) => parseUrl(raw)?.protocol === "http:" && isAttachmentUrl(parseUrl(raw)),
   );
@@ -468,7 +471,7 @@ function reportCaptureProblems({ unreadable, identical, refused, notices }, env)
     "A capture under After is the same file as one under Before; re-attach the real After recording:",
     identical,
   );
-  printList("The capture comparison hit a limit of this check:", refused);
+  printList("The capture comparison cannot pass as it stands:", refused);
   printList("Links the duplicate check could not compare:", notices, console.log);
 }
 
