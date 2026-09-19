@@ -141,6 +141,26 @@ describe("runAtomicCutTransaction", () => {
     expect(result).toMatchObject({ splitCount: 1, syncFailed: false });
   });
 
+  it("records the cut under the caller's fold key so it merges into one undo step", async () => {
+    installCutServer();
+    const recordEdit = vi.fn().mockResolvedValue(undefined);
+
+    await runAtomicCutTransaction({
+      projectId: "p1",
+      intents: buildAtomicCutIntents([element()], 2, "index.html"),
+      label: "Split timeline clip",
+      coalesceKey: "clip-overwrite:7",
+      coalesceMs: Number.POSITIVE_INFINITY,
+      writeProjectFile: vi.fn(),
+      recordEdit,
+      synchronize: vi.fn(),
+    });
+
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ coalesceKey: "clip-overwrite:7", coalesceMs: Infinity }),
+    );
+  });
+
   it("CAS-restores durable bytes when history registration fails", async () => {
     installCutServer();
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);

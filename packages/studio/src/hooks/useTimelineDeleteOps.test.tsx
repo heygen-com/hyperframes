@@ -58,6 +58,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
   function mountDeleteHarness(overrides: {
     handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"];
     showToast?: DeleteOpsOptions["showToast"];
+    recordEdit?: DeleteOpsOptions["recordEdit"];
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
@@ -68,7 +69,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
         timelineElements: elements,
         showToast: overrides.showToast ?? vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
-        recordEdit: vi.fn().mockResolvedValue(undefined),
+        recordEdit: overrides.recordEdit ?? vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
         handleTimelineGroupMove: overrides.handleTimelineGroupMove,
@@ -114,6 +115,26 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     expect(handleTimelineGroupMove).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ suppressFailureToast: true }),
+    );
+  });
+
+  it("an overwrite delete records under the drop's fold key and never ripples the main track", async () => {
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const recordEdit = vi.fn().mockResolvedValue(undefined);
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, recordEdit });
+    let deleted: boolean | undefined;
+
+    await act(async () => {
+      deleted = await getHook().deleteTimelineElements([b], {
+        coalesceKey: "clip-overwrite:3",
+        coalesceMs: Number.POSITIVE_INFINITY,
+      });
+    });
+
+    expect(deleted).toBe(true);
+    expect(handleTimelineGroupMove).not.toHaveBeenCalled();
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ coalesceKey: "clip-overwrite:3", coalesceMs: Infinity }),
     );
   });
 });
