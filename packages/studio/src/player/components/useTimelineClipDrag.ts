@@ -301,11 +301,12 @@ export function useTimelineClipDrag({
         buildSnapTargets,
       });
       trimSeekOriginRef.current ??= usePlayerStore.getState().currentTime;
-      onSeekRef.current?.(trimPreviewTime(resize.edge, next.previewStart, next.previewDuration));
-      const setResizeState = (v: ResizePreviewResult) =>
+      const setResizeState = (v: ResizePreviewResult) => {
+        onSeekRef.current?.(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration));
         publishResizingClip(
           resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
         );
+      };
 
       // Group resize: a capability-clean multi-selection resizes rigidly by one
       // shared, member-clamped delta (legacy main 36413da7f). The grabbed clip

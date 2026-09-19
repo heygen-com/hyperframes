@@ -72,6 +72,7 @@ interface RenderLanesOptions {
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
   hoveredClip?: string | null;
   renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
+  snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
 }
 
 function renderLanes(options: RenderLanesOptions = {}): {
@@ -141,6 +142,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           renderClipContent={next.renderClipContent}
           draggedClip={next.draggedClip ?? null}
           draggedElement={null}
+          snapGuide={next.snapGuide ?? null}
           multiDragPreview={next.multiDragPreview ?? null}
           blockedClipRef={createRef<BlockedClipState | null>()}
           suppressClickRef={{ current: false }}
@@ -178,6 +180,36 @@ function visibilityLabels(host: HTMLElement): (string | null)[] {
     button.getAttribute("aria-label"),
   );
 }
+
+/** The beat guide's own highlight div, keyed by the green glow every other beat lacks. */
+function beatHighlight(host: HTMLElement): HTMLElement | undefined {
+  return Array.from(host.querySelectorAll("div")).find((div) =>
+    (div.style.boxShadow ?? "").includes("34,197,94"),
+  );
+}
+
+describe("TimelineLanes beat guide", () => {
+  it("draws the beat highlight from snapGuide, not from the stale draggedClip prop", () => {
+    const view = renderLanes({
+      elements: [element("clip-a", TRACK_A)],
+      snapGuide: { time: 1.5, type: "beat" },
+    });
+
+    expect(beatHighlight(view.host)?.style.left).toBe("150px");
+    act(() => view.root.unmount());
+  });
+
+  it("clears the highlight once the trim it belonged to ends", () => {
+    const view = renderLanes({
+      elements: [element("clip-a", TRACK_A)],
+      snapGuide: { time: 1.5, type: "beat" },
+    });
+    view.rerender({ elements: [element("clip-a", TRACK_A)], snapGuide: null });
+
+    expect(beatHighlight(view.host)).toBeUndefined();
+    act(() => view.root.unmount());
+  });
+});
 
 describe("TimelineLanes track numbering", () => {
   // Screen readers literally announced "Hide track 0.16666666666666666".

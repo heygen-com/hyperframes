@@ -499,4 +499,44 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     expect(onSeek).toHaveBeenLastCalledWith(1.5);
     h.unmount();
   });
+
+  it("publishes the guide when the start edge snaps to a neighbour's end", () => {
+    // playbackStart leaves source to reveal when the in-point moves left.
+    const a = el("a", { start: 3, duration: 2, playbackStart: 5 });
+    const b = el("b", { start: 0, duration: 2 });
+    const h = renderResizeHarness([a, b], [], { snap: true });
+    h.startResize(a, "start");
+    h.movePointer(-96); // a's start lands at 2.04s, 4px from b's end
+    expect(h.getResizingClip()).toMatchObject({ snapTime: 2, previewStart: 2 });
+    h.unmount();
+  });
+
+  it("restores the playhead it had before the first preview seek, not a seeked time", async () => {
+    usePlayerStore.setState({ currentTime: 1.25 });
+    const onSeek = vi.fn((t: number) => usePlayerStore.setState({ currentTime: t }));
+    const a = el("a", { start: 1, duration: 2 });
+    const h = renderResizeHarness([a], [], { onSeek });
+    h.startResize(a, "end");
+    h.movePointer(50);
+    h.movePointer(80);
+    h.movePointer(120);
+    await h.dropPointer();
+    expect(onSeek).toHaveBeenLastCalledWith(1.25);
+    h.unmount();
+  });
+
+  it("draws no guide and seeks to the rendered edge when a group member clamps the trim", () => {
+    const onSeek = vi.fn();
+    const a = el("a", { start: 0, duration: 4 });
+    const b = el("b", { start: 0, duration: 1 });
+    const c = el("c", { start: 2, duration: 1 });
+    const h = renderResizeHarness([a, b, c], ["a", "b"], { snap: true, onSeek });
+    h.startResize(a, "end");
+    h.movePointer(-198); // a's raw end 2.02s snaps to c at 2s; b clamps the shared delta
+    const clip = h.getResizingClip()!;
+    expect(clip.previewStart + clip.previewDuration).toBeCloseTo(3.1, 3);
+    expect(clip).toMatchObject({ snapTime: null, snapType: null });
+    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(3.1 - 1 / 30, 3));
+    h.unmount();
+  });
 });

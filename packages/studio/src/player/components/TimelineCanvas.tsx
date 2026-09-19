@@ -119,6 +119,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
 
       <TimelineLanes
         {...props}
+        snapGuide={snapGuide}
         draggedElement={draggedElement}
         multiDragPreview={multiDragPreview}
         onToggleTrackHidden={onToggleTrackHidden}

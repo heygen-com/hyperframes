@@ -22,6 +22,7 @@ import {
 import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
 import { resolveDragLandingStart } from "./timelineDragLanding";
+import { STUDIO_PREVIEW_FPS } from "../lib/time";
 
 /** Snap-target builder closure supplied by the hook (closes over refs + store). */
 type BuildSnapTargets = (
@@ -224,8 +225,8 @@ export function computeDragPreview(
   };
 }
 
-/** One 30 fps frame: the last visible frame of a clip sits just before its end time. */
-const TRIM_END_FRAME_LEAD_S = 1 / 30;
+/** One frame: the last visible frame of a clip sits just before its end time. */
+const TRIM_END_FRAME_LEAD_S = 1 / STUDIO_PREVIEW_FPS;
 
 /** The composition time whose frame a trim shows: the edge being dragged. */
 export function trimPreviewTime(edge: "start" | "end", start: number, duration: number): number {
@@ -374,13 +375,18 @@ export function previewGroupResize(
   ) => void,
 ): void {
   const grabbedChange = applyTimelineGroupResizePreview(session, next);
+  const previewStart = grabbedChange?.start ?? next.previewStart;
+  const previewDuration = grabbedChange?.duration ?? next.previewDuration;
+  // A member clamp can pull the grabbed edge off the raw snap target; then no guide.
+  const edgeTime = session.edge === "end" ? previewStart + previewDuration : previewStart;
+  const stillSnapped = next.snapTime != null && Math.abs(edgeTime - next.snapTime) < 1e-3;
   setResizeState({
     originScrollLeft: next.originScrollLeft,
-    previewStart: grabbedChange?.start ?? next.previewStart,
-    previewDuration: grabbedChange?.duration ?? next.previewDuration,
+    previewStart,
+    previewDuration,
     previewPlaybackStart: grabbedChange?.playbackStart ?? next.previewPlaybackStart,
-    snapTime: next.snapTime,
-    snapType: next.snapType,
+    snapTime: stillSnapped ? next.snapTime : null,
+    snapType: stillSnapped ? next.snapType : null,
     groupPreview: session.changes,
   });
 }
