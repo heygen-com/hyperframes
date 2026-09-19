@@ -1,17 +1,6 @@
 /**
- * The inspector panel's tab strip.
- *
- * It used to be a row of `aria-pressed` buttons, which no arrow key reached
- * and which assistive tech announced as five unrelated toggles. This is the
- * shared Tabs primitive, so the strip gets the roving tabindex, the arrow keys
- * and Home / End from the library rather than from nobody.
- *
- * The selected tab is derived, not stored: `active` comes from the panel state
- * the panel already keeps (which pane is open, which tab the layout holds), so
- * this component adds no second source for that decision. In the legacy split
- * inspector both Design and Layers can be open at once; one of them holds the
- * `aria-selected` state and the other still wears the selected look, because
- * both panes really are on screen.
+ * The inspector tab strip on the shared Tabs primitive. The selected tab is derived from the
+ * panel's state; in the legacy split inspector two can be open, only one holds `aria-selected`.
  */
 
 import { Tab, Tabs, TabsList, Tooltip, cn } from "./ui";

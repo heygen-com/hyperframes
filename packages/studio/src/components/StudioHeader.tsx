@@ -138,11 +138,7 @@ function HyperframesLogo() {
   );
 }
 
-/**
- * The Undo / Redo tooltip: the shortcut always, the last action's name when
- * there is one. Pure so the wording is testable without a pointer, which a
- * disabled trigger cannot give a tooltip anyway.
- */
+/** The Undo / Redo tooltip: the shortcut always, the last action's name when there is one. */
 export function historyTooltipLabel(
   action: "undo" | "redo",
   lastAction: string | null | undefined,

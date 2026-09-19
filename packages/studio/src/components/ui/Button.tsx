@@ -73,10 +73,7 @@ export const buttonVariants: Record<ButtonVariant, string> = {
 
 /**
  * The three control heights, 24 / 28 / 32 px, from `--spacing-ctl-*`.
- *
- * Exported beside `buttonBase` and `buttonVariants` for the one header control
- * a `<button>` cannot be: Capture is a download `<a href>`. A link that wears
- * the recipe from here cannot drift away from a real Button.
+ * Exported so the Capture download `<a href>` can wear the same recipe as a Button.
  */
 export const buttonSizes: Record<ButtonSize, string> = {
   sm: "h-ctl-sm px-2 gap-1 rounded-sm text-step-11",
