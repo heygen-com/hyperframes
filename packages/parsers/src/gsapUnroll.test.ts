@@ -155,4 +155,45 @@ fade("#b", 2);
 ${call};`;
     expect(unrollComputedTimeline(script)).not.toContain("function fade");
   });
+
+  describe("keeps the timeline the parser read", () => {
+    const starts = (script: string) =>
+      Object.fromEntries(
+        parseGsapScriptAcorn(script).animations.map((a) => [a.targetSelector, a.resolvedStart]),
+      );
+
+    it("resolves helper tweens in source order among literal tweens", () => {
+      const script = `const tl = gsap.timeline();
+function fade(s) { tl.to(s, { opacity: 0, duration: 1 }); }
+fade("#a"); tl.to("#c", { x: 1, duration: 1 }); fade("#b");`;
+      expect(starts(script)).toEqual({ "#a": 0, "#c": 1, "#b": 2 });
+    });
+
+    it("unrolls to a script whose tweens start at the same times", () => {
+      const script = `const tl = gsap.timeline();
+function fade(s) { tl.to(s, { opacity: 0, duration: 1 }); }
+fade("#a"); tl.to("#c", { x: 1, duration: 1 }); fade("#b");`;
+      expect(starts(unrollComputedTimeline(script))).toEqual(starts(script));
+    });
+  });
+
+  it("leaves a helper call as authored when the helper does more than add tweens", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { window.count++; tl.to(sel, { opacity: 1, duration: 1 }, at); }
+fade("#a", 1);`;
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
+
+  it("leaves a loop as authored when its body sets state outside the timeline", () => {
+    const script = `const tl = gsap.timeline();
+for (let i = 0; i < 2; i++) { gsap.set("#x", { opacity: 0 }); tl.to("#x", { opacity: 1, duration: 1 }, i); }`;
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
+
+  it("still unrolls a helper that only declares locals and adds tweens", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { const end = at + 1; tl.to(sel, { opacity: 1, duration: 1 }, end); }
+fade("#a", 1);`;
+    expect(unrollComputedTimeline(script)).toContain('tl.to("#a"');
+  });
 });
