@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { usePlayerStore } from "../store/playerStore";
 import { createTimelineRowGeometry } from "./timelineLayout";
-import { useTimelineAssetDrop } from "./timelineDragDrop";
+import { resolveDropInsertRow, useTimelineAssetDrop } from "./timelineDragDrop";
+import { getTimelineRowTop, TRACK_H } from "./timelineLayout";
 import { configureTimelineTestViewport } from "./timelineTestViewport";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -249,6 +250,61 @@ describe("useTimelineAssetDrop", () => {
       } as unknown as React.DragEvent),
     );
     expect(view.api.dropPreview).toBeNull();
+    act(() => view.root.unmount());
+  });
+});
+
+describe("resolveDropInsertRow", () => {
+  const rows = [TRACK_H, TRACK_H, TRACK_H];
+  it("arms a new track at the boundary between two lanes", () => {
+    expect(resolveDropInsertRow(getTimelineRowTop(1, rows), rows, 3)).toBe(1);
+  });
+  it("arms a new track above the first lane", () => {
+    expect(resolveDropInsertRow(getTimelineRowTop(0, rows) - 4, rows, 3)).toBe(0);
+  });
+  it("stays on the lane when the pointer is over its middle", () => {
+    expect(resolveDropInsertRow(getTimelineRowTop(1, rows) + TRACK_H / 2, rows, 3)).toBeNull();
+  });
+  it("leaves the area below the last lane to the append path", () => {
+    expect(resolveDropInsertRow(getTimelineRowTop(2, rows) + TRACK_H + 4, rows, 3)).toBeNull();
+  });
+  it("never arms on an empty timeline", () => {
+    expect(resolveDropInsertRow(80, [], 0)).toBeNull();
+  });
+});
+
+describe("useTimelineAssetDrop new-track drops", () => {
+  it("previews and commits an insert row for an asset dropped between lanes", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    const transfer = assetTransfer(JSON.stringify({ path: "assets/a.png" }));
+    const y = getTimelineRowTop(1) + 1;
+
+    act(() => view.api.handleAssetDragOver(dragEvent(transfer, 400, y)));
+    expect(view.api.dropPreview).toMatchObject({ start: 10, insertRow: 1 });
+    act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, y)));
+    expect(onAssetDrop).toHaveBeenCalledWith(
+      "assets/a.png",
+      expect.objectContaining({ start: 10, insertRow: 1 }),
+    );
+    act(() => view.root.unmount());
+  });
+
+  it("does not ask a block drop to insert a track", () => {
+    const onBlockDrop = vi.fn();
+    const view = renderHarness(vi.fn(), 1, { onBlockDrop });
+    const transfer: DropTransfer = {
+      types: [TIMELINE_BLOCK_MIME],
+      files: [],
+      dropEffect: "none",
+      getData: (type) => (type === TIMELINE_BLOCK_MIME ? JSON.stringify({ name: "b" }) : ""),
+    };
+    const y = getTimelineRowTop(1) + 1;
+    act(() => {
+      view.api.handleAssetDragOver(dragEvent(transfer, 400, y));
+      view.api.handleAssetDrop(dragEvent(transfer, 400, y));
+    });
+    expect(onBlockDrop).toHaveBeenCalledWith("b", { start: 10, track: 1 });
     act(() => view.root.unmount());
   });
 });

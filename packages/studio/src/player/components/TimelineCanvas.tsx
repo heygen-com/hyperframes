@@ -2,6 +2,7 @@ import { memo } from "react";
 import { TimelineRuler } from "./TimelineRuler";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import type { TimelineRangeSelection } from "./timelineEditing";
+import type { TimelineDropPlacement } from "./timelineCallbacks";
 import {
   RULER_H,
   CLIP_Y,
@@ -40,7 +41,7 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
   /** Gap strips: loud on gap-menu-row hover, quiet on the selected clip's lane. */
   laneGapStrips: TimelineLaneGapStrips[];
   /** Landing spot of an outside drag in progress, or null. */
-  dropPreview: { start: number; track: number } | null;
+  dropPreview: TimelineDropPlacement | null;
 }
 
 // A dropped clip's length is unknown until it lands; the preview shows a default.
@@ -55,6 +56,8 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
     : -1;
   // A track not in the order is a new track, drawn one row past the last lane.
   const dropRowIndex = dropTrackIndex < 0 ? displayTrackOrder.length : dropTrackIndex;
+  const insertLineRow =
+    (draggedClip?.started ? draggedClip.insertRow : null) ?? props.dropPreview?.insertRow ?? null;
   const draggedRowHeight = getTimelineRowHeight(draggedRowIndex, props.rowHeights);
   // A clip bar in an EXPANDED row still renders at TRACK_H (the property lanes
   // occupy the rest of the row — see TimelineLanes' clipHeight), so the drag
@@ -183,7 +186,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
 
       {/* Drop preview: where an asset or file dragged in from outside will land
           (a row past the last lane means a new track). */}
-      {props.dropPreview && (
+      {props.dropPreview && props.dropPreview.insertRow == null && (
         <div
           aria-hidden="true"
           data-testid="timeline-drop-preview"
@@ -203,11 +206,12 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
 
       {/* Insertion line — a new track will be inserted at this boundary on drop.
           Shown while the pointer is near a lane boundary (insert mode). */}
-      {draggedClip?.started && draggedClip.insertRow != null && (
+      {insertLineRow != null && (
         <div
+          data-testid="timeline-insert-line"
           className="absolute pointer-events-none"
           style={{
-            top: getTimelineRowTop(draggedClip.insertRow, props.rowHeights) - 0.5,
+            top: getTimelineRowTop(insertLineRow, props.rowHeights) - 0.5,
             left: props.contentOrigin,
             width: props.trackContentWidth,
             height: 1,

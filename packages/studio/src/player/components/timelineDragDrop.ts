@@ -4,8 +4,14 @@ import {
   parseTimelineCompositionPayload,
   TIMELINE_COMPOSITION_MIME,
 } from "../../utils/timelineCompositionDrop";
-import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
-import type { TimelineDropCallbacks } from "./timelineCallbacks";
+import {
+  getTimelineInsertBoundaryBand,
+  getTimelineRowPositionFromY,
+  resolveTimelineAssetDrop,
+  type TimelineRowGeometry,
+} from "./timelineLayout";
+import { resolveInsertRow } from "./timelineCollision";
+import type { TimelineDropCallbacks, TimelineDropPlacement } from "./timelineCallbacks";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -20,7 +26,7 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   sessionEpoch: number;
 }
 
-type TimelinePlacement = { start: number; track: number };
+type TimelinePlacement = TimelineDropPlacement;
 
 /**
  * Parse a JSON drag payload and, if it yields a value, forward it to the drop
@@ -41,6 +47,33 @@ function applyJsonDropPayload(
   } catch {
     return false;
   }
+}
+
+/** The row boundary a pointer at `contentY` arms for a new track, or null over a lane's middle. */
+export function resolveDropInsertRow(
+  contentY: number,
+  rowHeights: readonly number[] | undefined,
+  trackCount: number,
+): number | null {
+  if (trackCount === 0) return null;
+  const { rowFloat, rowHeight } = getTimelineRowPositionFromY(contentY, rowHeights);
+  // Past the last lane the drop already appends a track (getDefaultDroppedTrack).
+  if (rowFloat >= trackCount) return null;
+  return resolveInsertRow(rowFloat, trackCount, getTimelineInsertBoundaryBand(rowHeight));
+}
+
+function placeDrop(
+  geometry: Parameters<typeof resolveTimelineAssetDrop>[0],
+  clientX: number,
+  clientY: number,
+  types: readonly string[],
+): TimelinePlacement {
+  const placement = resolveTimelineAssetDrop(geometry, clientX, clientY);
+  // Blocks and compositions are written by their own installers, which only take a track.
+  if (!types.includes("Files") && !types.includes(TIMELINE_ASSET_MIME)) return placement;
+  const contentY = clientY - geometry.rectTop + geometry.scrollTop;
+  const insertRow = resolveDropInsertRow(contentY, geometry.rowHeights, geometry.trackOrder.length);
+  return insertRow == null ? placement : { ...placement, insertRow };
 }
 
 function invokeDropCallback(callback: () => Promise<void> | void): void {
@@ -144,10 +177,10 @@ export function useTimelineAssetDrop({
   );
 
   const resolveDropPlacement = useCallback(
-    (clientX: number, clientY: number): TimelinePlacement => {
+    (clientX: number, clientY: number, types: readonly string[]): TimelinePlacement => {
       const scroll = scrollRef.current;
       const rect = scroll?.getBoundingClientRect();
-      return resolveTimelineAssetDrop(
+      return placeDrop(
         {
           rectLeft: rect?.left ?? 0,
           rectTop: rect?.top ?? 0,
@@ -160,6 +193,7 @@ export function useTimelineAssetDrop({
         },
         clientX,
         clientY,
+        types,
       );
     },
     [scrollRef, ppsRef, trackOrderRef, rowGeometryRef, contentOrigin],
@@ -177,9 +211,11 @@ export function useTimelineAssetDrop({
       e.dataTransfer.dropEffect = "copy";
       activeDropEpochRef.current = sessionEpoch;
       setIsDragOver(true);
-      const next = resolveDropPlacement(e.clientX, e.clientY);
+      const next = resolveDropPlacement(e.clientX, e.clientY, types);
       setDropPreview((prev) =>
-        prev?.start === next.start && prev.track === next.track ? prev : next,
+        prev?.start === next.start && prev.track === next.track && prev.insertRow === next.insertRow
+          ? prev
+          : next,
       );
       syncAutoScroll(e.clientX, e.clientY);
     },
@@ -208,7 +244,11 @@ export function useTimelineAssetDrop({
       const canCommit = activeDropEpochRef.current === sessionEpoch;
       clearDropPreview();
       if (!canCommit) return;
-      const placement = resolveDropPlacement(e.clientX, e.clientY);
+      const placement = resolveDropPlacement(
+        e.clientX,
+        e.clientY,
+        Array.from(e.dataTransfer.types),
+      );
 
       const compositionPayload = parseTimelineCompositionPayload(
         e.dataTransfer.getData(TIMELINE_COMPOSITION_MIME),

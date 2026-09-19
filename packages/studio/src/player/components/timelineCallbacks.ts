@@ -19,15 +19,12 @@ export interface TimelinePropertyGroupKeyframeToggle {
  * Used by NLELayout, Timeline, and any component that passes through
  * the standard set of timeline mutation handlers.
  */
+/** Where an outside drop lands; `insertRow` opens a new track at that row boundary. */
+export type TimelineDropPlacement = { start: number; track: number; insertRow?: number | null };
+
 export interface TimelineDropCallbacks {
-  onFileDrop?: (
-    files: File[],
-    placement?: { start: number; track: number },
-  ) => Promise<void> | void;
-  onAssetDrop?: (
-    assetPath: string,
-    placement: { start: number; track: number },
-  ) => Promise<void> | void;
+  onFileDrop?: (files: File[], placement?: TimelineDropPlacement) => Promise<void> | void;
+  onAssetDrop?: (assetPath: string, placement: TimelineDropPlacement) => Promise<void> | void;
   onBlockDrop?: (
     blockName: string,
     placement: { start: number; track: number },
