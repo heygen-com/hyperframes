@@ -451,6 +451,17 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
 });
 
 describe("useTimelineClipDrag — trim guide and preview frame", () => {
+  /** Playhead at 1.25s that follows preview seeks; clip a's end edge grabbed and dragged once. */
+  function trimEndWithSeekingPlayhead(state: { isPlaying?: boolean } = {}) {
+    usePlayerStore.setState({ currentTime: 1.25, ...state });
+    const onSeek = vi.fn((t: number) => usePlayerStore.setState({ currentTime: t }));
+    const a = el("a", { start: 1, duration: 2 });
+    const h = renderResizeHarness([a], [], { onSeek });
+    h.startResize(a, "end");
+    h.movePointer(50);
+    return { onSeek, h };
+  }
+
   /** Clip a (0-2s) with neighbour b starting at 5s, snapping on, a's end edge grabbed. */
   function trimAEndBesideB() {
     const a = el("a", { start: 0, duration: 2 });
@@ -530,12 +541,7 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
   });
 
   it("restores the playhead it had before the first preview seek, not a seeked time", async () => {
-    usePlayerStore.setState({ currentTime: 1.25 });
-    const onSeek = vi.fn((t: number) => usePlayerStore.setState({ currentTime: t }));
-    const a = el("a", { start: 1, duration: 2 });
-    const h = renderResizeHarness([a], [], { onSeek });
-    h.startResize(a, "end");
-    h.movePointer(50);
+    const { onSeek, h } = trimEndWithSeekingPlayhead();
     h.movePointer(80);
     h.movePointer(120);
     await h.dropPointer();
@@ -544,12 +550,7 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
   });
 
   it("leaves the playhead where playback is when a trim is released while playing", async () => {
-    usePlayerStore.setState({ currentTime: 1.25, isPlaying: true });
-    const onSeek = vi.fn((t: number) => usePlayerStore.setState({ currentTime: t }));
-    const a = el("a", { start: 1, duration: 2 });
-    const h = renderResizeHarness([a], [], { onSeek });
-    h.startResize(a, "end");
-    h.movePointer(50);
+    const { onSeek, h } = trimEndWithSeekingPlayhead({ isPlaying: true });
     h.movePointer(120);
     const callsBeforeRelease = onSeek.mock.calls.length;
     await h.dropPointer();
