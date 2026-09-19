@@ -93,14 +93,14 @@ it("leaves enabled buttons without the disabled attribute", () => {
   expect(el.className).not.toContain("cursor-not-allowed");
 });
 
-it("orders the toolbar Select, Undo, Redo, Razor", () => {
+it("orders the toolbar Undo, Redo, Select, Razor", () => {
   const host = mount(<TimelineToolbar />);
   const labels = Array.from(host.querySelectorAll("button"))
     .map((b) => b.getAttribute("aria-label"))
     .filter((l) => l !== null)
     .slice(0, 4);
 
-  expect(labels).toEqual(["Selection tool", "Undo", "Redo", "Razor tool"]);
+  expect(labels).toEqual(["Undo", "Redo", "Selection tool", "Razor tool"]);
 });
 
 it("classifies Undo and Redo for the hotkey filters at their new location (KTD13)", () => {

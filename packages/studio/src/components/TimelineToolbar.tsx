@@ -194,6 +194,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
     <div className="border-b border-neutral-800/60">
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
+          <TimelineHistoryButtons />
           <Tooltip label="Selection tool (V)">
             <button
               type="button"
@@ -207,7 +208,6 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               </svg>
             </button>
           </Tooltip>
-          <TimelineHistoryButtons />
           <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
             <button
               type="button"
