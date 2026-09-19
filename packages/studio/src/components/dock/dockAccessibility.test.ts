@@ -125,6 +125,26 @@ describe("dock tab strips", () => {
     expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1]);
   });
 
+  it("leave browser shortcuts alone when Alt, Ctrl or Meta is held", () => {
+    const sash = columnSash(0);
+    const left = widthOf("compositions");
+    const tab = tabsOf("compositions")[0] as HTMLElement;
+    const active = () => api.getPanel("compositions")?.group.activePanel?.id;
+    for (const init of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
+      const onSash = new KeyboardEvent("keydown", {
+        key: "ArrowRight",
+        cancelable: true,
+        bubbles: true,
+        ...init,
+      });
+      sash.dispatchEvent(onSash);
+      press(tab, "ArrowRight", init);
+      expect(onSash.defaultPrevented).toBe(false);
+      expect(active()).toBe("compositions");
+    }
+    expect(widthOf("compositions")).toBe(left);
+  });
+
   it("move focus and activate the neighbouring tab, wrapping at both ends", () => {
     const tabs = tabsOf("compositions");
     const active = () => api.getPanel("compositions")?.group.activePanel?.id;

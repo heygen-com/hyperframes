@@ -35,7 +35,13 @@ function nudgeSash(sash: HTMLElement, axis: Axis, delta: number) {
   fire(doc, "pointerup", delta);
 }
 
+/** Browser and OS shortcuts (Alt+Left is Back) keep their meaning. */
+function hasShortcutModifier(event: KeyboardEvent) {
+  return event.altKey || event.ctrlKey || event.metaKey;
+}
+
 function onSashKeyDown(event: KeyboardEvent, sash: HTMLElement) {
+  if (hasShortcutModifier(event)) return;
   const axis = splitAxis(sash);
   const [less, more] =
     axis === "horizontal" ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];
@@ -47,6 +53,7 @@ function onSashKeyDown(event: KeyboardEvent, sash: HTMLElement) {
 
 /** Wraps around and activates the tab it lands on, unlike dockview's focus-only arrows. */
 function onTabKeyDown(event: KeyboardEvent, tab: HTMLElement, api: DockviewApi) {
+  if (hasShortcutModifier(event)) return;
   const tabs = [
     ...(tab.closest('[role="tablist"]')?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []),
   ];

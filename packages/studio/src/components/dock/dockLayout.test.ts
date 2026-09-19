@@ -111,4 +111,28 @@ describe("applySideMinimums", () => {
     applySideMinimums(api, 560);
     expect(preview.group.minimumWidth).toBe(360);
   });
+
+  it("rewrites the minimum of a group that is neither the preview nor side-only", () => {
+    api.layout(1200, 700);
+    buildEditLayout(api, 1200);
+    const timeline = api.getPanel("timeline");
+    const compositions = api.getPanel("compositions");
+    if (!timeline || !compositions) throw new Error("default layout is missing panels");
+    timeline.api.moveTo({ group: compositions.group });
+    applySideMinimums(api, 560);
+    expect(compositions.group.minimumWidth).toBe(120);
+  });
+
+  it("drops the preview floor from a group the preview has left", () => {
+    api.layout(1200, 700);
+    buildEditLayout(api, 1200);
+    const preview = api.getPanel("preview");
+    const timeline = api.getPanel("timeline");
+    if (!preview || !timeline) throw new Error("default layout is missing panels");
+    preview.api.moveTo({ group: timeline.group });
+    applySideMinimums(api, 560);
+    preview.api.moveTo({ position: "right", group: api.getPanel("design")?.group });
+    applySideMinimums(api, 560);
+    expect(timeline.group.minimumWidth).toBe(120);
+  });
 });

@@ -29,39 +29,40 @@ export function sideMinimumWidth(dockWidth: number): number {
   return Math.min(MIN_SIDE_W, Math.max(MIN_SIDE_W_FLOOR, fair));
 }
 
-type GroupKind = { zone: "left" | "right" } | "preview";
+function holdsPreview(group: DockviewApi["groups"][number]) {
+  return group.panels.some((panel) => panel.id === "preview");
+}
 
-/**
- * Classifies a group by its tabs: any preview tab makes it the preview group, otherwise it is a
- * side group only if every tab is. Timeline-only groups are left alone.
- */
-function classifyGroup(group: DockviewApi["groups"][number]): GroupKind | null {
-  const defs = group.panels.flatMap((panel) =>
-    isPanelId(panel.id) ? [{ id: panel.id, zone: PANEL_DEFINITIONS[panel.id].zone }] : [],
+/** The zone of a group whose every tab is a side panel, else null. */
+function sideZone(group: DockviewApi["groups"][number]): "left" | "right" | null {
+  const zones = group.panels.map((panel) =>
+    isPanelId(panel.id) ? PANEL_DEFINITIONS[panel.id].zone : "center",
   );
-  if (defs.some((def) => def.id === "preview")) return "preview";
-  const first = defs[0]?.zone;
-  const allSide = defs.length > 0 && defs.every((def) => def.zone !== "center");
-  return allSide && first && first !== "center" ? { zone: first } : null;
+  const first = zones[0];
+  const allSide = zones.every((zone) => zone !== "center");
+  return allSide && first && first !== "center" ? first : null;
 }
 
 /**
  * Idempotent: re-run whenever the window resizes, a panel is added or moved, or a layout is
- * restored. Dockview keeps constraints once set, so every group holding the preview is pinned
- * to the preview floor explicitly, and side groups shrink to their default width on a narrow
- * window because dockview keeps stale widths when minimums drop after layout.
+ * restored. Dockview keeps a constraint once set, so every group is rewritten each time: the
+ * preview floor for any group holding the preview, the side minimum for the rest. Side-only
+ * groups also shrink to their default width on a narrow window, because dockview keeps stale
+ * widths when minimums drop after layout.
  */
 export function applySideMinimums(api: DockviewApi, dockWidth = window.innerWidth) {
   const minimumWidth = sideMinimumWidth(dockWidth);
   const cap = defaultSideWidths(dockWidth);
   for (const group of api.groups) {
-    const kind = classifyGroup(group);
-    if (kind === "preview") {
+    if (holdsPreview(group)) {
       group.api.setConstraints({ minimumWidth: MIN_PREVIEW_W });
-    } else if (kind) {
-      group.api.setConstraints({ minimumWidth });
-      const limit = kind.zone === "right" ? cap.right : cap.left;
-      if (minimumWidth < MIN_SIDE_W && group.width > limit) group.api.setSize({ width: limit });
+      continue;
+    }
+    group.api.setConstraints({ minimumWidth });
+    const zone = sideZone(group);
+    const limit = zone === "right" ? cap.right : cap.left;
+    if (zone && minimumWidth < MIN_SIDE_W && group.width > limit) {
+      group.api.setSize({ width: limit });
     }
   }
 }

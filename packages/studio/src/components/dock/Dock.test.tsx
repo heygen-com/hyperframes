@@ -12,14 +12,20 @@ import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const resizeCallbacks: Array<() => void> = [];
+const liveObservers = new Set<{ callback: () => void; target?: Element }>();
 class ResizeObserverStub {
+  private readonly entry: { callback: () => void; target?: Element };
   constructor(callback: () => void) {
-    resizeCallbacks.push(callback);
+    this.entry = { callback };
   }
-  observe() {}
+  observe(target: Element) {
+    this.entry.target = target;
+    liveObservers.add(this.entry);
+  }
   unobserve() {}
-  disconnect() {}
+  disconnect() {
+    liveObservers.delete(this.entry);
+  }
 }
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 
@@ -182,7 +188,10 @@ describe("Dock wiring", () => {
     Object.defineProperty(window, "innerWidth", { value: 560, configurable: true });
     try {
       applySideMinimums.mockClear();
-      act(() => resizeCallbacks.forEach((callback) => callback()));
+      const dockObservers = [...liveObservers].filter(({ target }) =>
+        target?.classList.contains("hf-dock"),
+      );
+      act(() => dockObservers.forEach(({ callback }) => callback()));
       expect(applySideMinimums).toHaveBeenCalledWith(expect.anything(), 560);
     } finally {
       Object.defineProperty(window, "innerWidth", { value: innerWidth, configurable: true });
