@@ -95,17 +95,18 @@ describe("legacy data-end", () => {
 });
 
 describe("media_missing_duration", () => {
-  it("flags img, video and audio without data-duration and passes them with one", async () => {
-    for (const tag of ["img", "video", "audio"]) {
-      expect(
-        has(await codes(`<${tag} src="a" data-start="0"></${tag}>`), "media_missing_duration"),
-      ).toBe(true);
-      expect(
-        has(
-          await codes(`<${tag} src="a" data-start="0" data-duration="3"></${tag}>`),
-          "media_missing_duration",
-        ),
-      ).toBe(false);
+  it("flags a timed img without data-duration and passes it with one", async () => {
+    const bare = await codes('<img src="a" data-start="0" />');
+    expect(has(bare, "media_missing_duration")).toBe(true);
+    const timed = await codes('<img src="a" data-start="0" data-duration="3" />');
+    expect(has(timed, "media_missing_duration")).toBe(false);
+  });
+
+  it("takes video and audio length from the file, so data-start alone passes", async () => {
+    for (const tag of ["video", "audio"]) {
+      const found = await codes(`<${tag} src="a" data-start="0" data-track-index="1"></${tag}>`);
+      expect(has(found, "media_missing_duration")).toBe(false);
+      expect(has(found, "timeline_element_missing_timing")).toBe(false);
     }
   });
 });
