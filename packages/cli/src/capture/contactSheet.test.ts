@@ -59,6 +59,7 @@ describe("createContactSheet", () => {
         .png()
         .toFile(b);
 
+      console.time("createContactSheet");
       await createContactSheet([a, b], out, {
         cols: 2,
         cellWidth: 16,
@@ -66,6 +67,7 @@ describe("createContactSheet", () => {
         labels: ["A", "B"],
         maxImages: 2,
       });
+      console.timeEnd("createContactSheet");
 
       // format alone would pass even if the SVG label overlay silently drew
       // nothing (e.g. Fontconfig misconfigured): the label band (default
