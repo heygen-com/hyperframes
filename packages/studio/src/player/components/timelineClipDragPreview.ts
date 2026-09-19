@@ -28,6 +28,7 @@ import { STUDIO_PREVIEW_FPS } from "../lib/time";
 type BuildSnapTargets = (
   excludeElementKey: string | null,
   includeBeats: boolean,
+  includePlayhead?: boolean,
 ) => TimelineSnapTarget[];
 
 export interface DragPreviewContext {
@@ -300,14 +301,14 @@ export function computeResizePreview(
     effectiveClientX,
   );
 
-  // Snap edge to unified targets (beats + clip edges + playhead) when available.
-  // The snap must stay inside the same limits resolveTimelineResize enforces, or
-  // it would push the edge past the available source media / composition end.
-  // The music track defines the beats, so it must not snap to them — but it
-  // still snaps to the playhead and other clip edges.
+  // Snap to beats and clip edges, never the playhead (the dragged edge drives
+  // its own preview seek, so that would be circular). Stay inside the same
+  // limits resolveTimelineResize enforces. The music track defines the
+  // beats, so it must not snap to them, but still snaps to clip edges.
   const trimTargets = buildSnapTargets(
     resize.element.key ?? resize.element.id,
     !isMusicTrack(resize.element),
+    false,
   );
   let snap: TimelineSnapTarget | null = null;
   if (trimTargets.length > 0) {

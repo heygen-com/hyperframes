@@ -31,7 +31,11 @@ afterEach(() => {
 function renderResizeHarness(
   elements: TimelineElement[],
   selected: string[],
-  options: { wireGroupResize?: boolean; snap?: boolean; onSeek?: (time: number) => void } = {},
+  options: {
+    wireGroupResize?: boolean;
+    snap?: boolean;
+    onSeek?: (time: number, seekOptions?: { keepPlaying?: boolean }) => void;
+  } = {},
 ) {
   usePlayerStore.getState().setElements(elements);
   usePlayerStore.setState({ timelineSnapEnabled: options.snap === true });
@@ -477,6 +481,20 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     h.unmount();
   });
 
+  it("never snaps a trimmed edge to the playhead — the edge drives its own seek", () => {
+    usePlayerStore.setState({ currentTime: 5 }); // no clip edge or beat nearby, only the playhead
+    const a = el("a", { start: 0, duration: 2 });
+    const h = renderResizeHarness([a], [], { snap: true });
+    h.startResize(a, "end");
+    h.movePointer(296); // a's end lands at 4.96s, 4px from the playhead
+    expect(h.getResizingClip()).toMatchObject({
+      snapTime: null,
+      snapType: null,
+      previewDuration: 4.96,
+    });
+    h.unmount();
+  });
+
   it("shows the frame at the dragged edge, then puts the playhead back on release", async () => {
     usePlayerStore.setState({ currentTime: 1.25 });
     const onSeek = vi.fn();
@@ -484,9 +502,9 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     const h = renderResizeHarness([a], [], { onSeek });
     h.startResize(a, "end");
     h.movePointer(50);
-    expect(onSeek).toHaveBeenLastCalledWith(3.5 - 1 / 30);
+    expect(onSeek).toHaveBeenLastCalledWith(3.5 - 1 / 30, { keepPlaying: true });
     await h.dropPointer();
-    expect(onSeek).toHaveBeenLastCalledWith(1.25);
+    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true });
     h.unmount();
   });
 
@@ -496,7 +514,7 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     const h = renderResizeHarness([a], [], { onSeek });
     h.startResize(a, "start");
     h.movePointer(50);
-    expect(onSeek).toHaveBeenLastCalledWith(1.5);
+    expect(onSeek).toHaveBeenLastCalledWith(1.5, { keepPlaying: true });
     h.unmount();
   });
 
@@ -521,7 +539,7 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     h.movePointer(80);
     h.movePointer(120);
     await h.dropPointer();
-    expect(onSeek).toHaveBeenLastCalledWith(1.25);
+    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true });
     h.unmount();
   });
 
@@ -536,7 +554,7 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     const clip = h.getResizingClip()!;
     expect(clip.previewStart + clip.previewDuration).toBeCloseTo(3.1, 3);
     expect(clip).toMatchObject({ snapTime: null, snapType: null });
-    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(3.1 - 1 / 30, 3));
+    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(3.1 - 1 / 30, 3), { keepPlaying: true });
     h.unmount();
   });
 });

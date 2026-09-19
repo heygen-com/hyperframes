@@ -27,6 +27,18 @@ describe("collectTimelineSnapTargets", () => {
     expect(targets).toContainEqual({ time: 0.5, type: "beat" });
   });
 
+  it("omits the playhead when includePlayhead is false, for a trim", () => {
+    const targets = collectTimelineSnapTargets({
+      elements,
+      playheadTime: 7.25,
+      beatTimes: [0.5],
+      includePlayhead: false,
+    });
+    expect(targets.some((t) => t.type === "playhead")).toBe(false);
+    expect(targets).toContainEqual({ time: 2, type: "clip-edge" });
+    expect(targets).toContainEqual({ time: 0.5, type: "beat" });
+  });
+
   it("excludes the dragged element's own edges", () => {
     const targets = collectTimelineSnapTargets({
       elements,

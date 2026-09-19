@@ -12,7 +12,8 @@ export interface TimelineClipRenderContext {
 export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
   /** Project-scoped reset boundary; soft source refreshes retain the same epoch. */
   sessionEpoch?: number;
-  onSeek?: (time: number) => void;
+  /** keepPlaying: true preserves the current play state across the seek. */
+  onSeek?: (time: number, options?: { keepPlaying?: boolean }) => void;
   onDrillDown?: (element: TimelineElement) => void;
   renderClipContent?: (
     element: TimelineElement,

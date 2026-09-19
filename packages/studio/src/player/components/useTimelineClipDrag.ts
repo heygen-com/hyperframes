@@ -66,7 +66,7 @@ interface UseTimelineClipDragInput {
   onResizeElements?: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
   /** Seeks the preview; a trim shows the frame at its dragged edge. */
-  onSeek?: (time: number) => void;
+  onSeek?: (time: number, options?: { keepPlaying?: boolean }) => void;
   setShowPopover: (show: boolean) => void;
   /** Stable ref to the range selection setter — wired after mount to break circular dependency. */
   setRangeSelectionRef: React.RefObject<((sel: null) => void) | null>;
@@ -153,11 +153,15 @@ export function useTimelineClipDrag({
   const dragAudioTracksRef = useRef<ReadonlySet<number> | null>(null);
 
   const buildSnapTargets = useCallback(
-    (excludeElementKey: string | null, includeBeats: boolean): TimelineSnapTarget[] => {
+    (
+      excludeElementKey: string | null,
+      includeBeats: boolean,
+      includePlayhead = true,
+    ): TimelineSnapTarget[] => {
       // Magnet off ⇒ no targets and no scan; do NOT cache so a mid-gesture toggle
       // back on starts scanning immediately (preserves the existing skip).
       if (!snapContextRef.current.enabled) return [];
-      const cacheKey = `${excludeElementKey ?? ""}|${includeBeats ? 1 : 0}`;
+      const cacheKey = `${excludeElementKey ?? ""}|${includeBeats ? 1 : 0}|${includePlayhead ? 1 : 0}`;
       const cached = snapTargetsCacheRef.current.get(cacheKey);
       if (cached) return cached;
       const targets = collectTimelineSnapTargets({
@@ -165,6 +169,7 @@ export function useTimelineClipDrag({
         playheadTime: usePlayerStore.getState().currentTime,
         beatTimes: includeBeats ? snapContextRef.current.beatTimes : [],
         excludeElementKey,
+        includePlayhead,
       });
       snapTargetsCacheRef.current.set(cacheKey, targets);
       return targets;
@@ -302,7 +307,11 @@ export function useTimelineClipDrag({
       });
       trimSeekOriginRef.current ??= usePlayerStore.getState().currentTime;
       const setResizeState = (v: ResizePreviewResult) => {
-        onSeekRef.current?.(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration));
+        // A trim never changes the play state: keepPlaying lets seek() decide,
+        // and it only resumes playback if it was already playing.
+        onSeekRef.current?.(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration), {
+          keepPlaying: true,
+        });
         publishResizingClip(
           resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
         );
@@ -350,7 +359,7 @@ export function useTimelineClipDrag({
       clipDragScrollRaf.current = 0;
     }
     if (trimSeekOriginRef.current != null) {
-      onSeekRef.current?.(trimSeekOriginRef.current);
+      onSeekRef.current?.(trimSeekOriginRef.current, { keepPlaying: true });
       trimSeekOriginRef.current = null;
     }
     // Gesture teardown: drop frozen caches so the next gesture reads fresh state.

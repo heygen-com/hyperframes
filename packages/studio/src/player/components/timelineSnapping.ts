@@ -31,6 +31,8 @@ export function collectTimelineSnapTargets(input: {
   playheadTime: number | null;
   beatTimes: readonly number[];
   excludeElementKey?: string | null;
+  /** A trim excludes the playhead: the dragged edge drives it, so snapping to it is circular. */
+  includePlayhead?: boolean;
 }): TimelineSnapTarget[] {
   const byTime = new Map<number, TimelineSnapTarget>();
   const add = (time: number, type: TimelineSnapType) => {
@@ -48,7 +50,8 @@ export function collectTimelineSnapTargets(input: {
     add(el.start, "clip-edge");
     add(el.start + el.duration, "clip-edge");
   }
-  if (input.playheadTime != null) add(input.playheadTime, "playhead");
+  if (input.playheadTime != null && input.includePlayhead !== false)
+    add(input.playheadTime, "playhead");
 
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
