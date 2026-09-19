@@ -71,8 +71,11 @@ export const buttonVariants: Record<ButtonVariant, string> = {
   ),
 };
 
-/** The three control heights, 24 / 28 / 32 px, from `--spacing-ctl-*`. */
-const sizeStyles: Record<ButtonSize, string> = {
+/**
+ * The three control heights, 24 / 28 / 32 px, from `--spacing-ctl-*`.
+ * Exported so the Capture download `<a href>` can wear the same recipe as a Button.
+ */
+export const buttonSizes: Record<ButtonSize, string> = {
   sm: "h-ctl-sm px-2 gap-1 rounded-sm text-step-11",
   md: "h-ctl px-3 gap-1.5 rounded-md text-step-12",
   lg: "h-ctl-lg px-4 gap-2 rounded-md text-step-13",
@@ -107,7 +110,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         // `aria-disabled` as well as `disabled`: assistive tech announces the
         // state even where the native attribute is filtered out of the tree.
         aria-disabled={isDisabled || undefined}
-        className={cn(buttonBase, buttonVariants[variant], sizeStyles[size], className)}
+        className={cn(buttonBase, buttonVariants[variant], buttonSizes[size], className)}
         {...props}
       >
         {leading}
