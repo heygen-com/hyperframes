@@ -122,6 +122,14 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
     const recordEdit = vi.fn().mockResolvedValue(undefined);
     const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, recordEdit });
+    const withoutB = html.replace(/<div data-hf-id="hf-b"[^>]*><\/div>\n/, "");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const content = String(input).includes("/remove-element/") ? withoutB : html;
+        return new Response(JSON.stringify({ changed: true, content }), { status: 200 });
+      }),
+    );
     let deleted: boolean | undefined;
 
     await act(async () => {
