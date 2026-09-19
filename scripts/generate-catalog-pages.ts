@@ -847,12 +847,27 @@ function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): stri
   return "Blocks";
 }
 
+/** True when the live payload draws with WebGPU, so a browser without an adapter cannot play it. */
+function usesWebgpu(kind: ItemKind, name: string): boolean {
+  const html = (JSON.parse(readFileSync(payloadPath(kind, name), "utf-8")) as { html?: string })
+    .html;
+  return /navigator\.gpu|WebGPURenderer/.test(html ?? "");
+}
+
 /** What the stage shows when the player cannot run the composition: a flag notice, or the recorded video. */
 function stageProps(kind: ItemKind, manifest: RegistryItem): string[] {
-  if (hasPayload(kind, manifest.name)) return [];
+  if (hasPayload(kind, manifest.name)) {
+    // The recorded clip is the fallback for a browser with no WebGPU adapter.
+    if (!manifest.preview?.video || !usesWebgpu(kind, manifest.name)) return [];
+    return [...recordedProps(kind, manifest), "  webgpu"];
+  }
   const flag = unsupportedFlag(kind, manifest.name);
   // A recorded video still plays without the flag, so it wins over the notice.
   if (flag && !manifest.preview?.video) return [`  needsFlag="${flag}"`];
+  return recordedProps(kind, manifest);
+}
+
+function recordedProps(kind: ItemKind, manifest: RegistryItem): string[] {
   const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
   const posterUrl = catalogPreviewFor(kind, manifest);
   return [`  video="${previewPath}.mp4"`, ...(posterUrl ? [`  poster="${posterUrl}"`] : [])];

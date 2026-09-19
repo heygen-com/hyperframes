@@ -228,3 +228,22 @@ describe("mdxStringAttribute", () => {
     assert.equal(mdxStringAttribute("title", "a\\b"), 'title="a\\b"');
   });
 });
+
+describe("WebGPU stage fallback props", () => {
+  const page = (name: string) =>
+    readFileSync(join(here, "..", "docs", "catalog", "blocks", `${name}.mdx`), "utf-8");
+
+  it("gives a live WebGPU item its recorded clip, poster and the webgpu flag", () => {
+    const mdx = page("frost-sequence-camera-orbit");
+    assert.match(mdx, /^ {2}previewSrc=/m);
+    assert.match(mdx, /^ {2}video=".*frost-sequence-camera-orbit\.mp4"/m);
+    assert.match(mdx, /^ {2}poster=/m);
+    assert.match(mdx, /^ {2}webgpu$/m);
+  });
+
+  it("leaves a live item that does not need WebGPU without a recorded fallback", () => {
+    const mdx = page("ai-chat-reveal");
+    assert.match(mdx, /^ {2}previewSrc=/m);
+    assert.doesNotMatch(mdx, /^ {2}(video=|webgpu$)/m);
+  });
+});

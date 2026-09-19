@@ -75,6 +75,7 @@ export const CatalogDetail = ({
   rawUrl,
   video,
   poster,
+  webgpu,
   needsFlag,
   hasCode,
   children,
@@ -2037,7 +2038,24 @@ export const CatalogDetail = ({
       playsInline
     />
   ) : null;
-  const stageNode = recorded ?? flagNotice ?? player;
+  // null until the adapter request settles, so the player never mounts on a browser that cannot run it.
+  const [hasAdapter, setHasAdapter] = useState(null);
+  useEffect(() => {
+    if (!webgpu) return;
+    const request = typeof navigator !== "undefined" && navigator.gpu ? navigator.gpu.requestAdapter() : null;
+    Promise.resolve(request)
+      .then((adapter) => setHasAdapter(Boolean(adapter)))
+      .catch(() => setHasAdapter(false));
+  }, [webgpu]);
+  const adapterMissing = webgpu && hasAdapter === false;
+  let webgpuStage = player;
+  if (webgpu && hasAdapter === null) webgpuStage = <div className="aspect-video w-full" />;
+  if (adapterMissing) webgpuStage = recorded;
+  const stageNode = webgpu ? webgpuStage : recorded ?? flagNotice ?? player;
+
+  let caption = "Live composition · HyperFrames Player";
+  if (adapterMissing) caption = "Recorded preview · live playback needs WebGPU, which this browser does not offer";
+  else if (!webgpu && (video || needsFlag)) caption = "Recorded preview";
 
   const seconds = meta.duration ? `${meta.duration} s` : null;
   const size = meta.width && meta.height ? `${meta.width}×${meta.height}` : null;
@@ -2085,7 +2103,7 @@ export const CatalogDetail = ({
             {stageNode}
             <div className="hf-ve-caption">
               {(seconds || size) && <span>{[seconds, size && `${size} preview`].filter(Boolean).join(" · ")}</span>}
-              <span>{video || needsFlag ? "Recorded preview" : "Live composition · HyperFrames Player"}</span>
+              <span>{caption}</span>
             </div>
           </div>
 
