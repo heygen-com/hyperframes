@@ -22,7 +22,7 @@ type StartRenderHandler = (
   fps: 24 | 30 | 60,
 ) => void | Promise<void>;
 
-interface RenderQueueProps {
+export interface RenderQueueProps {
   jobs: RenderJob[];
   projectId: string;
   onDelete: (jobId: string) => void;

@@ -37,6 +37,21 @@ export {
 } from "./components/editor/domEditingAgentPrompt";
 export type { AgentPromptElementInfo } from "./components/editor/domEditingAgentPrompt";
 
+// Render queue
+export { RenderQueue } from "./components/renders/RenderQueue";
+export type { RenderQueueProps, CompositionDimensions } from "./components/renders/RenderQueue";
+export { useRenderQueue } from "./components/renders/useRenderQueue";
+export type {
+  RenderJob,
+  ResolutionPreset,
+  StartRenderOptions,
+} from "./components/renders/useRenderQueue";
+export {
+  getPersistedRenderSettings,
+  persistRenderSettings,
+} from "./components/renders/renderSettings";
+export type { PersistedRenderSettings } from "./components/renders/renderSettings";
+
 // Hooks
 export { useElementPicker } from "./hooks/useElementPicker";
 export type { PickedElement } from "./hooks/useElementPicker";
