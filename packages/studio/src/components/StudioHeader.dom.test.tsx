@@ -1,13 +1,8 @@
 // @vitest-environment happy-dom
+
 /**
- * The header after the primitive sweep: the controls really are the shared
- * ones, the disabled history buttons still say why they are disabled, and both
- * global hotkey filters classify the new elements the way they classified the
- * hand-rolled ones (KTD13).
- *
- * The contexts are mocked rather than provided: this file is about the markup
- * the header renders, and building three real provider values would test the
- * providers instead.
+ * The header on the shared primitives: same controls, disabled history still explained,
+ * hotkey filters unchanged (KTD13). Contexts are mocked, not provided.
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

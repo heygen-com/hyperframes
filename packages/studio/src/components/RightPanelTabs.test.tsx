@@ -1,11 +1,8 @@
 // @vitest-environment happy-dom
+
 /**
- * The inspector strip's keyboard behaviour, and the two things a reskin can
- * silently break: which tab reads as selected, and how the global hotkey
- * filters classify the elements (KTD13).
- *
- * The strip used to be `aria-pressed` buttons. Arrow keys did nothing, so the
- * first two tests here are new behaviour, not a port.
+ * The strip's keyboard behaviour, which tab reads as selected, and how the hotkey
+ * filters classify the elements (KTD13). The arrow-key tests are new behaviour, not a port.
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -28,11 +25,7 @@ afterEach(() => {
   host.remove();
 });
 
-/**
- * The strip is controlled by the panel's own state, so the harness owns that
- * state too: a mount whose `active` never moved would make every second
- * selection look like a no-op the real panel does not have.
- */
+/** The harness owns the active state too, so a selection moves as it does in the real panel. */
 function mount(initialActive: string[]): {
   host: HTMLElement;
   selections: ReturnType<typeof vi.fn>;
