@@ -121,7 +121,7 @@ Chunk at natural pauses ≥ 250ms. A caption spanning a breath-break feels wrong
 
 ### 17. Safe zones per platform, always
 
-- Use the safe boxes and caption bands in `/hyperframes-studio` (Safe zones) for wide and vertical
+- Use the safe boxes in `/hyperframes-studio` (Safe zones) for wide and vertical
   framings; that skill owns the values.
 
 Bake into the layout solver. Never eyeball.
