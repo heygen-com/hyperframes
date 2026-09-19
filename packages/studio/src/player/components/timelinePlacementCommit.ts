@@ -5,12 +5,7 @@ import { canMoveTimelineElement } from "./timelineAuthoredMoveTarget";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { round3 } from "./timelineGaps";
 import { hasSourcePlaybackOffset } from "./timelineGroupEditing";
-import {
-  placeClip,
-  type PlacementMode,
-  type PlacementResult,
-  type PlacementShift,
-} from "./timelinePlacement";
+import { placeClip, type PlacementMode, type PlacementResult } from "./timelinePlacement";
 import { canSplitElementAt } from "../../utils/timelineElementSplit";
 
 /** One shared history key and an unbounded window: every write of a drop is one undo step. */
@@ -75,9 +70,7 @@ export function buildPlacementSteps({
     if (!found) throw new Error(`Placement referenced ${key}, which is not on the target lane`);
     return found;
   };
-  const shiftEdits = result.shifts.map((s: PlacementShift) =>
-    moveEdit(clip(s.key), round3(s.start)),
-  );
+  const shiftEdits = result.shifts.map((s) => moveEdit(clip(s.key), round3(s.start)));
   const splits: PlacementStep[] = [];
   const removes: TimelineElement[] = [];
   const resizes: PlacementResizeChange[] = [];
