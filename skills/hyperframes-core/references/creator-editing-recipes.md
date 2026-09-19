@@ -423,11 +423,11 @@ Timeline math: pick the clips first and say which ones you picked (by id) if the
 
 Write what Studio writes when a person drops a file on the timeline, so an agent-added clip behaves the same as a dropped one; the one difference is that video and audio need no `data-duration`. Studio's source of truth is `DEFAULT_TIMELINE_ASSET_DURATION` in `packages/studio/src/utils/studioHelpers.ts` and `buildTimelineAssetInsertHtml` in `packages/studio/src/utils/timelineAssetDrop.ts`; a test keeps this section equal to them.
 
-- **Image: `data-duration="3"`.** A still has no length of its own, so it gets 3 seconds. Without a `data-duration` it never ends and stays on screen for the rest of the composition.
+- **Image: `data-duration` is optional and defaults to 3 seconds**, the same as a dropped image, because a still has no length of its own. Write it only for another length. A test keeps the 3 equal to the default in code.
 - **Video and audio: `data-start` is enough.** The length comes from the media itself. An authored `data-duration` shorter than the file is a trim, never a requirement; leave it out unless the request asks for a shorter clip.
 - **Start: the playhead or the requested time, never a silent `0`.** Studio's asset-panel Add uses the playhead time on track `0`; a drop uses the drop point.
-- Give every clip `id`, `class="clip"`, `data-start` and `data-track-index` (an image also `data-duration`). Video is `muted playsinline`; audio carries `data-volume="1"`.
-- Then make sure the root composition's `data-duration` is at least the clip's end (`data-start` plus its length: 3 for an image, the media's length for video and audio): Studio raises a declared root duration to cover the new clip, so an agent must too, or the clip lies past the end and never plays.
+- Give every clip `id`, `class="clip"`, `data-start` and `data-track-index`. Video is `muted playsinline`; audio carries `data-volume="1"`.
+- Then make sure the root composition's `data-duration` is at least the clip's end (`data-start` plus its length: 3 for an image unless you set another, the media's length for video and audio): Studio raises a declared root duration to cover the new clip, so an agent must too, or the clip lies past the end and never plays.
 - **Images and video fill the whole frame**: absolutely positioned at `left: 0; top: 0`, `width` and `height` equal to the composition's `data-width` and `data-height`, `object-fit: contain`. Studio does not know a dropped file's natural size, so it does not centre a smaller one.
 - `z-index` is the number of top-level clips already in that file plus one (at least `1`); later clips stack above earlier ones.
 - Several files dropped together share the drop's track and run end to end.
@@ -438,7 +438,6 @@ Write what Studio writes when a person drops a file on the timeline, so an agent
   class="clip"
   src="assets/photo.png"
   data-start="4"
-  data-duration="3"
   data-track-index="1"
   style="position: absolute; left: 0px; top: 0px; width: 1920px; height: 1080px; object-fit: contain; z-index: 2"
 />

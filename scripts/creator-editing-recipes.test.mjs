@@ -95,11 +95,11 @@ test("the add-media recipe uses Studio's default durations", async () => {
   const { section, image } = await addMediaSection();
   const imageSecs = await studioDefaultSeconds("image");
   assert.ok(imageSecs, "could not read Studio's image default");
-  assert.match(section, new RegExp(`Image: \`data-duration="${imageSecs}"\``));
+  assert.match(section, new RegExp(`defaults to ${imageSecs} seconds`));
   assert.match(section, /`data-start` is enough/);
   assert.doesNotMatch(section, /ffprobe/);
   assert.match(section, /root composition's `data-duration` is at least/);
-  assert.match(image, new RegExp(`data-duration="${imageSecs}"`));
+  assert.doesNotMatch(image, /data-duration/);
 });
 
 test("the add-media recipe uses Studio's full-frame geometry", async () => {
@@ -119,7 +119,9 @@ test("the add-media example carries every attribute Studio's drop writes", async
   const drop = await read("packages/studio/src/utils/timelineAssetDrop.ts");
   for (const attr of ['class="clip"', "data-start", "data-duration", "data-track-index"]) {
     assert.ok(drop.includes(attr), `Studio no longer writes ${attr}`);
-    assert.ok(image.includes(attr.split("=")[0]), `doc example lacks ${attr}`);
+  }
+  for (const attr of ['class="clip"', "data-start", "data-track-index"]) {
+    assert.ok(image.includes(attr), `doc example lacks ${attr}`);
   }
 });
 
