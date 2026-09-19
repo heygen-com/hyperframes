@@ -97,11 +97,12 @@ const roundMs = (v: number) => Math.round(v * 1000) / 1000;
 
 /** Runtime rule: nested media is host-relative unless marked global (core `resolveAbsoluteMediaStartSeconds`). */
 function mainTimelineStart(scope: DocScope, el: Element, start: number): number {
-  const media =
-    /^(video|audio)$/i.test(el.tagName) && parseNumeric(el.getAttribute("data-start")) !== null;
-  if (!media) return scope.origin + start;
+  const authored = /^(video|audio)$/i.test(el.tagName)
+    ? parseNumeric(el.getAttribute("data-start"))
+    : null;
+  if (authored === null) return scope.origin + start;
   return resolveAbsoluteMediaStartSeconds({
-    authoredStart: start,
+    authoredStart: authored,
     hostStart: scope.origin,
     basis: el.getAttribute("data-hf-media-start-basis"),
   });

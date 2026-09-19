@@ -1,6 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
 import { describeProject } from "./describeProject.js";
@@ -171,6 +173,21 @@ describe("absolute main-timeline time", () => {
     expect(nested.absStart).toBeLessThan(direct.absStart);
   });
 
+  it("places a nested media clip with a negative start where the runtime plays it", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-timeline-neg-"));
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(join(dir, "index.html"), INVERSION_INDEX);
+    writeFileSync(
+      join(dir, "compositions", "scene.html"),
+      INVERSION_SCENE.replace('data-start="1"', 'data-start="-3"'),
+    );
+    const host = describeProject(join(dir, "index.html"))
+      .tracks.flatMap((t) => t.rows)
+      .find((r) => r.id === "host")!;
+    // Host starts at 5 and the runtime adds the raw -3: it plays at 2, not at the clamped 5.
+    expect(host.children.find((c) => c.id === "nested")).toMatchObject({ absStart: 2, absEnd: 4 });
+  });
+
   it("prints the absolute time first and the local time in parentheses for a nested row", () => {
     const text = formatTimeline(describeProject(inversionProject()));
     expect(text).toContain("direct 20-25s");
@@ -211,5 +228,61 @@ describe("formatTimeline", () => {
     expect(text).toContain("audio (2)");
     expect(text).toContain("vol=0.5 group=vo volume[0:0.2 2:1]");
     expect(text).toContain("rate=2");
+  });
+});
+
+const SKILL_DOC = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../skills/hyperframes-cli/references/upgrade-info-misc.md",
+);
+
+// The documented one-liners run verbatim; only the example query values are swapped for the fixture's.
+const oneLiners = (kind: "jq" | "node -e"): string[] =>
+  readFileSync(SKILL_DOC, "utf8")
+    .split("\n")
+    .filter((l) => l.startsWith(`${kind} `) && l.endsWith('<<<"$TL"'))
+    .map((l) => l.replace("12.5", "7").replace("tsfx-pet2", "nested"));
+
+const hasJq = (() => {
+  try {
+    execFileSync("jq", ["--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+const runOneLiner = (line: string): string =>
+  execFileSync("bash", ["-c", line], {
+    env: { ...process.env, TL: JSON.stringify({ timeline: describeProject(inversionProject()) }) },
+    encoding: "utf8",
+  });
+
+describe("skill query one-liners", () => {
+  it("documents four node one-liners, each answering from the fixture", () => {
+    const lines = oneLiners("node -e");
+    expect(lines).toHaveLength(4);
+    const [at, find, track, gaps] = lines.map(runOneLiner);
+    expect(at.split("\n").filter(Boolean)).toEqual([
+      "host index.html",
+      "nested compositions/scene.html",
+    ]);
+    expect(find).toBe("compositions/scene.html video 6 8\n");
+    expect(track).toBe("direct 20 25\n");
+    expect(gaps).toBe("");
+  });
+
+  it.skipIf(!hasJq)("documents four jq one-liners that agree with the node ones", () => {
+    const lines = oneLiners("jq");
+    expect(lines).toHaveLength(4);
+    const [at, find, track, gaps] = lines.map((l) =>
+      JSON.parse(`[${runOneLiner(l).replace(/}\s*{/g, "},{")}]`),
+    );
+    expect(at[0].map((r: { id: string }) => r.id)).toEqual(["host", "nested"]);
+    expect(find).toEqual([
+      { file: "compositions/scene.html", trackKind: "video", absStart: 6, absEnd: 8 },
+    ]);
+    expect(track).toEqual([{ id: "direct", absStart: 20, absEnd: 25 }]);
+    expect(gaps[0]).toEqual([]);
   });
 });
