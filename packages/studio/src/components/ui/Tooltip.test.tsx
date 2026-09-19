@@ -100,10 +100,11 @@ it("opens on hover over a disabled child", async () => {
   expect(bubble()?.textContent).toBe("Rendering");
 });
 
-it("wraps its child in a box so a disabled child still gets hover", () => {
+it("wraps its child in a box-less span so a disabled child still gets hover", () => {
   const trigger = mount();
 
   expect(trigger.tagName).toBe("BUTTON");
   expect(trigger.parentElement?.tagName).toBe("SPAN");
+  expect(trigger.parentElement?.className).toBe("contents");
   expect(trigger.parentElement?.parentElement?.parentElement).toBe(document.body);
 });

@@ -1,7 +1,7 @@
 /**
  * Tooltip — Base UI's tooltip wearing Studio's tokens, same props as before.
- * The trigger is a box-owning wrapper, because browsers send no hover to a
- * disabled control and disabled controls must still explain themselves.
+ * The trigger is a `display: contents` wrapper (no layout box) so a disabled
+ * control still gets hover; the bubble anchors to the child, which has the box.
  */
 
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
@@ -9,7 +9,7 @@ import { cloneElement, useId, useState, type ReactElement } from "react";
 
 interface TooltipProps {
   label: string;
-  /** A single element, wrapped so a disabled one still receives hover. */
+  /** A single element, wrapped in a box-less span so a disabled one still gets hover. */
   children: ReactElement<{ "aria-describedby"?: string }>;
   /** Hover delay in ms. */
   delay?: number;
@@ -22,17 +22,19 @@ const VIEWPORT_MARGIN = 8;
 
 export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipProps) {
   const [open, setOpen] = useState(false);
+  const [box, setBox] = useState<HTMLElement | null>(null);
   const tooltipId = useId();
 
   return (
     <BaseTooltip.Root open={open} onOpenChange={setOpen}>
-      <BaseTooltip.Trigger delay={delay} render={<span className="inline-flex" />}>
+      <BaseTooltip.Trigger delay={delay} render={<span ref={setBox} className="contents" />}>
         {cloneElement(children, {
           "aria-describedby": open ? tooltipId : children.props["aria-describedby"],
         })}
       </BaseTooltip.Trigger>
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner
+          anchor={() => box?.firstElementChild ?? null}
           side={side}
           sideOffset={SIDE_OFFSET}
           collisionPadding={VIEWPORT_MARGIN}
