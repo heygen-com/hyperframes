@@ -113,7 +113,7 @@ describe("install", () => {
     return { cache, dir, stubNpm };
   }
 
-  it("lets two concurrent first runs both complete", async () => {
+  it("gives each overlapping install in one process its own staging dir", async () => {
     const { cache, dir, stubNpm } = setup();
     try {
       await Promise.all([
@@ -126,16 +126,32 @@ describe("install", () => {
     }
   });
 
+  it("leaves another live process's in-progress staging dir alone while it installs", async () => {
+    const { cache, dir, stubNpm } = setup();
+    const foreign = `${dir}.tmp-${process.ppid}-abcd1234`;
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(join(foreign, "partial"), "downloading");
+    try {
+      await install(dir, name, version, stubNpm);
+      expect(existsSync(join(foreign, "partial"))).toBe(true);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+
   it("sweeps a staging dir whose pid is dead and keeps one whose pid is alive", async () => {
     const { cache, dir, stubNpm } = setup();
     const deadPid = spawnSync(process.execPath, ["-e", ""]).pid as number;
     const dead = `${dir}.tmp-${deadPid}-abcd1234`;
+    const deadOldFormat = `${dir}.tmp-${deadPid}`;
     const alive = `${dir}.tmp-${process.ppid}-abcd1234`;
     mkdirSync(dead, { recursive: true });
+    mkdirSync(deadOldFormat, { recursive: true });
     mkdirSync(alive, { recursive: true });
     try {
       await install(dir, name, version, stubNpm);
       expect(existsSync(dead)).toBe(false);
+      expect(existsSync(deadOldFormat)).toBe(false);
       expect(existsSync(alive)).toBe(true);
     } finally {
       rmSync(cache, { recursive: true, force: true });

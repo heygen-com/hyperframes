@@ -134,9 +134,12 @@ function sweepStaleStaging(dir: string): void {
   if (!existsSync(parent)) return;
   for (const entry of readdirSync(parent)) {
     if (!entry.startsWith(prefix)) continue;
-    const pid = /^(\d+)-/.exec(entry.slice(prefix.length))?.[1];
-    if (pid !== undefined && !isProcessAlive(Number(pid))) {
+    const pid = /^(\d+)(?:-|$)/.exec(entry.slice(prefix.length))?.[1];
+    if (pid === undefined || isProcessAlive(Number(pid))) continue;
+    try {
       rmSync(join(parent, entry), { recursive: true, force: true });
+    } catch {
+      // Leftover cleanup is best effort: a locked stale dir must not block a viable install.
     }
   }
 }
