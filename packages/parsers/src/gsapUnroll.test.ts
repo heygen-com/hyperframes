@@ -91,4 +91,30 @@ fade("#b", 2);`;
     expect(out).toContain('pop("#a", 1);');
     expect(out).not.toContain('tl.to("#a"');
   });
+
+  it("leaves a call site untouched when its helper also runs a nested helper", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { tl.to(sel, { opacity: 1, duration: 1 }, at); }
+function pop(sel, at) { fade(sel, at); tl.to(sel, { scale: 2, duration: 1 }, at); }
+pop("#a", 1);`;
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
+
+  it("leaves an arrow-function helper chain untouched", () => {
+    const script = `const tl = gsap.timeline();
+const fade = (sel, at) => { tl.to(sel, { opacity: 1, duration: 1 }, at); };
+const pop = (sel, at) => { fade(sel, at); };
+pop("#a", 1);`;
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
+
+  it("keeps a helper that a call the parser did not expand still reaches", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { tl.to(sel, { opacity: 1, duration: 1 }, at); }
+(function () { fade("#z", 5); })();
+fade("#b", 2);`;
+    const out = unrollComputedTimeline(script);
+    expect(out).toContain("function fade");
+    expect(out).toContain('tl.to("#b"');
+  });
 });
