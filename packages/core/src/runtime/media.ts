@@ -1,4 +1,5 @@
 import { swallow } from "./diagnostics";
+import { isInClipWindow } from "./clipWindow";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
@@ -265,8 +266,7 @@ export function syncRuntimeMedia(params: {
       isNonLoopVideo &&
       clip.sourceDuration != null &&
       relTime >= clip.sourceDuration &&
-      params.timeSeconds >= clip.start &&
-      params.timeSeconds < clip.end;
+      isInClipWindow(params.timeSeconds, clip.start, clip.end);
     if (isHeldVideoTail && clip.sourceDuration != null) {
       relTime = clip.sourceDuration;
     }
@@ -287,8 +287,7 @@ export function syncRuntimeMedia(params: {
     // video additionally remains an active visual through
     // its authored window, with tail seeks clamped to the final frame.
     const isActive =
-      params.timeSeconds >= clip.start &&
-      params.timeSeconds < clip.end &&
+      isInClipWindow(params.timeSeconds, clip.start, clip.end) &&
       relTime >= 0 &&
       (!el.ended || clip.loop || isHeldVideoTail || canSeekEndedMediaBackward);
     if (isActive) {
@@ -534,8 +533,7 @@ export function syncRuntimeMedia(params: {
     // the next poll would mistake the cleared baseline for a fresh activation
     // and replay the tail. A real backward seek still decreases relTime, and a
     // true outside-window transition clears every baseline as before.
-    const remainsInsideAuthoredWindow =
-      params.timeSeconds >= clip.start && params.timeSeconds < clip.end;
+    const remainsInsideAuthoredWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
     evictMediaSyncState(el);
     if (remainsInsideAuthoredWindow) lastRelativeTime.set(el, relTime);
     if (!el.paused) el.pause();

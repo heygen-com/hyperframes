@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
@@ -805,7 +806,11 @@ export function initSandboxRuntimeModular(): void {
     }
   });
 
-  const isTimedElementVisibleAt = (rawNode: HTMLElement, currentTime: number): boolean => {
+  const isTimedElementVisibleAt = (
+    rawNode: HTMLElement,
+    currentTime: number,
+    compositionDuration: number,
+  ): boolean => {
     const tag = rawNode.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
       return false;
@@ -846,10 +851,7 @@ export function initSandboxRuntimeModular(): void {
       window.__HF_EXPORT_RENDER_SEEK_CONFIG && Number.isFinite(computedEnd)
         ? snapTimeToFrameBoundary(computedEnd, state.canonicalFps)
         : computedEnd;
-    return (
-      currentTime >= visibilityStart &&
-      (Number.isFinite(visibilityEnd) ? currentTime < visibilityEnd : true)
-    );
+    return isClipVisibleAt(currentTime, visibilityStart, visibilityEnd, compositionDuration);
   };
 
   const hasExternalCompositions = !!document.querySelector("[data-composition-src]");
@@ -2394,8 +2396,17 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  const applyTimedElementVisibility = (currentTime: number, visibilityNodes: Element[]) => {
+  const applyTimedElementVisibility = (
+    currentTime: number,
+    visibilityNodes: Element[],
+    timingRevision?: number,
+  ) => {
     const rootComp = resolveRootCompositionElement();
+    const compositionDuration = getSafeTimelineDurationSeconds(
+      state.capturedTimeline,
+      0,
+      timingRevision,
+    );
     for (const rawNode of visibilityNodes) {
       if (!isHtmlElement(rawNode)) continue;
 
@@ -2426,7 +2437,7 @@ export function initSandboxRuntimeModular(): void {
         groupMuteDirty = true;
       }
 
-      let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime);
+      let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime, compositionDuration);
       // Descendants must not override a hidden ancestor clip. CSS visibility can
       // otherwise leak child pixels through inactive scenes because a descendant
       // with visibility:visible escapes an ancestor's visibility:hidden.
@@ -2435,7 +2446,7 @@ export function initSandboxRuntimeModular(): void {
         while (ancestor) {
           if (ancestor === rootComp) break;
           if (isHtmlElement(ancestor) && ancestor.hasAttribute("data-start")) {
-            if (!isTimedElementVisibleAt(ancestor, currentTime)) {
+            if (!isTimedElementVisibleAt(ancestor, currentTime, compositionDuration)) {
               isVisibleNow = false;
               break;
             }
@@ -2476,7 +2487,11 @@ export function initSandboxRuntimeModular(): void {
   const syncTimedElementVisibility = (
     currentTime: number,
     visibilityNodes: Element[] = Array.from(document.querySelectorAll("[data-start]")),
-  ) => withTimingResolver(() => applyTimedElementVisibility(currentTime, visibilityNodes));
+    timingRevision?: number,
+  ) =>
+    withTimingResolver(() =>
+      applyTimedElementVisibility(currentTime, visibilityNodes, timingRevision),
+    );
 
   /**
    * Clip windows sorted by each endpoint, so a seek can ask which windows it
@@ -2657,7 +2672,7 @@ export function initSandboxRuntimeModular(): void {
     document.removeEventListener("play", onMediaPlayWakeTransport, true);
   });
 
-  const syncMediaForCurrentState = () => {
+  const syncMediaForCurrentState = (timingRevision?: number) => {
     // Scope 1 of 3 (see `withTimingResolver`). Closes before `syncRuntimeMedia`,
     // which may call `el.load()` and invalidate every cached duration.
     //
@@ -2717,15 +2732,15 @@ export function initSandboxRuntimeModular(): void {
         lastSyncedMediaTimeSeconds = state.currentTime;
         // Every clip not visited was out of window at both ends of this seek, so
         // the visited ones are the only possible members.
-        mediaClipsInWindow = mediaClips.filter(
-          (clip) => state.currentTime >= clip.start && state.currentTime < clip.end,
+        mediaClipsInWindow = mediaClips.filter((clip) =>
+          isInClipWindow(state.currentTime, clip.start, clip.end),
         );
       } else {
         lastSyncedMediaTimeSeconds = null;
         mediaClipsInWindow = [];
       }
     }
-    syncTimedElementVisibility(state.currentTime);
+    syncTimedElementVisibility(state.currentTime, undefined, timingRevision);
   };
 
   const postState = (force: boolean) => {
@@ -3801,7 +3816,7 @@ export function initSandboxRuntimeModular(): void {
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
             const mediaStart = readElementPlaybackStart(rawEl);
-            if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
+            if (Number.isFinite(start) && isInClipWindow(state.currentTime, start, end)) {
               if (!rawEl.paused) {
                 clock.attachAudioSource({
                   el: rawEl,
@@ -3874,20 +3889,20 @@ export function initSandboxRuntimeModular(): void {
           seekTimelineAndAdapters(dur);
         }
         runAdapters("pause");
-        syncMediaForCurrentState();
+        syncMediaForCurrentState(timingRevision);
         postState(true);
         return;
       }
 
       if (clock.isPlaying()) {
-        syncMediaForCurrentState();
+        syncMediaForCurrentState(timingRevision);
       } else if (hasRunningTimedMedia()) {
         // Nothing may run while the clock is paused, and the paused side used to
         // police nothing. Dropping the cursor forces a full visit: the seek-window
         // index skips an element that started outside the current window, which is
         // exactly the one to stop.
         lastSyncedMediaTimeSeconds = null;
-        syncMediaForCurrentState();
+        syncMediaForCurrentState(timingRevision);
       }
       postState(false);
     } finally {
@@ -3909,7 +3924,7 @@ export function initSandboxRuntimeModular(): void {
       if (!Number.isFinite(start)) continue;
       const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);
       const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
-      if (timeSeconds < start || timeSeconds >= end) continue;
+      if (!isInClipWindow(timeSeconds, start, end)) continue;
       const mediaStart = readElementPlaybackStart(el);
       const relTime = timeSeconds - start + mediaStart;
       if (relTime >= 0) {

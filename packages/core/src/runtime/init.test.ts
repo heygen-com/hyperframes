@@ -949,6 +949,64 @@ describe("initSandboxRuntimeModular", () => {
     expect(clip.style.visibility).toBe("hidden");
   });
 
+  describe("at the composition's terminal time", () => {
+    const buildRoot = () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      return root;
+    };
+    const addClip = (root: HTMLElement, start: number, duration: number) => {
+      const clip = document.createElement("div");
+      clip.setAttribute("data-start", String(start));
+      clip.setAttribute("data-duration", String(duration));
+      root.appendChild(clip);
+      return clip;
+    };
+
+    it("keeps a clip that runs to the composition duration visible at and past the duration", () => {
+      const root = buildRoot();
+      const lastClip = addClip(root, 2.5, 2.5);
+      window.__timelines = { main: createMockTimeline(5) };
+      initSandboxRuntimeModular();
+
+      window.__player?.renderSeek(5 - 1e-9);
+      expect(lastClip.style.visibility).toBe("visible");
+      window.__player?.renderSeek(5);
+      expect(lastClip.style.visibility).toBe("visible");
+      window.__player?.renderSeek(5.5);
+      expect(lastClip.style.visibility).toBe("visible");
+    });
+
+    it("still hides a clip that ended before the composition duration", () => {
+      const root = buildRoot();
+      const earlyClip = addClip(root, 0, 2.5);
+      addClip(root, 2.5, 2.5);
+      window.__timelines = { main: createMockTimeline(5) };
+      initSandboxRuntimeModular();
+
+      window.__player?.renderSeek(5);
+      expect(earlyClip.style.visibility).toBe("hidden");
+    });
+
+    it("never shows two back-to-back clips at their shared boundary", () => {
+      const root = buildRoot();
+      const first = addClip(root, 0, 2.5);
+      const second = addClip(root, 2.5, 2.5);
+      window.__timelines = { main: createMockTimeline(5) };
+      initSandboxRuntimeModular();
+
+      window.__player?.renderSeek(2.5);
+      expect([first.style.visibility, second.style.visibility]).toEqual(["hidden", "visible"]);
+      window.__player?.renderSeek(5);
+      expect([first.style.visibility, second.style.visibility]).toEqual(["hidden", "visible"]);
+    });
+  });
+
   it("keeps external composition hosts visible through their authored duration", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
