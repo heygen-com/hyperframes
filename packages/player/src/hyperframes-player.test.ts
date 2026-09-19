@@ -2789,6 +2789,7 @@ describe("HyperframesPlayer asset-ready gate", () => {
     _pendingPlay: boolean;
     _paused: boolean;
     assetsReady: boolean;
+    painted: boolean;
     _waitForAssetsReady(doc: Document | null): void;
     _onIframeLoad(): void;
     play(): void;
@@ -2927,6 +2928,48 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player.assetsReady).toBe(true);
     expect(player.hasAttribute("assets-loading")).toBe(false);
     expect(showSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("fires painted only after the raised loader has faded out, not at assetsready", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("assets-loading")).toBe(true);
+    expect(player.painted).toBe(false);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toEqual(["assetsready"]);
+    expect(player.painted).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(events).toEqual(["assetsready", "painted"]);
+    expect(player.painted).toBe(true);
+
+    player._waitForAssetsReady(doc);
+    expect(player.painted).toBe(false);
+
+    player.remove();
+  });
+
+  it("fires painted right after assetsready when no loader was ever raised", async () => {
+    const player = await createConnectedPlayer();
+    const painted = vi.fn();
+    player.addEventListener("painted", painted);
+
+    player._waitForAssetsReady(null);
+
+    expect(player.assetsReady).toBe(true);
+    expect(player.painted).toBe(true);
+    expect(painted).toHaveBeenCalledTimes(1);
 
     player.remove();
   });

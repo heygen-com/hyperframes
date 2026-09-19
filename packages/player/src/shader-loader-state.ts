@@ -17,6 +17,7 @@ const HIDE_TRANSITION_MS = 420;
 export class ShaderLoaderState {
   private readonly _el: ShaderLoaderElements;
   private _hideTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _hiddenCallbacks: Array<() => void> = [];
 
   constructor(elements: ShaderLoaderElements) {
     this._el = elements;
@@ -42,12 +43,27 @@ export class ShaderLoaderState {
     this._scheduleCleanup();
   }
 
+  /** Runs `cb` once the panel is fully gone: now if it is not raised or
+   *  fading, otherwise when the fade's cleanup fires. */
+  whenHidden(cb: () => void): void {
+    const cls = this._el.root.classList;
+    if (cls.contains("hfp-visible") || cls.contains("hfp-hiding")) this._hiddenCallbacks.push(cb);
+    else cb();
+  }
+
+  private _flushHidden(): void {
+    const callbacks = this._hiddenCallbacks;
+    this._hiddenCallbacks = [];
+    for (const cb of callbacks) cb();
+  }
+
   reset(): void {
     if (this._hideTimeout) {
       clearTimeout(this._hideTimeout);
       this._hideTimeout = null;
     }
     this._el.root.classList.remove("hfp-visible", "hfp-hiding");
+    this._flushHidden();
     this._el.fill.style.transform = "scaleX(0)";
     this._el.transitionValue.textContent = "";
     this._el.frameValue.textContent = "";
@@ -136,6 +152,7 @@ export class ShaderLoaderState {
       clearTimeout(this._hideTimeout);
       this._hideTimeout = null;
     }
+    this._hiddenCallbacks = [];
   }
 
   private _scheduleCleanup(): void {
@@ -143,6 +160,7 @@ export class ShaderLoaderState {
     this._hideTimeout = setTimeout(() => {
       this._el.root.classList.remove("hfp-hiding");
       this._hideTimeout = null;
+      this._flushHidden();
     }, HIDE_TRANSITION_MS);
   }
 }

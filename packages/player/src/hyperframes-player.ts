@@ -109,6 +109,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private _ready = false;
   private _assetsReady = false;
+  private _painted = false;
   private _pendingPlay = false;
   private _assetsGeneration = 0;
   private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
@@ -530,6 +531,12 @@ class HyperframesPlayer extends HTMLElement {
    *  cross-origin compositions, which the player has no DOM access to wait on. */
   get assetsReady() {
     return this._assetsReady;
+  }
+
+  /** True once assets are ready and the loading panel has finished fading out,
+   *  so the document is what is on screen. Mirrors `painted`; resets per load. */
+  get painted() {
+    return this._painted;
   }
 
   get playbackRate() {
@@ -1032,6 +1039,7 @@ class HyperframesPlayer extends HTMLElement {
   private _waitForAssetsReady(doc: Document | null, runtimeAssetsReady?: boolean): void {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
+    this._painted = false;
     // Invalidates any earlier wait still in flight (a composition swap, or
     // disconnect, mid-wait) — its eventual settle checks this and no-ops
     // rather than resolving a since-superseded generation.
@@ -1099,6 +1107,11 @@ class HyperframesPlayer extends HTMLElement {
     this.removeAttribute(ASSETS_LOADING_ATTR);
     this.shaderLoader.hide();
     this.dispatchEvent(new Event("assetsready"));
+    this.shaderLoader.whenHidden(() => {
+      if (generation !== this._assetsGeneration) return;
+      this._painted = true;
+      this.dispatchEvent(new Event("painted"));
+    });
     if (this._pendingPlay) this.play();
   }
 
@@ -1107,6 +1120,7 @@ class HyperframesPlayer extends HTMLElement {
   private _invalidateAssetsWait(): void {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
+    this._painted = false;
     this._pendingPlay = false;
     this._assetsGeneration++;
     this.removeAttribute(ASSETS_LOADING_ATTR);
