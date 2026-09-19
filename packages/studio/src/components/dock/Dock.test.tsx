@@ -111,6 +111,28 @@ describe("Dock on React 19", () => {
     expect(home).toContain('"assets"');
   });
 
+  it("reopens a side panel next to the preview when its whole column was closed", () => {
+    mount("p1");
+    const { closePanel, togglePanel } = useDockLayoutStore.getState();
+    for (const id of ["compositions", "assets", "code", "catalog"] as const)
+      act(() => closePanel(id));
+    act(() => togglePanel("compositions"));
+    expect(useDockLayoutStore.getState().openPanels.has("compositions")).toBe(true);
+    expect(useDockLayoutStore.getState().visiblePanels.has("compositions")).toBe(true);
+  });
+
+  it("reopens the timeline as its own group, never as a tab of the preview", () => {
+    mount("p1");
+    act(() => useDockLayoutStore.getState().closePanel("timeline"));
+    act(() => useDockLayoutStore.getState().togglePanel("timeline"));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    const grid = JSON.stringify(readStudioUiPreferences(undefined, "p1").dockLayout?.grid);
+    const groups = [...grid.matchAll(/"views":\[([^\]]*)\]/g)].map((m) => m[1]);
+    expect(groups.find((views) => views.includes('"timeline"'))).not.toContain('"preview"');
+  });
+
   it("restores the stored layout on the next mount instead of rebuilding the default", () => {
     mount("p1");
     act(() => useDockLayoutStore.getState().closePanel("renders"));
