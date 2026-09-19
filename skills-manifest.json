@@ -18,7 +18,7 @@
       "files": 4
     },
     "hyperframes": {
-      "hash": "05525e9c53582e4b",
+      "hash": "ca51ed2be534305c",
       "files": 26
     },
     "hyperframes-animation": {
@@ -26,7 +26,7 @@
       "files": 122
     },
     "hyperframes-audio": {
-      "hash": "b39bac771e873eae",
+      "hash": "7e9a13aba7143c08",
       "files": 7
     },
     "hyperframes-cli": {
@@ -34,7 +34,7 @@
       "files": 11
     },
     "hyperframes-core": {
-      "hash": "77ce4deba31148a2",
+      "hash": "dae513efe1b0e803",
       "files": 11
     },
     "hyperframes-creative": {
@@ -42,7 +42,7 @@
       "files": 79
     },
     "hyperframes-keyframes": {
-      "hash": "6bc62531ecea9a52",
+      "hash": "16a7da9819e7e4ab",
       "files": 3
     },
     "hyperframes-registry": {

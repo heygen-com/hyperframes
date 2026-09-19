@@ -229,7 +229,7 @@ Timeline math: the still owns its hold duration. Source math: final-source frame
 ></video>
 ```
 
-Timeline math: duration is authored timeline time. Source math: consumed source = timeline duration × rate; natural timeline duration = remaining source / rate. Audio follows: matching separate audio track uses the same constant rate. Owner: `/hyperframes-core`. Limit: normalized 0.1..5 constant only; no speed ramp envelope.
+Timeline math: duration is authored timeline time. Source math: consumed source = timeline duration × rate; natural timeline duration = remaining source / rate. Audio follows: matching separate audio track uses the same constant rate. Owner: `/hyperframes-core`. Limit: normalized 0.1..10. For a speed ramp put a `rate` lane in `data-automation`, e.g. `{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":4}]}]}`; it wins over the constant.
 
 ## Zoom / punch
 
