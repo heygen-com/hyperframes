@@ -550,14 +550,19 @@ describe("ffprobe missing-binary fallback", () => {
       codec: "aac",
       profile: "LC",
       packets: "783",
-      expected: 16.704,
-      calls: 2,
+      firstPacketPts: -1024,
+      // (783 * 1024 - 1024) / 48000 — one frame of encoder-priming delay
+      // subtracted from the raw packet-count total. The pre-fix formula
+      // (no subtraction) gave 16.704.
+      expected: 16.682666666666666,
+      calls: 3,
     },
     {
       name: "missing AAC packet count",
       codec: "aac",
       profile: "LC",
       packets: undefined,
+      firstPacketPts: undefined,
       expected: 1.25,
       calls: 2,
     },
@@ -566,6 +571,7 @@ describe("ffprobe missing-binary fallback", () => {
       codec: "aac",
       profile: "LC",
       packets: "0",
+      firstPacketPts: undefined,
       expected: 1.25,
       calls: 2,
     },
@@ -574,12 +580,13 @@ describe("ffprobe missing-binary fallback", () => {
       codec: "aac",
       profile: "LC",
       packets: "invalid",
+      firstPacketPts: undefined,
       expected: 1.25,
       calls: 2,
     },
   ])(
     "derives audio duration for $name",
-    async ({ codec, profile, packets, expected, calls: expectedCalls }) => {
+    async ({ codec, profile, packets, firstPacketPts, expected, calls: expectedCalls }) => {
       const outcomes: SpawnOutcome[] = [
         {
           kind: "exit",
@@ -605,6 +612,13 @@ describe("ffprobe missing-binary fallback", () => {
           stdout: JSON.stringify({ streams: [{ nb_read_packets: packets }], format: {} }),
         });
       }
+      if (firstPacketPts !== undefined) {
+        outcomes.push({
+          kind: "exit",
+          code: 0,
+          stdout: JSON.stringify({ packets: [{ pts: firstPacketPts }] }),
+        });
+      }
       const { spawn, calls } = createSpawnSpy(outcomes);
       vi.resetModules();
       vi.doMock("child_process", () => ({ spawn }));
@@ -616,6 +630,59 @@ describe("ffprobe missing-binary fallback", () => {
       expect(calls).toHaveLength(expectedCalls);
     },
   );
+
+  // Regression (PRINFRA-342 mechanism 2): the packet-count refinement above
+  // counted every packet's samples, including AAC-LC's own leading
+  // encoder-priming/delay interval, which isn't real content. A real 5s
+  // @48kHz encode of a 240,000-sample (non-1024-aligned) source produces 236
+  // packets — raw decoded length is 240,640 samples (640 samples of
+  // unavoidable AAC-block-alignment tail overshoot, a hard codec constraint
+  // this refinement can't and shouldn't try to hide) — but the pre-fix
+  // formula (packetCount * 1024 / sampleRate, no delay subtraction) reported
+  // 241,664 / 48,000 = 5.034667s: a FULL EXTRA FRAME beyond even the raw
+  // decode, because the -1024-sample priming delay ffmpeg tags on the first
+  // packet was never subtracted. That inflated value fed straight into
+  // audioPadTrim's sourceDurationSeconds input, compounding across any
+  // chained re-processing of the same audio.
+  it("does not double-count AAC-LC's leading encoder-priming delay in the packet-count refinement", async () => {
+    const outcomes: SpawnOutcome[] = [
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "audio",
+              codec_name: "aac",
+              sample_rate: "48000",
+              channels: 1,
+              profile: "LC",
+            },
+          ],
+          format: { duration: "5.000000", bit_rate: "192000" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({ streams: [{ nb_read_packets: "236" }], format: {} }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({ packets: [{ pts: -1024 }] }),
+      },
+    ];
+    const { spawn } = createSpawnSpy(outcomes);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    const meta = await extractAudioMetadata("/tmp/aac-tail-overshoot.m4a");
+
+    expect(meta.durationSeconds).toBeCloseTo(240_640 / 48_000, 6);
+    expect(meta.durationSeconds).toBeLessThan(241_664 / 48_000);
+  });
 
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
@@ -928,6 +995,13 @@ describe("ffprobe option separator", () => {
           format: {},
         }),
       },
+      {
+        // The encoder-priming-delay probe — also an AAC-LC packet-count
+        // refinement argv, also covered here.
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({ packets: [{ pts: -1024 }] }),
+      },
       { kind: "exit", code: 0, stdout: "0.000\n1.000\n" },
     ]);
     vi.resetModules();
@@ -937,10 +1011,11 @@ describe("ffprobe option separator", () => {
     await extractAudioMetadata("/tmp/-audio.wav");
     await analyzeKeyframeIntervals("/tmp/-video.mp4");
 
-    // Per call, not a flattened count. A total of 3 is satisfied by one call
-    // emitting three `--` and two emitting none — i.e. it cannot fail for
+    // Per call, not a flattened count. A total of 4 is satisfied by one call
+    // emitting four `--` and two emitting none — i.e. it cannot fail for
     // misplacement, which is the shape of bug this exists to catch.
     expect(calls.map((call) => (call.args ?? []).slice(-2))).toEqual([
+      ["--", "/tmp/-audio.wav"],
       ["--", "/tmp/-audio.wav"],
       ["--", "/tmp/-audio.wav"],
       ["--", "/tmp/-video.mp4"],
