@@ -26,6 +26,21 @@ export function markFraction(db: number): number {
   return levelToFraction(10 ** (db / 20));
 }
 
+/** Inverse of `levelToFraction`: a 0..1 fader fraction back to a linear volume. */
+export function fractionToLevel(fraction: number): number {
+  const f = Math.max(0, Math.min(1, fraction));
+  if (f <= 0) return 0;
+  if (f >= 1) return 1;
+  const n = STOPS.length - 1;
+  const scaled = f * n;
+  const seg = Math.min(n - 1, Math.floor(scaled));
+  const segFraction = scaled - seg;
+  const j = n - seg;
+  const hi = STOPS[j - 1] as number;
+  const lo = STOPS[j] as number;
+  return 10 ** ((lo + segFraction * (hi - lo)) / 20);
+}
+
 export interface MeterChannel {
   level: number;
   peak: number;

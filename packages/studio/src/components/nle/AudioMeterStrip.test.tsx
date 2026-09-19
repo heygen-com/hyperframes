@@ -17,6 +17,35 @@ vi.mock("../../contexts/StudioContext", () => ({
   useStudioShellContext: () => ({ previewIframeRef }),
 }));
 
+const onSetAudioGroupAttributeLive = vi.fn();
+const onSetAudioGroupAttributeQuiet = vi.fn();
+vi.mock("../../contexts/TimelineEditContext", () => ({
+  useTimelineEditContextOptional: () => ({
+    onSetAudioGroupAttributeLive,
+    onSetAudioGroupAttributeQuiet,
+  }),
+}));
+
+function stubTrackRect(): () => void {
+  const original = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function (): DOMRect {
+    return {
+      left: 0,
+      top: 0,
+      right: 8,
+      bottom: 100,
+      width: 8,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    };
+  };
+  return () => {
+    Element.prototype.getBoundingClientRect = original;
+  };
+}
+
 const makeHook = (groups: Record<string, { l: number; r: number }> = {}) => ({
   start: vi.fn(),
   stop: vi.fn(),
@@ -39,8 +68,10 @@ beforeEach(() => {
   frames = [];
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
   vi.stubGlobal("cancelAnimationFrame", () => {});
-  usePlayerStore.setState({ elements: [] });
+  usePlayerStore.setState({ elements: [], audioVolume: 1 });
   useAudioMetersVisible.setState({ visible: true });
+  onSetAudioGroupAttributeLive.mockClear();
+  onSetAudioGroupAttributeQuiet.mockClear();
 });
 const roots: Root[] = [];
 afterEach(() => {
@@ -84,12 +115,12 @@ describe("AudioMeterStrip", () => {
     const first = makeHook({ vo: { l: 1, r: 1 } });
     setHook(first);
     const { host, root } = mount();
-    const fill = host.querySelector<HTMLElement>("[class*=bg-green-500]")!;
-    expect(fill.style.transform).toBe("scaleY(0)");
+    const mask = host.querySelector<HTMLElement>("[data-testid=meter-mask]")!;
+    expect(mask.style.height).toBe("100%");
     tick();
     tick();
     expect(first.start).toHaveBeenCalledTimes(1);
-    expect(fill.style.transform).toBe("scaleY(1)");
+    expect(mask.style.height).toBe("0%");
     const peak = host.querySelector<HTMLElement>("[data-testid=meter-peak]")!;
     expect(peak.style.bottom).toBe("100%");
     expect(peak.style.transform).toBe("translateY(1px)");
@@ -120,5 +151,54 @@ describe("AudioMeterStrip", () => {
     expect(second.start).toHaveBeenCalledTimes(1);
     tick();
     expect(second.read).toHaveBeenCalled();
+  });
+
+  it("drags a group fader through the live/quiet data-volume path, and the master fader through the player store", () => {
+    const restoreRect = stubTrackRect();
+    const originalPointerCapture = Element.prototype.setPointerCapture;
+    Element.prototype.setPointerCapture = vi.fn();
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo", audioGroupLabel: "VO" })] });
+    const { host } = mount();
+
+    const groupFader = host.querySelector<HTMLElement>('[aria-label="VO volume"]')!;
+    act(() => {
+      groupFader.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientY: 25 }),
+      );
+    });
+    expect(onSetAudioGroupAttributeLive).toHaveBeenCalledWith(
+      "vo",
+      "data-volume",
+      expect.any(String),
+    );
+    expect(onSetAudioGroupAttributeQuiet).not.toHaveBeenCalled();
+    act(() => {
+      groupFader.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientY: 25 }),
+      );
+    });
+    expect(onSetAudioGroupAttributeQuiet).toHaveBeenCalledWith(
+      "vo",
+      "data-volume",
+      expect.any(String),
+      "Set volume",
+    );
+
+    const masterFader = host.querySelector<HTMLElement>('[aria-label="Master volume"]')!;
+    act(() => {
+      masterFader.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientY: 0 }),
+      );
+    });
+    expect(usePlayerStore.getState().audioVolume).toBe(1);
+    act(() => {
+      masterFader.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientY: 100 }),
+      );
+    });
+    expect(usePlayerStore.getState().audioVolume).toBe(0);
+
+    Element.prototype.setPointerCapture = originalPointerCapture;
+    restoreRect();
   });
 });
