@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
-import { useEditHistoryActions } from "./useEditHistoryActions";
+import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryActions";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -13,11 +13,11 @@ afterEach(() => act(() => root?.unmount()));
 
 function mount(result: { ok: boolean; reason?: string; label?: string; paths?: string[] }) {
   const editHistory = {
-    undo: vi.fn(async (cb: { writeFile: (p: string, c: string) => Promise<void> }) => {
+    undo: vi.fn<EditHistoryHandle["undo"]>(async (cb) => {
       if (result.ok) await cb.writeFile("index.html", "before");
       return result;
     }),
-    redo: vi.fn(async () => result),
+    redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
   };
   const deps = {
     editHistory,
