@@ -417,6 +417,57 @@ Timeline math: an audio element in the root composition has `data-start` in abso
 
 Timeline math: pick the clips first and say which ones you picked (by id) if the request does not match the file exactly; then add one `delta` to every member's `data-start`, so relative spacing is preserved (here `delta = 40`). Give each copy a new unique `id` and the next unused `data-track-index`; keep `src`, `data-duration`, `data-media-start`, `data-volume` and any `data-automation` as they are. Leave the originals untouched. Check the copies still end inside the composition's duration. Owner: `/hyperframes-core`. Limit: copies of a `<video>` or a sub-composition host follow the same rule, and a copied sub-composition needs its own host `id`.
 
+## Add media (image, video, audio)
+
+Write exactly what Studio writes when a person drops a file on the timeline, so an agent-added clip behaves the same as a dropped one. Studio's source of truth is `DEFAULT_TIMELINE_ASSET_DURATION` in `packages/studio/src/utils/studioHelpers.ts` and `buildTimelineAssetInsertHtml` in `packages/studio/src/utils/timelineAssetDrop.ts`; a test keeps this section equal to them.
+
+- **Image: `data-duration="3"`.** A still has no length of its own, so it gets 3 seconds. Without a `data-duration` it never ends and stays on screen for the rest of the composition.
+- **Video and audio: the file's own length** in seconds (`ffprobe -v error -show_entries format=duration -of csv=p=0 file`); `5` only when the length cannot be read. Studio rounds to hundredths.
+- **Start: the playhead or the requested time, never a silent `0`.** Studio's asset-panel Add uses the playhead time on track `0`; a drop uses the drop point. Several files dropped together run end to end from the first start.
+- Give every clip `id`, `class="clip"`, `data-start`, `data-duration` and `data-track-index`. Video is `muted playsinline`; audio carries `data-volume="1"`.
+- Then make sure the root composition's `data-duration` is at least `data-start + data-duration`; Studio extends it, an agent must too, or the clip lies past the end and never plays.
+- Images and video sit absolutely positioned, `object-fit: contain`, centred at their natural size (scaled down to fit): `left = (frameWidth - width) / 2`, `top = (frameHeight - height) / 2`. Below, an 800x600 still in a 1920x1080 frame.
+
+```html
+<img
+  id="photo"
+  class="clip"
+  src="assets/photo.png"
+  data-start="4"
+  data-duration="3"
+  data-track-index="1"
+  style="position: absolute; left: 560px; top: 240px; width: 800px; height: 600px; object-fit: contain; z-index: 2"
+/>
+```
+
+```html
+<video
+  id="broll"
+  class="clip"
+  src="assets/broll.mp4"
+  data-start="4"
+  data-duration="6.5"
+  data-track-index="2"
+  muted
+  playsinline
+  style="position: absolute; left: 0px; top: 0px; width: 1920px; height: 1080px; object-fit: contain; z-index: 3"
+></video>
+```
+
+```html
+<audio
+  id="whoosh"
+  class="clip"
+  src="assets/whoosh.mp3"
+  data-start="4"
+  data-duration="1.2"
+  data-track-index="3"
+  data-volume="1"
+></audio>
+```
+
+Inside a sub-composition file, `data-start` is scene-local (see `## Align a sound to an on-screen event`). Owner: `/hyperframes-core`.
+
 ## Swap a media file
 
 ```html

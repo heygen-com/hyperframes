@@ -73,3 +73,20 @@ test("the Studio skill's safe boxes equal the preview's", async () => {
   assert.match(skill, new RegExp(`Action-safe\\s*\\|\\s*${action}%`));
   assert.match(skill, new RegExp(`Title-safe\\s*\\|\\s*${title}%`));
 });
+
+test("the add-media recipe matches Studio's own drop defaults", async () => {
+  const helpers = await read("packages/studio/src/utils/studioHelpers.ts");
+  const defaults = helpers.match(/DEFAULT_TIMELINE_ASSET_DURATION[^=]*=\s*\{([^}]*)\}/)?.[1] ?? "";
+  const secs = (kind) => defaults.match(new RegExp(`${kind}:\\s*(\\d+)`))?.[1];
+  const section = (await read(OWNER)).split("## Add media")[1]?.split("\n## ")[0] ?? "";
+  assert.ok(secs("image"), "could not read Studio's image default");
+  assert.match(section, new RegExp(`Image: \`data-duration="${secs("image")}"\``));
+  assert.match(section, new RegExp(`\`${secs("video")}\` only when the length cannot be read`));
+  const image = section.match(/<img[\s\S]*?\/>/)?.[0] ?? "";
+  assert.match(image, new RegExp(`data-duration="${secs("image")}"`));
+  const drop = await read("packages/studio/src/utils/timelineAssetDrop.ts");
+  for (const attr of ["class=\"clip\"", "data-start", "data-duration", "data-track-index"]) {
+    assert.ok(drop.includes(attr), `Studio no longer writes ${attr}`);
+    assert.ok(image.includes(attr.split("=")[0]), `doc example lacks ${attr}`);
+  }
+});
