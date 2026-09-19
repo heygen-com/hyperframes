@@ -17,9 +17,7 @@ function clip(id: string, track: number, start: number): TimelineElement {
     authoredTrack: track,
     hfId: `hf-${id}`,
     domId: id,
-    // The main document's own elements carry no sourceFile (see sameSourceFile
-    // in timelineAuthoredTrack.ts) — an explicit string here would mask the bug
-    // where the dropped element was tagged with the resolved path instead.
+    // Main-document elements carry no sourceFile, as in production.
   };
 }
 

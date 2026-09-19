@@ -26,8 +26,6 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   sessionEpoch: number;
 }
 
-type TimelinePlacement = TimelineDropPlacement;
-
 /**
  * Parse a JSON drag payload and, if it yields a value, forward it to the drop
  * callback. Malformed payloads are ignored. Shared by the asset + block paths so
@@ -36,8 +34,8 @@ type TimelinePlacement = TimelineDropPlacement;
 function applyJsonDropPayload(
   raw: string,
   pick: (parsed: Record<string, string | undefined>) => string | undefined,
-  apply: (value: string, placement: TimelinePlacement) => void,
-  placement: TimelinePlacement,
+  apply: (value: string, placement: TimelineDropPlacement) => void,
+  placement: TimelineDropPlacement,
 ): boolean {
   try {
     const value = pick(JSON.parse(raw) as Record<string, string | undefined>);
@@ -47,6 +45,11 @@ function applyJsonDropPayload(
   } catch {
     return false;
   }
+}
+
+/** Only file and asset drops are written by the asset op that can open a track. */
+function canInsertTrackFor(types: readonly string[]): boolean {
+  return types.includes("Files") || types.includes(TIMELINE_ASSET_MIME);
 }
 
 /** The row boundary a pointer at `contentY` arms for a new track, or null over a lane's middle. */
@@ -68,7 +71,7 @@ function placeDrop(
   clientY: number,
   // Blocks and compositions are written by their own installers, which only take a track.
   canInsertTrack: boolean,
-): TimelinePlacement {
+): TimelineDropPlacement {
   const placement = resolveTimelineAssetDrop(geometry, clientX, clientY);
   if (!canInsertTrack) return placement;
   const contentY = clientY - geometry.rectTop + geometry.scrollTop;
@@ -87,7 +90,7 @@ function invokeDropCallback(callback: () => Promise<void> | void): void {
 function applyFileDrop(
   transfer: DataTransfer,
   onFileDrop: TimelineDropCallbacks["onFileDrop"],
-  placement: TimelinePlacement,
+  placement: TimelineDropPlacement,
 ): boolean {
   if (!onFileDrop || transfer.files.length === 0) return false;
   invokeDropCallback(() => onFileDrop(Array.from(transfer.files), placement));
@@ -98,8 +101,8 @@ function applyTypedJsonDrop(
   transfer: DataTransfer,
   mime: string,
   field: "name" | "path",
-  apply: ((value: string, placement: TimelinePlacement) => Promise<void> | void) | undefined,
-  placement: TimelinePlacement,
+  apply: ((value: string, placement: TimelineDropPlacement) => Promise<void> | void) | undefined,
+  placement: TimelineDropPlacement,
 ): boolean {
   if (!apply || !Array.from(transfer.types).includes(mime)) return false;
   const payload = transfer.getData(mime);
@@ -131,7 +134,7 @@ export function useTimelineAssetDrop({
   sessionEpoch,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [dropPreview, setDropPreview] = useState<TimelinePlacement | null>(null);
+  const [dropPreview, setDropPreview] = useState<TimelineDropPlacement | null>(null);
   const dragPointerRef = useRef<{ clientX: number; clientY: number; sessionEpoch: number } | null>(
     null,
   );
@@ -177,7 +180,7 @@ export function useTimelineAssetDrop({
   );
 
   const resolveDropPlacement = useCallback(
-    (clientX: number, clientY: number, canInsertTrack: boolean): TimelinePlacement => {
+    (clientX: number, clientY: number, canInsertTrack: boolean): TimelineDropPlacement => {
       const scroll = scrollRef.current;
       const rect = scroll?.getBoundingClientRect();
       return placeDrop(
@@ -211,7 +214,7 @@ export function useTimelineAssetDrop({
       e.dataTransfer.dropEffect = "copy";
       activeDropEpochRef.current = sessionEpoch;
       setIsDragOver(true);
-      const next = resolveDropPlacement(e.clientX, e.clientY, hasFiles || hasAsset);
+      const next = resolveDropPlacement(e.clientX, e.clientY, canInsertTrackFor(types));
       setDropPreview((prev) =>
         prev?.start === next.start && prev.track === next.track && prev.insertRow === next.insertRow
           ? prev
@@ -245,11 +248,7 @@ export function useTimelineAssetDrop({
       clearDropPreview();
       if (!canCommit) return;
       const types = Array.from(e.dataTransfer.types);
-      const placement = resolveDropPlacement(
-        e.clientX,
-        e.clientY,
-        types.includes("Files") || types.includes(TIMELINE_ASSET_MIME),
-      );
+      const placement = resolveDropPlacement(e.clientX, e.clientY, canInsertTrackFor(types));
 
       const compositionPayload = parseTimelineCompositionPayload(
         e.dataTransfer.getData(TIMELINE_COMPOSITION_MIME),

@@ -27,10 +27,7 @@ export function planDropTrackInsert(input: {
     key: dropped.id,
     // Parked on an existing lane so it adds no lane of its own to the topology.
     track: trackOrder[0] ?? 0,
-    // sameSourceFile compares this raw field, and every element already in
-    // `elements` shares the target file's own value (often undefined for the
-    // main document) — borrow it instead of stamping the resolved path string,
-    // or the new clip reads as a foreign file and nothing is writable.
+    // sameSourceFile compares this raw field: borrow the peers' value, not the resolved path.
     sourceFile: elements[0]?.sourceFile,
   };
   const layout = layoutAfterTrackInsert(newElement, dropped.start, insertRow, null, {
