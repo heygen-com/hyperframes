@@ -11,26 +11,24 @@ Composition id: `cuboid-carousel`. Duration 6.666666666666667 s at 30 fps, 1920Ã
 
 ## Files
 
-- `SEQUENCE.md` (3 KB)
+- `cuboid-carousel.html` (38 KB)
 - `assets/Three-LICENSE.txt` (1 KB)
 - `assets/addons/environments/RoomEnvironment.js` (5 KB)
-- `assets/addons/utils/BufferGeometryUtils.js` (35 KB)
-- `assets/cuboid-motion.js` (432 KB)
-- `assets/gsap-3.14.2.min.js` (71 KB)
-- `assets/three.core.min.js` (376 KB)
-- `assets/three.module.min.js` (357 KB)
-- `hyperframes.json` (1 KB)
-- `index.html` (36 KB)
-- `meta.json` (1 KB)
+- `assets/addons/utils/BufferGeometryUtils.js` (36 KB)
+- `assets/cuboid-motion.js` (593 KB)
+- `assets/gsap-3.14.2.min.js` (128 KB)
+- `assets/GSAP-NOTICE.txt` (1 KB)
+- `assets/three.core.min.js` (554 KB)
+- `assets/three.module.min.js` (468 KB)
 
 ## Install
 
-Copy the files above into a HyperFrames project, keeping `assets/` at the project root (asset paths inside the composition are project-root-relative). Then mount the block from the host `index.html`:
+Install with `npx hyperframes add cuboid-carousel`; the files above land under `compositions/cuboid-carousel/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
   data-composition-id="cuboid-carousel"
-  data-composition-src="compositions/cuboid-carousel.html"
+  data-composition-src="compositions/cuboid-carousel/cuboid-carousel.html"
   data-start="0"
   data-duration="6.666666666666667"
   data-track-index="1"
@@ -42,7 +40,7 @@ Copy the files above into a HyperFrames project, keeping `assets/` at the projec
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'index.html' --variables '{"cardsJson":"","heroCard":4}'
+npx --yes hyperframes@0.8.12 render 'compositions/cuboid-carousel/cuboid-carousel.html' --variables '{"cardsJson":"","heroCard":4}'
 ```
 
 ## Variables

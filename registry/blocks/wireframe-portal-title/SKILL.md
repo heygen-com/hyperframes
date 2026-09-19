@@ -11,21 +11,20 @@ Composition id: `wireframe-portal-title`. Duration 8 s at 30 fps, 1920×1080.
 
 ## Files
 
+- `wireframe-portal-title.html` (63 KB)
 - `assets/fonts/Geist-Bold.ttf` (65 KB)
 - `assets/fonts/Geist-Regular.ttf` (65 KB)
 - `assets/fonts/Geist-SemiBold.ttf` (65 KB)
-- `hyperframes.json` (1 KB)
-- `index.html` (61 KB)
-- `meta.json` (1 KB)
+- `assets/fonts/Geist-OFL.txt` (4 KB)
 
 ## Install
 
-Copy the files above into a HyperFrames project, keeping `assets/` at the project root (asset paths inside the composition are project-root-relative). Then mount the block from the host `index.html`:
+Install with `npx hyperframes add wireframe-portal-title`; the files above land under `compositions/wireframe-portal-title/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
   data-composition-id="wireframe-portal-title"
-  data-composition-src="compositions/wireframe-portal-title.html"
+  data-composition-src="compositions/wireframe-portal-title/wireframe-portal-title.html"
   data-start="0"
   data-duration="8"
   data-track-index="1"
@@ -37,7 +36,7 @@ Copy the files above into a HyperFrames project, keeping `assets/` at the projec
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'index.html' --variables '{"title":"BREAKTHROUGH","replacementPhrase":"Lets do this sir!"}'
+npx --yes hyperframes@0.8.12 render 'compositions/wireframe-portal-title/wireframe-portal-title.html' --variables '{"title":"BREAKTHROUGH","replacementPhrase":"Lets do this sir!"}'
 ```
 
 ## Variables

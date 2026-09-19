@@ -11,103 +11,33 @@ Composition id: `frost-sequence-rig`. Duration 22.5 s at 30 fps, 1920×1080.
 
 ## Files
 
-- `.gitignore` (1 KB)
-- `LOCAL-RENDER.md` (1 KB)
-- `README.md` (4 KB)
+- `frost-sequence-camera-orbit.html` (131 KB)
 - `assets/example-logo.svg` (1 KB)
 - `assets/fonts/Geist-Bold.ttf` (65 KB)
 - `assets/fonts/Geist-OFL.txt` (4 KB)
 - `assets/fonts/Geist-Regular.ttf` (65 KB)
 - `assets/fonts/Geist-SemiBold.ttf` (65 KB)
 - `assets/frost.js` (1.5 MB)
-- `assets/gsap-3.14.2.min.js` (71 KB)
+- `assets/Three-LICENSE.txt` (1 KB)
+- `assets/ThreeMeshBVH-LICENSE.txt` (1 KB)
+- `assets/OpentypeJS-LICENSE.txt` (1 KB)
+- `assets/Clipper-LICENSE.txt` (3 KB)
+- `assets/gsap-3.14.2.min.js` (128 KB)
+- `assets/GSAP-NOTICE.txt` (1 KB)
 - `assets/logo.svg` (1 KB)
-- `assets/shards-atlas.png` (1.4 MB)
+- `assets/shards-atlas.png` (fetched from the CDN at install)
 - `assets/test-mark.svg` (1 KB)
 - `assets/textures/bluenoise64.png` (12 KB)
-- `assets/textures/ice-inclusions-generated.png` (4.8 MB)
-- `build.mjs` (2 KB)
-- `hyperframes.json` (1 KB)
-- `index.html` (119 KB)
-- `meta.json` (1 KB)
-- `presets/approved-material.json` (6 KB)
-- `presets/source-hero4-material.json` (4 KB)
-- `src/World.ts` (20 KB)
-- `src/assets.ts` (1 KB)
-- `src/cache.ts` (3 KB)
-- `src/core/AdaptiveResolution.ts` (3 KB)
-- `src/core/clock.ts` (1 KB)
-- `src/core/ease.ts` (1 KB)
-- `src/core/interaction.ts` (14 KB)
-- `src/core/motion.ts` (2 KB)
-- `src/core/schedule.ts` (1 KB)
-- `src/core/seed.ts` (1 KB)
-- `src/core/state.ts` (3 KB)
-- `src/dials/baked.json` (10 KB)
-- `src/dials/defaults.ts` (21 KB)
-- `src/dials/store.ts` (2 KB)
-- `src/erosion/AssemblyField.ts` (5 KB)
-- `src/erosion/ErosionField.ts` (23 KB)
-- `src/frost.ts` (46 KB)
-- `src/ice/CrackPlanes.ts` (2 KB)
-- `src/ice/EnvironmentSampling.ts` (1 KB)
-- `src/ice/FastOptics.ts` (1 KB)
-- `src/ice/GlassMatcap.ts` (2 KB)
-- `src/ice/IceMaterial.ts` (20 KB)
-- `src/ice/MeshEntry.ts` (1 KB)
-- `src/ice/OpticalTransport.ts` (4 KB)
-- `src/ice/SharedSurface.ts` (5 KB)
-- `src/ice/SurfaceDetail.ts` (2 KB)
-- `src/ice/features.ts` (1 KB)
-- `src/ice/optics.ts` (1 KB)
-- `src/ice/variant.ts` (1 KB)
-- `src/motion/editor.ts` (17 KB)
-- `src/motion/meshes.ts` (3 KB)
-- `src/motion/objectFrame.ts` (1 KB)
-- `src/motion/track.ts` (5 KB)
-- `src/post/Post.ts` (11 KB)
-- `src/powder/Powder.ts` (64 KB)
-- `src/powder/returnGroups.ts` (3 KB)
-- `src/powder/shardAtlas.ts` (1 KB)
-- `src/rewrite.ts` (1 KB)
-- `src/rig/LogoRig.ts` (8 KB)
-- `src/scene/Backdrop.ts` (2 KB)
-- `src/scene/DebugViews.ts` (3 KB)
-- `src/scene/Environment.ts` (3 KB)
-- `src/scene/Lights.ts` (3 KB)
-- `src/scene/Rig.ts` (3 KB)
-- `src/shape/deform.ts` (7 KB)
-- `src/shape/geometry.ts` (5 KB)
-- `src/shape/gpuSdf.ts` (4 KB)
-- `src/shape/logo.ts` (12 KB)
-- `src/shape/logoRefine.ts` (1 KB)
-- `src/shape/sdf.ts` (10 KB)
-- `src/shape/text.ts` (2 KB)
-- `src/shape/textRefine.ts` (5 KB)
-- `src/shape/unionOutlines.ts` (1 KB)
-- `src/tsl/noise.ts` (7 KB)
-- `src/tsl/t.ts` (1 KB)
-- `src/vendor/clipper-README.md` (2 KB)
-- `src/vendor/clipper.cjs` (199 KB)
-- `tests/shape-resolution.ts` (1 KB)
-- `tests/solid-union.ts` (2 KB)
-- `tools/compile-preflight.mjs` (1 KB)
-- `tools/run-shard-compile.mjs` (1 KB)
-- `tools/shard-compile-probe.ts` (5 KB)
-- `tools/test-shape.mjs` (1 KB)
-- `tools/workbench.mjs` (4 KB)
-- `workbench/index.html` (22 KB)
-- `workbench/panel.css` (8 KB)
-- `workbench/panel.js` (259 KB)
+- `assets/textures/ice-inclusions-generated.png` (fetched from the CDN at install)
 
 ## Install
 
-Copy the files above into a HyperFrames project, keeping `assets/` at the project root (asset paths inside the composition are project-root-relative). Then mount the block from the host `index.html`:
+Install with `npx hyperframes add frost-sequence-camera-orbit`; the files above land under `compositions/frost-sequence-camera-orbit/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
   data-composition-id="frost-sequence-rig"
-  data-composition-src="compositions/frost-sequence-camera-orbit.html"
+  data-composition-src="compositions/frost-sequence-camera-orbit/frost-sequence-camera-orbit.html"
   data-start="0"
   data-duration="22.5"
   data-track-index="1"
@@ -119,7 +49,7 @@ Copy the files above into a HyperFrames project, keeping `assets/` at the projec
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'index.html' --variables '{"headline1":"Hard to|break.","headline2":"Easy to|remember."}'
+npx --yes hyperframes@0.8.12 render 'compositions/frost-sequence-camera-orbit/frost-sequence-camera-orbit.html' --variables '{"headline1":"Hard to|break.","headline2":"Easy to|remember."}'
 ```
 
 ## Variables

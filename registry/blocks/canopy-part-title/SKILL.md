@@ -11,22 +11,18 @@ Composition id: `canopy-part-title`. Duration 12 s at 30 fps, 1920×1080.
 
 ## Files
 
-- `README.md` (5 KB)
+- `canopy-part-title.html` (57 KB)
 - `assets/leaf-surface-color.webp` (64 KB)
 - `assets/leaf-surface-normal.webp` (136 KB)
-- `hyperframes.json` (1 KB)
-- `index.html` (54 KB)
-- `meta.json` (1 KB)
-- `verify.html` (14 KB)
 
 ## Install
 
-Copy the files above into a HyperFrames project, keeping `assets/` at the project root (asset paths inside the composition are project-root-relative). Then mount the block from the host `index.html`:
+Install with `npx hyperframes add canopy-part-title`; the files above land under `compositions/canopy-part-title/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
   data-composition-id="canopy-part-title"
-  data-composition-src="compositions/canopy-part-title.html"
+  data-composition-src="compositions/canopy-part-title/canopy-part-title.html"
   data-start="0"
   data-duration="12"
   data-track-index="1"
@@ -38,7 +34,7 @@ Copy the files above into a HyperFrames project, keeping `assets/` at the projec
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'index.html' --variables '{"headline1":"Understory","headline2":"Move slowly"}'
+npx --yes hyperframes@0.8.12 render 'compositions/canopy-part-title/canopy-part-title.html' --variables '{"headline1":"Understory","headline2":"Move slowly"}'
 ```
 
 ## Variables

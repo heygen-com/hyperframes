@@ -11,25 +11,22 @@ Composition id: `code-slice-hero`. Duration 8 s at 30 fps, 1920×1080.
 
 ## Files
 
-- `README.md` (5 KB)
+- `code-slice-hero.html` (24 KB)
 - `assets/Geist-Bold.ttf` (65 KB)
 - `assets/Geist-OFL.txt` (4 KB)
-- `assets/gsap-3.14.2.min.js` (71 KB)
-- `hyperframes.json` (1 KB)
-- `index.html` (20 KB)
-- `index.motion.json` (1 KB)
-- `meta.json` (1 KB)
-- `shadows.js` (8 KB)
-- `surface.js` (7 KB)
+- `assets/gsap-3.14.2.min.js` (128 KB)
+- `assets/GSAP-NOTICE.txt` (1 KB)
+- `shadows.js` (10 KB)
+- `surface.js` (8 KB)
 
 ## Install
 
-Copy the files above into a HyperFrames project, keeping `assets/` at the project root (asset paths inside the composition are project-root-relative). Then mount the block from the host `index.html`:
+Install with `npx hyperframes add code-slice-hero`; the files above land under `compositions/code-slice-hero/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
   data-composition-id="code-slice-hero"
-  data-composition-src="compositions/code-slice-hero.html"
+  data-composition-src="compositions/code-slice-hero/code-slice-hero.html"
   data-start="0"
   data-duration="8"
   data-track-index="1"
@@ -41,7 +38,7 @@ Copy the files above into a HyperFrames project, keeping `assets/` at the projec
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'index.html' --variables '{"headline":"MAKE IT","reverseHeadline":"MATTER."}'
+npx --yes hyperframes@0.8.12 render 'compositions/code-slice-hero/code-slice-hero.html' --variables '{"headline":"MAKE IT","reverseHeadline":"MATTER."}'
 ```
 
 ## Variables

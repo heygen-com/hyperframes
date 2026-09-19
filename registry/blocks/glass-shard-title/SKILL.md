@@ -11,29 +11,26 @@ Composition id: `glass-shard-title`. Duration 12.16 s at 30 fps, 1920×1080.
 
 ## Files
 
+- `glass-shard-title.html` (16 KB)
 - `assets/ferndale_studio_01_1k.hdr` (1.6 MB)
 - `assets/fonts/Geist-Bold.ttf` (65 KB)
 - `assets/fonts/Geist-Regular.ttf` (65 KB)
 - `assets/fonts/Geist-SemiBold.ttf` (65 KB)
+- `assets/fonts/Geist-OFL.txt` (4 KB)
 - `assets/fonts/cormorant-garamond.woff2` (37 KB)
 - `assets/fonts/CormorantGaramond-OFL.txt` (4 KB)
 - `assets/glass-main.js` (549 KB)
-- `assets/glass-main.mjs` (37 KB, ESM source `build-bundle.mjs` compiles into `glass-main.js`)
-- `assets/matcap-1.png` (3.0 MB)
-- `build-bundle.mjs` (1 KB)
-- `compositions/glass-shard-title.html` (565 KB)
-- `hyperframes.json` (1 KB)
-- `index.html` (2 KB)
-- `meta.json` (1 KB)
+- `assets/Three-LICENSE.txt` (1 KB)
+- `assets/matcap-1.png` (fetched from the CDN at install)
 
 ## Install
 
-Copy the files above into a HyperFrames project, keeping `assets/` at the project root (asset paths inside the composition are project-root-relative). Then mount the block from the host `index.html`:
+Install with `npx hyperframes add glass-shard-title`; the files above land under `compositions/glass-shard-title/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
   data-composition-id="glass-shard-title"
-  data-composition-src="compositions/glass-shard-title.html"
+  data-composition-src="compositions/glass-shard-title/glass-shard-title.html"
   data-start="0"
   data-duration="12.16"
   data-track-index="1"
@@ -45,7 +42,7 @@ Copy the files above into a HyperFrames project, keeping `assets/` at the projec
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'compositions/glass-shard-title.html' --variables '{"headline":"Designed in glass","tileCount":8}'
+npx --yes hyperframes@0.8.12 render 'compositions/glass-shard-title/glass-shard-title.html' --variables '{"headline":"Designed in glass","tileCount":8}'
 ```
 
 ## Variables
