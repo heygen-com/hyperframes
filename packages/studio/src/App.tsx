@@ -438,135 +438,135 @@ export function StudioApp() {
   return (
     <StudioShellProvider value={studioCtxValue}>
       <StudioPlaybackProvider value={studioCtxValue}>
-          <PanelLayoutProvider value={panelLayout}>
-            <FileManagerProvider value={fileManager}>
-              <DomEditProvider value={domEditSession}>
-                <div
-                  className="flex flex-col h-full w-full bg-neutral-950 relative"
-                  onDragOver={fileDrop.onDragOver}
-                  onDrop={fileDrop.onDrop}
-                >
-                  <StudioHeader
-                    captureFrameHref={frameCapture.captureFrameHref}
-                    captureFrameFilename={frameCapture.captureFrameFilename}
-                    handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
-                    refreshCaptureFrameTime={frameCapture.refreshCaptureFrameTime}
-                    capturing={frameCapture.capturing}
-                    inspectorButtonActive={inspectorButtonActive}
-                    inspectorPanelActive={inspectorPanelActive}
-                    onExport={() => {
-                      void (async () => {
-                        await previewPersistence.waitForPendingDomEditSaves();
-                        await renderQueue.startRender(undefined);
-                      })();
-                    }}
+        <PanelLayoutProvider value={panelLayout}>
+          <FileManagerProvider value={fileManager}>
+            <DomEditProvider value={domEditSession}>
+              <div
+                className="flex flex-col h-full w-full bg-neutral-950 relative"
+                onDragOver={fileDrop.onDragOver}
+                onDrop={fileDrop.onDrop}
+              >
+                <StudioHeader
+                  captureFrameHref={frameCapture.captureFrameHref}
+                  captureFrameFilename={frameCapture.captureFrameFilename}
+                  handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
+                  refreshCaptureFrameTime={frameCapture.refreshCaptureFrameTime}
+                  capturing={frameCapture.capturing}
+                  inspectorButtonActive={inspectorButtonActive}
+                  inspectorPanelActive={inspectorPanelActive}
+                  onExport={() => {
+                    void (async () => {
+                      await previewPersistence.waitForPendingDomEditSaves();
+                      await renderQueue.startRender(undefined);
+                    })();
+                  }}
+                />
+                {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
+                  <SaveQueuePausedBanner
+                    message={previewPersistence.domEditSaveQueuePaused}
+                    onRetry={previewPersistence.resetDomEditSaveQueueBreaker}
                   />
-                  {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
-                    <SaveQueuePausedBanner
-                      message={previewPersistence.domEditSaveQueuePaused}
-                      onRetry={previewPersistence.resetDomEditSaveQueueBreaker}
+                )}
+                <ExternalFileConflictBanner coordinator={externalFileChanges} />
+                <EditorShell
+                  left={
+                    <StudioLeftSidebar
+                      leftSidebarRef={leftSidebarRef}
+                      onSelectComposition={handleSelectComposition}
+                      onAddBlock={handleAddBlock}
+                      onPreviewBlock={setBlockPreview}
+                      onLint={handleLint}
+                      linting={linting}
+                      lintFindingCount={lintModal?.length ?? findingsByFile.size}
+                      lintFindingsByFile={findingsByFile}
+                      onAddAssetToTimeline={handleAddAssetAtPlayhead}
+                      onAddCompositionToTimeline={handleAddCompositionAtPlayhead}
                     />
-                  )}
-                  <ExternalFileConflictBanner coordinator={externalFileChanges} />
-                  <EditorShell
-                    left={
-                      <StudioLeftSidebar
-                        leftSidebarRef={leftSidebarRef}
-                        onSelectComposition={handleSelectComposition}
-                        onAddBlock={handleAddBlock}
-                        onPreviewBlock={setBlockPreview}
-                        onLint={handleLint}
-                        linting={linting}
-                        lintFindingCount={lintModal?.length ?? findingsByFile.size}
-                        lintFindingsByFile={findingsByFile}
-                        onAddAssetToTimeline={handleAddAssetAtPlayhead}
-                        onAddCompositionToTimeline={handleAddCompositionAtPlayhead}
+                  }
+                  right={
+                    panelLayout.effectiveRightCollapsed ? null : (
+                      <StudioRightPanel
+                        designPanelActive={designPanelActive}
+                        activeBlockParams={activeBlockParams}
+                        onCloseBlockParams={() => {
+                          setActiveBlockParams(null);
+                          panelLayout.setRightPanelTab("design");
+                        }}
+                        recordingState={gestureState}
+                        recordingDuration={gestureRecording.recordingDuration}
+                        onToggleRecording={handleToggleRecording}
+                        sdkSession={sdkHandle.session}
+                        publishSdkSession={sdkHandle.publish}
+                        forceReloadSdkSession={sdkHandle.forceReload}
+                        reloadPreview={reloadPreview}
+                        recordEdit={editHistory.recordEdit}
+                        onToggleElementHidden={timelineEditing.handleToggleElementHidden}
+                        onAutoGroupCarveSources={timelineEditing.handleAutoGroupCarveSources}
+                        onAddMediaOverlay={handleAddMediaOverlay}
                       />
-                    }
-                    right={
-                      panelLayout.effectiveRightCollapsed ? null : (
-                        <StudioRightPanel
-                          designPanelActive={designPanelActive}
-                          activeBlockParams={activeBlockParams}
-                          onCloseBlockParams={() => {
-                            setActiveBlockParams(null);
-                            panelLayout.setRightPanelTab("design");
-                          }}
-                          recordingState={gestureState}
-                          recordingDuration={gestureRecording.recordingDuration}
-                          onToggleRecording={handleToggleRecording}
-                          sdkSession={sdkHandle.session}
-                          publishSdkSession={sdkHandle.publish}
-                          forceReloadSdkSession={sdkHandle.forceReload}
-                          reloadPreview={reloadPreview}
-                          recordEdit={editHistory.recordEdit}
-                          onToggleElementHidden={timelineEditing.handleToggleElementHidden}
-                          onAutoGroupCarveSources={timelineEditing.handleAutoGroupCarveSources}
-                          onAddMediaOverlay={handleAddMediaOverlay}
-                        />
-                      )
-                    }
-                    timelineToolbar={timelineToolbar}
-                    renderClipContent={renderClipContent}
-                    handleTimelineElementDelete={timelineEditing.handleTimelineElementDelete}
-                    handleTimelineAssetDrop={timelineEditing.handleTimelineAssetDrop}
-                    handleTimelineBlockDrop={handleTimelineBlockDrop}
-                    handleTimelineCompositionDrop={timelineEditing.handleTimelineCompositionDrop}
-                    handlePreviewBlockDrop={handlePreviewBlockDrop}
-                    handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
-                    handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
-                    handleTimelineElementsMove={handleTimelineElementsMove}
-                    handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
-                    handleTimelineGroupResize={timelineEditing.handleTimelineGroupResize}
-                    handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
-                    setAudioGroupAttribute={timelineEditing.setAudioGroupAttribute}
-                    handleGroupClips={timelineEditing.handleAutoGroupCarveSources}
-                    setElementFxAttribute={timelineEditing.setElementFxAttribute}
-                    handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
-                    handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
-                    handleRazorSplit={timelineEditing.handleRazorSplit}
-                    handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
-                    onCopyClip={handleCopy}
-                    onPasteClip={handlePaste}
-                    onDuplicateClip={handleDuplicate}
-                    canPasteClip={canPaste}
-                    setCompIdToSrc={setCompIdToSrc}
-                    setCompositionLoading={setCompositionLoading}
-                    shouldShowMotionPath={shouldShowMotionPath}
-                    shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
-                    isGestureRecording={gestureState === "recording"}
-                    recordingState={gestureState}
-                    onToggleRecording={handleToggleRecording}
-                    blockPreview={blockPreview}
-                    gestureOverlay={
-                      gestureState === "recording" && previewIframe ? (
-                        <GestureTrailOverlay
-                          samples={gestureRecording.samplesRef.current}
-                          sampleCount={gestureRecording.samplesRef.current.length}
-                          trail={gestureRecording.trailRef.current}
-                          canvasRect={canvasRectRef.current!}
-                          compositionSize={compositionDimensions ?? undefined}
-                          mode="recording"
-                        />
-                      ) : undefined
-                    }
-                  />
-                  <StudioOverlays
-                    projectId={projectId}
-                    projectDir={fileManager.projectDir}
-                    lintModal={lintModal}
-                    closeLintModal={closeLintModal}
-                    consoleErrors={consoleErrors}
-                    clearConsoleErrors={() => setConsoleErrors(null)}
-                    domEditSession={domEditSession}
-                    activeCompPath={activeCompPath}
-                    toasts={toasts}
-                    dismissToast={dismissToast}
-                  />
-                </div>
-              </DomEditProvider>
-            </FileManagerProvider>
-          </PanelLayoutProvider>
+                    )
+                  }
+                  timelineToolbar={timelineToolbar}
+                  renderClipContent={renderClipContent}
+                  handleTimelineElementDelete={timelineEditing.handleTimelineElementDelete}
+                  handleTimelineAssetDrop={timelineEditing.handleTimelineAssetDrop}
+                  handleTimelineBlockDrop={handleTimelineBlockDrop}
+                  handleTimelineCompositionDrop={timelineEditing.handleTimelineCompositionDrop}
+                  handlePreviewBlockDrop={handlePreviewBlockDrop}
+                  handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
+                  handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
+                  handleTimelineElementsMove={handleTimelineElementsMove}
+                  handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
+                  handleTimelineGroupResize={timelineEditing.handleTimelineGroupResize}
+                  handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
+                  setAudioGroupAttribute={timelineEditing.setAudioGroupAttribute}
+                  handleGroupClips={timelineEditing.handleAutoGroupCarveSources}
+                  setElementFxAttribute={timelineEditing.setElementFxAttribute}
+                  handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
+                  handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
+                  handleRazorSplit={timelineEditing.handleRazorSplit}
+                  handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
+                  onCopyClip={handleCopy}
+                  onPasteClip={handlePaste}
+                  onDuplicateClip={handleDuplicate}
+                  canPasteClip={canPaste}
+                  setCompIdToSrc={setCompIdToSrc}
+                  setCompositionLoading={setCompositionLoading}
+                  shouldShowMotionPath={shouldShowMotionPath}
+                  shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
+                  isGestureRecording={gestureState === "recording"}
+                  recordingState={gestureState}
+                  onToggleRecording={handleToggleRecording}
+                  blockPreview={blockPreview}
+                  gestureOverlay={
+                    gestureState === "recording" && previewIframe ? (
+                      <GestureTrailOverlay
+                        samples={gestureRecording.samplesRef.current}
+                        sampleCount={gestureRecording.samplesRef.current.length}
+                        trail={gestureRecording.trailRef.current}
+                        canvasRect={canvasRectRef.current!}
+                        compositionSize={compositionDimensions ?? undefined}
+                        mode="recording"
+                      />
+                    ) : undefined
+                  }
+                />
+                <StudioOverlays
+                  projectId={projectId}
+                  projectDir={fileManager.projectDir}
+                  lintModal={lintModal}
+                  closeLintModal={closeLintModal}
+                  consoleErrors={consoleErrors}
+                  clearConsoleErrors={() => setConsoleErrors(null)}
+                  domEditSession={domEditSession}
+                  activeCompPath={activeCompPath}
+                  toasts={toasts}
+                  dismissToast={dismissToast}
+                />
+              </div>
+            </DomEditProvider>
+          </FileManagerProvider>
+        </PanelLayoutProvider>
       </StudioPlaybackProvider>
     </StudioShellProvider>
   );
