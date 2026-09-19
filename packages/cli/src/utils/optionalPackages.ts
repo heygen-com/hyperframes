@@ -149,7 +149,6 @@ function sweepStaleStaging(dir: string): void {
 /**
  * Installs into a sibling staging dir, then renames, so `dir` only ever holds a complete install.
  * No cross-process lock: two first runs both download and the loser discards its copy.
- * `run` is the npm runner, injectable so tests can drive this without a network.
  */
 export async function install(
   dir: string,
