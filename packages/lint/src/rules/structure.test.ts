@@ -87,6 +87,13 @@ describe("timeline_element_missing_timing", () => {
   });
 });
 
+describe("legacy data-end", () => {
+  it("counts data-end as the clip's length", async () => {
+    const found = await codes('<div class="clip" data-start="0" data-end="3">x</div>');
+    expect(has(found, "timeline_element_missing_timing")).toBe(false);
+  });
+});
+
 describe("media_missing_duration", () => {
   it("flags img, video and audio without data-duration and passes them with one", async () => {
     for (const tag of ["img", "video", "audio"]) {

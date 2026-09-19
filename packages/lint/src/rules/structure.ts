@@ -51,6 +51,7 @@ const NODE_ATTRS = [
   "class",
   "data-start",
   "data-duration",
+  "data-end",
   "data-track",
   "data-track-index",
   "data-track-kind",
@@ -131,7 +132,10 @@ function missingDurationFindings(rows: TagNode[], severity: Severity): Hyperfram
   return rows
     .filter(
       (row) =>
-        row.attrs["data-duration"] === undefined && !isSubCompositionHost(row) && intendedClip(row),
+        row.attrs["data-duration"] === undefined &&
+        row.attrs["data-end"] === undefined &&
+        !isSubCompositionHost(row) &&
+        intendedClip(row),
     )
     .map((row) => {
       const isMedia = MEDIA_TAGS.has(row.tag);

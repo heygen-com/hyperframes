@@ -27,16 +27,19 @@ describe("structure rules on the shipped catalog and skills", () => {
       ...htmlFiles(join(REPO_ROOT, "skills")),
     ];
     const hits: string[] = [];
+    let roots = 0;
     for (const file of files) {
+      const isRoot = file.endsWith("/index.html");
+      roots += isRoot ? 1 : 0;
       const { findings } = await lintHyperframeHtml(readFileSync(file, "utf8"), {
         host: "studio",
         filePath: file,
-        isSubComposition: !file.endsWith("/index.html"),
+        isSubComposition: !isRoot,
       });
       for (const f of findings.filter((x) => STRUCTURE_CODES.has(x.code)))
         hits.push(`${file}: ${f.code}`);
     }
-    expect(files.length).toBeGreaterThan(100);
+    expect(roots).toBeGreaterThan(30);
     expect(hits).toEqual([]);
   }, 120_000);
 });
