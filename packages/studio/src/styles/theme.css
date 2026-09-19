@@ -77,10 +77,8 @@
 
   /* Floating chrome over a near-black canvas: the hairline ring does the edge
    * definition that a light-mode drop shadow cannot. */
-  --shadow-menu:
-    0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.4);
-  --shadow-popover:
-    0 16px 40px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.45);
+  --shadow-menu: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.4);
+  --shadow-popover: 0 16px 40px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.45);
 
   /* ---------------------------------------------------------------- motion */
 
