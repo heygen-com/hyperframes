@@ -130,18 +130,25 @@ it("drops the Capture label below 1000px but keeps its accessible name", () => {
   expect(query(capture, "span").className).toContain("max-[1000px]:hidden");
 });
 
+/** The bare token, not a `hover:`/`data-[…]:`-prefixed variant of it. */
+function hasToken(className: string, token: string): boolean {
+  return className.split(/\s+/).includes(token);
+}
+
 it("shows Inspector pressed and filled only when on", () => {
   const host = mount({ inspectorButtonActive: true });
   const on = query(host, '[aria-label="Inspector"]');
   expect(on.getAttribute("aria-pressed")).toBe("true");
-  expect(on.className).toContain("text-accent");
+  expect(hasToken(on.className, "text-accent")).toBe(true);
+  expect(hasToken(on.className, "bg-hover")).toBe(true);
   act(() => mounted?.root.unmount());
   mounted?.host.remove();
   mounted = null;
 
   const off = query(mount(), '[aria-label="Inspector"]');
   expect(off.getAttribute("aria-pressed")).toBe("false");
-  expect(off.className).not.toContain("text-accent");
+  expect(hasToken(off.className, "text-accent")).toBe(false);
+  expect(hasToken(off.className, "bg-hover")).toBe(false);
 });
 
 it("keeps Capture a real download link rather than a button", () => {

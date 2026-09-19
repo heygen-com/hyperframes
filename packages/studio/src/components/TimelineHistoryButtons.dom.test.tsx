@@ -3,6 +3,8 @@
 import { act } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanupMounted, mountHost } from "./ui/mountHost.testHelpers";
+import { isTypingTarget } from "../utils/typingTarget";
+import { shouldIgnorePlaybackShortcutTarget } from "../player/lib/playbackShortcuts";
 
 const editHistory = {
   canUndo: false,
@@ -99,4 +101,17 @@ it("orders the toolbar Select, Undo, Redo, Razor", () => {
     .slice(0, 4);
 
   expect(labels).toEqual(["Selection tool", "Undo", "Redo", "Razor tool"]);
+});
+
+it("classifies Undo and Redo for the hotkey filters at their new location (KTD13)", () => {
+  // The header's own version of this check dropped Undo/Redo when they moved
+  // here; a <button> is never a typing target and is always claimed by the
+  // playback filter, same as every other toolbar tool.
+  const host = mount(<TimelineHistoryButtons />);
+
+  for (const label of ["Undo", "Redo"]) {
+    const el = button(host, label);
+    expect(isTypingTarget(el), label).toBe(false);
+    expect(shouldIgnorePlaybackShortcutTarget(el), label).toBe(true);
+  }
 });
