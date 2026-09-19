@@ -15,9 +15,10 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /**
  * The geometry, read out of the snippet and evaluated.
@@ -462,4 +463,68 @@ test("printing keeps two decimals and drops a negative zero", () => {
   // Spaces, which is the reason the query encoding on this path had to be
   // fixed: form encoding turns each of these into a `+` and the `d` is invalid.
   assert.ok(printPathData([{ code: "M", args: [0, 0] }]).includes(" "));
+});
+
+/** The component as a page renders it: React comes from the studio workspace, the hooks are the globals Mintlify supplies. */
+async function renderDetail(slots: string[]): Promise<string> {
+  const requireFromStudio = createRequire(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "packages", "studio", "package.json"),
+  );
+  const React = requireFromStudio("react");
+  const { renderToStaticMarkup } = requireFromStudio("react-dom/server");
+  const { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } = React;
+  Object.assign(globalThis, {
+    React,
+    useState,
+    useEffect,
+    useRef,
+    useMemo,
+    useCallback,
+    useLayoutEffect,
+    CodeBlock: (props: { children?: unknown }) => React.createElement("div", null, props.children),
+  });
+  const snippet = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "docs",
+    "snippets",
+    "catalog-detail.jsx",
+  );
+  const { CatalogDetail, CatalogSlot } = await import(pathToFileURL(snippet).href);
+  const children = slots.map((slot) =>
+    React.createElement(CatalogSlot, { slot, key: slot }, `MARK-${slot}`),
+  );
+  return renderToStaticMarkup(
+    React.createElement(
+      CatalogDetail,
+      {
+        previewSrc: "/public/catalog/blocks/x.json",
+        compositionId: "x",
+        compositionSrc: "compositions/x.html",
+        title: "X title",
+        variables: [],
+        meta: { duration: 5, width: 1920, height: 1080 },
+        hasCode: true,
+      },
+      ...children,
+    ),
+  );
+}
+
+test("the install block renders once, between the description and the preview stage", async () => {
+  const html = await renderDetail(["code", "install", "docs"]);
+  const at = (needle: string) => html.indexOf(needle);
+  assert.ok(at("X title") !== -1 && at("MARK-install") !== -1 && at('class="hf-ve-stage"') !== -1);
+  assert.ok(at("X title") < at("MARK-install"), "install comes after the title");
+  assert.ok(at("MARK-install") < at('class="hf-ve-stage"'), "install comes before the stage");
+  assert.equal(html.split("MARK-install").length - 1, 1, "install is rendered once");
+  assert.ok(at("MARK-docs") > at('class="hf-ve-stage"'), "the other slots stay below the stage");
+});
+
+test("the tabs are Preview, Code, Snippet, Docs with Preview selected", async () => {
+  const html = await renderDetail(["install"]);
+  const tabs = [
+    ...html.matchAll(/role="tab"[^>]*aria-selected="(true|false)"[^>]*>([A-Za-z]+)/g),
+  ].map((m) => `${m[2]}:${m[1]}`);
+  assert.deepEqual(tabs, ["Preview:true", "Code:false", "Snippet:false", "Docs:false"]);
 });

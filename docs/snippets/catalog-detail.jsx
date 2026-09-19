@@ -688,6 +688,8 @@ export const CatalogDetail = ({
 .hf-ve-tabs-row .hf-ve-tab { padding: 6px 16px; font-size: 14px; }
 .hf-ve-tabs-row .hf-ve-tab small { margin-left: 6px; font-weight: 400; opacity: 0.7; }
 .hf-ve-body { padding: 2rem 0 0; }
+.hf-ve-install { margin: 0 0 28px; }
+.hf-ve-install-title { margin: 0 0 12px; font-size: 24px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; color: var(--ve-fg); }
 .hf-ve-about h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
 .hf-ve-about p { margin: 0 0 12px; line-height: 1.6; max-width: 72ch; }
 .hf-ve-about .hf-ve-attr { font-size: 14px; color: var(--ve-muted); }
@@ -695,7 +697,6 @@ export const CatalogDetail = ({
 .hf-ve-body-pane[hidden] { display: none; }
 .hf-ve-slots > [data-slot] { display: none; }
 .hf-ve-slots[data-tab="code"] > [data-slot="code"],
-.hf-ve-slots[data-tab="install"] > [data-slot="install"],
 .hf-ve-slots[data-tab="docs"] > [data-slot="docs"] { display: block; }
 .hf-ve-body-pane .code-block pre,
 .hf-ve-slots [data-slot="code"] pre { max-height: 560px; overflow: auto; }
@@ -1919,26 +1920,13 @@ export const CatalogDetail = ({
 
   const dirty = variables.some((v) => values[v.id] !== defaults[v.id]);
 
-  // Only the values that differ, so an untouched piece offers the same short
-  // command the Install block does, and a tuned one carries exactly what
-  // changed rather than every variable restated.
-  const installCommand = (() => {
-    const base = `npx hyperframes add ${compositionId}`;
-    if (!dirty) return base;
-    const changed = {};
-    for (const v of variables) {
-      if (JSON.stringify(values[v.id]) !== JSON.stringify(defaults[v.id])) changed[v.id] = values[v.id];
-    }
-    return `${base} --vars '${JSON.stringify(changed)}'`;
-  })();
-
   const hasTune = variables.length > 0;
-  const [tab, setTab] = useState("install");
+  const [tab, setTab] = useState("preview");
   const lines = meta.codeLines;
   const TABS = [
-    ["install", "Install"],
     ["preview", "Preview"],
     ...(hasCode ? [["code", "Code", lines ? `${lines} ln` : ""]] : []),
+    ["install", "Snippet"],
     ["docs", "Docs"],
   ];
 
@@ -2066,6 +2054,11 @@ export const CatalogDetail = ({
   if (adapterMissing) caption = "Recorded preview · live playback needs WebGPU, which this browser does not offer";
   else if (!webgpu && (video || needsFlag)) caption = "Recorded preview";
 
+  // The install command belongs above the preview, so its slot is lifted out of the tab body.
+  const allSlots = React.Children.toArray(children);
+  const installSlot = allSlots.find((child) => child?.props?.slot === "install") ?? null;
+  const otherSlots = allSlots.filter((child) => child !== installSlot);
+
   const seconds = meta.duration ? `${meta.duration} s` : null;
   const size = meta.width && meta.height ? `${meta.width}×${meta.height}` : null;
 
@@ -2078,6 +2071,16 @@ export const CatalogDetail = ({
           <h1>{title}</h1>
           {description && <p>{description}</p>}
         </header>
+      </div>
+
+      {installSlot && (
+        <div className="hf-ve-install">
+          <h2 className="hf-ve-install-title">Install</h2>
+          {installSlot}
+        </div>
+      )}
+
+      <div className="not-prose">
 
         <div className="hf-ve-bar">
           <div className="hf-ve-meta">
@@ -2188,7 +2191,7 @@ export const CatalogDetail = ({
             shape is not worth introspecting. Frame-mode pages have no prose wrapper,
             so the slots carry their own. */}
         <div className="hf-ve-slots" data-tab={tab}>
-          {children}
+          {otherSlots}
         </div>
         <div className="hf-ve-body-pane hf-ve-about not-prose" hidden={tab !== "preview"}>
           <h3>About</h3>
@@ -2222,28 +2225,9 @@ export const CatalogDetail = ({
           )}
         </div>
         <div className="hf-ve-body-pane hf-ve-snippet not-prose" hidden={tab !== "install"}>
-          {/* The plain command above is generated before anyone touches a knob.
-              These two carry what the reader dialled in, so copying installs the
-              piece already tuned. Assembled token by token because there is no
-              build step to highlight them at. */}
-          <CodeBlock filename="Terminal">
-            <pre
-              className="shiki shiki-themes github-light-default dark-plus"
-              style={{
-                backgroundColor: "rgb(255, 255, 255)",
-                "--shiki-dark-bg": "#0B0C0E",
-                color: "rgb(31, 35, 40)",
-                "--shiki-dark": "#D4D4D4",
-              }}
-            >
-              <code>
-                <span className="line">
-                  <span style={SHIKI.value}>{installCommand}</span>
-                  {"\n"}
-                </span>
-              </code>
-            </pre>
-          </CodeBlock>
+          {/* The install command sits above the preview. This is the mount element
+              carrying what the reader dialled in, assembled token by token because
+              there is no build step to highlight it at. */}
           <CodeBlock filename="index.html">
             <pre
               className="shiki shiki-themes github-light-default dark-plus"
