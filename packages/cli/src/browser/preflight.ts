@@ -341,6 +341,18 @@ async function checkChrome(
   };
 }
 
+/** Resolves the render browser the way `hyperframes render` does; a refusal carries the check's own message. */
+export async function resolveRenderBrowser(signal?: AbortSignal): Promise<BrowserResult> {
+  const { outcomes, browser } = await runEnvironmentChecks({ includeBrowser: true, signal });
+  if (browser) return browser;
+  const chrome = outcomes.find((outcome) => outcome.name === "Chrome");
+  const headline = [chrome?.title, chrome?.detail].filter(Boolean).join(": ");
+  throw new Error(
+    [headline, chrome?.hint].filter(Boolean).join(" ") ||
+      "Chrome Headless Shell could not be resolved for rendering.",
+  );
+}
+
 export function checkDisk(
   path = ".",
   freeDiskMb: (path: string) => number | null = getFreeDiskMb,

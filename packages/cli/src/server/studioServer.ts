@@ -29,6 +29,7 @@ import {
 } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { isDevMode } from "../utils/env.js";
+import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
@@ -500,15 +501,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         };
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
-          const { ensureBrowser } = await import("../browser/manager.js");
-
-          try {
-            const browser = await ensureBrowser({ preferManagedChrome: true });
-            if (browser.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-              process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
-            }
-          } catch {
-            // Continue without — acquireBrowser will try its own resolution
+          const browser = await resolveRenderBrowser(abortController.signal);
+          if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+            process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
           const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
