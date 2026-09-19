@@ -931,8 +931,8 @@ async function initDrawElementOrTransparentBackground(
       }
     }
     // Capability gate: `canvas.drawElementImage` is an unlaunched Blink feature
-    // that only exists on recent Dev/Canary Chrome builds (~151+); it is absent
-    // from Stable and from most pinned/system Chrome installs. The
+    // that only exists on recent Chrome builds (150+ behind a flag); it is absent
+    // from Stable and from most system Chrome installs. The
     // `--enable-features=CanvasDrawElement` flag no-ops silently on a build that
     // doesn't implement it, so without this probe the first drawElementImage()
     // call throws `TypeError: ... is not a function` deep inside the capture
@@ -955,7 +955,7 @@ async function initDrawElementOrTransparentBackground(
       console.log(
         `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
           "this Chrome build does not implement canvas.drawElementImage (Dev/Canary-only " +
-          "feature, ~151+); run `hyperframes browser ensure --force` to fetch a supported " +
+          "feature); run `hyperframes browser ensure --force` to fetch a supported " +
           "build, or set HYPERFRAMES_BROWSER_PATH to one.",
       );
       await routeToFallback();

@@ -625,7 +625,7 @@ describe("resolveHeadlessShellPath", () => {
           "bun",
           [
             "--eval",
-            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); const os = require("node:os"); os.release = () => "24.0.0"; require("node:module").syncBuiltinESMExports(); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
           ],
           { encoding: "utf8", env },
         );
@@ -672,7 +672,7 @@ describe("resolveHeadlessShellPath", () => {
           "bun",
           [
             "--eval",
-            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); const os = require("node:os"); os.release = () => "24.0.0"; require("node:module").syncBuiltinESMExports(); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
           ],
           { encoding: "utf8", env },
         );
@@ -721,6 +721,43 @@ describe("resolveHeadlessShellPath", () => {
       console.timeEnd("execFileSync(bun --eval) reuse-cache");
 
       expect(stdout).toBe(binary);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("skips managed-cache builds newer than Chrome 150 on macOS 12", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-macos12-"));
+    try {
+      const shell = (version: string) =>
+        join(
+          home,
+          ".cache",
+          "hyperframes",
+          "chrome",
+          "chrome-headless-shell",
+          `mac-${version}`,
+          "chrome-headless-shell-mac-x64",
+          "chrome-headless-shell",
+        );
+      for (const version of ["152.0.7977.30", "150.0.7871.124"]) {
+        mkdirSync(join(shell(version), ".."), { recursive: true });
+        writeFileSync(shell(version), "");
+      }
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+      const stdout = execFileSync(
+        "bun",
+        [
+          "--eval",
+          `Object.defineProperty(process, "platform", { value: "darwin" }); Object.defineProperty(process, "arch", { value: "x64" }); const os = require("node:os"); os.release = () => "21.6.0"; require("node:module").syncBuiltinESMExports(); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+        ],
+        { encoding: "utf8", env },
+      );
+
+      expect(stdout).toBe(shell("150.0.7871.124"));
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
