@@ -195,3 +195,21 @@ describe("Button behaviour", () => {
     }
   });
 });
+
+describe("disabled states", () => {
+  it("disables a loading Button", () => {
+    const host = mountHost(<Button loading>Save</Button>);
+    const button = host.querySelector("button");
+
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("marks a disabled IconButton for assistive tech", () => {
+    const host = mountHost(<IconButton aria-label="Undo" icon={<svg />} disabled />);
+    const button = host.querySelector("button");
+
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-disabled")).toBe("true");
+  });
+});

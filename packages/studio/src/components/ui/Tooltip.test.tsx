@@ -31,6 +31,16 @@ async function settle(): Promise<void> {
   });
 }
 
+/** Browsers send hover to the wrapper, never to a disabled control inside it. */
+function hover(trigger: HTMLElement): void {
+  const box = trigger.parentElement ?? trigger;
+  act(() => {
+    box.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false, composed: true }));
+    box.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false, composed: true }));
+    box.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, composed: true }));
+  });
+}
+
 function bubble(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[role="tooltip"]');
 }
@@ -50,11 +60,7 @@ it("opens on focus and describes its trigger", async () => {
 it("opens on pointer hover", async () => {
   const trigger = mount();
 
-  act(() => {
-    trigger.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false, composed: true }));
-    trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false, composed: true }));
-    trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, composed: true }));
-  });
+  hover(trigger);
   await settle();
 
   expect(bubble()?.textContent).toBe("Selection tool (V)");
@@ -77,11 +83,27 @@ it("closes on Escape and drops the description", async () => {
   expect(trigger.getAttribute("aria-describedby")).toBeNull();
 });
 
-it("puts the trigger props on the caller's own element", () => {
-  // The trigger renders the child rather than wrapping it: a wrapper with
-  // `display: contents` has no box for the library to position against.
+it("opens on hover over a disabled child", async () => {
+  const host = mountHost(
+    <Tooltip label="Rendering" delay={0}>
+      <button type="button" disabled data-testid="off">
+        Export
+      </button>
+    </Tooltip>,
+  );
+  const off = host.querySelector<HTMLElement>('[data-testid="off"]');
+  if (!off) throw new Error("trigger not rendered");
+
+  hover(off);
+  await settle();
+
+  expect(bubble()?.textContent).toBe("Rendering");
+});
+
+it("wraps its child in a box so a disabled child still gets hover", () => {
   const trigger = mount();
 
   expect(trigger.tagName).toBe("BUTTON");
-  expect(trigger.parentElement?.parentElement).toBe(document.body);
+  expect(trigger.parentElement?.tagName).toBe("SPAN");
+  expect(trigger.parentElement?.parentElement?.parentElement).toBe(document.body);
 });

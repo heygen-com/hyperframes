@@ -1,15 +1,16 @@
 /**
  * Tooltip — Base UI's tooltip wearing Studio's tokens, same props as before.
- * WCAG 4.1.2 (`aria-describedby`) and the `render`-not-wrapper trigger stay ours.
+ * The trigger is a box-owning wrapper, because browsers send no hover to a
+ * disabled control and disabled controls must still explain themselves.
  */
 
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import { useId, useState, type ReactElement } from "react";
+import { cloneElement, useId, useState, type ReactElement } from "react";
 
 interface TooltipProps {
   label: string;
-  /** A single element. It becomes the trigger; no wrapper is added around it. */
-  children: ReactElement;
+  /** A single element, wrapped so a disabled one still receives hover. */
+  children: ReactElement<{ "aria-describedby"?: string }>;
   /** Hover delay in ms. */
   delay?: number;
   side?: "top" | "bottom" | "left" | "right";
@@ -25,11 +26,11 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
 
   return (
     <BaseTooltip.Root open={open} onOpenChange={setOpen}>
-      <BaseTooltip.Trigger
-        delay={delay}
-        aria-describedby={open ? tooltipId : undefined}
-        render={children}
-      />
+      <BaseTooltip.Trigger delay={delay} render={<span className="inline-flex" />}>
+        {cloneElement(children, {
+          "aria-describedby": open ? tooltipId : children.props["aria-describedby"],
+        })}
+      </BaseTooltip.Trigger>
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner
           side={side}

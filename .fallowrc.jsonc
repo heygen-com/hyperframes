@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/config-schema.json",
   "entry": [
-    // Primitives are exported before their first consumer exists.
+    // IconButton, Tabs and cn are exported before their first consumer exists.
     "packages/studio/src/components/ui/index.ts",
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
