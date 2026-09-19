@@ -12,6 +12,12 @@ import {
 } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
+import {
+  readAuthoredDurationSeconds,
+  resolveMediaDuration,
+  type MediaTag,
+} from "@hyperframes/parsers/media-duration";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.
@@ -1050,6 +1056,25 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const hasAnyNonGsapSignal = usesLottie || usesThree || usesWaapi || hasCssAnimationName;
 
     if (!hasAnyNonGsapSignal) {
+      const derived = deriveDurationFromClips(tags, rootTag);
+      if (derived.source === "derived") {
+        return [
+          {
+            code: "root_composition_duration_derived",
+            severity: "warning",
+            message:
+              "Root composition has no data-duration and no GSAP timeline, so its length is taken from " +
+              `its clips: ${derived.seconds}s` +
+              (derived.pendingClips > 0
+                ? `, and ${derived.pendingClips} media clip(s) whose length is only known from the file`
+                : "") +
+              ".",
+            fixHint:
+              'Add data-duration="<seconds>" to the root element to set the length yourself.',
+            snippet: truncateSnippet(rootTag.raw),
+          },
+        ];
+      }
       // No GSAP timeline, no data-duration, and nothing for any adapter to
       // discover — the composition has no source of truth for duration at
       // all. This is the exact shape of the 27K "zero duration" render
@@ -1205,3 +1230,32 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     ];
   },
 ];
+
+const CLIP_MEDIA_TAGS = new Set<string>(["img", "video", "audio"]);
+
+/** The root's length from its timed clips, through the shared resolvers. A video or audio with no
+ *  authored length is pending here (only the file knows it), so it is counted, not guessed. */
+function deriveDurationFromClips(tags: OpenTag[], rootTag: OpenTag) {
+  const clipEnds: Array<number | null> = [];
+  for (const tag of tags) {
+    if (tag === rootTag) continue;
+    const startRaw = readAttr(tag.raw, "data-start");
+    const start = startRaw === null ? Number.NaN : Number(startRaw);
+    if (!Number.isFinite(start)) continue;
+    const getAttr = (name: string) => readAttr(tag.raw, name);
+    const authored = readAuthoredDurationSeconds(getAttr, start);
+    if (CLIP_MEDIA_TAGS.has(tag.name)) {
+      const { seconds } = resolveMediaDuration({
+        tag: tag.name as MediaTag,
+        authoredDurationSeconds: authored,
+        sourceDurationSeconds: null,
+        mediaStartSeconds: 0,
+        playbackRate: 1,
+      });
+      clipEnds.push(seconds === null ? null : start + seconds);
+    } else if (authored !== null) {
+      clipEnds.push(start + authored);
+    }
+  }
+  return resolveCompositionDuration({ authoredDurationSeconds: null, clipEndsSeconds: clipEnds });
+}

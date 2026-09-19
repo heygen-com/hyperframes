@@ -3033,6 +3033,46 @@ describe("initSandboxRuntimeModular", () => {
     delete (window as Window & { __hfLottie?: unknown[] }).__hfLottie;
   });
 
+  describe("a root with no data-duration and no timeline takes its length from its clips", () => {
+    const mountRoot = (children: string) => {
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-width="1920" data-height="1080">${children}</div>`;
+      window.__timelines = {};
+      initSandboxRuntimeModular();
+    };
+
+    it("counts a timed image at the dropped-image default and reports the derived source", () => {
+      mountRoot('<img id="a" data-start="2" src="a.png" />');
+      expect(window.__player?.getDuration()).toBe(5);
+      expect(window.__hf?.durationSource).toEqual({
+        source: "derived",
+        seconds: 5,
+        pendingClips: 0,
+      });
+    });
+
+    it("counts a plain clip with data-start and data-duration", () => {
+      mountRoot('<div class="clip" data-start="1" data-duration="4"></div>');
+      expect(window.__player?.getDuration()).toBe(5);
+    });
+
+    it("counts a video whose length is not known yet as pending, not as a guess", () => {
+      mountRoot(
+        '<div class="clip" data-start="0" data-duration="2"></div><video data-start="0"></video>',
+      );
+      expect(window.__hf?.durationSource).toEqual({
+        source: "derived",
+        seconds: 2,
+        pendingClips: 1,
+      });
+    });
+
+    it("stays at zero, reported unresolved, when there is no timed content", () => {
+      mountRoot("<p>static</p>");
+      expect(window.__player?.getDuration()).toBe(0);
+      expect(window.__hf?.durationSource?.source).toBe("unresolved");
+    });
+  });
+
   it("regression: a GSAP timeline's duration is unaffected by adapter duration inference", () => {
     // A GSAP composition can legitimately have an incidental, short CSS
     // animation running alongside the timeline (e.g. a decorative shimmer).

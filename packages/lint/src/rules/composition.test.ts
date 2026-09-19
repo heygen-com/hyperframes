@@ -1639,6 +1639,31 @@ describe("composition rules", () => {
       expect(finding?.severity).toBe("error");
     });
 
+    it("warns, and says where to author the length, when timed clips give the root a length", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <img src="a.png" data-start="2" />
+          <div class="clip" data-start="0" data-duration="4"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+      const derived = result.findings.find((f) => f.code === "root_composition_duration_derived");
+      expect(derived?.severity).toBe("warning");
+      expect(derived?.message).toContain("5s");
+      expect(derived?.fixHint).toContain("data-duration");
+    });
+
+    it("still errors when the only clips have no length to derive from", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="clip" data-start="0"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)?.severity).toBe("error");
+    });
+
     it("does not error when data-duration is declared on the root", async () => {
       const html = `<html><body>
         <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">

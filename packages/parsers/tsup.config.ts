@@ -14,6 +14,7 @@ export default defineConfig({
     assets: "src/assets.ts",
     composition: "src/composition.ts",
     compositionContract: "src/compositionContract.ts",
+    compositionDuration: "src/compositionDuration.ts",
     mediaDuration: "src/mediaDuration.ts",
     mediaDurationFixtures: "src/mediaDurationFixtures.ts",
     topLevelElements: "src/topLevelElements.ts",

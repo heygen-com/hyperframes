@@ -36,6 +36,7 @@ import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload } from "./timeline";
+import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
@@ -918,15 +919,19 @@ export function initSandboxRuntimeModular(): void {
     // this every tick, and it should not pay for a resolver it never uses.
     if (mediaNodes.length === 0) return null;
     return withTimingResolver(() => {
-      let maxWindowEndSeconds = 0;
+      const clipEnds: number[] = [];
       for (const node of mediaNodes) {
         const start = resolveAbsoluteMediaStartSeconds(node);
         if (!Number.isFinite(start)) continue;
         const duration = resolveMediaElementDurationSeconds(node);
         if (duration == null || duration <= MIN_VALID_TIMELINE_DURATION_SECONDS) continue;
-        maxWindowEndSeconds = Math.max(maxWindowEndSeconds, Math.max(0, start) + duration);
+        clipEnds.push(Math.max(0, start) + duration);
       }
-      return maxWindowEndSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxWindowEndSeconds : null;
+      const { seconds } = resolveCompositionDuration({
+        authoredDurationSeconds: null,
+        clipEndsSeconds: clipEnds,
+      });
+      return seconds !== null && seconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? seconds : null;
     });
   };
 
@@ -938,16 +943,13 @@ export function initSandboxRuntimeModular(): void {
       timelineRegistry: timelines,
       includeAuthoredTimingAttrs: true,
     });
-    let maxWindowEndSeconds = 0;
     // The root's own data-duration is the authored source of truth for
     // composition length. Without it in the floor, a GSAP timeline that ends
     // even slightly short of the declared duration shrinks the playable
     // window — and duration-gated consumers (e.g. the studio's adapter
     // selection) silently reject the runtime player, losing audio playback.
     const rootDeclaredSeconds = parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration"));
-    if (rootDeclaredSeconds != null && rootDeclaredSeconds > 0) {
-      maxWindowEndSeconds = rootDeclaredSeconds;
-    }
+    const subCompositionEnds: number[] = [];
     const compositionNodes = Array.from(
       rootEl.querySelectorAll("[data-composition-id][data-start]"),
     );
@@ -958,9 +960,74 @@ export function initSandboxRuntimeModular(): void {
       const start = startResolver.resolveStartForElement(node, 0);
       const duration = startResolver.resolveDurationForElement(node);
       if (!Number.isFinite(start) || duration == null || duration <= 0) continue;
-      maxWindowEndSeconds = Math.max(maxWindowEndSeconds, Math.max(0, start) + duration);
+      subCompositionEnds.push(Math.max(0, start) + duration);
     }
-    return maxWindowEndSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxWindowEndSeconds : null;
+    // A floor, not a resolution: the declared duration and the sub-compositions' latest end
+    // both hold, so the larger one is the floor.
+    const declaredFloor = resolveCompositionDuration({
+      authoredDurationSeconds: rootDeclaredSeconds,
+      clipEndsSeconds: [],
+    }).seconds;
+    const subCompositionFloor = resolveCompositionDuration({
+      authoredDurationSeconds: null,
+      clipEndsSeconds: subCompositionEnds,
+    }).seconds;
+    const floorSeconds = Math.max(declaredFloor ?? 0, subCompositionFloor ?? 0);
+    return floorSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? floorSeconds : null;
+  };
+
+  /** The last-resort length: the latest end among the root's timed clips, used only when no
+   *  timeline, floor or caller-supplied length exists. Pending media is counted, not guessed. */
+  const resolveContentDerivedDuration = () => {
+    const rootEl = resolveRootCompositionElement();
+    if (!rootEl)
+      return resolveCompositionDuration({ authoredDurationSeconds: null, clipEndsSeconds: [] });
+    const startResolver = createRuntimeStartTimeResolver({
+      timelineRegistry: (window.__timelines ?? {}) as Record<
+        string,
+        RuntimeTimelineLike | undefined
+      >,
+      includeAuthoredTimingAttrs: true,
+    });
+    const clipEnds: Array<number | null> = [];
+    for (const node of Array.from(rootEl.querySelectorAll("[data-start]"))) {
+      if (!isElementNode(node)) continue;
+      const start = startResolver.resolveStartForElement(node, 0);
+      if (!Number.isFinite(start)) continue;
+      const duration = startResolver.resolveDurationForElement(node);
+      if (duration != null) clipEnds.push(Math.max(0, start) + duration);
+      else if (isMediaElement(node)) clipEnds.push(null);
+    }
+    return resolveCompositionDuration({ authoredDurationSeconds: null, clipEndsSeconds: clipEnds });
+  };
+
+  let contentDerivedCache: {
+    revision: number;
+    result: ReturnType<typeof resolveContentDerivedDuration>;
+  } | null = null;
+  /** Cached per timing revision like the floors; the render path never reads a cache. */
+  const readContentDerivedDuration = () => {
+    if (renderCaptureSeekStarted) return resolveContentDerivedDuration();
+    const revision = readCompositionTimingRevision();
+    if (contentDerivedCache?.revision !== revision) {
+      contentDerivedCache = { revision, result: resolveContentDerivedDuration() };
+    }
+    return contentDerivedCache.result;
+  };
+
+  /** Carries how a length that no timeline supplied was found, for render telemetry. */
+  const publishDerivedDuration = (result: ReturnType<typeof resolveCompositionDuration>) => {
+    window.__hf = window.__hf || {};
+    window.__hf.durationSource = {
+      source: result.source,
+      seconds: result.seconds,
+      pendingClips: result.pendingClips,
+    };
+    postRuntimeDiagnosticOnce(
+      "composition_duration_derived",
+      { source: result.source, seconds: result.seconds, pendingClips: result.pendingClips },
+      `composition_duration_derived:${result.source}:${result.seconds}:${result.pendingClips}`,
+    );
   };
 
   const resolveMediaDurationFloorSeconds = (): number | null => {
@@ -1220,8 +1287,12 @@ export function initSandboxRuntimeModular(): void {
       safeDuration = Math.max(timelineDuration, durationFloor, fallbackDuration);
     } else if (isUsableTimelineDuration(durationFloor)) {
       safeDuration = Math.max(durationFloor, fallbackDuration);
-    } else {
+    } else if (fallbackDuration > 0) {
       safeDuration = fallbackDuration;
+    } else {
+      const derived = readContentDerivedDuration();
+      publishDerivedDuration(derived);
+      safeDuration = derived.seconds ?? 0;
     }
     return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
   };

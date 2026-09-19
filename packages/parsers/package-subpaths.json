@@ -121,6 +121,12 @@
       "runtime": "./dist/assetResolution.js",
       "types": "./dist/assetResolution.d.ts",
       "environments": ["bun", "node"]
+    },
+    "./composition-duration": {
+      "source": "./src/compositionDuration.ts",
+      "runtime": "./dist/compositionDuration.js",
+      "types": "./dist/compositionDuration.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }

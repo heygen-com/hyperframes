@@ -129,6 +129,12 @@
       "node": "./dist/assetResolution.js",
       "import": "./src/assetResolution.ts",
       "types": "./src/assetResolution.ts"
+    },
+    "./composition-duration": {
+      "bun": "./src/compositionDuration.ts",
+      "node": "./dist/compositionDuration.js",
+      "import": "./src/compositionDuration.ts",
+      "types": "./src/compositionDuration.ts"
     }
   },
   "publishConfig": {
@@ -210,6 +216,10 @@
       "./asset-resolution": {
         "import": "./dist/assetResolution.js",
         "types": "./dist/assetResolution.d.ts"
+      },
+      "./composition-duration": {
+        "import": "./dist/compositionDuration.js",
+        "types": "./dist/compositionDuration.d.ts"
       }
     },
     "main": "./dist/index.js",
