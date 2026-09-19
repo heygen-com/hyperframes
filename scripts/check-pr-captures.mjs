@@ -15,7 +15,7 @@ const MEDIA_PATH = /\.(?:png|jpe?g|gif|webp|svg|mp4|mov|webm)$/i;
 const ATTACHMENT_PATH = /^\/user-attachments\/assets\/[\w-]+/;
 const IMAGE_EMBED =
   /!\[[^\]]*\]\(\s*https?:\/\/|<(?:img|video|source)\b[^>]*\bsrc=["']https?:\/\//i;
-const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+const TRAILING_PUNCTUATION = /[.,;:!?*_`]+$/;
 const ANY_URL = /https?:\/\/[^\s)"'<>\]]+/gi;
 
 function parseUrl(raw) {
@@ -325,7 +325,8 @@ export async function duplicateCaptureProblems(body, download) {
   if (!before || !after) return { unreadable: [], identical: [], refused: [] };
   const beforeUrls = captureUrls(before);
   const sharedUrls = captureUrls(after).filter((url) => beforeUrls.includes(url));
-  if (beforeUrls.length + captureUrls(after).length > MAX_CAPTURES) {
+  const distinctUrls = new Set([...beforeUrls, ...captureUrls(after)]);
+  if (distinctUrls.size > MAX_CAPTURES) {
     const refused = [`more than ${MAX_CAPTURES} capture links; attach fewer, longer clips`];
     return { unreadable: [], identical: [], refused };
   }

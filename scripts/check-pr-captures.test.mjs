@@ -618,3 +618,29 @@ test("the CLI fails a fork PR that hits a limit of the check", () => {
   assert.equal(result.status, 1, result.stdout + result.stderr);
   assert.match(result.stderr, /limit of this check/);
 });
+
+test("exactly twelve capture links are accepted, shared links count once, markdown wrappers are stripped", async () => {
+  const link = (i) =>
+    `https://github.com/user-attachments/assets/${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`;
+  const twelve = Array.from({ length: 12 }, (_, i) => link(i));
+  const ok = await duplicateCaptureProblems(bodyWith(twelve.join("\n"), link(99)), async (u) =>
+    Buffer.from(u),
+  );
+  assert.equal(ok.refused.length, 1);
+  const atCap = await duplicateCaptureProblems(
+    bodyWith(twelve.slice(0, 11).join("\n"), link(99)),
+    async (u) => Buffer.from(u),
+  );
+  assert.equal(atCap.refused.length, 0);
+  const shared = await duplicateCaptureProblems(
+    bodyWith(twelve.join("\n"), twelve.join("\n")),
+    async (u) => Buffer.from(u),
+  );
+  assert.equal(shared.refused.length, 0);
+  const seen = [];
+  await duplicateCaptureProblems(
+    bodyWith(`**${OLD}**`, `_${NEW}_ and \`${sameBytes}\``),
+    async (u) => (seen.push(u), Buffer.from(u)),
+  );
+  assert.deepEqual(seen, [OLD, NEW, sameBytes]);
+});
