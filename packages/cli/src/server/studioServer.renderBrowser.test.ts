@@ -21,8 +21,8 @@ vi.mock("../utils/env.js", async (importOriginal) => ({
   isDevMode: () => false,
 }));
 
-vi.mock("@hyperframes/producer", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hyperframes/producer")>()),
+// Not importOriginal: loading the real producer takes longer than a wait timeout on a cold Windows runner.
+vi.mock("@hyperframes/producer", () => ({
   createRenderJob: mocks.createRenderJob,
   executeRenderJob: mocks.executeRenderJob,
 }));
@@ -64,7 +64,7 @@ describe("Studio render browser resolution", () => {
     );
 
     const state = startStudioRender();
-    await vi.waitFor(() => expect(state.status).toBe("failed"));
+    await vi.waitFor(() => expect(state.status).toBe("failed"), { timeout: 10_000 });
 
     expect(state.error).toBe(
       "Chrome not found Chrome Headless Shell is required for local rendering.",
@@ -79,7 +79,9 @@ describe("Studio render browser resolution", () => {
     });
 
     startStudioRender();
-    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1), {
+      timeout: 10_000,
+    });
 
     expect(process.env.PRODUCER_HEADLESS_SHELL_PATH).toBe("/opt/chrome");
   });
