@@ -76,12 +76,8 @@ function triggerFor(host: HTMLElement, label: string): HTMLElement {
   return trigger;
 }
 
-/**
- * Opens a Select and walks the highlight down `steps` items before committing,
- * the way a keyboard user does. The trigger is a real `<button>`, so Space
- * reaches it as keydown, keyup and then a click the browser synthesises;
- * happy-dom does not synthesise that click, so it is dispatched here.
- */
+/** Opens a Select and arrows down `steps` items before committing, the way a keyboard user
+ * does. happy-dom does not synthesise the click Space would trigger, so it is dispatched here. */
 async function chooseByArrowing(trigger: HTMLElement, steps: number) {
   fire(trigger, "keydown", " ");
   fire(trigger, "keyup", " ");

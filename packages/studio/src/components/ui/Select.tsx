@@ -11,12 +11,7 @@ import type { PreviewState } from "./Button";
 export interface SelectOption {
   label: string;
   value: string;
-  /**
-   * Offered but not choosable. The option stays in the list with its label
-   * intact, because a label is where a caller explains *why* it is out of
-   * reach; filtering it out would leave the user hunting for a choice that
-   * silently vanished.
-   */
+  /** Offered but not choosable; the label stays visible so the reason stays visible too. */
   disabled?: boolean;
 }
 
