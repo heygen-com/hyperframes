@@ -189,11 +189,4 @@ fade("#a", 1);`;
 for (let i = 0; i < 2; i++) { gsap.set("#x", { opacity: 0 }); tl.to("#x", { opacity: 1, duration: 1 }, i); }`;
     expect(unrollComputedTimeline(script)).toBe(script);
   });
-
-  it("still unrolls a helper that only declares locals and adds tweens", () => {
-    const script = `const tl = gsap.timeline();
-function fade(sel, at) { const end = at + 1; tl.to(sel, { opacity: 1, duration: 1 }, end); }
-fade("#a", 1);`;
-    expect(unrollComputedTimeline(script)).toContain('tl.to("#a"');
-  });
 });

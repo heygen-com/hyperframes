@@ -1795,15 +1795,20 @@ function compareByLoc(a: TweenCallInfo, b: TweenCallInfo): number {
   return aLoc.line - bLoc.line || aLoc.column - bLoc.column;
 }
 
-// Inlined tweens carry a monotonic __hfOrder (clones share source loc, so loc
-// can't order them); they sort by that, after all literal (loc-ordered) tweens.
+// Clones of an inlined helper share source loc, so an inlined tween sorts at the top-level
+// statement that expanded it (__hfSiteStart), then by expansion order (__hfOrder).
+function callSiteStart(call: TweenCallInfo): number | undefined {
+  return call.node.__hfSiteStart ?? call.node.callee?.property?.start;
+}
+
 function compareCallOrder(a: TweenCallInfo, b: TweenCallInfo): number {
+  const as = callSiteStart(a);
+  const bs = callSiteStart(b);
+  if (as !== undefined && bs !== undefined && as !== bs) return as - bs;
   const ao = a.node.__hfOrder;
   const bo = b.node.__hfOrder;
-  if (ao === undefined && bo === undefined) return compareByLoc(a, b);
-  if (ao === undefined) return -1;
-  if (bo === undefined) return 1;
-  return ao - bo;
+  if (ao !== undefined && bo !== undefined) return ao - bo;
+  return compareByLoc(a, b);
 }
 
 function sortBySourcePosition(calls: TweenCallInfo[]): void {

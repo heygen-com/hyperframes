@@ -20,7 +20,16 @@ import type { GsapProvenance } from "./gsapSerialize.js";
 type Node = any;
 
 /** Node keys that are metadata, not child AST to traverse/substitute. */
-const SKIP_KEYS = new Set(["type", "start", "end", "loc", "range", "__hfProvenance", "__hfOrder"]);
+const SKIP_KEYS = new Set([
+  "type",
+  "start",
+  "end",
+  "loc",
+  "range",
+  "__hfProvenance",
+  "__hfOrder",
+  "__hfSiteStart",
+]);
 
 const FUNCTION_TYPES = new Set([
   "ArrowFunctionExpression",
@@ -161,6 +170,8 @@ interface ExpandCtx {
   site: { n: number };
   /** Mutable counter stamping expansion order onto tweens (clones share source loc). */
   order: { n: number };
+  /** Source offset of the top-level statement being expanded; tweens inherit it as their sort site. */
+  rootStart: number;
 }
 
 function walkNodes(node: Node, fn: (n: Node) => void): void {
@@ -467,6 +478,7 @@ function tagTimelineCalls(stmts: Node[], prov: GsapProvenance, ctx: ExpandCtx): 
       if (n.type === "CallExpression" && isTimelineRooted(n, ctx.timelineVar)) {
         tagProvenance(n, { ...prov });
         n.__hfOrder = ctx.order.n++;
+        n.__hfSiteStart = ctx.rootStart;
       }
     });
   }
@@ -724,7 +736,11 @@ export function inlineComputedTimelines(
     depth: 0,
     site: { n: 0 },
     order: { n: 0 },
+    rootStart: 0,
   };
   const body = (ast.body ?? []).filter((stmt: Node) => !isHelperDecl(stmt, helpers));
-  ast.body = expandStatements(body, ctx);
+  ast.body = body.flatMap((stmt: Node) => {
+    ctx.rootStart = stmt.start;
+    return expandStatements([stmt], ctx);
+  });
 }
