@@ -209,6 +209,8 @@ tl.to("#pre", { y: 1, duration: 1 });
 makeLabel("#a");
 useLabel("#b");`;
       expect(starts(siblingLabel)).toEqual({ "#pre": 0, "#a": 1, "#b": 1 });
+      // useLabel only adds a tween, so it unrolls to a literal at the label's resolved start.
+      expect(starts(unrollComputedTimeline(siblingLabel))).toEqual(starts(siblingLabel));
     });
   });
 
