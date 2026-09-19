@@ -820,11 +820,7 @@ function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): stri
   // Showcases they were two thirds of it, and the handful of actual showcase
   // scenes were unfindable underneath them.
   if (entry.name.startsWith("code-snippet-")) return "Code Snippets";
-  // Same story, same fix: 25 image carousels are half of Showcases, and the
-  // scenes that shelf is for disappear underneath them. Keyed on the FIRST
-  // tag, which is this file's stated grouping rule, so an item that merely
-  // uses a carousel — `screen-flow-carousel` leads with `product-demo` —
-  // stays on the shelf that describes what it is for.
+  // Keyed on the first tag so `screen-flow-carousel` (leads with `product-demo`) stays a showcase.
   if (tags[0] === "carousel") return "Carousels";
   if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
   if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";

@@ -55,14 +55,7 @@
  * other edit, so it reaches the preview by the same debounced post as the rest.
  */
 
-/**
- * A named region of a catalog page, filled from markdown or fences.
- *
- * MDX hands a component its children as one list, so the generator marks what
- * each child is for (`code`, `install`, `docs`) and CatalogDetail
- * shows it under the matching tab. Exported beside the component because MDX
- * only carries a snippet's exports into a page.
- */
+/** A named page region (`code`, `install`, `docs`) that CatalogDetail shows under the matching tab. */
 export const CatalogSlot = ({ slot, children }) => <div data-slot={slot}>{children}</div>;
 
 export const CatalogDetail = ({
