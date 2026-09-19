@@ -348,3 +348,16 @@ describe("tile reveal", () => {
     assert.doesNotMatch(handler.split("revealWhenPainted")[0], /dataset\.ready = 'true'/);
   });
 });
+
+describe("tile poster priority", () => {
+  const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-gallery.jsx"), "utf-8");
+
+  it("fetches the pinned group's posters eagerly at high priority and every other poster lazily", () => {
+    assert.match(
+      source,
+      /loading: eager \? "eager" : "lazy", fetchPriority: eager \? "high" : undefined/,
+    );
+    assert.match(source, /card\(item, group\.pinned === true\)/);
+    assert.doesNotMatch(source, /\.map\(card\)/);
+  });
+});

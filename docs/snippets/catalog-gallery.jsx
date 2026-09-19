@@ -421,7 +421,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     }));
     const caret = React.createElement("svg", { className: "hfc-caret", width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
         React.createElement("path", { d: "m6 9 6 6 6-6" }));
-    const card = (item) => (React.createElement("a", { className: "hfc-card", href: item.href, key: item.href, "data-preview-mode": item.preview?.mode || "still", onMouseEnter: () => setHover(item, true), onMouseLeave: () => setHover(item, false), onFocus: () => setHover(item, true), onBlur: () => setHover(item, false) },
+    // eager: the posters above the fold (the pinned group) start immediately instead of queueing behind the page's prefetches.
+    const card = (item, eager = false) => (React.createElement("a", { className: "hfc-card", href: item.href, key: item.href, "data-preview-mode": item.preview?.mode || "still", onMouseEnter: () => setHover(item, true), onMouseLeave: () => setHover(item, false), onFocus: () => setHover(item, true), onBlur: () => setHover(item, false) },
         React.createElement("div", { className: "hfc-media" },
             item.preview?.mode === "unsupported"
                 ? React.createElement("div", { className: "hfc-fallback hfc-unsupported", "aria-hidden": "true" },
@@ -430,7 +431,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 : React.createElement("div", { className: "hfc-fallback", "aria-hidden": "true", style: { display: item.poster ? "none" : undefined } },
                     React.createElement("span", null, item.section),
                     React.createElement("strong", null, item.title)),
-            item.poster && React.createElement("img", { src: item.poster, alt: `${item.title} preview`, loading: "lazy", decoding: "async", width: "640", height: "360", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.previousElementSibling.style.display = "flex"; } }),
+            item.poster && React.createElement("img", { src: item.poster, alt: `${item.title} preview`, loading: eager ? "eager" : "lazy", fetchPriority: eager ? "high" : undefined, decoding: "async", width: "640", height: "360", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.previousElementSibling.style.display = "flex"; } }),
             item.preview?.mode !== "still" && item.preview?.mode !== "unsupported" && React.createElement("div", { className: "hfc-preview-host", "data-preview-host": item.href, "aria-hidden": "true" })),
         React.createElement("div", { className: "hfc-card-body" },
             React.createElement("div", { className: "hfc-card-title" },
@@ -444,7 +445,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 " ready to install."),
             React.createElement("p", null, initialGroup ? `${matches.length} items. Preview a piece and open it to explore its controls, code, and installation.` : "Find the scene, caption, or finishing touch for your next video. Preview the motion, pick a favorite, and make it your own.")),
         React.createElement("section", { className: "hfc-browser", "aria-label": "Browse catalog", ref: resultsRef }, searching ? React.createElement(React.Fragment, null,
-            matches.length ? React.createElement("div", { className: "hfc-grid" }, matches.slice(0, limit).map(card)) : React.createElement("div", { className: "hfc-empty" },
+            matches.length ? React.createElement("div", { className: "hfc-grid" }, matches.slice(0, limit).map((item) => card(item))) : React.createElement("div", { className: "hfc-empty" },
                 React.createElement("h3", null, "No matches yet."),
                 React.createElement("p", null, "Try a different search, or clear the filters to explore everything."),
                 React.createElement("button", { type: "button", onClick: reset }, "Explore all items")),
@@ -460,5 +461,5 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                     expandedGroups[group.id] ? "Show Less" : `Show All ${group.count}`,
                     " ",
                     caret)),
-            React.createElement("div", { className: "hfc-grid", id: `gallery-${group.id}` }, ordered(items.filter((item) => item.group === group.id)).slice(0, expandedGroups[group.id] ? undefined : group.pinned ? 6 : 3).map(card))))))));
+            React.createElement("div", { className: "hfc-grid", id: `gallery-${group.id}` }, ordered(items.filter((item) => item.group === group.id)).slice(0, expandedGroups[group.id] ? undefined : group.pinned ? 6 : 3).map((item) => card(item, group.pinned === true)))))))));
 };
