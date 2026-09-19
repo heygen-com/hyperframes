@@ -41,6 +41,7 @@ export type { AgentPromptElementInfo } from "./components/editor/domEditingAgent
 export { RenderQueue } from "./components/renders/RenderQueue";
 export type { RenderQueueProps, CompositionDimensions } from "./components/renders/RenderQueue";
 export { useRenderQueue } from "./components/renders/useRenderQueue";
+export type { FfmpegStatus } from "./components/renders/useFfmpegStatus";
 export type {
   RenderJob,
   ResolutionPreset,

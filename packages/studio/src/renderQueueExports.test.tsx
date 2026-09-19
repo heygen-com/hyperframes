@@ -8,6 +8,7 @@ import {
   getPersistedRenderSettings,
   persistRenderSettings,
   useRenderQueue,
+  type FfmpegStatus,
   type RenderJob,
 } from "@hyperframes/studio";
 
@@ -32,6 +33,7 @@ describe("render queue package exports", () => {
       filename: "host-render.mp4",
       createdAt: 0,
     };
+    const ffmpeg: FfmpegStatus = { ok: true };
     const el = document.createElement("div");
     document.body.append(el);
     const root = createRoot(el);
@@ -44,7 +46,7 @@ describe("render queue package exports", () => {
           onClearCompleted={vi.fn()}
           onStartRender={vi.fn()}
           isRendering={false}
-          ffmpeg={null}
+          ffmpeg={ffmpeg}
           ffmpegChecking={false}
           onRecheckFfmpeg={vi.fn()}
         />,
