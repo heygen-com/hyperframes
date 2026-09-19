@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { usePreviewReadOnlyStore } from "../components/editor/previewReadOnlyStore";
 import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -551,5 +552,21 @@ describe("useInlineTextEdit with styled runs", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(insertText).toHaveBeenCalledWith("insertText", false, "plain words");
     act(() => root.unmount());
+  });
+
+  it("refuses to open an edit while the preview is read-only", () => {
+    usePreviewReadOnlyStore.setState({ readOnly: true });
+    const element = heading();
+    const { controls, root, onCommit, onPause } = mount();
+    let opened = true;
+    act(() => {
+      opened = controls().start(element);
+    });
+    expect(opened).toBe(false);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(onPause).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    usePreviewReadOnlyStore.setState({ readOnly: false });
   });
 });

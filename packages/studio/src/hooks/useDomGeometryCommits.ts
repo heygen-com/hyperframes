@@ -24,13 +24,14 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
+import { isPreviewReadOnly } from "../components/editor/previewReadOnlyStore";
 
 const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
 
 // ── Hook ──
 
-interface UseDomGeometryCommitsParams {
+export interface UseDomGeometryCommitsParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
   commitPositionPatchToHtml: (
@@ -47,6 +48,7 @@ export function useDomGeometryCommits({
 }: UseDomGeometryCommitsParams) {
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
+      if (isPreviewReadOnly()) return Promise.resolve();
       // ponytail: GSAP-targeted elements are blocked (no SDK position-in-script op); CSS-path
       // elements fall through to commitPositionPatchToHtml → persistDomEditOperations →
       // onTrySdkPersist and are already SDK-cut-over as setStyle/setAttribute (§3.3 done).
@@ -76,6 +78,7 @@ export function useDomGeometryCommits({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
     ) => {
+      if (isPreviewReadOnly()) return Promise.resolve();
       if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");
@@ -109,6 +112,7 @@ export function useDomGeometryCommits({
 
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
+      if (isPreviewReadOnly()) return Promise.resolve();
       if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");

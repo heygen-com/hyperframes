@@ -19,6 +19,7 @@ export function FlatRow({
   value,
   tier,
   disabled,
+  tooltip,
   liveCommit,
   suffix,
   dropdown,
@@ -30,6 +31,8 @@ export function FlatRow({
   value: string;
   tier: PropertyValueTier;
   disabled?: boolean;
+  /** Shown as a title attribute, e.g. why the row is disabled. */
+  tooltip?: string;
   liveCommit?: boolean;
   suffix?: ReactNode;
   /** Renders a trailing 10px caret-down, for select-backed rows. */
@@ -40,7 +43,7 @@ export function FlatRow({
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="group flex min-h-[30px] items-center justify-between gap-3">
+    <div className="group flex min-h-[30px] items-center justify-between gap-3" title={tooltip}>
       <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
       <span className="flex min-w-0 shrink-0 items-center gap-1.5">
         <span

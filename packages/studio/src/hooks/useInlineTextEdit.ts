@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
+import { isPreviewReadOnly } from "../components/editor/previewReadOnlyStore";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -123,7 +124,7 @@ export function useInlineTextEdit({
 
   const start = useCallback(
     (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
-      if (openRef.current) return false;
+      if (openRef.current || isPreviewReadOnly()) return false;
 
       const open = {
         element,

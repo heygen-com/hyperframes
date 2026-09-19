@@ -31,6 +31,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
+import { usePreviewReadOnly } from "./previewReadOnlyStore";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { logSelect } from "../../utils/selectDebug";
@@ -137,6 +138,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onDeleteSelection,
   onApplyZIndex,
 }: DomEditOverlayProps) {
+  const readOnly = usePreviewReadOnly();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
@@ -285,7 +287,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const { flushNudge } = useDomEditNudge({
     selection,
     groupSelections,
-    allowCanvasMovement,
+    allowCanvasMovement: allowCanvasMovement && !readOnly,
     selectionRef,
     overlayRectRef,
     groupOverlayItemsRef,
@@ -558,7 +560,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           selection={contextMenu.sel}
           onClose={closeContextMenu}
           onDelete={
-            onDeleteSelection
+            onDeleteSelection && !readOnly
               ? (sel) => {
                   closeContextMenu();
                   onDeleteSelection(sel);
@@ -566,7 +568,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               : undefined
           }
           onApplyZIndex={
-            onApplyZIndex
+            onApplyZIndex && !readOnly
               ? (patches, action, crossed) => {
                   onApplyZIndex(contextMenu.sel, patches, action, crossed);
                 }

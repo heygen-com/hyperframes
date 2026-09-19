@@ -8,6 +8,7 @@ import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { isPreviewReadOnly } from "../components/editor/previewReadOnlyStore";
 
 // Extracted from useAppHotkeys.ts to keep it under the studio 600-line cap,
 // following useTimelineDeleteOps's precedent. Pure functions, no hooks — the
@@ -95,6 +96,7 @@ export function dispatchModifierKey(
 
   if (key === "g" && !event.altKey && !isTypingTarget(event.target)) {
     event.preventDefault();
+    if (isPreviewReadOnly()) return true;
     if (event.shiftKey) cb.onUngroupSelection?.();
     else cb.onGroupSelection?.();
     return true;
@@ -111,6 +113,10 @@ export function dispatchModifierKey(
         event.preventDefault();
         trackStudioEvent("keyboard_shortcut", { action: "copy" });
       }
+      return true;
+    }
+    if (isPreviewReadOnly() && ["v", "x", "d"].includes(key)) {
+      event.preventDefault();
       return true;
     }
     if (key === "v") {
@@ -158,6 +164,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // Reserve bare `s` for Split even when the current selection cannot split,
     // so secondary listeners do not reinterpret the same key as Snap toggle.
     event.preventDefault();
+    if (isPreviewReadOnly()) return;
     const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
     if (selectedElementId) {
       const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);
@@ -242,6 +249,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     const domSel = cb.domEditSelectionRef.current;
     if (domSel) {
       event.preventDefault();
+      if (isPreviewReadOnly()) return;
       // The whole marquee group, not just the primary the ref holds.
       void cb.handleDomEditElementDelete(domSel, { expandGroup: true });
       return;

@@ -6,6 +6,7 @@ import { usePlayerStore } from "../player";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { useGestureCommit } from "./useGestureCommit";
+import { usePreviewReadOnlyStore } from "../components/editor/previewReadOnlyStore";
 
 const gestureRecording = vi.hoisted(() => ({
   startRecording: vi.fn(),
@@ -52,6 +53,7 @@ afterEach(() => {
   cleanup = null;
   usePlayerStore.getState().reset();
   document.body.replaceChildren();
+  usePreviewReadOnlyStore.setState({ readOnly: false });
   vi.clearAllMocks();
 });
 
@@ -126,5 +128,33 @@ describe("useGestureCommit", () => {
     expect(options[0]).not.toHaveProperty("softReload");
     expect(options[1]).toEqual(expect.objectContaining({ coalesceMs: Infinity, softReload: true }));
     expect(options[1]).not.toHaveProperty("skipReload");
+  });
+
+  it("does not start a recording while the preview is read-only", () => {
+    usePreviewReadOnlyStore.setState({ readOnly: true });
+    const element = document.createElement("div");
+    const commitMutation = vi.fn(async () => {});
+    const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
+    function Probe() {
+      captured.hook = useGestureCommit({
+        domEditSessionRef: {
+          current: {
+            domEditSelection: makeSelection(element),
+            selectedGsapAnimations: [],
+            commitMutation,
+          },
+        },
+        previewIframeRef: { current: document.createElement("iframe") },
+        showToast: vi.fn(),
+        isGestureRecordingRef: { current: false },
+      });
+      return null;
+    }
+    const root = mountReactHarness(<Probe />);
+    cleanup = () => act(() => root.unmount());
+
+    act(() => captured.hook?.handleToggleRecording());
+    expect(gestureRecording.startRecording).not.toHaveBeenCalled();
+    expect(commitMutation).not.toHaveBeenCalled();
   });
 });

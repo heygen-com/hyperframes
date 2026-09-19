@@ -4,6 +4,7 @@
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useGestureRecording } from "./useGestureRecording";
+import { isPreviewReadOnly } from "../components/editor/previewReadOnlyStore";
 import { simplifyGestureSamples } from "../utils/rdpSimplify";
 import { fitEasesFromVelocity } from "../utils/velocityEaseFitter";
 import { smoothGestureKeyframes } from "../utils/gestureSmoother";
@@ -338,6 +339,7 @@ export function useGestureCommit({
       void stopAndCommitRecording();
       return;
     }
+    if (isPreviewReadOnly()) return;
     const sel = domEditSessionRef.current.domEditSelection;
     if (!sel) {
       showToast("Select an element first", "error");

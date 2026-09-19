@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dispatchModifierKey, dispatchPlainKey } from "./appHotkeysDispatch";
 import { usePlayerStore } from "../player/store/playerStore";
+import { usePreviewReadOnlyStore } from "../components/editor/previewReadOnlyStore";
+import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
@@ -30,6 +32,9 @@ function callbacks() {
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(async () => {}),
     handleCut: vi.fn(async () => false),
+    handleDuplicate: vi.fn(async () => false),
+    onGroupSelection: vi.fn(),
+    onUngroupSelection: vi.fn(),
     onResetKeyframes: vi.fn(() => true),
     onDeleteSelectedKeyframes: vi.fn(),
     showToast: vi.fn(),
@@ -296,5 +301,54 @@ describe('dispatchPlainKey — "A" returns to select while the razor is armed', 
     dispatchPlainKey(e, "a", callbacks());
     expect(usePlayerStore.getState().activeTool).toBe("select");
     expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe("hotkeys with the preview read-only", () => {
+  beforeEach(() => {
+    usePreviewReadOnlyStore.setState({ readOnly: true });
+    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: "bgm" });
+  });
+  afterEach(() => usePreviewReadOnlyStore.setState({ readOnly: false }));
+
+  it("does not delete the selected element on Delete", () => {
+    const cb = callbacks();
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+    expect(cb.handleDomEditElementDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not split on s", () => {
+    usePlayerStore.setState({ currentTime: 3 });
+    const cb = callbacks();
+    dispatchPlainKey(press("s"), "s", cb);
+    expect(cb.handleTimelineElementSplit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["x", "handleCut"],
+    ["d", "handleDuplicate"],
+    ["v", "handlePaste"],
+    ["g", "onGroupSelection"],
+  ] as const)("does not run %s", (key, callback) => {
+    const cb = callbacks();
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchModifierKey(chord(key), key, cb);
+    expect(cb[callback]).not.toHaveBeenCalled();
+  });
+
+  it("still undoes, because history covers timeline edits", () => {
+    const cb = callbacks();
+    dispatchModifierKey(chord("z"), "z", cb);
+    expect(cb.handleUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: with the flag off Delete removes the selected element", () => {
+    usePreviewReadOnlyStore.setState({ readOnly: false });
+    const cb = callbacks();
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledTimes(1);
   });
 });

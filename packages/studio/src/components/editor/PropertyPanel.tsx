@@ -37,6 +37,7 @@ import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { isAudioDomElement } from "../../utils/timelineInspector";
+import { useManualEditDisabledFlags } from "./previewReadOnlyStore";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -175,6 +176,9 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     scale: 1,
     transformPerspective: 0,
   };
+  // Unconditional like the hooks above: must not sit behind the `!element` return below.
+  const { manualOffsetEditingDisabled, manualSizeEditingDisabled, manualRotationEditingDisabled } =
+    useManualEditDisabledFlags(element?.capabilities);
 
   if (!element) {
     return (
@@ -189,9 +193,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     );
   }
 
-  const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
-  const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
-  const manualRotationEditingDisabled = !element.capabilities.canApplyManualRotation;
   const sourceLabel = element.id ? `#${element.id}` : (element.selector ?? "");
   // Capabilities are already resolved on the selection; recompute only sections,
   // feeding the live GSAP tween count (arrives on the gsapAnimations prop, not the

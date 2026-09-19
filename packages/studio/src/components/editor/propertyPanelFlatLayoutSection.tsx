@@ -5,6 +5,7 @@ import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import type { DomEditSelection } from "./domEditingTypes";
+import { usePreviewReadOnly, usePreviewReadOnlyReason } from "./previewReadOnlyStore";
 
 type KeyframeEntry = Array<{
   percentage: number;
@@ -119,6 +120,9 @@ export function LayoutGeometryRows({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: GeometryRowsProps) {
+  const readOnlyPreview = usePreviewReadOnly();
+  const readOnlyPreviewReason = usePreviewReadOnlyReason();
+  const readOnlyTooltip = readOnlyPreview ? readOnlyPreviewReason : undefined;
   const gutterProps = {
     element,
     gsapAnimId,
@@ -137,6 +141,7 @@ export function LayoutGeometryRows({
         value={formatPxMetricValue(displayX)}
         tier={displayX === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
+        tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualOffset("x", next)}
         suffix={<KeyframeGutter property="x" displayValue={displayX} {...gutterProps} />}
       />
@@ -145,6 +150,7 @@ export function LayoutGeometryRows({
         value={formatPxMetricValue(displayY)}
         tier={displayY === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
+        tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualOffset("y", next)}
         suffix={<KeyframeGutter property="y" displayValue={displayY} {...gutterProps} />}
       />
@@ -153,6 +159,7 @@ export function LayoutGeometryRows({
         value={formatPxMetricValue(displayW)}
         tier="default"
         disabled={manualSizeEditingDisabled}
+        tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualSize("width", next)}
         suffix={<KeyframeGutter property="width" displayValue={displayW} {...gutterProps} />}
       />
@@ -161,6 +168,7 @@ export function LayoutGeometryRows({
         value={formatPxMetricValue(displayH)}
         tier="default"
         disabled={manualSizeEditingDisabled}
+        tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualSize("height", next)}
         suffix={<KeyframeGutter property="height" displayValue={displayH} {...gutterProps} />}
       />
@@ -169,6 +177,7 @@ export function LayoutGeometryRows({
         value={`${displayR}°`}
         tier="default"
         disabled={manualRotationEditingDisabled}
+        tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualRotation(next.replace("°", ""))}
         suffix={<KeyframeGutter property="rotation" displayValue={displayR} {...gutterProps} />}
       />

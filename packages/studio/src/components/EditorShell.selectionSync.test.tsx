@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorShell } from "./EditorShell";
+import { isPreviewReadOnly } from "./editor/previewReadOnlyStore";
 
 const hookMocks = vi.hoisted(() => ({
   useTimelineSelectionPreviewSync: vi.fn(),
@@ -66,6 +67,36 @@ afterEach(() => {
   hookMocks.useTimelineSelectionPreviewSync.mockClear();
 });
 
+const shell = (readOnlyPreview?: boolean) => (
+  <EditorShell
+    panels={null}
+    timelineToolbar={null}
+    renderClipContent={() => null}
+    handleTimelineElementDelete={vi.fn()}
+    handleTimelineAssetDrop={vi.fn()}
+    handleTimelineFileDrop={vi.fn()}
+    handleTimelineElementMove={vi.fn()}
+    handleTimelineElementsMove={vi.fn()}
+    handleTimelineElementResize={vi.fn()}
+    handleTimelineGroupResize={vi.fn()}
+    handleToggleTrackHidden={vi.fn()}
+    setAudioGroupAttribute={{ setLive: vi.fn(), setQuiet: vi.fn() }}
+    handleBlockedTimelineEdit={vi.fn()}
+    handleTimelineElementSplit={vi.fn()}
+    handleRazorSplit={vi.fn()}
+    handleRazorSplitAll={vi.fn()}
+    onCopyClip={vi.fn(() => false)}
+    onPasteClip={vi.fn(async () => {})}
+    onDuplicateClip={vi.fn(async () => false)}
+    canPasteClip={vi.fn(() => false)}
+    setCompIdToSrc={vi.fn()}
+    setCompositionLoading={vi.fn()}
+    shouldShowMotionPath={false}
+    shouldShowSelectedDomBounds={false}
+    readOnlyPreview={readOnlyPreview}
+  />
+);
+
 describe("EditorShell timeline selection sync", () => {
   it("keeps the timeline store mirrored into the preview selection", () => {
     const host = document.createElement("div");
@@ -73,34 +104,7 @@ describe("EditorShell timeline selection sync", () => {
     const root = createRoot(host);
 
     act(() => {
-      root.render(
-        <EditorShell
-          panels={null}
-          timelineToolbar={null}
-          renderClipContent={() => null}
-          handleTimelineElementDelete={vi.fn()}
-          handleTimelineAssetDrop={vi.fn()}
-          handleTimelineFileDrop={vi.fn()}
-          handleTimelineElementMove={vi.fn()}
-          handleTimelineElementsMove={vi.fn()}
-          handleTimelineElementResize={vi.fn()}
-          handleTimelineGroupResize={vi.fn()}
-          handleToggleTrackHidden={vi.fn()}
-          setAudioGroupAttribute={{ setLive: vi.fn(), setQuiet: vi.fn() }}
-          handleBlockedTimelineEdit={vi.fn()}
-          handleTimelineElementSplit={vi.fn()}
-          handleRazorSplit={vi.fn()}
-          handleRazorSplitAll={vi.fn()}
-          onCopyClip={vi.fn(() => false)}
-          onPasteClip={vi.fn(async () => {})}
-          onDuplicateClip={vi.fn(async () => false)}
-          canPasteClip={vi.fn(() => false)}
-          setCompIdToSrc={vi.fn()}
-          setCompositionLoading={vi.fn()}
-          shouldShowMotionPath={false}
-          shouldShowSelectedDomBounds={false}
-        />,
-      );
+      root.render(shell());
     });
 
     expect(hookMocks.useTimelineSelectionPreviewSync).toHaveBeenCalledOnce();
@@ -114,5 +118,19 @@ describe("EditorShell timeline selection sync", () => {
     );
 
     act(() => root.unmount());
+  });
+
+  it("turns the preview read-only from the prop and back off on unmount", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    act(() => root.render(shell(true)));
+    expect(isPreviewReadOnly()).toBe(true);
+    act(() => root.render(shell(false)));
+    expect(isPreviewReadOnly()).toBe(false);
+    act(() => root.render(shell(true)));
+    act(() => root.unmount());
+    expect(isPreviewReadOnly()).toBe(false);
   });
 });
