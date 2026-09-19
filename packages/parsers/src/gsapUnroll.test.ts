@@ -117,4 +117,30 @@ fade("#b", 2);`;
     expect(out).toContain("function fade");
     expect(out).toContain('tl.to("#b"');
   });
+
+  it.each(["$fade", "fade$", "fadé"])(
+    "keeps helper %s that an unexpanded call still reaches",
+    (name) => {
+      const script = `const tl = gsap.timeline();
+function ${name}(sel, at) { tl.to(sel, { opacity: 1, duration: 1 }, at); }
+(function () { ${name}("#z", 5); })();
+${name}("#b", 2);`;
+      expect(unrollComputedTimeline(script)).toContain(`function ${name}`);
+    },
+  );
+
+  it("does not treat a longer name as a reference to a shorter helper", () => {
+    const script = `const tl = gsap.timeline();
+function fade(sel, at) { tl.to(sel, { opacity: 1, duration: 1 }, at); }
+function fadeIn() {}
+fade("#b", 2);
+fadeIn();`;
+    expect(unrollComputedTimeline(script)).not.toContain("function fade(");
+  });
+
+  it("leaves a loop with a computed selector as authored", () => {
+    const script = `const tl = gsap.timeline();
+for (let i = 0; i < 3; i++) { tl.to("#item" + i, { opacity: 1, duration: 1 }, i); }`;
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
 });

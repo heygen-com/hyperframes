@@ -113,6 +113,12 @@ function declaredNames(stmt: Node): string[] {
   return (stmt.declarations ?? []).flatMap((d: Node) => (d.id?.name ? [d.id.name] : []));
 }
 
+/** Whole-identifier match; `\b` cannot anchor on `$` or non-ASCII letters, so the boundary is explicit. */
+function mentionsIdentifier(text: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{ID_Continue}$])${escaped}(?![\\p{ID_Continue}$])`, "u").test(text);
+}
+
 /**
  * Helper declarations that nothing left in the script still references. Liveness is read from the
  * remaining source, not inferred from what the parser expanded, so a call it did not expand keeps its helper.
@@ -131,7 +137,7 @@ function unreferencedHelperDecls(
       const names = declaredNames(decl);
       if (names.length === 0 || !names.every((n) => helperNames.has(n))) continue;
       const others = live.filter((s) => s !== decl).map((s) => script.slice(s.start, s.end));
-      if (names.some((n) => others.some((text) => new RegExp(`\\b${n}\\b`).test(text)))) continue;
+      if (names.some((n) => others.some((text) => mentionsIdentifier(text, n)))) continue;
       dead.push(decl);
       live = live.filter((s) => s !== decl);
       changed = true;
@@ -140,10 +146,14 @@ function unreferencedHelperDecls(
   return dead;
 }
 
-/** A literal tween cannot encode an unknown start or duration, so those statements stay as authored. */
+/** A literal tween cannot encode an unknown start, duration or selector, so those statements stay as authored. */
 function dropStatementsWithUnknownTiming(byStatement: Map<Node, GsapAnimation[]>): void {
   for (const [stmt, anims] of byStatement) {
-    if (anims.some((a) => a.durationUnresolved || a.resolvedStart === undefined)) {
+    if (
+      anims.some(
+        (a) => a.durationUnresolved || a.resolvedStart === undefined || a.hasUnresolvedSelector,
+      )
+    ) {
       byStatement.delete(stmt);
     }
   }
