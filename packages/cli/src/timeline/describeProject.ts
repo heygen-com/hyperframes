@@ -112,7 +112,15 @@ interface DocScope {
   file: string;
   /** Bounds concurrent ffprobe spawns for the whole run. Shared reference, not new per document. */
   withProbeSlot: <T>(fn: () => Promise<T>) => Promise<T>;
+  measure: MeasureMedia;
 }
+
+/** Source length in seconds of a media file. ffprobe in production; tests pass a recorded fake. */
+export type MeasureMedia = (file: string, tag: MediaTag) => Promise<number>;
+
+const measureWithFfprobe: MeasureMedia = async (file, tag) =>
+  (tag === "audio" ? await extractAudioMetadata(file) : await extractMediaMetadata(file))
+    .durationSeconds;
 
 const MEDIA_TAG = /^(video|audio|img)$/;
 const PROBE_CONCURRENCY = 4;
@@ -147,9 +155,7 @@ async function probeSource(scope: DocScope, el: Element, tag: MediaTag): Promise
   if (!file) return { ok: false, reason: "source file not found" };
   return scope.withProbeSlot(async () => {
     try {
-      const metadata =
-        tag === "audio" ? await extractAudioMetadata(file) : await extractMediaMetadata(file);
-      return { ok: true, seconds: metadata.durationSeconds } as const;
+      return { ok: true, seconds: await scope.measure(file, tag) } as const;
     } catch (err) {
       return { ok: false, reason: err instanceof Error ? err.message : String(err) } as const;
     }
@@ -287,6 +293,7 @@ async function readSubComposition(
     origin,
     file: relative(parent.projectDir, authored).split(sep).join("/"),
     withProbeSlot: parent.withProbeSlot,
+    measure: parent.measure,
   };
   const rows = await Promise.all(
     topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 1)),
@@ -307,7 +314,10 @@ function realFileInside(projectDir: string, path: string): string | null {
 }
 
 /** Needs a global DOMParser (`ensureDOMParser`). Reads `index.html` and one level of sub-compositions. */
-export async function describeProject(indexPath: string): Promise<ProjectTimeline> {
+export async function describeProject(
+  indexPath: string,
+  measure: MeasureMedia = measureWithFfprobe,
+): Promise<ProjectTimeline> {
   const doc = new DOMParser().parseFromString(readFileSync(indexPath, "utf-8"), "text/html");
   const root = doc.querySelector("[data-composition-id]") ?? doc.body;
   const dir = dirname(indexPath);
@@ -319,6 +329,7 @@ export async function describeProject(indexPath: string): Promise<ProjectTimelin
     origin: 0,
     file: basename(indexPath),
     withProbeSlot: createProbeGate(PROBE_CONCURRENCY),
+    measure,
   };
   const rows = (
     await Promise.all(topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 0)))

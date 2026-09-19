@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   mkdirSync,
@@ -9,16 +9,20 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { MEDIA_DURATION_FIXTURES } from "@hyperframes/parsers/media-duration-fixtures";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
-import { createProbeGate, describeProject } from "./describeProject.js";
+import { createProbeGate, describeProject, type MeasureMedia } from "./describeProject.js";
 import { formatTimeline } from "./formatTimeline.js";
 
-const REAL_AUDIO = new URL("../../../../skills/media-use/audio/assets/sfx/pop.mp3", import.meta.url)
-  .pathname;
+const REAL_AUDIO = fileURLToPath(
+  new URL("../../../../skills/media-use/audio/assets/sfx/pop.mp3", import.meta.url),
+);
+const hasFfprobe = spawnSync("ffprobe", ["-version"]).status === 0;
+/** Recorded ffprobe answer for pop.mp3 (0.72 s), so the resolver path runs on runners without ffprobe. */
+const POP_SECONDS = async () => 0.72;
 
 const INDEX = `<html><body>
 <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="10">
@@ -38,12 +42,17 @@ const TINY_PNG = Buffer.from(
   "base64",
 );
 
-const rowsOf = async (html: string, withSting = false, setup?: (root: string) => void) => {
+const rowsOf = async (
+  html: string,
+  withSting = false,
+  setup?: (root: string) => void,
+  measure?: MeasureMedia,
+) => {
   const index = project();
   writeFileSync(index, html);
   if (withSting) copyFileSync(REAL_AUDIO, join(dir, "sting.mp3"));
   setup?.(dir);
-  const timeline = await describeProject(index);
+  const timeline = await describeProject(index, measure);
   return { rows: timeline.tracks.flatMap((t) => t.rows), text: formatTimeline(timeline) };
 };
 
@@ -243,24 +252,44 @@ describe("describeProject", () => {
     } = await rowsOf(
       `<div data-composition-id="m"><audio id="s" src="sting.mp3" data-start="0" data-playback-start="0.2" data-playback-rate="2"></audio></div>`,
       true,
+      undefined,
+      POP_SECONDS,
     );
     // (0.72 - 0.2) / 2, hand-computed
     expect(row!.duration).toBeCloseTo(0.26, 1);
   });
 
-  it("probes a media leaf's real duration when none is authored", async () => {
+  it("takes a media leaf's duration from the probe when none is authored", async () => {
+    const probed: string[] = [];
     const {
       rows: [row],
       text,
     } = await rowsOf(
       `<div data-composition-id="m"><audio id="sting" src="sting.mp3" data-start="0"></audio></div>`,
       true,
+      undefined,
+      async (file, tag) => {
+        probed.push(`${tag}:${basename(file)}`);
+        return POP_SECONDS();
+      },
     );
+    expect(probed).toEqual(["audio:sting.mp3"]);
     expect(row).toMatchObject({ durationAuthored: false, durationSource: "media" });
     expect(row!.pendingReason).toBeNull();
     expect(row!.duration).toBeCloseTo(0.72, 1);
     expect(row!.end).toBeCloseTo(0.72, 1);
     expect(text).toContain("duration=media");
+  });
+
+  it.skipIf(!hasFfprobe)("measures a real audio file with ffprobe by default", async () => {
+    const {
+      rows: [row],
+    } = await rowsOf(
+      `<div data-composition-id="m"><audio id="sting" src="sting.mp3" data-start="0"></audio></div>`,
+      true,
+    );
+    expect(row).toMatchObject({ durationSource: "media" });
+    expect(row!.duration).toBeCloseTo(0.72, 1);
   });
 
   it("reports pending with a reason instead of guessing when the source file is missing", async () => {
