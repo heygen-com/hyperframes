@@ -1749,7 +1749,23 @@ function collectAddLabelDefs(
   scope: ScopeBindings,
   sortedCalls: TweenCallInfo[],
 ): AddLabelDef[] {
-  const callSites = sortedCalls.map(callSiteStart);
+  // Clones from the same expansion share __hfSiteStart (see tagTimelineCalls), so a
+  // label and a sibling tween can tie on site; __hfOrder is the tie-break, matching
+  // the source order tagTimelineCalls stamped them in.
+  const callKeys = sortedCalls.map((c) => ({
+    site: callSiteStart(c),
+    order: c.node.__hfOrder as number | undefined,
+  }));
+  const comesAfter = (
+    site: number | undefined,
+    order: number | undefined,
+    labelSite: number,
+    labelOrder: number | undefined,
+  ): boolean => {
+    if (site === undefined) return false;
+    if (site !== labelSite) return site > labelSite;
+    return (order ?? -Infinity) > (labelOrder ?? -Infinity);
+  };
   const defs: AddLabelDef[] = [];
   acornWalk.simple(ast, {
     // fallow-ignore-next-line complexity
@@ -1772,10 +1788,13 @@ function collectAddLabelDefs(
       const posVal = resolveNode(node.arguments?.[1], scope);
       const position =
         typeof posVal === "number" || typeof posVal === "string" ? posVal : undefined;
-      const labelStart: number | undefined = callee.property?.start;
+      // Same coordinate space as callSiteStart: a label cloned into an inlined
+      // helper keeps the declaration's own offset unless tagTimelineCalls stamped it.
+      const labelStart: number | undefined = node.__hfSiteStart ?? callee.property?.start;
+      const labelOrder: number | undefined = node.__hfOrder;
       let order = sortedCalls.length;
       if (labelStart !== undefined) {
-        order = callSites.findIndex((site) => site !== undefined && site > labelStart);
+        order = callKeys.findIndex((k) => comesAfter(k.site, k.order, labelStart, labelOrder));
         if (order === -1) order = sortedCalls.length;
       }
       defs.push({ name, position, order });

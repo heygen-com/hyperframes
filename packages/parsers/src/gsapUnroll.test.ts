@@ -191,6 +191,25 @@ f();`;
       expect(starts(chained)).toEqual({ "#a": 0, "#b": 1, "#c": 3 });
       expect(starts(unrollComputedTimeline(chained))).toEqual(starts(chained));
     });
+
+    it("resolves a tween positioned by a label defined inside a helper body", () => {
+      const labelInHelper = `const tl = gsap.timeline();
+function group(s) { tl.addLabel("mid"); tl.to(s, { opacity: 0, duration: 1 }); }
+tl.to("#pre", { x: 1, duration: 1 });
+group("#a");
+tl.to("#post", { x: 2, duration: 1 }, "mid");`;
+      expect(starts(labelInHelper)).toEqual({ "#pre": 0, "#a": 1, "#post": 1 });
+    });
+
+    it("resolves a helper that only reads a label defined inside a sibling helper", () => {
+      const siblingLabel = `const tl = gsap.timeline();
+function makeLabel(s) { tl.addLabel("mid"); tl.to(s, { opacity: 0, duration: 1 }); }
+function useLabel(s) { tl.to(s, { x: 1, duration: 1 }, "mid"); }
+tl.to("#pre", { y: 1, duration: 1 });
+makeLabel("#a");
+useLabel("#b");`;
+      expect(starts(siblingLabel)).toEqual({ "#pre": 0, "#a": 1, "#b": 1 });
+    });
   });
 
   it("leaves a helper as authored when an inner link of its tween chain has a callback", () => {

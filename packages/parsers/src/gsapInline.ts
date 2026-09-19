@@ -199,6 +199,13 @@ export function isTimelineRooted(call: Node, timelineVar: string): boolean {
   );
 }
 
+/** True for `tl.addLabel(...)`: not a tween, but its position must sort in the same coordinate
+ *  space as tween calls, or a label defined inside an inlined helper resolves at its declaration
+ *  offset instead of its call site. */
+function isAddLabelCall(call: Node, timelineVar: string): boolean {
+  return timelineRootName(call) === timelineVar && call.callee?.property?.name === "addLabel";
+}
+
 function containsTimelineCall(node: Node, timelineVar: string): boolean {
   let found = false;
   walkNodes(node, (n) => {
@@ -476,7 +483,11 @@ function tagTimelineCalls(stmts: Node[], prov: GsapProvenance, ctx: ExpandCtx): 
   for (const stmt of stmts) {
     const calls: Node[] = [];
     walkNodes(stmt, (n) => {
-      if (n.type === "CallExpression" && isTimelineRooted(n, ctx.timelineVar)) calls.push(n);
+      if (
+        n.type === "CallExpression" &&
+        (isTimelineRooted(n, ctx.timelineVar) || isAddLabelCall(n, ctx.timelineVar))
+      )
+        calls.push(n);
     });
     // A chain's outer call is visited first but runs last; stamp in source order.
     calls.sort((a, b) => a.callee.property.start - b.callee.property.start);
