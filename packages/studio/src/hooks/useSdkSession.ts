@@ -7,17 +7,21 @@ import type { PublishSdkSession } from "../utils/sdkCutover";
 import { addExternalFileReloadListener } from "./externalFileReloadBus";
 
 /**
- * Why an optional project-file read produced no content. `stage: "read"` was a
- * single opaque reason covering all of these, which made the largest remaining
- * class of SDK-session failures undiagnosable: 56 users in a 7-day window hit
- * it and, between them, never landed a single successful SDK edit. Knowing
- * which branch fired is the difference between "the file legitimately is not
- * there" and "the request never reached the file".
+ * Why an optional project-file read produced no usable content. `stage: "read"`
+ * was a single opaque reason covering all of these, which made the largest
+ * remaining class of SDK-session failures undiagnosable: 56 users in a 7-day
+ * window hit it and, between them, never landed a single successful SDK edit.
+ * Knowing which branch fired is the difference between "the file legitimately
+ * is not there" and "the request never reached the file".
+ *
+ * Every reason lives in this union so the full surface is readable from one
+ * place — `absent_or_empty` included, even though it is a 2xx.
  */
 type ProjectFileReadFailure =
   | { ok: false; reason: "unsafe_path" }
   | { ok: false; reason: "http_error"; status: number }
-  | { ok: false; reason: "missing_content" };
+  | { ok: false; reason: "missing_content" }
+  | { ok: false; reason: "absent_or_empty" };
 
 type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
 
@@ -44,6 +48,11 @@ async function readProjectFileOptional(
   // `optional=1` answers a missing file with 200 + `content: ""`, so a
   // non-string here means a response shape we did not expect, not absence.
   if (typeof data.content !== "string") return { ok: false, reason: "missing_content" };
+  // An empty body parses into a session with no elements, which declines every
+  // edit wholesale — not a session worth opening. The absent-file shim and a
+  // genuinely 0-byte file are the same 200 on the wire and cannot be told
+  // apart here, hence the name; for a composition it is always the former.
+  if (data.content === "") return { ok: false, reason: "absent_or_empty" };
   return { ok: true, content: data.content };
 }
 
@@ -211,14 +220,6 @@ export function useSdkSession(
             reason: read.reason,
             ...(read.reason === "http_error" ? { status: read.status } : {}),
           });
-          return;
-        }
-        // `optional=1` answers a file that is not on disk with an empty string,
-        // which parses into a session with no elements — one that declines every
-        // edit wholesale. Distinguish it here rather than letting it look like a
-        // healthy session that simply never gets used.
-        if (read.content === "") {
-          trackStudioEvent("sdk_session_unavailable", { stage: "read", reason: "empty_file" });
           return;
         }
         const content = read.content;

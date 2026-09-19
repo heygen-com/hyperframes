@@ -205,7 +205,8 @@ describe("useSdkSession unavailable telemetry", () => {
 
   // `optional=1` answers a file that is not on disk with 200 + an empty string,
   // so this is what "the composition genuinely is not there" looks like on the
-  // wire — previously indistinguishable from a broken request.
+  // wire — previously indistinguishable from a broken request. The shim and a
+  // real 0-byte file are the same response, hence the name.
   it("separates a file that is not on disk", async () => {
     vi.stubGlobal(
       "fetch",
@@ -217,7 +218,7 @@ describe("useSdkSession unavailable telemetry", () => {
 
     expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
       stage: "read",
-      reason: "empty_file",
+      reason: "absent_or_empty",
     });
     await act(async () => root.unmount());
   });
