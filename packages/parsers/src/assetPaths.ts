@@ -5,7 +5,7 @@
  * localizeExternalAssets (CLI publish).
  */
 
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 /**
  * Regex matching CSS `url(...)` references — captures the quote style and the
@@ -41,5 +41,5 @@ export function isPathInside(childPath: string, parentPath: string): boolean {
   const absParent = resolve(parentPath);
   if (absChild === absParent) return true;
   const rel = relative(absParent, absChild);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
