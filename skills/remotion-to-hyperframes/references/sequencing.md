@@ -177,9 +177,10 @@ with `data-start` accumulating (each host mounts its scene file):
 
 Remotion `<Sequence>` shows/hides at hard boundaries by default. HF does
 the same — but if your composition needs a smooth fade between scenes,
-you have to drive opacity explicitly with GSAP at the boundary. Do it on
-the scene hosts from the root timeline (a scene's own timeline only sees its
-own file):
+you have to drive opacity explicitly with GSAP at the boundary. A scene can
+hard-cut itself with `gsap.set` at its local end (the corpus fixtures do). A
+fade between two scenes goes on the scene hosts from the root timeline, since
+a scene's own timeline only sees its own file:
 
 ```js
 const tl = gsap.timeline({ paused: true });
