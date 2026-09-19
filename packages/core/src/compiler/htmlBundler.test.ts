@@ -1132,6 +1132,17 @@ describe("bundleToSingleHtml", () => {
     expect(lutSrc).toBe("assets/luts/identity.cube");
   });
 
+  it("inlineAssets: false also keeps a LUT path external, without inlineColorGradingLuts", async () => {
+    const dir = makeColorGradingProject("assets/luts/identity.cube", {
+      "assets/luts/identity.cube": "LUT_3D_SIZE 2",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { inlineAssets: false });
+    const lutSrc = readBundledColorGradingLutSrc(bundled);
+
+    expect(lutSrc).toBe("assets/luts/identity.cube");
+  });
+
   it("warns when a render bundle cannot inline a referenced color grading LUT", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

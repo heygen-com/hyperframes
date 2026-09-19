@@ -406,8 +406,8 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
 
   const lut = Reflect.get(parsed, "lut");
   if (typeof lut === "string") {
-    // LUTs have their own opt-out (inlineColorGradingLuts); this call only runs
-    // when that check has already passed, so inlining always applies here.
+    // Gated by inlineAssets and inlineColorGradingLuts at the call site above;
+    // this call only runs once both have already passed.
     const inlined = maybeInlineRelativeAssetUrl(lut, projectDir, true);
     if (!inlined) {
       warnColorGradingLutNotInlined(lut);
@@ -787,11 +787,13 @@ export interface BundleOptions {
    */
   inlineColorGradingLuts?: boolean;
   /**
-   * Inline fonts and raster images (img/href/poster/srcset/CSS url()) as data
-   * URLs, up to the per-asset size ceiling. Default: true, for a genuinely
-   * self-contained bundle. Set false when the caller serves the project's own
-   * files alongside the bundle (e.g. a same-origin asset route): assets then
-   * keep their authored relative URL, which the caller resolves.
+   * Inline fonts, raster images (img/href/poster/srcset/CSS url()) and color
+   * grading LUTs as data URLs, up to the per-asset size ceiling. Default:
+   * true, for a genuinely self-contained bundle. Set false when the caller
+   * serves the project's own files alongside the bundle (e.g. a same-origin
+   * asset route): assets then keep their authored relative URL, which the
+   * caller resolves. `inlineColorGradingLuts` narrows LUTs further; it cannot
+   * inline a LUT that this option has already excluded.
    */
   inlineAssets?: boolean;
 }
@@ -1253,7 +1255,7 @@ export async function bundleToSingleHtml(
       rewriteCssUrlsWithInlinedAssets(el.getAttribute("style") || "", projectDir, inlineAssets),
     );
   }
-  if (options?.inlineColorGradingLuts !== false) {
+  if (inlineAssets && options?.inlineColorGradingLuts !== false) {
     for (const el of [...document.querySelectorAll(`[${HF_COLOR_GRADING_ATTR}]`)]) {
       const value = el.getAttribute(HF_COLOR_GRADING_ATTR);
       if (value) {
