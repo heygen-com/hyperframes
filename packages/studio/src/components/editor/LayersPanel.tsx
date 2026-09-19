@@ -1,3 +1,4 @@
+import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
@@ -122,6 +123,7 @@ export const LayersPanel = memo(function LayersPanel() {
 
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
+  const livePreviewIframe = useLivePreviewIframe();
   const collectLayers = useCallback(() => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
@@ -152,7 +154,7 @@ export const LayersPanel = memo(function LayersPanel() {
 
   useEffect(() => {
     collectLayers();
-  }, [collectLayers, refreshKey, zEditVersion]);
+  }, [collectLayers, refreshKey, zEditVersion, livePreviewIframe]);
 
   useEffect(() => {
     const iframe = previewIframeRef.current;
@@ -163,7 +165,7 @@ export const LayersPanel = memo(function LayersPanel() {
     };
     iframe.addEventListener("load", handleLoad);
     return () => iframe.removeEventListener("load", handleLoad);
-  }, [previewIframeRef, collectLayers]);
+  }, [previewIframeRef, livePreviewIframe, collectLayers]);
 
   useEffect(() => {
     if (!compositionLoading) {
