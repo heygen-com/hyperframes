@@ -108,10 +108,10 @@ Creator edit phrases are cross-domain requests. Load every skill named in the ma
 | fade, crossfade, track gain/volume, automation, duck/carve, audio effects, or one effect across several tracks     | `/general-video` + `/hyperframes-core` + `/hyperframes-audio`; core places clips, audio mixes placed tracks — including a submix bus over a group of them.                        |
 | picture and sound edits that combine cuts with camera motion or mixing                                             | `/general-video` + `/hyperframes-core` + `/hyperframes-keyframes` when there is visual motion + `/hyperframes-audio` when sound is faded, mixed, ducked, automated, or processed. |
 | lay out a project so it reads well in Studio: caption track, tracks per element kind, sub-compositions, safe zones | `/hyperframes-studio` + `/hyperframes-core`; studio owns the layout conventions, core owns each edit.                                                                             |
-| source or generate media, or preprocess an unsupported speed ramp/mid-source freeze                                | `/media-use`; sourcing/generation/preprocessing only, never placed-track mixing.                                                                                                  |
+| source or generate media, or preprocess an unsupported mid-source freeze                                           | `/media-use`; sourcing/generation/preprocessing only, never placed-track mixing.                                                                                                  |
 
 Constant `data-playback-rate` is render-safe for picture and pitch-preserved
-sound. It does not make source speed ramps keyframeable; preprocess ramps.
+sound. Speed ramps are a `rate` lane in `data-automation`.
 For copyable edit contracts, load `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 Broad feedback about how photographic media looks or behaves also routes to
