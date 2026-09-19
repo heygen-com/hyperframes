@@ -4,7 +4,6 @@ import {
   SPEED_PRESETS,
   parseRateLane,
   rateAt,
-  readPreservePitch,
   resolveRateSpec,
   shiftRateLane,
   sourceTimeAt,
@@ -114,18 +113,12 @@ describe("lane parsing", () => {
   });
 });
 
-describe("presets and pitch", () => {
+describe("presets", () => {
   it("stretches every preset over the clip and keeps it in range", () => {
     for (const { id } of SPEED_PRESETS) {
       const lane = speedPresetLane(id, 8);
       expect(lane.points[lane.points.length - 1]!.t).toBe(8);
       for (const p of lane.points) expect(p.v).toBeGreaterThanOrEqual(0.1);
     }
-  });
-
-  it("preserves pitch unless the clip opts out", () => {
-    const el = (v: string | null) => ({ getAttribute: () => v });
-    expect(readPreservePitch(el(null))).toBe(true);
-    expect(readPreservePitch(el("false"))).toBe(false);
   });
 });

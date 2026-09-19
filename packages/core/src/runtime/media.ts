@@ -2,13 +2,7 @@ import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
-import {
-  rateAt,
-  readPreservePitch,
-  sourceTimeAt,
-  timeAtSourceTime,
-  type RateSpec,
-} from "../speedRamp.js";
+import { rateAt, sourceTimeAt, timeAtSourceTime, type RateSpec } from "../speedRamp.js";
 import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
@@ -386,7 +380,6 @@ export function syncRuntimeMedia(params: {
       try {
         // Per-element rate × global transport rate
         el.playbackRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
-        el.preservesPitch = readPreservePitch(el);
       } catch (err) {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);

@@ -7,8 +7,6 @@ import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE } from "./playbackRateBounds.js";
 /** A constant multiplier, or a lane whose `v` is the multiplier over clip-local time. */
 export type RateSpec = number | HfAutomationLane;
 
-const PRESERVE_PITCH_ATTR = "data-preserve-pitch";
-
 const SHIFT_RESAMPLES = 16;
 
 /**
@@ -132,11 +130,6 @@ export function resolveRateSpec(
   constant: number,
 ): RateSpec {
   return parseRateLane(automationAttr) ?? constant;
-}
-
-/** Pitch is preserved unless the clip opts out with `data-preserve-pitch="false"`. */
-export function readPreservePitch(el: Pick<Element, "getAttribute">): boolean {
-  return el.getAttribute(PRESERVE_PITCH_ATTR) !== "false";
 }
 
 interface RatePreset {
