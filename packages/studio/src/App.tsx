@@ -324,10 +324,8 @@ export function StudioApp() {
     effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
-  const { lintModal, linting, handleLint, closeLintModal, findingsByFile } = useLintModal(
-    projectId,
-    refreshKey,
-  );
+  const { lintModal, linting, handleLint, closeLintModal, findingsByFile, hasLintError } =
+    useLintModal(projectId, refreshKey);
   const frameCapture = useFrameCapture({
     projectId,
     activeCompPath,
@@ -479,6 +477,7 @@ export function StudioApp() {
                       linting={linting}
                       lintFindingCount={lintModal?.length ?? findingsByFile.size}
                       lintFindingsByFile={findingsByFile}
+                      lintHasError={hasLintError}
                       onAddAssetToTimeline={handleAddAssetAtPlayhead}
                       onAddCompositionToTimeline={handleAddCompositionAtPlayhead}
                     />

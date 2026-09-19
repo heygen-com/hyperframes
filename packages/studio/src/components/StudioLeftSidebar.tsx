@@ -17,6 +17,7 @@ export interface StudioLeftSidebarProps {
   onLint: () => void;
   linting: boolean;
   lintFindingCount?: number;
+  lintHasError?: boolean;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
   onAddAssetToTimeline?: (path: string) => void;
   onAddCompositionToTimeline?: (path: string) => void;
@@ -31,6 +32,7 @@ export function StudioLeftSidebar({
   onLint,
   linting,
   lintFindingCount,
+  lintHasError,
   lintFindingsByFile,
   onAddAssetToTimeline,
   onAddCompositionToTimeline,
@@ -160,6 +162,7 @@ export function StudioLeftSidebar({
         onLint={onLint}
         linting={linting}
         lintFindingCount={lintFindingCount}
+        lintHasError={lintHasError}
         lintFindingsByFile={lintFindingsByFile}
         onToggleCollapse={toggleLeftSidebar}
         onAddBlock={onAddBlock}
