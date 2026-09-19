@@ -42,10 +42,12 @@ describe("withoutWebgpuAbsence", () => {
     "console.error: Failed to request adapter",
   ];
   const unrelated = "pageerror: ReferenceError: liquid is not defined";
+  const otherAdapter = "console.error: Failed to request storage adapter";
 
   it("passes a declared item's WebGPU-absent errors and keeps everything else", () => {
-    assert.deepEqual(withoutWebgpuAbsence(true, [...absent, unrelated, network]), [
+    assert.deepEqual(withoutWebgpuAbsence(true, [...absent, unrelated, otherAdapter, network]), [
       unrelated,
+      otherAdapter,
       network,
     ]);
   });
