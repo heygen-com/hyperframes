@@ -1108,6 +1108,28 @@ describe("WebAudioTransport", () => {
         expect(transport.readLevels()).toEqual({ master: { l: 0, r: 0 }, groups: {} });
       });
 
+      it("attaches the master tap once init() lands, even when startMetering ran while the context was still warming up", async () => {
+        const mock = createGroupMockAudioContext();
+        class MockAudioContext {
+          constructor() {
+            return mock.ctx as unknown as MockAudioContext;
+          }
+        }
+        vi.stubGlobal("AudioContext", MockAudioContext);
+        const transport = new WebAudioTransport();
+
+        transport.startMetering();
+        expect(mock.ctx.createAnalyser).not.toHaveBeenCalled();
+        expect(transport.readLevels()).toEqual({ master: { l: 0, r: 0 }, groups: {} });
+
+        const ok = await transport.init();
+
+        expect(ok).toBe(true);
+        expect(mock.ctx.createAnalyser).toHaveBeenCalled();
+        expect(transport.readLevels()).toEqual({ master: { l: 0, r: 0 }, groups: {} });
+        vi.unstubAllGlobals();
+      });
+
       it("taps master and each group as side branches, once however often it starts", async () => {
         addGroup("vo");
         const { transport, mock, gen } = setupGroupTransport();
