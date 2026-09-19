@@ -165,6 +165,14 @@ export const ALLOWED_DELETIONS = new Map([
     "docs/public/catalog/components/texture-mask-text.json",
     "the item's directory exceeds the host budget and now falls back to its recorded video; the stale payload had no <base href> and dead relative asset references, so removing it is the fix, not the regression",
   ],
+  [
+    "packages/studio/src/player/hooks/useExpandedTimelineElements.ts",
+    "the timeline shows top-level rows only, so the child-row expansion hook is replaced by useTimelineRowElements",
+  ],
+  [
+    "packages/studio/src/player/hooks/useExpandedTimelineElements.test.ts",
+    "tests for the removed child-row expansion hook",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {
