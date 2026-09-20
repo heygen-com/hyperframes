@@ -26,7 +26,6 @@ import { setCommandExitCode } from "../utils/commandResult.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { parseSetAssignments, type SetAssignment } from "../timeline/a2Mutations.js";
-import { runApply, runIds, runUndo } from "../timeline/a2Commands.js";
 
 export const examples: Example[] = [
   ["Show every track and clip of the project in the current directory", "hyperframes timeline"],
@@ -707,7 +706,7 @@ export default defineCommand({
         meta: { name: "ids", description: "Stamp stable ids on timeline clips" },
         args: { dir: { type: "string" }, json: { type: "boolean", default: false } },
         async run({ args }) {
-          await runIds(args);
+          await (await import("../timeline/a2Commands.js")).runIds(args);
         },
       }),
     apply: () =>
@@ -720,7 +719,7 @@ export default defineCommand({
           plan: { type: "boolean", default: false },
         },
         async run({ args }) {
-          await runApply(args);
+          await (await import("../timeline/a2Commands.js")).runApply(args);
         },
       }),
     undo: () =>
@@ -732,7 +731,7 @@ export default defineCommand({
           json: { type: "boolean", default: false },
         },
         async run({ args }) {
-          await runUndo(args);
+          await (await import("../timeline/a2Commands.js")).runUndo(args);
         },
       }),
   },
