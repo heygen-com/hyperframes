@@ -488,6 +488,7 @@ export function useTimelineEditing({
       isRecordingRef,
       forceReloadSdkSession,
       observeProjectFileVersion,
+      checkEditable,
     });
 
   const handleBlockedTimelineEdit = useBlockedTimelineEditToast(showToast);

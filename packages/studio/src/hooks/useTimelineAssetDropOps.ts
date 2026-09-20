@@ -38,6 +38,20 @@ function fileDropPlacement(
   return index === 0 ? { ...dropped, ...next } : { ...next, track: landedTrack ?? next.track };
 }
 
+function timelineDropTarget(
+  sourceFile: string,
+  placement: Pick<TimelineElement, "start" | "track">,
+): TimelineElement {
+  return {
+    id: "timeline-drop",
+    tag: "div",
+    start: placement.start,
+    duration: 0,
+    track: placement.track,
+    sourceFile,
+  };
+}
+
 interface UseTimelineAssetDropOpsOptions {
   projectIdRef: MutableRefObject<string | null>;
   activeCompPath: string | null;
@@ -50,6 +64,7 @@ interface UseTimelineAssetDropOpsOptions {
   isRecordingRef?: RefObject<boolean>;
   forceReloadSdkSession?: () => void;
   observeProjectFileVersion?: (path: string, version: string | null) => void;
+  checkEditable?: (targets: readonly TimelineElement[]) => boolean;
 }
 
 export function useTimelineAssetDropOps({
@@ -64,6 +79,7 @@ export function useTimelineAssetDropOps({
   isRecordingRef,
   forceReloadSdkSession,
   observeProjectFileVersion,
+  checkEditable,
 }: UseTimelineAssetDropOpsOptions) {
   // fallow-ignore-next-line complexity
   const dropAssetAt = useCallback(
@@ -77,6 +93,10 @@ export function useTimelineAssetDropOps({
         showToast("Cannot edit timeline while recording", "error");
         return undefined;
       }
+      const targetPath = activeCompPath || "index.html";
+      if (checkEditable && !checkEditable([timelineDropTarget(targetPath, placement)])) {
+        return undefined;
+      }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
 
@@ -86,7 +106,6 @@ export function useTimelineAssetDropOps({
         return undefined;
       }
 
-      const targetPath = activeCompPath || "index.html";
       try {
         const originalContent = await readFileContent(pid, targetPath);
 
@@ -172,6 +191,7 @@ export function useTimelineAssetDropOps({
       reloadPreview,
       isRecordingRef,
       forceReloadSdkSession,
+      checkEditable,
     ],
   );
 
@@ -188,6 +208,11 @@ export function useTimelineAssetDropOps({
     async (files: File[], placement?: TimelineDropPlacement) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
+      const targetPath = activeCompPath || "index.html";
+      const initialPlacement = placement ?? { start: 0, track: 0 };
+      if (checkEditable && !checkEditable([timelineDropTarget(targetPath, initialPlacement)])) {
         return;
       }
       const pid = projectIdRef.current;
@@ -215,7 +240,15 @@ export function useTimelineAssetDropOps({
         if (index === 0) landedTrack = track;
       }
     },
-    [dropAssetAt, projectIdRef, uploadProjectFiles, isRecordingRef, showToast],
+    [
+      activeCompPath,
+      checkEditable,
+      dropAssetAt,
+      projectIdRef,
+      uploadProjectFiles,
+      isRecordingRef,
+      showToast,
+    ],
   );
 
   const handleTimelineCompositionDrop = useCallback(
@@ -224,9 +257,12 @@ export function useTimelineAssetDropOps({
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
+      const targetPath = activeCompPath || "index.html";
+      if (checkEditable && !checkEditable([timelineDropTarget(targetPath, placement)])) {
+        return;
+      }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
-      const targetPath = activeCompPath || "index.html";
       try {
         await commitTimelineCompositionInsertion({
           projectId: pid,
@@ -251,6 +287,7 @@ export function useTimelineAssetDropOps({
     },
     [
       activeCompPath,
+      checkEditable,
       forceReloadSdkSession,
       isRecordingRef,
       observeProjectFileVersion,
