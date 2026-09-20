@@ -62,7 +62,7 @@ import {
 } from "./captureTimeout.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
-import { createCaptureWatchdog } from "./captureWatchdog.js";
+import { createCaptureWatchdog, runWithWatchdog } from "./captureWatchdog.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
@@ -75,11 +75,12 @@ export async function captureWebsite(
   onProgress?: (stage: string, detail?: string) => void,
 ): Promise<CaptureResult> {
   const watchdog = createCaptureWatchdog(opts.captureDeadlineMs);
+  const attempt = captureWebsiteAttempt(opts, onProgress, false, watchdog);
   try {
-    return await runWithWatchdog(
-      captureWebsiteAttempt(opts, onProgress, false, watchdog),
-      watchdog.promise,
-    );
+    const first = await runWithWatchdog(attempt, watchdog.promise);
+    if (first.kind === "deadline") return partialCaptureResult(opts);
+    if (first.kind === "error") throw first.error;
+    return first.result;
   } catch (err) {
     if (!(err instanceof NavigationDeadlineError) || watchdog.expired()) throw err;
     onProgress?.("warn", "Navigation timed out; retrying once with WebGL disabled");
@@ -90,10 +91,11 @@ export async function captureWebsite(
       remainingMs: null,
       reason: "webgl-disabled-retry",
     });
-    return await runWithWatchdog(
-      captureWebsiteAttempt(opts, onProgress, true, watchdog),
-      watchdog.promise,
-    );
+    const retry = captureWebsiteAttempt(opts, onProgress, true, watchdog);
+    const second = await runWithWatchdog(retry, watchdog.promise);
+    if (second.kind === "deadline") return partialCaptureResult(opts);
+    if (second.kind === "error") throw second.error;
+    return second.result;
   } finally {
     watchdog.dispose();
   }
@@ -106,8 +108,56 @@ class NavigationDeadlineError extends Error {
   }
 }
 
-async function runWithWatchdog<T>(work: Promise<T>, deadline: Promise<never>): Promise<T> {
-  return await Promise.race([work, deadline]);
+function partialCaptureResult(opts: CaptureOptions): CaptureResult {
+  const hostname = new URL(opts.url).hostname.replace(/^www\./, "");
+  const lastPhase = {
+    schema: "hyperframes.capture.phase.v1" as const,
+    phase: "complete" as const,
+    status: "degraded" as const,
+    remainingMs: null,
+    reason: "deadline" as const,
+  };
+  opts.onPhase?.(lastPhase);
+  mkdirSync(opts.outputDir, { recursive: true });
+  const metaPath = join(opts.outputDir, "meta.json");
+  if (!existsSync(metaPath)) {
+    writeFileSync(
+      metaPath,
+      JSON.stringify({ id: hostname + "-video", name: hostname, partial: true }, null, 2),
+    );
+  }
+  return {
+    ok: true,
+    projectDir: opts.outputDir,
+    url: opts.url,
+    httpStatus: null,
+    title: "",
+    extracted: {
+      headHtml: "",
+      bodyHtml: "",
+      cssomRules: "",
+      htmlAttrs: "",
+      viewportWidth: opts.viewportWidth ?? 1920,
+      viewportHeight: opts.viewportHeight ?? 1080,
+      fullPageHeight: 0,
+    },
+    screenshots: [],
+    tokens: {
+      title: "",
+      description: "",
+      cssVariables: {},
+      fonts: [],
+      colors: [],
+      headings: [],
+      ctas: [],
+      svgs: [],
+      sections: [],
+    },
+    assets: [],
+    dropped: noDrops(),
+    warnings: ["Capture deadline reached; returning the partial capture bundle."],
+    lastPhase,
+  };
 }
 
 async function captureWebsiteAttempt(

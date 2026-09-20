@@ -33,7 +33,8 @@ export interface CapturePhaseProgress {
     | "provider-error"
     | "internal-error"
     | "blocked"
-    | "webgl-disabled-retry";
+    | "webgl-disabled-retry"
+    | "deadline";
 }
 
 export interface CaptureOptions {
