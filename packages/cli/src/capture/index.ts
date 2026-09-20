@@ -57,10 +57,13 @@ import { navigateForCapture } from "./navigateForCapture.js";
 import {
   captureProtocolTimeoutMs,
   isDegradableEvaluateTimeoutError,
+  isNavigationTimeoutError,
   withRemainingBudget,
 } from "./captureTimeout.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
+import { createCaptureWatchdog } from "./captureWatchdog.js";
+import { captureBrowserArgs } from "./browserLaunchArgs.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
 
@@ -70,6 +73,48 @@ const DEFAULT_POST_NAVIGATION_BUDGET_MS = 120_000;
 export async function captureWebsite(
   opts: CaptureOptions,
   onProgress?: (stage: string, detail?: string) => void,
+): Promise<CaptureResult> {
+  const watchdog = createCaptureWatchdog(opts.captureDeadlineMs);
+  try {
+    return await runWithWatchdog(
+      captureWebsiteAttempt(opts, onProgress, false, watchdog),
+      watchdog.promise,
+    );
+  } catch (err) {
+    if (!(err instanceof NavigationDeadlineError) || watchdog.expired()) throw err;
+    onProgress?.("warn", "Navigation timed out; retrying once with WebGL disabled");
+    opts.onPhase?.({
+      schema: "hyperframes.capture.phase.v1",
+      phase: "navigation",
+      status: "degraded",
+      remainingMs: null,
+      reason: "webgl-disabled-retry",
+    });
+    return await runWithWatchdog(
+      captureWebsiteAttempt(opts, onProgress, true, watchdog),
+      watchdog.promise,
+    );
+  } finally {
+    watchdog.dispose();
+  }
+}
+
+class NavigationDeadlineError extends Error {
+  constructor(readonly cause: unknown) {
+    super("capture navigation timed out");
+    this.name = "NavigationDeadlineError";
+  }
+}
+
+async function runWithWatchdog<T>(work: Promise<T>, deadline: Promise<never>): Promise<T> {
+  return await Promise.race([work, deadline]);
+}
+
+async function captureWebsiteAttempt(
+  opts: CaptureOptions,
+  onProgress?: (stage: string, detail?: string) => void,
+  disableWebgl = false,
+  watchdog = createCaptureWatchdog(undefined),
 ): Promise<CaptureResult> {
   const {
     url,
@@ -142,19 +187,9 @@ export async function captureWebsite(
     headless: true,
     executablePath: browser.executablePath,
     protocolTimeout: captureProtocolTimeoutMs(timeout, budgetMs),
-    args: [
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-      "--enable-webgl",
-      "--ignore-gpu-blocklist",
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
-      "--disable-blink-features=AutomationControlled",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      `--window-size=${viewportWidth},${viewportHeight}`,
-    ],
+    args: captureBrowserArgs(disableWebgl, viewportWidth, viewportHeight),
   });
+  watchdog.registerBrowser(chromeBrowser);
 
   let animationCatalog: CaptureResult["animationCatalog"];
 
@@ -225,7 +260,13 @@ export async function captureWebsite(
       }
     });
 
-    const navigation = await navigateForCapture(page1, url, timeout);
+    let navigation;
+    try {
+      navigation = await navigateForCapture(page1, url, timeout);
+    } catch (err) {
+      if (isNavigationTimeoutError(err)) throw new NavigationDeadlineError(err);
+      throw err;
+    }
     const navigationResponse = navigation.response;
     if (navigation.fellBackFromNetworkIdle) {
       warnings.push(
@@ -917,6 +958,7 @@ export async function captureWebsite(
       lastPhase,
     };
   } finally {
+    watchdog.unregisterBrowser(chromeBrowser);
     await chromeBrowser.close();
   }
 }

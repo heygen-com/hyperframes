@@ -32,7 +32,8 @@ export interface CapturePhaseProgress {
     | "request-timeout"
     | "provider-error"
     | "internal-error"
-    | "blocked";
+    | "blocked"
+    | "webgl-disabled-retry";
 }
 
 export interface CaptureOptions {
@@ -56,6 +57,8 @@ export interface CaptureOptions {
   skipVision?: boolean;
   /** Cooperative post-navigation budget in ms (default: 120000). */
   postNavigationBudgetMs?: number;
+  /** Optional hard wall-clock deadline for the complete capture run. */
+  captureDeadlineMs?: number;
   /** Stable, non-sensitive progress records for watchdog diagnostics. */
   onPhase?: (event: CapturePhaseProgress) => void;
   /** Output JSON for programmatic use */
