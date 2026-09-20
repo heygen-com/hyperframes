@@ -319,7 +319,11 @@ describe("hotkeys with the preview read-only", () => {
   });
 
   it("does not split on s", () => {
-    usePlayerStore.setState({ currentTime: 3 });
+    usePlayerStore.setState({
+      currentTime: 3,
+      elements: [{ ...bgmElement, hfId: "hf-bgm" }],
+      selectedElementId: "bgm",
+    });
     const cb = callbacks({ readOnlyPreview: true });
     dispatchPlainKey(press("s"), "s", cb);
     expect(cb.handleTimelineElementSplit).not.toHaveBeenCalled();

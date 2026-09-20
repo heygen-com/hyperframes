@@ -170,6 +170,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // Reserve bare `s` for Split even when the current selection cannot split,
     // so secondary listeners do not reinterpret the same key as Snap toggle.
     event.preventDefault();
+    if (cb.readOnlyPreview) return;
     const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
     if (selectedElementId) {
       const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);

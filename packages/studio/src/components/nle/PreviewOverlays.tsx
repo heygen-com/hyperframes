@@ -270,7 +270,9 @@ export function PreviewOverlays({
         iframeRef={previewIframeRef}
         activeCompositionPath={activeCompPath}
         hoverSelection={
-          !previewCaptionEditMode && !compositionLoading && !isPlaying ? domEditHoverSelection : null
+          !previewCaptionEditMode && !compositionLoading && !isPlaying
+            ? domEditHoverSelection
+            : null
         }
         selection={shouldShowSelectedDomBounds ? domEditSelection : null}
         groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
