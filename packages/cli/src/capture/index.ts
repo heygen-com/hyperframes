@@ -73,6 +73,7 @@ import { createCaptureWatchdog, runWithWatchdog } from "./captureWatchdog.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
 import { createPartialCaptureState, writePartialCaptureBundle } from "./partialCapture.js";
 import type { PartialCaptureState } from "./partialCapture.js";
+import { filterExtractedScripts } from "./filterExtractedScripts.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
 
@@ -213,16 +214,17 @@ async function captureWebsiteAttempt(
   watchdog.registerBrowser(chromeBrowser);
 
   let animationCatalog: CaptureResult["animationCatalog"];
-  let tokens: DesignTokens;
-  let extracted: ExtractedHtml;
+  let tokens: DesignTokens = state.tokens;
+  let extracted: ExtractedHtml = state.extracted;
   let screenshots: string[] = [];
   let catalogedAssets: import("./assetCataloger.js").CatalogedAsset[] = [];
   let capturedShaders: Array<{ type: string; source: string }> | undefined;
   let visibleTextContent = "";
   let faviconLinks: IconCandidate[] = [];
-  let detectedLibraries: Awaited<ReturnType<typeof detectLibraries>>;
+  let detectedLibraries: Awaited<ReturnType<typeof detectLibraries>> = [];
   let assets: CaptureResult["assets"] = [];
   let dropped = noDrops();
+  let fontDrops = noDrops();
   let httpStatus: number | null = null;
   let pageContentCheck = {
     textLength: 0,
@@ -603,38 +605,9 @@ async function captureWebsiteAttempt(
           .replace(/\s*data-reactroot="[^"]*"/g, "")
           .replace(/\s*data-reactroot/g, "");
 
-        // Remove Next.js bootstrap scripts individually (match each script tag separately)
-        extracted.bodyHtml = extracted.bodyHtml.replace(
-          /<script\b[^>]*>([\s\S]*?)<\/script>/gi,
-          (match: string, content: string) => {
-            // Only remove if this specific script contains Next.js bootstrap code
-            if (
-              content.includes("__next_f") ||
-              content.includes("self.__next_f") ||
-              content.includes("__NEXT_LOADED_PAGES__") ||
-              content.includes("_N_E") ||
-              content.includes("__NEXT_P")
-            ) {
-              return "";
-            }
-            return match;
-          },
-        );
-
-        // Strip framework script tags from head (keep styles + visual library scripts)
-        const FRAMEWORK_SRC_PATTERNS = [
-          /_next\/static\/chunks\/(main|framework|webpack|pages\/)/,
-          /_next\/static\/chunks\/app\//,
-          /_buildManifest\.js/,
-          /_ssgManifest\.js/,
-        ];
-        extracted.headHtml = extracted.headHtml.replace(
-          /<script[^>]*src="([^"]*)"[^>]*><\/script>/gi,
-          (match: string, src: string) => {
-            if (FRAMEWORK_SRC_PATTERNS.some((p) => p.test(src))) return "";
-            return match;
-          },
-        );
+        const filteredScripts = filterExtractedScripts(extracted.bodyHtml, extracted.headHtml);
+        extracted.bodyHtml = filteredScripts.bodyHtml;
+        extracted.headHtml = filteredScripts.headHtml;
 
         // Generate video manifest — screenshot each <video> element + extract surrounding context
         // so Claude Code can SEE what each video shows and WHERE it was used on the page.
@@ -690,6 +663,7 @@ async function captureWebsiteAttempt(
           remainingMs,
           byteBudget: downloadByteBudget,
         });
+        fontDrops = fontPass.drops;
         extracted.headHtml = fontPass.css;
         phase(
           "fonts",
@@ -800,7 +774,7 @@ async function captureWebsiteAttempt(
           // One capture-wide tally, summed from the two passes that own the drops. The warning is
           // DERIVED from it rather than written alongside it, so the prose and the number cannot
           // disagree the way two separately-authored budget strings could.
-          dropped = mergeDrops(fontPass.drops, assetDrops);
+          dropped = mergeDrops(fontDrops, assetDrops);
           state.dropped = dropped;
           const droppedTotal = totalDrops(dropped);
           if (droppedTotal > 0) {
