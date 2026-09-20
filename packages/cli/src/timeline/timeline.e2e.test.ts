@@ -102,9 +102,13 @@ describe("timeline edit command", () => {
   it("snaps a known project fps to one frame", () => {
     const dir = project();
     try {
+      const indexPath = join(dir, "index.html");
       writeFileSync(
-        join(dir, "index.html"),
-        `<div data-composition-id="main" data-duration="12" data-fps="10"><div id="clip" data-hf-id="clip" data-start="1" data-duration="2" data-track-index="0"></div></div>`,
+        indexPath,
+        readFileSync(indexPath, "utf8").replace(
+          'data-composition-id="main"',
+          'data-composition-id="main" data-fps="10"',
+        ),
       );
       const result = run(dir, "move", "#clip", "1.03", "--snap");
       expect(result.status, result.stderr).toBe(0);
