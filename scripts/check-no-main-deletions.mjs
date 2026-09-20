@@ -41,6 +41,14 @@ const STORYBOARD_VIEW_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio/src/player/hooks/useTimelineRowElements.ts",
+    "D-834 removes the duplicate row-source hook; manifest elements are now the single timeline row owner",
+  ],
+  [
+    "packages/studio/src/player/hooks/useTimelineRowElements.test.ts",
+    "D-834 removes tests for the deleted duplicate row-source hook",
+  ],
+  [
     "packages/studio/src/components/StudioGlobalDragOverlay.tsx",
     "the full-screen drop-to-add box is replaced by a landing preview on the timeline; no remaining references",
   ],
