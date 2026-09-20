@@ -75,7 +75,6 @@ import { captureBrowserArgs } from "./browserLaunchArgs.js";
 import { createPartialCaptureState } from "./partialCapture.js";
 import { filterExtractedScripts } from "./filterExtractedScripts.js";
 
-
 /* Extracted capture phase. The phase receives one immutable input object and returns its changed values. */
 import type { Page, Browser } from "puppeteer-core";
 
@@ -86,7 +85,44 @@ export interface PhaseContext {
 }
 
 export async function runPostExtraction(context: PhaseContext): Promise<Record<string, unknown>> {
-  let { page1, chromeBrowser, cdp, cdpAnims, state, url, outputDir, timeout, settleTime, warnings, progress, budgetMs, remainingMs, pageContentCheck, contentCheckTimedOut, postNavigationDeadline, httpStatus, phase, discoveredLotties, lottieDiscovery, discoveredVideoUrls, animationCatalog, capturedShaders, catalogedAssets, detectedLibraries, visibleTextContent, faviconLinks, tokens, extracted, screenshots, skipAssets, skipVision, downloadByteBudget, assets, dropped, fontDrops } = context as any;
+  let {
+    page1,
+    chromeBrowser,
+    cdp,
+    cdpAnims,
+    state,
+    url,
+    outputDir,
+    timeout,
+    settleTime,
+    warnings,
+    progress,
+    budgetMs,
+    remainingMs,
+    pageContentCheck,
+    contentCheckTimedOut,
+    postNavigationDeadline,
+    httpStatus,
+    phase,
+    discoveredLotties,
+    lottieDiscovery,
+    discoveredVideoUrls,
+    animationCatalog,
+    capturedShaders,
+    catalogedAssets,
+    detectedLibraries,
+    visibleTextContent,
+    faviconLinks,
+    tokens,
+    extracted,
+    screenshots,
+    skipAssets,
+    skipVision,
+    downloadByteBudget,
+    assets,
+    dropped,
+    fontDrops,
+  } = context as any;
   const runFontExtraction = async (): Promise<void> => {
     // Download fonts and preserve per-font budget exhaustion in the capture tally.
     phase("fonts", "started");
@@ -169,16 +205,10 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
         // skips an asset is the only thing that can say how many it skipped.
         phase("assets", "started");
         progress("assets", "Downloading assets...");
-        const assetPass = await downloadAssets(
-          tokens,
-          outputDir,
-          catalogedAssets,
-          faviconLinks,
-          {
-            remainingMs,
-            byteBudget: downloadByteBudget,
-          },
-        );
+        const assetPass = await downloadAssets(tokens, outputDir, catalogedAssets, faviconLinks, {
+          remainingMs,
+          byteBudget: downloadByteBudget,
+        });
         assets = assetPass.assets;
         assetDrops = assetPass.drops;
         state.assets = assets;
@@ -250,7 +280,9 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
       if (assets.length && Array.isArray(tokens.sections)) {
         const tokensForDisk2 = {
           ...tokens,
-          svgs: tokens.svgs.map(({ outerHTML: _, ...rest }: { outerHTML?: string; [key: string]: unknown }) => rest),
+          svgs: tokens.svgs.map(
+            ({ outerHTML: _, ...rest }: { outerHTML?: string; [key: string]: unknown }) => rest,
+          ),
         };
         writeFileSync(
           join(outputDir, "extracted", "tokens.json"),
@@ -273,11 +305,7 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
   }
   // Save visible text content for AI agent to use
   if (visibleTextContent) {
-    writeFileSync(
-      join(outputDir, "extracted", "visible-text.txt"),
-      visibleTextContent,
-      "utf-8",
-    );
+    writeFileSync(join(outputDir, "extracted", "visible-text.txt"), visibleTextContent, "utf-8");
   }
 
   // detected-libraries and assets-catalog removed — 0/8 agents read them in v6 testing
@@ -319,12 +347,7 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
   const runAssetDescriptions = (): void => {
     progress("design", "Generating asset descriptions...");
     try {
-      const lines = generateAssetDescriptions(
-        outputDir,
-        tokens,
-        catalogedAssets,
-        geminiCaptions,
-      );
+      const lines = generateAssetDescriptions(outputDir, tokens, catalogedAssets, geminiCaptions);
 
       const writeAssetDescriptions = (): void => {
         if (lines.length > 0) {

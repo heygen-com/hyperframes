@@ -36,9 +36,7 @@ import {
   startCdpAnimationCapture,
   collectAnimationCatalog,
 } from "./animationCataloger.js";
-import {
-  captureVideoManifest,
-} from "./mediaCapture.js";
+import { captureVideoManifest } from "./mediaCapture.js";
 import type { DiscoveredLottie } from "./mediaCapture.js";
 import {
   detectLibraries,
@@ -252,14 +250,140 @@ export async function captureWebsiteAttempt(
       }
     });
 
-    ({ pageContentCheck, contentCheckTimedOut, httpStatus, postNavigationDeadline } = (await runNavigationChecks({ page1, chromeBrowser, cdp, cdpAnims, state, url, timeout, isNavigationTimeoutError, NavigationDeadlineError, warnings, progress, budgetMs, settleTime, withRemainingBudget, remainingMs, pageContentCheck, isDegradableEvaluateTimeoutError, contentCheckTimedOut, outputDir, httpStatus, detectBlockedPage, phase, writeResponseRecord, postNavigationDeadline })) as { pageContentCheck: typeof pageContentCheck; contentCheckTimedOut: boolean; httpStatus: number | null; postNavigationDeadline?: number; });
+    ({ pageContentCheck, contentCheckTimedOut, httpStatus, postNavigationDeadline } =
+      (await runNavigationChecks({
+        page1,
+        chromeBrowser,
+        cdp,
+        cdpAnims,
+        state,
+        url,
+        timeout,
+        isNavigationTimeoutError,
+        NavigationDeadlineError,
+        warnings,
+        progress,
+        budgetMs,
+        settleTime,
+        withRemainingBudget,
+        remainingMs,
+        pageContentCheck,
+        isDegradableEvaluateTimeoutError,
+        contentCheckTimedOut,
+        outputDir,
+        httpStatus,
+        detectBlockedPage,
+        phase,
+        writeResponseRecord,
+        postNavigationDeadline,
+      })) as {
+        pageContentCheck: typeof pageContentCheck;
+        contentCheckTimedOut: boolean;
+        httpStatus: number | null;
+        postNavigationDeadline?: number;
+      });
 
-    ({ animationCatalog, capturedShaders, catalogedAssets, detectedLibraries, visibleTextContent, faviconLinks, tokens, extracted, screenshots } = (await runCoreExtraction({ page1, chromeBrowser, cdp, cdpAnims, state, url, warnings, progress, budgetMs, remainingMs, pageContentCheck, contentCheckTimedOut, outputDir, phase, lazyScrollForCapture, setupAnimationCapture, startCdpAnimationCapture, collectAnimationCatalog, discoveredLotties, lottieDiscovery, discoveredVideoUrls, animationCatalog, capturedShaders, catalogedAssets, detectedLibraries, visibleTextContent, faviconLinks, tokens, extracted, screenshots, skipAssets, extractTokens, extractDesignStyles, extractHtml, detectLibraries, extractVisibleText, filterExtractedScripts, writeFileSync, mkdirSync, join, existsSync })) as any);
+    ({
+      animationCatalog,
+      capturedShaders,
+      catalogedAssets,
+      detectedLibraries,
+      visibleTextContent,
+      faviconLinks,
+      tokens,
+      extracted,
+      screenshots,
+    } = (await runCoreExtraction({
+      page1,
+      chromeBrowser,
+      cdp,
+      cdpAnims,
+      state,
+      url,
+      warnings,
+      progress,
+      budgetMs,
+      remainingMs,
+      pageContentCheck,
+      contentCheckTimedOut,
+      outputDir,
+      phase,
+      lazyScrollForCapture,
+      setupAnimationCapture,
+      startCdpAnimationCapture,
+      collectAnimationCatalog,
+      discoveredLotties,
+      lottieDiscovery,
+      discoveredVideoUrls,
+      animationCatalog,
+      capturedShaders,
+      catalogedAssets,
+      detectedLibraries,
+      visibleTextContent,
+      faviconLinks,
+      tokens,
+      extracted,
+      screenshots,
+      skipAssets,
+      extractTokens,
+      extractDesignStyles,
+      extractHtml,
+      detectLibraries,
+      extractVisibleText,
+      filterExtractedScripts,
+      writeFileSync,
+      mkdirSync,
+      join,
+      existsSync,
+    })) as any);
 
     phase("core-extraction", "completed");
-
-;
-    ({ assets, dropped, fontDrops, extracted, tokens, animationCatalog } = (await runPostExtraction({ outputDir, chromeBrowser, cdp, cdpAnims, state, url, phase, progress, warnings, remainingMs, extracted, tokens, animationCatalog, screenshots, skipAssets, skipVision, downloadByteBudget, assets, dropped, fontDrops, detectedLibraries, catalogedAssets, discoveredLotties, page1, captureVideoManifest, downloadAssets, downloadAndRewriteFonts, extractFontMetadata, generateAssetDescriptions, captionImagesWithGemini, resolveVisionPhaseCompletion, detectLibraries, extractVisibleText, normalizeErrorMessage, diag, writeFileSync, existsSync, join, mkdirSync, mergeDrops, noDrops, totalDrops })) as any);
+    ({ assets, dropped, fontDrops, extracted, tokens, animationCatalog } = (await runPostExtraction(
+      {
+        outputDir,
+        chromeBrowser,
+        cdp,
+        cdpAnims,
+        state,
+        url,
+        phase,
+        progress,
+        warnings,
+        remainingMs,
+        extracted,
+        tokens,
+        animationCatalog,
+        screenshots,
+        skipAssets,
+        skipVision,
+        downloadByteBudget,
+        assets,
+        dropped,
+        fontDrops,
+        detectedLibraries,
+        catalogedAssets,
+        discoveredLotties,
+        page1,
+        captureVideoManifest,
+        downloadAssets,
+        downloadAndRewriteFonts,
+        extractFontMetadata,
+        generateAssetDescriptions,
+        captionImagesWithGemini,
+        resolveVisionPhaseCompletion,
+        detectLibraries,
+        extractVisibleText,
+        normalizeErrorMessage,
+        diag,
+        writeFileSync,
+        existsSync,
+        join,
+        mkdirSync,
+        mergeDrops,
+        noDrops,
+        totalDrops,
+      },
+    )) as any);
 
     // Generate project scaffold (index.html, meta.json, CLAUDE.md)
     phase("scaffold", "started");

@@ -75,7 +75,6 @@ import { captureBrowserArgs } from "./browserLaunchArgs.js";
 import { createPartialCaptureState } from "./partialCapture.js";
 import { filterExtractedScripts } from "./filterExtractedScripts.js";
 
-
 /* Extracted capture phase. The phase receives one immutable input object and returns its changed values. */
 import type { Page, Browser } from "puppeteer-core";
 
@@ -86,7 +85,44 @@ export interface PhaseContext {
 }
 
 export async function runCoreExtraction(context: PhaseContext): Promise<Record<string, unknown>> {
-  let { page1, chromeBrowser, cdp, cdpAnims, state, url, outputDir, timeout, settleTime, warnings, progress, budgetMs, remainingMs, pageContentCheck, contentCheckTimedOut, postNavigationDeadline, httpStatus, phase, discoveredLotties, lottieDiscovery, discoveredVideoUrls, animationCatalog, capturedShaders, catalogedAssets, detectedLibraries, visibleTextContent, faviconLinks, tokens, extracted, screenshots, skipAssets, skipVision, downloadByteBudget, assets, dropped, fontDrops } = context as any;
+  let {
+    page1,
+    chromeBrowser,
+    cdp,
+    cdpAnims,
+    state,
+    url,
+    outputDir,
+    timeout,
+    settleTime,
+    warnings,
+    progress,
+    budgetMs,
+    remainingMs,
+    pageContentCheck,
+    contentCheckTimedOut,
+    postNavigationDeadline,
+    httpStatus,
+    phase,
+    discoveredLotties,
+    lottieDiscovery,
+    discoveredVideoUrls,
+    animationCatalog,
+    capturedShaders,
+    catalogedAssets,
+    detectedLibraries,
+    visibleTextContent,
+    faviconLinks,
+    tokens,
+    extracted,
+    screenshots,
+    skipAssets,
+    skipVision,
+    downloadByteBudget,
+    assets,
+    dropped,
+    fontDrops,
+  } = context as any;
   const runLazyAndLottie = async (): Promise<void> => {
     if (!contentCheckTimedOut && pageContentCheck.textLength < 100) {
       const reason =
@@ -150,7 +186,9 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
 
     const collectNetworkLotties = async (): Promise<void> => {
       for (const found of await lottieDiscovery.run(downloadByteBudget, remainingMs)) {
-        const existing = discoveredLotties.findIndex((item: { url: string }) => item.url === found.url);
+        const existing = discoveredLotties.findIndex(
+          (item: { url: string }) => item.url === found.url,
+        );
         if (existing < 0) discoveredLotties.push(found);
         else discoveredLotties[existing] = found;
       }
@@ -162,11 +200,7 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
         const lottieDir = join(outputDir, "assets", "lottie");
         mkdirSync(lottieDir, { recursive: true });
         const lottieBudget = { remainingMs, byteBudget: downloadByteBudget };
-        const savedCount = await saveLottieAnimations(
-          discoveredLotties,
-          lottieDir,
-          lottieBudget,
-        );
+        const savedCount = await saveLottieAnimations(discoveredLotties, lottieDir, lottieBudget);
         // Generate manifest + preview thumbnails so the agent can SEE what each animation is
         if (savedCount > 0 && remainingMs() > 0) {
           await renderLottiePreviews(chromeBrowser, lottieDir, outputDir, lottieBudget);
@@ -213,7 +247,9 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
     // Save tokens.json without SVG outerHTML (kept in memory for asset downloader)
     const tokensForDisk = {
       ...tokens,
-      svgs: tokens.svgs.map(({ outerHTML: _, ...rest }: { outerHTML?: string; [key: string]: unknown }) => rest),
+      svgs: tokens.svgs.map(
+        ({ outerHTML: _, ...rest }: { outerHTML?: string; [key: string]: unknown }) => rest,
+      ),
     };
     writeFileSync(
       join(outputDir, "extracted", "tokens.json"),
@@ -262,8 +298,7 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
       if (!isDegradableEvaluateTimeoutError(err)) {
         throw err;
       }
-      const message =
-        "animation catalog evaluate timed out; continuing without animation catalog";
+      const message = "animation catalog evaluate timed out; continuing without animation catalog";
       warnings.push(message);
       progress("warn", message);
       try {
@@ -364,5 +399,15 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
   };
   await runHtmlExtraction();
 
-  return { animationCatalog, capturedShaders, catalogedAssets, detectedLibraries, visibleTextContent, faviconLinks, tokens, extracted, screenshots };
+  return {
+    animationCatalog,
+    capturedShaders,
+    catalogedAssets,
+    detectedLibraries,
+    visibleTextContent,
+    faviconLinks,
+    tokens,
+    extracted,
+    screenshots,
+  };
 }
