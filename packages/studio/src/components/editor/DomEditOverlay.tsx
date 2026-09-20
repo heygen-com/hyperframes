@@ -20,7 +20,6 @@ import { ChildRectOutlines, OffCanvasIndicators } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
-import { GridOverlay } from "./GridOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
 import { hugRectForElement } from "./domEditOverlayCrop";
@@ -84,8 +83,6 @@ interface DomEditOverlayProps {
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
-  gridVisible?: boolean;
-  gridSpacing?: number;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
   onMarqueeSelect?: (selections: DomEditSelection[], additive: boolean) => void;
@@ -125,8 +122,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onCanvasPointerLeave,
   onSelectionChange,
   onBlockedMove,
-  gridVisible = false,
-  gridSpacing = 50,
   onManualDragStart,
   onPathOffsetCommit,
   onGroupPathOffsetCommit,
@@ -555,16 +550,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         />
       )}
       <ZOrderCrossedFlash rect={zOrderFlashRect} />
-      <GridOverlay
-        visible={gridVisible}
-        spacing={gridSpacing}
-        scaleX={compRect.scaleX}
-        scaleY={compRect.scaleY}
-        compositionLeft={compRect.left}
-        compositionTop={compRect.top}
-        compositionWidth={compRect.width}
-        compositionHeight={compRect.height}
-      />
       <SnapGuideOverlay
         snapGuidesRef={snapGuidesRef}
         compositionLeft={compRect.left}

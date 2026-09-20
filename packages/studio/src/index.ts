@@ -56,6 +56,18 @@ export type { TimelineElement, TimelineTimeRange } from "./player";
 // Host overlays: draw over the preview in composition coordinates (see EditorShellProps.gestureOverlay)
 export { usePreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
 export type { PreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
+export {
+  PreviewOverlayProvider,
+  usePreviewOverlayContext,
+} from "./components/editor/PreviewOverlayProvider";
+export type {
+  PreviewOverlayProviderProps,
+  PreviewSnapPreferences,
+} from "./components/editor/PreviewOverlayProvider";
+export { PreviewGuides } from "./components/editor/PreviewGuides";
+export { GridOverlay } from "./components/editor/GridOverlay";
+export { SnapToolbar } from "./components/editor/SnapToolbar";
+export { usePreviewGuidesStore } from "./components/editor/previewGuidesStore";
 
 // Editor
 export { SourceEditor } from "./components/editor/SourceEditor";

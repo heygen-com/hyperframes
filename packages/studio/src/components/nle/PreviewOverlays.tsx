@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { useCaptionStore } from "../../captions/store";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { TopologyLens } from "../editor/TopologyLens";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
 import { SnapToolbar } from "../editor/SnapToolbar";
+import { GridOverlay } from "../editor/GridOverlay";
 import { usePreviewReadOnly } from "../editor/previewReadOnlyContext";
 import { useCompositionDimensions } from "../../hooks/useCompositionDimensions";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
@@ -12,7 +13,6 @@ import {
   useDomEditActionsContext,
   useDomEditSelectionContext,
 } from "../../contexts/DomEditContext";
-import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { readHfId, type DomEditSelection } from "../editor/domEditing";
 import { buildStableSelector } from "../editor/domEditingDom";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
@@ -182,17 +182,6 @@ export function PreviewOverlays({
   } = useDomEditActionsContext();
   const mirrorZOrderToTimeline = useCanvasZOrderTimelineMirror();
 
-  // fallow-ignore-next-line complexity
-  const [snapPrefs, setSnapPrefs] = useState(() => {
-    const p = readStudioUiPreferences();
-    return {
-      snapEnabled: p.snapEnabled ?? true,
-      gridVisible: p.gridVisible ?? false,
-      gridSpacing: p.gridSpacing ?? 50,
-      snapToGrid: p.snapToGrid ?? false,
-    };
-  });
-
   if (blockPreview) {
     return (
       <>
@@ -325,13 +314,12 @@ export function PreviewOverlays({
               }),
           }).catch(() => undefined);
         }}
-        gridVisible={snapPrefs.gridVisible}
-        gridSpacing={snapPrefs.gridSpacing}
         recordingState={recordingState}
         onToggleRecording={onToggleRecording}
         onMarqueeSelect={applyMarqueeSelection}
       />
-      <SnapToolbar onSnapChange={setSnapPrefs} />
+      <GridOverlay />
+      <SnapToolbar />
       {!readOnly && (
         <MotionPathOverlay
           iframeRef={previewIframeRef}

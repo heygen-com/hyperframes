@@ -1,30 +1,28 @@
 import { memo, useRef, type RefObject } from "react";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
-import { RULER_GUTTER_PX, usePreviewGuidesStore } from "./previewGuidesStore";
+import { RULER_GUTTER_PX } from "./previewGuidesStore";
 import { SAFE_BOX_PERCENTS, safeBoxInsetPercent } from "../../utils/previewSafeMargins";
-
-interface PreviewGuidesProps {
-  iframeRef: RefObject<HTMLIFrameElement | null>;
-}
+import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
 
 const TICKS = Array.from({ length: 11 }, (_, i) => i * 10);
 const INK = "color-mix(in srgb, white 70%, transparent)";
 
 /** Ruler and safe-margin boxes drawn over the preview pane, never inside the composition. */
-export const PreviewGuides = memo(function PreviewGuides({ iframeRef }: PreviewGuidesProps) {
-  const rulerVisible = usePreviewGuidesStore((s) => s.rulerVisible);
-  const safeMarginsVisible = usePreviewGuidesStore((s) => s.safeMarginsVisible);
+export const PreviewGuides = memo(function PreviewGuides() {
+  const { state } = usePreviewOverlayContext();
+  const { rulerVisible, safeMarginsVisible } = state;
   if (!rulerVisible && !safeMarginsVisible) return null;
   return (
     <ActiveGuides
-      iframeRef={iframeRef}
+      iframeRef={state.iframeRef}
       rulerVisible={rulerVisible}
       safeMarginsVisible={safeMarginsVisible}
     />
   );
 });
 
-interface ActiveGuidesProps extends PreviewGuidesProps {
+interface ActiveGuidesProps {
+  iframeRef: RefObject<HTMLIFrameElement | null>;
   rulerVisible: boolean;
   safeMarginsVisible: boolean;
 }
