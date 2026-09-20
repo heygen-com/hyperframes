@@ -25,7 +25,6 @@ import { commitTimelineCompositionInsertion } from "../utils/timelineComposition
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
-import { usePlayerStore } from "../player/store/playerStore";
 
 /** The first uploaded file opens the new track (if asked); the rest land on the lane it landed on. */
 function fileDropPlacement(
