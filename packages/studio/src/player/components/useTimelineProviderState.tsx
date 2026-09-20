@@ -12,6 +12,7 @@ import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
 import {
   buildTimelineMeta,
+  buildTimelineOverlaysState,
   resolveRenderClipContent,
   resolveResizingElementIds,
   shouldIgnoreTimelinePointerDown,
@@ -48,7 +49,6 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useClipContextMenu } from "./useTimelineClipContextMenu";
-
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -111,7 +111,6 @@ export function useTimelineProviderState({
     () => timelineNeedsLabelColumn(gsapAnimations, timelineElements),
     [gsapAnimations, timelineElements],
   );
-  // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
   const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
   const contentGutter = labelMode ? GUTTER : 0;
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
@@ -340,7 +339,6 @@ export function useTimelineProviderState({
     dragActive: draggedClip?.started === true || resizingClip != null,
     displayDuration,
   });
-
   const { seekFromX, autoScrollDuringDrag, dragScrollRaf } = useTimelinePlayhead({
     playheadRef,
     scrollRef,
@@ -371,7 +369,6 @@ export function useTimelineProviderState({
       pixelsPerSecond: pps,
       onSplitAll: onRazorSplitAll,
     });
-
   const {
     rangeSelection,
     setRangeSelection,
@@ -492,9 +489,9 @@ export function useTimelineProviderState({
     onMoveElement,
     beatDragging,
   };
-  const overlaysProps = {
-    elements: timelineElements,
-    elementsRef: timelineElementsRef,
+  const overlaysProps = buildTimelineOverlaysState(
+    timelineElements,
+    timelineElementsRef,
     theme,
     showShortcutHint,
     showPopover,
@@ -511,17 +508,17 @@ export function useTimelineProviderState({
     currentTime,
     onSplitElement,
     pinZoomBeforeEdit,
-    onDeleteElement: _onDeleteElement,
+    _onDeleteElement,
     onCopyClip,
     onPasteClip,
     onDuplicateClip,
     canPasteClip,
-    gapContextMenu: gapMenuModel,
-    onDismissGapContextMenu: dismissGapMenu,
-    onCloseTrackGap: closeTrackGap,
-    onCloseAllTrackGaps: closeAllTrackGaps,
-    onHoverGapAction: setHoveredGapAction,
-  };
+    gapMenuModel,
+    dismissGapMenu,
+    closeTrackGap,
+    closeAllTrackGaps,
+    setHoveredGapAction,
+  );
   const timelineRenderClipContent = resolveRenderClipContent(
     timelineFocus.rowVirtualizationActive,
     viewport.isScrolling,
@@ -599,6 +596,5 @@ export function useTimelineProviderState({
     },
     meta: timelineMeta,
   };
-
   return contextValue;
 }
