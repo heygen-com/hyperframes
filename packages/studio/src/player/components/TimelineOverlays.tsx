@@ -1,9 +1,6 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
-import type { TimelineTheme } from "./timelineTheme";
-import type { TimelineRangeSelection } from "./timelineEditing";
-import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { EditPopover } from "./EditModal";
 import {
   KeyframeDiamondContextMenu,
@@ -14,55 +11,8 @@ import { TrackGapContextMenu } from "./TrackGapContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { trackStudioSegmentEaseEdit } from "../../telemetry/events";
-import { useTimelineContextOptional } from "./TimelineProvider";
-
-export interface ClipContextMenuState {
-  x: number;
-  y: number;
-  element: TimelineElement;
-  sessionEpoch: number;
-}
-
-/** Resolved model for the empty-lane-space (track gap) context menu. */
-interface TrackGapContextMenuState {
-  x: number;
-  y: number;
-  gapWidth: number | null;
-  canCloseGap: boolean;
-  canCloseAllGaps: boolean;
-  hasAnyGaps: boolean;
-}
-
-export interface TimelineOverlaysProps {
-  elements: readonly TimelineElement[];
-  elementsRef: MutableRefObject<readonly TimelineElement[]>;
-  theme: TimelineTheme;
-  showShortcutHint: boolean;
-  showPopover: boolean;
-  rangeSelection: TimelineRangeSelection | null;
-  setShowPopover: (value: boolean) => void;
-  setRangeSelection: (value: TimelineRangeSelection | null) => void;
-  kfContextMenu: KeyframeDiamondContextMenuState | null;
-  setKfContextMenu: (value: KeyframeDiamondContextMenuState | null) => void;
-  onDeleteKeyframe: TimelineEditCallbacks["onDeleteKeyframe"];
-  onDeleteAllKeyframes: TimelineEditCallbacks["onDeleteAllKeyframes"];
-  onMoveKeyframeToPlayhead: TimelineEditCallbacks["onMoveKeyframeToPlayhead"];
-  clipContextMenu: ClipContextMenuState | null;
-  setClipContextMenu: (value: ClipContextMenuState | null) => void;
-  currentTime: number;
-  onSplitElement: TimelineEditCallbacks["onSplitElement"];
-  pinZoomBeforeEdit: () => void;
-  onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
-  onCopyClip?: () => boolean;
-  onPasteClip?: () => Promise<void>;
-  onDuplicateClip?: () => Promise<boolean>;
-  canPasteClip?: () => boolean;
-  gapContextMenu: TrackGapContextMenuState | null;
-  onDismissGapContextMenu: () => void;
-  onCloseTrackGap: () => void;
-  onCloseAllTrackGaps: () => void;
-  onHoverGapAction: (action: "close-gap" | "close-all" | null) => void;
-}
+import { useTimelineContext } from "./TimelineProvider";
+import type { ClipContextMenuState } from "./TimelineProvider";
 
 interface TimelineContextTargetInput {
   capturedElement: TimelineElement;
@@ -104,12 +54,9 @@ function readTimelineContextElement(
 // The timeline's floating overlays, rendered as siblings above the scroll area:
 // the shortcut hint, the range-edit popover, the keyframe-diamond context menu,
 // and the clip context menu.
-export function TimelineOverlays(props?: TimelineOverlaysProps) {
-  const context = useTimelineContextOptional();
-  const overlayProps = context?.state.overlaysProps ?? props;
-  if (overlayProps === undefined) {
-    throw new Error("TimelineOverlays requires TimelineProvider or props");
-  }
+export function TimelineOverlays() {
+  const { state } = useTimelineContext();
+  const overlayProps = state.overlays;
   const {
     elements,
     elementsRef,

@@ -9,7 +9,7 @@ import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
-import { type ClipContextMenuState } from "./TimelineOverlays";
+import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
@@ -42,7 +42,6 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useClipContextMenu } from "./useTimelineClipContextMenu";
-import type { TimelineContextValue } from "./TimelineProvider";
 
 export function useTimelineProviderState({
   onSeek,
@@ -519,7 +518,12 @@ export function useTimelineProviderState({
     onHoverGapAction: setHoveredGapAction,
   };
   const contextValue: TimelineContextValue = {
-    state: { timelineReady, elements: timelineElements, canvasProps, overlaysProps },
+    state: {
+      timelineReady,
+      elements: timelineElements,
+      canvas: canvasProps,
+      overlays: overlaysProps,
+    },
     actions: {},
     meta: {
       renderClipContent,

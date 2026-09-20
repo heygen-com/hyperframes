@@ -6,6 +6,11 @@ import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { TimelineOverlays, resolveTimelineContextElement } from "./TimelineOverlays";
+import {
+  TimelineContextProvider,
+  type TimelineContextValue,
+  type TimelineOverlaysState,
+} from "./TimelineProvider";
 import { defaultTimelineTheme } from "./timelineTheme";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -90,6 +95,42 @@ function renderKeyframeOverlay(options: {
     percentage: 50,
     animationId: "child-position",
   };
+  const overlays = {
+    elements,
+    elementsRef: { current: elements },
+    theme: defaultTimelineTheme,
+    showShortcutHint: false,
+    showPopover: false,
+    rangeSelection: null,
+    setShowPopover: vi.fn(),
+    setRangeSelection: vi.fn(),
+    kfContextMenu: menu,
+    setKfContextMenu,
+    onDeleteKeyframe: vi.fn(),
+    onDeleteAllKeyframes,
+    onMoveKeyframeToPlayhead: vi.fn(),
+    clipContextMenu: null,
+    setClipContextMenu: vi.fn(),
+    currentTime: 0,
+    onSplitElement: vi.fn(),
+    pinZoomBeforeEdit: vi.fn(),
+    onDeleteElement: vi.fn(),
+    gapContextMenu: null,
+    onDismissGapContextMenu: vi.fn(),
+    onCloseTrackGap: vi.fn(),
+    onCloseAllTrackGaps: vi.fn(),
+    onHoverGapAction: vi.fn(),
+  } satisfies TimelineOverlaysState;
+  const contextValue = {
+    state: {
+      timelineReady: true,
+      elements,
+      canvas: {} as TimelineContextValue["state"]["canvas"],
+      overlays,
+    },
+    actions: {},
+    meta: {} as TimelineContextValue["meta"],
+  } satisfies TimelineContextValue;
 
   act(() => {
     usePlayerStore.setState({
@@ -97,32 +138,11 @@ function renderKeyframeOverlay(options: {
       timelineSessionEpoch: 2,
     });
     root.render(
-      createElement(TimelineOverlays, {
-        elements,
-        elementsRef: { current: elements },
-        theme: defaultTimelineTheme,
-        showShortcutHint: false,
-        showPopover: false,
-        rangeSelection: null,
-        setShowPopover: vi.fn(),
-        setRangeSelection: vi.fn(),
-        kfContextMenu: menu,
-        setKfContextMenu,
-        onDeleteKeyframe: vi.fn(),
-        onDeleteAllKeyframes,
-        onMoveKeyframeToPlayhead: vi.fn(),
-        clipContextMenu: null,
-        setClipContextMenu: vi.fn(),
-        currentTime: 0,
-        onSplitElement: vi.fn(),
-        pinZoomBeforeEdit: vi.fn(),
-        onDeleteElement: vi.fn(),
-        gapContextMenu: null,
-        onDismissGapContextMenu: vi.fn(),
-        onCloseTrackGap: vi.fn(),
-        onCloseAllTrackGaps: vi.fn(),
-        onHoverGapAction: vi.fn(),
-      }),
+      createElement(
+        TimelineContextProvider,
+        { value: contextValue },
+        createElement(TimelineOverlays),
+      ),
     );
   });
   return { setKfContextMenu, onDeleteAllKeyframes };

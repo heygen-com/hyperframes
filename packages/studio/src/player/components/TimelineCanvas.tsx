@@ -26,7 +26,7 @@ const DROP_PREVIEW_SECONDS = 3;
 
 export const TimelineCanvas = memo(function TimelineCanvas() {
   const { state } = useTimelineContext();
-  const props = state.canvasProps;
+  const props = state.canvas;
   const { draggedClip, resizingClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
   const snapGuide = resolveSnapGuide(draggedClip, resizingClip);
   const draggedRowIndex =
