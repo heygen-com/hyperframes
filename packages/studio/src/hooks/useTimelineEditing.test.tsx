@@ -1571,7 +1571,7 @@ describe("useTimelineEditing: canEdit gate", () => {
     const showToast = vi.fn();
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const canEdit = vi.fn((element: TimelineElement) =>
-      element.id === "clip" ? { blocked: true, reason: "Reserved by an agent" } : true,
+      element.id === "clip" ? { blocked: true as const, reason: "Reserved by an agent" } : true,
     );
     let hook: ReturnType<typeof useTimelineEditing> | null = null;
     function Harness() {
