@@ -34,6 +34,8 @@ import {
 export type DurationSource = MediaDurationSource | "inner";
 
 export interface TimelineRow extends ClipFact {
+  ref: string;
+  warnings: string[];
   trackKind: TrackKind;
   /** False when the source does not author a duration (media length is only known at render). */
   durationAuthored: boolean;
@@ -67,6 +69,8 @@ export interface RowPointer {
 
 /** A row before flattening: children are still row objects and refs are not assigned. */
 type ClipDraft = Omit<TimelineRow, "index" | "nested" | "host" | "hostRow" | "children"> & {
+  elementId: string | null;
+  hfId: string | null;
   children: ClipDraft[];
 };
 
@@ -132,6 +136,7 @@ interface DocScope {
   /** Bounds concurrent ffprobe spawns for the whole run. Shared reference, not new per document. */
   withProbeSlot: <T>(fn: () => Promise<T>) => Promise<T>;
   measure: MeasureMedia;
+  sourceOverrides: ReadonlyMap<string, string>;
 }
 
 /** Source length in seconds of a media file. ffprobe in production; tests pass a recorded fake. */
@@ -289,6 +294,10 @@ async function describeRow(scope: DocScope, node: DomNode, depth: number): Promi
     durationSource,
     pendingReason,
     children,
+    ref: "",
+    warnings: [],
+    elementId: el.id || null,
+    hfId: el.getAttribute("data-hf-id"),
   };
 }
 
@@ -300,7 +309,9 @@ async function readSubComposition(
   const authored = resolve(parent.dir, src);
   const file = realFileInside(parent.projectDir, authored);
   if (!file) return [];
-  const doc = new DOMParser().parseFromString(readFileSync(file, "utf-8"), "text/html");
+  const relativeFile = relative(parent.projectDir, authored).split(sep).join("/");
+  const source = parent.sourceOverrides.get(relativeFile) ?? readFileSync(file, "utf-8");
+  const doc = new DOMParser().parseFromString(source, "text/html");
   const template = doc.querySelector("template");
   const root = (template?.content ?? doc).querySelector("[data-composition-id]");
   if (!root) return [];
@@ -313,6 +324,7 @@ async function readSubComposition(
     file: relative(parent.projectDir, authored).split(sep).join("/"),
     withProbeSlot: parent.withProbeSlot,
     measure: parent.measure,
+    sourceOverrides: parent.sourceOverrides,
   };
   const rows = await Promise.all(
     topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 1)),
@@ -348,16 +360,37 @@ function flatten(top: ClipDraft[]): TimelineTrack[] {
     byKind.flatMap((t) => t.entries.map((e, index) => [e.clip, { kind: t.kind, index }] as const)),
   );
   const at = (clip: ClipDraft) => pointers.get(clip)!;
+  const fileIds = new Map<string, Map<string, number>>();
+  for (const { entries } of byKind) {
+    for (const { clip } of entries) {
+      if (!clip.elementId) continue;
+      const ids = fileIds.get(clip.file) ?? new Map<string, number>();
+      ids.set(clip.elementId, (ids.get(clip.elementId) ?? 0) + 1);
+      fileIds.set(clip.file, ids);
+    }
+  }
   return byKind.map(({ kind, entries: kindEntries }) => ({
     kind,
-    rows: kindEntries.map(({ clip, host }, index) => ({
-      ...clip,
-      index,
-      nested: host !== null,
-      host: host && host.id,
-      hostRow: host && at(host),
-      children: clip.children.map(at),
-    })),
+    rows: kindEntries.map(({ clip, host }, index) => {
+      const uniqueId = clip.elementId && fileIds.get(clip.file)?.get(clip.elementId) === 1;
+      const ref = uniqueId
+        ? `#${clip.elementId}`
+        : clip.hfId
+          ? `hf:${clip.hfId}`
+          : `${kind}/${index}`;
+      const warnings =
+        uniqueId || clip.hfId ? [] : ["row has no stable name; run hyperframes timeline ids"];
+      return {
+        ...clip,
+        index,
+        ref,
+        warnings,
+        nested: host !== null,
+        host: host && host.id,
+        hostRow: host && at(host),
+        children: clip.children.map(at),
+      };
+    }),
   }));
 }
 
@@ -365,10 +398,13 @@ function flatten(top: ClipDraft[]): TimelineTrack[] {
 export async function describeProject(
   indexPath: string,
   measure: MeasureMedia = measureWithFfprobe,
+  sourceOverrides: ReadonlyMap<string, string> = new Map(),
 ): Promise<ProjectTimeline> {
-  const doc = new DOMParser().parseFromString(readFileSync(indexPath, "utf-8"), "text/html");
+  const projectDir = dirname(indexPath);
+  const source = sourceOverrides.get(basename(indexPath)) ?? readFileSync(indexPath, "utf-8");
+  const doc = new DOMParser().parseFromString(source, "text/html");
   const root = doc.querySelector("[data-composition-id]") ?? doc.body;
-  const dir = dirname(indexPath);
+  const dir = projectDir;
   const scope: DocScope = {
     doc,
     dir,
@@ -378,6 +414,7 @@ export async function describeProject(
     file: basename(indexPath),
     withProbeSlot: createProbeGate(PROBE_CONCURRENCY),
     measure,
+    sourceOverrides,
   };
   const rows = (
     await Promise.all(topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 0)))

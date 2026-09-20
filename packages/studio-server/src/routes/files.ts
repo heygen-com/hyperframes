@@ -31,6 +31,7 @@ import {
   fileContentVersion,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
+import { applyFileMutations } from "../helpers/applyFileMutations.js";
 import {
   findUnsafeDomPatchValues,
   findUnsafeMutationValues,
@@ -309,6 +310,7 @@ export function commitElementPatchBatches(
   projectDir: string,
   batches: ElementPatchBatchRequest[],
   writeFile: (path: string, content: string, encoding: "utf-8") => void = writeFileSync,
+  requestToken?: string,
 ):
   | { error: "duplicate" | "forbidden" | "not-found"; sourceFile: string }
   | { durable: boolean; files: ElementPatchBatchFileResult[] } {
@@ -357,52 +359,25 @@ export function commitElementPatchBatches(
     };
   }
 
-  const files: ElementPatchBatchFileResult[] = [];
-  const attemptedWrites: typeof prepared = [];
-  try {
-    for (const file of prepared) {
-      if (file.after === file.before) {
-        files.push({
-          sourceFile: file.sourceFile,
-          changed: false,
-          matched: file.matched,
-          before: file.before,
-          after: file.before,
-        });
-        continue;
-      }
-      const backup = snapshotBeforeWrite(projectDir, file.absPath);
-      if (backup.error) {
-        throw new Error(`Failed to create backup for ${file.sourceFile}: ${backup.error}`);
-      }
-      attemptedWrites.push(file);
-      writeFile(file.absPath, file.after, "utf-8");
-      files.push({
-        sourceFile: file.sourceFile,
-        changed: true,
-        matched: file.matched,
-        before: file.before,
-        after: file.after,
-        backupPath: backupPathForResponse(projectDir, backup.backupPath),
-      });
-    }
-  } catch (error) {
-    const rollbackErrors: unknown[] = [];
-    for (const file of attemptedWrites.reverse()) {
-      try {
-        writeFile(file.absPath, file.before, "utf-8");
-      } catch (rollbackError) {
-        rollbackErrors.push(rollbackError);
-      }
-    }
-    if (rollbackErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...rollbackErrors],
-        "Element patch batch failed and rollback did not complete",
-      );
-    }
-    throw error;
-  }
+  const applied = applyFileMutations(
+    projectDir,
+    prepared.map(({ sourceFile, absPath, before, after }) => ({
+      sourceFile,
+      absPath,
+      before,
+      after,
+    })),
+    requestToken,
+    writeFile,
+  );
+  const files: ElementPatchBatchFileResult[] = applied.map((file, index) => ({
+    sourceFile: file.sourceFile,
+    changed: file.changed,
+    matched: prepared[index]?.matched ?? [],
+    before: file.before,
+    after: file.after,
+    backupPath: file.backupPath ?? undefined,
+  }));
   return { durable: true, files };
 }
 
@@ -411,16 +386,12 @@ function commitElementPatchBatchesWithReceipts(
   projectDir: string,
   batches: ElementPatchBatchRequest[],
 ): ReturnType<typeof commitElementPatchBatches> {
-  const result = commitElementPatchBatches(projectDir, batches);
-  if ("error" in result || !result.durable) return result;
-
-  for (const file of result.files) {
-    if (!file.changed) continue;
-    const absPath = resolveWithinProject(projectDir, file.sourceFile);
-    if (!absPath) throw new Error(`Committed element patch escaped project: ${file.sourceFile}`);
-    recordMutationReceipt(c, file.sourceFile, absPath, file.after);
-  }
-  return result;
+  return commitElementPatchBatches(
+    projectDir,
+    batches,
+    writeFileSync,
+    c.req.header("X-Hyperframes-Write-Token"),
+  );
 }
 
 /**
