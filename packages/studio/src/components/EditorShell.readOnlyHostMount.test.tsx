@@ -91,8 +91,7 @@ function mountShellAlone(
   act(() =>
     root!.render(
       <EditorShell
-        left={null}
-        right={null}
+        panels={null}
         timelineToolbar={null}
         renderClipContent={() => null}
         handleTimelineElementDelete={vi.fn()}
