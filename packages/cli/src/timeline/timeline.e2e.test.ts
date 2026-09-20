@@ -128,6 +128,24 @@ describe("timeline edit command", () => {
     }
   });
 
+  it("refuses a move whose clip would end beyond the composition", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-move-bound-"));
+    try {
+      const indexPath = join(dir, "index.html");
+      writeFileSync(
+        indexPath,
+        `<div data-composition-id="main" data-duration="53"><div id="clip" data-start="1" data-duration="10" data-track-index="0"></div></div>`,
+      );
+      const result = run(dir, "move", "#clip", "50");
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("end at 60");
+      expect(result.stderr).toContain("latest valid start 43");
+      expect(readFileSync(indexPath, "utf8")).toContain('data-start="1"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("snaps a known project fps to one frame", () => {
     const dir = project();
     try {

@@ -155,6 +155,14 @@ function moveMutation(context: MutationContext, args: Record<string, unknown>): 
   const expression = typeof args.time === "string" ? args.time : "";
   const time = parseMutationTime(context, expression, "pass a valid time expression");
   if (!time.ok) return time;
+  const end = time.seconds + context.row.duration;
+  if (end > context.duration) {
+    return {
+      ok: false,
+      reason: `move would end at ${end}, beyond composition duration ${context.duration}`,
+      fix: `choose a start at or before the latest valid start ${context.duration - context.row.duration}`,
+    };
+  }
   const patched = patchElementInHtml(context.before, context.resolved.target, [
     { type: "html-attribute", property: "data-start", value: String(time.seconds) },
   ]);
