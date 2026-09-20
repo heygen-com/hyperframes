@@ -305,7 +305,7 @@ function deleteMutation(context: MutationContext): MutationDecision {
 }
 
 function setMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
-  const positionalAssignments = (args._ ?? [])
+  const positionalAssignments = positional(args)
     .slice(1)
     .filter((value): value is string => typeof value === "string");
   const namedAssignments = ["volume", "rate", "track"].flatMap((field) => {

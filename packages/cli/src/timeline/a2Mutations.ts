@@ -87,7 +87,7 @@ export function duplicateElement(
     }
   }
   const clone = element.cloneNode(true);
-  if (clone.nodeType !== 1) {
+  if (!isElementNode(clone)) {
     return { html: source, matched: false, newId: null };
   }
   clone.setAttribute("id", uniqueId);
@@ -116,4 +116,8 @@ function findTarget(document: Document, target: SourceMutationTarget): Element |
   }
   if (!target.selector) return null;
   return document.querySelectorAll(target.selector)[target.selectorIndex ?? 0] ?? null;
+}
+
+function isElementNode(node: Node): node is Element {
+  return node.nodeType === 1 && "setAttribute" in node && "querySelectorAll" in node;
 }
