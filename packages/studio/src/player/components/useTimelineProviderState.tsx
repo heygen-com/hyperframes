@@ -110,6 +110,9 @@ export function useTimelineProviderState({
   const contentGutter = labelMode ? GUTTER : 0;
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
+  const beatDragging = usePlayerStore((s) => s.beatDragging);
+  const timelineSessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
+  const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const playheadRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -452,9 +455,6 @@ export function useTimelineProviderState({
     blockedClipRef,
     suppressClickRef,
     scrollRef,
-    renderClipContent:
-      timelineFocus.rowVirtualizationActive && viewport.isScrolling ? undefined : renderClipContent,
-    renderClipOverlay,
     playheadRef,
     onDrillDown,
     onSelectElement,
@@ -486,6 +486,7 @@ export function useTimelineProviderState({
     },
     onResizeElement,
     onMoveElement,
+    beatDragging,
   };
   const overlaysProps = {
     elements: timelineElements,
@@ -517,17 +518,24 @@ export function useTimelineProviderState({
     onCloseAllTrackGaps: closeAllTrackGaps,
     onHoverGapAction: setHoveredGapAction,
   };
+  const timelineRenderClipContent =
+    timelineFocus.rowVirtualizationActive && viewport.isScrolling ? undefined : renderClipContent;
   const contextValue: TimelineContextValue = {
     state: {
       timelineReady,
       elements: timelineElements,
+      selectedElementId,
+      sessionEpoch: timelineSessionEpoch,
+      keyframeCache,
       canvas: canvasProps,
       overlays: overlaysProps,
     },
-    actions: {},
-    meta: {
-      renderClipContent,
+    actions: {
+      renderClipContent: timelineRenderClipContent,
       renderClipOverlay,
+      setFocusedEaseSegment,
+    },
+    meta: {
       emptyState: {
         isDragOver: assetDrop.isDragOver,
         onFileDrop: !!onFileDrop,

@@ -12,7 +12,6 @@ import {
   getTimelineRowTop,
   getTimelineRowHeight,
 } from "./timelineLayout";
-import { usePlayerStore } from "../store/playerStore";
 import { type MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { TimelineLanes } from "./TimelineLanes";
@@ -25,7 +24,7 @@ import { useTimelineContext } from "./TimelineProvider";
 const DROP_PREVIEW_SECONDS = 3;
 
 export const TimelineCanvas = memo(function TimelineCanvas() {
-  const { state } = useTimelineContext();
+  const { state, actions } = useTimelineContext();
   const props = state.canvas;
   const { draggedClip, resizingClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
   const snapGuide = resolveSnapGuide(draggedClip, resizingClip);
@@ -52,7 +51,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
     onRazorSplit,
     onRazorSplitAll,
   } = useTimelineEditContextOptional();
-  const beatDragging = usePlayerStore((s) => s.beatDragging);
+  const beatDragging = props.beatDragging;
   const draggedElement = draggedClip?.element ?? null;
   const draggedElementIdentity = draggedElement ? getTimelineElementIdentity(draggedElement) : null;
   // The drag ghost follows the cursor freely (both axes) — CapCut-style. The
@@ -100,6 +99,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
 
       <TimelineLanes
         {...props}
+        renderClipContent={actions.renderClipContent}
+        renderClipOverlay={actions.renderClipOverlay}
         snapGuide={snapGuide}
         draggedElement={draggedElement}
         multiDragPreview={multiDragPreview}
@@ -231,8 +232,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
         currentTime={props.currentTime}
         theme={props.theme}
         getTrackStyle={props.getTrackStyle}
-        renderClipContent={props.renderClipContent}
-        renderClipOverlay={props.renderClipOverlay}
+        renderClipContent={actions.renderClipContent}
+        renderClipOverlay={actions.renderClipOverlay}
       />
 
       {/* Marquee (rubber-band) multi-select rectangle — mirrors the canvas

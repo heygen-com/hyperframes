@@ -125,12 +125,34 @@ function renderKeyframeOverlay(options: {
     state: {
       timelineReady: true,
       elements,
+      selectedElementId: null,
+      sessionEpoch: 0,
+      keyframeCache: new Map(),
       canvas: {} as TimelineContextValue["state"]["canvas"],
       overlays,
     },
-    actions: {},
+    actions: {
+      renderClipContent: undefined,
+      renderClipOverlay: undefined,
+      setFocusedEaseSegment: vi.fn(),
+    },
     meta: {} as TimelineContextValue["meta"],
   } satisfies TimelineContextValue;
+
+  function TestTimelineContext({ value }: { value: TimelineContextValue }) {
+    const selectedElementId = usePlayerStore((state) => state.selectedElementId);
+    const sessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
+    return createElement(
+      TimelineContextProvider,
+      {
+        value: {
+          ...value,
+          state: { ...value.state, selectedElementId, sessionEpoch },
+        },
+      },
+      createElement(TimelineOverlays),
+    );
+  }
 
   act(() => {
     usePlayerStore.setState({
@@ -138,11 +160,7 @@ function renderKeyframeOverlay(options: {
       timelineSessionEpoch: 2,
     });
     root.render(
-      createElement(
-        TimelineContextProvider,
-        { value: contextValue },
-        createElement(TimelineOverlays),
-      ),
+      createElement(TestTimelineContext, { value: contextValue }, createElement(TimelineOverlays)),
     );
   });
   return { setKfContextMenu, onDeleteAllKeyframes };

@@ -18,6 +18,8 @@ import type { ResizingClipState } from "./useTimelineClipDrag";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 import type { TimelineElement } from "../store/playerStore";
+import type { KeyframeCacheEntry } from "../store/keyframeSlice";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
@@ -43,7 +45,11 @@ export {
 
 export type TimelineCanvasState = Omit<
   TimelineLaneBaseProps,
-  "setRangeSelection" | "setResizingClip" | "setDraggedClip"
+  | "setRangeSelection"
+  | "setResizingClip"
+  | "setDraggedClip"
+  | "renderClipContent"
+  | "renderClipOverlay"
 > & {
   major: number[];
   minor: number[];
@@ -60,6 +66,7 @@ export type TimelineCanvasState = Omit<
   setRangeSelection: (value: TimelineRangeSelection | null) => void;
   setResizingClip: (value: ResizingClipState | null) => void;
   setDraggedClip: (value: TimelineLaneBaseProps["draggedClip"]) => void;
+  beatDragging: boolean;
 };
 
 export interface ClipContextMenuState {
@@ -141,15 +148,25 @@ export interface TimelineViewportProps {
 export interface TimelineState {
   timelineReady: boolean;
   elements: readonly TimelineElement[];
+  selectedElementId: string | null;
+  sessionEpoch: number;
+  keyframeCache: Map<string, KeyframeCacheEntry>;
   canvas: TimelineCanvasState;
   overlays: TimelineOverlaysState;
 }
 
-export interface TimelineActions {}
+export interface TimelineActions {
+  renderClipContent: TimelineLaneBaseProps["renderClipContent"];
+  renderClipOverlay: TimelineLaneBaseProps["renderClipOverlay"];
+  setFocusedEaseSegment: (target: {
+    animationId: string;
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
+    tweenPercentage: number;
+    elementId: string;
+  }) => void;
+}
 
 export interface TimelineMeta {
-  renderClipContent: TimelineCanvasState["renderClipContent"];
-  renderClipOverlay: TimelineCanvasState["renderClipOverlay"];
   emptyState: ComponentProps<typeof TimelineEmptyState>;
   containerProps: TimelineContainerProps;
   viewportProps: TimelineViewportProps;
