@@ -10,6 +10,7 @@ import { EditorShell } from "./EditorShell";
 import { usePreviewBlockDrop } from "./nle/usePreviewBlockDrop";
 import { TIMELINE_BLOCK_MIME } from "../utils/timelineAssetDrop";
 
+// fallow-ignore-next-line code-duplication
 vi.mock("../hooks/useTimelineSelectionPreviewSync", () => ({
   useTimelineSelectionPreviewSync: vi.fn(),
 }));

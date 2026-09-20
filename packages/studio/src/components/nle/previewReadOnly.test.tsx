@@ -13,6 +13,7 @@ import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 const previewState = vi.hoisted(() => ({ captionEditMode: false }));
 const iframeRef = { current: null as HTMLIFrameElement | null };
 
+// fallow-ignore-next-line code-duplication
 vi.mock("../../contexts/StudioContext", () => ({
   useStudioShellContext: () => ({ activeCompPath: "index.html", previewIframeRef: iframeRef }),
   useStudioPlaybackContext: () => ({

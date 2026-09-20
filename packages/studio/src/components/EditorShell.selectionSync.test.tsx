@@ -11,6 +11,7 @@ const hookMocks = vi.hoisted(() => ({
 }));
 const previewOverlaysProbe = vi.hoisted(() => ({ readOnly: null as boolean | null }));
 
+// fallow-ignore-next-line code-duplication
 vi.mock("../hooks/useTimelineSelectionPreviewSync", () => hookMocks);
 vi.mock("../contexts/StudioContext", () => ({
   useStudioPlaybackContext: () => ({

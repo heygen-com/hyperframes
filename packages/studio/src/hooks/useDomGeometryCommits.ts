@@ -73,6 +73,7 @@ export function useDomGeometryCommits({
     [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
   );
 
+  // fallow-ignore-next-line code-duplication
   const handleDomBoxSizeCommit = useCallback(
     (
       selection: DomEditSelection,

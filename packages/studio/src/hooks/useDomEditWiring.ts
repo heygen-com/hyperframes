@@ -111,6 +111,7 @@ export interface UseDomEditWiringParams {
 // fallow-ignore-next-line complexity
 export function useDomEditWiring({
   // fallow-ignore-next-line code-duplication
+  // fallow-ignore-next-line code-duplication
   projectId,
   activeCompPath,
   domEditSelection,

@@ -14,6 +14,7 @@ import { PreviewReadOnlyProvider } from "./previewReadOnlyContext";
 const RECT = { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 };
 const layout = vi.hoisted(() => ({ group: [] as unknown[] }));
 
+// fallow-ignore-next-line code-duplication
 vi.mock("./useDomEditOverlayRects", () => ({
   useDomEditOverlayRects: () => ({
     overlayRect: { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 },

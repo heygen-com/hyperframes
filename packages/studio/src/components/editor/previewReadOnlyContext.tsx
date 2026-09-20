@@ -1,7 +1,7 @@
 import { useContext, useMemo, type ReactNode } from "react";
 import { createStableContext } from "../../utils/hmrStableContext";
 
-export interface PreviewReadOnlyValue {
+interface PreviewReadOnlyValue {
   readOnly: boolean;
   reason: string;
 }

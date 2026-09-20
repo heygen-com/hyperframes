@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useMemo, useRef, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
@@ -16,7 +16,7 @@ import {
   resolveShiftClickCandidate,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
-import { ChildRectOutlines, OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
+import { ChildRectOutlines, OffCanvasIndicators } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
@@ -27,14 +27,13 @@ import { hugRectForElement } from "./domEditOverlayCrop";
 import { useCropOverlay } from "../../hooks/useCropOverlay";
 import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEditOverlayShape";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
-import { useMountEffect } from "../../hooks/useMountEffect";
-import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { logSelect } from "../../utils/selectDebug";
+import { useOffCanvasIndicators } from "./useOffCanvasIndicators";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -222,39 +221,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const boxClipPath = hasCropInsets ? undefined : selectionShapeStyles.clipPath;
   const boxChromeClass = resolveBoxChromeClass(Boolean(cropOutlineInsetPx), boxClipPath);
 
-  // Off-canvas element indicators — dashed outlines for elements positioned
-  // outside the composition bounds so users can find them.
-  const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
-  const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
-  const offCanvasDirtyRef = useRef(true);
-  const offCanvasSigRef = useRef("");
-  const offCanvasObserverRef = useRef<MutationObserver | null>(null);
-  const offCanvasObservedDocRef = useRef<Document | null>(null);
-
-  // Positions depend on live iframe layout, not selection — the selected-element
-  // suppression is a render-time filter, so selection/groupSelections stay out
-  // of the geometry walk.
-  useMountEffect(() =>
-    startOffCanvasIndicatorRefresh({
-      iframeRef,
-      overlayRef,
-      compRectRef,
-      activeCompositionPathRef,
-      dirtyRef: offCanvasDirtyRef,
-      sigRef: offCanvasSigRef,
-      observerRef: offCanvasObserverRef,
-      observedDocRef: offCanvasObservedDocRef,
-      elementsRef: offCanvasElementsRef,
-      setRects: setOffCanvasRects,
-    }),
-  );
-
-  // Switching compositions may not swap the iframe document (so the observer's
-  // doc-swap detection wouldn't fire) yet changes which elements are off-canvas.
-  // Force a recompute explicitly on comp change.
-  useEffect(() => {
-    offCanvasDirtyRef.current = true;
-  }, [activeCompositionPath]);
+  const { offCanvasRects, offCanvasElementsRef } = useOffCanvasIndicators({
+    iframeRef,
+    overlayRef,
+    compRectRef,
+    activeCompositionPathRef,
+    activeCompositionPath,
+  });
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
