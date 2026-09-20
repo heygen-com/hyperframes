@@ -21,7 +21,7 @@
     },
     "./styles.css": {
       "source": "./src/styles/studio.css",
-      "runtime": "./dist/assets/styles.css",
+      "runtime": "./dist/styles.css",
       "types": null,
       "environments": ["browser"]
     },
