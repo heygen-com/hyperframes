@@ -487,9 +487,7 @@ async function captureWebsiteAttempt(
       await runShaderCapture();
 
       const runTokenExtraction = async (): Promise<void> => {
-        // ── READ-ONLY phase: extract data from the live DOM before any mutations ──
-        // extractHtml (below) converts image src to data URLs and removes scripts —
-        // all read-only operations must run BEFORE it to see the original DOM.
+        // Extract DOM data before extractHtml mutates image URLs and removes scripts.
 
         // Extract design tokens
         progress("tokens", "Extracting design tokens...");
@@ -608,7 +606,7 @@ async function captureWebsiteAttempt(
         // Remove Next.js bootstrap scripts individually (match each script tag separately)
         extracted.bodyHtml = extracted.bodyHtml.replace(
           /<script\b[^>]*>([\s\S]*?)<\/script>/gi,
-        (match: string, content: string) => {
+          (match: string, content: string) => {
             // Only remove if this specific script contains Next.js bootstrap code
             if (
               content.includes("__next_f") ||
@@ -686,12 +684,7 @@ async function captureWebsiteAttempt(
 
     const runPostExtraction = async (): Promise<void> => {
       const runFontExtraction = async (): Promise<void> => {
-        // Download fonts and rewrite URLs to local paths.
-        //
-        // Called even with the budget already gone, which is the point: its own loop is the only
-        // thing that knows how many faces the page declared, so letting it run and record
-        // `budget-exhausted` for every one of them replaces a warning string that could only ever
-        // say "some". A zero budget means it breaks on the first url, so this costs no network.
+        // Download fonts and preserve per-font budget exhaustion in the capture tally.
         phase("fonts", "started");
         const fontPass = await downloadAndRewriteFonts(extracted.headHtml, outputDir, {
           remainingMs,
@@ -863,11 +856,7 @@ async function captureWebsiteAttempt(
         };
         await runAssetDownload();
 
-        // Persist a self-contained page recreation (extracted/page.html) as the
-        // high-fidelity structural reference for the page-card rebuild. NOT a
-        // composition — kept under extracted/ so the producer (which discovers
-        // compositions by index.html) never picks it up. Images are already inlined
-        // as data URLs by extractHtml, so it renders standalone.
+        // Persist a self-contained page recreation under extracted/, with images already inlined.
         try {
           const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
           state.pageHtml = pageHtml;
