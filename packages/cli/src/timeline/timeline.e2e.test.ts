@@ -62,6 +62,19 @@ describe("timeline edit command", () => {
     }
   });
 
+  it("names an id-less hf ref split from its stable id", () => {
+    const dir = project();
+    try {
+      const indexPath = join(dir, "index.html");
+      writeFileSync(indexPath, readFileSync(indexPath, "utf8").replace('id="clip"', ""));
+      const result = run(dir, "split", "hf:clip", "2");
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(indexPath, "utf8")).toContain('id="clip-2"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses overlap", () => {
     const dir = project();
     try {

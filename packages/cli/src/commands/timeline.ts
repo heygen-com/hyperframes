@@ -60,6 +60,10 @@ function nextSplitId(id: string): string {
   return match ? `${match[1]}-${Number(match[2]) + 1}` : `${id}-2`;
 }
 
+function splitBaseId(row: TimelineRow): string {
+  return row.ref.startsWith("hf:") ? row.ref.slice(3) : row.id;
+}
+
 function diff(before: string, after: string): string {
   if (before === after) return "";
   const beforeLines = before.split("\n");
@@ -160,11 +164,17 @@ async function runMutation(verb: MutationVerb, args: Record<string, unknown>): P
       if (!patched.matched) return refusal(`${ref} was not found`, "choose an existing clip", json);
       after = patched.html;
     } else {
-      const split = splitElementInHtml(before, resolved.target, time.seconds, nextSplitId(row.id), {
-        start: row.start,
-        duration: row.duration,
-        track: row.trackIndex,
-      });
+      const split = splitElementInHtml(
+        before,
+        resolved.target,
+        time.seconds,
+        nextSplitId(splitBaseId(row)),
+        {
+          start: row.start,
+          duration: row.duration,
+          track: row.trackIndex,
+        },
+      );
       if (!split.matched || !split.newId) {
         return refusal(
           `${ref} cannot be split at ${time.seconds}`,
