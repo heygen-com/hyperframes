@@ -1,11 +1,12 @@
 import {
   applyFileMutations,
+  duplicateElementInHtml,
   fileContentVersion,
   patchElementInHtml,
   removeElementFromHtml,
   splitElementInHtml,
 } from "@hyperframes/studio-server";
-import type { AppliedFileMutation } from "@hyperframes/studio-server";
+import type { AppliedFileMutation, PatchOperation } from "@hyperframes/studio-server";
 import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { readFileSync } from "node:fs";
@@ -25,10 +26,9 @@ import { setCommandExitCode } from "../utils/commandResult.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
-  duplicateElement,
   parseSetAssignments,
-  setAttributes,
   stampHfIds,
+  type SetAssignment,
 } from "../timeline/a2Mutations.js";
 
 export const examples: Example[] = [
@@ -304,6 +304,16 @@ function deleteMutation(context: MutationContext): MutationDecision {
   };
 }
 
+function setOperation(assignment: SetAssignment): PatchOperation {
+  const property =
+    assignment.field === "volume"
+      ? "data-volume"
+      : assignment.field === "rate"
+        ? "data-playback-rate"
+        : "data-track-index";
+  return { type: "html-attribute", property, value: assignment.value };
+}
+
 function setMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
   const positionalAssignments = positional(args)
     .slice(1)
@@ -314,7 +324,7 @@ function setMutation(context: MutationContext, args: Record<string, unknown>): M
   });
   const assignments = parseSetAssignments([...positionalAssignments, ...namedAssignments]);
   if (!assignments.ok) return assignments;
-  const patched = setAttributes(context.before, context.resolved.target, assignments.assignments);
+  const patched = patchElementInHtml(context.before, context.resolved.target, assignments.assignments.map(setOperation));
   if (!patched.matched) {
     return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
   }
@@ -333,7 +343,7 @@ function duplicateMutation(
   const expression = typeof args.at === "string" ? args.at : String(context.row.end);
   const time = parseMutationTime(context, expression, "pass a valid insertion time");
   if (!time.ok) return time;
-  const duplicate = duplicateElement(
+  const duplicate = duplicateElementInHtml(
     context.before,
     context.resolved.target,
     `${splitBaseId(context.row)}-copy`,

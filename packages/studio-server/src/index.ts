@@ -19,6 +19,10 @@ export {
   type SourceMutationTarget,
 } from "./helpers/sourceMutation.js";
 export {
+  duplicateElementInHtml,
+  type DuplicateElementResult,
+} from "./helpers/duplicateElement.js";
+export {
   applyFileMutations,
   type AppliedFileMutation,
   type FileMutationInput,
