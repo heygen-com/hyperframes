@@ -13,9 +13,9 @@ export function stampHfIds(source: string): string {
   return ensureHfIds(source);
 }
 
-export function parseSetAssignments(values: readonly string[]):
-  | { ok: true; assignments: SetAssignment[] }
-  | { ok: false; reason: string; fix: string } {
+export function parseSetAssignments(
+  values: readonly string[],
+): { ok: true; assignments: SetAssignment[] } | { ok: false; reason: string; fix: string } {
   const assignments: SetAssignment[] = [];
   for (const value of values) {
     const match = /^(volume|rate|track)=(.+)$/.exec(value);
@@ -80,7 +80,8 @@ export function duplicateElement(
   let suffix = 2;
   while (document.getElementById(uniqueId)) uniqueId = `${newId}-${suffix++}`;
   for (const candidate of Array.from(document.querySelectorAll("[data-start][data-duration]"))) {
-    if (candidate === element || candidate.getAttribute("data-track-index") !== String(track)) continue;
+    if (candidate === element || candidate.getAttribute("data-track-index") !== String(track))
+      continue;
     const candidateStart = numericAttribute(candidate, "data-start");
     if (candidateStart !== null && candidateStart >= at) {
       candidate.setAttribute("data-start", String(candidateStart + duration));
@@ -92,7 +93,8 @@ export function duplicateElement(
   }
   clone.setAttribute("id", uniqueId);
   clone.removeAttribute("data-hf-id");
-  for (const child of Array.from(clone.querySelectorAll("[data-hf-id]"))) child.removeAttribute("data-hf-id");
+  for (const child of Array.from(clone.querySelectorAll("[data-hf-id]")))
+    child.removeAttribute("data-hf-id");
   clone.setAttribute("data-start", String(at));
   element.parentElement.insertBefore(clone, element.nextSibling);
   return { html: document.toString(), matched: true, newId: uniqueId };

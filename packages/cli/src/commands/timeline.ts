@@ -326,7 +326,10 @@ function setMutation(context: MutationContext, args: Record<string, unknown>): M
   };
 }
 
-function duplicateMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+function duplicateMutation(
+  context: MutationContext,
+  args: Record<string, unknown>,
+): MutationDecision {
   const expression = typeof args.at === "string" ? args.at : String(context.row.end);
   const time = parseMutationTime(context, expression, "pass a valid insertion time");
   if (!time.ok) return time;
@@ -617,7 +620,9 @@ function applyMutation(
 }
 
 function positional(args: Record<string, unknown>): string[] {
-  return Array.isArray(args._) ? args._.filter((value): value is string => typeof value === "string") : [];
+  return Array.isArray(args._)
+    ? args._.filter((value): value is string => typeof value === "string")
+    : [];
 }
 
 async function runIds(args: Record<string, unknown>): Promise<void> {
@@ -661,7 +666,8 @@ async function runApply(args: Record<string, unknown>): Promise<void> {
   } catch {
     return refusal("edit plan is not valid JSON", "pass a JSON array of edits", json);
   }
-  if (!Array.isArray(edits)) return refusal("edit plan must be a JSON array", "pass a JSON array of edits", json);
+  if (!Array.isArray(edits))
+    return refusal("edit plan must be a JSON array", "pass a JSON array of edits", json);
   ensureDOMParser();
   const timeline = await describeProject(project.indexPath);
   const sourceByFile = new Map<string, string>();
@@ -676,14 +682,28 @@ async function runApply(args: Record<string, unknown>): Promise<void> {
       return refusal("each edit needs a verb and ref", "pass {verb, ref, ...} objects", json);
     }
     const verb = edit.verb;
-    if (!(verb === "move" || verb === "trim" || verb === "split" || verb === "delete" || verb === "set" || verb === "duplicate")) {
-      return refusal(`unsupported edit verb ${verb}`, "use move, trim, split, delete, set, or duplicate", json);
+    if (
+      !(
+        verb === "move" ||
+        verb === "trim" ||
+        verb === "split" ||
+        verb === "delete" ||
+        verb === "set" ||
+        verb === "duplicate"
+      )
+    ) {
+      return refusal(
+        `unsupported edit verb ${verb}`,
+        "use move, trim, split, delete, set, or duplicate",
+        json,
+      );
     }
     const resolved = resolveRef(timeline, edit.ref);
     if (!resolved.ok) return refusal(resolved.reason, resolved.fix, json);
     const row = resolved.row;
     const before = sourceByFile.get(row.file);
-    if (before === undefined) return refusal(`${row.file} was not found`, "choose an existing clip", json);
+    if (before === undefined)
+      return refusal(`${row.file} was not found`, "choose an existing clip", json);
     const parseTime = (expression: string) =>
       parseTimeExpression(expression, {
         row,
@@ -700,11 +720,19 @@ async function runApply(args: Record<string, unknown>): Promise<void> {
       before,
       resolved,
       parseTime,
-      duration: row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
+      duration:
+        row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
     };
     const decision = decideMutation(verb, context, { ...edit, _: [edit.ref] });
     if (!decision.ok) return refusal(decision.reason, decision.fix, json);
-    const conflict = mutationConflict(verb, false, row, timeline, decision.nextStart, decision.nextDuration);
+    const conflict = mutationConflict(
+      verb,
+      false,
+      row,
+      timeline,
+      decision.nextStart,
+      decision.nextDuration,
+    );
     if (conflict) return refusal(conflict.reason, conflict.fix, json);
     sourceByFile.set(row.file, decision.after);
   }
@@ -712,7 +740,15 @@ async function runApply(args: Record<string, unknown>): Promise<void> {
     const before = beforeByFile.get(fileName)!;
     return after === before
       ? []
-      : [{ sourceFile: fileName, absPath: join(project.dir, fileName), before, after, expectedVersion: fileContentVersion(before) }];
+      : [
+          {
+            sourceFile: fileName,
+            absPath: join(project.dir, fileName),
+            before,
+            after,
+            expectedVersion: fileContentVersion(before),
+          },
+        ];
   });
   const afterTimeline = await describeProject(project.indexPath, undefined, sourceByFile);
   const result = {
@@ -722,7 +758,10 @@ async function runApply(args: Record<string, unknown>): Promise<void> {
     file: inputs.map((input) => input.sourceFile),
     before: allRows(timeline),
     after: allRows(afterTimeline),
-    diff: inputs.map((input) => diff(input.before, input.after)).filter(Boolean).join("\n"),
+    diff: inputs
+      .map((input) => diff(input.before, input.after))
+      .filter(Boolean)
+      .join("\n"),
     warnings: [],
   };
   if (!plan) {
@@ -730,14 +769,18 @@ async function runApply(args: Record<string, unknown>): Promise<void> {
     result.receipt = receipts.map((receipt) => publicReceipt(receipt));
   }
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
-  else console.log(`${plan ? "planned" : "applied"} ${inputs.length} file${inputs.length === 1 ? "" : "s"}`);
+  else
+    console.log(
+      `${plan ? "planned" : "applied"} ${inputs.length} file${inputs.length === 1 ? "" : "s"}`,
+    );
 }
 
 async function runUndo(args: Record<string, unknown>): Promise<void> {
   const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
   const json = args.json === true;
   const input = typeof args.receipt === "string" ? args.receipt : positional(args)[1];
-  if (!input) return refusal("an undo receipt is required", "pass the receipt JSON or its file", json);
+  if (!input)
+    return refusal("an undo receipt is required", "pass the receipt JSON or its file", json);
   let raw: string;
   try {
     raw = readFileSync(input, "utf-8");
@@ -751,15 +794,30 @@ async function runUndo(args: Record<string, unknown>): Promise<void> {
     return refusal("undo receipt is not valid JSON", "pass the applied JSON receipt", json);
   }
   const value = isRecord(parsed) && isRecord(parsed.receipt) ? parsed.receipt : parsed;
-  if (!isRecord(value) || typeof value.file !== "string" || typeof value.version !== "string" || typeof value.backupPath !== "string") {
-    return refusal("undo receipt is missing file, version, or backupPath", "pass an applied timeline receipt", json);
+  if (
+    !isRecord(value) ||
+    typeof value.file !== "string" ||
+    typeof value.version !== "string" ||
+    typeof value.backupPath !== "string"
+  ) {
+    return refusal(
+      "undo receipt is missing file, version, or backupPath",
+      "pass an applied timeline receipt",
+      json,
+    );
   }
   const backup = join(project.dir, value.backupPath);
   const target = join(project.dir, value.file);
   const before = readFileSync(target, "utf-8");
   const after = readFileSync(backup, "utf-8");
-  const receipts = applyFileMutations(project.dir, [{ sourceFile: value.file, absPath: target, before, after, expectedVersion: value.version }]);
-  const result = { ok: true, receipt: receipts.map((receipt) => publicReceipt(receipt)), file: value.file };
+  const receipts = applyFileMutations(project.dir, [
+    { sourceFile: value.file, absPath: target, before, after, expectedVersion: value.version },
+  ]);
+  const result = {
+    ok: true,
+    receipt: receipts.map((receipt) => publicReceipt(receipt)),
+    file: value.file,
+  };
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else console.log(`undid ${value.file}`);
 }
@@ -840,36 +898,39 @@ export default defineCommand({
     delete: () => mutationCommand("delete"),
     set: () => mutationCommand("set"),
     duplicate: () => mutationCommand("duplicate"),
-    ids: () => defineCommand({
-      meta: { name: "ids", description: "Stamp stable ids on timeline clips" },
-      args: { dir: { type: "string" }, json: { type: "boolean", default: false } },
-      async run({ args }) {
-        await runIds(args);
-      },
-    }),
-    apply: () => defineCommand({
-      meta: { name: "apply", description: "Apply an atomic timeline edit plan" },
-      args: {
-        file: { type: "positional", required: true },
-        dir: { type: "string" },
-        json: { type: "boolean", default: false },
-        plan: { type: "boolean", default: false },
-      },
-      async run({ args }) {
-        await runApply(args);
-      },
-    }),
-    undo: () => defineCommand({
-      meta: { name: "undo", description: "Restore a timeline mutation receipt" },
-      args: {
-        receipt: { type: "positional", required: true },
-        dir: { type: "string" },
-        json: { type: "boolean", default: false },
-      },
-      async run({ args }) {
-        await runUndo(args);
-      },
-    }),
+    ids: () =>
+      defineCommand({
+        meta: { name: "ids", description: "Stamp stable ids on timeline clips" },
+        args: { dir: { type: "string" }, json: { type: "boolean", default: false } },
+        async run({ args }) {
+          await runIds(args);
+        },
+      }),
+    apply: () =>
+      defineCommand({
+        meta: { name: "apply", description: "Apply an atomic timeline edit plan" },
+        args: {
+          file: { type: "positional", required: true },
+          dir: { type: "string" },
+          json: { type: "boolean", default: false },
+          plan: { type: "boolean", default: false },
+        },
+        async run({ args }) {
+          await runApply(args);
+        },
+      }),
+    undo: () =>
+      defineCommand({
+        meta: { name: "undo", description: "Restore a timeline mutation receipt" },
+        args: {
+          receipt: { type: "positional", required: true },
+          dir: { type: "string" },
+          json: { type: "boolean", default: false },
+        },
+        async run({ args }) {
+          await runUndo(args);
+        },
+      }),
   },
   async run({ args }) {
     if (args._?.[0]) return;
