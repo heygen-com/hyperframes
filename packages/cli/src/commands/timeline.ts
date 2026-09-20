@@ -713,7 +713,7 @@ function applyPlanEdit(
     duration: row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
   };
   const decision = decideMutation(verb as MutationVerb, context, { ...edit, _: [edit.ref] });
-  if (!decision.ok) return decision;
+  if (!decision.ok) return { ok: false, reason: decision.reason, fix: decision.fix };
   const conflict = mutationConflict(
     verb as MutationVerb,
     edit.overwrite === true,
@@ -722,7 +722,7 @@ function applyPlanEdit(
     decision.nextStart,
     decision.nextDuration,
   );
-  if (conflict) return conflict;
+  if (conflict) return { ok: false, reason: conflict.reason, fix: conflict.fix };
   return { ok: true, file: row.file, after: decision.after };
 }
 
