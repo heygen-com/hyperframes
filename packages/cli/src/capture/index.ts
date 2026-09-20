@@ -64,6 +64,8 @@ import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
 import { createCaptureWatchdog, runWithWatchdog } from "./captureWatchdog.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
+import { createPartialCaptureState, writePartialCaptureBundle } from "./partialCapture.js";
+import type { PartialCaptureState } from "./partialCapture.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
 
@@ -75,10 +77,11 @@ export async function captureWebsite(
   onProgress?: (stage: string, detail?: string) => void,
 ): Promise<CaptureResult> {
   const watchdog = createCaptureWatchdog(opts.captureDeadlineMs);
-  const attempt = captureWebsiteAttempt(opts, onProgress, false, watchdog);
+  const state = createPartialCaptureState(opts);
+  const attempt = captureWebsiteAttempt(opts, onProgress, false, watchdog, state);
   try {
     const first = await runWithWatchdog(attempt, watchdog.promise);
-    if (first.kind === "deadline") return partialCaptureResult(opts);
+    if (first.kind === "deadline") return deadlineResult(opts, state);
     if (first.kind === "error") throw first.error;
     return first.result;
   } catch (err) {
@@ -91,9 +94,9 @@ export async function captureWebsite(
       remainingMs: null,
       reason: "webgl-disabled-retry",
     });
-    const retry = captureWebsiteAttempt(opts, onProgress, true, watchdog);
+    const retry = captureWebsiteAttempt(opts, onProgress, true, watchdog, state);
     const second = await runWithWatchdog(retry, watchdog.promise);
-    if (second.kind === "deadline") return partialCaptureResult(opts);
+    if (second.kind === "deadline") return deadlineResult(opts, state);
     if (second.kind === "error") throw second.error;
     return second.result;
   } finally {
@@ -108,8 +111,7 @@ class NavigationDeadlineError extends Error {
   }
 }
 
-function partialCaptureResult(opts: CaptureOptions): CaptureResult {
-  const hostname = new URL(opts.url).hostname.replace(/^www\./, "");
+function deadlineResult(opts: CaptureOptions, state: PartialCaptureState): CaptureResult {
   const lastPhase = {
     schema: "hyperframes.capture.phase.v1" as const,
     phase: "complete" as const,
@@ -118,46 +120,7 @@ function partialCaptureResult(opts: CaptureOptions): CaptureResult {
     reason: "deadline" as const,
   };
   opts.onPhase?.(lastPhase);
-  mkdirSync(opts.outputDir, { recursive: true });
-  const metaPath = join(opts.outputDir, "meta.json");
-  if (!existsSync(metaPath)) {
-    writeFileSync(
-      metaPath,
-      JSON.stringify({ id: hostname + "-video", name: hostname, partial: true }, null, 2),
-    );
-  }
-  return {
-    ok: true,
-    projectDir: opts.outputDir,
-    url: opts.url,
-    httpStatus: null,
-    title: "",
-    extracted: {
-      headHtml: "",
-      bodyHtml: "",
-      cssomRules: "",
-      htmlAttrs: "",
-      viewportWidth: opts.viewportWidth ?? 1920,
-      viewportHeight: opts.viewportHeight ?? 1080,
-      fullPageHeight: 0,
-    },
-    screenshots: [],
-    tokens: {
-      title: "",
-      description: "",
-      cssVariables: {},
-      fonts: [],
-      colors: [],
-      headings: [],
-      ctas: [],
-      svgs: [],
-      sections: [],
-    },
-    assets: [],
-    dropped: noDrops(),
-    warnings: ["Capture deadline reached; returning the partial capture bundle."],
-    lastPhase,
-  };
+  return writePartialCaptureBundle(opts, state, lastPhase);
 }
 
 async function captureWebsiteAttempt(
@@ -165,6 +128,7 @@ async function captureWebsiteAttempt(
   onProgress?: (stage: string, detail?: string) => void,
   disableWebgl = false,
   watchdog = createCaptureWatchdog(undefined),
+  state = createPartialCaptureState(opts),
 ): Promise<CaptureResult> {
   const {
     url,
@@ -182,6 +146,7 @@ async function captureWebsiteAttempt(
 
   const downloadByteBudget = createCaptureDownloadBudget();
   const warnings: string[] = [];
+  state.warnings = warnings;
   const progress = (stage: string, detail?: string) => {
     onProgress?.(stage, detail);
   };
@@ -492,6 +457,7 @@ async function captureWebsiteAttempt(
     // Extract design tokens
     progress("tokens", "Extracting design tokens...");
     const tokens = await extractTokens(page1);
+    state.tokens = tokens;
     // Save tokens.json without SVG outerHTML (kept in memory for asset downloader)
     const tokensForDisk = {
       ...tokens,
@@ -507,6 +473,7 @@ async function captureWebsiteAttempt(
     progress("style", "Extracting design styles...");
     try {
       const designStyles = await extractDesignStyles(page1);
+      state.designStyles = designStyles;
       writeFileSync(
         join(outputDir, "extracted", "design-styles.json"),
         JSON.stringify(designStyles, null, 2),
@@ -555,6 +522,7 @@ async function captureWebsiteAttempt(
     let screenshots: string[] = [];
     try {
       screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
+      state.screenshots = screenshots;
       progress("screenshots", `${screenshots.length} scroll screenshots captured`);
     } catch (err) {
       if (!isDegradableEvaluateTimeoutError(err)) {
@@ -584,6 +552,7 @@ async function captureWebsiteAttempt(
     // ── MUTATION phase: extractHtml modifies the live DOM (converts images to data URLs) ──
     progress("extract", "Extracting HTML & CSS...");
     const extracted = await extractHtml(page1, { settleTime: 1000 });
+    state.extracted = extracted;
 
     // Strip framework scripts from the extracted body — keep visual library scripts
     // IMPORTANT: Use non-greedy matching within individual script tags only
@@ -755,6 +724,7 @@ async function captureWebsiteAttempt(
       });
       assets = assetPass.assets;
       assetDrops = assetPass.drops;
+      state.assets = assets;
       // Which icons the site declared, what each one is, and why one became favicon.<ext>.
       // The brand-kit consumer needs the shape to decide which tile an icon belongs in; the
       // reason is what stops a substituted headline from being silent again.
@@ -775,6 +745,7 @@ async function captureWebsiteAttempt(
     // DERIVED from it rather than written alongside it, so the prose and the number cannot
     // disagree the way two separately-authored budget strings could.
     const dropped = mergeDrops(fontPass.drops, assetDrops);
+    state.dropped = dropped;
     const droppedTotal = totalDrops(dropped);
     if (droppedTotal > 0) {
       const breakdown = Object.entries(dropped)
@@ -825,6 +796,7 @@ async function captureWebsiteAttempt(
     // as data URLs by extractHtml, so it renders standalone.
     try {
       const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
+      state.pageHtml = pageHtml;
       writeFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
     } catch (err) {
       warnings.push(`page.html write failed: ${err}`);
