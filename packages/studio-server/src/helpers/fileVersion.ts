@@ -32,6 +32,14 @@ export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceip
   receipts.set(absPath, current);
 }
 
+export function clearFileWriteReceipt(absPath: string, version: string, writeToken: string): void {
+  const current = (receipts.get(absPath) ?? []).filter(
+    (entry) => entry.version !== version || entry.writeToken !== writeToken,
+  );
+  if (current.length > 0) receipts.set(absPath, current);
+  else receipts.delete(absPath);
+}
+
 /**
  * Attach one API write's identity to the watcher echo for its exact bytes.
  *

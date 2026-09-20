@@ -152,4 +152,47 @@ describe("timeline edit command", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("uses the nested composition duration for time bounds", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-nested-"));
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-duration="60"><div id="host" data-composition-src="sub.html" data-start="10" data-duration="3" data-track-index="0"></div></div>`,
+      );
+      writeFileSync(
+        join(dir, "sub.html"),
+        `<div data-composition-id="sub" data-duration="3"><div id="inner" data-start="0" data-duration="1" data-track-index="0"></div></div>`,
+      );
+      const result = run(dir, "move", "#inner", "45");
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("composition duration");
+      expect(readFileSync(join(dir, "sub.html"), "utf8")).toContain('data-start="0"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps --plan JSON aligned with applied JSON and does not write", () => {
+    const plannedDir = project();
+    const appliedDir = project();
+    try {
+      const before = readFileSync(join(plannedDir, "index.html"), "utf8");
+      const planned = run(plannedDir, "move", "#clip", "+1", "--plan");
+      expect(planned.status, planned.stderr).toBe(0);
+      const planJson = JSON.parse(planned.stdout) as Record<string, unknown>;
+      expect(planJson.planned).toBe(true);
+      expect(readFileSync(join(plannedDir, "index.html"), "utf8")).toBe(before);
+
+      const applied = run(appliedDir, "move", "#clip", "+1");
+      expect(applied.status, applied.stderr).toBe(0);
+      const appliedJson = JSON.parse(applied.stdout) as Record<string, unknown>;
+      expect(appliedJson.planned).toBe(false);
+      expect(Object.keys(planJson).sort()).toEqual(Object.keys(appliedJson).sort());
+      expect(appliedJson.receipt).toMatchObject({ file: "index.html", changed: true });
+    } finally {
+      rmSync(plannedDir, { recursive: true, force: true });
+      rmSync(appliedDir, { recursive: true, force: true });
+    }
+  });
 });

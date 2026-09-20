@@ -1,6 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { backupPathForResponse, snapshotBeforeWrite } from "./backupJournal.js";
-import { createWriteToken, fileContentVersion, recordFileWriteReceipt } from "./fileVersion.js";
+import {
+  clearFileWriteReceipt,
+  createWriteToken,
+  fileContentVersion,
+  recordFileWriteReceipt,
+} from "./fileVersion.js";
 
 export interface FileMutationInput {
   sourceFile: string;
@@ -32,7 +37,7 @@ export function applyFileMutations(
     before: mutation.before ?? readFileSync(mutation.absPath, "utf-8"),
   }));
   const results: AppliedFileMutation[] = [];
-  const attempted: typeof prepared = [];
+  const attempted: Array<PreparedMutation & { version: string; writeToken: string }> = [];
   try {
     for (const mutation of prepared) {
       results.push(applyOneMutation(projectDir, mutation, requestToken, writeFile, attempted));
@@ -43,6 +48,7 @@ export function applyFileMutations(
     for (const mutation of attempted.reverse()) {
       try {
         writeFile(mutation.absPath, mutation.before, "utf-8");
+        clearFileWriteReceipt(mutation.absPath, mutation.version, mutation.writeToken);
       } catch (rollbackError) {
         rollbackErrors.push(rollbackError);
       }
@@ -64,7 +70,7 @@ function applyOneMutation(
   mutation: PreparedMutation,
   requestToken: string | undefined,
   writeFile: (path: string, content: string, encoding: "utf-8") => void,
-  attempted: PreparedMutation[],
+  attempted: Array<PreparedMutation & { version: string; writeToken: string }>,
 ): AppliedFileMutation {
   const current = readFileSync(mutation.absPath, "utf-8");
   assertExpectedVersion(mutation.expectedVersion, current);
@@ -81,7 +87,6 @@ function applyOneMutation(
   const backup = snapshotBeforeWrite(projectDir, mutation.absPath);
   if (backup.error) throw new Error(`backup failed: ${backup.error}`);
   const before = current;
-  attempted.push({ ...mutation, before });
   writeFile(mutation.absPath, mutation.after, "utf-8");
   const version = fileContentVersion(mutation.after);
   const writeToken = createWriteToken(requestToken);
@@ -90,6 +95,7 @@ function applyOneMutation(
     version,
     writeToken,
   });
+  attempted.push({ ...mutation, before, version, writeToken });
   return {
     ...mutation,
     before,

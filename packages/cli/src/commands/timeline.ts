@@ -402,7 +402,15 @@ async function prepareMutation(args: Record<string, unknown>): Promise<MutationS
     filePath,
     before,
     expectedVersion,
-    context: { ref, row, before, resolved, parseTime, duration: timeline.duration },
+    context: {
+      ref,
+      row,
+      before,
+      resolved,
+      parseTime,
+      duration:
+        row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
+    },
   };
 }
 
@@ -462,7 +470,15 @@ async function applyAndPrint(args: {
     return refusal("mutation produced no receipt", "re-run hyperframes timeline", args.json);
   }
   args.result.after = rowsForFile(await args.describeSource(args.after), args.row.file);
-  args.result.receipt = receipt;
+  args.result.receipt = receipt
+    ? {
+        file: receipt.sourceFile,
+        version: receipt.version,
+        writeToken: receipt.writeToken,
+        changed: receipt.changed,
+        backupPath: receipt.backupPath,
+      }
+    : null;
   if (args.json) {
     console.log(JSON.stringify(withMeta(args.result), null, 2));
     return;
@@ -474,6 +490,17 @@ async function applyAndPrint(args: {
 
 function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
   return allRows(timeline).filter((candidate) => candidate.file === file);
+}
+
+function rowAt(
+  timeline: ProjectTimeline,
+  pointer: { kind: TimelineRow["trackKind"]; index: number },
+): TimelineRow {
+  const track = timeline.tracks.find((candidate) => candidate.kind === pointer.kind);
+  if (!track) throw new Error(`missing track ${pointer.kind}`);
+  const row = track.rows[pointer.index];
+  if (!row) throw new Error(`missing row ${pointer.kind}/${pointer.index}`);
+  return row;
 }
 
 function mutationResult(row: TimelineRow, before: ProjectTimeline, planned: boolean) {
@@ -498,7 +525,7 @@ async function printPlan(
 ): Promise<void> {
   const plannedTimeline = await describeSource(after);
   result.after = rowsForFile(plannedTimeline, result.file);
-  if (json) console.log(JSON.stringify(result, null, 2));
+  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else
     console.log(
       `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${diff(before, after)}`,
