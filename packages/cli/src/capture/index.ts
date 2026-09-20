@@ -854,19 +854,18 @@ async function captureWebsiteAttempt(
             );
           }
         };
-        await runAssetDownload();
-
-        // Persist a self-contained page recreation under extracted/, with images already inlined.
-        try {
-          const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
-          state.pageHtml = pageHtml;
-          writeFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
-        } catch (err) {
-          warnings.push(`page.html write failed: ${err}`);
-        }
+        await rewriteTokenAssets();
       };
-      rewriteTokenAssets();
+      await runAssetDownload();
 
+      // Persist a self-contained page recreation under extracted/, with images already inlined.
+      try {
+        const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
+        state.pageHtml = pageHtml;
+        writeFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
+      } catch (err) {
+        warnings.push(`page.html write failed: ${err}`);
+      }
       // Save visible text content for AI agent to use
       if (visibleTextContent) {
         writeFileSync(
