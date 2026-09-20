@@ -218,23 +218,31 @@ function trimBounds(
   context: MutationContext,
   args: Record<string, unknown>,
 ): MutationDecision | { ok: true; nextStart: number; nextDuration: number } {
-  const startExpr = typeof args.start === "string" ? args.start : undefined;
-  const endExpr = typeof args.end === "string" ? args.end : undefined;
-  const durationExpr = typeof args.duration === "string" ? args.duration : undefined;
-  if (!startExpr && !endExpr && !durationExpr) {
-    return {
-      ok: false,
-      reason: "trim requires --start, --end, or --duration",
-      fix: "pass one trim option",
-    };
-  }
-  const start = trimStart(context, startExpr);
+  const input = trimInput(args);
+  if (!input.ok) return input;
+  const start = trimStart(context, input.start);
   if (!start.ok) return start;
-  const end = trimEnd(context, endExpr);
+  return finishTrim(context, start.seconds, trimEnd(context, input.end), trimDuration(context, input.duration));
+}
+
+function trimInput(args: Record<string, unknown>) {
+  const input = {
+    start: typeof args.start === "string" ? args.start : undefined,
+    end: typeof args.end === "string" ? args.end : undefined,
+    duration: typeof args.duration === "string" ? args.duration : undefined,
+  };
+  if (input.start || input.end || input.duration) return { ok: true as const, ...input };
+  return { ok: false as const, reason: "trim requires --start, --end, or --duration", fix: "pass one trim option" };
+}
+
+function finishTrim(
+  context: MutationContext,
+  nextStart: number,
+  end: ReturnType<typeof trimEnd>,
+  duration: ReturnType<typeof trimDuration>,
+) {
   if (end && !end.ok) return end;
-  const duration = trimDuration(context, durationExpr);
   if (duration && !duration.ok) return duration;
-  const nextStart = start.seconds;
   const nextDuration = duration?.seconds ?? (end ? end.seconds - nextStart : context.row.duration);
   if (nextDuration <= 0) {
     return {
