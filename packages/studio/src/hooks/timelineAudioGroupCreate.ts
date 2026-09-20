@@ -32,6 +32,15 @@ interface AudioGroupCarveInput extends UseTimelineElementVisibilityEditingInput 
   checkEditable?: (elements: readonly TimelineElement[]) => boolean;
 }
 
+function assertAudioGroupEditable(
+  checkEditable: AudioGroupCarveInput["checkEditable"],
+  elements: readonly TimelineElement[],
+): void {
+  if (checkEditable && !checkEditable(elements)) {
+    throw new Error("Timeline edit blocked");
+  }
+}
+
 /**
  * Assign (or restore) `data-audio-group` across a set of members.
  *
@@ -294,9 +303,7 @@ export function useAudioGroupCarveAssignment({
         const domId = runtimeAudioId(item);
         return domId !== null && wanted.has(domId);
       });
-      if (elements.length === wanted.size && checkEditable && !checkEditable(elements)) {
-        throw new Error("Timeline edit blocked");
-      }
+      if (elements.length === wanted.size) assertAudioGroupEditable(checkEditable, elements);
       try {
         // Loud, not silent: an unresolved id used to leave `elements` short,
         // `createAudioGroupAndAssignMembers` returning early with no write, and
