@@ -599,8 +599,6 @@ async function captureWebsiteAttempt(
         // Strip framework scripts from the extracted body — keep visual library scripts
         // IMPORTANT: Use non-greedy matching within individual script tags only
         extracted.bodyHtml = extracted.bodyHtml
-          // Remove __NEXT_DATA__ (has its own ID so safe to target)
-          .replace(/<script\s+id="__NEXT_DATA__"[^>]*>[\s\S]*?<\/script>/gi, "")
           // Remove React hydration markers
           .replace(/\s*data-reactroot="[^"]*"/g, "")
           .replace(/\s*data-reactroot/g, "");

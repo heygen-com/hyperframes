@@ -18,7 +18,7 @@ const NEXT_BOOTSTRAP_MARKERS = [
 function removeMatchingScripts(source: string, shouldRemove: (script: Element) => boolean): string {
   const { document } = parseHTML(`<body>${source}</body>`);
   for (const script of document.querySelectorAll("script")) {
-    if (shouldRemove(script)) script.remove();
+    if (script.id === "__NEXT_DATA__" || shouldRemove(script)) script.remove();
   }
   return document.body.innerHTML;
 }
