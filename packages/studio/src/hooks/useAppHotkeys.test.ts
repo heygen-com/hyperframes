@@ -307,7 +307,7 @@ describe('dispatchPlainKey — "A" returns to select while the razor is armed', 
 
 describe("hotkeys with the preview read-only", () => {
   beforeEach(() => {
-    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: "bgm" });
+    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: null });
   });
 
   it("does not delete the selected element on Delete", () => {
@@ -341,6 +341,14 @@ describe("hotkeys with the preview read-only", () => {
     const cb = callbacks({ readOnlyPreview: true });
     dispatchModifierKey(chord("z"), "z", cb);
     expect(cb.handleUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps timeline paste when the mirrored preview selection is not the owner", () => {
+    usePlayerStore.setState({ selectedElementId: "bgm" });
+    const cb = callbacks({ readOnlyPreview: true });
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchModifierKey(chord("v"), "v", cb);
+    expect(cb.handlePaste).toHaveBeenCalledTimes(1);
   });
 
   it("control: with the flag off Delete removes the selected element", () => {

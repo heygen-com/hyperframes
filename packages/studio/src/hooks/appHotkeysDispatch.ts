@@ -116,7 +116,9 @@ export function dispatchModifierKey(
       return true;
     }
     const previewOwnsMutation =
-      cb.readOnlyPreview && cb.domEditSelectionRef.current !== null;
+      cb.readOnlyPreview &&
+      cb.domEditSelectionRef.current !== null &&
+      usePlayerStore.getState().selectedElementId === null;
     if (previewOwnsMutation && ["v", "x", "d"].includes(key)) {
       event.preventDefault();
       return true;

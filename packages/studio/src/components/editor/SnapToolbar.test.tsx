@@ -54,6 +54,7 @@ function AppHotkeyHarness() {
     handleDuplicate: vi.fn(async () => false),
     onResetKeyframes: vi.fn(() => false),
     onDeleteSelectedKeyframes: vi.fn(),
+    readOnlyPreview: false,
   });
 
   return null;

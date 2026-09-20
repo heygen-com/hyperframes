@@ -455,7 +455,7 @@ export function useDomEditSession({
     handleBlockedDomMove,
     handleDomManualDragStart,
   } = usePreviewInteraction({
-    captionEditMode,
+    captionEditMode: previewCaptionEditMode,
     compositionLoading,
     previewIframeRef,
     showToast,

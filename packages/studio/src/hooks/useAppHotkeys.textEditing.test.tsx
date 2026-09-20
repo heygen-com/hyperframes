@@ -93,6 +93,7 @@ function Harness() {
     handleDuplicate: vi.fn(async () => false),
     onResetKeyframes: vi.fn(() => false),
     onDeleteSelectedKeyframes: keyframeDelete,
+    readOnlyPreview: false,
   });
 
   return (

@@ -167,6 +167,15 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   const commitSessionRef = useRef(commitSession);
   commitSessionRef.current = commitSession;
 
+  useEffect(() => {
+    if (params.allowCanvasMovement || !sessionRef.current) return;
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    if (session.timer) clearTimeout(session.timer);
+    restoreManualOffsetDragMembers(session.members);
+    endManualOffsetDragMembers(session.members);
+  }, [params.allowCanvasMovement]);
+
   // Build drag members for the current target set — the same member snapshot a
   // pointer drag starts from (startGesture / startGroupDrag), so the nudge
   // commit converts offsets → GSAP x/y with identical math.

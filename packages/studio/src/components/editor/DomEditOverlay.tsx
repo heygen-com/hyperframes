@@ -282,6 +282,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     snapGuidesRef,
   });
 
+  useEffect(() => {
+    if (readOnly) gestures.clearPointerState(selectionRef);
+  }, [gestures, readOnly, selectionRef]);
+
   // Arrow-key nudge (1px, Shift = 10px) — commits through the same
   // path-offset callbacks as a drag, one undo entry per key burst.
   const { flushNudge } = useDomEditNudge({
