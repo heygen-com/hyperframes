@@ -408,6 +408,7 @@ async function prepareMutation(args: Record<string, unknown>): Promise<MutationS
       before,
       resolved,
       parseTime,
+      // Nested rows use the visible host clip duration as their composition bound.
       duration:
         row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
     },

@@ -61,12 +61,16 @@ describe("applyFileMutations", () => {
           undefined,
           (path, content, encoding) => {
             writes += 1;
-            if (writes === 2) throw new Error("second write failed");
+            if (writes === 2) {
+              writeFileSync(path, "second-partial", encoding);
+              throw new Error("second write failed");
+            }
             writeFileSync(path, content, encoding);
           },
         ),
       ).toThrow("second write failed");
       expect(readFileSync(first, "utf8")).toBe("first-before");
+      expect(readFileSync(second, "utf8")).toBe("second-before");
       expect(identifyFileWrite(first, fileContentVersion("first-after"))).toBeNull();
     } finally {
       resetFileWriteReceipts();

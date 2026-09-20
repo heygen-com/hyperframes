@@ -87,15 +87,15 @@ function applyOneMutation(
   const backup = snapshotBeforeWrite(projectDir, mutation.absPath);
   if (backup.error) throw new Error(`backup failed: ${backup.error}`);
   const before = current;
-  writeFile(mutation.absPath, mutation.after, "utf-8");
   const version = fileContentVersion(mutation.after);
   const writeToken = createWriteToken(requestToken);
+  attempted.push({ ...mutation, before, version, writeToken });
+  writeFile(mutation.absPath, mutation.after, "utf-8");
   recordFileWriteReceipt(mutation.absPath, {
     path: mutation.sourceFile,
     version,
     writeToken,
   });
-  attempted.push({ ...mutation, before, version, writeToken });
   return {
     ...mutation,
     before,
