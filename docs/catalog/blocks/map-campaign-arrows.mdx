@@ -1,0 +1,228 @@
+---
+title: "Map Campaign Arrows"
+description: "Newsreel wartime aesthetic with sequential schematic campaign arrows along a path — abstract educational cartography, not glorifying. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  compositionId="map-campaign-arrows"
+  compositionSrc="compositions/map-campaign-arrows.html"
+  title="Map Campaign Arrows"
+  description="Newsreel wartime aesthetic with sequential schematic campaign arrows along a path — abstract educational cartography, not glorifying. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
+  variables={[]}
+  meta={{"duration":9,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":124}}
+  attribution={{"author":"HeyGen","authorUrl":"https://hyperframes.heygen.com","path":"registry/blocks/map-campaign-arrows","tags":["map","geography","animation","arrows","campaign","newsreel","schematic","svg"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/map-campaign-arrows.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/map-campaign-arrows.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/map-campaign-arrows/map-campaign-arrows.html"
+>
+
+<CatalogSlot slot="code">
+
+```html map-campaign-arrows.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #1a1714; overflow: hidden; }
+      #root-map-campaign-arrows {
+        position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        background: #1a1714; font-family: Georgia, "Times New Roman", serif;
+      }
+      #mca-frame {
+        position: absolute; inset: 48px;
+        border: 1px solid rgba(196, 181, 154, 0.14); background: #221e19;
+      }
+      #mca-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #mca-title {
+        position: absolute; top: 72px; left: 96px;
+        color: rgba(232, 220, 196, 0.92); font-size: 42px;
+        letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      #mca-subtitle {
+        position: absolute; top: 128px; left: 96px;
+        color: rgba(196, 181, 154, 0.55); font-size: 22px;
+        letter-spacing: 0.18em; text-transform: uppercase;
+      }
+      #mca-note {
+        position: absolute; bottom: 88px; left: 96px;
+        color: rgba(196, 181, 154, 0.55); font-size: 16px;
+        letter-spacing: 0.1em; text-transform: uppercase; max-width: 720px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root-map-campaign-arrows" data-composition-id="map-campaign-arrows"
+      data-start="0" data-duration="9" data-width="1920" data-height="1080">
+      <div id="mca-frame">
+        <svg id="mca-svg" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <marker id="mca-head" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+              <path d="M 0 0 L 12 6 L 0 12 Z" fill="#c45c26" />
+            </marker>
+            <pattern id="mca-hatch" width="11" height="11" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="11" stroke="rgba(196,181,154,0.07)" stroke-width="1" />
+            </pattern>
+          </defs>
+          <rect width="1920" height="1080" fill="#1f1b17" />
+          <rect width="1920" height="1080" fill="url(#mca-hatch)" />
+          <path id="mca-land" d="M 280 320 C 340 220 480 180 620 210 C 760 240 820 300 900 280 C 980 260 1080 300 1180 340 C 1280 380 1360 460 1380 560 C 1400 660 1340 760 1240 820 C 1140 880 980 900 860 860 C 740 820 700 780 620 800 C 540 820 420 780 360 700 C 300 620 240 500 280 320 Z" fill="rgba(196,181,154,0.16)" stroke="rgba(196,181,154,0.4)" stroke-width="2" />
+          <path id="mca-island" d="M 1480 420 C 1540 400 1600 430 1610 480 C 1620 530 1580 570 1520 560 C 1460 550 1450 450 1480 420 Z" fill="rgba(196,181,154,0.12)" stroke="rgba(196,181,154,0.3)" stroke-width="1.5" />
+          <!-- abstract campaign arrows (educational / schematic) -->
+          <path id="mca-a1" d="M 420 600 C 520 560 620 500 740 480" fill="none" stroke="#c45c26" stroke-width="5" stroke-linecap="round" marker-end="url(#mca-head)" />
+          <path id="mca-a2" d="M 760 470 C 860 430 960 420 1080 450" fill="none" stroke="#c45c26" stroke-width="5" stroke-linecap="round" marker-end="url(#mca-head)" />
+          <path id="mca-a3" d="M 1100 455 C 1200 480 1300 540 1380 620" fill="none" stroke="#c45c26" stroke-width="5" stroke-linecap="round" marker-end="url(#mca-head)" />
+          <path id="mca-a4" d="M 900 640 C 1000 600 1120 580 1240 560" fill="none" stroke="#c45c26" stroke-width="4" stroke-linecap="round" marker-end="url(#mca-head)" opacity="0.75" />
+          <circle id="mca-origin" cx="420" cy="600" r="11" fill="#c45c26" />
+          <text id="mca-step1" x="580" y="520" fill="rgba(232,220,196,0.85)" font-size="18" font-family="Georgia, serif" opacity="0">I</text>
+          <text id="mca-step2" x="920" y="400" fill="rgba(232,220,196,0.85)" font-size="18" font-family="Georgia, serif" opacity="0">II</text>
+          <text id="mca-step3" x="1280" y="560" fill="rgba(232,220,196,0.85)" font-size="18" font-family="Georgia, serif" opacity="0">III</text>
+          <text id="mca-step4" x="1080" y="620" fill="rgba(232,220,196,0.7)" font-size="16" font-family="Georgia, serif" opacity="0">IV</text>
+        </svg>
+      </div>
+      <div id="mca-title" data-var-text="title">Schematic Advances</div>
+      <div id="mca-subtitle" data-var-text="subtitle">Sequential path arrows · abstract cartography</div>
+      <div id="mca-note">Abstract educational diagram — not a depiction of any real campaign</div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var vars = window.__hyperframes && window.__hyperframes.getVariables ? window.__hyperframes.getVariables() : {};
+        var accent = /^#[0-9a-fA-F]{6}$/.test(String(vars.accent || "")) ? String(vars.accent) : "#c45c26";
+        var title = typeof vars.title === "string" && vars.title ? vars.title : "Schematic Advances";
+        var subtitle = typeof vars.subtitle === "string" && vars.subtitle ? vars.subtitle : "Sequential path arrows · abstract cartography";
+
+        document.getElementById("mca-title").textContent = title;
+        document.getElementById("mca-subtitle").textContent = subtitle;
+
+        var head = document.querySelector("#mca-head path");
+        if (head) head.setAttribute("fill", accent);
+        document.getElementById("mca-origin").setAttribute("fill", accent);
+
+        var arrows = ["mca-a1", "mca-a2", "mca-a3", "mca-a4"];
+        var steps = ["mca-step1", "mca-step2", "mca-step3", "mca-step4"];
+        var lens = [];
+        for (var i = 0; i < arrows.length; i++) {
+          var el = document.getElementById(arrows[i]);
+          el.setAttribute("stroke", accent);
+          var len = el.getTotalLength();
+          lens.push(len);
+          gsap.set(el, { strokeDasharray: len, strokeDashoffset: len });
+        }
+
+        gsap.set("#mca-title", { opacity: 0, y: -10 });
+        gsap.set("#mca-subtitle", { opacity: 0 });
+        gsap.set("#mca-note", { opacity: 0 });
+        gsap.set("#mca-land", { opacity: 0 });
+        gsap.set("#mca-island", { opacity: 0 });
+        gsap.set("#mca-origin", { scale: 0, transformOrigin: "50% 50%" });
+        gsap.set(steps.map(function (id) { return "#" + id; }), { opacity: 0 });
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to("#mca-land", { opacity: 1, duration: 0.5, ease: "power2.out" }, 0);
+        tl.to("#mca-island", { opacity: 1, duration: 0.4, ease: "power2.out" }, 0.12);
+        tl.to("#mca-title", { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 0.08);
+        tl.to("#mca-subtitle", { opacity: 1, duration: 0.35, ease: "power1.out" }, 0.28);
+        tl.to("#mca-origin", { scale: 1, duration: 0.35, ease: "back.out(1.8)" }, 0.7);
+        tl.to("#mca-note", { opacity: 1, duration: 0.4, ease: "power1.out" }, 0.9);
+
+        var t = 1.2;
+        for (i = 0; i < arrows.length; i++) {
+          var a = document.getElementById(arrows[i]);
+          var dur = i === 3 ? 1.0 : 1.15;
+          tl.to(a, { strokeDashoffset: 0, duration: dur, ease: "power1.inOut" }, t);
+          tl.to("#" + steps[i], { opacity: 1, duration: 0.25, ease: "power1.out" }, t + dur * 0.7);
+          t += dur + 0.18;
+        }
+
+        window.__timelines["map-campaign-arrows"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add map-campaign-arrows" item="map-campaign-arrows" />
+
+That writes one file: `compositions/map-campaign-arrows.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 9 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="map-campaign-arrows"
+  data-composition-src="compositions/map-campaign-arrows.html"
+  data-start="0"
+  data-duration="9"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `undefined` — Title. Defaults to `Schematic Advances`.
+- `undefined` — Subtitle. Defaults to `Sequential path arrows · abstract cartography`.
+- `undefined` — Accent. Defaults to `#c45c26`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `title` | `Schematic Advances` | string |  |
+| `subtitle` | `Sequential path arrows · abstract cartography` | string |  |
+| `accent` | `#c45c26` | color |  |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="map-campaign-arrows"
+  data-composition-src="compositions/map-campaign-arrows.html"
+  data-variable-values='{"title":"Schematic Advances","subtitle":"Sequential path arrows · abstract cartography","accent":"#c45c26"}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `map` `geography` `animation` `arrows` `campaign` `newsreel` `schematic` `svg`.
+
+Created by [HeyGen](https://hyperframes.heygen.com).
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -1,0 +1,244 @@
+---
+title: "Map City Pins"
+description: "Newsreel-style labeled city pins that pop and stagger onto a stylized landmass. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  compositionId="map-city-pins"
+  compositionSrc="compositions/map-city-pins.html"
+  title="Map City Pins"
+  description="Newsreel-style labeled city pins that pop and stagger onto a stylized landmass. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
+  variables={[]}
+  meta={{"duration":8,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":130}}
+  attribution={{"author":"HeyGen","authorUrl":"https://hyperframes.heygen.com","path":"registry/blocks/map-city-pins","tags":["map","geography","animation","pins","cities","newsreel","labels","svg"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/map-city-pins.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/map-city-pins.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/map-city-pins/map-city-pins.html"
+>
+
+<CatalogSlot slot="code">
+
+```html map-city-pins.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #1a1714; overflow: hidden; }
+      #root-map-city-pins {
+        position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        background: #1a1714; font-family: Georgia, "Times New Roman", serif;
+      }
+      #mcp-frame {
+        position: absolute; inset: 48px;
+        border: 1px solid rgba(196, 181, 154, 0.14); background: #221e19;
+      }
+      #mcp-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #mcp-title {
+        position: absolute; top: 72px; left: 96px;
+        color: rgba(232, 220, 196, 0.92); font-size: 42px;
+        letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      #mcp-subtitle {
+        position: absolute; top: 128px; left: 96px;
+        color: rgba(196, 181, 154, 0.55); font-size: 22px;
+        letter-spacing: 0.18em; text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root-map-city-pins" data-composition-id="map-city-pins"
+      data-start="0" data-duration="8" data-width="1920" data-height="1080">
+      <div id="mcp-frame">
+        <svg id="mcp-svg" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <pattern id="mcp-hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+              <line x1="0" y1="0" x2="0" y2="12" stroke="rgba(196,181,154,0.07)" stroke-width="1" />
+            </pattern>
+          </defs>
+          <rect width="1920" height="1080" fill="#1f1b17" />
+          <rect width="1920" height="1080" fill="url(#mcp-hatch)" />
+          <path id="mcp-land" d="M 280 320 C 340 220 480 180 620 210 C 760 240 820 300 900 280 C 980 260 1080 300 1180 340 C 1280 380 1360 460 1380 560 C 1400 660 1340 760 1240 820 C 1140 880 980 900 860 860 C 740 820 700 780 620 800 C 540 820 420 780 360 700 C 300 620 240 500 280 320 Z" fill="rgba(196,181,154,0.16)" stroke="rgba(196,181,154,0.4)" stroke-width="2" />
+          <path id="mcp-island" d="M 1480 420 C 1540 400 1600 430 1610 480 C 1620 530 1580 570 1520 560 C 1460 550 1450 450 1480 420 Z" fill="rgba(196,181,154,0.12)" stroke="rgba(196,181,154,0.3)" stroke-width="1.5" />
+          <!-- pins -->
+          <g id="mcp-pin-0" class="mcp-pin" transform="translate(480,480)">
+            <circle class="mcp-dot" r="9" fill="#c45c26" />
+            <circle class="mcp-ring" r="18" fill="none" stroke="#c45c26" stroke-width="2" />
+            <text class="mcp-label" x="0" y="-28" text-anchor="middle" fill="rgba(232,220,196,0.92)" font-size="22" font-family="Georgia, serif">NORTH</text>
+          </g>
+          <g id="mcp-pin-1" class="mcp-pin" transform="translate(760,560)">
+            <circle class="mcp-dot" r="9" fill="#c45c26" />
+            <circle class="mcp-ring" r="18" fill="none" stroke="#c45c26" stroke-width="2" />
+            <text class="mcp-label" x="0" y="-28" text-anchor="middle" fill="rgba(232,220,196,0.92)" font-size="22" font-family="Georgia, serif">CENTRAL</text>
+          </g>
+          <g id="mcp-pin-2" class="mcp-pin" transform="translate(1040,500)">
+            <circle class="mcp-dot" r="9" fill="#c45c26" />
+            <circle class="mcp-ring" r="18" fill="none" stroke="#c45c26" stroke-width="2" />
+            <text class="mcp-label" x="0" y="-28" text-anchor="middle" fill="rgba(232,220,196,0.92)" font-size="22" font-family="Georgia, serif">EAST</text>
+          </g>
+          <g id="mcp-pin-3" class="mcp-pin" transform="translate(1240,660)">
+            <circle class="mcp-dot" r="9" fill="#c45c26" />
+            <circle class="mcp-ring" r="18" fill="none" stroke="#c45c26" stroke-width="2" />
+            <text class="mcp-label" x="0" y="-28" text-anchor="middle" fill="rgba(232,220,196,0.92)" font-size="22" font-family="Georgia, serif">SOUTH</text>
+          </g>
+          <g id="mcp-pin-4" class="mcp-pin" transform="translate(1520,480)">
+            <circle class="mcp-dot" r="9" fill="#c45c26" />
+            <circle class="mcp-ring" r="18" fill="none" stroke="#c45c26" stroke-width="2" />
+            <text class="mcp-label" x="0" y="-28" text-anchor="middle" fill="rgba(232,220,196,0.92)" font-size="22" font-family="Georgia, serif">ISLE</text>
+          </g>
+        </svg>
+      </div>
+      <div id="mcp-title" data-var-text="title">Cities of Note</div>
+      <div id="mcp-subtitle" data-var-text="subtitle">Staggered pin drops · educational map</div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var vars = window.__hyperframes && window.__hyperframes.getVariables ? window.__hyperframes.getVariables() : {};
+        var accent = /^#[0-9a-fA-F]{6}$/.test(String(vars.accent || "")) ? String(vars.accent) : "#c45c26";
+        var title = typeof vars.title === "string" && vars.title ? vars.title : "Cities of Note";
+        var subtitle = typeof vars.subtitle === "string" && vars.subtitle ? vars.subtitle : "Staggered pin drops · educational map";
+        var labels = [
+          typeof vars.city1 === "string" && vars.city1 ? vars.city1 : "NORTH",
+          typeof vars.city2 === "string" && vars.city2 ? vars.city2 : "CENTRAL",
+          typeof vars.city3 === "string" && vars.city3 ? vars.city3 : "EAST",
+          typeof vars.city4 === "string" && vars.city4 ? vars.city4 : "SOUTH",
+          typeof vars.city5 === "string" && vars.city5 ? vars.city5 : "ISLE",
+        ];
+
+        document.getElementById("mcp-title").textContent = title;
+        document.getElementById("mcp-subtitle").textContent = subtitle;
+
+        var pins = [];
+        for (var i = 0; i < 5; i++) {
+          var g = document.getElementById("mcp-pin-" + i);
+          var dot = g.querySelector(".mcp-dot");
+          var ring = g.querySelector(".mcp-ring");
+          var lab = g.querySelector(".mcp-label");
+          dot.setAttribute("fill", accent);
+          ring.setAttribute("stroke", accent);
+          lab.textContent = labels[i];
+          pins.push(g);
+        }
+
+        gsap.set("#mcp-title", { opacity: 0, y: -10 });
+        gsap.set("#mcp-subtitle", { opacity: 0 });
+        gsap.set("#mcp-land", { opacity: 0 });
+        gsap.set("#mcp-island", { opacity: 0 });
+        gsap.set(pins, { opacity: 0, scale: 0, transformOrigin: "50% 50%" });
+        gsap.set(".mcp-label", { opacity: 0, y: 8 });
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to("#mcp-land", { opacity: 1, duration: 0.5, ease: "power2.out" }, 0);
+        tl.to("#mcp-island", { opacity: 1, duration: 0.4, ease: "power2.out" }, 0.12);
+        tl.to("#mcp-title", { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 0.08);
+        tl.to("#mcp-subtitle", { opacity: 1, duration: 0.35, ease: "power1.out" }, 0.3);
+
+        for (i = 0; i < pins.length; i++) {
+          var t = 0.85 + i * 0.45;
+          tl.to(pins[i], { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(2.2)" }, t);
+          tl.to(pins[i].querySelector(".mcp-label"), { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, t + 0.12);
+          tl.fromTo(pins[i].querySelector(".mcp-ring"), { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: "power2.out", transformOrigin: "50% 50%" }, t);
+        }
+
+        window.__timelines["map-city-pins"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add map-city-pins" item="map-city-pins" />
+
+That writes one file: `compositions/map-city-pins.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 8 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="map-city-pins"
+  data-composition-src="compositions/map-city-pins.html"
+  data-start="0"
+  data-duration="8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `undefined` — Title. Defaults to `Cities of Note`.
+- `undefined` — Subtitle. Defaults to `Staggered pin drops · educational map`.
+- `undefined` — City 1. Defaults to `NORTH`.
+- `undefined` — City 2. Defaults to `CENTRAL`.
+- `undefined` — City 3. Defaults to `EAST`.
+- `undefined` — City 4. Defaults to `SOUTH`.
+- `undefined` — City 5. Defaults to `ISLE`.
+- `undefined` — Accent. Defaults to `#c45c26`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `title` | `Cities of Note` | string |  |
+| `subtitle` | `Staggered pin drops · educational map` | string |  |
+| `city1` | `NORTH` | string |  |
+| `city2` | `CENTRAL` | string |  |
+| `city3` | `EAST` | string |  |
+| `city4` | `SOUTH` | string |  |
+| `city5` | `ISLE` | string |  |
+| `accent` | `#c45c26` | color |  |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="map-city-pins"
+  data-composition-src="compositions/map-city-pins.html"
+  data-variable-values='{"title":"Cities of Note","subtitle":"Staggered pin drops · educational map","city1":"NORTH","city2":"CENTRAL","city3":"EAST","city4":"SOUTH","city5":"ISLE","accent":"#c45c26"}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `map` `geography` `animation` `pins` `cities` `newsreel` `labels` `svg`.
+
+Created by [HeyGen](https://hyperframes.heygen.com).
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
