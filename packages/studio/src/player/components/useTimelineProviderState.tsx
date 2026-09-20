@@ -10,7 +10,12 @@ import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
-import { buildTimelineCanvasState, buildTimelineMeta } from "./timelineProviderStateBuilders";
+import {
+  buildTimelineMeta,
+  resolveRenderClipContent,
+  resolveResizingElementIds,
+  shouldIgnoreTimelinePointerDown,
+} from "./timelineProviderStateBuilders";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
@@ -238,9 +243,7 @@ export function useTimelineProviderState({
     sessionEpoch,
   });
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
-  const resizingElementIds =
-    resizingClip?.groupPreview?.map((change) => change.key) ??
-    (resizingClip ? [getTimelineElementIdentity(resizingClip.element)] : undefined);
+  const resizingElementIds = resolveResizingElementIds(resizingClip);
   const { recordTimelineScroll } = useTimelinePerformanceTelemetry({
     totalClipCount: timelineElements.length,
     totalRowCount: displayLayout.displayTrackOrder.length,
@@ -416,7 +419,7 @@ export function useTimelineProviderState({
     [resizingClip],
   );
 
-  const canvasProps = buildTimelineCanvasState({
+  const canvasProps = {
     major,
     minor,
     pps,
@@ -488,7 +491,7 @@ export function useTimelineProviderState({
     onResizeElement,
     onMoveElement,
     beatDragging,
-  });
+  };
   const overlaysProps = {
     elements: timelineElements,
     elementsRef: timelineElementsRef,
@@ -519,8 +522,11 @@ export function useTimelineProviderState({
     onCloseAllTrackGaps: closeAllTrackGaps,
     onHoverGapAction: setHoveredGapAction,
   };
-  const timelineRenderClipContent =
-    timelineFocus.rowVirtualizationActive && viewport.isScrolling ? undefined : renderClipContent;
+  const timelineRenderClipContent = resolveRenderClipContent(
+    timelineFocus.rowVirtualizationActive,
+    viewport.isScrolling,
+    renderClipContent,
+  );
   const timelineMeta = buildTimelineMeta({
     emptyState: {
       isDragOver: assetDrop.isDragOver,
@@ -560,7 +566,7 @@ export function useTimelineProviderState({
       onDragLeave: assetDrop.handleAssetDragLeave,
       onDrop: assetDrop.handleAssetDrop,
       onPointerDown: (e) => {
-        if (e.target instanceof Element && e.target.closest("button, input, select, a")) return;
+        if (shouldIgnoreTimelinePointerDown(e.target)) return;
         if (splitAllAtPointer(e)) return;
         handlePointerDown(e);
       },

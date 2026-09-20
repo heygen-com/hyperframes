@@ -4,9 +4,27 @@ import type {
   TimelineContainerProps,
   TimelineViewportProps,
 } from "./TimelineProvider";
+import type { ResizingClipState } from "./useTimelineClipDrag";
+import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 
-export function buildTimelineCanvasState(input: TimelineCanvasState): TimelineCanvasState {
-  return input;
+export function resolveResizingElementIds(
+  resizingClip: ResizingClipState | null,
+): readonly string[] | undefined {
+  if (resizingClip?.groupPreview) return resizingClip.groupPreview.map((change) => change.key);
+  if (resizingClip) return [resizingClip.element.key ?? resizingClip.element.id];
+  return undefined;
+}
+
+export function resolveRenderClipContent(
+  rowVirtualizationActive: boolean,
+  isScrolling: boolean,
+  renderClipContent: TimelineLaneBaseProps["renderClipContent"],
+): TimelineLaneBaseProps["renderClipContent"] {
+  return rowVirtualizationActive && isScrolling ? undefined : renderClipContent;
+}
+
+export function shouldIgnoreTimelinePointerDown(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("button, input, select, a") !== null;
 }
 
 type ContainerInputs = Omit<TimelineContainerProps, "className"> & {

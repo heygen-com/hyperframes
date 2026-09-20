@@ -1,5 +1,13 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it, vi } from "vitest";
-import { buildTimelineMeta, type TimelineMetaBuilderInputs } from "./timelineProviderStateBuilders";
+import {
+  buildTimelineMeta,
+  resolveRenderClipContent,
+  resolveResizingElementIds,
+  shouldIgnoreTimelinePointerDown,
+  type TimelineMetaBuilderInputs,
+} from "./timelineProviderStateBuilders";
 
 function inputs(overrides: Partial<TimelineMetaBuilderInputs> = {}): TimelineMetaBuilderInputs {
   return {
@@ -41,19 +49,29 @@ function inputs(overrides: Partial<TimelineMetaBuilderInputs> = {}): TimelineMet
 }
 
 describe("buildTimelineMeta", () => {
-  it("uses the drag, tool, and modifier branches for the container class", () => {
+  it("uses the razor branch for the container class", () => {
     const meta = buildTimelineMeta(
       inputs({
         container: {
           ...inputs().container,
-          isDragOver: true,
           activeTool: "razor",
-          shiftHeld: true,
         },
       }),
     );
-    expect(meta.containerProps.className).toContain("ring");
     expect(meta.containerProps.className).toContain("cursor-crosshair");
+  });
+
+  it("uses the shift branch for the container class", () => {
+    const meta = buildTimelineMeta(
+      inputs({ container: { ...inputs().container, shiftHeld: true } }),
+    );
+    expect(meta.containerProps.className).toContain("cursor-crosshair");
+  });
+
+  it("uses the default container class without an accent", () => {
+    const meta = buildTimelineMeta(inputs());
+    expect(meta.containerProps.className).toContain("cursor-default");
+    expect(meta.containerProps.className).not.toContain("ring");
   });
 
   it("uses the label-column inset only in label mode", () => {
@@ -63,5 +81,29 @@ describe("buildTimelineMeta", () => {
     );
     expect(fit.viewportProps["data-timeline-auto-scroll-left-inset"]).toBe(0);
     expect(labels.viewportProps["data-timeline-auto-scroll-left-inset"]).toBe(120);
+  });
+});
+
+describe("timeline provider branch helpers", () => {
+  it("resolves virtualized clip content", () => {
+    const render = () => null;
+    expect(resolveRenderClipContent(true, true, render)).toBeUndefined();
+    expect(resolveRenderClipContent(false, true, render)).toBe(render);
+  });
+
+  it("resolves resizing element ids", () => {
+    expect(resolveResizingElementIds(null)).toBeUndefined();
+    expect(resolveResizingElementIds({ element: { id: "clip" } } as never)).toEqual(["clip"]);
+    expect(resolveResizingElementIds({ groupPreview: [{ key: "group::clip" }] } as never)).toEqual([
+      "group::clip",
+    ]);
+  });
+
+  it("ignores pointer downs on interactive descendants only", () => {
+    const button = document.createElement("button");
+    const div = document.createElement("div");
+    expect(shouldIgnoreTimelinePointerDown(button)).toBe(true);
+    expect(shouldIgnoreTimelinePointerDown(div)).toBe(false);
+    expect(shouldIgnoreTimelinePointerDown(null)).toBe(false);
   });
 });
