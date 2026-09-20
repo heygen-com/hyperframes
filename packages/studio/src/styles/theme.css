@@ -63,7 +63,7 @@
   --timeline-tick-minor: rgba(255, 255, 255, 0.06);
   --timeline-clip-bg: rgba(255, 255, 255, 0.12);
   --timeline-clip-bg-active: rgba(60, 230, 172, 0.2);
-  --timeline-clip-bg-hover: rgba(255, 255, 255, 0.09);
+  --timeline-clip-bg-hover: rgba(255, 255, 255, 0.16);
   --timeline-clip-bg-dragging: rgba(38, 42, 52, 0.96);
   --timeline-clip-border: rgba(255, 255, 255, 0.22);
   --timeline-clip-border-hover: rgba(60, 230, 172, 0.75);
