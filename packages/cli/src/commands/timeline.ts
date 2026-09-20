@@ -20,6 +20,28 @@ export const examples: Example[] = [
   ["Delete a clip and return a receipt", "hyperframes timeline delete '#hero' --json"],
 ];
 
+function mutationCommand(verb: MutationVerb) {
+  return defineCommand({
+    meta: { name: verb, description: `${verb} a timeline clip` },
+    args: {
+      ref: { type: "positional", required: true },
+      time: { type: "positional", required: verb === "move" || verb === "split" },
+      at: { type: "string" },
+      dir: { type: "string" },
+      start: { type: "string" },
+      end: { type: "string" },
+      duration: { type: "string" },
+      plan: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+      overwrite: { type: "boolean", default: false },
+      snap: { type: "boolean", default: false },
+    },
+    async run({ args }) {
+      await runMutation(verb, args);
+    },
+  });
+}
+
 function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
   return allRows(timeline).filter((candidate) => candidate.file === file);
 }
