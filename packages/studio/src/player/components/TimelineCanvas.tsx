@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { TimelineRuler } from "./TimelineRuler";
+import { TimelineRulerPart } from "./TimelineRulerPart";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import {
   RULER_H,
@@ -79,19 +79,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
       className="relative"
       style={{ height: props.totalH, width: props.contentOrigin + props.trackContentWidth }}
     >
-      <TimelineRuler
-        major={props.major}
-        minor={props.minor}
-        pps={props.pps}
-        trackContentWidth={props.trackContentWidth}
-        totalH={props.totalH}
-        effectiveDuration={props.effectiveDuration}
-        majorTickInterval={props.majorTickInterval}
-        theme={props.theme}
-        beatAnalysis={props.beatAnalysis}
-        contentOrigin={props.contentOrigin}
-        renderTimeRange={props.rowsVirtualized ? props.renderTimeRange : undefined}
-      />
+      <TimelineRulerPart />
 
       {/* Breathing room between the sticky ruler and the first track lane — the
           top half of the CapCut-style padding (see TRACKS_TOP_PAD). */}

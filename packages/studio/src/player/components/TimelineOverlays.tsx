@@ -34,7 +34,12 @@ export function resolveTimelineContextElement({
 // The timeline's floating overlays, rendered as siblings above the scroll area:
 // the shortcut hint, the range-edit popover, the keyframe-diamond context menu,
 // and the clip context menu.
-export function TimelineOverlays() {
+export type TimelineOverlayPart = "all" | "shortcut" | "edit" | "clip" | "keyframe" | "gap";
+
+// The composed overlay keeps target validation and action routing in one owner.
+// fallow-ignore-next-line complexity
+// fallow-ignore-next-line unit-size
+export function TimelineOverlays({ part = "all" }: { part?: TimelineOverlayPart } = {}) {
   const { state, actions } = useTimelineContext();
   const overlayProps = state.overlays;
   const {
@@ -105,13 +110,16 @@ export function TimelineOverlays() {
     if (clipContextMenu && !clipElement) setClipContextMenu(null);
   }, [clipContextMenu, clipElement, setClipContextMenu]);
 
+  const includes = (candidate: Exclude<TimelineOverlayPart, "all">) =>
+    part === "all" || part === candidate;
+
   return (
     <>
-      {showShortcutHint && !showPopover && !rangeSelection && (
+      {includes("shortcut") && showShortcutHint && !showPopover && !rangeSelection && (
         <TimelineShortcutHint theme={theme} />
       )}
 
-      {showPopover && rangeSelection && (
+      {includes("edit") && showPopover && rangeSelection && (
         <EditPopover
           rangeStart={rangeSelection.start}
           rangeEnd={rangeSelection.end}
@@ -124,7 +132,7 @@ export function TimelineOverlays() {
         />
       )}
 
-      {kfContextMenu && keyframeElement && (
+      {includes("keyframe") && kfContextMenu && keyframeElement && (
         <KeyframeDiamondContextMenu
           state={{ ...kfContextMenu, element: keyframeElement }}
           onClose={() => setKfContextMenu(null)}
@@ -179,7 +187,7 @@ export function TimelineOverlays() {
         />
       )}
 
-      {clipContextMenu && clipElement && (
+      {includes("clip") && clipContextMenu && clipElement && (
         <ClipContextMenu
           x={clipContextMenu.x}
           y={clipContextMenu.y}
@@ -203,7 +211,7 @@ export function TimelineOverlays() {
         />
       )}
 
-      {gapContextMenu && (
+      {includes("gap") && gapContextMenu && (
         <TrackGapContextMenu
           x={gapContextMenu.x}
           y={gapContextMenu.y}

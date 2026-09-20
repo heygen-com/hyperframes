@@ -60,6 +60,22 @@ export type {
   TimelineElement,
   TimelineTimeRange,
 } from "./player";
+export {
+  TimelineFrame,
+  TimelineLanes,
+  TimelineOverlays,
+  TimelinePlayhead,
+  TimelineRazorGuide,
+  TimelineRuler,
+  TimelineEmptyStatePart,
+  TimelineEditPopover,
+  TimelineClipMenu,
+  TimelineGapMenu,
+  TimelineKeyframeMenu,
+  TimelineShortcutHint,
+} from "./player/components/TimelineParts";
+export { TimelineProvider, useTimelineContext } from "./player/components/TimelineProvider";
+export type { TimelineTheme } from "./player/components/timelineTheme";
 
 // Host overlays: draw over the preview in composition coordinates (see EditorShellProps.gestureOverlay)
 export { usePreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";

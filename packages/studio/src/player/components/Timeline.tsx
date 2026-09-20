@@ -1,9 +1,20 @@
 import { memo } from "react";
 import type { TimelineProps } from "./TimelineTypes";
-import { TimelineEmptyState } from "./TimelineEmptyState";
-import { TimelineCanvas } from "./TimelineCanvas";
-import { TimelineOverlays } from "./TimelineOverlays";
 import { TimelineProvider, useTimelineContext } from "./TimelineProvider";
+import {
+  TimelineEmptyStatePart,
+  TimelineEditPopover,
+  TimelineClipMenu,
+  TimelineFrame,
+  TimelineGapMenu,
+  TimelineKeyframeMenu,
+  TimelineLanes,
+  TimelineOverlaysPart,
+  TimelinePlayhead,
+  TimelineRazorGuide,
+  TimelineRuler,
+  TimelineShortcutHint,
+} from "./TimelineParts";
 
 export * from "./TimelineProvider";
 export {
@@ -28,23 +39,39 @@ function TimelineView() {
   const { state, meta } = useTimelineContext();
   const { timelineReady, elements } = state;
   if (!timelineReady || elements.length === 0) {
-    return <TimelineEmptyState {...meta.emptyState} />;
+    return <TimelineEmptyStatePart />;
   }
   return (
     <div {...meta.containerProps}>
       <div {...meta.viewportProps}>
-        <TimelineCanvas />
-        {meta.razorGuide}
+        <TimelineFrame />
+        <TimelineRazorGuide />
       </div>
-      <TimelineOverlays />
+      <TimelineOverlaysPart />
     </div>
   );
 }
 
-export const Timeline = memo(function Timeline(props: TimelineProps = {}) {
+const TimelineComposed = memo(function TimelineComposed(props: TimelineProps = {}) {
   return (
     <TimelineProvider {...props}>
       <TimelineView />
     </TimelineProvider>
   );
+});
+
+export const Timeline = Object.assign(TimelineComposed, {
+  Provider: TimelineProvider,
+  Frame: TimelineFrame,
+  Ruler: TimelineRuler,
+  Lanes: TimelineLanes,
+  Playhead: TimelinePlayhead,
+  RazorGuide: TimelineRazorGuide,
+  ShortcutHint: TimelineShortcutHint,
+  EditPopover: TimelineEditPopover,
+  ClipMenu: TimelineClipMenu,
+  KeyframeMenu: TimelineKeyframeMenu,
+  GapMenu: TimelineGapMenu,
+  EmptyState: TimelineEmptyStatePart,
+  Overlays: TimelineOverlaysPart,
 });
