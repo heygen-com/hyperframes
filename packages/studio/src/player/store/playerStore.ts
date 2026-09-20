@@ -60,7 +60,8 @@ type PlayerStoreSlices = KeyframeSlice &
   AutomationSelectionSlice &
   ThumbnailSlice &
   EditingModeSlice &
-  ReturnType<typeof createPlaybackReadinessSlice> & RangeSelectionSlice;
+  ReturnType<typeof createPlaybackReadinessSlice> &
+  RangeSelectionSlice;
 interface PlayerState extends PlayerStoreSlices {
   isPlaying: boolean;
   currentTime: number;
