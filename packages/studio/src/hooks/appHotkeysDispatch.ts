@@ -57,6 +57,10 @@ export interface HotkeyCallbacks {
   readOnlyPreview: boolean;
 }
 
+function timelineOwnsKey(event: KeyboardEvent): boolean {
+  return event.target instanceof Element && event.target.closest("[data-studio-timeline]") !== null;
+}
+
 /** Exported for tests, like dispatchPlainKey below: lets the Cmd+C/Cmd+V
  *  arbitration between an automation range and the clip clipboard be asserted
  *  without standing up the whole hook. */
@@ -116,9 +120,7 @@ export function dispatchModifierKey(
       return true;
     }
     const previewOwnsMutation =
-      cb.readOnlyPreview &&
-      cb.domEditSelectionRef.current !== null &&
-      usePlayerStore.getState().selectedElementId === null;
+      cb.readOnlyPreview && cb.domEditSelectionRef.current !== null && !timelineOwnsKey(event);
     if (previewOwnsMutation && ["v", "x", "d"].includes(key)) {
       event.preventDefault();
       return true;
@@ -250,7 +252,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // the timeline left other selected elements behind. Timeline stays as the
     // fallback for rows with no canvas node (audio, an inactive comp).
     const domSel = cb.domEditSelectionRef.current;
-    const timelineOwnsDelete = usePlayerStore.getState().selectedElementId !== null;
+    const timelineOwnsDelete = timelineOwnsKey(event);
     if (domSel && !timelineOwnsDelete) {
       event.preventDefault();
       if (cb.readOnlyPreview) return;

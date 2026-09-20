@@ -249,7 +249,11 @@ export function TimelinePane({
   );
 
   return (
-    <div className="relative flex h-full flex-col" aria-disabled={timelineDisabled || undefined}>
+    <div
+      className="relative flex h-full flex-col"
+      data-studio-timeline="true"
+      aria-disabled={timelineDisabled || undefined}
+    >
       <div
         className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
         onDoubleClick={(e) => {

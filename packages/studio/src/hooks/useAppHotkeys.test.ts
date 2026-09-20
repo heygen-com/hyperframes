@@ -347,7 +347,11 @@ describe("hotkeys with the preview read-only", () => {
     usePlayerStore.setState({ selectedElementId: "bgm" });
     const cb = callbacks({ readOnlyPreview: true });
     cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
-    dispatchModifierKey(chord("v"), "v", cb);
+    const event = chord("v");
+    const timeline = document.createElement("div");
+    timeline.dataset.studioTimeline = "true";
+    Object.defineProperty(event, "target", { value: timeline });
+    dispatchModifierKey(event, "v", cb);
     expect(cb.handlePaste).toHaveBeenCalledTimes(1);
   });
 
