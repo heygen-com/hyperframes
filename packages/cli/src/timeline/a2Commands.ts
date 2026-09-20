@@ -2,10 +2,7 @@ import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-serv
 import type { AppliedFileMutation } from "@hyperframes/studio-server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  describeProject,
-  type ProjectTimeline,
-} from "./describeProject.js";
+import { describeProject, type ProjectTimeline } from "./describeProject.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -53,7 +50,6 @@ export async function runIds(args: Record<string, unknown>): Promise<void> {
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else console.log(`ids: stamped ${receipts.length} file${receipts.length === 1 ? "" : "s"}`);
 }
-
 type ApplyEditResult =
   | { ok: true; file: string; after: string }
   | { ok: false; reason: string; fix: string };
@@ -241,4 +237,3 @@ function publicReceipt(receipt: AppliedFileMutation) {
     backupPath: receipt.backupPath,
   };
 }
-
