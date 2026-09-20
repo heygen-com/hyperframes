@@ -61,6 +61,7 @@ const OPACITY = animation("opacity-tween", "visual", [
 ]);
 
 interface RenderHeaderOptions {
+  contentOrigin?: number;
   keyframeClip?: TimelineElement;
   /** Every clip on the track; defaults to just the keyframe clip. */
   trackElements?: readonly TimelineElement[];
@@ -108,7 +109,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           trackDisplayNumber={1}
           trackLabel="Hero card"
           lanesId="timeline-lanes-track-0"
-          contentOrigin={LABEL_COL_W}
+          contentOrigin={next.contentOrigin ?? LABEL_COL_W}
           keyframeClip={next.keyframeClip}
           trackElements={next.trackElements ?? [next.keyframeClip]}
           clipCount={next.clipCount}
@@ -139,6 +140,33 @@ function click(host: HTMLElement, label: string) {
 }
 
 describe("TimelineTrackHeader", () => {
+  it("keeps narrow headers to controls while retaining the lane name in a tooltip", () => {
+    const audio: TimelineElement = {
+      ...ELEMENT,
+      id: "audio-1",
+      label: "Clip",
+      tag: "audio",
+      automation: JSON.stringify({
+        version: 1,
+        lanes: [{ target: "speed", points: [{ t: 0, v: 1 }] }],
+      }),
+    };
+    const view = renderHeader({
+      contentOrigin: 80,
+      keyframeClip: audio,
+      trackElements: [audio],
+      isAudioTrack: true,
+    });
+    expect(view.host.querySelector('[data-automation-lane-name]')).toBeNull();
+    expect(view.host.querySelector('[title*="speed"]')).not.toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("renders the track name when the label column has room", () => {
+    const view = renderHeader({ keyframeClip: { ...ELEMENT, label: "Clip" } });
+    expect(view.host.textContent).toContain("Clip");
+    act(() => view.root.unmount());
+  });
   // §5: gain stages multiply. A group fading to 0.42 under a clip fading to
   // 0.80 plays at 0.34, and an author who drew both hears something quieter
   // than either with nothing on screen to say why. Not a warning; an
