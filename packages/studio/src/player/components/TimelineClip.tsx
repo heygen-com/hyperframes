@@ -64,6 +64,14 @@ export const TimelineClip = memo(function TimelineClip({
   const showDefaultText = !hasCustomContent && (widthPx >= 40 || isSelected);
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
+  const themeVariables = {
+    "--timeline-clip-bg": theme.clipBackground,
+    "--timeline-clip-bg-active": theme.clipBackgroundActive,
+    "--timeline-clip-border": theme.clipBorder,
+    "--timeline-clip-border-hover": theme.clipBorderHover,
+    "--timeline-clip-border-active": theme.clipBorderActive,
+    "--timeline-handle": theme.handleColor,
+  } as CSSProperties;
   const clipClassName = [
     "timeline-clip",
     "absolute",
@@ -81,6 +89,7 @@ export const TimelineClip = memo(function TimelineClip({
     top: clipY,
     ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
     borderRadius: theme.clipRadius,
+    ...themeVariables,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
     // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
     cursor: "default",
@@ -144,7 +153,7 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: "rgba(255, 255, 255, 0.55)",
+              background: "var(--timeline-handle)",
               opacity: handleOpacity * 0.6,
             }}
           />
@@ -174,7 +183,7 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: "rgba(255, 255, 255, 0.55)",
+              background: "var(--timeline-handle)",
               opacity: handleOpacity * 0.6,
             }}
           />

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { TimelineClip } from "./TimelineClip";
 import type { TimelineEditCapabilities } from "./timelineEditing";
+import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
@@ -27,11 +28,13 @@ function renderClip({
   pps = 100,
   isSelected = false,
   hasCustomContent = true,
+  theme = defaultTimelineTheme,
 }: {
   element: TimelineElement;
   pps?: number;
   isSelected?: boolean;
   hasCustomContent?: boolean;
+  theme?: TimelineTheme;
 }) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -48,6 +51,7 @@ function renderClip({
         isHovered={false}
         hasCustomContent={hasCustomContent}
         capabilities={capabilities}
+        theme={theme}
         isComposition={false}
         onHoverStart={vi.fn()}
         onHoverEnd={vi.fn()}
@@ -112,6 +116,33 @@ describe("TimelineClip", () => {
 
     expect(host.querySelector(".timeline-clip")?.classList.contains("is-selected")).toBe(true);
 
+    act(() => root.unmount());
+  });
+
+  it("passes clip and handle theme tokens to the rendered elements", () => {
+    const theme: TimelineTheme = {
+      ...defaultTimelineTheme,
+      clipBackground: "var(--test-clip-bg)",
+      clipBackgroundActive: "var(--test-clip-bg-active)",
+      clipBorder: "var(--test-clip-border)",
+      clipBorderHover: "var(--test-clip-border-hover)",
+      clipBorderActive: "var(--test-clip-border-active)",
+      handleColor: "var(--test-handle)",
+    };
+    const { host, root } = renderClip({
+      element: { id: "themed", label: "Themed", tag: "div", start: 0, duration: 1, track: 0 },
+      isSelected: true,
+      theme,
+    });
+    const clip = host.querySelector<HTMLElement>(".timeline-clip")!;
+    expect(clip.style.getPropertyValue("--timeline-clip-bg")).toBe("var(--test-clip-bg)");
+    expect(clip.style.getPropertyValue("--timeline-clip-border-active")).toBe(
+      "var(--test-clip-border-active)",
+    );
+    expect(clip.style.getPropertyValue("--timeline-handle")).toBe("var(--test-handle)");
+    expect(clip.querySelector<HTMLElement>(".timeline-clip__handle-bar")?.style.background).toBe(
+      "var(--timeline-handle)",
+    );
     act(() => root.unmount());
   });
 

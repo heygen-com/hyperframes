@@ -75,11 +75,11 @@ describe("timeline motion styles", () => {
     const bloomOverlayRule = expectRule(studioCss, ".timeline-clip::before");
     const activeBloomOverlayRule = expectRule(studioCss, ".timeline-clip[data-active]::before");
 
-    expect(baseTimelineClipRule).toContain("background-color: rgba(255, 255, 255, 0.055)");
+    expect(baseTimelineClipRule).toContain("background-color: var(--timeline-clip-bg)");
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
-    expect(activeTimelineClipRule).toContain("border-color: rgba(60, 230, 172, 0.55)");
+    expect(activeTimelineClipRule).toContain("border-color: var(--timeline-clip-border-active)");
     expect(activeTimelineClipRule).not.toContain("box-shadow");
-    expect(bloomOverlayRule).toContain("background: rgba(60, 230, 172, 0.2)");
+    expect(bloomOverlayRule).toContain("background: var(--timeline-clip-bg-active)");
     expect(bloomOverlayRule).not.toContain("linear-gradient");
     expect(bloomOverlayRule).toContain("opacity: 0");
     expect(activeBloomOverlayRule).toContain("opacity: 1");
