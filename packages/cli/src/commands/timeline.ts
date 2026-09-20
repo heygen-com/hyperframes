@@ -79,9 +79,7 @@ function splitBaseId(row: TimelineRow): string {
 
 function nextFreeSplitId(source: string, base: string): string {
   const document = new DOMParser().parseFromString(source, "text/html");
-  const existing = new Set(
-    Array.from(document.querySelectorAll("[id]"), (element) => element.id),
-  );
+  const existing = new Set(Array.from(document.querySelectorAll("[id]"), (element) => element.id));
   const match = /^(.*)-(\d+)$/.exec(base);
   const prefix = match && existing.has(match[1]!) ? match[1]! : base;
   let suffix = 2;
@@ -222,7 +220,12 @@ function trimBounds(
   if (!input.ok) return input;
   const start = trimStart(context, input.start);
   if (!start.ok) return start;
-  return finishTrim(context, start.seconds, trimEnd(context, input.end), trimDuration(context, input.duration));
+  return finishTrim(
+    context,
+    start.seconds,
+    trimEnd(context, input.end),
+    trimDuration(context, input.duration),
+  );
 }
 
 function trimInput(args: Record<string, unknown>) {
@@ -232,7 +235,11 @@ function trimInput(args: Record<string, unknown>) {
     duration: typeof args.duration === "string" ? args.duration : undefined,
   };
   if (input.start || input.end || input.duration) return { ok: true as const, ...input };
-  return { ok: false as const, reason: "trim requires --start, --end, or --duration", fix: "pass one trim option" };
+  return {
+    ok: false as const,
+    reason: "trim requires --start, --end, or --duration",
+    fix: "pass one trim option",
+  };
 }
 
 function finishTrim(
@@ -320,7 +327,9 @@ interface MutationSetup {
   context: MutationContext;
 }
 
-type MutationSetupResult = MutationSetup | { ok: false; reason: string; fix: string; json: boolean };
+type MutationSetupResult =
+  | MutationSetup
+  | { ok: false; reason: string; fix: string; json: boolean };
 
 async function prepareMutation(args: Record<string, unknown>): Promise<MutationSetupResult> {
   const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
@@ -338,10 +347,16 @@ async function prepareMutation(args: Record<string, unknown>): Promise<MutationS
   );
   const projectFps = declaredFps(indexSource);
   if (snap && projectFps === null) {
-    return { ok: false, reason: "project fps is unknown", fix: "set data-fps on the project, then rerun with --snap", json };
+    return {
+      ok: false,
+      reason: "project fps is unknown",
+      fix: "set data-fps on the project, then rerun with --snap",
+      json,
+    };
   }
   const initialResolved = resolveRef(initialTimeline, ref);
-  if (!initialResolved.ok) return { ok: false, reason: initialResolved.reason, fix: initialResolved.fix, json };
+  if (!initialResolved.ok)
+    return { ok: false, reason: initialResolved.reason, fix: initialResolved.fix, json };
   const initialRow = initialResolved.row;
   const filePath = join(project.dir, initialRow.file);
   const before = readFileSync(filePath, "utf-8");
@@ -398,11 +413,29 @@ async function finishMutation(
   const conflict = mutationConflict(verb, overwrite, row, timeline, nextStart, nextDuration);
   if (conflict) return refusal(conflict.reason, conflict.fix, json);
   const describeSource = (source: string): Promise<ProjectTimeline> =>
-    describeProject(project.indexPath, undefined, new Map([["index.html", setup.indexSource], [row.file, source]]));
+    describeProject(
+      project.indexPath,
+      undefined,
+      new Map([
+        ["index.html", setup.indexSource],
+        [row.file, source],
+      ]),
+    );
   const describedBefore = await describeSource(before);
   const result = mutationResult(row, describedBefore, setup.plan);
   if (setup.plan) return printPlan(result, json, timeline, describeSource, after, before);
-  return applyAndPrint({ setup, verb, json, row, nextStart, nextDuration, after, before, result, describeSource });
+  return applyAndPrint({
+    setup,
+    verb,
+    json,
+    row,
+    nextStart,
+    nextDuration,
+    after,
+    before,
+    result,
+    describeSource,
+  });
 }
 
 async function applyAndPrint(args: {
@@ -418,7 +451,8 @@ async function applyAndPrint(args: {
   describeSource: (source: string) => Promise<ProjectTimeline>;
 }): Promise<void> {
   const receipt = applyMutation(args.setup, args.after);
-  if (receipt && "error" in receipt) return refusal(receipt.error, "re-run hyperframes timeline", args.json);
+  if (receipt && "error" in receipt)
+    return refusal(receipt.error, "re-run hyperframes timeline", args.json);
   if (!receipt && args.after !== args.before) {
     return refusal("mutation produced no receipt", "re-run hyperframes timeline", args.json);
   }
@@ -428,7 +462,9 @@ async function applyAndPrint(args: {
     console.log(JSON.stringify(withMeta(args.result), null, 2));
     return;
   }
-  console.log(`${args.verb} ${args.row.ref}: ${args.row.start}-${args.row.end}s -> ${args.nextStart}-${args.nextStart + args.nextDuration}s\nreceipt: ${receipt?.version ?? "unchanged"}`);
+  console.log(
+    `${args.verb} ${args.row.ref}: ${args.row.start}-${args.row.end}s -> ${args.nextStart}-${args.nextStart + args.nextDuration}s\nreceipt: ${receipt?.version ?? "unchanged"}`,
+  );
 }
 
 function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
@@ -458,7 +494,10 @@ async function printPlan(
   const plannedTimeline = await describeSource(after);
   result.after = rowsForFile(plannedTimeline, result.file);
   if (json) console.log(JSON.stringify(result, null, 2));
-  else console.log(`${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${diff(before, after)}`);
+  else
+    console.log(
+      `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${diff(before, after)}`,
+    );
 }
 
 function applyMutation(
@@ -467,7 +506,13 @@ function applyMutation(
 ): AppliedFileMutation | { error: string } | undefined {
   try {
     return applyFileMutations(setup.project.dir, [
-      { sourceFile: setup.row.file, absPath: setup.filePath, before: setup.before, after, expectedVersion: setup.expectedVersion },
+      {
+        sourceFile: setup.row.file,
+        absPath: setup.filePath,
+        before: setup.before,
+        after,
+        expectedVersion: setup.expectedVersion,
+      },
     ])[0];
   } catch (error) {
     if (error instanceof Error && error.message === "file changed since the timeline was read") {

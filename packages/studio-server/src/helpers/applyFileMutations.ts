@@ -35,9 +35,7 @@ export function applyFileMutations(
   const attempted: typeof prepared = [];
   try {
     for (const mutation of prepared) {
-      results.push(
-        applyOneMutation(projectDir, mutation, requestToken, writeFile, attempted),
-      );
+      results.push(applyOneMutation(projectDir, mutation, requestToken, writeFile, attempted));
     }
     return results;
   } catch (error) {

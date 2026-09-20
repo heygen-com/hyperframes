@@ -399,7 +399,9 @@ function flatten(top: ClipDraft[]): TimelineTrack[] {
       const warnings =
         uniqueId || clip.hfId
           ? []
-          : ['row has no stable name; add id="<name>" to the element in this file, then retry with #<name>'];
+          : [
+              'row has no stable name; add id="<name>" to the element in this file, then retry with #<name>',
+            ];
       return {
         ...clip,
         index,

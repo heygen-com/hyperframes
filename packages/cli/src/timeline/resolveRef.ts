@@ -30,7 +30,7 @@ export function resolveRef(timeline: ProjectTimeline, ref: string): RefResolutio
       ok: false,
       reason:
         matches.length === 0 ? `${ref} was not found` : `${ref} matches ${matches.length} rows`,
-      fix: "add id=\"<name>\" to the element in its source file, then retry with #<name>",
+      fix: 'add id="<name>" to the element in its source file, then retry with #<name>',
     };
   }
   const row = matches[0]!;
