@@ -18,12 +18,13 @@ describe("resolvePlaybackAdapter", () => {
   it("uses the __timelines key matching the document root, not the first key", () => {
     const first = timeline(12);
     const second = timeline(12);
+    const third = timeline(12);
     const iframe = document.createElement("iframe");
     const doc = document.implementation.createHTMLDocument("preview");
     doc.body.innerHTML = '<div data-composition-id="second" data-duration="10"></div>';
     Object.defineProperty(iframe, "contentDocument", { configurable: true, value: doc });
     const win = {
-      __timelines: { second, first },
+      __timelines: { first, second, third },
     } as never;
 
     const adapter = resolvePlaybackAdapter(iframe, win, {
@@ -35,5 +36,6 @@ describe("resolvePlaybackAdapter", () => {
     adapter?.seek(7);
     expect(second.seek).toHaveBeenCalledWith(7);
     expect(first.seek).not.toHaveBeenCalled();
+    expect(third.seek).not.toHaveBeenCalled();
   });
 });
