@@ -25,24 +25,6 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineProviderState } from "./useTimelineProviderState";
 
-export {
-  shouldAutoScrollTimeline,
-  getTimelineScrollLeftForZoomTransition,
-  getTimelineScrollLeftForZoomAnchor,
-  getTimelinePlaybackFollowScrollLeft,
-  getTimelinePlayheadLeft,
-  getTimelineCanvasHeight,
-  shouldShowTimelineShortcutHint,
-  resolveTimelineAssetDrop,
-  shouldHandleTimelineDeleteKey,
-  getDefaultDroppedTrack,
-} from "./timelineLayout";
-export { formatTimelineTickLabel, generateTicks } from "./timelineRulerGeometry";
-export {
-  getTimelineScrollTopForGeometryChange,
-  getTimelineVisibleTimeRange,
-} from "./timelineViewportGeometry";
-
 export type TimelineCanvasState = Omit<
   TimelineLaneBaseProps,
   | "setRangeSelection"
