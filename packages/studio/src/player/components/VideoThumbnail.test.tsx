@@ -36,7 +36,8 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function render(rich = false) {
+async function render(width = 0) {
+  Object.defineProperty(host, "clientWidth", { configurable: true, value: width });
   root = createRoot(host);
   await act(async () => {
     root!.render(
@@ -47,7 +48,6 @@ async function render(rich = false) {
         projectId="p"
         sessionEpoch={1}
         priority="visible"
-        rich={rich}
       />,
     );
     await Promise.resolve();
@@ -71,16 +71,16 @@ describe("VideoThumbnail", () => {
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 
-  it("requests a rich filmstrip only for interaction actors", async () => {
+  it("requests a geometry-sized filmstrip by default", async () => {
     vi.mocked(decodeVideoThumbnail).mockResolvedValue({
       value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
       weight: 256,
     });
 
-    await render(true);
+    await render(500);
 
     expect(decodeVideoThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({ frameCount: 6 }),
+      expect.objectContaining({ frameCount: 8 }),
       expect.any(AbortSignal),
     );
     expect(host.querySelectorAll("img").length).toBeGreaterThan(0);

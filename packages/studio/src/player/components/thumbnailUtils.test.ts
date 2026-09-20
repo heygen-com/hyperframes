@@ -3,6 +3,7 @@ import {
   computeThumbnailStrip,
   encodePreviewPath,
   resolveMediaPreviewUrl,
+  quantizeThumbnailFrameCount,
   THUMBNAIL_CLIP_HEIGHT,
 } from "./thumbnailUtils";
 
@@ -47,6 +48,14 @@ describe("computeThumbnailStrip", () => {
       frameW: 48,
       frameCount: 7,
     });
+  });
+});
+
+describe("quantizeThumbnailFrameCount", () => {
+  it("uses doubling buckets and never exceeds the 4K geometry ceiling", () => {
+    expect(quantizeThumbnailFrameCount(5)).toBe(8);
+    expect(quantizeThumbnailFrameCount(32)).toBe(32);
+    expect(quantizeThumbnailFrameCount(34)).toBe(33);
   });
 });
 

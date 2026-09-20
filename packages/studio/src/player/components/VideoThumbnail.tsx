@@ -3,7 +3,11 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
-import { computeThumbnailStrip, THUMBNAIL_CLIP_HEIGHT } from "./thumbnailUtils";
+import {
+  computeThumbnailStrip,
+  quantizeThumbnailFrameCount,
+  THUMBNAIL_CLIP_HEIGHT,
+} from "./thumbnailUtils";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -15,7 +19,6 @@ interface VideoThumbnailProps {
   projectId?: string;
   sessionEpoch?: number;
   priority?: ThumbnailPriority;
-  rich?: boolean;
 }
 
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
@@ -29,10 +32,12 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   projectId = videoSrc,
   sessionEpoch = 0,
   priority = "visible",
-  rich = false,
 }: VideoThumbnailProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const observerRef = useRef<ResizeObserver | null>(null);
+  const requestFrameCount = quantizeThumbnailFrameCount(
+    computeThumbnailStrip(containerWidth, 16 / 9).frameCount,
+  );
   const request = useMemo(
     () => ({
       key: createThumbnailKey({
@@ -40,26 +45,35 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         source: videoSrc,
         start: sourceStart,
         duration: sourceRangeDuration ?? duration,
-        frames: rich ? 6 : 1,
+        frames: requestFrameCount,
       }),
       projectId,
       sessionEpoch,
       kind: "video" as const,
       priority,
-      rich,
+      rich: true,
       load: (signal: AbortSignal) =>
         decodeVideoThumbnail(
           {
             source: videoSrc,
             sourceStart,
             sourceRangeDuration: sourceRangeDuration ?? duration,
-            frameCount: rich ? 6 : 1,
+            frameCount: requestFrameCount,
             fit: "cover",
           },
           signal,
         ),
     }),
-    [duration, priority, projectId, rich, sessionEpoch, sourceRangeDuration, sourceStart, videoSrc],
+    [
+      duration,
+      priority,
+      projectId,
+      requestFrameCount,
+      sessionEpoch,
+      sourceRangeDuration,
+      sourceStart,
+      videoSrc,
+    ],
   );
   const snapshot = useThumbnailLease(request);
   const value = snapshot.status === "ready" ? snapshot.value : null;

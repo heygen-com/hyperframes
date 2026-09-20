@@ -208,7 +208,7 @@ describe("useRenderClipContent", () => {
     }
   });
 
-  it("forwards the viewport priority and interaction detail to media work", () => {
+  it("forwards the viewport priority to video media work", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive", timelineSessionEpoch: 7 });
 
     const content = renderClipContent(
@@ -229,7 +229,6 @@ describe("useRenderClipContent", () => {
         projectId: string;
         sessionEpoch: number;
         priority: string;
-        rich: boolean;
       }>(content),
     ).toBe(true);
     if (isValidElement(content)) {
@@ -237,8 +236,8 @@ describe("useRenderClipContent", () => {
         projectId: "my-project",
         sessionEpoch: 7,
         priority: "interaction",
-        rich: true,
       });
+      expect(content.props).not.toHaveProperty("rich");
     }
   });
 

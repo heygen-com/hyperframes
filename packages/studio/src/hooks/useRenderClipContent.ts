@@ -220,7 +220,6 @@ export function useRenderClipContent({
           projectId: pid,
           sessionEpoch,
           priority: context.priority,
-          rich: context.rich,
         });
       }
 
