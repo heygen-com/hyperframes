@@ -29,7 +29,8 @@ export function duplicateElementInHtml(
       continue;
     }
     const start = numericAttribute(candidate, "data-start");
-    if (start !== null && start >= at) candidate.setAttribute("data-start", String(start + duration));
+    if (start !== null && start >= at)
+      candidate.setAttribute("data-start", String(start + duration));
   }
   const clone = element.cloneNode(true);
   if (!isElementNode(clone)) return { html: source, matched: false, newId: null };

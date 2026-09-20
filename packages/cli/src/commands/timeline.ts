@@ -25,11 +25,7 @@ import { ensureDOMParser } from "../utils/dom.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
-import {
-  parseSetAssignments,
-  stampHfIds,
-  type SetAssignment,
-} from "../timeline/a2Mutations.js";
+import { parseSetAssignments, stampHfIds, type SetAssignment } from "../timeline/a2Mutations.js";
 
 export const examples: Example[] = [
   ["Show every track and clip of the project in the current directory", "hyperframes timeline"],
@@ -324,7 +320,11 @@ function setMutation(context: MutationContext, args: Record<string, unknown>): M
   });
   const assignments = parseSetAssignments([...positionalAssignments, ...namedAssignments]);
   if (!assignments.ok) return assignments;
-  const patched = patchElementInHtml(context.before, context.resolved.target, assignments.assignments.map(setOperation));
+  const patched = patchElementInHtml(
+    context.before,
+    context.resolved.target,
+    assignments.assignments.map(setOperation),
+  );
   if (!patched.matched) {
     return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
   }
