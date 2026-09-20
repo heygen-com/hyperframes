@@ -223,7 +223,7 @@ describe("timeline edit command", () => {
       expect(result.status, result.stderr).toBe(0);
       expect(readFileSync(indexPath, "utf8")).toMatch(/data-hf-id=/);
       const output = JSON.parse(result.stdout) as { after: Array<{ ref: string }> };
-      expect(output.after.some((row) => row.ref.startsWith("hf:"))).toBe(true);
+      expect(output.after.some((row) => row.ref === "#clip")).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
