@@ -1,18 +1,12 @@
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { describeProject, type ProjectTimeline, type TimelineRow } from "../timeline/describeProject.js";
+import { describeProject } from "../timeline/describeProject.js";
 import { formatTimeline } from "../timeline/formatTimeline.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { runApply, runIds, runUndo } from "../timeline/a2Commands.js";
-import {
-  allRows,
-  diff,
-  rowAt,
-  runMutation,
-  type MutationVerb,
-} from "../timeline/a2Shared.js";
+import { runMutation, type MutationVerb } from "../timeline/a2Shared.js";
 
 export const examples: Example[] = [
   ["Show every track and clip of the project in the current directory", "hyperframes timeline"],
@@ -27,26 +21,6 @@ function mutationCommand(verb: MutationVerb) {
       ref: { type: "positional", required: true },
       time: { type: "positional", required: verb === "move" || verb === "split" },
       at: { type: "string" },
-      dir: { type: "string" },
-      start: { type: "string" },
-      end: { type: "string" },
-      duration: { type: "string" },
-      plan: { type: "boolean", default: false },
-      json: { type: "boolean", default: false },
-      overwrite: { type: "boolean", default: false },
-      snap: { type: "boolean", default: false },
-    },
-    async run({ args }) {
-      await runMutation(verb, args);
-    },
-  });
-}
-
-function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
-  return allRows(timeline).filter((candidate) => candidate.file === file);
-}
-
-export function rowAt(
       dir: { type: "string" },
       start: { type: "string" },
       end: { type: "string" },
