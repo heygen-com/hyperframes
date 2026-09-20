@@ -228,17 +228,11 @@ function trimBounds(
       fix: "pass one trim option",
     };
   }
-  const start = startExpr
-    ? parseMutationTime(context, startExpr, "pass a valid time expression")
-    : { ok: true as const, seconds: context.row.start };
+  const start = trimStart(context, startExpr);
   if (!start.ok) return start;
-  const end = endExpr
-    ? parseMutationTime(context, endExpr, "pass a valid time expression")
-    : undefined;
+  const end = trimEnd(context, endExpr);
   if (end && !end.ok) return end;
-  const duration = durationExpr
-    ? parseMutationTime(context, durationExpr, "pass a valid duration")
-    : undefined;
+  const duration = trimDuration(context, durationExpr);
   if (duration && !duration.ok) return duration;
   const nextStart = start.seconds;
   const nextDuration = duration?.seconds ?? (end ? end.seconds - nextStart : context.row.duration);
@@ -250,6 +244,21 @@ function trimBounds(
     };
   }
   return { ok: true, nextStart, nextDuration };
+}
+
+function trimStart(context: MutationContext, expression: string | undefined) {
+  if (!expression) return { ok: true as const, seconds: context.row.start };
+  return parseMutationTime(context, expression, "pass a valid time expression");
+}
+
+function trimEnd(context: MutationContext, expression: string | undefined) {
+  if (!expression) return undefined;
+  return parseMutationTime(context, expression, "pass a valid time expression");
+}
+
+function trimDuration(context: MutationContext, expression: string | undefined) {
+  if (!expression) return undefined;
+  return parseMutationTime(context, expression, "pass a valid duration");
 }
 
 function deleteMutation(context: MutationContext): MutationDecision {
@@ -385,13 +394,33 @@ async function finishMutation(
   const describedBefore = await describeSource(before);
   const result = mutationResult(row, describedBefore, setup.plan);
   if (setup.plan) return printPlan(result, json, timeline, describeSource, after, before);
-  const receipt = applyMutation(setup, after);
-  if (receipt && "error" in receipt) return refusal(receipt.error, "re-run hyperframes timeline", json);
-  if (!receipt && after !== before) return refusal("mutation produced no receipt", "re-run hyperframes timeline", json);
-  result.after = rowsForFile(await describeSource(after), row.file);
-  result.receipt = receipt;
-  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
-  else console.log(`${verb} ${row.ref}: ${row.start}-${row.end}s -> ${nextStart}-${nextStart + nextDuration}s\nreceipt: ${receipt?.version ?? "unchanged"}`);
+  return applyAndPrint({ setup, verb, json, row, nextStart, nextDuration, after, before, result, describeSource });
+}
+
+async function applyAndPrint(args: {
+  setup: MutationSetup;
+  verb: MutationVerb;
+  json: boolean;
+  row: TimelineRow;
+  nextStart: number;
+  nextDuration: number;
+  after: string;
+  before: string;
+  result: ReturnType<typeof mutationResult>;
+  describeSource: (source: string) => Promise<ProjectTimeline>;
+}): Promise<void> {
+  const receipt = applyMutation(args.setup, args.after);
+  if (receipt && "error" in receipt) return refusal(receipt.error, "re-run hyperframes timeline", args.json);
+  if (!receipt && args.after !== args.before) {
+    return refusal("mutation produced no receipt", "re-run hyperframes timeline", args.json);
+  }
+  args.result.after = rowsForFile(await args.describeSource(args.after), args.row.file);
+  args.result.receipt = receipt;
+  if (args.json) {
+    console.log(JSON.stringify(withMeta(args.result), null, 2));
+    return;
+  }
+  console.log(`${args.verb} ${args.row.ref}: ${args.row.start}-${args.row.end}s -> ${args.nextStart}-${args.nextStart + args.nextDuration}s\nreceipt: ${receipt?.version ?? "unchanged"}`);
 }
 
 function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
