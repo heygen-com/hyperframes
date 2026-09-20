@@ -3,8 +3,8 @@ import { editabilityForProvenance, type GsapAnimation } from "@hyperframes/core/
 export type GsapEditBlockReason = "no-selector" | "unroll-required" | "source-uneditable";
 
 /**
- * Which of the six situations produced a block. The user-facing `reason` stays
- * coarse — three messages — but "source-uneditable" alone covers six distinct
+ * Which of the nine situations produced a block. The user-facing `reason` stays
+ * coarse — three messages — but "source-uneditable" alone covers nine distinct
  * causes, and `edit_blocked` telemetry could not tell them apart. That matters
  * because the copy ("This animation is computed at runtime") is only literally
  * true for `provenance-runtime-dynamic`; the others are parser or source-match
@@ -20,7 +20,8 @@ export type GsapEditBlockDetail =
   | "live-position-no-source-tween"
   | "no-position-tween"
   | "live-rotation-no-source-tween"
-  | "no-write-target";
+  | "live-resize-no-source-tween"
+  | "zero-duration-tween";
 
 export type GsapEditOutcome =
   | {

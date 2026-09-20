@@ -25,7 +25,7 @@ function animation(overrides: Partial<GsapAnimation> = {}): GsapAnimation {
 
 const POSITION = new Set(["x"]);
 
-describe("a blocked GSAP edit names which of the seven causes it hit", () => {
+describe("a blocked GSAP edit names which of the nine causes it hit", () => {
   // The three causes inside assertGsapAnimationDirectlyEditable share one
   // message, so only the detail distinguishes them. Asserted through the
   // exported wrapper because that is the path a real edit takes — and the
