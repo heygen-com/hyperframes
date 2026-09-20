@@ -513,6 +513,7 @@ export function useTimelineProviderState({
     onDuplicateClip,
     canPasteClip,
     gapContextMenu: gapMenuModel,
+    onDismissGapContextMenu: dismissGapMenu,
     onCloseTrackGap: closeTrackGap,
     onCloseAllTrackGaps: closeAllTrackGaps,
     onHoverGapAction: setHoveredGapAction,

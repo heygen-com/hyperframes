@@ -1,8 +1,13 @@
 import { createContext, useContext, type ComponentProps, type ReactNode } from "react";
-import type { TimelineCanvas } from "./TimelineCanvas";
-import type { TimelineOverlays } from "./TimelineOverlays";
+import type { TimelineOverlaysProps } from "./TimelineOverlays";
 import type { TimelineEmptyState } from "./TimelineEmptyState";
 import type { TimelineProps } from "./TimelineTypes";
+import type { TimelineRangeSelection } from "./timelineEditing";
+import type { TimelineDropPlacement } from "./timelineCallbacks";
+import type { Rect } from "../../utils/marqueeGeometry";
+import type { ResizingClipState } from "./useTimelineClipDrag";
+import type { TimelineLaneBaseProps } from "./timelineLaneProps";
+import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 import { useTimelineProviderState } from "./useTimelineProviderState";
 
 export {
@@ -23,8 +28,26 @@ export {
   getTimelineVisibleTimeRange,
 } from "./timelineViewportGeometry";
 
-type TimelineCanvasProps = ComponentProps<typeof TimelineCanvas>;
-type TimelineOverlaysProps = ComponentProps<typeof TimelineOverlays>;
+type TimelineCanvasProps = Omit<
+  TimelineLaneBaseProps,
+  "setRangeSelection" | "setResizingClip" | "setDraggedClip"
+> & {
+  major: number[];
+  minor: number[];
+  totalH: number;
+  effectiveDuration: number;
+  majorTickInterval: number;
+  rangeSelection: TimelineRangeSelection | null;
+  marqueeRect: Rect | null;
+  resizingClip: ResizingClipState | null;
+  isScrubbing: boolean;
+  playheadRef: React.RefObject<HTMLDivElement | null>;
+  laneGapStrips: TimelineLaneGapStrips[];
+  dropPreview: TimelineDropPlacement | null;
+  setRangeSelection: (value: TimelineRangeSelection | null) => void;
+  setResizingClip: (value: ResizingClipState | null) => void;
+  setDraggedClip: (value: TimelineLaneBaseProps["draggedClip"]) => void;
+};
 
 export interface TimelineContextValue {
   state: {
