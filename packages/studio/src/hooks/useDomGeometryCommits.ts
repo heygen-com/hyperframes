@@ -28,6 +28,17 @@ import { isElementGsapTargeted } from "./gsapTargetCache";
 const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
 
+function rejectGsapCssFallback(
+  selection: DomEditSelection,
+  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>,
+  showToast: (message: string, tone?: "error" | "info") => void,
+): Promise<never> | null {
+  if (!isElementGsapTargeted(previewIframeRef.current, selection.element)) return null;
+  const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
+  showToast(error.message, "error");
+  return Promise.reject(error);
+}
+
 // ── Hook ──
 
 export interface UseDomGeometryCommitsParams {
@@ -54,12 +65,8 @@ export function useDomGeometryCommits({
       // elements fall through to commitPositionPatchToHtml → persistDomEditOperations →
       // onTrySdkPersist and are already SDK-cut-over as setStyle/setAttribute (§3.3 done).
       // Upgrade path for GSAP: add a moveElementGsap SDK op in a separate SDK PR.
-      const gsapTargeted = isElementGsapTargeted(previewIframeRef.current, selection.element);
-      if (gsapTargeted) {
-        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
-        showToast(error.message, "error");
-        return Promise.reject(error);
-      }
+      const gsapFallback = rejectGsapCssFallback(selection, previewIframeRef, showToast);
+      if (gsapFallback) return gsapFallback;
       const before = captureStudioPathOffset(selection.element);
       applyStudioPathOffset(selection.element, next);
       return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
@@ -73,7 +80,6 @@ export function useDomGeometryCommits({
     [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
   );
 
-  // fallow-ignore-next-line code-duplication
   const handleDomBoxSizeCommit = useCallback(
     (
       selection: DomEditSelection,
@@ -81,11 +87,8 @@ export function useDomGeometryCommits({
       offset?: { x: number; y: number },
     ) => {
       if (readOnlyPreview) return Promise.resolve();
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
-        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
-        showToast(error.message, "error");
-        return Promise.reject(error);
-      }
+      const gsapFallback = rejectGsapCssFallback(selection, previewIframeRef, showToast);
+      if (gsapFallback) return gsapFallback;
       const beforeSize = captureStudioBoxSize(selection.element);
       const beforeOffset = offset ? captureStudioPathOffset(selection.element) : null;
       applyStudioBoxSize(selection.element, next);
@@ -115,11 +118,8 @@ export function useDomGeometryCommits({
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
       if (readOnlyPreview) return Promise.resolve();
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
-        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
-        showToast(error.message, "error");
-        return Promise.reject(error);
-      }
+      const gsapFallback = rejectGsapCssFallback(selection, previewIframeRef, showToast);
+      if (gsapFallback) return gsapFallback;
       const before = captureStudioRotation(selection.element);
       applyStudioRotation(selection.element, next);
       return commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {

@@ -409,7 +409,6 @@ export function useDomEditSession({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
   } = useDomEditWiring({
-    // fallow-ignore-next-line code-duplication
     projectId,
     activeCompPath,
     domEditSelection,

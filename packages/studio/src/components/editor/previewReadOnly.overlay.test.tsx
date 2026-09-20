@@ -6,15 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
-import { DomEditOverlay } from "./DomEditOverlay";
 import { PreviewReadOnlyProvider } from "./previewReadOnlyContext";
+import "./domEditOverlayTestMocks";
+import { DomEditOverlay } from "./DomEditOverlay";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const RECT = { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 };
 const layout = vi.hoisted(() => ({ group: [] as unknown[] }));
 
-// fallow-ignore-next-line code-duplication
 vi.mock("./useDomEditOverlayRects", () => ({
   useDomEditOverlayRects: () => ({
     overlayRect: { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 },
@@ -29,20 +29,6 @@ vi.mock("./useDomEditOverlayRects", () => ({
     childRects: [],
   }),
 }));
-vi.mock("./useDomEditCompositionRect", () => ({
-  useDomEditCompositionRect: () => ({
-    left: 0,
-    top: 0,
-    width: 800,
-    height: 450,
-    scaleX: 1,
-    scaleY: 1,
-  }),
-}));
-vi.mock("./offCanvasIndicatorRefresh", () => ({
-  startOffCanvasIndicatorRefresh: () => () => undefined,
-}));
-
 const BOX = '[data-dom-edit-selection-box="true"]';
 let root: Root;
 let host: HTMLElement;
