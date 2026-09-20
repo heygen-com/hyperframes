@@ -32,6 +32,18 @@ export const examples: Example[] = [
 
 type MutationVerb = "move" | "trim" | "split" | "delete";
 
+type MutationDecision =
+  | { ok: true; after: string; nextStart: number; nextDuration: number }
+  | { ok: false; reason: string; fix: string };
+
+interface MutationContext {
+  ref: string;
+  row: TimelineRow;
+  before: string;
+  resolved: Extract<ReturnType<typeof resolveRef>, { ok: true }>;
+  parseTime: (expression: string) => ReturnType<typeof parseTimeExpression>;
+}
+
 const allRows = (timeline: ProjectTimeline): TimelineRow[] =>
   timeline.tracks.flatMap((track) => track.rows);
 
@@ -55,13 +67,20 @@ function declaredFps(indexPath: string): number | null {
   return parsed.ok ? fpsToNumber(parsed.value) : null;
 }
 
-function nextSplitId(id: string): string {
-  const match = /^(.*)-(\d+)$/.exec(id);
-  return match ? `${match[1]}-${Number(match[2]) + 1}` : `${id}-2`;
-}
-
 function splitBaseId(row: TimelineRow): string {
   return row.ref.startsWith("hf:") ? row.ref.slice(3) : row.id;
+}
+
+function nextFreeSplitId(source: string, base: string): string {
+  const document = new DOMParser().parseFromString(source, "text/html");
+  const existing = new Set(
+    Array.from(document.querySelectorAll("[id]"), (element) => element.id),
+  );
+  const match = /^(.*)-(\d+)$/.exec(base);
+  const prefix = match && existing.has(match[1]!) ? match[1]! : base;
+  let suffix = 2;
+  while (existing.has(`${prefix}-${suffix}`)) suffix += 1;
+  return `${prefix}-${suffix}`;
 }
 
 function diff(before: string, after: string): string {
@@ -111,7 +130,125 @@ function overlap(
   );
 }
 
-// fallow-ignore-next-line complexity
+function moveMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const expression = typeof args.time === "string" ? args.time : "";
+  const time = context.parseTime(expression);
+  if (!time.ok) return { ok: false, reason: time.reason, fix: "pass a valid time expression" };
+  const patched = patchElementInHtml(context.before, context.resolved.target, [
+    { type: "html-attribute", property: "data-start", value: String(time.seconds) },
+  ]);
+  if (!patched.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return {
+    ok: true,
+    after: patched.html,
+    nextStart: time.seconds,
+    nextDuration: context.row.duration,
+  };
+}
+
+function splitMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const expression = typeof args.time === "string" ? args.time : "";
+  const time = context.parseTime(expression);
+  if (!time.ok) return { ok: false, reason: time.reason, fix: "pass a valid time expression" };
+  const split = splitElementInHtml(
+    context.before,
+    context.resolved.target,
+    time.seconds,
+    nextFreeSplitId(context.before, splitBaseId(context.row)),
+    {
+      start: context.row.start,
+      duration: context.row.duration,
+      track: context.row.trackIndex,
+    },
+  );
+  if (!split.matched || !split.newId) {
+    return {
+      ok: false,
+      reason: `${context.ref} cannot be split at ${time.seconds}`,
+      fix: "choose a time inside the clip",
+    };
+  }
+  return {
+    ok: true,
+    after: split.html,
+    nextStart: context.row.start,
+    nextDuration: context.row.duration,
+  };
+}
+
+function trimMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const startExpr = typeof args.start === "string" ? args.start : undefined;
+  const endExpr = typeof args.end === "string" ? args.end : undefined;
+  const durationExpr = typeof args.duration === "string" ? args.duration : undefined;
+  if (!startExpr && !endExpr && !durationExpr) {
+    return {
+      ok: false,
+      reason: "trim requires --start, --end, or --duration",
+      fix: "pass one trim option",
+    };
+  }
+  let nextStart = context.row.start;
+  let nextDuration = context.row.duration;
+  if (startExpr) {
+    const value = context.parseTime(startExpr);
+    if (!value.ok) return { ok: false, reason: value.reason, fix: "pass a valid time expression" };
+    nextStart = value.seconds;
+  }
+  if (endExpr) {
+    const value = context.parseTime(endExpr);
+    if (!value.ok) return { ok: false, reason: value.reason, fix: "pass a valid time expression" };
+    nextDuration = value.seconds - nextStart;
+  }
+  if (durationExpr) {
+    const value = context.parseTime(durationExpr);
+    if (!value.ok) return { ok: false, reason: value.reason, fix: "pass a valid duration" };
+    nextDuration = value.seconds;
+  }
+  if (nextDuration <= 0) {
+    return {
+      ok: false,
+      reason: "trim duration must be positive",
+      fix: "choose a later end or positive duration",
+    };
+  }
+  const patched = patchElementInHtml(context.before, context.resolved.target, [
+    { type: "html-attribute", property: "data-start", value: String(nextStart) },
+    { type: "html-attribute", property: "data-duration", value: String(nextDuration) },
+  ]);
+  if (!patched.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return { ok: true, after: patched.html, nextStart, nextDuration };
+}
+
+function deleteMutation(context: MutationContext): MutationDecision {
+  return {
+    ok: true,
+    after: removeElementFromHtml(context.before, context.resolved.target),
+    nextStart: context.row.start,
+    nextDuration: context.row.duration,
+  };
+}
+
+function decideMutation(
+  verb: MutationVerb,
+  context: MutationContext,
+  args: Record<string, unknown>,
+): MutationDecision {
+  switch (verb) {
+    case "move":
+      return moveMutation(context, args);
+    case "trim":
+      return trimMutation(context, args);
+    case "split":
+      return splitMutation(context, args);
+    case "delete":
+      return deleteMutation(context);
+  }
+}
+
 async function runMutation(verb: MutationVerb, args: Record<string, unknown>): Promise<void> {
   const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
   const ref = typeof args.ref === "string" ? args.ref : "";
@@ -149,79 +286,15 @@ async function runMutation(verb: MutationVerb, args: Record<string, unknown>): P
   const filePath = join(project.dir, row.file);
   const before = readFileSync(filePath, "utf-8");
   const expectedVersion = fileContentVersion(before);
-  let after = before;
-  let nextStart = row.start;
-  let nextDuration = row.duration;
-  if (verb === "move" || verb === "split") {
-    const expression = typeof args.time === "string" ? args.time : "";
-    const time = parseTime(expression);
-    if (!time.ok) return refusal(time.reason, "pass a valid time expression", json);
-    if (verb === "move") {
-      nextStart = time.seconds;
-      const patched = patchElementInHtml(before, resolved.target, [
-        { type: "html-attribute", property: "data-start", value: String(nextStart) },
-      ]);
-      if (!patched.matched) return refusal(`${ref} was not found`, "choose an existing clip", json);
-      after = patched.html;
-    } else {
-      const split = splitElementInHtml(
-        before,
-        resolved.target,
-        time.seconds,
-        nextSplitId(splitBaseId(row)),
-        {
-          start: row.start,
-          duration: row.duration,
-          track: row.trackIndex,
-        },
-      );
-      if (!split.matched || !split.newId) {
-        return refusal(
-          `${ref} cannot be split at ${time.seconds}`,
-          "choose a time inside the clip",
-          json,
-        );
-      }
-      after = split.html;
-    }
-  } else if (verb === "trim") {
-    const startExpr = typeof args.start === "string" ? args.start : undefined;
-    const endExpr = typeof args.end === "string" ? args.end : undefined;
-    const durationExpr = typeof args.duration === "string" ? args.duration : undefined;
-    if (!startExpr && !endExpr && !durationExpr) {
-      return refusal("trim requires --start, --end, or --duration", "pass one trim option", json);
-    }
-    if (startExpr) {
-      const value = parseTime(startExpr);
-      if (!value.ok) return refusal(value.reason, "pass a valid time expression", json);
-      nextStart = value.seconds;
-    }
-    if (endExpr) {
-      const value = parseTime(endExpr);
-      if (!value.ok) return refusal(value.reason, "pass a valid time expression", json);
-      nextDuration = value.seconds - nextStart;
-    }
-    if (durationExpr) {
-      const value = parseTime(durationExpr);
-      if (!value.ok) return refusal(value.reason, "pass a valid duration", json);
-      nextDuration = value.seconds;
-    }
-    if (nextDuration <= 0) {
-      return refusal(
-        "trim duration must be positive",
-        "choose a later end or positive duration",
-        json,
-      );
-    }
-    const patched = patchElementInHtml(before, resolved.target, [
-      { type: "html-attribute", property: "data-start", value: String(nextStart) },
-      { type: "html-attribute", property: "data-duration", value: String(nextDuration) },
-    ]);
-    if (!patched.matched) return refusal(`${ref} was not found`, "choose an existing clip", json);
-    after = patched.html;
-  } else {
-    after = removeElementFromHtml(before, resolved.target);
-  }
+  const decision = decideMutation(verb, {
+    ref,
+    row,
+    before,
+    resolved,
+    parseTime,
+  }, args);
+  if (!decision.ok) return refusal(decision.reason, decision.fix, json);
+  const { after, nextStart, nextDuration } = decision;
   if (after === before) {
     return refusal(`${ref} was not found`, "choose an existing clip", json);
   }

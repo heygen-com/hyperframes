@@ -75,6 +75,22 @@ describe("timeline edit command", () => {
     }
   });
 
+  it("uses the next free numeric split suffix on repeat", () => {
+    const dir = project();
+    try {
+      const first = run(dir, "split", "#clip", "1.5");
+      expect(first.status, first.stderr).toBe(0);
+      const second = run(dir, "split", "#clip-2", "2.5");
+      expect(second.status, second.stderr).toBe(0);
+      const html = readFileSync(join(dir, "index.html"), "utf8");
+      expect(html).toContain('id="clip-2"');
+      expect(html).toContain('id="clip-3"');
+      expect(html).not.toContain('id="clip-2-2"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses overlap", () => {
     const dir = project();
     try {

@@ -30,7 +30,7 @@ export function resolveRef(timeline: ProjectTimeline, ref: string): RefResolutio
       ok: false,
       reason:
         matches.length === 0 ? `${ref} was not found` : `${ref} matches ${matches.length} rows`,
-      fix: "run hyperframes timeline ids, then retry with a stable ref",
+      fix: "add id=\"<name>\" to the element in its source file, then retry with #<name>",
     };
   }
   const row = matches[0]!;
@@ -39,7 +39,7 @@ export function resolveRef(timeline: ProjectTimeline, ref: string): RefResolutio
     return {
       ok: false,
       reason: `${ref} has no stable element id in ${row.file}`,
-      fix: "run hyperframes timeline ids, then retry with hf:<id>",
+      fix: `add id=\"<name>\" to the element in ${row.file}, then retry with #<name>`,
     };
   }
   return { ok: true, row, target };
