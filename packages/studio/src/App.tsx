@@ -7,6 +7,7 @@ import { usePlayerStore } from "./player";
 import { StudioOverlays } from "./components/StudioOverlays";
 import { SaveQueuePausedBanner } from "./components/SaveQueuePausedBanner";
 import { ExternalFileConflictBanner } from "./components/ExternalFileConflictBanner";
+import { ProjectUnreachableBanner } from "./components/ProjectUnreachableBanner";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { usePersistentEditHistory } from "./hooks/usePersistentEditHistory";
@@ -475,6 +476,9 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                   />
                 )}
                 <ExternalFileConflictBanner coordinator={externalFileChanges} />
+                {sdkHandle.unreachableProject && (
+                  <ProjectUnreachableBanner projectId={sdkHandle.unreachableProject} />
+                )}
                 <EditorShell
                   readOnlyPreview={readOnlyPreview}
                   readOnlyPreviewReason={readOnlyPreviewReason}

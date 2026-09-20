@@ -26,6 +26,34 @@ type ProjectFileReadFailure =
 type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
 
 /**
+ * Record a read that produced no usable content, and answer which project — if
+ * any — the failure identifies as unreachable.
+ *
+ * No SDK session follows a failed read, so EVERY cutover chokepoint takes the
+ * server path and emits nothing — the shadow never runs either. A broken read
+ * would otherwise be a silent, total SDK bypass, which is why this is recorded
+ * at all.
+ *
+ * Only a 404 identifies the *project*: the server answered, and its answer was
+ * that it does not serve this id. A 5xx, a dropped request, an unexpected body
+ * and an empty file all say nothing about which project the server serves, so
+ * none of them claim it. See `unreachableProject` on the handle.
+ *
+ * A function rather than three more conditions inline: the read callback it is
+ * called from is a long pre-existing async body already near the complexity
+ * threshold, and this branch is one coherent unit.
+ */
+function reportReadFailure(read: ProjectFileReadFailure, projectId: string): string | null {
+  trackStudioEvent("sdk_session_unavailable", {
+    stage: "read",
+    reason: read.reason,
+    ...(read.reason === "http_error" ? { status: read.status } : {}),
+  });
+  if (read.reason !== "http_error") return null;
+  return read.status === 404 ? projectId : null;
+}
+
+/**
  * Read a project file's content (optional read — a missing file is not an
  * error). Replaces the removed SDK http adapter's `read()` — the only thing
  * Studio used it for (Studio is the sole writer, so the adapter's write path
@@ -96,6 +124,19 @@ export interface SdkSessionHandle {
    * side of that path is covered by usePersistentEditHistory.test.ts.
    */
   forceReload: () => void;
+  /**
+   * Set when this server answered the composition read with a 404 for the
+   * project it was asked to open. In the CLI-embedded host — the only host
+   * that reports telemetry at all (`telemetry/policy.ts` suppresses Vite dev)
+   * — that does not mean the project is gone. It means this Studio is serving
+   * a *different* one; the project is untouched on disk. Either way every edit
+   * in this tab fails, and until now it failed silently.
+   *
+   * `null` for every other failure: a 500 or a dropped request says nothing
+   * about which project the server serves, and `absent_or_empty` /
+   * `missing_content` say nothing about the project at all.
+   */
+  unreachableProject: string | null;
 }
 
 interface SdkSessionOwner {
@@ -173,6 +214,7 @@ export function useSdkSession(
   const [reloadToken, setReloadToken] = useState(0);
   const reloadTokenRef = useRef(reloadToken);
   reloadTokenRef.current = reloadToken;
+  const [unreachableProject, setUnreachableProject] = useState<string | null>(null);
 
   useEffect(
     () =>
@@ -195,6 +237,7 @@ export function useSdkSession(
     if (previous) disposeSdkSession(previous.session);
 
     if (!projectId || !activeCompPath) {
+      setUnreachableProject(null);
       return () => {
         cancelled = true;
       };
@@ -211,17 +254,10 @@ export function useSdkSession(
       .then(async (read) => {
         if (cancelled) return;
         if (!read.ok) {
-          // No SDK session follows, so EVERY cutover chokepoint below takes the
-          // server path and emits nothing — the shadow never runs either. This
-          // is the only place a missing session can originate, so a broken read
-          // would otherwise be a silent, total SDK bypass.
-          trackStudioEvent("sdk_session_unavailable", {
-            stage: "read",
-            reason: read.reason,
-            ...(read.reason === "http_error" ? { status: read.status } : {}),
-          });
+          setUnreachableProject(reportReadFailure(read, projectId));
           return;
         }
+        setUnreachableProject(null);
         const content = read.content;
         // No persist queue: Studio's writeProjectFile (via sdkCutover's
         // persistSdkSerialize) is the SINGLE writer. Wiring the SDK persist
@@ -316,5 +352,5 @@ export function useSdkSession(
     ownedSession.reloadToken === reloadToken
       ? ownedSession.session
       : null;
-  return { session, publish, forceReload };
+  return { session, publish, forceReload, unreachableProject };
 }

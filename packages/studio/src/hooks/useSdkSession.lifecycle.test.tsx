@@ -147,6 +147,86 @@ describe("useSdkSession ownership", () => {
   });
 });
 
+describe("useSdkSession unreachable project", () => {
+  beforeEach(() => {
+    openComposition.mockReset();
+    trackMock.mockClear();
+    class FakeEventSource {
+      addEventListener(): void {}
+      close(): void {}
+    }
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function probeHandle(projectId: string) {
+    const captured: { handle: SdkSessionHandle | null } = { handle: null };
+    function HandleProbe() {
+      captured.handle = useSdkSession(projectId, "index.html");
+      return null;
+    }
+    return { captured, HandleProbe };
+  }
+
+  const failedRead = (status: number) => async () =>
+    ({ ok: false, status, json: async () => ({}) }) as Response;
+
+  /** Render the hook for `projectId` against a stubbed read and let it settle. */
+  async function readOutcome(
+    projectId: string,
+    read: () => Promise<Response>,
+  ): Promise<{ captured: { handle: SdkSessionHandle | null }; unmount: () => Promise<void> }> {
+    vi.stubGlobal("fetch", vi.fn(read));
+    const { captured, HandleProbe } = probeHandle(projectId);
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<HandleProbe />));
+    await flushAsyncEffects();
+    return { captured, unmount: () => act(async () => root.unmount()) };
+  }
+
+  // A 404 on the composition read is the one failure that says something about
+  // the PROJECT rather than the request: under the CLI host it means this
+  // Studio serves a different one. Every edit then fails silently, so the UI
+  // needs the id to explain that.
+  it("names the project when the read is a 404", async () => {
+    const { captured, unmount } = await readOutcome("gone-project", failedRead(404));
+
+    expect(captured.handle?.unreachableProject).toBe("gone-project");
+    await unmount();
+  });
+
+  // A 500 says the request failed, not that the project is elsewhere. Claiming
+  // otherwise would tell a user their tab is pointed at the wrong project when
+  // the server is merely unwell.
+  it("stays quiet on a failure that says nothing about the project", async () => {
+    const { captured, unmount } = await readOutcome("project-a", failedRead(500));
+
+    expect(captured.handle?.unreachableProject).toBeNull();
+    await unmount();
+  });
+
+  it("clears the state once the project resolves", async () => {
+    const { captured, unmount } = await readOutcome("gone-project", failedRead(404));
+    expect(captured.handle?.unreachableProject).toBe("gone-project");
+
+    openComposition.mockResolvedValue(fakeSession());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response("PROJECT_A")),
+    );
+    await act(async () => {
+      captured.handle?.forceReload();
+    });
+    await flushAsyncEffects();
+
+    expect(captured.handle?.unreachableProject).toBeNull();
+    await unmount();
+  });
+});
+
 describe("useSdkSession unavailable telemetry", () => {
   beforeEach(() => {
     openComposition.mockReset();
