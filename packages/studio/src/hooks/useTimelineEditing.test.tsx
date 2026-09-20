@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 
-import React, { act, useRef } from "react";
+import React, { act, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { openComposition } from "@hyperframes/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -130,6 +130,8 @@ function renderTimelineEditingHook(input: {
   groupResize: ReturnType<typeof useTimelineEditing>["handleTimelineGroupResize"];
   del: ReturnType<typeof useTimelineEditing>["handleTimelineElementDelete"];
   elementsDelete: ReturnType<typeof useTimelineEditing>["handleTimelineElementsDelete"];
+  handleAutoGroupCarveSources: ReturnType<typeof useTimelineEditing>["handleAutoGroupCarveSources"];
+  setAudioGroupAttribute: ReturnType<typeof useTimelineEditing>["setAudioGroupAttribute"];
   unmount: () => void;
 } {
   let move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"] | null = null;
@@ -139,6 +141,12 @@ function renderTimelineEditingHook(input: {
   let del: ReturnType<typeof useTimelineEditing>["handleTimelineElementDelete"] | null = null;
   let elementsDelete: ReturnType<typeof useTimelineEditing>["handleTimelineElementsDelete"] | null =
     null;
+  let handleAutoGroupCarveSources:
+    | ReturnType<typeof useTimelineEditing>["handleAutoGroupCarveSources"]
+    | null = null;
+  let setAudioGroupAttribute:
+    | ReturnType<typeof useTimelineEditing>["setAudioGroupAttribute"]
+    | null = null;
 
   function Harness() {
     const commitRef = useRef(input.onZIndexCommit);
@@ -167,6 +175,8 @@ function renderTimelineEditingHook(input: {
     groupResize = hook.handleTimelineGroupResize;
     del = hook.handleTimelineElementDelete;
     elementsDelete = hook.handleTimelineElementsDelete;
+    handleAutoGroupCarveSources = hook.handleAutoGroupCarveSources;
+    setAudioGroupAttribute = hook.setAudioGroupAttribute;
     return null;
   }
 
@@ -177,7 +187,19 @@ function renderTimelineEditingHook(input: {
   if (!groupResize) throw new Error("Expected hook to expose group resize handler");
   if (!del) throw new Error("Expected hook to expose delete handler");
   if (!elementsDelete) throw new Error("Expected hook to expose elements-delete handler");
-  return { move, resize, groupMove, groupResize, del, elementsDelete, unmount };
+  if (!handleAutoGroupCarveSources) throw new Error("Expected hook to expose group handler");
+  if (!setAudioGroupAttribute) throw new Error("Expected hook to expose audio group handler");
+  return {
+    move,
+    resize,
+    groupMove,
+    groupResize,
+    del,
+    elementsDelete,
+    handleAutoGroupCarveSources,
+    setAudioGroupAttribute,
+    unmount,
+  };
 }
 
 type TimelineRecordEdit = NonNullable<
@@ -1457,6 +1479,53 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
 // Blocked means no fetch write, no recordEdit, and the host's reason
 // toasted. Absent canEdit behaves exactly as before (asserted above).
 describe("useTimelineEditing: canEdit gate", () => {
+  it("re-reads canEdit after the host changes its verdict", async () => {
+    const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
+    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const showToast = vi.fn();
+    const recordEdit = vi.fn(async () => {});
+    const pendingTimelineEditPathRef = { current: new Set<string>() };
+    const previewIframeRef = { current: iframe };
+    const uploadProjectFiles = vi.fn();
+    const reloadPreview = vi.fn();
+    let setBlocked = () => {};
+    let hook: ReturnType<typeof useTimelineEditing> | null = null;
+
+    function Harness() {
+      const [blocked, updateBlocked] = useState(false);
+      setBlocked = () => updateBlocked(true);
+      hook = useTimelineEditing({
+        projectId: "p1",
+        activeCompPath: "index.html",
+        timelineElements: [clip],
+        showToast,
+        writeProjectFile,
+        recordEdit,
+        reloadPreview,
+        previewIframeRef,
+        pendingTimelineEditPathRef,
+        uploadProjectFiles,
+        canEdit: () => (blocked ? { blocked: true, reason: "Reserved by an agent" } : true),
+      });
+      return null;
+    }
+
+    const { unmount } = mountHarness(<Harness />);
+    if (!hook) throw new Error("Expected hook to mount");
+    act(() => setBlocked());
+
+    await act(async () => {
+      await hook!.handleTimelineElementMove(clip, { start: 3, track: clip.track });
+      await flushAsyncWork();
+    });
+
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith("Reserved by an agent", "error");
+    unmount();
+  });
+
   it("refuses a move with the host's reason, writing nothing", async () => {
     const { clip, move, writeProjectFile, recordEdit, showToast, unmount } = setupSingleClipHarness(
       {
@@ -1699,6 +1768,95 @@ describe("useTimelineEditing: canEdit gate", () => {
     expect(showToast).toHaveBeenCalledWith("Reserved by an agent", "error");
     expect(fetchMock).not.toHaveBeenCalled();
     unmount();
+  });
+
+  it("refuses auto-grouping before it patches existing clips", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+    doc.body.innerHTML =
+      '<audio id="voice-1" data-start="0" data-duration="5"></audio>' +
+      '<audio id="voice-2" data-start="5" data-duration="5"></audio>';
+    const voice1 = timelineElement({ id: "voice-1", tag: "audio", track: 0, zIndex: 0 });
+    const voice2 = timelineElement({ id: "voice-2", tag: "audio", track: 1, zIndex: 0 });
+    usePlayerStore.getState().setElements([voice1, voice2]);
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const recordEdit = vi.fn(async () => {});
+    const showToast = vi.fn();
+    const fetchMock = stubProjectFetch(
+      '<audio id="voice-1" data-start="0" data-duration="5"></audio>' +
+        '<audio id="voice-2" data-start="5" data-duration="5"></audio>',
+    );
+    const hook = renderTimelineEditingHook({
+      timelineElements: [voice1, voice2],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit,
+      showToast,
+      canEdit: (element) =>
+        element.id === "voice-2" ? { blocked: true, reason: "Reserved by an agent" } : true,
+    });
+
+    await expect(
+      hook.handleAutoGroupCarveSources(["voice-1", "voice-2"], "voiceover"),
+    ).rejects.toThrow("Timeline edit blocked");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith("Reserved by an agent", "error");
+    expect(doc.getElementById("voice-1")?.getAttribute("data-audio-group")).toBeNull();
+    expect(doc.getElementById("voiceover")).toBeNull();
+    hook.unmount();
+  });
+
+  it("reverts an optimistic group live value when the commit is refused", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+    doc.body.innerHTML =
+      '<hf-audio-group id="voiceover" data-volume="1"></hf-audio-group>' +
+      '<audio id="voice-1" data-start="0" data-duration="5"></audio>';
+    const member = {
+      ...timelineElement({ id: "voice-1", tag: "audio", track: 0, zIndex: 0 }),
+      audioGroup: "voiceover",
+      audioGroupVolume: 1,
+    };
+    usePlayerStore.getState().setElements([member]);
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const recordEdit = vi.fn(async () => {});
+    const showToast = vi.fn();
+    const hook = renderTimelineEditingHook({
+      timelineElements: [member],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit,
+      showToast,
+      canEdit: () => ({ blocked: true, reason: "Reserved by an agent" }),
+    });
+
+    await act(async () => {
+      hook.setAudioGroupAttribute.setLive("voiceover", "data-volume", "0.4");
+    });
+    expect(doc.getElementById("voiceover")?.getAttribute("data-volume")).toBe("0.4");
+    expect(usePlayerStore.getState().elements[0]?.audioGroupVolume).toBe(0.4);
+
+    await act(async () => {
+      await hook.setAudioGroupAttribute.setQuiet("voiceover", "data-volume", "0.4", "Set volume");
+    });
+
+    expect(doc.getElementById("voiceover")?.getAttribute("data-volume")).toBe("1");
+    expect(usePlayerStore.getState().elements[0]?.audioGroupVolume).toBe(1);
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith("Reserved by an agent", "error");
+    hook.unmount();
   });
 });
 

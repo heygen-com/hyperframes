@@ -28,6 +28,10 @@ import {
   type UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
 
+interface AudioGroupCarveInput extends UseTimelineElementVisibilityEditingInput {
+  checkEditable?: (elements: readonly TimelineElement[]) => boolean;
+}
+
 /**
  * Assign (or restore) `data-audio-group` across a set of members.
  *
@@ -267,7 +271,8 @@ export function useAudioGroupCarveAssignment({
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
-}: UseTimelineElementVisibilityEditingInput): (
+  checkEditable,
+}: AudioGroupCarveInput): (
   clipIds: readonly string[],
   groupId: string,
   groupLabel?: string,
@@ -289,6 +294,9 @@ export function useAudioGroupCarveAssignment({
         const domId = runtimeAudioId(item);
         return domId !== null && wanted.has(domId);
       });
+      if (elements.length === wanted.size && checkEditable && !checkEditable(elements)) {
+        throw new Error("Timeline edit blocked");
+      }
       try {
         // Loud, not silent: an unresolved id used to leave `elements` short,
         // `createAudioGroupAndAssignMembers` returning early with no write, and
@@ -333,6 +341,7 @@ export function useAudioGroupCarveAssignment({
       isRecordingRef,
       showToast,
       projectIdRef,
+      checkEditable,
     ],
   );
 }

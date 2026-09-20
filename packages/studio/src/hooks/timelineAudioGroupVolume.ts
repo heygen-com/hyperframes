@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { usePlayerStore } from "../player";
@@ -27,6 +27,10 @@ function patchLiveGroupAttribute(
   if (value === null) target.removeAttribute(attr);
   else target.setAttribute(attr, value);
   invalidateGroupInfoCache(iframe?.contentDocument);
+}
+
+function audioGroupAttributeLiveKey(groupId: string, attr: string): string {
+  return `${groupId}\0${attr}`;
 }
 
 /**
@@ -210,14 +214,41 @@ export function useSetAudioGroupAttribute({
 }: UseTimelineElementVisibilityEditingInput): {
   setLive: (groupId: string, attr: string, value: string | null) => void;
   setQuiet: (groupId: string, attr: string, value: string | null, label: string) => Promise<void>;
+  revertLive: (groupId: string, attr: string) => void;
 } {
+  const liveBeforeRef = useRef(new Map<string, string | null>());
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
+      const key = audioGroupAttributeLiveKey(groupId, attr);
+      const target = previewIframeRef.current?.contentDocument?.getElementById(groupId);
+      if (!liveBeforeRef.current.has(key)) {
+        liveBeforeRef.current.set(key, target?.getAttribute(attr) ?? null);
+      }
       patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
       // Live too, not just on commit: a fader drag is `setLive` per frame and
       // `setQuiet` once on release, so without this the strip's own readout
       // fights the drag.
       syncStoredGroupAttribute(groupId, attr, value);
+    },
+    [previewIframeRef],
+  );
+  const revertLive = useCallback(
+    (groupId: string, attr: string) => {
+      const key = audioGroupAttributeLiveKey(groupId, attr);
+      if (!liveBeforeRef.current.has(key)) return;
+      patchLiveGroupAttribute(
+        previewIframeRef.current,
+        groupId,
+        attr,
+        liveBeforeRef.current.get(key) ?? null,
+      );
+      syncStoredGroupAttribute(
+        groupId,
+        attr,
+        previewIframeRef.current?.contentDocument?.getElementById(groupId)?.getAttribute(attr) ??
+          null,
+      );
+      liveBeforeRef.current.delete(key);
     },
     [previewIframeRef],
   );
@@ -242,6 +273,7 @@ export function useSetAudioGroupAttribute({
           recordEdit,
           pendingTimelineEditPathRef,
         });
+        liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
         syncStoredGroupAttribute(groupId, attr, value);
       } catch (error) {
         // `persistElementAttribute` leaves the live DOM at the previous value
@@ -257,6 +289,7 @@ export function useSetAudioGroupAttribute({
         console.error("[Timeline] Failed to set group attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update group";
         showToast(message);
+        liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
       }
     },
     [
@@ -270,5 +303,5 @@ export function useSetAudioGroupAttribute({
       projectIdRef,
     ],
   );
-  return { setLive, setQuiet };
+  return { setLive, setQuiet, revertLive };
 }
