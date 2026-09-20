@@ -24,7 +24,15 @@ export function parseSetAssignments(
         fix: "use volume=<number>, rate=<number>, or track=<number>",
       };
     }
-    const field = parseSetField(match[1]);
+    const fieldValue = match[1];
+    if (!fieldValue) {
+      return {
+        ok: false,
+        reason: `unsupported set assignment ${value}`,
+        fix: "use volume=<number>, rate=<number>, or track=<number>",
+      };
+    }
+    const field = parseSetField(fieldValue);
     const number = Number(match[2]);
     if (!Number.isFinite(number) || (field === "track" && !Number.isInteger(number))) {
       return {
