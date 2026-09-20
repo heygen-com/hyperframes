@@ -91,7 +91,7 @@ describe("timeline edit command", () => {
   it("refuses snap when the project fps is unknown", () => {
     const dir = project();
     try {
-      const result = run(dir, "move", "#clip", "1.03", "--snap");
+      const result = run(dir, "move", "#clip", "1.06", "--snap");
       expect(result.status).toBe(2);
       expect(result.stderr).toContain("set data-fps");
     } finally {
@@ -116,9 +116,9 @@ describe("timeline edit command", () => {
         after: Array<{ ref: string; start: number }>;
       };
       expect(output.after.find((row) => row.ref === "#clip")).toMatchObject({
-        start: 1,
+        start: 1.1,
       });
-      expect(readFileSync(join(dir, "index.html"), "utf8")).toContain('data-start="1"');
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toContain('data-start="1.1"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
