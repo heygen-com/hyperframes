@@ -1,6 +1,5 @@
 import type {
   TimelineMeta,
-  TimelineOverlaysState,
   TimelineContainerProps,
   TimelineViewportProps,
 } from "./TimelineProvider";
@@ -25,68 +24,6 @@ export function resolveRenderClipContent(
 
 export function shouldIgnoreTimelinePointerDown(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button, input, select, a") !== null;
-}
-
-export function buildTimelineOverlaysState(
-  elements: TimelineOverlaysState["elements"],
-  elementsRef: TimelineOverlaysState["elementsRef"],
-  theme: TimelineOverlaysState["theme"],
-  showShortcutHint: TimelineOverlaysState["showShortcutHint"],
-  showPopover: TimelineOverlaysState["showPopover"],
-  rangeSelection: TimelineOverlaysState["rangeSelection"],
-  setShowPopover: TimelineOverlaysState["setShowPopover"],
-  setRangeSelection: TimelineOverlaysState["setRangeSelection"],
-  kfContextMenu: TimelineOverlaysState["kfContextMenu"],
-  setKfContextMenu: TimelineOverlaysState["setKfContextMenu"],
-  onDeleteKeyframe: TimelineOverlaysState["onDeleteKeyframe"],
-  onDeleteAllKeyframes: TimelineOverlaysState["onDeleteAllKeyframes"],
-  onMoveKeyframeToPlayhead: TimelineOverlaysState["onMoveKeyframeToPlayhead"],
-  clipContextMenu: TimelineOverlaysState["clipContextMenu"],
-  setClipContextMenu: TimelineOverlaysState["setClipContextMenu"],
-  currentTime: TimelineOverlaysState["currentTime"],
-  onSplitElement: TimelineOverlaysState["onSplitElement"],
-  pinZoomBeforeEdit: TimelineOverlaysState["pinZoomBeforeEdit"],
-  onDeleteElement: TimelineOverlaysState["onDeleteElement"],
-  onCopyClip: TimelineOverlaysState["onCopyClip"],
-  onPasteClip: TimelineOverlaysState["onPasteClip"],
-  onDuplicateClip: TimelineOverlaysState["onDuplicateClip"],
-  canPasteClip: TimelineOverlaysState["canPasteClip"],
-  gapContextMenu: TimelineOverlaysState["gapContextMenu"],
-  onDismissGapContextMenu: TimelineOverlaysState["onDismissGapContextMenu"],
-  onCloseTrackGap: TimelineOverlaysState["onCloseTrackGap"],
-  onCloseAllTrackGaps: TimelineOverlaysState["onCloseAllTrackGaps"],
-  onHoverGapAction: TimelineOverlaysState["onHoverGapAction"],
-): TimelineOverlaysState {
-  return {
-    elements,
-    elementsRef,
-    theme,
-    showShortcutHint,
-    showPopover,
-    rangeSelection,
-    setShowPopover,
-    setRangeSelection,
-    kfContextMenu,
-    setKfContextMenu,
-    onDeleteKeyframe,
-    onDeleteAllKeyframes,
-    onMoveKeyframeToPlayhead,
-    clipContextMenu,
-    setClipContextMenu,
-    currentTime,
-    onSplitElement,
-    pinZoomBeforeEdit,
-    onDeleteElement,
-    onCopyClip,
-    onPasteClip,
-    onDuplicateClip,
-    canPasteClip,
-    gapContextMenu,
-    onDismissGapContextMenu,
-    onCloseTrackGap,
-    onCloseAllTrackGaps,
-    onHoverGapAction,
-  };
 }
 
 type ContainerInputs = Omit<TimelineContainerProps, "className"> & {

@@ -2,8 +2,6 @@ import { useRef, useMemo, useCallback, useState } from "react";
 import { useAdjustedBeatAnalysis, useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { defaultTimelineTheme } from "./timelineTheme";
-import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
-import { usePublishRangeSelection } from "./usePublishRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
@@ -12,11 +10,11 @@ import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
 import {
   buildTimelineMeta,
-  buildTimelineOverlaysState,
   resolveRenderClipContent,
   resolveResizingElementIds,
   shouldIgnoreTimelinePointerDown,
 } from "./timelineProviderStateBuilders";
+import { useTimelineOverlaysState } from "./useTimelineOverlaysState";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
@@ -31,7 +29,6 @@ import {
   useTimelineTrackLayout,
 } from "./useTimelineTrackLayout";
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
-import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { TimelineRazorGuide, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
 import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
@@ -40,7 +37,6 @@ import {
   getTimelinePreviewElement,
   timelineNeedsLabelColumn,
 } from "./timelineViewModel";
-import { useTimelineSelectionLifecycle } from "./useTimelineSelectionLifecycle";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
@@ -48,7 +44,6 @@ import { useTimelineClipRenderWindow } from "./useTimelineClipRenderWindow";
 import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
-import { useClipContextMenu } from "./useTimelineClipContextMenu";
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -111,6 +106,7 @@ export function useTimelineProviderState({
     () => timelineNeedsLabelColumn(gsapAnimations, timelineElements),
     [gsapAnimations, timelineElements],
   );
+  // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
   const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
   const contentGutter = labelMode ? GUTTER : 0;
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
@@ -187,22 +183,6 @@ export function useTimelineProviderState({
   const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
     expandedElementsRef: timelineElementsRef,
   });
-  const {
-    gapMenuModel,
-    gapHighlight,
-    setHoveredGapAction,
-    openGapMenu,
-    dismissGapMenu,
-    closeTrackGap,
-    closeAllTrackGaps,
-  } = useTrackGapMenu({
-    tracks,
-    expandedElementsRef: timelineElementsRef,
-    trackOrderRef,
-    onMoveElement: pinnedOnMoveElement,
-    onMoveElements: pinnedOnMoveElements,
-  });
-  const onContextMenuClip = useClipContextMenu(onSelectElement, dismissGapMenu, setClipContextMenu);
   const {
     draggedClip,
     setDraggedClip,
@@ -330,15 +310,6 @@ export function useTimelineProviderState({
     clipStateVersion: renderTimeRange,
     elementStateVersion: timelineElements,
   });
-  const laneGapStrips = useTimelineGapHighlights({
-    gapHighlight,
-    tracks,
-    selectedElementId,
-    selectedElementIds,
-    expandedElements: timelineElements,
-    dragActive: draggedClip?.started === true || resizingClip != null,
-    displayDuration,
-  });
   const { seekFromX, autoScrollDuringDrag, dragScrollRaf } = useTimelinePlayhead({
     playheadRef,
     scrollRef,
@@ -369,7 +340,62 @@ export function useTimelineProviderState({
       pixelsPerSecond: pps,
       onSplitAll: onRazorSplitAll,
     });
+  const overlaysProps = useTimelineOverlaysState({
+    elements: timelineElements,
+    elementsRef: timelineElementsRef,
+    theme,
+    showShortcutHint,
+    showPopover,
+    setShowPopover,
+    kfContextMenu,
+    setKfContextMenu,
+    onDeleteKeyframe,
+    onDeleteAllKeyframes,
+    onMoveKeyframeToPlayhead,
+    clipContextMenu,
+    setClipContextMenu,
+    currentTime,
+    onSplitElement,
+    pinZoomBeforeEdit,
+    onDeleteElement: _onDeleteElement,
+    onCopyClip,
+    onPasteClip,
+    onDuplicateClip,
+    canPasteClip,
+    onSelectElement,
+    selectedElementId,
+    setRangeSelectionRef,
+    rangeSelection: {
+      scrollRef,
+      ppsRef,
+      effectiveDuration,
+      pps,
+      onSeek,
+      seekFromX,
+      autoScrollDuringDrag,
+      dragScrollRaf,
+      isDragging,
+      setShowPopover,
+      elementsRef: timelineElementsRef,
+      clipIndex,
+      rowGeometryRef,
+      onSelectElement,
+      contentOrigin,
+      sessionEpoch,
+      onRangeSelect,
+    },
+    gapMenu: {
+      tracks,
+      expandedElementsRef: timelineElementsRef,
+      trackOrderRef,
+      onMoveElement: pinnedOnMoveElement,
+      onMoveElements: pinnedOnMoveElements,
+    },
+  });
   const {
+    gapHighlight,
+    openGapMenu,
+    onContextMenuClip,
     rangeSelection,
     setRangeSelection,
     shiftClickClipRef,
@@ -379,30 +405,17 @@ export function useTimelineProviderState({
     handlePointerMove,
     handlePointerUp,
     handlePointerCancel,
-  } = useTimelineRangeSelection({
-    scrollRef,
-    ppsRef,
-    effectiveDuration,
-    pps,
-    onSeek,
-    seekFromX,
-    autoScrollDuringDrag,
-    dragScrollRaf,
-    isDragging,
-    setShowPopover,
-    elementsRef: timelineElementsRef,
-    clipIndex,
-    rowGeometryRef,
-    onSelectElement,
-    contentOrigin,
-    sessionEpoch,
-  });
-  usePublishRangeSelection(rangeSelection, onRangeSelect);
-  setRangeSelectionRef.current = setRangeSelection; // oxlint-disable-line react/refs -- stable ref consumed by useTimelineClipDrag
+  } = overlaysProps;
 
-  useTimelineSelectionLifecycle(timelineElements, selectedElementId, setShowPopover, () =>
-    setRangeSelection(null),
-  );
+  const laneGapStrips = useTimelineGapHighlights({
+    gapHighlight,
+    tracks,
+    selectedElementId,
+    selectedElementIds,
+    expandedElements: timelineElements,
+    dragActive: draggedClip?.started === true || resizingClip != null,
+    displayDuration,
+  });
 
   const { major, minor, majorTickInterval } = useTimelineTicks(
     displayDuration,
@@ -489,36 +502,6 @@ export function useTimelineProviderState({
     onMoveElement,
     beatDragging,
   };
-  const overlaysProps = buildTimelineOverlaysState(
-    timelineElements,
-    timelineElementsRef,
-    theme,
-    showShortcutHint,
-    showPopover,
-    rangeSelection,
-    setShowPopover,
-    setRangeSelection,
-    kfContextMenu,
-    setKfContextMenu,
-    onDeleteKeyframe,
-    onDeleteAllKeyframes,
-    onMoveKeyframeToPlayhead,
-    clipContextMenu,
-    setClipContextMenu,
-    currentTime,
-    onSplitElement,
-    pinZoomBeforeEdit,
-    _onDeleteElement,
-    onCopyClip,
-    onPasteClip,
-    onDuplicateClip,
-    canPasteClip,
-    gapMenuModel,
-    dismissGapMenu,
-    closeTrackGap,
-    closeAllTrackGaps,
-    setHoveredGapAction,
-  );
   const timelineRenderClipContent = resolveRenderClipContent(
     timelineFocus.rowVirtualizationActive,
     viewport.isScrolling,

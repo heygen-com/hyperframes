@@ -70,8 +70,8 @@ export interface TrackGapContextMenuState {
 }
 
 export interface TimelineOverlaysState {
-  elements: readonly TimelineElement[];
-  elementsRef: { current: readonly TimelineElement[] };
+  elements: TimelineElement[];
+  elementsRef: { current: TimelineElement[] };
   theme: TimelineTheme;
   showShortcutHint: boolean;
   showPopover: boolean;
