@@ -115,7 +115,9 @@ export function dispatchModifierKey(
       }
       return true;
     }
-    if (cb.readOnlyPreview && ["v", "x", "d"].includes(key)) {
+    const previewOwnsMutation =
+      cb.readOnlyPreview && cb.domEditSelectionRef.current !== null;
+    if (previewOwnsMutation && ["v", "x", "d"].includes(key)) {
       event.preventDefault();
       return true;
     }
@@ -164,7 +166,6 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // Reserve bare `s` for Split even when the current selection cannot split,
     // so secondary listeners do not reinterpret the same key as Snap toggle.
     event.preventDefault();
-    if (cb.readOnlyPreview) return;
     const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
     if (selectedElementId) {
       const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);

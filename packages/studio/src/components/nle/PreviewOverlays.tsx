@@ -142,6 +142,7 @@ export function PreviewOverlays({
   const { captionEditMode, compositionLoading, isPlaying } = useStudioPlaybackContext();
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
   const readOnly = usePreviewReadOnly();
+  const previewCaptionEditMode = captionEditMode && !readOnly;
 
   // Caption edit mode is entered automatically when captions are detected;
   // these give the author an explicit way OUT (and back in). Without them the
@@ -218,7 +219,7 @@ export function PreviewOverlays({
     );
   }
 
-  if (captionEditMode && !readOnly) {
+  if (previewCaptionEditMode) {
     return (
       <>
         <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
@@ -269,7 +270,7 @@ export function PreviewOverlays({
         iframeRef={previewIframeRef}
         activeCompositionPath={activeCompPath}
         hoverSelection={
-          !captionEditMode && !compositionLoading && !isPlaying ? domEditHoverSelection : null
+          !previewCaptionEditMode && !compositionLoading && !isPlaying ? domEditHoverSelection : null
         }
         selection={shouldShowSelectedDomBounds ? domEditSelection : null}
         groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}

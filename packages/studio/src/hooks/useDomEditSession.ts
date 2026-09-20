@@ -102,6 +102,7 @@ export function useDomEditSession({
   readOnlyPreview,
 }: UseDomEditSessionParams) {
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
+  const previewCaptionEditMode = captionEditMode && !readOnlyPreview;
   void _setRefreshKey;
   const {
     domEditSelection,
@@ -127,7 +128,7 @@ export function useDomEditSession({
     activeCompPath,
     isMasterView,
     compIdToSrc,
-    captionEditMode,
+    captionEditMode: previewCaptionEditMode,
     previewIframeRef,
     timelineElements,
     getTimelineSelectionSet,
@@ -417,7 +418,7 @@ export function useDomEditSession({
     refreshDomEditGroupSelectionsFromPreview,
     previewIframeRef,
     previewIframe,
-    captionEditMode,
+    captionEditMode: previewCaptionEditMode,
     refreshKey,
     gsapCacheVersion,
     bumpGsapCache,

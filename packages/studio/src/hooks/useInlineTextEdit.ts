@@ -181,6 +181,13 @@ export function useInlineTextEdit({
     teardown();
   }, [teardown]);
 
+  // Read-only can be enabled while an edit is already open. Close that
+  // session as a cancellation so the preview cannot keep committing through
+  // the now-disabled editing surface.
+  useEffect(() => {
+    if (readOnly && openRef.current) cancel();
+  }, [cancel, readOnly]);
+
   // The keys belong to the element, not to the document: the element lives in
   // the preview's own document, so a listener on Studio's would never see them.
   useEffect(() => {

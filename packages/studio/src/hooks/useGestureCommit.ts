@@ -117,6 +117,19 @@ export function useGestureCommit({
   // Unmount: clear auto-stop interval
   useEffect(() => () => clearInterval(recordingAutoStopRef.current), []);
 
+  const cancelRecording = useCallback(() => {
+    clearInterval(recordingAutoStopRef.current);
+    gestureRecording.clearSamples();
+    gestureStateRef.current = "idle";
+    isGestureRecordingRef.current = false;
+    capturedSelectionRef.current = null;
+    setGestureState("idle");
+  }, [gestureRecording, isGestureRecordingRef]);
+
+  useEffect(() => {
+    if (readOnlyPreview && gestureStateRef.current === "recording") cancelRecording();
+  }, [cancelRecording, readOnlyPreview]);
+
   // fallow-ignore-next-line complexity
   const stopAndCommitRecording = useCallback(async () => {
     clearInterval(recordingAutoStopRef.current);
@@ -337,6 +350,10 @@ export function useGestureCommit({
   // fallow-ignore-next-line complexity
   const handleToggleRecording = useCallback(() => {
     if (gestureStateRef.current === "recording") {
+      if (readOnlyPreview) {
+        cancelRecording();
+        return;
+      }
       void stopAndCommitRecording();
       return;
     }
@@ -376,6 +393,7 @@ export function useGestureCommit({
     gestureRecording,
     showToast,
     stopAndCommitRecording,
+    cancelRecording,
     previewIframeRef,
     domEditSessionRef,
     isGestureRecordingRef,
