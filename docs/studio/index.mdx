@@ -46,7 +46,7 @@ problem in front of you.
 
 Host apps can compose the same rulers, safe margins, grid, and snap toolbar that
 Studio uses over their own preview iframe. The provider owns the iframe geometry
-and shared preferences, so the host only supplies its iframe ref and chooses the
+and shared preferences, so the host supplies its current iframe element and chooses the
 parts to render:
 
 ```tsx
@@ -56,11 +56,9 @@ import {
   PreviewOverlayProvider,
   SnapToolbar,
 } from "@hyperframes/studio";
-import type { RefObject } from "react";
-
-function Preview({ iframeRef }: { iframeRef: RefObject<HTMLIFrameElement | null> }) {
+function Preview({ iframe }: { iframe: HTMLIFrameElement | null }) {
   return (
-    <PreviewOverlayProvider iframeRef={iframeRef}>
+    <PreviewOverlayProvider iframe={iframe}>
       <PreviewGuides />
       <GridOverlay />
       <SnapToolbar />

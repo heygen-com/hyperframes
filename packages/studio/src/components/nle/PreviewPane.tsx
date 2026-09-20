@@ -144,7 +144,7 @@ export function PreviewPane({
           )}
           <AssetPreviewOverlay />
         </div>
-        <PreviewOverlayProvider iframeRef={iframeRef}>
+        <PreviewOverlayProvider>
           <PreviewGuides />
           {!isFullscreen && previewOverlay}
         </PreviewOverlayProvider>

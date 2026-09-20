@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 
-import { act, useRef } from "react";
+import { act, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
+import { resetOverlayFrameLoopForTests } from "./overlayFrameLoop";
 import {
   usePreviewCompositionRect,
   type PreviewCompositionRect,
@@ -12,7 +12,7 @@ import {
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
-  usePreviewIframeStore.getState().setIframe(null);
+  resetOverlayFrameLoopForTests();
   document.body.innerHTML = "";
 });
 
@@ -24,9 +24,12 @@ function boxed<T extends HTMLElement>(el: T, box: [number, number, number, numbe
 
 function mountProbe() {
   let rect: PreviewCompositionRect | undefined;
+  let setIframe: (iframe: HTMLIFrameElement | null) => void = () => {};
   function Probe() {
     const ref = useRef<HTMLDivElement>(null);
-    rect = usePreviewCompositionRect(ref);
+    const [iframe, updateIframe] = useState<HTMLIFrameElement | null>(null);
+    setIframe = updateIframe;
+    rect = usePreviewCompositionRect(ref, iframe);
     return (
       <div
         ref={(el) => {
@@ -38,8 +41,9 @@ function mountProbe() {
   }
   const host = document.createElement("div");
   document.body.append(host);
-  act(() => createRoot(host).render(<Probe />));
-  return () => rect;
+  const root = createRoot(host);
+  act(() => root.render(<Probe />));
+  return { read: () => rect, setIframe, unmount: () => act(() => root.unmount()) };
 }
 
 function compositionFrame(box: [number, number, number, number], width: number, height: number) {
@@ -57,13 +61,13 @@ const settle = () => new Promise((r) => setTimeout(r, 400));
 
 describe("usePreviewCompositionRect", () => {
   it("reports the live preview iframe's box relative to the overlay, scaled to the composition", async () => {
-    const read = mountProbe();
+    const probe = mountProbe();
     const iframe = compositionFrame([110, 70, 960, 540], 1920, 1080);
     await act(async () => {
-      usePreviewIframeStore.getState().setIframe(iframe);
+      probe.setIframe(iframe);
       await settle();
     });
-    expect(read()).toEqual({
+    expect(probe.read()).toEqual({
       left: 100,
       top: 50,
       width: 960,
@@ -71,19 +75,20 @@ describe("usePreviewCompositionRect", () => {
       scaleX: 0.5,
       scaleY: 0.5,
     });
+    probe.unmount();
   });
 
   it("follows the iframe when a reload replaces it", async () => {
-    const read = mountProbe();
+    const probe = mountProbe();
     await act(async () => {
-      usePreviewIframeStore.getState().setIframe(compositionFrame([110, 70, 960, 540], 1920, 1080));
+      probe.setIframe(compositionFrame([110, 70, 960, 540], 1920, 1080));
       await settle();
     });
     await act(async () => {
-      usePreviewIframeStore.getState().setIframe(compositionFrame([60, 40, 500, 500], 1000, 1000));
+      probe.setIframe(compositionFrame([60, 40, 500, 500], 1000, 1000));
       await settle();
     });
-    expect(read()).toEqual({
+    expect(probe.read()).toEqual({
       left: 50,
       top: 20,
       width: 500,
@@ -91,5 +96,6 @@ describe("usePreviewCompositionRect", () => {
       scaleX: 0.5,
       scaleY: 0.5,
     });
+    probe.unmount();
   });
 });

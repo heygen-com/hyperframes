@@ -28,7 +28,7 @@ function render(rulerVisible: boolean, safeMarginsVisible: boolean) {
   document.body.append(host);
   act(() => {
     createRoot(host).render(
-      <PreviewOverlayProvider iframeRef={{ current: null }}>
+      <PreviewOverlayProvider>
         <PreviewGuides />
       </PreviewOverlayProvider>,
     );

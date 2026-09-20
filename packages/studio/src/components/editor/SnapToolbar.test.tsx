@@ -24,7 +24,7 @@ function renderToolbar() {
   const root = createRoot(host);
   act(() => {
     root.render(
-      <PreviewOverlayProvider iframeRef={{ current: null }}>
+      <PreviewOverlayProvider>
         <SnapToolbar />
       </PreviewOverlayProvider>,
     );
@@ -73,7 +73,7 @@ function renderToolbarWithAppHotkeys() {
     root.render(
       <>
         <AppHotkeyHarness />
-        <PreviewOverlayProvider iframeRef={{ current: null }}>
+        <PreviewOverlayProvider>
           <SnapToolbar />
         </PreviewOverlayProvider>
       </>,

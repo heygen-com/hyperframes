@@ -1,20 +1,11 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   usePreviewCompositionRect,
   type PreviewCompositionRect,
 } from "./usePreviewCompositionRect";
 import { usePreviewGuidesStore } from "./previewGuidesStore";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
-import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
+import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 
 export interface PreviewSnapPreferences {
   snapEnabled: boolean;
@@ -51,40 +42,27 @@ function readSnapPrefs(): PreviewSnapPreferences {
 }
 
 export interface PreviewOverlayProviderProps {
-  iframeRef: RefObject<HTMLIFrameElement | null>;
+  iframe?: HTMLIFrameElement | null;
   children: ReactNode;
 }
 
-export function PreviewOverlayProvider({ iframeRef, children }: PreviewOverlayProviderProps) {
+export function PreviewOverlayProvider({ iframe, children }: PreviewOverlayProviderProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [snapPrefs, setSnapPrefs] = useState(readSnapPrefs);
   const rulerVisible = usePreviewGuidesStore((state) => state.rulerVisible);
   const safeMarginsVisible = usePreviewGuidesStore((state) => state.safeMarginsVisible);
-  const compositionRect = usePreviewCompositionRect(overlayRef);
-
-  useLayoutEffect(() => {
-    const iframe = iframeRef.current;
-    const store = usePreviewIframeStore.getState();
-    if (store.iframe !== iframe) store.setIframe(iframe);
-  });
-
-  useEffect(
-    () => () => {
-      const store = usePreviewIframeStore.getState();
-      if (store.iframe === iframeRef.current || iframeRef.current === null) store.setIframe(null);
-    },
-    [iframeRef],
-  );
+  const liveIframe = useLivePreviewIframe();
+  const resolvedIframe = iframe ?? liveIframe;
+  const iframeRef = useRef<HTMLIFrameElement | null>(resolvedIframe);
+  iframeRef.current = resolvedIframe;
+  const compositionRect = usePreviewCompositionRect(overlayRef, resolvedIframe);
 
   const contextValue: PreviewOverlayContextValue = {
     state: { snapPrefs, rulerVisible, safeMarginsVisible, iframeRef, compositionRect },
     actions: {
       setSnapPrefs: (patch) => {
-        setSnapPrefs((current) => {
-          const next = { ...current, ...patch };
-          writeStudioUiPreferences(patch);
-          return next;
-        });
+        writeStudioUiPreferences(patch);
+        setSnapPrefs((current) => ({ ...current, ...patch }));
       },
       toggleRulers: () => usePreviewGuidesStore.getState().toggle("rulerVisible"),
       toggleSafeMargins: () => usePreviewGuidesStore.getState().toggle("safeMarginsVisible"),
