@@ -250,7 +250,8 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // the timeline left other selected elements behind. Timeline stays as the
     // fallback for rows with no canvas node (audio, an inactive comp).
     const domSel = cb.domEditSelectionRef.current;
-    if (domSel) {
+    const timelineOwnsDelete = usePlayerStore.getState().selectedElementId !== null;
+    if (domSel && !timelineOwnsDelete) {
       event.preventDefault();
       if (cb.readOnlyPreview) return;
       // The whole marquee group, not just the primary the ref holds.

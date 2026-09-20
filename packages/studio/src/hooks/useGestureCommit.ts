@@ -119,6 +119,7 @@ export function useGestureCommit({
 
   const cancelRecording = useCallback(() => {
     clearInterval(recordingAutoStopRef.current);
+    gestureRecording.stopRecording();
     gestureRecording.clearSamples();
     gestureStateRef.current = "idle";
     isGestureRecordingRef.current = false;

@@ -532,6 +532,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       restoreGestureOverlayRect(g);
     }
     if (g?.mode === "rotation" && sel) {
+      applyRotationDraftViaGsap(sel.element, g.actualRotation);
       restoreStudioRotation(sel.element, g.initialRotation);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
     }
