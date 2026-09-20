@@ -1,7 +1,8 @@
 import { createCaptureWatchdog, runWithWatchdog } from "./captureWatchdog.js";
 import { createPartialCaptureState, writePartialCaptureBundle } from "./partialCapture.js";
 import type { PartialCaptureState } from "./partialCapture.js";
-import { captureWebsiteAttempt, NavigationDeadlineError } from "./captureAttempt.js";
+import { captureWebsiteAttempt } from "./captureAttempt.js";
+import { NavigationDeadlineError } from "./captureErrors.js";
 import type { CaptureOptions, CaptureResult } from "./types.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";

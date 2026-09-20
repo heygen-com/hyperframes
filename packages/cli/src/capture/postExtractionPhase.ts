@@ -1,24 +1,5 @@
-/* oxlint-disable no-unused-vars */
-import { LottieDiscovery } from "./lottieDiscovery.js";
-import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
-/**
- * Website capture orchestrator.
- *
- * Two-pass capture approach:
- * Pass 1: Full page load (all JS) → catalog animations + snapshot canvases
- * Pass 2: Framework scripts blocked → extract stable HTML/CSS
- *
- * This ensures we get both:
- * - Rich animation metadata for Claude Code to recreate
- * - Stable, renderable HTML that won't crash in Puppeteer
- */
-
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { extractHtml } from "./htmlExtractor.js";
-// captureScreenshots removed — full-page screenshot replaces per-section shots
-import { extractTokens } from "./tokenExtractor.js";
-import { extractDesignStyles } from "./designStyleExtractor.js";
 import {
   downloadAssets,
   downloadAndRewriteFonts,
@@ -26,96 +7,31 @@ import {
   noDrops,
   totalDrops,
 } from "./assetDownloader.js";
-import type { IconCandidate } from "./faviconRanker.js";
-import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import { extractFontMetadata } from "./fontMetadataExtractor.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
-// briefGenerator.ts, visual-style, capture-summary removed — DESIGN.md replaces them
 import {
-  setupAnimationCapture,
-  startCdpAnimationCapture,
-  collectAnimationCatalog,
-} from "./animationCataloger.js";
-import {
-  saveLottieAnimations,
-  renderLottiePreviews,
-  captureVideoManifest,
-} from "./mediaCapture.js";
-import type { DiscoveredLottie } from "./mediaCapture.js";
-import {
-  detectLibraries,
-  extractVisibleText,
   captionImagesWithGemini,
   generateAssetDescriptions,
   resolveVisionPhaseCompletion,
 } from "./contentExtractor.js";
 import type { VisionCaptionOutcome } from "./contentExtractor.js";
-import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
-import { detectBlockedPage } from "./pageBlockDetection.js";
-import { writeResponseRecord } from "./responseRecord.js";
-import { navigateForCapture } from "./navigateForCapture.js";
-import {
-  captureProtocolTimeoutMs,
-  isDegradableEvaluateTimeoutError,
-  isNavigationTimeoutError,
-  withRemainingBudget,
-} from "./captureTimeout.js";
-import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
-import type {
-  CaptureOptions,
-  CapturePhase,
-  CapturePhaseProgress,
-  CaptureResult,
-  DesignTokens,
-  ExtractedHtml,
-} from "./types.js";
-import { createCaptureWatchdog } from "./captureWatchdog.js";
-import { captureBrowserArgs } from "./browserLaunchArgs.js";
-import { createPartialCaptureState } from "./partialCapture.js";
-import { filterExtractedScripts } from "./filterExtractedScripts.js";
-
-/* Extracted capture phase. The phase receives one immutable input object and returns its changed values. */
-import type { Page, Browser } from "puppeteer-core";
-
-export interface PhaseContext {
-  page1: Page;
-  chromeBrowser: Browser;
-  [key: string]: unknown;
-}
+import type { PhaseContext } from "./capturePhaseContext.js";
 
 export async function runPostExtraction(context: PhaseContext): Promise<Record<string, unknown>> {
   let {
-    page1,
-    chromeBrowser,
-    cdp,
-    cdpAnims,
     state,
-    url,
     outputDir,
-    timeout,
-    settleTime,
     warnings,
     progress,
-    budgetMs,
     remainingMs,
-    pageContentCheck,
-    contentCheckTimedOut,
-    postNavigationDeadline,
-    httpStatus,
     phase,
-    discoveredLotties,
-    lottieDiscovery,
-    discoveredVideoUrls,
     animationCatalog,
-    capturedShaders,
     catalogedAssets,
-    detectedLibraries,
     visibleTextContent,
     faviconLinks,
     tokens,
     extracted,
-    screenshots,
     skipAssets,
     skipVision,
     downloadByteBudget,

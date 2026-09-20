@@ -73,12 +73,7 @@ import { runPostExtraction } from "./postExtractionPhase.js";
 
 const DEFAULT_POST_NAVIGATION_BUDGET_MS = 120_000;
 
-export class NavigationDeadlineError extends Error {
-  constructor(readonly cause: unknown) {
-    super("capture navigation timed out");
-    this.name = "NavigationDeadlineError";
-  }
-}
+import { NavigationDeadlineError } from "./captureErrors.js";
 
 export async function captureWebsiteAttempt(
   opts: CaptureOptions,
