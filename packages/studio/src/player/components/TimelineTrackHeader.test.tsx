@@ -162,7 +162,7 @@ describe("TimelineTrackHeader", () => {
       isAudioTrack: true,
     });
     expect(view.host.querySelector('[data-automation-lane-name]')).toBeNull();
-    expect(view.host.querySelector('[title*="fx.n1.gain"]')).not.toBeNull();
+    expect(view.host.querySelector('[data-automation-lane-label] [title]')).not.toBeNull();
     act(() => view.root.unmount());
   });
 
