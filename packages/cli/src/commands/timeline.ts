@@ -5,6 +5,7 @@ import {
   removeElementFromHtml,
   splitElementInHtml,
 } from "@hyperframes/studio-server";
+import type { AppliedFileMutation } from "@hyperframes/studio-server";
 import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { readFileSync } from "node:fs";
@@ -200,16 +201,23 @@ function splitMutation(context: MutationContext, args: Record<string, unknown>):
   };
 }
 
-function trimTime(
-  context: MutationContext,
-  expression: unknown,
-  fix: string,
-): MutationDecision | number {
-  if (typeof expression !== "string") return context.row.start;
-  return parseMutationTime(context, expression, fix);
+function trimMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const bounds = trimBounds(context, args);
+  if (!bounds.ok) return bounds;
+  const patched = patchElementInHtml(context.before, context.resolved.target, [
+    { type: "html-attribute", property: "data-start", value: String(bounds.nextStart) },
+    { type: "html-attribute", property: "data-duration", value: String(bounds.nextDuration) },
+  ]);
+  if (!patched.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return { ok: true, after: patched.html, ...bounds };
 }
 
-function trimMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+function trimBounds(
+  context: MutationContext,
+  args: Record<string, unknown>,
+): MutationDecision | { ok: true; nextStart: number; nextDuration: number } {
   const startExpr = typeof args.start === "string" ? args.start : undefined;
   const endExpr = typeof args.end === "string" ? args.end : undefined;
   const durationExpr = typeof args.duration === "string" ? args.duration : undefined;
@@ -220,23 +228,20 @@ function trimMutation(context: MutationContext, args: Record<string, unknown>): 
       fix: "pass one trim option",
     };
   }
-  let nextStart = context.row.start;
-  let nextDuration = context.row.duration;
-  const start = trimTime(context, startExpr, "pass a valid time expression");
-  if (typeof start !== "number") {
-    if (!start.ok) return start;
-    nextStart = start.seconds;
-  }
-  const end = trimTime(context, endExpr, "pass a valid time expression");
-  if (typeof end !== "number") {
-    if (!end.ok) return end;
-    nextDuration = end.seconds - nextStart;
-  }
-  const duration = trimTime(context, durationExpr, "pass a valid duration");
-  if (typeof duration !== "number") {
-    if (!duration.ok) return duration;
-    nextDuration = duration.seconds;
-  }
+  const start = startExpr
+    ? parseMutationTime(context, startExpr, "pass a valid time expression")
+    : { ok: true as const, seconds: context.row.start };
+  if (!start.ok) return start;
+  const end = endExpr
+    ? parseMutationTime(context, endExpr, "pass a valid time expression")
+    : undefined;
+  if (end && !end.ok) return end;
+  const duration = durationExpr
+    ? parseMutationTime(context, durationExpr, "pass a valid duration")
+    : undefined;
+  if (duration && !duration.ok) return duration;
+  const nextStart = start.seconds;
+  const nextDuration = duration?.seconds ?? (end ? end.seconds - nextStart : context.row.duration);
   if (nextDuration <= 0) {
     return {
       ok: false,
@@ -244,14 +249,7 @@ function trimMutation(context: MutationContext, args: Record<string, unknown>): 
       fix: "choose a later end or positive duration",
     };
   }
-  const patched = patchElementInHtml(context.before, context.resolved.target, [
-    { type: "html-attribute", property: "data-start", value: String(nextStart) },
-    { type: "html-attribute", property: "data-duration", value: String(nextDuration) },
-  ]);
-  if (!patched.matched) {
-    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
-  }
-  return { ok: true, after: patched.html, nextStart, nextDuration };
+  return { ok: true, nextStart, nextDuration };
 }
 
 function deleteMutation(context: MutationContext): MutationDecision {
@@ -385,49 +383,61 @@ async function finishMutation(
   const describeSource = (source: string): Promise<ProjectTimeline> =>
     describeProject(project.indexPath, undefined, new Map([["index.html", setup.indexSource], [row.file, source]]));
   const describedBefore = await describeSource(before);
-  const result = {
+  const result = mutationResult(row, describedBefore, setup.plan);
+  if (setup.plan) return printPlan(result, json, timeline, describeSource, after, before);
+  const receipt = applyMutation(setup, after);
+  if (receipt && "error" in receipt) return refusal(receipt.error, "re-run hyperframes timeline", json);
+  if (!receipt && after !== before) return refusal("mutation produced no receipt", "re-run hyperframes timeline", json);
+  result.after = rowsForFile(await describeSource(after), row.file);
+  result.receipt = receipt;
+  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
+  else console.log(`${verb} ${row.ref}: ${row.start}-${row.end}s -> ${nextStart}-${nextStart + nextDuration}s\nreceipt: ${receipt?.version ?? "unchanged"}`);
+}
+
+function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
+  return allRows(timeline).filter((candidate) => candidate.file === file);
+}
+
+function mutationResult(row: TimelineRow, before: ProjectTimeline, planned: boolean) {
+  return {
     ok: true,
     receipt: null as unknown,
     file: row.file,
-    before: allRows(describedBefore).filter((candidate) => candidate.file === row.file),
+    before: rowsForFile(before, row.file),
     after: [] as TimelineRow[],
     warnings: row.warnings,
-    planned: setup.plan,
+    planned,
   };
-  const textDiff = diff(before, after);
-  const describeAfter = async (): Promise<ProjectTimeline> => describeSource(after);
-  if (setup.plan) {
-    const plannedTimeline = await describeAfter();
-    result.after = allRows(plannedTimeline).filter((candidate) => candidate.file === row.file);
-    if (json) console.log(JSON.stringify(result, null, 2));
-    else
-      console.log(
-        `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${textDiff}`,
-      );
-    return;
-  }
-  let receipt;
+}
+
+async function printPlan(
+  result: ReturnType<typeof mutationResult>,
+  json: boolean,
+  timeline: ProjectTimeline,
+  describeSource: (source: string) => Promise<ProjectTimeline>,
+  after: string,
+  before: string,
+): Promise<void> {
+  const plannedTimeline = await describeSource(after);
+  result.after = rowsForFile(plannedTimeline, result.file);
+  if (json) console.log(JSON.stringify(result, null, 2));
+  else console.log(`${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${diff(before, after)}`);
+}
+
+function applyMutation(
+  setup: MutationSetup,
+  after: string,
+): AppliedFileMutation | { error: string } | undefined {
   try {
-    [receipt] = applyFileMutations(project.dir, [
-      { sourceFile: row.file, absPath: filePath, before, after, expectedVersion },
-    ]);
+    return applyFileMutations(setup.project.dir, [
+      { sourceFile: setup.row.file, absPath: setup.filePath, before: setup.before, after, expectedVersion: setup.expectedVersion },
+    ])[0];
   } catch (error) {
     if (error instanceof Error && error.message === "file changed since the timeline was read") {
-      return refusal(error.message, "re-run hyperframes timeline", json);
+      return { error: error.message };
     }
     throw error;
   }
-  if (!receipt && after !== before) {
-    return refusal("mutation produced no receipt", "re-run hyperframes timeline", json);
-  }
-  const appliedTimeline = await describeAfter();
-  result.after = allRows(appliedTimeline).filter((candidate) => candidate.file === row.file);
-  result.receipt = receipt;
-  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
-  else
-    console.log(
-      `${verb} ${row.ref}: ${row.start}-${row.end}s -> ${nextStart}-${nextStart + nextDuration}s\nreceipt: ${receipt.version}`,
-    );
 }
 
 function mutationRefusal(
