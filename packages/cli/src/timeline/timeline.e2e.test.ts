@@ -91,7 +91,7 @@ describe("timeline edit command", () => {
   it("refuses snap when the project fps is unknown", () => {
     const dir = project();
     try {
-      const result = run(dir, "move", "#clip", "1.06", "--snap");
+      const result = run(dir, "move", "#clip", "1.03", "--snap");
       expect(result.status).toBe(2);
       expect(result.stderr).toContain("set data-fps");
     } finally {
@@ -110,7 +110,7 @@ describe("timeline edit command", () => {
           'data-composition-id="main" data-fps="10"',
         ),
       );
-      const result = run(dir, "move", "#clip", "1.03", "--snap");
+      const result = run(dir, "move", "#clip", "1.06", "--snap");
       expect(result.status, result.stderr).toBe(0);
       const output = JSON.parse(result.stdout) as {
         after: Array<{ ref: string; start: number }>;
