@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
@@ -12,13 +11,12 @@ import {
   type TimelineOverlaysState,
 } from "./TimelineProvider";
 import { defaultTimelineTheme } from "./timelineTheme";
+import { createHappyDomRootHarness } from "./testRootHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const roots: Root[] = [];
+const { mount } = createHappyDomRootHarness();
 afterEach(() => {
-  for (const root of roots.splice(0)) act(() => root.unmount());
-  document.body.innerHTML = "";
   usePlayerStore.setState({ selectedElementId: null, timelineSessionEpoch: 0 });
 });
 
@@ -81,8 +79,7 @@ function renderKeyframeOverlay(options: {
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const root = createRoot(container);
-  roots.push(root);
+  const root = mount(container);
   const elements = [options.currentElement];
   const setKfContextMenu = options.setKfContextMenu ?? vi.fn();
   const onDeleteAllKeyframes = options.onDeleteAllKeyframes ?? vi.fn();

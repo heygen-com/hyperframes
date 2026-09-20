@@ -10,6 +10,7 @@ import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
+import { buildTimelineCanvasState, buildTimelineMeta } from "./timelineProviderStateBuilders";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
@@ -415,7 +416,7 @@ export function useTimelineProviderState({
     [resizingClip],
   );
 
-  const canvasProps = {
+  const canvasProps = buildTimelineCanvasState({
     major,
     minor,
     pps,
@@ -487,7 +488,7 @@ export function useTimelineProviderState({
     onResizeElement,
     onMoveElement,
     beatDragging,
-  };
+  });
   const overlaysProps = {
     elements: timelineElements,
     elementsRef: timelineElementsRef,
@@ -520,6 +521,61 @@ export function useTimelineProviderState({
   };
   const timelineRenderClipContent =
     timelineFocus.rowVirtualizationActive && viewport.isScrolling ? undefined : renderClipContent;
+  const timelineMeta = buildTimelineMeta({
+    emptyState: {
+      isDragOver: assetDrop.isDragOver,
+      onFileDrop: !!onFileDrop,
+      onDragOver: assetDrop.handleAssetDragOver,
+      onDragLeave: assetDrop.handleAssetDragLeave,
+      onDrop: assetDrop.handleAssetDrop,
+    },
+    container: {
+      ref: setContainerRef,
+      "aria-label": "Timeline track view",
+      "data-timeline-element-count": timelineElements.length,
+      isDragOver: assetDrop.isDragOver,
+      activeTool,
+      shiftHeld,
+      accentClass: "ring-1 ring-inset ring-studio-accent/60",
+      onMouseMove: updateRazorGuide,
+      onMouseLeave: clearRazorGuide,
+      style: {
+        touchAction: "pan-x pan-y",
+        background: theme.shellBackground,
+        borderColor: theme.shellBorder,
+      },
+    },
+    viewport: {
+      ref: setScrollRef,
+      tabIndex: -1,
+      labelMode,
+      zoomMode,
+      onScroll: (e) => {
+        lastScrollLeftRef.current = e.currentTarget.scrollLeft;
+        recordTimelineScroll(e.currentTarget);
+        syncScrollViewport(e.currentTarget, true);
+      },
+      ...timelineFocus.timelineFocusProps,
+      onDragOver: assetDrop.handleAssetDragOver,
+      onDragLeave: assetDrop.handleAssetDragLeave,
+      onDrop: assetDrop.handleAssetDrop,
+      onPointerDown: (e) => {
+        if (e.target instanceof Element && e.target.closest("button, input, select, a")) return;
+        if (splitAllAtPointer(e)) return;
+        handlePointerDown(e);
+      },
+      onPointerMove: handlePointerMove,
+      onPointerUp: handlePointerUp,
+      onPointerCancel: handlePointerCancel,
+      onLostPointerCapture: handlePointerCancel,
+    },
+    elementCount: timelineElements.length,
+    labelColumnWidth: LABEL_COL_W,
+    razorGuide:
+      activeTool === "razor" && razorGuideX !== null ? (
+        <TimelineRazorGuide x={razorGuideX} />
+      ) : null,
+  });
   const contextValue: TimelineContextValue = {
     state: {
       timelineReady,
@@ -535,57 +591,7 @@ export function useTimelineProviderState({
       renderClipOverlay,
       setFocusedEaseSegment,
     },
-    meta: {
-      emptyState: {
-        isDragOver: assetDrop.isDragOver,
-        onFileDrop: !!onFileDrop,
-        onDragOver: assetDrop.handleAssetDragOver,
-        onDragLeave: assetDrop.handleAssetDragLeave,
-        onDrop: assetDrop.handleAssetDrop,
-      },
-      containerProps: {
-        ref: setContainerRef,
-        "aria-label": "Timeline track view",
-        "data-timeline-element-count": timelineElements.length,
-        className: `relative border-t select-none h-full overflow-hidden ${assetDrop.isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`,
-        onMouseMove: updateRazorGuide,
-        onMouseLeave: clearRazorGuide,
-        style: {
-          touchAction: "pan-x pan-y",
-          background: theme.shellBackground,
-          borderColor: theme.shellBorder,
-        },
-      },
-      viewportProps: {
-        ref: setScrollRef,
-        "data-timeline-scroll-viewport": true,
-        "data-timeline-auto-scroll-left-inset": labelMode ? LABEL_COL_W : 0,
-        tabIndex: -1,
-        className: `${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-hidden`,
-        onScroll: (e) => {
-          lastScrollLeftRef.current = e.currentTarget.scrollLeft;
-          recordTimelineScroll(e.currentTarget);
-          syncScrollViewport(e.currentTarget, true);
-        },
-        ...timelineFocus.timelineFocusProps,
-        onDragOver: assetDrop.handleAssetDragOver,
-        onDragLeave: assetDrop.handleAssetDragLeave,
-        onDrop: assetDrop.handleAssetDrop,
-        onPointerDown: (e) => {
-          if (e.target instanceof Element && e.target.closest("button, input, select, a")) return;
-          if (splitAllAtPointer(e)) return;
-          handlePointerDown(e);
-        },
-        onPointerMove: handlePointerMove,
-        onPointerUp: handlePointerUp,
-        onPointerCancel: handlePointerCancel,
-        onLostPointerCapture: handlePointerCancel,
-      },
-      razorGuide:
-        activeTool === "razor" && razorGuideX !== null ? (
-          <TimelineRazorGuide x={razorGuideX} />
-        ) : null,
-    },
+    meta: timelineMeta,
   };
 
   return contextValue;

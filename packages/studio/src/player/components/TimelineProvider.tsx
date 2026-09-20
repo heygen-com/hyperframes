@@ -49,6 +49,8 @@ export type TimelineCanvasState = Omit<
   setResizingClip: (value: ResizingClipState | null) => void;
   setDraggedClip: (value: TimelineLaneBaseProps["draggedClip"]) => void;
   beatDragging: boolean;
+  onResizeElement: TimelineEditCallbacks["onResizeElement"];
+  onMoveElement: TimelineEditCallbacks["onMoveElement"];
 };
 
 export interface ClipContextMenuState {
@@ -184,6 +186,6 @@ export function useTimelineContext(): TimelineContextValue {
   return value;
 }
 
-export function useTimelineContextOptional(): TimelineContextValue | null {
+function useTimelineContextOptional(): TimelineContextValue | null {
   return useContext(TimelineContext);
 }
