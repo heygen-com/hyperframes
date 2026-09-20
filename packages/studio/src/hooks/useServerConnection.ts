@@ -51,6 +51,35 @@ async function resolveHashProject(id: string): Promise<ProjectHashVerdict> {
  * that never ran the check — the two have different fixes and, until this
  * event, no way to tell them apart in production.
  */
+/**
+ * Rewrite the project hash WITHOUT pushing a history entry.
+ *
+ * `location.hash =` pushes. That leaves the dead id as the previous entry, so
+ * Back returns to it — and now that hashchange validates, Back would re-run the
+ * whole fallback and push again, leaving a trail of dead ids the user cannot
+ * escape with the Back button.
+ */
+function replaceProjectHash(projectId: string): void {
+  window.history.replaceState(null, "", buildProjectHash(projectId));
+}
+
+/**
+ * The first project the server offers, for a hash that resolves to nothing.
+ *
+ * Fetched here rather than cached from mount: the mount fetch is a snapshot,
+ * and the scenario this exists for is exactly the one where the project list
+ * changed underneath a long-lived tab.
+ */
+async function firstProjectId(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/projects");
+    const data = (await res.json()) as { projects?: Array<{ id?: string }> };
+    return data.projects?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function reportHashVerdict(stage: "mount" | "hashchange", verdict: ProjectHashVerdict): void {
   trackStudioEvent("project_hash_validated", {
     stage,
@@ -105,7 +134,7 @@ export function useServerConnection(): ServerConnectionState {
           if (first) {
             setProjectId(first.id);
             setWaitingForServer(false);
-            window.location.hash = buildProjectHash(first.id);
+            replaceProjectHash(first.id);
           } else {
             scheduleRetry();
           }
@@ -129,7 +158,29 @@ export function useServerConnection(): ServerConnectionState {
   useEffect(() => {
     const onHashChange = () => {
       const next = parseProjectIdFromHash(window.location.hash);
-      if (next && next !== projectId) setProjectId(next);
+      if (!next || next === projectId) return;
+      // Validated, not adopted. The mount path has checked its hash since
+      // v0.8.52; this path took any id the URL offered, so changing projects
+      // re-armed the same dead-tab failure the mount check exists to prevent.
+      void (async () => {
+        const verdict = await resolveHashProject(next);
+        // Ground truth, not a captured flag. This effect re-registers on every
+        // projectId change, so a generation counter in this closure would reset
+        // and an in-flight verdict from the previous registration would read as
+        // current — adopting a project the user has already navigated away from.
+        // The hash itself cannot go stale.
+        if (parseProjectIdFromHash(window.location.hash) !== next) return;
+        reportHashVerdict("hashchange", verdict);
+        if (verdict.outcome !== "missing") {
+          setProjectId(next);
+          return;
+        }
+        const fallbackId = await firstProjectId();
+        if (parseProjectIdFromHash(window.location.hash) !== next) return;
+        if (!fallbackId) return;
+        setProjectId(fallbackId);
+        replaceProjectHash(fallbackId);
+      })();
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
