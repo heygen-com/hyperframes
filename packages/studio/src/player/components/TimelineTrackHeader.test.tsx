@@ -148,7 +148,7 @@ describe("TimelineTrackHeader", () => {
       tag: "audio",
       automation: JSON.stringify({
         version: 1,
-        lanes: [{ target: "speed", points: [{ t: 0, v: 1 }] }],
+        lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
       }),
     };
     const view = renderHeader({
@@ -158,7 +158,7 @@ describe("TimelineTrackHeader", () => {
       isAudioTrack: true,
     });
     expect(view.host.querySelector('[data-automation-lane-name]')).toBeNull();
-    expect(view.host.querySelector('[title*="speed"]')).not.toBeNull();
+    expect(view.host.querySelector('[title*="volume"]')).not.toBeNull();
     act(() => view.root.unmount());
   });
 
