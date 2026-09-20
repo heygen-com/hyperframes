@@ -12,6 +12,7 @@ export { resolveIframe } from "./lib/timelineDOM";
 // Store
 export { usePlayerStore, liveTime } from "./store/playerStore";
 export type { SelectElementOptions, TimelineElement, ZoomMode } from "./store/playerStore";
+export type { TimelineTimeRange } from "./store/rangeSelectionSlice";
 
 // Utils
 export { formatTime } from "./lib/time";

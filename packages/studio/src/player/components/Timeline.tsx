@@ -4,6 +4,7 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useTimelineRowElements } from "../hooks/useTimelineRowElements";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
+import { usePublishRangeSelection } from "./usePublishRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
@@ -80,6 +81,7 @@ export const Timeline = memo(function Timeline({
   onBlockedEditAttempt: onBlockedEditAttemptOverride,
   onSplitElement: onSplitElementOverride,
   onSelectElement,
+  onRangeSelect,
   onCopyClip,
   onPasteClip,
   onDuplicateClip,
@@ -167,10 +169,10 @@ export const Timeline = memo(function Timeline({
     selectedElementIds,
   );
   const expandedElementsRef = useRef(expandedElements);
-  expandedElementsRef.current = expandedElements;
+  expandedElementsRef.current = expandedElements; // oxlint-disable-line react/refs -- event handlers read the latest elements
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
-  durationRef.current = effectiveDuration;
+  durationRef.current = effectiveDuration; // oxlint-disable-line react/refs -- event handlers read the latest duration
   const fitPpsRef = useRef(100);
   const {
     pinZoomBeforeEdit,
@@ -214,7 +216,6 @@ export const Timeline = memo(function Timeline({
     onMoveElements: pinnedOnMoveElements,
   });
   const onContextMenuClip = useClipContextMenu(onSelectElement, dismissGapMenu, setClipContextMenu);
-
   const {
     draggedClip,
     setDraggedClip,
@@ -241,7 +242,6 @@ export const Timeline = memo(function Timeline({
     refreshAfterLaneMove,
     sessionEpoch,
   });
-
   const assetDrop = useTimelineAssetDrop({
     scrollRef,
     ppsRef,
@@ -320,7 +320,6 @@ export const Timeline = memo(function Timeline({
       setKfContextMenu,
       toggleSelectedKeyframe,
     });
-
   const { clipIndex, renderTimeRange, visibleTimeRange, pinnedClipIdentities } =
     useTimelineClipRenderWindow({
       tracks,
@@ -415,7 +414,8 @@ export const Timeline = memo(function Timeline({
     contentOrigin,
     sessionEpoch,
   });
-  setRangeSelectionRef.current = setRangeSelection; // stable ref consumed by useTimelineClipDrag
+  usePublishRangeSelection(rangeSelection, onRangeSelect);
+  setRangeSelectionRef.current = setRangeSelection; // oxlint-disable-line react/refs -- stable ref consumed by useTimelineClipDrag
 
   useTimelineSelectionLifecycle(expandedElements, selectedElementId, setShowPopover, () =>
     setRangeSelection(null),
