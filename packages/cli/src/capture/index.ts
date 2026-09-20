@@ -20,8 +20,11 @@ export async function captureWebsite(
     if (first.kind === "error") throw first.error;
     return first.result;
   } catch (err) {
-    if (!(err instanceof NavigationDeadlineError) || watchdog.expired()) throw err;
+    if (!(err instanceof NavigationDeadlineError) || watchdog.expired() || !err.webglObserved) {
+      throw err;
+    }
     onProgress?.("warn", "Navigation timed out; retrying once with WebGL disabled");
+    state.warnings.push("Navigation timed out; retrying once with WebGL disabled");
     opts.onPhase?.({
       schema: "hyperframes.capture.phase.v1",
       phase: "navigation",
@@ -33,7 +36,10 @@ export async function captureWebsite(
     const second = await runWithWatchdog(retry, watchdog.promise);
     if (second.kind === "deadline") return deadlineResult(opts, state);
     if (second.kind === "error") throw second.error;
-    return second.result;
+    return {
+      ...second.result,
+      warnings: [...new Set([...state.warnings, ...second.result.warnings])],
+    };
   } finally {
     watchdog.dispose();
   }

@@ -10,15 +10,80 @@ import {
 import { extractFontMetadata } from "./fontMetadataExtractor.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
+import { serializeTokensForCapture } from "./partialCapture.js";
+import type { PartialCaptureState } from "./partialCapture.js";
+import type {
+  CapturePhase,
+  CapturePhaseProgress,
+  CaptureResult,
+  DesignTokens,
+  ExtractedHtml,
+} from "./types.js";
+import type { CatalogedAsset } from "./assetCataloger.js";
+import type { IconCandidate } from "./faviconRanker.js";
+import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import {
   captionImagesWithGemini,
   generateAssetDescriptions,
   resolveVisionPhaseCompletion,
 } from "./contentExtractor.js";
 import type { VisionCaptionOutcome } from "./contentExtractor.js";
-import type { PhaseContext } from "./capturePhaseContext.js";
 
-export async function runPostExtraction(context: PhaseContext): Promise<Record<string, unknown>> {
+function hasVisionCredentials(skipVision: boolean): boolean {
+  return Boolean(
+    !skipVision &&
+    (process.env.OPENROUTER_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      (process.env.HYPERFRAMES_VERTEX_PROJECT_ID &&
+        process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT)),
+  );
+}
+
+function writeAssetDescriptionsFile(outputDir: string, lines: string[], header: string): void {
+  writeFileSync(
+    join(outputDir, "extracted", "asset-descriptions.md"),
+    header + lines.map((line) => `- ${line}`).join("\n") + "\n",
+    "utf-8",
+  );
+}
+
+export interface PostExtractionInput {
+  state: PartialCaptureState;
+  outputDir: string;
+  warnings: string[];
+  progress: (stage: string, detail?: string) => void;
+  remainingMs: () => number;
+  phase: (
+    name: CapturePhase,
+    status: CapturePhaseProgress["status"],
+    reason?: CapturePhaseProgress["reason"],
+  ) => void;
+  animationCatalog: CaptureResult["animationCatalog"];
+  catalogedAssets: CatalogedAsset[];
+  visibleTextContent: string;
+  faviconLinks: IconCandidate[];
+  tokens: DesignTokens;
+  extracted: ExtractedHtml;
+  skipAssets: boolean;
+  skipVision: boolean;
+  downloadByteBudget: ReturnType<typeof createCaptureDownloadBudget>;
+  assets: CaptureResult["assets"];
+  dropped: CaptureResult["dropped"];
+  fontDrops: CaptureResult["dropped"];
+  canWrite: () => boolean;
+}
+
+export interface PostExtractionResult {
+  assets: CaptureResult["assets"];
+  dropped: CaptureResult["dropped"];
+  fontDrops: CaptureResult["dropped"];
+  extracted: ExtractedHtml;
+  tokens: DesignTokens;
+  animationCatalog: CaptureResult["animationCatalog"];
+}
+
+export async function runPostExtraction(input: PostExtractionInput): Promise<PostExtractionResult> {
   let {
     state,
     outputDir,
@@ -38,8 +103,10 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
     assets,
     dropped,
     fontDrops,
-  } = context as any;
+    canWrite,
+  } = input;
   const runFontExtraction = async (): Promise<void> => {
+    if (!canWrite()) return;
     // Download fonts and preserve per-font budget exhaustion in the capture tally.
     phase("fonts", "started");
     const fontPass = await downloadAndRewriteFonts(extracted.headHtml, outputDir, {
@@ -103,11 +170,13 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
         representativeAnimations: representativeAnims,
       };
 
-      writeFileSync(
-        join(outputDir, "extracted", "animations.json"),
-        JSON.stringify(leanCatalog, null, 2),
-        "utf-8",
-      );
+      if (canWrite()) {
+        writeFileSync(
+          join(outputDir, "extracted", "animations.json"),
+          JSON.stringify(leanCatalog, null, 2),
+          "utf-8",
+        );
+      }
     }
   };
   await runAnimationCatalog();
@@ -116,7 +185,7 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
     // Download assets — single pass using the catalog for best image quality
     let assetDrops = noDrops();
     const runAssetFetch = async (): Promise<void> => {
-      if (!skipAssets) {
+      if (!skipAssets && canWrite()) {
         // Called even with the budget already gone, for the reason the font pass is: the loop that
         // skips an asset is the only thing that can say how many it skipped.
         phase("assets", "started");
@@ -131,11 +200,13 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
         // Which icons the site declared, what each one is, and why one became favicon.<ext>.
         // The brand-kit consumer needs the shape to decide which tile an icon belongs in; the
         // reason is what stops a substituted headline from being silent again.
-        writeFileSync(
-          join(outputDir, "extracted", "icons-manifest.json"),
-          JSON.stringify(assetPass.icons, null, 2),
-          "utf-8",
-        );
+        if (canWrite()) {
+          writeFileSync(
+            join(outputDir, "extracted", "icons-manifest.json"),
+            JSON.stringify(assetPass.icons, null, 2),
+            "utf-8",
+          );
+        }
         phase(
           "assets",
           remainingMs() > 0 ? "completed" : "degraded",
@@ -194,17 +265,13 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
       };
       applyLocalAssetPaths();
       if (assets.length && Array.isArray(tokens.sections)) {
-        const tokensForDisk2 = {
-          ...tokens,
-          svgs: tokens.svgs.map(
-            ({ outerHTML: _, ...rest }: { outerHTML?: string; [key: string]: unknown }) => rest,
-          ),
-        };
-        writeFileSync(
-          join(outputDir, "extracted", "tokens.json"),
-          JSON.stringify(tokensForDisk2, null, 2),
-          "utf-8",
-        );
+        if (canWrite()) {
+          writeFileSync(
+            join(outputDir, "extracted", "tokens.json"),
+            serializeTokensForCapture(tokens),
+            "utf-8",
+          );
+        }
       }
     };
     await rewriteTokenAssets();
@@ -215,13 +282,15 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
   try {
     const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
     state.pageHtml = pageHtml;
-    writeFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
+    if (canWrite()) writeFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
   } catch (err) {
     warnings.push(`page.html write failed: ${err}`);
   }
   // Save visible text content for AI agent to use
   if (visibleTextContent) {
-    writeFileSync(join(outputDir, "extracted", "visible-text.txt"), visibleTextContent, "utf-8");
+    if (canWrite()) {
+      writeFileSync(join(outputDir, "extracted", "visible-text.txt"), visibleTextContent, "utf-8");
+    }
   }
 
   // detected-libraries and assets-catalog removed — 0/8 agents read them in v6 testing
@@ -231,7 +300,7 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
   const runVision = async (): Promise<void> => {
     if (skipVision) {
       phase("vision", "degraded", "disabled");
-    } else if (remainingMs() <= 0) {
+    } else if (remainingMs() <= 0 || !canWrite()) {
       warnings.push(
         "Capture budget exhausted before vision captioning; catalog descriptions were preserved.",
       );
@@ -264,36 +333,16 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
     progress("design", "Generating asset descriptions...");
     try {
       const lines = generateAssetDescriptions(outputDir, tokens, catalogedAssets, geminiCaptions);
-
-      const writeAssetDescriptions = (): void => {
-        if (lines.length > 0) {
-          // Mirrors the provider gate in contentExtractor: Vertex needs a project AND a service
-          // account, and is the configuration a server deployment actually has. Without it here the
-          // header claimed "GEMINI_API_KEY not set — descriptions are catalog-derived" on a capture
-          // whose captions Vertex had just generated, and that header is read downstream.
-          const hasVisionKey = !!(
-            !skipVision &&
-            (process.env.OPENROUTER_API_KEY ||
-              process.env.GEMINI_API_KEY ||
-              process.env.GOOGLE_API_KEY ||
-              (process.env.HYPERFRAMES_VERTEX_PROJECT_ID &&
-                process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT))
-          );
-          const header = hasVisionKey
-            ? "# Asset Descriptions\n\nOne line per file. Read this instead of opening every image individually.\n\nTo find a specific brand or icon, **grep this file for the brand name in the description text** (e.g. `grep -i 'autodesk' asset-descriptions.md`). The Gemini Vision captions identify what's actually in each file — that's the agent's selector.\n\nThe `logo-<hash>.svg` filename prefix is a cheap structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). It is NOT a content claim — many `logo-*` files are nav icons or decorative shapes. Trust the captions, not the filename prefix.\n\n"
-            : "# Asset Descriptions\n\n⚠️  No vision credentials — descriptions below are catalog-derived (alt text, headings, section context, filename) instead of Vision-generated. To get richer Vision descriptions on the next capture, set GEMINI_API_KEY (or GOOGLE_API_KEY), or HYPERFRAMES_VERTEX_PROJECT_ID plus HYPERFRAMES_VERTEX_SERVICE_ACCOUNT for Vertex service-account auth, and re-run.\n\nThe `logo-<hash>.svg` filename prefix is a structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). To pick the actual brand logo without Vision, open the `logo-*` candidates in a previewer or rasterize them with `sharp` before referencing — composing a fake logo ships off-brand in the final video.\n\n";
-          writeFileSync(
-            join(outputDir, "extracted", "asset-descriptions.md"),
-            header + lines.map((l) => "- " + l).join("\n") + "\n",
-            "utf-8",
-          );
-          progress(
-            "design",
-            `${lines.length} asset descriptions written${hasVisionKey ? "" : " (no vision provider — catalog-fallback mode)"}`,
-          );
-        }
-      };
-      writeAssetDescriptions();
+      if (lines.length === 0 || !canWrite()) return;
+      const hasVisionKey = hasVisionCredentials(skipVision);
+      const header = hasVisionKey
+        ? "# Asset Descriptions\n\nOne line per file. Read this instead of opening every image individually.\n\nTo find a specific brand or icon, **grep this file for the brand name in the description text** (e.g. `grep -i 'autodesk' asset-descriptions.md`). The Gemini Vision captions identify what's actually in each file — that's the agent's selector.\n\nThe `logo-<hash>.svg` filename prefix is a cheap structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). It is NOT a content claim — many `logo-*` files are nav icons or decorative shapes. Trust the captions, not the filename prefix.\n\n"
+        : "# Asset Descriptions\n\n⚠️  No vision credentials — descriptions below are catalog-derived (alt text, headings, section context, filename) instead of Vision-generated. To get richer Vision descriptions on the next capture, set GEMINI_API_KEY (or GOOGLE_API_KEY), or HYPERFRAMES_VERTEX_PROJECT_ID plus HYPERFRAMES_VERTEX_SERVICE_ACCOUNT for Vertex service-account auth, and re-run.\n\nThe `logo-<hash>.svg` filename prefix is a structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). To pick the actual brand logo without Vision, open the `logo-*` candidates in a previewer or rasterize them with `sharp` before referencing — composing a fake logo ships off-brand in the final video.\n\n";
+      writeAssetDescriptionsFile(outputDir, lines, header);
+      progress(
+        "design",
+        `${lines.length} asset descriptions written${hasVisionKey ? "" : " (no vision provider — catalog-fallback mode)"}`,
+      );
     } catch {
       /* non-critical */
     }
@@ -305,7 +354,7 @@ export async function runPostExtraction(context: PhaseContext): Promise<Record<s
   // Generate contact sheets (saves AI agents 50-65% tokens vs reading images individually)
   // All functions return string[] — paginated so every image is covered
   const runContactSheets = async (): Promise<void> => {
-    if (remainingMs() > 0) {
+    if (remainingMs() > 0 && canWrite()) {
       phase("contact-sheets", "started");
       try {
         const { createScrollContactSheet, createAssetContactSheet, createSvgContactSheet } =

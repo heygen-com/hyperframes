@@ -16,11 +16,12 @@ const NEXT_BOOTSTRAP_MARKERS = [
 ];
 
 function removeMatchingScripts(source: string, shouldRemove: (script: Element) => boolean): string {
-  const { document } = parseHTML(`<body>${source}</body>`);
+  const rootId = "__hf_root";
+  const { document } = parseHTML(`<div id="${rootId}">${source}</div>`);
   for (const script of document.querySelectorAll("script")) {
     if (script.id === "__NEXT_DATA__" || shouldRemove(script)) script.remove();
   }
-  return document.body.innerHTML;
+  return document.getElementById(rootId)?.innerHTML ?? "";
 }
 
 export function filterExtractedScripts(

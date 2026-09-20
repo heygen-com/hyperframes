@@ -1,9 +1,19 @@
+import type { Browser, Page } from "puppeteer-core";
+import type { LottieDiscovery } from "./lottieDiscovery.js";
+import type { DiscoveredLottie } from "./mediaCapture.js";
+import type { CatalogedAsset } from "./assetCataloger.js";
+import { serializeTokensForCapture } from "./partialCapture.js";
+import type { PartialCaptureState } from "./partialCapture.js";
+import type { CaptureResult, DesignTokens, ExtractedHtml } from "./types.js";
+import type { IconCandidate } from "./faviconRanker.js";
+import { startCdpAnimationCapture } from "./animationCataloger.js";
+import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
+import { detectLibraries } from "./contentExtractor.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { extractHtml } from "./htmlExtractor.js";
 import { extractTokens } from "./tokenExtractor.js";
 import { extractDesignStyles } from "./designStyleExtractor.js";
-import type { IconCandidate } from "./faviconRanker.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { collectAnimationCatalog } from "./animationCataloger.js";
 import {
@@ -11,13 +21,57 @@ import {
   renderLottiePreviews,
   captureVideoManifest,
 } from "./mediaCapture.js";
-import { detectLibraries, extractVisibleText } from "./contentExtractor.js";
+import { extractVisibleText } from "./contentExtractor.js";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import { filterExtractedScripts } from "./filterExtractedScripts.js";
-import type { PhaseContext } from "./capturePhaseContext.js";
 
-export async function runCoreExtraction(context: PhaseContext): Promise<Record<string, unknown>> {
+export interface CoreExtractionInput {
+  page1: Page;
+  chromeBrowser: Browser;
+  cdp: Awaited<ReturnType<typeof startCdpAnimationCapture>>["cdp"];
+  cdpAnims: Awaited<ReturnType<typeof startCdpAnimationCapture>>["animations"];
+  state: PartialCaptureState;
+  outputDir: string;
+  warnings: string[];
+  progress: (stage: string, detail?: string) => void;
+  remainingMs: () => number;
+  pageContentCheck: {
+    textLength: number;
+    title: string;
+    hasChallengeElement: boolean;
+    bodyChildCount: number;
+  };
+  contentCheckTimedOut: boolean;
+  discoveredLotties: DiscoveredLottie[];
+  lottieDiscovery: LottieDiscovery;
+  discoveredVideoUrls: Set<string>;
+  animationCatalog: CaptureResult["animationCatalog"];
+  capturedShaders: Array<{ type: string; source: string }> | undefined;
+  catalogedAssets: CatalogedAsset[];
+  detectedLibraries: Awaited<ReturnType<typeof detectLibraries>>;
+  visibleTextContent: string;
+  faviconLinks: IconCandidate[];
+  tokens: DesignTokens;
+  extracted: ExtractedHtml;
+  screenshots: string[];
+  downloadByteBudget: ReturnType<typeof createCaptureDownloadBudget>;
+  canWrite: () => boolean;
+}
+
+export interface CoreExtractionResult {
+  animationCatalog: CaptureResult["animationCatalog"];
+  capturedShaders: Array<{ type: string; source: string }> | undefined;
+  catalogedAssets: CatalogedAsset[];
+  detectedLibraries: Awaited<ReturnType<typeof detectLibraries>>;
+  visibleTextContent: string;
+  faviconLinks: IconCandidate[];
+  tokens: DesignTokens;
+  extracted: ExtractedHtml;
+  screenshots: string[];
+}
+
+export async function runCoreExtraction(input: CoreExtractionInput): Promise<CoreExtractionResult> {
   let {
     page1,
     chromeBrowser,
@@ -43,7 +97,8 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
     extracted,
     screenshots,
     downloadByteBudget,
-  } = context as any;
+    canWrite,
+  } = input;
   const runLazyAndLottie = async (): Promise<void> => {
     if (!contentCheckTimedOut && pageContentCheck.textLength < 100) {
       const reason =
@@ -119,11 +174,12 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
     const saveDiscoveredLotties = async (): Promise<void> => {
       if (discoveredLotties.length > 0 && remainingMs() > 0) {
         const lottieDir = join(outputDir, "assets", "lottie");
+        if (!canWrite()) return;
         mkdirSync(lottieDir, { recursive: true });
         const lottieBudget = { remainingMs, byteBudget: downloadByteBudget };
         const savedCount = await saveLottieAnimations(discoveredLotties, lottieDir, lottieBudget);
         // Generate manifest + preview thumbnails so the agent can SEE what each animation is
-        if (savedCount > 0 && remainingMs() > 0) {
+        if (savedCount > 0 && remainingMs() > 0 && canWrite()) {
           await renderLottiePreviews(chromeBrowser, lottieDir, outputDir, lottieBudget);
           progress("lottie", `${savedCount} Lottie animation(s) saved`);
         }
@@ -145,11 +201,13 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
           return true;
         });
         capturedShaders = unique;
-        writeFileSync(
-          join(outputDir, "extracted", "shaders.json"),
-          JSON.stringify(unique, null, 2),
-          "utf-8",
-        );
+        if (canWrite()) {
+          writeFileSync(
+            join(outputDir, "extracted", "shaders.json"),
+            JSON.stringify(unique, null, 2),
+            "utf-8",
+          );
+        }
         progress("shaders", `${unique.length} WebGL shader(s) captured`);
       }
     } catch {
@@ -166,28 +224,26 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
     tokens = await extractTokens(page1);
     state.tokens = tokens;
     // Save tokens.json without SVG outerHTML (kept in memory for asset downloader)
-    const tokensForDisk = {
-      ...tokens,
-      svgs: tokens.svgs.map(
-        ({ outerHTML: _, ...rest }: { outerHTML?: string; [key: string]: unknown }) => rest,
-      ),
-    };
-    writeFileSync(
-      join(outputDir, "extracted", "tokens.json"),
-      JSON.stringify(tokensForDisk, null, 2),
-      "utf-8",
-    );
+    if (canWrite()) {
+      writeFileSync(
+        join(outputDir, "extracted", "tokens.json"),
+        serializeTokensForCapture(tokens),
+        "utf-8",
+      );
+    }
 
     // Extract computed design styles (typography, buttons, cards, spacing, shadows)
     progress("style", "Extracting design styles...");
     try {
       const designStyles = await extractDesignStyles(page1);
       state.designStyles = designStyles;
-      writeFileSync(
-        join(outputDir, "extracted", "design-styles.json"),
-        JSON.stringify(designStyles, null, 2),
-        "utf-8",
-      );
+      if (canWrite()) {
+        writeFileSync(
+          join(outputDir, "extracted", "design-styles.json"),
+          JSON.stringify(designStyles, null, 2),
+          "utf-8",
+        );
+      }
       progress(
         "tokens",
         `${designStyles.typography.length} typography roles, ${designStyles.buttons.length} button styles, ${designStyles.shadows.length} shadow values extracted`,
@@ -232,6 +288,7 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
     progress("screenshots", "Capturing scroll screenshots...");
     const { captureScrollScreenshots } = await import("./screenshotCapture.js");
     try {
+      if (!canWrite()) return;
       screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
       state.screenshots = screenshots;
       progress("screenshots", `${screenshots.length} scroll screenshots captured`);
@@ -282,7 +339,7 @@ export async function runCoreExtraction(context: PhaseContext): Promise<Record<s
     // so Claude Code can SEE what each video shows and WHERE it was used on the page.
     try {
       const videoBudgetMs = remainingMs();
-      if (videoBudgetMs > 0) {
+      if (videoBudgetMs > 0 && canWrite()) {
         await captureVideoManifest(page1, outputDir, progress, {
           networkVideoUrls: discoveredVideoUrls, // Layer 1 (live Set, read after sampling)
           sampleMs: Math.min(12000, videoBudgetMs), // Layer 2: poll DOM within the shared budget

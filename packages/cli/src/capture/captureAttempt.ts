@@ -12,49 +12,16 @@ import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
  * - Stable, renderable HTML that won't crash in Puppeteer
  */
 
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { extractHtml } from "./htmlExtractor.js";
-// captureScreenshots removed — full-page screenshot replaces per-section shots
-import { extractTokens } from "./tokenExtractor.js";
-import { extractDesignStyles } from "./designStyleExtractor.js";
-import {
-  downloadAssets,
-  downloadAndRewriteFonts,
-  mergeDrops,
-  noDrops,
-  totalDrops,
-} from "./assetDownloader.js";
+import { noDrops } from "./assetDownloader.js";
 import type { IconCandidate } from "./faviconRanker.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
-import { extractFontMetadata } from "./fontMetadataExtractor.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { diag } from "../ui/diagnostics.js";
-// briefGenerator.ts, visual-style, capture-summary removed — DESIGN.md replaces them
-import {
-  setupAnimationCapture,
-  startCdpAnimationCapture,
-  collectAnimationCatalog,
-} from "./animationCataloger.js";
-import { captureVideoManifest } from "./mediaCapture.js";
+import { setupAnimationCapture, startCdpAnimationCapture } from "./animationCataloger.js";
 import type { DiscoveredLottie } from "./mediaCapture.js";
-import {
-  detectLibraries,
-  extractVisibleText,
-  captionImagesWithGemini,
-  generateAssetDescriptions,
-  resolveVisionPhaseCompletion,
-} from "./contentExtractor.js";
+import { detectLibraries } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
-import { detectBlockedPage } from "./pageBlockDetection.js";
-import { writeResponseRecord } from "./responseRecord.js";
-import {
-  captureProtocolTimeoutMs,
-  isDegradableEvaluateTimeoutError,
-  isNavigationTimeoutError,
-  withRemainingBudget,
-} from "./captureTimeout.js";
-import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
+import { captureProtocolTimeoutMs } from "./captureTimeout.js";
 import type {
   CaptureOptions,
   CapturePhase,
@@ -66,14 +33,11 @@ import type {
 import { createCaptureWatchdog } from "./captureWatchdog.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
 import { createPartialCaptureState } from "./partialCapture.js";
-import { filterExtractedScripts } from "./filterExtractedScripts.js";
 import { runNavigationChecks } from "./navigationPhase.js";
 import { runCoreExtraction } from "./coreExtractionPhase.js";
 import { runPostExtraction } from "./postExtractionPhase.js";
 
 const DEFAULT_POST_NAVIGATION_BUDGET_MS = 120_000;
-
-import { NavigationDeadlineError } from "./captureErrors.js";
 
 export async function captureWebsiteAttempt(
   opts: CaptureOptions,
@@ -97,7 +61,7 @@ export async function captureWebsiteAttempt(
   } = opts;
 
   const downloadByteBudget = createCaptureDownloadBudget();
-  const warnings: string[] = [];
+  const warnings: string[] = [...state.warnings];
   state.warnings = warnings;
   const progress = (stage: string, detail?: string) => {
     onProgress?.(stage, detail);
@@ -122,6 +86,7 @@ export async function captureWebsiteAttempt(
     status: CapturePhaseProgress["status"],
     reason?: CapturePhaseProgress["reason"],
   ): void => {
+    if (watchdog.expired()) return;
     const remaining = postNavigationDeadline === undefined ? null : remainingMs();
     lastPhase = reason
       ? {
@@ -206,6 +171,7 @@ export async function captureWebsiteAttempt(
       HTMLCanvasElement.prototype.getContext = function(type, attrs) {
         var ctx = origGetContext.call(this, type, attrs);
         if (ctx && (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')) {
+          window.__hfWebglSeen = true;
           if (ctx.shaderSource && !ctx.__hfHooked) {
             var origShaderSource = ctx.shaderSource.bind(ctx);
             ctx.shaderSource = function(shader, source) {
@@ -245,68 +211,38 @@ export async function captureWebsiteAttempt(
       }
     });
 
+    const navigationResult = await runNavigationChecks({
+      page1,
+      url,
+      timeout,
+      settleTime,
+      budgetMs,
+      warnings,
+      progress,
+      remainingMs,
+      pageContentCheck,
+      contentCheckTimedOut,
+      postNavigationDeadline,
+      outputDir,
+      phase,
+      httpStatus,
+      canWrite: () => !watchdog.expired(),
+    });
     ({ pageContentCheck, contentCheckTimedOut, httpStatus, postNavigationDeadline } =
-      (await runNavigationChecks({
-        page1,
-        chromeBrowser,
-        cdp,
-        cdpAnims,
-        state,
-        url,
-        timeout,
-        isNavigationTimeoutError,
-        NavigationDeadlineError,
-        warnings,
-        progress,
-        budgetMs,
-        settleTime,
-        withRemainingBudget,
-        remainingMs,
-        pageContentCheck,
-        isDegradableEvaluateTimeoutError,
-        contentCheckTimedOut,
-        outputDir,
-        httpStatus,
-        detectBlockedPage,
-        phase,
-        writeResponseRecord,
-        postNavigationDeadline,
-      })) as {
-        pageContentCheck: typeof pageContentCheck;
-        contentCheckTimedOut: boolean;
-        httpStatus: number | null;
-        postNavigationDeadline?: number;
-      });
+      navigationResult);
 
-    ({
-      animationCatalog,
-      capturedShaders,
-      catalogedAssets,
-      detectedLibraries,
-      visibleTextContent,
-      faviconLinks,
-      tokens,
-      extracted,
-      screenshots,
-    } = (await runCoreExtraction({
+    const coreResult = await runCoreExtraction({
       page1,
       chromeBrowser,
       cdp,
       cdpAnims,
       state,
-      url,
+      outputDir,
       warnings,
       progress,
-      budgetMs,
       remainingMs,
       pageContentCheck,
       contentCheckTimedOut,
-      outputDir,
-      phase,
-      lazyScrollForCapture,
-      setupAnimationCapture,
-      startCdpAnimationCapture,
-      collectAnimationCatalog,
       discoveredLotties,
       lottieDiscovery,
       discoveredVideoUrls,
@@ -319,82 +255,62 @@ export async function captureWebsiteAttempt(
       tokens,
       extracted,
       screenshots,
-      skipAssets,
-      extractTokens,
-      extractDesignStyles,
-      extractHtml,
-      detectLibraries,
-      extractVisibleText,
-      filterExtractedScripts,
-      writeFileSync,
-      mkdirSync,
-      join,
-      existsSync,
-    })) as any);
+      downloadByteBudget,
+      canWrite: () => !watchdog.expired(),
+    });
+    ({
+      animationCatalog,
+      capturedShaders,
+      catalogedAssets,
+      detectedLibraries,
+      visibleTextContent,
+      faviconLinks,
+      tokens,
+      extracted,
+      screenshots,
+    } = coreResult);
 
     phase("core-extraction", "completed");
-    ({ assets, dropped, fontDrops, extracted, tokens, animationCatalog } = (await runPostExtraction(
-      {
-        outputDir,
-        chromeBrowser,
-        cdp,
-        cdpAnims,
-        state,
-        url,
-        phase,
-        progress,
-        warnings,
-        remainingMs,
-        extracted,
-        tokens,
-        animationCatalog,
-        screenshots,
-        skipAssets,
-        skipVision,
-        downloadByteBudget,
-        assets,
-        dropped,
-        fontDrops,
-        detectedLibraries,
-        catalogedAssets,
-        discoveredLotties,
-        page1,
-        captureVideoManifest,
-        downloadAssets,
-        downloadAndRewriteFonts,
-        extractFontMetadata,
-        generateAssetDescriptions,
-        captionImagesWithGemini,
-        resolveVisionPhaseCompletion,
-        detectLibraries,
-        extractVisibleText,
-        normalizeErrorMessage,
-        diag,
-        writeFileSync,
-        existsSync,
-        join,
-        mkdirSync,
-        mergeDrops,
-        noDrops,
-        totalDrops,
-      },
-    )) as any);
+    const postResult = await runPostExtraction({
+      state,
+      outputDir,
+      warnings,
+      progress,
+      remainingMs,
+      phase,
+      animationCatalog,
+      catalogedAssets,
+      visibleTextContent,
+      faviconLinks,
+      tokens,
+      extracted,
+      skipAssets,
+      skipVision,
+      downloadByteBudget,
+      assets,
+      dropped,
+      fontDrops,
+      canWrite: () => !watchdog.expired(),
+    });
+    ({ assets, dropped, fontDrops, extracted, tokens, animationCatalog } = postResult);
 
     // Generate project scaffold (index.html, meta.json, CLAUDE.md)
     phase("scaffold", "started");
-    await generateProjectScaffold(
-      outputDir,
-      url,
-      tokens,
-      animationCatalog,
-      screenshots.length > 0,
-      discoveredLotties.length > 0,
-      existsSync(join(outputDir, "extracted", "shaders.json")),
-      catalogedAssets,
-      progress,
-      warnings,
-      detectedLibraries,
-    );
+    if (!watchdog.expired()) {
+      await generateProjectScaffold(
+        outputDir,
+        url,
+        tokens,
+        animationCatalog,
+        screenshots.length > 0,
+        discoveredLotties.length > 0,
+        existsSync(join(outputDir, "extracted", "shaders.json")),
+        catalogedAssets,
+        progress,
+        warnings,
+        detectedLibraries,
+      );
+    }
     phase("scaffold", "completed");
 
     progress("done", "Capture complete");

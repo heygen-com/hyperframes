@@ -8,7 +8,8 @@ import {
 } from "./captureTimeout.js";
 import { writeResponseRecord } from "./responseRecord.js";
 import { join } from "node:path";
-import type { PhaseContext } from "./capturePhaseContext.js";
+import type { CapturePhase, CapturePhaseProgress } from "./types.js";
+import type { Page } from "puppeteer-core";
 
 type ContentCheck = {
   textLength: number;
@@ -17,7 +18,8 @@ type ContentCheck = {
   bodyChildCount: number;
 };
 
-type NavigationContext = PhaseContext & {
+export interface NavigationPhaseInput {
+  page1: Page;
   url: string;
   timeout: number;
   settleTime: number;
@@ -29,16 +31,29 @@ type NavigationContext = PhaseContext & {
   contentCheckTimedOut: boolean;
   postNavigationDeadline?: number;
   outputDir: string;
-  phase: (name: any, status: any, reason?: any) => void;
+  phase: (
+    name: CapturePhase,
+    status: CapturePhaseProgress["status"],
+    reason?: CapturePhaseProgress["reason"],
+  ) => void;
   httpStatus: number | null;
-};
+  canWrite: () => boolean;
+}
 
-async function navigatePage(context: NavigationContext) {
+async function navigatePage(context: NavigationPhaseInput) {
   let navigation;
   try {
     navigation = await navigateForCapture(context.page1, context.url, context.timeout);
   } catch (err) {
-    if (isNavigationTimeoutError(err)) throw new NavigationDeadlineError(err);
+    if (isNavigationTimeoutError(err)) {
+      let webglObserved = false;
+      try {
+        webglObserved = Boolean(await context.page1.evaluate("Boolean(window.__hfWebglSeen)"));
+      } catch {
+        /* the browser may already be closing */
+      }
+      throw new NavigationDeadlineError(err, webglObserved);
+    }
     throw err;
   }
   if (navigation.fellBackFromNetworkIdle) {
@@ -55,7 +70,7 @@ async function navigatePage(context: NavigationContext) {
   return navigation;
 }
 
-async function checkPageContent(context: NavigationContext): Promise<ContentCheck> {
+async function checkPageContent(context: NavigationPhaseInput): Promise<ContentCheck> {
   try {
     return (await withRemainingBudget(
       context.page1.evaluate(`(() => {
@@ -80,14 +95,16 @@ async function checkPageContent(context: NavigationContext): Promise<ContentChec
 }
 
 function persistNavigationResult(
-  context: NavigationContext,
+  context: NavigationPhaseInput,
   navigationResponse: unknown,
   pageContentCheck: ContentCheck,
 ): void {
   context.httpStatus = navigationResponse
     ? (navigationResponse as { status: () => number }).status()
     : null;
-  writeResponseRecord(join(context.outputDir, "extracted"), { status: context.httpStatus });
+  if (context.canWrite()) {
+    writeResponseRecord(join(context.outputDir, "extracted"), { status: context.httpStatus });
+  }
   const blockedReason = detectBlockedPage({
     httpStatus: context.httpStatus,
     ...(context.contentCheckTimedOut
@@ -100,9 +117,16 @@ function persistNavigationResult(
   }
 }
 
+export interface NavigationPhaseResult {
+  pageContentCheck: ContentCheck;
+  contentCheckTimedOut: boolean;
+  httpStatus: number | null;
+  postNavigationDeadline?: number;
+}
+
 export async function runNavigationChecks(
-  context: NavigationContext,
-): Promise<Record<string, unknown>> {
+  context: NavigationPhaseInput,
+): Promise<NavigationPhaseResult> {
   const navigation = await navigatePage(context);
   const pageContentCheck = await checkPageContent(context);
   persistNavigationResult(context, navigation.response, pageContentCheck);

@@ -9,6 +9,14 @@ import type {
   ExtractedHtml,
 } from "./types.js";
 
+export function serializeTokensForCapture(tokens: DesignTokens): string {
+  const tokensForDisk = {
+    ...tokens,
+    svgs: tokens.svgs.map(({ outerHTML: _, ...rest }) => rest),
+  };
+  return JSON.stringify(tokensForDisk, null, 2);
+}
+
 export interface PartialCaptureState {
   tokens: DesignTokens;
   designStyles: DesignStyles;
@@ -68,14 +76,7 @@ export function writePartialCaptureBundle(
   mkdirSync(opts.outputDir, { recursive: true });
   const extractedDir = join(opts.outputDir, "extracted");
   mkdirSync(extractedDir, { recursive: true });
-  writeFileSync(
-    join(extractedDir, "tokens.json"),
-    JSON.stringify(
-      { ...state.tokens, svgs: state.tokens.svgs.map(({ outerHTML: _, ...rest }) => rest) },
-      null,
-      2,
-    ),
-  );
+  writeFileSync(join(extractedDir, "tokens.json"), serializeTokensForCapture(state.tokens));
   writeFileSync(
     join(extractedDir, "design-styles.json"),
     JSON.stringify(state.designStyles, null, 2),
