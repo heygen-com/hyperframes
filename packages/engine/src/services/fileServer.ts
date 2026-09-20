@@ -11,6 +11,7 @@ import { serve } from "@hono/node-server";
 import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
 import { join, extname } from "node:path";
 import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -98,10 +99,22 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
     // Remove leading slash
     const relativePath = requestPath.replace(/^\//, "");
-    const compiledPath = compiledDir ? join(compiledDir, relativePath) : null;
+    const compiledDirRoot = compiledDir;
+    const compiledPath = compiledDirRoot ? join(compiledDirRoot, relativePath) : null;
+    const projectPath = join(projectDir, relativePath);
+    // Percent escapes can decode into separators and dot segments before the
+    // join, so a hostile request can name files above both roots. Containment
+    // stays lexical on purpose: project assets are allowed to sit behind
+    // symlinked directories (same tradeoff as the preview asset route), but
+    // dot segments must never collapse outside the roots.
+    if (compiledDirRoot && compiledPath && !isWithinProjectRoot(compiledDirRoot, compiledPath)) {
+      return c.text("Not found", 404);
+    }
+    if (!isWithinProjectRoot(projectDir, projectPath)) {
+      return c.text("Not found", 404);
+    }
     const content =
-      (compiledPath ? readRegularFile(compiledPath) : null) ??
-      readRegularFile(join(projectDir, relativePath));
+      (compiledPath ? readRegularFile(compiledPath) : null) ?? readRegularFile(projectPath);
     if (content === null) return c.text("Not found", 404);
 
     const ext = extname(relativePath).toLowerCase();

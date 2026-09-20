@@ -49,6 +49,7 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
 import {
   assertWebGpuAdapterAvailable,
@@ -881,6 +882,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Studio SPA static files
   const serveStudioStaticFile = (cacheControl: string) => (c: Context) => {
     const filePath = resolve(studioDir, c.req.path.slice(1));
+    // Percent escapes can decode into separators and dot segments before this
+    // resolve, so a hostile request can name files above the bundle
+    // directory. Containment stays lexical on purpose: bundle assets may sit
+    // behind symlinked directories (same tradeoff as the preview asset
+    // route), but dot segments must never collapse outside the bundle root.
+    if (!isWithinProjectRoot(studioDir, filePath)) return c.text("not found", 404);
     const content = readBundleFile(filePath);
     if (content === null) return c.text("not found", 404);
     return new Response(content, {
