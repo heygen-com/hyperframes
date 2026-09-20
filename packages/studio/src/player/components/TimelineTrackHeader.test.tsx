@@ -148,11 +148,11 @@ describe("TimelineTrackHeader", () => {
       tag: "audio",
       fxChain: JSON.stringify({
         version: 1,
-        nodes: [{ type: "peaking", id: "n1", params: { frequency: 1600, gain: -6, q: 1.4 } }],
+        nodes: [{ type: "chorus", id: "n1", params: { speed: 0.5, depth: 0.4, mix: 0.3 } }],
       }),
       automation: JSON.stringify({
         version: 1,
-        lanes: [{ target: "fx.n1.gain", points: [{ t: 0, v: 1 }] }],
+        lanes: [{ target: "fx.n1.speed", points: [{ t: 0, v: 1 }] }],
       }),
     };
     const view = renderHeader({
