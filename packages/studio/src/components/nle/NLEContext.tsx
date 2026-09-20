@@ -1,7 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
-import { useTimelinePlayer, usePlayerStore } from "../../player";
-import type { TimelineElement } from "../../player";
+import { useTimelinePlayer } from "../../player/hooks/useTimelinePlayer";
+import { usePlayerStore, type TimelineElement } from "../../player/store/playerStore";
 import type { PreviewIframeSlot } from "../../player/hooks/useTimelineSyncCallbacks";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { useCompositionStack } from "./useCompositionStack";
@@ -18,6 +18,8 @@ export interface NLEContextValue {
   projectId: string;
   // player (from useTimelinePlayer — single instance for the whole shell)
   iframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
+  play: () => void;
+  pause: () => void;
   togglePlay: () => void;
   seek: (time: number, options?: { keepPlaying?: boolean }) => boolean;
   refreshPlayer: () => void;
@@ -84,6 +86,8 @@ export function NLEProvider({
   const containerRef = useRef<HTMLDivElement>(null);
   const {
     iframeRef,
+    play,
+    pause,
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
@@ -298,6 +302,8 @@ export function NLEProvider({
   const value: NLEContextValue = {
     projectId,
     iframeRef,
+    play,
+    pause,
     containerRef,
     togglePlay,
     seek,

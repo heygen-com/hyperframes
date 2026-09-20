@@ -46,12 +46,20 @@ export {
   VideoThumbnail,
   CompositionThumbnail,
   useTimelinePlayer,
+  usePlayerHandle,
   resolveIframe,
   usePlayerStore,
   liveTime,
   formatTime,
 } from "./player";
-export type { TimelineElement, TimelineTimeRange } from "./player";
+export type {
+  PlayerHandle,
+  PlayerHandleElement,
+  PlayerHandleListener,
+  PlayerHandleTimeListener,
+  TimelineElement,
+  TimelineTimeRange,
+} from "./player";
 
 // Host overlays: draw over the preview in composition coordinates (see EditorShellProps.gestureOverlay)
 export { usePreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
