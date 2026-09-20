@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TimelineElement } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
 import { applyRippleShifts, useTimelineDeleteOps } from "./useTimelineDeleteOps";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 
@@ -58,6 +58,9 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
   function mountDeleteHarness(overrides: {
     handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"];
     showToast?: DeleteOpsOptions["showToast"];
+    recordEdit?: DeleteOpsOptions["recordEdit"];
+    reloadPreview?: DeleteOpsOptions["reloadPreview"];
+    forceReloadSdkSession?: DeleteOpsOptions["forceReloadSdkSession"];
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
@@ -68,8 +71,9 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
         timelineElements: elements,
         showToast: overrides.showToast ?? vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
-        recordEdit: vi.fn().mockResolvedValue(undefined),
-        reloadPreview: vi.fn(),
+        recordEdit: overrides.recordEdit ?? vi.fn().mockResolvedValue(undefined),
+        reloadPreview: overrides.reloadPreview ?? vi.fn(),
+        forceReloadSdkSession: overrides.forceReloadSdkSession,
         previewIframeRef: { current: null },
         handleTimelineGroupMove: overrides.handleTimelineGroupMove,
       });
@@ -115,5 +119,88 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       expect.anything(),
       expect.objectContaining({ suppressFailureToast: true }),
     );
+  });
+
+  it("an overwrite delete records under the drop's fold key and never ripples the main track", async () => {
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const recordEdit = vi.fn().mockResolvedValue(undefined);
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, recordEdit });
+    const withoutB = html.replace(/<div data-hf-id="hf-b"[^>]*><\/div>\n/, "");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const content = String(input).includes("/remove-element/") ? withoutB : html;
+        return new Response(JSON.stringify({ changed: true, content }), { status: 200 });
+      }),
+    );
+    let deleted: boolean | undefined;
+
+    await act(async () => {
+      deleted = await getHook().deleteTimelineElements([b], {
+        coalesceKey: "clip-overwrite:3",
+        coalesceMs: Number.POSITIVE_INFINITY,
+      });
+    });
+
+    expect(deleted).toBe(true);
+    expect(handleTimelineGroupMove).not.toHaveBeenCalled();
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ coalesceKey: "clip-overwrite:3", coalesceMs: Infinity }),
+    );
+  });
+
+  // A drop reloads the preview once, at its end; an interior remove must not reload on its own.
+  it("skips reloading the preview for an overwrite delete, but still refreshes the sdk session", async () => {
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const reloadPreview = vi.fn();
+    const forceReloadSdkSession = vi.fn();
+    const { b, getHook } = mountDeleteHarness({
+      handleTimelineGroupMove,
+      reloadPreview,
+      forceReloadSdkSession,
+    });
+
+    await act(async () => {
+      await getHook().deleteTimelineElements([b], {
+        coalesceKey: "clip-overwrite:4",
+        coalesceMs: Number.POSITIVE_INFINITY,
+      });
+    });
+
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(forceReloadSdkSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reloads the preview for a plain (non-drop) delete", async () => {
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const reloadPreview = vi.fn();
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, reloadPreview });
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("an overwrite delete leaves the store to the drop, a plain delete rewrites it", async () => {
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const dropEndState = [el("hf-a", 1, 1), el("hf-c", 6, 2)];
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove });
+
+    usePlayerStore.getState().setElements(dropEndState);
+    await act(async () => {
+      await getHook().deleteTimelineElements([b], {
+        coalesceKey: "clip-overwrite:5",
+        coalesceMs: Number.POSITIVE_INFINITY,
+      });
+    });
+    expect(usePlayerStore.getState().elements).toEqual(dropEndState);
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+    expect(usePlayerStore.getState().elements.map((e) => e.id)).toEqual(["hf-a", "hf-c"]);
+    expect(usePlayerStore.getState().elements).not.toEqual(dropEndState);
   });
 });

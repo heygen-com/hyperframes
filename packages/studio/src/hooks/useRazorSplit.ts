@@ -6,6 +6,8 @@ import { trackStudioRazorSplit } from "../telemetry/events";
 import { canSplitElementAt, selectSplittableElements } from "../utils/timelineElementSplit";
 import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
 import type { RecordEditInput } from "./timelineEditingHelpers";
+import type { PlacementFold } from "../player/components/timelinePlacementCommit";
+import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 
 interface UseRazorSplitOptions {
   projectId: string | null;
@@ -34,23 +36,36 @@ export function useRazorSplit({
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
 
-  const synchronize = useCallback(() => {
-    let failure: unknown;
-    try {
-      forceReloadSdkSession?.();
-    } catch (error) {
-      failure = error;
-    }
-    try {
-      reloadPreview();
-    } catch (error) {
-      failure ??= error;
-    }
-    if (failure) throw failure;
-  }, [forceReloadSdkSession, reloadPreview]);
+  // skipPreviewReload: true when this cut is one step folded into a drop, whose
+  // own single reload (after every step lands) replaces this one — otherwise the
+  // preview would show this step's DOM before the next step makes it stale.
+  const synchronize = useCallback(
+    (skipPreviewReload: boolean) => {
+      let failure: unknown;
+      try {
+        forceReloadSdkSession?.();
+      } catch (error) {
+        failure = error;
+      }
+      if (!skipPreviewReload) {
+        try {
+          reloadPreview();
+        } catch (error) {
+          failure ??= error;
+        }
+      }
+      if (failure) throw failure;
+    },
+    [forceReloadSdkSession, reloadPreview],
+  );
 
   const runCut = useCallback(
-    async (elements: readonly TimelineElement[], splitTime: number, mode: "single" | "all") => {
+    async (
+      elements: readonly TimelineElement[],
+      splitTime: number,
+      mode: "single" | "all",
+      fold?: PlacementFold,
+    ) => {
       const pid = projectIdRef.current;
       if (!pid || elements.length === 0) return;
       const intents = buildAtomicCutIntents(elements, splitTime, activeCompPath);
@@ -64,10 +79,11 @@ export function useRazorSplit({
         projectId: pid,
         intents,
         label,
+        ...fold,
         writeProjectFile,
         recordEdit,
         observeProjectFileVersion,
-        synchronize,
+        synchronize: () => synchronize(Boolean(fold)),
       });
       trackStudioRazorSplit({ mode, count: result.splitCount });
       if (result.syncFailed) {
@@ -114,6 +130,19 @@ export function useRazorSplit({
     [isRecordingRef, runCut, showToast],
   );
 
+  /** One cut inside a clip drop: recorded under the drop's fold key, true once it landed. */
+  const handlePlacementSplit = useCallback(
+    async (element: TimelineElement, splitTime: number, fold: PlacementFold) => {
+      try {
+        return (await runCut([element], splitTime, "single", fold)) !== undefined;
+      } catch (error) {
+        showToast(getStudioSaveErrorMessage(error), "error");
+        return false;
+      }
+    },
+    [runCut, showToast],
+  );
+
   const handleRazorSplitAll = useCallback(
     async (splitTime: number) => {
       if (isRecordingRef?.current) {
@@ -135,5 +164,5 @@ export function useRazorSplit({
     [isRecordingRef, runCut, showToast],
   );
 
-  return { handleRazorSplit, handleRazorSplitAll };
+  return { handleRazorSplit, handleRazorSplitAll, handlePlacementSplit };
 }

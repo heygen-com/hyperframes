@@ -3,7 +3,11 @@ import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./author
 
 type IframeWindow = Window & {
   __timelines?: Record<string, { kill?: () => void; pause?: () => void }>;
-  __player?: { getTime?: () => number; seek?: (t: number) => void };
+  __player?: {
+    getTime?: () => number;
+    seek?: (t: number, options?: { keepPlaying?: boolean }) => void;
+    isPlaying?: () => boolean;
+  };
   __hfForceTimelineRebind?: () => void;
   __hfSuppressSceneMutations?: <T>(fn: () => T) => T;
   __hfStudioManualEditsApply?: () => void;
@@ -195,7 +199,13 @@ export interface SoftReloadOptions {
  * no-op if the timeline already reports being at that time internally.
  */
 function finalizeSoftReload(win: IframeWindow, currentTime: number): void {
-  win.__player?.seek?.(currentTime);
+  // While playing the store's time is the last seek, not the playhead: re-seek to the live time and keep playing.
+  const player = win.__player;
+  if (player?.isPlaying?.() === true) {
+    player.seek?.(player.getTime?.() ?? currentTime, { keepPlaying: true });
+  } else {
+    player?.seek?.(currentTime);
+  }
   win.__hfForceTimelineRebind?.();
   win.__hfStudioManualEditsApply?.();
 }

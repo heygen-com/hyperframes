@@ -83,6 +83,8 @@ export interface TimelineElement {
    * the child's local (sourceFile-relative) time. Works at any nesting depth.
    */
   expandedParentStart?: number;
+  /** A clip a drop wrote to the store that the next preview reload has not reported yet. */
+  awaitingReload?: true;
   expandedHostKey?: string;
 }
 
