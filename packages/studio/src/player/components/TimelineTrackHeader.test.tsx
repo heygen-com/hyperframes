@@ -140,37 +140,6 @@ function click(host: HTMLElement, label: string) {
 }
 
 describe("TimelineTrackHeader", () => {
-  it("keeps narrow headers to controls while retaining the lane name in a tooltip", () => {
-    const audio: TimelineElement = {
-      ...ELEMENT,
-      id: "audio-1",
-      label: "Clip",
-      tag: "audio",
-      fxChain: JSON.stringify({
-        version: 1,
-        nodes: [{ type: "chorus", id: "n1", params: { speed: 0.5, depth: 0.4, mix: 0.3 } }],
-      }),
-      automation: JSON.stringify({
-        version: 1,
-        lanes: [{ target: "fx.n1.speed", points: [{ t: 0, v: 1 }] }],
-      }),
-    };
-    const view = renderHeader({
-      contentOrigin: 80,
-      keyframeClip: audio,
-      trackElements: [audio],
-      isAudioTrack: true,
-    });
-    expect(view.host.querySelector("[data-automation-lane-name]")).toBeNull();
-    expect(view.host.querySelector("[data-automation-lane-label] [title]")).not.toBeNull();
-    act(() => view.root.unmount());
-  });
-
-  it("renders the track name when the label column has room", () => {
-    const view = renderHeader({ keyframeClip: { ...ELEMENT, label: "Clip" } });
-    expect(view.host.textContent).toContain("Clip");
-    act(() => view.root.unmount());
-  });
   // §5: gain stages multiply. A group fading to 0.42 under a clip fading to
   // 0.80 plays at 0.34, and an author who drew both hears something quieter
   // than either with nothing on screen to say why. Not a warning; an

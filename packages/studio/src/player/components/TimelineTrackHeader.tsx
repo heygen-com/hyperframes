@@ -434,7 +434,6 @@ export function TimelineTrackHeader({
               }
               top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
               isLastLane={index === automationRows.length - 1}
-              showLabel={showTrackLabel}
               gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
               columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
               onRemove={onRemoveAutomationLane}

@@ -198,7 +198,6 @@ export function AutomationLaneHeaderRow({
   onRemove,
   isCarve,
   onReveal,
-  showLabel = true,
 }: {
   /** The lane the ACTIVE clip draws in this row, or null when it draws none —
    *  the row belongs to the property, and a clip may be absent from it. */
@@ -227,8 +226,6 @@ export function AutomationLaneHeaderRow({
   /** Reveal this parameter in the rack. Absent, the name is inert rather than a
    *  button that looks live and does nothing. */
   onReveal?: () => void;
-  /** Narrow headers keep only the controls; the full lane name remains in the tooltip. */
-  showLabel?: boolean;
 }) {
   return (
     <div
@@ -274,23 +271,16 @@ export function AutomationLaneHeaderRow({
           onReveal?.();
         }}
       >
-        {showLabel ? (
-          <>
-            <span
-              data-automation-lane-name=""
-              className="truncate font-mono text-[9px] text-white/70"
-            >
-              {name}
-            </span>
-            {param ? (
-              <span
-                data-automation-lane-param=""
-                className="truncate font-mono text-[9px] text-white/40"
-              >
-                {param}
-              </span>
-            ) : null}
-          </>
+        <span data-automation-lane-name="" className="truncate font-mono text-[9px] text-white/70">
+          {name}
+        </span>
+        {param ? (
+          <span
+            data-automation-lane-param=""
+            className="truncate font-mono text-[9px] text-white/40"
+          >
+            {param}
+          </span>
         ) : null}
         {alsoAutomatedBy ? (
           <span
