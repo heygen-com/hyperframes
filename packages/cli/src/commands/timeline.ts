@@ -25,7 +25,7 @@ import { ensureDOMParser } from "../utils/dom.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
-import { parseSetAssignments, stampHfIds, type SetAssignment } from "../timeline/a2Mutations.js";
+import { parseSetAssignments, type SetAssignment } from "../timeline/a2Mutations.js";
 import { runApply, runIds, runUndo } from "../timeline/a2Commands.js";
 
 export const examples: Example[] = [

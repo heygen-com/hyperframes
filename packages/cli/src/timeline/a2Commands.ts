@@ -5,7 +5,6 @@ import { join } from "node:path";
 import {
   describeProject,
   type ProjectTimeline,
-  type TimelineRow,
 } from "./describeProject.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
@@ -242,5 +241,4 @@ function publicReceipt(receipt: AppliedFileMutation) {
     backupPath: receipt.backupPath,
   };
 }
-
 
