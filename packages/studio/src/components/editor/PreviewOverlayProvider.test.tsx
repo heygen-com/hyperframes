@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GridOverlay } from "./GridOverlay";
 import { PreviewOverlayProvider } from "./PreviewOverlayProvider";
+import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -22,6 +23,7 @@ vi.mock("./usePreviewCompositionRect", () => ({
 afterEach(() => {
   document.body.innerHTML = "";
   window.localStorage.clear();
+  usePreviewIframeStore.getState().setIframe(null);
 });
 
 describe("PreviewOverlayProvider", () => {
@@ -50,5 +52,37 @@ describe("PreviewOverlayProvider", () => {
       "360px",
     ]);
     expect(grid?.style.backgroundSize).toBe("10px 10px");
+  });
+
+  it("syncs an iframe ref that becomes available after the provider mounts", () => {
+    window.localStorage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({ gridVisible: true, gridSpacing: 20 }),
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const iframeRef: { current: HTMLIFrameElement | null } = { current: null };
+    const root = createRoot(host);
+
+    act(() => {
+      root.render(
+        <PreviewOverlayProvider iframeRef={iframeRef}>
+          <GridOverlay />
+        </PreviewOverlayProvider>,
+      );
+    });
+    expect(host.querySelector('[aria-hidden="true"]')).not.toBeNull();
+
+    iframeRef.current = document.createElement("iframe");
+    act(() => {
+      root.render(
+        <PreviewOverlayProvider iframeRef={iframeRef}>
+          <GridOverlay />
+        </PreviewOverlayProvider>,
+      );
+    });
+
+    expect(usePreviewIframeStore.getState().iframe).toBe(iframeRef.current);
+    expect(host.querySelector<HTMLElement>('[aria-hidden="true"]')?.style.width).toBe("640px");
   });
 });

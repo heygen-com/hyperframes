@@ -255,6 +255,7 @@ export function PreviewOverlays({
   return (
     <>
       <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
+      <GridOverlay />
       <DomEditOverlay
         iframeRef={previewIframeRef}
         activeCompositionPath={activeCompPath}
@@ -318,7 +319,6 @@ export function PreviewOverlays({
         onToggleRecording={onToggleRecording}
         onMarqueeSelect={applyMarqueeSelection}
       />
-      <GridOverlay />
       <SnapToolbar />
       {!readOnly && (
         <MotionPathOverlay

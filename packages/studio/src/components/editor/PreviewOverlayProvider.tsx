@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -61,14 +62,19 @@ export function PreviewOverlayProvider({ iframeRef, children }: PreviewOverlayPr
   const safeMarginsVisible = usePreviewGuidesStore((state) => state.safeMarginsVisible);
   const compositionRect = usePreviewCompositionRect(overlayRef);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const iframe = iframeRef.current;
     const store = usePreviewIframeStore.getState();
-    store.setIframe(iframe);
-    return () => {
-      if (usePreviewIframeStore.getState().iframe === iframe) store.setIframe(null);
-    };
-  }, [iframeRef]);
+    if (store.iframe !== iframe) store.setIframe(iframe);
+  });
+
+  useEffect(
+    () => () => {
+      const store = usePreviewIframeStore.getState();
+      if (store.iframe === iframeRef.current || iframeRef.current === null) store.setIframe(null);
+    },
+    [iframeRef],
+  );
 
   const contextValue: PreviewOverlayContextValue = {
     state: { snapPrefs, rulerVisible, safeMarginsVisible, iframeRef, compositionRect },
