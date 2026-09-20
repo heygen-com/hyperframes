@@ -1,6 +1,5 @@
 import { memo } from "react";
 import { TimelineCanvas as TimelineCanvasImpl } from "./TimelineCanvas";
-import { TimelineOverlays as TimelineOverlaysImpl } from "./TimelineOverlays";
 import {
   TimelineClipMenuOverlay as TimelineClipMenuImpl,
   TimelineEditPopoverOverlay as TimelineEditPopoverImpl,
@@ -52,9 +51,7 @@ export const TimelineRazorGuide = memo(function TimelineRazorGuide() {
 });
 
 /** The composed overlay surface used by the Studio variant. */
-export const TimelineOverlays = memo(function TimelineOverlays() {
-  return <TimelineOverlaysImpl />;
-});
+export { TimelineOverlays } from "./TimelineOverlays";
 
 export const TimelineEmptyStatePart = memo(function TimelineEmptyStatePart() {
   const { meta } = useTimelineContext();
