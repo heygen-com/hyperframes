@@ -663,6 +663,69 @@ async function runIds(args: Record<string, unknown>): Promise<void> {
   else console.log(`ids: stamped ${receipts.length} file${receipts.length === 1 ? "" : "s"}`);
 }
 
+type ApplyEditResult =
+  | { ok: true; file: string; after: string }
+  | { ok: false; reason: string; fix: string };
+
+function applyPlanEdit(
+  edit: unknown,
+  timeline: ProjectTimeline,
+  project: ReturnType<typeof resolveProject>,
+  sourceByFile: Map<string, string>,
+): ApplyEditResult {
+  if (!isRecord(edit) || typeof edit.verb !== "string" || typeof edit.ref !== "string") {
+    return {
+      ok: false,
+      reason: "each edit needs a verb and ref",
+      fix: "pass {verb, ref, ...} objects",
+    };
+  }
+  const verb = edit.verb;
+  const supported = ["move", "trim", "split", "delete", "set", "duplicate"];
+  if (!supported.includes(verb)) {
+    return {
+      ok: false,
+      reason: `unsupported edit verb ${verb}`,
+      fix: "use move, trim, split, delete, set, or duplicate",
+    };
+  }
+  const resolved = resolveRef(timeline, edit.ref);
+  if (!resolved.ok) return { ok: false, reason: resolved.reason, fix: resolved.fix };
+  const row = resolved.row;
+  const before = sourceByFile.get(row.file);
+  if (before === undefined)
+    return { ok: false, reason: `${row.file} was not found`, fix: "choose an existing clip" };
+  const context: MutationContext = {
+    ref: edit.ref,
+    row,
+    before,
+    resolved,
+    parseTime: (expression) =>
+      parseTimeExpression(expression, {
+        row,
+        duration: timeline.duration,
+        fps: fpsFor(project.indexPath),
+        resolveAnchor: (anchorRef) => {
+          const anchor = resolveRef(timeline, anchorRef);
+          return anchor.ok ? anchor.row : undefined;
+        },
+      }),
+    duration: row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
+  };
+  const decision = decideMutation(verb as MutationVerb, context, { ...edit, _: [edit.ref] });
+  if (!decision.ok) return decision;
+  const conflict = mutationConflict(
+    verb as MutationVerb,
+    edit.overwrite === true,
+    row,
+    timeline,
+    decision.nextStart,
+    decision.nextDuration,
+  );
+  if (conflict) return conflict;
+  return { ok: true, file: row.file, after: decision.after };
+}
+
 async function runApply(args: Record<string, unknown>): Promise<void> {
   const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
   const json = args.json === true;
@@ -688,63 +751,9 @@ async function runApply(args: Record<string, unknown>): Promise<void> {
     beforeByFile.set(fileName, source);
   }
   for (const edit of edits) {
-    if (!isRecord(edit) || typeof edit.verb !== "string" || typeof edit.ref !== "string") {
-      return refusal("each edit needs a verb and ref", "pass {verb, ref, ...} objects", json);
-    }
-    const verb = edit.verb;
-    if (
-      !(
-        verb === "move" ||
-        verb === "trim" ||
-        verb === "split" ||
-        verb === "delete" ||
-        verb === "set" ||
-        verb === "duplicate"
-      )
-    ) {
-      return refusal(
-        `unsupported edit verb ${verb}`,
-        "use move, trim, split, delete, set, or duplicate",
-        json,
-      );
-    }
-    const resolved = resolveRef(timeline, edit.ref);
-    if (!resolved.ok) return refusal(resolved.reason, resolved.fix, json);
-    const row = resolved.row;
-    const before = sourceByFile.get(row.file);
-    if (before === undefined)
-      return refusal(`${row.file} was not found`, "choose an existing clip", json);
-    const parseTime = (expression: string) =>
-      parseTimeExpression(expression, {
-        row,
-        duration: timeline.duration,
-        fps: fpsFor(project.indexPath),
-        resolveAnchor: (anchorRef) => {
-          const anchor = resolveRef(timeline, anchorRef);
-          return anchor.ok ? anchor.row : undefined;
-        },
-      });
-    const context: MutationContext = {
-      ref: edit.ref,
-      row,
-      before,
-      resolved,
-      parseTime,
-      duration:
-        row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
-    };
-    const decision = decideMutation(verb, context, { ...edit, _: [edit.ref] });
-    if (!decision.ok) return refusal(decision.reason, decision.fix, json);
-    const conflict = mutationConflict(
-      verb,
-      false,
-      row,
-      timeline,
-      decision.nextStart,
-      decision.nextDuration,
-    );
-    if (conflict) return refusal(conflict.reason, conflict.fix, json);
-    sourceByFile.set(row.file, decision.after);
+    const result = applyPlanEdit(edit, timeline, project, sourceByFile);
+    if (!result.ok) return refusal(result.reason, result.fix, json);
+    sourceByFile.set(result.file, result.after);
   }
   const inputs = [...sourceByFile].flatMap(([fileName, after]) => {
     const before = beforeByFile.get(fileName)!;
