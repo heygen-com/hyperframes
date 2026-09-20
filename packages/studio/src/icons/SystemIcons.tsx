@@ -10,7 +10,6 @@ import {
   Minus as PhMinus,
   Plus as PhPlus,
   Square as PhSquare,
-  SquareHalfBottom,
   SquareSplitVertical as PhSquareSplitVertical,
   TextT,
   X as PhX,
@@ -49,7 +48,6 @@ export const Palette = makeIcon(PhPalette);
 export const Minus = makeIcon(PhMinus);
 export const Plus = makeIcon(PhPlus);
 export const Square = makeIcon(PhSquare);
-export const Timeline = makeIcon(SquareHalfBottom);
 export const Compare = makeIcon(PhSquareSplitVertical);
 export const Type = makeIcon(TextT);
 export const X = makeIcon(PhX);
