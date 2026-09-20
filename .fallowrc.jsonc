@@ -419,6 +419,8 @@
     // as a direct dep to guarantee installation even when transitive
     // resolution fails (corrupted cache, dedup edge cases).
     "debug",
+    // Loaded through the optional package loader for Gemini vision captioning.
+    "@google/genai",
     "puppeteer",
     "puppeteer-core",
     "esbuild",

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { noDrops } from "./assetDownloader.js";
 import type {
@@ -80,17 +80,17 @@ export function writePartialCaptureBundle(
     join(extractedDir, "design-styles.json"),
     JSON.stringify(state.designStyles, null, 2),
   );
-  writeFileSync(
-    join(extractedDir, "palette.json"),
-    JSON.stringify({ colors: state.tokens.colors }, null, 2),
-  );
   writeFileSync(join(extractedDir, "page.html"), state.pageHtml);
   const metaPath = join(opts.outputDir, "meta.json");
-  if (!existsSync(metaPath)) {
+  try {
     writeFileSync(
       metaPath,
       JSON.stringify({ id: hostname + "-video", name: hostname, partial: true }, null, 2),
+      { flag: "wx" },
     );
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err ? err.code : undefined;
+    if (code !== "EEXIST") throw err;
   }
   return {
     ok: true,

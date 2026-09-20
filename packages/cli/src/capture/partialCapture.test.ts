@@ -37,9 +37,6 @@ describe("writePartialCaptureBundle", () => {
     expect(
       JSON.parse(readFileSync(join(outputDir, "extracted", "design-styles.json"), "utf8")),
     ).toEqual(state.designStyles);
-    expect(JSON.parse(readFileSync(join(outputDir, "extracted", "palette.json"), "utf8"))).toEqual({
-      colors: ["#ABCDEF"],
-    });
     expect(readFileSync(join(outputDir, "extracted", "page.html"), "utf8")).toBe(state.pageHtml);
     expect(JSON.parse(readFileSync(join(outputDir, "meta.json"), "utf8"))).toMatchObject({
       partial: true,
