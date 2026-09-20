@@ -209,7 +209,12 @@ function trimMutation(context: MutationContext, args: Record<string, unknown>): 
   if (!patched.matched) {
     return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
   }
-  return { ok: true, after: patched.html, ...bounds };
+  return {
+    ok: true,
+    after: patched.html,
+    nextStart: bounds.nextStart,
+    nextDuration: bounds.nextDuration,
+  };
 }
 
 function trimBounds(
@@ -247,7 +252,7 @@ function finishTrim(
   nextStart: number,
   end: ReturnType<typeof trimEnd>,
   duration: ReturnType<typeof trimDuration>,
-) {
+): MutationDecision | { ok: true; nextStart: number; nextDuration: number } {
   if (end && !end.ok) return end;
   if (duration && !duration.ok) return duration;
   const nextDuration = duration?.seconds ?? (end ? end.seconds - nextStart : context.row.duration);
