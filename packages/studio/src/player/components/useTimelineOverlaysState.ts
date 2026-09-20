@@ -9,6 +9,8 @@ import { useTrackGapMenu, type TrackGapHighlight } from "./useTrackGapMenu";
 
 type OverlayStateInputs = Omit<
   TimelineOverlaysState,
+  | "elements"
+  | "elementsRef"
   | "gapContextMenu"
   | "onDismissGapContextMenu"
   | "onCloseTrackGap"
@@ -17,6 +19,8 @@ type OverlayStateInputs = Omit<
   | "rangeSelection"
   | "setRangeSelection"
 > & {
+  elements: TimelineElement[];
+  elementsRef: { current: TimelineElement[] };
   rangeSelection: Parameters<typeof useTimelineRangeSelection>[0] & {
     onRangeSelect?: (range: TimelineTimeRange | null) => void;
   };
@@ -26,7 +30,8 @@ type OverlayStateInputs = Omit<
   setRangeSelectionRef: { current: ((selection: null) => void) | null };
 };
 
-export type TimelineOverlaysStateResult = TimelineOverlaysState & {
+export type TimelineOverlaysStateResult = {
+  overlays: TimelineOverlaysState;
   shiftClickClipRef: ReturnType<typeof useTimelineRangeSelection>["shiftClickClipRef"];
   marqueeRect: ReturnType<typeof useTimelineRangeSelection>["marqueeRect"];
   isScrubbing: ReturnType<typeof useTimelineRangeSelection>["isScrubbing"];
@@ -71,9 +76,16 @@ export function useTimelineOverlaysState({
   );
 
   return {
-    ...state,
-    rangeSelection,
-    setRangeSelection,
+    overlays: {
+      ...state,
+      rangeSelection,
+      setRangeSelection,
+      gapContextMenu: gap.gapMenuModel,
+      onDismissGapContextMenu: gap.dismissGapMenu,
+      onCloseTrackGap: gap.closeTrackGap,
+      onCloseAllTrackGaps: gap.closeAllTrackGaps,
+      onHoverGapAction: gap.setHoveredGapAction,
+    },
     shiftClickClipRef,
     marqueeRect,
     isScrubbing,
@@ -81,11 +93,6 @@ export function useTimelineOverlaysState({
     handlePointerMove,
     handlePointerUp,
     handlePointerCancel,
-    gapContextMenu: gap.gapMenuModel,
-    onDismissGapContextMenu: gap.dismissGapMenu,
-    onCloseTrackGap: gap.closeTrackGap,
-    onCloseAllTrackGaps: gap.closeAllTrackGaps,
-    onHoverGapAction: gap.setHoveredGapAction,
     gapHighlight: gap.gapHighlight,
     openGapMenu: gap.openGapMenu,
     onContextMenuClip,

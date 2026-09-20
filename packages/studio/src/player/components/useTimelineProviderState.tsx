@@ -393,11 +393,10 @@ export function useTimelineProviderState({
     },
   });
   const {
+    overlays,
     gapHighlight,
     openGapMenu,
     onContextMenuClip,
-    rangeSelection,
-    setRangeSelection,
     shiftClickClipRef,
     marqueeRect,
     isScrubbing,
@@ -406,6 +405,7 @@ export function useTimelineProviderState({
     handlePointerUp,
     handlePointerCancel,
   } = overlaysProps;
+  const { rangeSelection, setRangeSelection } = overlays;
 
   const laneGapStrips = useTimelineGapHighlights({
     gapHighlight,
@@ -570,7 +570,7 @@ export function useTimelineProviderState({
       sessionEpoch: timelineSessionEpoch,
       keyframeCache,
       canvas: canvasProps,
-      overlays: overlaysProps,
+      overlays,
     },
     actions: {
       renderClipContent: timelineRenderClipContent,
