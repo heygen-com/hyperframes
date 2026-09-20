@@ -1,5 +1,5 @@
 {
-  "total": 394,
+  "total": 385,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -61,7 +61,7 @@
     "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/TimelineAutomationLane.tsx": 4,
     "packages/studio/src/player/components/TimelineCanvas.tsx": 13,
-    "packages/studio/src/player/components/TimelineClip.tsx": 2,
+    "packages/studio/src/player/components/TimelineClip.tsx": 0,
     "packages/studio/src/player/components/TimelineClipDiamonds.tsx": 2,
     "packages/studio/src/player/components/TimelineDiamondConnectors.tsx": 2,
     "packages/studio/src/player/components/TimelineEmptyState.tsx": 1,
@@ -77,7 +77,7 @@
     "packages/studio/src/player/components/VideoThumbnail.tsx": 6,
     "packages/studio/src/player/components/timelineTheme.ts": 5,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
-    "packages/studio/src/styles/studio.css": 70,
+    "packages/studio/src/styles/studio.css": 63,
     "packages/studio/src/telemetry/client.ts": 1,
     "packages/studio/src/webmcp/webmcpTestUtils.ts": 1
   }
