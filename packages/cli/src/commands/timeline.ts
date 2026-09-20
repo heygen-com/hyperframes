@@ -24,6 +24,12 @@ import { ensureDOMParser } from "../utils/dom.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
+import {
+  duplicateElement,
+  parseSetAssignments,
+  setAttributes,
+  stampHfIds,
+} from "../timeline/a2Mutations.js";
 
 export const examples: Example[] = [
   ["Show every track and clip of the project in the current directory", "hyperframes timeline"],
@@ -31,7 +37,7 @@ export const examples: Example[] = [
   ["Delete a clip and return a receipt", "hyperframes timeline delete '#hero' --json"],
 ];
 
-type MutationVerb = "move" | "trim" | "split" | "delete";
+type MutationVerb = "move" | "trim" | "split" | "delete" | "set" | "duplicate";
 
 type MutationDecision =
   | { ok: true; after: string; nextStart: number; nextDuration: number }
@@ -298,6 +304,49 @@ function deleteMutation(context: MutationContext): MutationDecision {
   };
 }
 
+function setMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const positionalAssignments = (args._ ?? [])
+    .slice(1)
+    .filter((value): value is string => typeof value === "string");
+  const namedAssignments = ["volume", "rate", "track"].flatMap((field) => {
+    const value = args[field];
+    return typeof value === "string" ? [`${field}=${value}`] : [];
+  });
+  const assignments = parseSetAssignments([...positionalAssignments, ...namedAssignments]);
+  if (!assignments.ok) return assignments;
+  const patched = setAttributes(context.before, context.resolved.target, assignments.assignments);
+  if (!patched.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return {
+    ok: true,
+    after: patched.html,
+    nextStart: context.row.start,
+    nextDuration: context.row.duration,
+  };
+}
+
+function duplicateMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const expression = typeof args.at === "string" ? args.at : String(context.row.end);
+  const time = parseMutationTime(context, expression, "pass a valid insertion time");
+  if (!time.ok) return time;
+  const duplicate = duplicateElement(
+    context.before,
+    context.resolved.target,
+    `${splitBaseId(context.row)}-copy`,
+    time.seconds,
+  );
+  if (!duplicate.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return {
+    ok: true,
+    after: duplicate.html,
+    nextStart: time.seconds,
+    nextDuration: context.row.duration,
+  };
+}
+
 function decideMutation(
   verb: MutationVerb,
   context: MutationContext,
@@ -312,6 +361,10 @@ function decideMutation(
       return splitMutation(context, args);
     case "delete":
       return deleteMutation(context);
+    case "set":
+      return setMutation(context, args);
+    case "duplicate":
+      return duplicateMutation(context, args);
   }
 }
 
@@ -563,6 +616,168 @@ function applyMutation(
   }
 }
 
+function positional(args: Record<string, unknown>): string[] {
+  return Array.isArray(args._) ? args._.filter((value): value is string => typeof value === "string") : [];
+}
+
+async function runIds(args: Record<string, unknown>): Promise<void> {
+  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const json = args.json === true;
+  ensureDOMParser();
+  const beforeTimeline = await describeProject(project.indexPath);
+  const files = [...new Set(["index.html", ...allRows(beforeTimeline).map((row) => row.file)])];
+  const inputs = files.flatMap((file) => {
+    const before = readFileSync(join(project.dir, file), "utf-8");
+    const after = stampHfIds(before);
+    return after === before
+      ? []
+      : [{ sourceFile: file, absPath: join(project.dir, file), before, after }];
+  });
+  const receipts = inputs.length > 0 ? applyFileMutations(project.dir, inputs) : [];
+  const afterTimeline = await describeProject(project.indexPath);
+  const result = {
+    ok: true,
+    receipt: receipts.map((receipt) => publicReceipt(receipt)),
+    file: files,
+    before: allRows(beforeTimeline),
+    after: allRows(afterTimeline),
+    diff: "",
+    warnings: [],
+  };
+  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
+  else console.log(`ids: stamped ${receipts.length} file${receipts.length === 1 ? "" : "s"}`);
+}
+
+async function runApply(args: Record<string, unknown>): Promise<void> {
+  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const json = args.json === true;
+  const plan = args.plan === true;
+  const file = typeof args.file === "string" ? args.file : positional(args)[1];
+  if (!file) return refusal("an edit plan is required", "pass an edits.json path or -", json);
+  const raw = file === "-" ? readFileSync(0, "utf-8") : readFileSync(file, "utf-8");
+  let edits: unknown;
+  try {
+    edits = JSON.parse(raw);
+  } catch {
+    return refusal("edit plan is not valid JSON", "pass a JSON array of edits", json);
+  }
+  if (!Array.isArray(edits)) return refusal("edit plan must be a JSON array", "pass a JSON array of edits", json);
+  ensureDOMParser();
+  const timeline = await describeProject(project.indexPath);
+  const sourceByFile = new Map<string, string>();
+  const beforeByFile = new Map<string, string>();
+  for (const fileName of new Set(allRows(timeline).map((row) => row.file))) {
+    const source = readFileSync(join(project.dir, fileName), "utf-8");
+    sourceByFile.set(fileName, source);
+    beforeByFile.set(fileName, source);
+  }
+  for (const edit of edits) {
+    if (!isRecord(edit) || typeof edit.verb !== "string" || typeof edit.ref !== "string") {
+      return refusal("each edit needs a verb and ref", "pass {verb, ref, ...} objects", json);
+    }
+    const verb = edit.verb;
+    if (!(verb === "move" || verb === "trim" || verb === "split" || verb === "delete" || verb === "set" || verb === "duplicate")) {
+      return refusal(`unsupported edit verb ${verb}`, "use move, trim, split, delete, set, or duplicate", json);
+    }
+    const resolved = resolveRef(timeline, edit.ref);
+    if (!resolved.ok) return refusal(resolved.reason, resolved.fix, json);
+    const row = resolved.row;
+    const before = sourceByFile.get(row.file);
+    if (before === undefined) return refusal(`${row.file} was not found`, "choose an existing clip", json);
+    const parseTime = (expression: string) =>
+      parseTimeExpression(expression, {
+        row,
+        duration: timeline.duration,
+        fps: fpsFor(project.indexPath),
+        resolveAnchor: (anchorRef) => {
+          const anchor = resolveRef(timeline, anchorRef);
+          return anchor.ok ? anchor.row : undefined;
+        },
+      });
+    const context: MutationContext = {
+      ref: edit.ref,
+      row,
+      before,
+      resolved,
+      parseTime,
+      duration: row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
+    };
+    const decision = decideMutation(verb, context, { ...edit, _: [edit.ref] });
+    if (!decision.ok) return refusal(decision.reason, decision.fix, json);
+    const conflict = mutationConflict(verb, false, row, timeline, decision.nextStart, decision.nextDuration);
+    if (conflict) return refusal(conflict.reason, conflict.fix, json);
+    sourceByFile.set(row.file, decision.after);
+  }
+  const inputs = [...sourceByFile].flatMap(([fileName, after]) => {
+    const before = beforeByFile.get(fileName)!;
+    return after === before
+      ? []
+      : [{ sourceFile: fileName, absPath: join(project.dir, fileName), before, after, expectedVersion: fileContentVersion(before) }];
+  });
+  const afterTimeline = await describeProject(project.indexPath, undefined, sourceByFile);
+  const result = {
+    ok: true,
+    planned: plan,
+    receipt: null as unknown,
+    file: inputs.map((input) => input.sourceFile),
+    before: allRows(timeline),
+    after: allRows(afterTimeline),
+    diff: inputs.map((input) => diff(input.before, input.after)).filter(Boolean).join("\n"),
+    warnings: [],
+  };
+  if (!plan) {
+    const receipts = inputs.length > 0 ? applyFileMutations(project.dir, inputs) : [];
+    result.receipt = receipts.map((receipt) => publicReceipt(receipt));
+  }
+  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
+  else console.log(`${plan ? "planned" : "applied"} ${inputs.length} file${inputs.length === 1 ? "" : "s"}`);
+}
+
+async function runUndo(args: Record<string, unknown>): Promise<void> {
+  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const json = args.json === true;
+  const input = typeof args.receipt === "string" ? args.receipt : positional(args)[1];
+  if (!input) return refusal("an undo receipt is required", "pass the receipt JSON or its file", json);
+  let raw: string;
+  try {
+    raw = readFileSync(input, "utf-8");
+  } catch {
+    raw = input;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return refusal("undo receipt is not valid JSON", "pass the applied JSON receipt", json);
+  }
+  const value = isRecord(parsed) && isRecord(parsed.receipt) ? parsed.receipt : parsed;
+  if (!isRecord(value) || typeof value.file !== "string" || typeof value.version !== "string" || typeof value.backupPath !== "string") {
+    return refusal("undo receipt is missing file, version, or backupPath", "pass an applied timeline receipt", json);
+  }
+  const backup = join(project.dir, value.backupPath);
+  const target = join(project.dir, value.file);
+  const before = readFileSync(target, "utf-8");
+  const after = readFileSync(backup, "utf-8");
+  const receipts = applyFileMutations(project.dir, [{ sourceFile: value.file, absPath: target, before, after, expectedVersion: value.version }]);
+  const result = { ok: true, receipt: receipts.map((receipt) => publicReceipt(receipt)), file: value.file };
+  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
+  else console.log(`undid ${value.file}`);
+}
+
+function publicReceipt(receipt: AppliedFileMutation) {
+  return {
+    file: receipt.sourceFile,
+    version: receipt.version,
+    writeToken: receipt.writeToken,
+    changed: receipt.changed,
+    backupPath: receipt.backupPath,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function mutationRefusal(
   verb: MutationVerb,
   after: string,
@@ -596,6 +811,7 @@ function mutationCommand(verb: MutationVerb) {
     args: {
       ref: { type: "positional", required: true },
       time: { type: "positional", required: verb === "move" || verb === "split" },
+      at: { type: "string" },
       dir: { type: "string" },
       start: { type: "string" },
       end: { type: "string" },
@@ -622,6 +838,38 @@ export default defineCommand({
     trim: () => mutationCommand("trim"),
     split: () => mutationCommand("split"),
     delete: () => mutationCommand("delete"),
+    set: () => mutationCommand("set"),
+    duplicate: () => mutationCommand("duplicate"),
+    ids: () => defineCommand({
+      meta: { name: "ids", description: "Stamp stable ids on timeline clips" },
+      args: { dir: { type: "string" }, json: { type: "boolean", default: false } },
+      async run({ args }) {
+        await runIds(args);
+      },
+    }),
+    apply: () => defineCommand({
+      meta: { name: "apply", description: "Apply an atomic timeline edit plan" },
+      args: {
+        file: { type: "positional", required: true },
+        dir: { type: "string" },
+        json: { type: "boolean", default: false },
+        plan: { type: "boolean", default: false },
+      },
+      async run({ args }) {
+        await runApply(args);
+      },
+    }),
+    undo: () => defineCommand({
+      meta: { name: "undo", description: "Restore a timeline mutation receipt" },
+      args: {
+        receipt: { type: "positional", required: true },
+        dir: { type: "string" },
+        json: { type: "boolean", default: false },
+      },
+      async run({ args }) {
+        await runUndo(args);
+      },
+    }),
   },
   async run({ args }) {
     if (args._?.[0]) return;
