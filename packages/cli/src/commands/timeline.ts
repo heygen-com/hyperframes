@@ -392,7 +392,7 @@ async function finishMutation(
   decision: Extract<MutationDecision, { ok: true }>,
 ): Promise<void> {
   const { after, nextStart, nextDuration } = decision;
-  const { ref, row, timeline, json, overwrite, project, filePath, before, expectedVersion } = setup;
+  const { ref, row, timeline, json, overwrite, project, before } = setup;
   const refusalMessage = mutationRefusal(verb, after, before, ref);
   if (refusalMessage) return refusal(refusalMessage.reason, refusalMessage.fix, json);
   const conflict = mutationConflict(verb, overwrite, row, timeline, nextStart, nextDuration);

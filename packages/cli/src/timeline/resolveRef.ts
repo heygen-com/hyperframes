@@ -39,7 +39,7 @@ export function resolveRef(timeline: ProjectTimeline, ref: string): RefResolutio
     return {
       ok: false,
       reason: `${ref} has no stable element id in ${row.file}`,
-      fix: `add id=\"<name>\" to the element in ${row.file}, then retry with #<name>`,
+      fix: `add id="<name>" to the element in ${row.file}, then retry with #<name>`,
     };
   }
   return { ok: true, row, target };
