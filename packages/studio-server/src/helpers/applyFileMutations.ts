@@ -21,7 +21,6 @@ export interface AppliedFileMutation {
 }
 
 /** Applies prepared HTML mutations with the same journal and receipt semantics as Studio. */
-// fallow-ignore-next-line complexity
 export function applyFileMutations(
   projectDir: string,
   mutations: readonly FileMutationInput[],
