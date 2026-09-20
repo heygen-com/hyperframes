@@ -19,7 +19,6 @@ import {
   buildTimelineElementsFromClips,
   syncManifestTimeline,
   clipTreeParentMap,
-  collectTopLevelElementIds,
   collectSubCompositionDomChildren,
   collectSubCompositionHostState,
   hydrateTimelineFromPreview,
@@ -130,13 +129,11 @@ export function useTimelineSyncCallbacks({
         const parentMap = clipTreeParentMap(iframeRef.current?.contentWindow ?? null);
         const domClipChildren = collectSubCompositionDomChildren(iframeDoc, data.clips, parentMap);
         usePlayerStore.getState().setClipParentMap(parentMap);
-        usePlayerStore.getState().setTopLevelIds(collectTopLevelElementIds(iframeDoc));
         usePlayerStore.getState().setDomClipChildren(domClipChildren);
         usePlayerStore
           .getState()
           .setSubCompositionHostState(collectSubCompositionHostState(iframeDoc, data.clips));
       } catch {
-        usePlayerStore.getState().setTopLevelIds(null);
         // cross-origin or __clipTree not available — maps stay empty
       }
 

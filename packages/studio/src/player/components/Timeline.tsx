@@ -1,7 +1,6 @@
 import { useRef, useMemo, useCallback, useState, memo } from "react";
 import { useAdjustedBeatAnalysis, useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import { useTimelineRowElements } from "../hooks/useTimelineRowElements";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { usePublishRangeSelection } from "./usePublishRangeSelection";
@@ -113,7 +112,7 @@ export const Timeline = memo(function Timeline({
   const refreshAfterLaneMove = useTimelineLaneMoveRefresh();
   useMusicBeatAnalysis();
   const rawElements = usePlayerStore((s) => s.elements);
-  const expandedElements = useTimelineRowElements();
+  const timelineElements = rawElements;
   const adjustedBeatAnalysis = useAdjustedBeatAnalysis();
   const duration = usePlayerStore((s) => s.duration);
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
@@ -123,8 +122,8 @@ export const Timeline = memo(function Timeline({
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
   const labelMode = useMemo(
-    () => timelineNeedsLabelColumn(gsapAnimations, expandedElements),
-    [gsapAnimations, expandedElements],
+    () => timelineNeedsLabelColumn(gsapAnimations, timelineElements),
+    [gsapAnimations, timelineElements],
   );
   // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
   const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
@@ -163,13 +162,13 @@ export const Timeline = memo(function Timeline({
     groups,
     trackGroupOf,
   } = useTimelineTrackLayout(
-    expandedElements,
+    timelineElements,
     gsapAnimations,
     selectedElementId,
     selectedElementIds,
   );
-  const expandedElementsRef = useRef(expandedElements);
-  expandedElementsRef.current = expandedElements; // oxlint-disable-line react/refs -- event handlers read the latest elements
+  const timelineElementsRef = useRef(timelineElements);
+  timelineElementsRef.current = timelineElements; // oxlint-disable-line react/refs -- event handlers read the latest elements
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration; // oxlint-disable-line react/refs -- event handlers read the latest duration
@@ -198,7 +197,7 @@ export const Timeline = memo(function Timeline({
     onCompositionDrop,
   });
   const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
-    expandedElementsRef,
+    expandedElementsRef: timelineElementsRef,
   });
   const {
     gapMenuModel,
@@ -210,7 +209,7 @@ export const Timeline = memo(function Timeline({
     closeAllTrackGaps,
   } = useTrackGapMenu({
     tracks,
-    expandedElementsRef,
+    expandedElementsRef: timelineElementsRef,
     trackOrderRef,
     onMoveElement: pinnedOnMoveElement,
     onMoveElements: pinnedOnMoveElements,
@@ -259,14 +258,14 @@ export const Timeline = memo(function Timeline({
     resizingClip?.groupPreview?.map((change) => change.key) ??
     (resizingClip ? [getTimelineElementIdentity(resizingClip.element)] : undefined);
   const { recordTimelineScroll } = useTimelinePerformanceTelemetry({
-    totalClipCount: expandedElements.length,
+    totalClipCount: timelineElements.length,
     totalRowCount: displayLayout.displayTrackOrder.length,
     zoomMode,
   });
   const { viewport, showShortcutHint, setScrollRef, syncScrollViewport } =
     useTimelineScrollViewport(scrollRef, [
       timelineReady,
-      expandedElements.length,
+      timelineElements.length,
       displayLayout.totalH,
     ]);
   const { pps, fitPps, displayContentWidth, displayDuration, zoomModeRef, manualZoomPercentRef } =
@@ -279,7 +278,7 @@ export const Timeline = memo(function Timeline({
       fitPpsRef,
       draggedClip,
       resizingClip,
-      expandedElements,
+      timelineElements,
       isDragging,
       scrollRef,
       lastScrollLeftRef,
@@ -295,7 +294,7 @@ export const Timeline = memo(function Timeline({
     groups,
     trackGroupOf,
     gsapAnimations,
-    elements: expandedElements,
+    elements: timelineElements,
     pixelsPerSecond: pps,
     contentOrigin,
     allowHorizontal: zoomMode === "manual",
@@ -312,7 +311,7 @@ export const Timeline = memo(function Timeline({
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
   const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
     useTimelineKeyframeHandlers({
-      expandedElements,
+      timelineElements,
       keyframeCache,
       onSelectElement,
       onSeek,
@@ -343,14 +342,14 @@ export const Timeline = memo(function Timeline({
     scrollRef,
     currentTime,
     clipStateVersion: renderTimeRange,
-    elementStateVersion: expandedElements,
+    elementStateVersion: timelineElements,
   });
   const laneGapStrips = useTimelineGapHighlights({
     gapHighlight,
     tracks,
     selectedElementId,
     selectedElementIds,
-    expandedElements,
+    timelineElements,
     dragActive: draggedClip?.started === true || resizingClip != null,
     displayDuration,
   });
@@ -371,7 +370,7 @@ export const Timeline = memo(function Timeline({
     effectiveDuration,
     pps,
     timelineReady,
-    elementsLength: expandedElements.length,
+    elementsLength: timelineElements.length,
     setZoomMode,
     setManualZoomPercent,
     onSeek,
@@ -407,7 +406,7 @@ export const Timeline = memo(function Timeline({
     dragScrollRaf,
     isDragging,
     setShowPopover,
-    elementsRef: expandedElementsRef,
+    elementsRef: timelineElementsRef,
     clipIndex,
     rowGeometryRef,
     onSelectElement,
@@ -417,7 +416,7 @@ export const Timeline = memo(function Timeline({
   usePublishRangeSelection(rangeSelection, onRangeSelect);
   setRangeSelectionRef.current = setRangeSelection; // oxlint-disable-line react/refs -- stable ref consumed by useTimelineClipDrag
 
-  useTimelineSelectionLifecycle(expandedElements, selectedElementId, setShowPopover, () =>
+  useTimelineSelectionLifecycle(timelineElements, selectedElementId, setShowPopover, () =>
     setRangeSelection(null),
   );
 
@@ -433,7 +432,7 @@ export const Timeline = memo(function Timeline({
     [resizingClip],
   );
 
-  if (!timelineReady || expandedElements.length === 0) {
+  if (!timelineReady || timelineElements.length === 0) {
     return (
       <TimelineEmptyState
         isDragOver={assetDrop.isDragOver}
@@ -449,7 +448,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline track view"
-      data-timeline-element-count={expandedElements.length}
+      data-timeline-element-count={timelineElements.length}
       className={`relative border-t select-none h-full overflow-hidden ${assetDrop.isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={updateRazorGuide}
       onMouseLeave={clearRazorGuide}
@@ -566,8 +565,8 @@ export const Timeline = memo(function Timeline({
         {activeTool === "razor" && razorGuideX !== null && <TimelineRazorGuide x={razorGuideX} />}
       </div>
       <TimelineOverlays
-        elements={expandedElements}
-        elementsRef={expandedElementsRef}
+        elements={timelineElements}
+        elementsRef={timelineElementsRef}
         theme={theme}
         showShortcutHint={showShortcutHint}
         showPopover={showPopover}

@@ -25,7 +25,6 @@ import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
 import { useSetElementAttribute } from "./timelineElementFxAttribute";
 import { useTimelineDeleteOps } from "./useTimelineDeleteOps";
-import { useTimelineRowElements } from "../player/hooks/useTimelineRowElements";
 import { useTrackPendingTimelineEdit } from "./useTrackPendingTimelineEdit";
 import { useAudioGroupCarveAssignment } from "./timelineAudioGroupCreate";
 import {
@@ -77,10 +76,6 @@ export function useTimelineEditing({
   const checkEditable = useTimelineEditGate(canEdit, showToast);
   const checkEditableRef = useRef(checkEditable);
   checkEditableRef.current = checkEditable;
-  // Same expanded-row source the hide handlers themselves resolve against
-  // (timelineTrackVisibility.ts) — a virtual sub-comp child's track/key
-  // only exists here, not in the raw store list canEdit would otherwise miss.
-  const timelineRowElements = useTimelineRowElements();
   const guardedRef = useRef(new WeakMap<GuardedTimelineHandler, GuardedTimelineEntry>());
   // Refuses (no call, no write, no history entry) when any target is
   // blocked; otherwise runs fn as before. Cached by fn identity — like
@@ -514,14 +509,14 @@ export function useTimelineEditing({
     handleTimelineElementResize: track(guard((element) => [element], handleTimelineElementResize)),
     handleToggleTrackHidden: track(
       guard(
-        (trackIndex) => timelineRowElements.filter((el) => el.track === trackIndex),
+        (trackIndex) => timelineElements.filter((el) => el.track === trackIndex),
         handleToggleTrackHidden,
       ),
     ),
     handleToggleElementHidden: track(
       guard((elementKey) => {
         const keys = new Set(Array.isArray(elementKey) ? elementKey : [elementKey]);
-        return timelineRowElements.filter((el) => keys.has(el.key ?? el.id));
+        return timelineElements.filter((el) => keys.has(el.key ?? el.id));
       }, handleToggleElementHidden),
     ),
     handleAutoGroupCarveSources: track(handleAutoGroupCarveSources),

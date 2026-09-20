@@ -123,7 +123,6 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       }),
       "</main>",
     ].join("\n");
-    usePlayerStore.getState().setTopLevelIds(new Set(["a", "b"]));
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const getDrop = renderDropHook(source, writeProjectFile, [
       clip("a", 0),

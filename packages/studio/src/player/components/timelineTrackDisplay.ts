@@ -1,10 +1,9 @@
 /**
  * The one owner of "what track number does the user see".
  *
- * `TimelineElement.track` is a z-order SORT key, not a row number: an expanded
- * sub-composition child gets a synthesized fractional key (`host.track + n /
- * (siblings + 2)`, see `useTimelineRowElements`), so putting it in a string
- * announces "Hide track 0.16666666666666666". Every user-visible track number,
+ * `TimelineElement.track` is a z-order SORT key, not a row number. Every
+ * user-visible track number, whether it is rendered by a component or baked
+ * into an undo-history label,
  * whether it is rendered by a component or baked into an undo-history label,
  * routes through here; the raw key stays in callbacks and lookups only.
  */
