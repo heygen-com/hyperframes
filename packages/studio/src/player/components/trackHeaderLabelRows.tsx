@@ -276,7 +276,10 @@ export function AutomationLaneHeaderRow({
       >
         {showLabel ? (
           <>
-            <span data-automation-lane-name="" className="truncate font-mono text-[9px] text-white/70">
+            <span
+              data-automation-lane-name=""
+              className="truncate font-mono text-[9px] text-white/70"
+            >
               {name}
             </span>
             {param ? (

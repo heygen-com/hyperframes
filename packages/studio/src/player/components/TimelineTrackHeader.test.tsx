@@ -161,8 +161,8 @@ describe("TimelineTrackHeader", () => {
       trackElements: [audio],
       isAudioTrack: true,
     });
-    expect(view.host.querySelector('[data-automation-lane-name]')).toBeNull();
-    expect(view.host.querySelector('[data-automation-lane-label] [title]')).not.toBeNull();
+    expect(view.host.querySelector("[data-automation-lane-name]")).toBeNull();
+    expect(view.host.querySelector("[data-automation-lane-label] [title]")).not.toBeNull();
     act(() => view.root.unmount());
   });
 
