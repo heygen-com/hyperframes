@@ -146,9 +146,13 @@ describe("TimelineTrackHeader", () => {
       id: "audio-1",
       label: "Clip",
       tag: "audio",
+      fxChain: JSON.stringify({
+        version: 1,
+        nodes: [{ type: "peaking", id: "n1", params: { frequency: 1600, gain: -6, q: 1.4 } }],
+      }),
       automation: JSON.stringify({
         version: 1,
-        lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
+        lanes: [{ target: "fx.n1.gain", points: [{ t: 0, v: 1 }] }],
       }),
     };
     const view = renderHeader({
@@ -158,7 +162,7 @@ describe("TimelineTrackHeader", () => {
       isAudioTrack: true,
     });
     expect(view.host.querySelector('[data-automation-lane-name]')).toBeNull();
-    expect(view.host.querySelector('[title*="volume"]')).not.toBeNull();
+    expect(view.host.querySelector('[title*="fx.n1.gain"]')).not.toBeNull();
     act(() => view.root.unmount());
   });
 
