@@ -278,7 +278,7 @@ export const Timeline = memo(function Timeline({
       fitPpsRef,
       draggedClip,
       resizingClip,
-      timelineElements,
+      expandedElements: timelineElements,
       isDragging,
       scrollRef,
       lastScrollLeftRef,
@@ -311,7 +311,7 @@ export const Timeline = memo(function Timeline({
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
   const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
     useTimelineKeyframeHandlers({
-      timelineElements,
+      expandedElements: timelineElements,
       keyframeCache,
       onSelectElement,
       onSeek,
@@ -349,7 +349,7 @@ export const Timeline = memo(function Timeline({
     tracks,
     selectedElementId,
     selectedElementIds,
-    timelineElements,
+    expandedElements: timelineElements,
     dragActive: draggedClip?.started === true || resizingClip != null,
     displayDuration,
   });
