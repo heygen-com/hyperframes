@@ -9,7 +9,7 @@ import {
   TimelineGapMenu,
   TimelineKeyframeMenu,
   TimelineLanes,
-  TimelineOverlaysPart,
+  TimelineOverlays,
   TimelinePlayhead,
   TimelineRazorGuide,
   TimelineRuler,
@@ -47,7 +47,7 @@ function TimelineView() {
         <TimelineFrame />
         <TimelineRazorGuide />
       </div>
-      <TimelineOverlaysPart />
+      <TimelineOverlays />
     </div>
   );
 }
@@ -73,5 +73,5 @@ export const Timeline = Object.assign(TimelineComposed, {
   KeyframeMenu: TimelineKeyframeMenu,
   GapMenu: TimelineGapMenu,
   EmptyState: TimelineEmptyStatePart,
-  Overlays: TimelineOverlaysPart,
+  Overlays: TimelineOverlays,
 });

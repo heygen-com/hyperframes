@@ -12,12 +12,8 @@ import {
   getTimelineRowTop,
   getTimelineRowHeight,
 } from "./timelineLayout";
-import { type MultiDragPreviewInput } from "./timelineMultiDragPreview";
-import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { TimelineLanes } from "./TimelineLanes";
-import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
-import { resolveSnapGuide } from "./timelineSnapping";
 import { useTimelineContext } from "./TimelineProvider";
 
 // A dropped clip's length is unknown until it lands; the preview shows a default.
@@ -26,8 +22,7 @@ const DROP_PREVIEW_SECONDS = 3;
 export const TimelineCanvas = memo(function TimelineCanvas() {
   const { state, actions } = useTimelineContext();
   const props = state.canvas;
-  const { draggedClip, resizingClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
-  const snapGuide = resolveSnapGuide(draggedClip, resizingClip);
+  const { draggedClip, scrollRef, displayTrackOrder } = props;
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
   const dropTrackIndex = props.dropPreview
@@ -43,37 +38,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
   // ghost and drop placeholder must clamp to it or they stretch to the full
   // expanded row height and stop matching the clip being dragged.
   const draggedClipHeight = Math.min(draggedRowHeight, TRACK_H) - CLIP_Y * 2;
-  const {
-    onResizeElement,
-    onMoveElement,
-    onToggleTrackHidden,
-    onTogglePropertyGroupKeyframe,
-    onRazorSplit,
-    onRazorSplitAll,
-  } = useTimelineEditContextOptional();
   const beatDragging = props.beatDragging;
-  const draggedElement = draggedClip?.element ?? null;
-  const draggedElementIdentity = draggedElement ? getTimelineElementIdentity(draggedElement) : null;
-  // The drag ghost follows the cursor freely (both axes) — CapCut-style. The
-  // "magnetic" affordance is a highlight on the destination lane (draggedRowIndex),
-  // which flips at the MAGNETIC_TRACK_THRESHOLD point; the clip drops into it.
-  // Live multi-selection drag: while a selected clip is dragged, ALL selected
-  // clips move together as one rigid formation. The GRABBED clip is the free
-  // ghost below; its co-selected "passengers" slide by the SAME group-clamped
-  // delta (cheap translateX, no re-layout) — the delta is derived from the
-  // grabbed clip's ALREADY-clamped previewStart, so the whole formation stops at
-  // the wall together and never deforms. Matches what the commit will do — see
-  // timelineMultiDragPreview + commit.
-  const multiDragPreview: MultiDragPreviewInput | null =
-    draggedClip?.started === true && draggedElement && draggedElementIdentity
-      ? {
-          dragStarted: true,
-          draggedKey: draggedElementIdentity,
-          draggedOriginStart: draggedElement.start,
-          draggedPreviewStart: draggedClip.previewStart,
-          selectedKeys: selectedElementIds,
-        }
-      : null;
+  const { draggedElement, snapGuide, multiDragPreview } = props;
   return (
     <div
       className="relative"
@@ -92,12 +58,12 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
         snapGuide={snapGuide}
         draggedElement={draggedElement}
         multiDragPreview={multiDragPreview}
-        onToggleTrackHidden={onToggleTrackHidden}
-        onTogglePropertyGroupKeyframe={onTogglePropertyGroupKeyframe}
-        onResizeElement={onResizeElement}
-        onMoveElement={onMoveElement}
-        onRazorSplit={onRazorSplit}
-        onRazorSplitAll={onRazorSplitAll}
+        onToggleTrackHidden={props.onToggleTrackHidden}
+        onTogglePropertyGroupKeyframe={props.onTogglePropertyGroupKeyframe}
+        onResizeElement={props.onResizeElement}
+        onMoveElement={props.onMoveElement}
+        onRazorSplit={props.onRazorSplit}
+        onRazorSplitAll={props.onRazorSplitAll}
       />
 
       {/* Breathing room below the last track lane (~1.5 track heights) — a real

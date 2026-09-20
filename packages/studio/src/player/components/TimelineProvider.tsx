@@ -17,6 +17,8 @@ import type { Rect } from "../../utils/marqueeGeometry";
 import type { ResizingClipState } from "./useTimelineClipDrag";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
+import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
+import type { TimelineSnapTarget } from "./timelineSnapping";
 import type { TimelineElement } from "../store/playerStore";
 import type { KeyframeCacheEntry } from "../store/keyframeSlice";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
@@ -24,6 +26,10 @@ import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineProviderState } from "./useTimelineProviderState";
+import {
+  TimelineEditProvider,
+  useTimelineEditContextValue,
+} from "../../contexts/TimelineEditContext";
 
 export type TimelineCanvasState = Omit<
   TimelineLaneBaseProps,
@@ -51,6 +57,13 @@ export type TimelineCanvasState = Omit<
   beatDragging: boolean;
   onResizeElement: TimelineEditCallbacks["onResizeElement"];
   onMoveElement: TimelineEditCallbacks["onMoveElement"];
+  draggedElement: TimelineElement | null;
+  snapGuide: TimelineSnapTarget | null;
+  multiDragPreview: MultiDragPreviewInput | null;
+  onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
+  onTogglePropertyGroupKeyframe: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
+  onRazorSplit: TimelineEditCallbacks["onRazorSplit"];
+  onRazorSplitAll: TimelineEditCallbacks["onRazorSplitAll"];
 };
 
 export interface ClipContextMenuState {
@@ -166,6 +179,18 @@ export interface TimelineContextValue {
 const TimelineContext = createContext<TimelineContextValue | null>(null);
 
 export function TimelineProvider({ children, ...props }: TimelineProps & { children: ReactNode }) {
+  const editContext = useTimelineEditContextValue();
+  if (!editContext) {
+    return (
+      <TimelineEditProvider value={props}>
+        <TimelineProviderState {...props}>{children}</TimelineProviderState>
+      </TimelineEditProvider>
+    );
+  }
+  return <TimelineProviderState {...props}>{children}</TimelineProviderState>;
+}
+
+function TimelineProviderState({ children, ...props }: TimelineProps & { children: ReactNode }) {
   const value = useTimelineProviderState(props);
   return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
 }

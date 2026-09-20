@@ -41,6 +41,7 @@ import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
+import { useTimelineContext } from "./TimelineProvider";
 
 vi.mock("./timelineRowVirtualizationFlag", () => ({
   STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED: false,
@@ -71,6 +72,21 @@ describe("timeline viewport geometry", () => {
     expect(getTimelineScrollTopForGeometryChange(previous, next, scrollTop)).toBe(scrollTop + 56);
   });
 });
+
+function TimelinePartsVariant() {
+  const { meta } = useTimelineContext();
+  return React.createElement(
+    "div",
+    meta.containerProps,
+    React.createElement(
+      "div",
+      meta.viewportProps,
+      React.createElement(Timeline.Frame),
+      React.createElement(Timeline.RazorGuide),
+    ),
+    React.createElement(Timeline.Overlays),
+  );
+}
 
 function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: string) {
   const clip = host.querySelector<HTMLElement>(`[data-el-id="${clipId}"]`);
@@ -136,6 +152,32 @@ function renderBasicTimeline() {
 }
 
 describe("Timeline provider boundary", () => {
+  it("keeps the composed Timeline markup equal to its provider parts", () => {
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [{ id: "parity-clip", tag: "div", start: 0, duration: 2, track: 0 }],
+    });
+    const composedHost = document.createElement("div");
+    const partsHost = document.createElement("div");
+    document.body.append(composedHost, partsHost);
+    const composedRoot = createRoot(composedHost);
+    const partsRoot = createRoot(partsHost);
+    act(() => {
+      composedRoot.render(React.createElement(Timeline));
+      partsRoot.render(
+        React.createElement(Timeline.Provider, null, React.createElement(TimelinePartsVariant)),
+      );
+    });
+    const normalizeMarkup = (markup: string) =>
+      markup.replaceAll(/timeline-lanes_[^"]+/g, "timeline-lanes");
+    expect(normalizeMarkup(partsHost.innerHTML)).toBe(normalizeMarkup(composedHost.innerHTML));
+    act(() => {
+      composedRoot.unmount();
+      partsRoot.unmount();
+    });
+  });
+
   it("keeps all-collapsed horizontal positions at the gutter plus the pre-t=0 pad", () => {
     usePlayerStore.setState({
       duration: 11,

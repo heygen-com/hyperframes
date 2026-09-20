@@ -1,6 +1,13 @@
 import { memo } from "react";
 import { TimelineCanvas as TimelineCanvasImpl } from "./TimelineCanvas";
 import { TimelineOverlays as TimelineOverlaysImpl } from "./TimelineOverlays";
+import {
+  TimelineClipMenuOverlay as TimelineClipMenuImpl,
+  TimelineEditPopoverOverlay as TimelineEditPopoverImpl,
+  TimelineGapMenuOverlay as TimelineGapMenuImpl,
+  TimelineKeyframeMenuOverlay as TimelineKeyframeMenuImpl,
+  TimelineShortcutHintOverlay as TimelineShortcutHintImpl,
+} from "./TimelineOverlays";
 import { TimelineLanes as TimelineLanesImpl } from "./TimelineLanes";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import { useTimelineContext } from "./TimelineProvider";
@@ -22,10 +29,9 @@ export const TimelineRuler = TimelineRulerPart;
 export const TimelineLanes = memo(function TimelineLanes() {
   const { state, actions } = useTimelineContext();
   const props = state.canvas;
-  const laneProps = props as unknown as Parameters<typeof TimelineLanesImpl>[0];
   return (
     <TimelineLanesImpl
-      {...laneProps}
+      {...props}
       renderClipContent={actions.renderClipContent}
       renderClipOverlay={actions.renderClipOverlay}
     />
@@ -46,7 +52,7 @@ export const TimelineRazorGuide = memo(function TimelineRazorGuide() {
 });
 
 /** The composed overlay surface used by the Studio variant. */
-export const TimelineOverlaysPart = memo(function TimelineOverlaysPart() {
+export const TimelineOverlays = memo(function TimelineOverlays() {
   return <TimelineOverlaysImpl />;
 });
 
@@ -56,17 +62,17 @@ export const TimelineEmptyStatePart = memo(function TimelineEmptyStatePart() {
 });
 
 export const TimelineShortcutHint = memo(function TimelineShortcutHint() {
-  return <TimelineOverlaysImpl part="shortcut" />;
+  return <TimelineShortcutHintImpl />;
 });
 export const TimelineEditPopover = memo(function TimelineEditPopover() {
-  return <TimelineOverlaysImpl part="edit" />;
+  return <TimelineEditPopoverImpl />;
 });
 export const TimelineClipMenu = memo(function TimelineClipMenu() {
-  return <TimelineOverlaysImpl part="clip" />;
+  return <TimelineClipMenuImpl />;
 });
 export const TimelineKeyframeMenu = memo(function TimelineKeyframeMenu() {
-  return <TimelineOverlaysImpl part="keyframe" />;
+  return <TimelineKeyframeMenuImpl />;
 });
 export const TimelineGapMenu = memo(function TimelineGapMenu() {
-  return <TimelineOverlaysImpl part="gap" />;
+  return <TimelineGapMenuImpl />;
 });

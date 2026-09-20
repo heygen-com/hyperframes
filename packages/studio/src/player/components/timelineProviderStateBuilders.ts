@@ -5,6 +5,34 @@ import type {
 } from "./TimelineProvider";
 import type { ResizingClipState } from "./useTimelineClipDrag";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
+import type { DraggedClipState } from "./timelineClipDragTypes";
+import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
+import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
+
+export function resolveMultiDragPreview(
+  draggedClip: DraggedClipState | null,
+  selectedKeys: ReadonlySet<string>,
+): MultiDragPreviewInput | null {
+  // The drag ghost follows the cursor freely (both axes) — CapCut-style. The
+  // "magnetic" affordance is a highlight on the destination lane (draggedRowIndex),
+  // which flips at the MAGNETIC_TRACK_THRESHOLD point; the clip drops into it.
+  // Live multi-selection drag: while a selected clip is dragged, ALL selected
+  // clips move together as one rigid formation. The GRABBED clip is the free
+  // ghost below; its co-selected "passengers" slide by the SAME group-clamped
+  // delta (cheap translateX, no re-layout) — the delta is derived from the
+  // grabbed clip's ALREADY-clamped previewStart, so the whole formation stops at
+  // the wall together and never deforms. Matches what the commit will do — see
+  // timelineMultiDragPreview + commit.
+  if (!draggedClip?.started) return null;
+  const draggedKey = getTimelineElementIdentity(draggedClip.element);
+  return {
+    dragStarted: true,
+    draggedKey,
+    draggedOriginStart: draggedClip.element.start,
+    draggedPreviewStart: draggedClip.previewStart,
+    selectedKeys,
+  };
+}
 
 export function resolveResizingElementIds(
   resizingClip: ResizingClipState | null,

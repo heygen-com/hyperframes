@@ -10,6 +10,7 @@ import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
 import {
   buildTimelineMeta,
+  resolveMultiDragPreview,
   resolveRenderClipContent,
   resolveResizingElementIds,
   shouldIgnoreTimelinePointerDown,
@@ -44,6 +45,8 @@ import { useTimelineClipRenderWindow } from "./useTimelineClipRenderWindow";
 import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { resolveSnapGuide } from "./timelineSnapping";
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -90,10 +93,10 @@ export function useTimelineProviderState({
     onSplitElement: onSplitElementOverride,
   });
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
+  const editContext = useTimelineEditContextOptional();
   const refreshAfterLaneMove = useTimelineLaneMoveRefresh();
   useMusicBeatAnalysis();
-  const rawElements = usePlayerStore((s) => s.elements);
-  const timelineElements = rawElements;
+  const timelineElements = usePlayerStore((s) => s.elements);
   const adjustedBeatAnalysis = useAdjustedBeatAnalysis();
   const duration = usePlayerStore((s) => s.duration);
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
@@ -108,7 +111,6 @@ export function useTimelineProviderState({
   );
   // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
   const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
-  const contentGutter = labelMode ? GUTTER : 0;
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatDragging = usePlayerStore((s) => s.beatDragging);
@@ -130,8 +132,8 @@ export function useTimelineProviderState({
   }, []);
   const lastScrollLeftRef = useRef(0);
   const effectiveDuration = useMemo(
-    () => getEffectiveTimelineDuration(duration, rawElements),
-    [duration, rawElements],
+    () => getEffectiveTimelineDuration(duration, timelineElements),
+    [duration, timelineElements],
   );
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
   useAutoExpandKeyframedClips(gsapAnimations);
@@ -406,7 +408,6 @@ export function useTimelineProviderState({
     handlePointerCancel,
   } = overlaysProps;
   const { rangeSelection, setRangeSelection } = overlays;
-
   const laneGapStrips = useTimelineGapHighlights({
     gapHighlight,
     tracks,
@@ -416,25 +417,24 @@ export function useTimelineProviderState({
     dragActive: draggedClip?.started === true || resizingClip != null,
     displayDuration,
   });
-
   const { major, minor, majorTickInterval } = useTimelineTicks(
     displayDuration,
     pps,
     timeDisplayMode,
     timelineFocus.rowVirtualizationActive ? renderTimeRange : undefined,
   );
-
   const getPreviewElement = useCallback(
     (element: TimelineElement): TimelineElement => getTimelinePreviewElement(element, resizingClip),
     [resizingClip],
   );
-
+  const draggedElement = draggedClip?.element ?? null;
+  const multiDragPreview = resolveMultiDragPreview(draggedClip, selectedElementIds);
   const canvasProps = {
     major,
     minor,
     pps,
     contentOrigin,
-    contentGutter,
+    contentGutter: labelMode ? GUTTER : 0,
     trackContentWidth: displayContentWidth,
     totalH: displayLayout.totalH,
     effectiveDuration,
@@ -501,6 +501,13 @@ export function useTimelineProviderState({
     onResizeElement,
     onMoveElement,
     beatDragging,
+    draggedElement,
+    snapGuide: resolveSnapGuide(draggedClip, resizingClip),
+    multiDragPreview,
+    onToggleTrackHidden: editContext.onToggleTrackHidden,
+    onTogglePropertyGroupKeyframe: editContext.onTogglePropertyGroupKeyframe,
+    onRazorSplit: editContext.onRazorSplit,
+    onRazorSplitAll: editContext.onRazorSplitAll,
   };
   const timelineRenderClipContent = resolveRenderClipContent(
     timelineFocus.rowVirtualizationActive,
