@@ -262,6 +262,14 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // The compiled stylesheet is a package export, so its path must stay
+        // stable across builds instead of following Vite's content hash.
+        assetFileNames: (assetInfo) =>
+          assetInfo.name?.endsWith(".css") ? "assets/styles.css" : "assets/[name]-[hash][extname]",
+      },
+    },
   },
   optimizeDeps: {
     include: ["bpm-detective"],

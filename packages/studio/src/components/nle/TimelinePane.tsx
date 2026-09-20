@@ -1,6 +1,6 @@
 import { useCallback, type ReactNode } from "react";
 import { Timeline } from "../../player";
-import type { TimelineElement } from "../../player";
+import type { TimelineElement, TimelineTimeRange } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
@@ -104,6 +104,7 @@ export interface TimelinePaneProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  onRangeSelect?: (range: TimelineTimeRange | null) => void;
   /** Copy/paste/duplicate act on the store's own selection, not a passed
    *  element, so unlike onDeleteElement they need no composition-basis wrapper. */
   onCopyClip?: () => boolean;
@@ -125,6 +126,7 @@ export function TimelinePane({
   onCompositionDrop,
   onBlockedEditAttempt,
   onSelectTimelineElement,
+  onRangeSelect,
   onCopyClip,
   onPasteClip,
   onDuplicateClip,
@@ -282,6 +284,7 @@ export function TimelinePane({
           onBlockedEditAttempt={onBlockedEditAttempt}
           onSplitElement={handleSplitElement}
           onSelectElement={onSelectTimelineElement}
+          onRangeSelect={onRangeSelect}
           onCopyClip={onCopyClip}
           onPasteClip={onPasteClip}
           onDuplicateClip={onDuplicateClip}

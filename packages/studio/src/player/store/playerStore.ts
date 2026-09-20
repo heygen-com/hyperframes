@@ -20,6 +20,7 @@ import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlic
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 import { createPlaybackReadinessSlice, resetPlaybackReadinessState } from "./readinessSlice";
+import { createRangeSelectionSlice, type RangeSelectionSlice } from "./rangeSelectionSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -59,6 +60,7 @@ type PlayerStoreSlices = KeyframeSlice &
   AutomationSelectionSlice &
   ThumbnailSlice &
   EditingModeSlice &
+  RangeSelectionSlice &
   ReturnType<typeof createPlaybackReadinessSlice>;
 interface PlayerState extends PlayerStoreSlices {
   isPlaying: boolean;
@@ -262,6 +264,7 @@ export function createTimelineResetState() {
     zEditVersion: 0,
     inPoint: null,
     outPoint: null,
+    rangeSelection: null,
     activeTool: "select" as const,
     activeKeyframePct: null,
     motionPathArmed: false,
@@ -328,6 +331,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   ...createAutomationSelectionSlice(set),
   ...createEditingModeSlice(set),
+  ...createRangeSelectionSlice(),
   ...createPlaybackReadinessSlice(set),
 
   activeKeyframePct: null,

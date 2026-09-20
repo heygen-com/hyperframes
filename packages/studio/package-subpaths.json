@@ -19,6 +19,12 @@
       "types": null,
       "environments": ["browser"]
     },
+    "./styles.css": {
+      "source": "./src/styles/studio.css",
+      "runtime": "./dist/assets/styles.css",
+      "types": null,
+      "environments": ["browser"]
+    },
     "./package.json": {
       "source": "./package.json",
       "runtime": "./package.json",

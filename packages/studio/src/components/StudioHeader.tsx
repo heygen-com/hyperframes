@@ -17,7 +17,7 @@ export interface StudioHeaderProps {
   onExport?: () => void;
 }
 
-function HyperframesLogo() {
+export function HyperframesLogo() {
   // Full logo from logo-dark.svg (263×79): heygen label + gradient mark + hyperframes wordmark.
   // All fill="black" paths inverted to white for the dark header.
   const height = 28;

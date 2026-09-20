@@ -27,10 +27,12 @@
       "types": "./src/styles/tailwind-preset.ts"
     },
     "./theme.css": "./src/styles/theme.css",
+    "./styles.css": "./src/styles/studio.css",
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "exports": {
       ".": {
         "import": "./dist/index.js",
@@ -41,10 +43,10 @@
         "types": "./dist/styles/tailwind-preset.d.ts"
       },
       "./theme.css": "./src/styles/theme.css",
+      "./styles.css": "./dist/assets/styles.css",
       "./package.json": "./package.json"
     },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
+    "access": "public"
   },
   "scripts": {
     "dev": "bun --bun ./node_modules/.bin/vite --host 127.0.0.1",
