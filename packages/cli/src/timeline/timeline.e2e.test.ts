@@ -98,4 +98,25 @@ describe("timeline edit command", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("snaps a known project fps to one frame", () => {
+    const dir = project();
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-duration="12" data-fps="10"><div id="clip" data-hf-id="clip" data-start="1" data-duration="2" data-track-index="0"></div></div>`,
+      );
+      const result = run(dir, "move", "#clip", "1.03", "--snap");
+      expect(result.status, result.stderr).toBe(0);
+      const output = JSON.parse(result.stdout) as {
+        after: Array<{ ref: string; start: number }>;
+      };
+      expect(output.after.find((row) => row.ref === "#clip")).toMatchObject({
+        start: 1,
+      });
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toContain('data-start="1"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
