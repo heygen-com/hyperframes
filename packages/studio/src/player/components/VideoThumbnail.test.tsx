@@ -55,7 +55,7 @@ async function render(width = 0) {
 }
 
 describe("VideoThumbnail", () => {
-  it("renders a scheduler-provided sparse poster", async () => {
+  it("does not acquire a thumbnail lease before the clip is measured", async () => {
     vi.mocked(decodeVideoThumbnail).mockResolvedValue({
       value: { kind: "image", url: "blob:poster", aspect: 16 / 9 },
       weight: 128,
@@ -63,12 +63,7 @@ describe("VideoThumbnail", () => {
 
     await render();
 
-    expect(decodeVideoThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({ frameCount: 1 }),
-      expect.any(AbortSignal),
-    );
-    expect(host.querySelector('img[src="blob:poster"]')).not.toBeNull();
-    expect(host.querySelector(".animate-pulse")).toBeNull();
+    expect(decodeVideoThumbnail).not.toHaveBeenCalled();
   });
 
   it("requests a geometry-sized filmstrip by default", async () => {
@@ -79,6 +74,11 @@ describe("VideoThumbnail", () => {
 
     await render(500);
 
+    expect(decodeVideoThumbnail).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ frameCount: 1 }),
+      expect.any(AbortSignal),
+    );
     expect(decodeVideoThumbnail).toHaveBeenCalledWith(
       expect.objectContaining({ frameCount: 8 }),
       expect.any(AbortSignal),

@@ -1,7 +1,11 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
-import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
+import {
+  createThumbnailKey,
+  type ThumbnailPriority,
+  type ThumbnailSnapshot,
+} from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
 import {
   computeThumbnailStrip,
@@ -21,6 +25,66 @@ interface VideoThumbnailProps {
   priority?: ThumbnailPriority;
 }
 
+function createVideoThumbnailRequest(
+  props: Pick<
+    VideoThumbnailProps,
+    | "videoSrc"
+    | "sourceStart"
+    | "sourceRangeDuration"
+    | "duration"
+    | "projectId"
+    | "sessionEpoch"
+    | "priority"
+  >,
+  frameCount: number,
+  rich: boolean,
+) {
+  const {
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration = 5,
+    projectId = videoSrc,
+    sessionEpoch = 0,
+    priority = "visible",
+  } = props;
+  return {
+    key: createThumbnailKey({
+      kind: "video",
+      source: videoSrc,
+      start: sourceStart,
+      duration: sourceRangeDuration ?? duration,
+      frames: frameCount,
+    }),
+    projectId,
+    sessionEpoch,
+    kind: "video" as const,
+    priority,
+    rich,
+    load: (signal: AbortSignal) =>
+      decodeVideoThumbnail(
+        {
+          source: videoSrc,
+          sourceStart,
+          sourceRangeDuration: sourceRangeDuration ?? duration,
+          frameCount,
+          fit: "cover",
+        },
+        signal,
+      ),
+  };
+}
+
+function selectThumbnailSnapshot(
+  poster: ThumbnailSnapshot,
+  rich: ThumbnailSnapshot,
+): ThumbnailSnapshot {
+  if (rich.status === "ready") return rich;
+  if (poster.status === "ready") return poster;
+  if (rich.status === "loading" || poster.status === "loading") return { status: "loading" };
+  return poster;
+}
+
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
 export const VideoThumbnail = memo(function VideoThumbnail({
   videoSrc,
@@ -38,44 +102,30 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   const requestFrameCount = quantizeThumbnailFrameCount(
     computeThumbnailStrip(containerWidth, 16 / 9).frameCount,
   );
-  const request = useMemo(
+  const requestProps = useMemo(
     () => ({
-      key: createThumbnailKey({
-        kind: "video",
-        source: videoSrc,
-        start: sourceStart,
-        duration: sourceRangeDuration ?? duration,
-        frames: requestFrameCount,
-      }),
-      projectId,
-      sessionEpoch,
-      kind: "video" as const,
-      priority,
-      rich: true,
-      load: (signal: AbortSignal) =>
-        decodeVideoThumbnail(
-          {
-            source: videoSrc,
-            sourceStart,
-            sourceRangeDuration: sourceRangeDuration ?? duration,
-            frameCount: requestFrameCount,
-            fit: "cover",
-          },
-          signal,
-        ),
-    }),
-    [
-      duration,
-      priority,
-      projectId,
-      requestFrameCount,
-      sessionEpoch,
-      sourceRangeDuration,
-      sourceStart,
       videoSrc,
-    ],
+      sourceStart,
+      sourceRangeDuration,
+      duration,
+      projectId,
+      sessionEpoch,
+      priority,
+    }),
+    [duration, priority, projectId, sessionEpoch, sourceRangeDuration, sourceStart, videoSrc],
   );
-  const snapshot = useThumbnailLease(request);
+  const posterRequest = useMemo(
+    () => createVideoThumbnailRequest(requestProps, 1, false),
+    [requestProps],
+  );
+  const richRequest = useMemo(
+    () => createVideoThumbnailRequest(requestProps, requestFrameCount, true),
+    [requestFrameCount, requestProps],
+  );
+  const measured = containerWidth > 0;
+  const posterSnapshot = useThumbnailLease(measured ? posterRequest : null);
+  const richSnapshot = useThumbnailLease(measured ? richRequest : null);
+  const snapshot = selectThumbnailSnapshot(posterSnapshot, richSnapshot);
   const value = snapshot.status === "ready" ? snapshot.value : null;
   const urls =
     value?.kind === "filmstrip" ? value.urls : value?.kind === "image" ? [value.url] : [];
