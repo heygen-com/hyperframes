@@ -143,7 +143,10 @@ describe("preview errors", () => {
   });
 
   it("retries a failed preview with a fresh player URL", async () => {
-    const { host, player } = await mountPlayer();
+    const onPainted = vi.fn();
+    const { host, player } = await mountPlayer({ onPainted });
+
+    act(() => void player.dispatchEvent(new Event("painted")));
 
     act(() => {
       player.dispatchEvent(
@@ -164,6 +167,9 @@ describe("preview errors", () => {
     const retryUrl = new URL(player.getAttribute("src") ?? "", window.location.origin);
     expect(retryUrl.searchParams.get("_hfStudioRetry")).toBe("1");
     expect(host.querySelector('[data-testid="composition-preview-error"]')).toBeNull();
+
+    act(() => void player.dispatchEvent(new Event("painted")));
+    expect(onPainted.mock.calls.map(([details]) => details.loadId)).toEqual([1, 2]);
   });
 });
 
@@ -229,6 +235,21 @@ describe("ready to show", () => {
 
     act(() => void el.iframeElement.dispatchEvent(new Event("load")));
     expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("reports the document start time with the painted iframe", async () => {
+    const onPainted = vi.fn();
+    const now = vi.spyOn(performance, "now").mockReturnValue(100);
+    const { player } = await mountPlayer({ onPainted });
+
+    painted(player as TestHyperframesPlayer);
+
+    expect(onPainted).toHaveBeenCalledWith({
+      iframe: (player as TestHyperframesPlayer).iframeElement,
+      startedAt: 100,
+      loadId: 1,
+    });
+    now.mockRestore();
   });
 
   it("holds while the shader transition loader is up and fires once it clears", async () => {

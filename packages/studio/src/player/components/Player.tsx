@@ -30,6 +30,7 @@ interface PlayerProps {
   onReadyToShowChange?: (ready: boolean) => void;
   onPreviewError?: (message: string) => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
+  onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
@@ -140,6 +141,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       onReadyToShowChange,
       onPreviewError,
       onCompositionLoadingChange,
+      onPainted,
       portrait,
       style,
       suppressLoadingOverlay,
@@ -151,6 +153,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const assetFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const retryPreviewRef = useRef<(() => void) | null>(null);
+    const loadStartedAtRef = useRef(0);
+    const loadIdRef = useRef(0);
     const retryCountRef = useRef(0);
     // Read at call time: this element outlives its first props (a shadow preview is
     // promoted in place), so mount-time closures would go stale.
@@ -209,6 +213,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           retryUrl.searchParams.set("_hfStudioRetry", String(retryCountRef.current));
           setPreviewError(null);
           setCompositionLoading(true);
+          loadStartedAtRef.current = performance.now();
+          loadIdRef.current += 1;
           player.setAttribute("src", retryUrl.pathname + retryUrl.search);
         };
         retryPreviewRef.current = retryPreview;
@@ -222,7 +228,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setPreviewError(null);
           setCompositionLoading(false);
         };
-        const handlePainted = () => setPainted(true);
+        const handlePainted = () => {
+          setPainted(true);
+          onPainted?.({ iframe, startedAt: loadStartedAtRef.current, loadId: loadIdRef.current });
+        };
         const handleError = (event: Event) => {
           const message = readPreviewErrorMessage(event);
           onPreviewErrorRef.current?.(message);
@@ -312,6 +321,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.style.height = "100%";
         player.style.display = "block";
         player.style.background = "transparent";
+        loadStartedAtRef.current = performance.now();
+        loadIdRef.current += 1;
         player.setAttribute("src", src);
         container.appendChild(player);
 
