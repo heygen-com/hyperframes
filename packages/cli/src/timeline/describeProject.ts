@@ -397,7 +397,9 @@ function flatten(top: ClipDraft[]): TimelineTrack[] {
           ? `hf:${clip.hfId}`
           : `${kind}/${index}`;
       const warnings =
-        uniqueId || clip.hfId ? [] : ["row has no stable name; run hyperframes timeline ids"];
+        uniqueId || clip.hfId
+          ? []
+          : ['row has no stable name; add id="<name>" to the element in this file, then retry with #<name>'];
       return {
         ...clip,
         index,

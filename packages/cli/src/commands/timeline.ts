@@ -200,6 +200,15 @@ function splitMutation(context: MutationContext, args: Record<string, unknown>):
   };
 }
 
+function trimTime(
+  context: MutationContext,
+  expression: unknown,
+  fix: string,
+): MutationDecision | number {
+  if (typeof expression !== "string") return context.row.start;
+  return parseMutationTime(context, expression, fix);
+}
+
 function trimMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
   const startExpr = typeof args.start === "string" ? args.start : undefined;
   const endExpr = typeof args.end === "string" ? args.end : undefined;
@@ -213,20 +222,20 @@ function trimMutation(context: MutationContext, args: Record<string, unknown>): 
   }
   let nextStart = context.row.start;
   let nextDuration = context.row.duration;
-  if (startExpr) {
-    const value = parseMutationTime(context, startExpr, "pass a valid time expression");
-    if (!value.ok) return value;
-    nextStart = value.seconds;
+  const start = trimTime(context, startExpr, "pass a valid time expression");
+  if (typeof start !== "number") {
+    if (!start.ok) return start;
+    nextStart = start.seconds;
   }
-  if (endExpr) {
-    const value = parseMutationTime(context, endExpr, "pass a valid time expression");
-    if (!value.ok) return value;
-    nextDuration = value.seconds - nextStart;
+  const end = trimTime(context, endExpr, "pass a valid time expression");
+  if (typeof end !== "number") {
+    if (!end.ok) return end;
+    nextDuration = end.seconds - nextStart;
   }
-  if (durationExpr) {
-    const value = parseMutationTime(context, durationExpr, "pass a valid duration");
-    if (!value.ok) return value;
-    nextDuration = value.seconds;
+  const duration = trimTime(context, durationExpr, "pass a valid duration");
+  if (typeof duration !== "number") {
+    if (!duration.ok) return duration;
+    nextDuration = duration.seconds;
   }
   if (nextDuration <= 0) {
     return {
@@ -369,19 +378,10 @@ async function finishMutation(
 ): Promise<void> {
   const { after, nextStart, nextDuration } = decision;
   const { ref, row, timeline, json, overwrite, project, filePath, before, expectedVersion } = setup;
-  if (after === before) {
-    if (verb === "delete") return refusal(`${ref} was not found`, "choose an existing clip", json);
-  }
-  if ((verb === "move" || verb === "trim") && !overwrite) {
-    const conflict = overlap(row, timeline, nextStart, nextStart + nextDuration);
-    if (conflict) {
-      return refusal(
-        `${ref} would overlap ${conflict.ref} at ${nextStart}-${nextStart + nextDuration}`,
-        "pass --overwrite or move the named neighbour",
-        json,
-      );
-    }
-  }
+  const refusalMessage = mutationRefusal(verb, after, before, ref);
+  if (refusalMessage) return refusal(refusalMessage.reason, refusalMessage.fix, json);
+  const conflict = mutationConflict(verb, overwrite, row, timeline, nextStart, nextDuration);
+  if (conflict) return refusal(conflict.reason, conflict.fix, json);
   const describeSource = (source: string): Promise<ProjectTimeline> =>
     describeProject(project.indexPath, undefined, new Map([["index.html", setup.indexSource], [row.file, source]]));
   const describedBefore = await describeSource(before);
@@ -428,6 +428,33 @@ async function finishMutation(
     console.log(
       `${verb} ${row.ref}: ${row.start}-${row.end}s -> ${nextStart}-${nextStart + nextDuration}s\nreceipt: ${receipt.version}`,
     );
+}
+
+function mutationRefusal(
+  verb: MutationVerb,
+  after: string,
+  before: string,
+  ref: string,
+): { reason: string; fix: string } | null {
+  if (verb !== "delete" || after !== before) return null;
+  return { reason: `${ref} was not found`, fix: "choose an existing clip" };
+}
+
+function mutationConflict(
+  verb: MutationVerb,
+  overwrite: boolean,
+  row: TimelineRow,
+  timeline: ProjectTimeline,
+  nextStart: number,
+  nextDuration: number,
+): { reason: string; fix: string } | null {
+  if ((verb !== "move" && verb !== "trim") || overwrite) return null;
+  const conflict = overlap(row, timeline, nextStart, nextStart + nextDuration);
+  if (!conflict) return null;
+  return {
+    reason: `${row.ref} would overlap ${conflict.ref} at ${nextStart}-${nextStart + nextDuration}`,
+    fix: "pass --overwrite or move the named neighbour",
+  };
 }
 
 function mutationCommand(verb: MutationVerb) {

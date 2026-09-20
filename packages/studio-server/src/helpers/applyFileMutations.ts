@@ -35,46 +35,9 @@ export function applyFileMutations(
   const attempted: typeof prepared = [];
   try {
     for (const mutation of prepared) {
-      const current = readFileSync(mutation.absPath, "utf-8");
-      if (
-        mutation.expectedVersion !== undefined &&
-        fileContentVersion(current) !== mutation.expectedVersion
-      ) {
-        throw new Error("file changed since the timeline was read");
-      }
-      if (mutation.after === mutation.before) {
-        results.push({
-          ...mutation,
-          before: current,
-          changed: false,
-          backupPath: null,
-          version: fileContentVersion(mutation.before),
-          writeToken: null,
-        });
-        continue;
-      }
-      const before = current;
-      const backup = snapshotBeforeWrite(projectDir, mutation.absPath);
-      if (backup.error) {
-        throw new Error(`backup failed: ${backup.error}`);
-      }
-      attempted.push({ ...mutation, before });
-      writeFile(mutation.absPath, mutation.after, "utf-8");
-      const version = fileContentVersion(mutation.after);
-      const writeToken = createWriteToken(requestToken);
-      recordFileWriteReceipt(mutation.absPath, {
-        path: mutation.sourceFile,
-        version,
-        writeToken,
-      });
-      results.push({
-        ...mutation,
-        before,
-        changed: true,
-        backupPath: backupPathForResponse(projectDir, backup.backupPath),
-        version,
-        writeToken,
-      });
+      results.push(
+        applyOneMutation(projectDir, mutation, requestToken, writeFile, attempted),
+      );
     }
     return results;
   } catch (error) {
@@ -93,5 +56,54 @@ export function applyFileMutations(
       );
     }
     throw error;
+  }
+}
+
+type PreparedMutation = FileMutationInput & { before: string };
+
+function applyOneMutation(
+  projectDir: string,
+  mutation: PreparedMutation,
+  requestToken: string | undefined,
+  writeFile: (path: string, content: string, encoding: "utf-8") => void,
+  attempted: PreparedMutation[],
+): AppliedFileMutation {
+  const current = readFileSync(mutation.absPath, "utf-8");
+  assertExpectedVersion(mutation.expectedVersion, current);
+  if (mutation.after === mutation.before) {
+    return {
+      ...mutation,
+      before: current,
+      changed: false,
+      backupPath: null,
+      version: fileContentVersion(mutation.before),
+      writeToken: null,
+    };
+  }
+  const backup = snapshotBeforeWrite(projectDir, mutation.absPath);
+  if (backup.error) throw new Error(`backup failed: ${backup.error}`);
+  const before = current;
+  attempted.push({ ...mutation, before });
+  writeFile(mutation.absPath, mutation.after, "utf-8");
+  const version = fileContentVersion(mutation.after);
+  const writeToken = createWriteToken(requestToken);
+  recordFileWriteReceipt(mutation.absPath, {
+    path: mutation.sourceFile,
+    version,
+    writeToken,
+  });
+  return {
+    ...mutation,
+    before,
+    changed: true,
+    backupPath: backupPathForResponse(projectDir, backup.backupPath),
+    version,
+    writeToken,
+  };
+}
+
+function assertExpectedVersion(expectedVersion: string | undefined, current: string): void {
+  if (expectedVersion !== undefined && fileContentVersion(current) !== expectedVersion) {
+    throw new Error("file changed since the timeline was read");
   }
 }
