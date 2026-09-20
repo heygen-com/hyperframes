@@ -61,7 +61,6 @@ const OPACITY = animation("opacity-tween", "visual", [
 ]);
 
 interface RenderHeaderOptions {
-  contentOrigin?: number;
   keyframeClip?: TimelineElement;
   /** Every clip on the track; defaults to just the keyframe clip. */
   trackElements?: readonly TimelineElement[];
@@ -109,7 +108,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           trackDisplayNumber={1}
           trackLabel="Hero card"
           lanesId="timeline-lanes-track-0"
-          contentOrigin={next.contentOrigin ?? LABEL_COL_W}
+          contentOrigin={LABEL_COL_W}
           keyframeClip={next.keyframeClip}
           trackElements={next.trackElements ?? [next.keyframeClip]}
           clipCount={next.clipCount}

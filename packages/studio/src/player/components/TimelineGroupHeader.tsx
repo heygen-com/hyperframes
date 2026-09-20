@@ -109,9 +109,7 @@ export function TimelineGroupHeader({
       }}
     >
       {/* One line, like a track header's: caret and name, then every control
-          anchored to the right edge. The name wraps and the controls are
-          `shrink-0`, so they hold the edge and the name gives way — no second
-          line needed to keep five controls off the label. */}
+          anchored to the right edge. */}
       <button
         type="button"
         tabIndex={-1}
