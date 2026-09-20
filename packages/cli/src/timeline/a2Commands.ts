@@ -21,7 +21,7 @@ import {
   rowAt,
   type MutationContext,
   type MutationVerb,
-} from "../commands/timeline.js";
+} from "./a2Shared.js";
 
 export async function runIds(args: Record<string, unknown>): Promise<void> {
   const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);

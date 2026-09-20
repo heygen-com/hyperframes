@@ -1,0 +1,553 @@
+import {
+  applyFileMutations,
+  duplicateElementInHtml,
+  fileContentVersion,
+  patchElementInHtml,
+  removeElementFromHtml,
+  splitElementInHtml,
+} from "@hyperframes/studio-server";
+import type { AppliedFileMutation, PatchOperation } from "@hyperframes/studio-server";
+import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
+import { readCompositionFps } from "../utils/compositionFps.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
+import { resolveRef } from "./resolveRef.js";
+import { parseTimeExpression } from "./timeExpr.js";
+import { ensureDOMParser } from "../utils/dom.js";
+import { setCommandExitCode } from "../utils/commandResult.js";
+import { resolveProject } from "../utils/project.js";
+import { withMeta } from "../utils/updateCheck.js";
+import { parseSetAssignments, type SetAssignment } from "./a2Mutations.js";
+
+export type MutationVerb = "move" | "trim" | "split" | "delete" | "set" | "duplicate";
+
+type MutationDecision =
+  | { ok: true; after: string; nextStart: number; nextDuration: number }
+  | { ok: false; reason: string; fix: string };
+
+export interface MutationContext {
+  ref: string;
+  row: TimelineRow;
+  before: string;
+  resolved: Extract<ReturnType<typeof resolveRef>, { ok: true }>;
+  parseTime: (expression: string) => ReturnType<typeof parseTimeExpression>;
+  duration: number;
+}
+
+type ParsedMutationTime =
+  | { ok: true; seconds: number }
+  | { ok: false; reason: string; fix: string };
+
+export const allRows = (timeline: ProjectTimeline): TimelineRow[] =>
+  timeline.tracks.flatMap((track) => track.rows);
+
+export function refusal(reason: string, fix: string, json: boolean): void {
+  setCommandExitCode(2);
+  const payload = { ok: false, reason, fix };
+  console.error(json ? JSON.stringify(payload, null, 2) : `${reason}; ${fix}.`);
+}
+
+export function fpsFor(indexPath: string): number {
+  const parsed = parseFpsWithDefault(
+    readCompositionFps(readFileSync(indexPath, "utf-8")) ?? undefined,
+  );
+  return fpsToNumber(parsed.ok ? parsed.value : { num: 30, den: 1 });
+}
+
+function declaredFps(source: string): number | null {
+  const raw = readCompositionFps(source);
+  if (raw === null) return null;
+  const parsed = parseFpsWithDefault(raw);
+  return parsed.ok ? fpsToNumber(parsed.value) : null;
+}
+
+function splitBaseId(row: TimelineRow): string {
+  return row.ref.startsWith("hf:") ? row.ref.slice(3) : row.id;
+}
+
+function nextFreeSplitId(source: string, base: string): string {
+  const document = new DOMParser().parseFromString(source, "text/html");
+  const existing = new Set(Array.from(document.querySelectorAll("[id]"), (element) => element.id));
+  const match = /^(.*)-(\d+)$/.exec(base);
+  const prefix = match && existing.has(match[1]!) ? match[1]! : base;
+  let suffix = 2;
+  while (existing.has(`${prefix}-${suffix}`)) suffix += 1;
+  return `${prefix}-${suffix}`;
+}
+
+function parseMutationTime(
+  context: MutationContext,
+  expression: string,
+  fix: string,
+): ParsedMutationTime {
+  const value = context.parseTime(expression);
+  if (!value.ok) return { ok: false, reason: value.reason, fix };
+  if (value.seconds < 0 || value.seconds > context.duration) {
+    return {
+      ok: false,
+      reason: `time ${value.seconds} is outside the composition duration`,
+      fix: "pass a time between 0 and the composition duration",
+    };
+  }
+  return { ok: true, seconds: value.seconds };
+}
+
+export function diff(before: string, after: string): string {
+  if (before === after) return "";
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  let prefix = 0;
+  while (
+    prefix < beforeLines.length &&
+    prefix < afterLines.length &&
+    beforeLines[prefix] === afterLines[prefix]
+  ) {
+    prefix += 1;
+  }
+  let suffix = 0;
+  while (
+    suffix < beforeLines.length - prefix &&
+    suffix < afterLines.length - prefix &&
+    beforeLines[beforeLines.length - suffix - 1] === afterLines[afterLines.length - suffix - 1]
+  ) {
+    suffix += 1;
+  }
+  const changedBefore = beforeLines.slice(prefix, beforeLines.length - suffix);
+  const changedAfter = afterLines.slice(prefix, afterLines.length - suffix);
+  const lines = [
+    "--- before",
+    "+++ after",
+    ...changedBefore.map((line) => `-${line}`),
+    ...changedAfter.map((line) => `+${line}`),
+  ];
+  const output = lines.join("\n");
+  return output.length <= 8_000 ? output : `${output.slice(0, 7_997)}...`;
+}
+
+function overlap(
+  row: TimelineRow,
+  timeline: ProjectTimeline,
+  start: number,
+  end: number,
+): TimelineRow | undefined {
+  return allRows(timeline).find(
+    (candidate) =>
+      candidate !== row &&
+      candidate.file === row.file &&
+      candidate.trackIndex === row.trackIndex &&
+      Math.max(start, candidate.start) < Math.min(end, candidate.end),
+  );
+}
+
+function moveMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const expression = typeof args.time === "string" ? args.time : "";
+  const time = parseMutationTime(context, expression, "pass a valid time expression");
+  if (!time.ok) return time;
+  const end = time.seconds + context.row.duration;
+  if (end > context.duration) {
+    return {
+      ok: false,
+      reason: `move would end at ${end}, beyond composition duration ${context.duration}`,
+      fix: `choose a start at or before the latest valid start ${context.duration - context.row.duration}`,
+    };
+  }
+  const patched = patchElementInHtml(context.before, context.resolved.target, [
+    { type: "html-attribute", property: "data-start", value: String(time.seconds) },
+  ]);
+  if (!patched.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return {
+    ok: true,
+    after: patched.html,
+    nextStart: time.seconds,
+    nextDuration: context.row.duration,
+  };
+}
+
+function splitMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const expression = typeof args.time === "string" ? args.time : "";
+  const time = parseMutationTime(context, expression, "pass a valid time expression");
+  if (!time.ok) return time;
+  const split = splitElementInHtml(
+    context.before,
+    context.resolved.target,
+    time.seconds,
+    nextFreeSplitId(context.before, splitBaseId(context.row)),
+    {
+      start: context.row.start,
+      duration: context.row.duration,
+      track: context.row.trackIndex,
+    },
+  );
+  if (!split.matched || !split.newId) {
+    return {
+      ok: false,
+      reason: `${context.ref} cannot be split at ${time.seconds}`,
+      fix: "choose a time inside the clip",
+    };
+  }
+  return {
+    ok: true,
+    after: split.html,
+    nextStart: context.row.start,
+    nextDuration: context.row.duration,
+  };
+}
+
+function trimMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const bounds = trimBounds(context, args);
+  if (!bounds.ok) return bounds;
+  const patched = patchElementInHtml(context.before, context.resolved.target, [
+    { type: "html-attribute", property: "data-start", value: String(bounds.nextStart) },
+    { type: "html-attribute", property: "data-duration", value: String(bounds.nextDuration) },
+  ]);
+  if (!patched.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return {
+    ok: true,
+    after: patched.html,
+    nextStart: bounds.nextStart,
+    nextDuration: bounds.nextDuration,
+  };
+}
+
+function trimBounds(
+  context: MutationContext,
+  args: Record<string, unknown>,
+): MutationDecision | { ok: true; nextStart: number; nextDuration: number } {
+  const input = trimInput(args);
+  if (!input.ok) return input;
+  const start = trimStart(context, input.start);
+  if (!start.ok) return start;
+  return finishTrim(
+    context,
+    start.seconds,
+    trimEnd(context, input.end),
+    trimDuration(context, input.duration),
+  );
+}
+
+function trimInput(args: Record<string, unknown>) {
+  const input = {
+    start: typeof args.start === "string" ? args.start : undefined,
+    end: typeof args.end === "string" ? args.end : undefined,
+    duration: typeof args.duration === "string" ? args.duration : undefined,
+  };
+  if (input.start || input.end || input.duration) return { ok: true as const, ...input };
+  return {
+    ok: false as const,
+    reason: "trim requires --start, --end, or --duration",
+    fix: "pass one trim option",
+  };
+}
+
+function finishTrim(
+  context: MutationContext,
+  nextStart: number,
+  end: ReturnType<typeof trimEnd>,
+  duration: ReturnType<typeof trimDuration>,
+): MutationDecision | { ok: true; nextStart: number; nextDuration: number } {
+  if (end && !end.ok) return end;
+  if (duration && !duration.ok) return duration;
+  const nextDuration = duration?.seconds ?? (end ? end.seconds - nextStart : context.row.duration);
+  if (nextDuration <= 0) {
+    return {
+      ok: false,
+      reason: "trim duration must be positive",
+      fix: "choose a later end or positive duration",
+    };
+  }
+  return { ok: true, nextStart, nextDuration };
+}
+
+function trimStart(context: MutationContext, expression: string | undefined) {
+  if (!expression) return { ok: true as const, seconds: context.row.start };
+  return parseMutationTime(context, expression, "pass a valid time expression");
+}
+
+function trimEnd(context: MutationContext, expression: string | undefined) {
+  if (!expression) return undefined;
+  return parseMutationTime(context, expression, "pass a valid time expression");
+}
+
+function trimDuration(context: MutationContext, expression: string | undefined) {
+  if (!expression) return undefined;
+  return parseMutationTime(context, expression, "pass a valid duration");
+}
+
+function deleteMutation(context: MutationContext): MutationDecision {
+  return {
+    ok: true,
+    after: removeElementFromHtml(context.before, context.resolved.target),
+    nextStart: context.row.start,
+    nextDuration: context.row.duration,
+  };
+}
+
+function setOperation(assignment: SetAssignment): PatchOperation {
+  const property =
+    assignment.field === "volume"
+      ? "data-volume"
+      : assignment.field === "rate"
+        ? "data-playback-rate"
+        : "data-track-index";
+  return { type: "html-attribute", property, value: assignment.value };
+}
+
+function setMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const positionalAssignments = positional(args)
+    .slice(1)
+    .filter((value): value is string => typeof value === "string");
+  const namedAssignments = ["volume", "rate", "track"].flatMap((field) => {
+    const value = args[field];
+    return typeof value === "string" ? [`${field}=${value}`] : [];
+  });
+  const assignments = parseSetAssignments([...positionalAssignments, ...namedAssignments]);
+  if (!assignments.ok) return assignments;
+  const patched = patchElementInHtml(
+    context.before,
+    context.resolved.target,
+    assignments.assignments.map(setOperation),
+  );
+  if (!patched.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return {
+    ok: true,
+    after: patched.html,
+    nextStart: context.row.start,
+    nextDuration: context.row.duration,
+  };
+}
+
+function duplicateMutation(
+  context: MutationContext,
+  args: Record<string, unknown>,
+): MutationDecision {
+  const expression = typeof args.at === "string" ? args.at : String(context.row.end);
+  const time = parseMutationTime(context, expression, "pass a valid insertion time");
+  if (!time.ok) return time;
+  const duplicate = duplicateElementInHtml(
+    context.before,
+    context.resolved.target,
+    `${splitBaseId(context.row)}-copy`,
+    time.seconds,
+  );
+  if (!duplicate.matched) {
+    return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
+  }
+  return {
+    ok: true,
+    after: duplicate.html,
+    nextStart: time.seconds,
+    nextDuration: context.row.duration,
+  };
+}
+
+export function decideMutation(
+  verb: MutationVerb,
+  context: MutationContext,
+  args: Record<string, unknown>,
+): MutationDecision {
+  switch (verb) {
+    case "move":
+      return moveMutation(context, args);
+    case "trim":
+      return trimMutation(context, args);
+    case "split":
+      return splitMutation(context, args);
+    case "delete":
+      return deleteMutation(context);
+    case "set":
+      return setMutation(context, args);
+    case "duplicate":
+      return duplicateMutation(context, args);
+  }
+}
+
+async function runMutation(verb: MutationVerb, args: Record<string, unknown>): Promise<void> {
+  const setup = await prepareMutation(args);
+  if (!setup.ok) return refusal(setup.reason, setup.fix, setup.json);
+  const decision = decideMutation(verb, setup.context, args);
+  if (!decision.ok) return refusal(decision.reason, decision.fix, setup.json);
+  await finishMutation(setup, verb, decision);
+}
+
+interface MutationSetup {
+  ok: true;
+  project: ReturnType<typeof resolveProject>;
+  ref: string;
+  json: boolean;
+  plan: boolean;
+  overwrite: boolean;
+  timeline: ProjectTimeline;
+  indexSource: string;
+  row: TimelineRow;
+  resolved: Extract<ReturnType<typeof resolveRef>, { ok: true }>;
+  filePath: string;
+  before: string;
+  expectedVersion: string;
+  context: MutationContext;
+}
+
+type MutationSetupResult =
+  | MutationSetup
+  | { ok: false; reason: string; fix: string; json: boolean };
+
+async function prepareMutation(args: Record<string, unknown>): Promise<MutationSetupResult> {
+  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const ref = typeof args.ref === "string" ? args.ref : "";
+  const json = args.json === true;
+  const plan = args.plan === true;
+  const overwrite = args.overwrite === true;
+  const snap = args.snap === true;
+  ensureDOMParser();
+  const indexSource = readFileSync(project.indexPath, "utf-8");
+  const initialTimeline = await describeProject(
+    project.indexPath,
+    undefined,
+    new Map([["index.html", indexSource]]),
+  );
+  const projectFps = declaredFps(indexSource);
+  if (snap && projectFps === null) {
+    return {
+      ok: false,
+      reason: "project fps is unknown",
+      fix: "set data-fps on the project, then rerun with --snap",
+      json,
+    };
+  }
+  const initialResolved = resolveRef(initialTimeline, ref);
+  if (!initialResolved.ok)
+    return { ok: false, reason: initialResolved.reason, fix: initialResolved.fix, json };
+  const initialRow = initialResolved.row;
+  const filePath = join(project.dir, initialRow.file);
+  const before = readFileSync(filePath, "utf-8");
+  const expectedVersion = fileContentVersion(before);
+  const sources = new Map([
+    ["index.html", indexSource],
+    [initialRow.file, before],
+  ]);
+  const timeline = await describeProject(project.indexPath, undefined, sources);
+  const resolved = resolveRef(timeline, ref);
+  if (!resolved.ok) return { ok: false, reason: resolved.reason, fix: resolved.fix, json };
+  const row = resolved.row;
+  const anchor = (anchorRef: string) => {
+    const found = resolveRef(timeline, anchorRef);
+    return found.ok ? found.row : undefined;
+  };
+  const parseTime = (expression: string) => {
+    const parsed = parseTimeExpression(expression, {
+      row,
+      duration: timeline.duration,
+      fps: fpsFor(project.indexPath),
+      resolveAnchor: anchor,
+    });
+    if (!parsed.ok || !snap) return parsed;
+    return { ok: true as const, seconds: Math.round(parsed.seconds * projectFps!) / projectFps! };
+  };
+  return {
+    ok: true,
+    project,
+    ref,
+    json,
+    plan,
+    overwrite,
+    timeline,
+    indexSource,
+    row,
+    resolved,
+    filePath,
+    before,
+    expectedVersion,
+    context: {
+      ref,
+      row,
+      before,
+      resolved,
+      parseTime,
+      // Nested rows use the visible host clip duration as their composition bound.
+      duration:
+        row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
+    },
+  };
+}
+
+async function finishMutation(
+  setup: MutationSetup,
+  verb: MutationVerb,
+  decision: Extract<MutationDecision, { ok: true }>,
+): Promise<void> {
+  const { after, nextStart, nextDuration } = decision;
+  const { ref, row, timeline, json, overwrite, project, before } = setup;
+  const refusalMessage = mutationRefusal(verb, after, before, ref);
+  if (refusalMessage) return refusal(refusalMessage.reason, refusalMessage.fix, json);
+  const conflict = mutationConflict(verb, overwrite, row, timeline, nextStart, nextDuration);
+  if (conflict) return refusal(conflict.reason, conflict.fix, json);
+  const describeSource = (source: string): Promise<ProjectTimeline> =>
+    describeProject(
+      project.indexPath,
+      undefined,
+      new Map([
+        ["index.html", setup.indexSource],
+        [row.file, source],
+      ]),
+    );
+  const describedBefore = await describeSource(before);
+  const result = mutationResult(row, describedBefore, setup.plan);
+  if (setup.plan) return printPlan(result, json, timeline, describeSource, after, before);
+  return applyAndPrint({
+    setup,
+    verb,
+    json,
+    row,
+    nextStart,
+    nextDuration,
+    after,
+    before,
+    result,
+    describeSource,
+  });
+}
+
+async function applyAndPrint(args: {
+  setup: MutationSetup;
+  verb: MutationVerb;
+  json: boolean;
+  row: TimelineRow;
+  nextStart: number;
+  nextDuration: number;
+  after: string;
+  before: string;
+  result: ReturnType<typeof mutationResult>;
+  describeSource: (source: string) => Promise<ProjectTimeline>;
+}): Promise<void> {
+  const receipt = applyMutation(args.setup, args.after);
+  if (receipt && "error" in receipt)
+    return refusal(receipt.error, "re-run hyperframes timeline", args.json);
+  if (!receipt && args.after !== args.before) {
+    return refusal("mutation produced no receipt", "re-run hyperframes timeline", args.json);
+  }
+  args.result.after = rowsForFile(await args.describeSource(args.after), args.row.file);
+  args.result.receipt = receipt
+    ? {
+        file: receipt.sourceFile,
+        version: receipt.version,
+        writeToken: receipt.writeToken,
+        changed: receipt.changed,
+        backupPath: receipt.backupPath,
+      }
+    : null;
+  if (args.json) {
+    console.log(JSON.stringify(withMeta(args.result), null, 2));
+    return;
+  }
+  console.log(
+    `${args.verb} ${args.row.ref}: ${args.row.start}-${args.row.end}s -> ${args.nextStart}-${args.nextStart + args.nextDuration}s\nreceipt: ${receipt?.version ?? "unchanged"}`,
+  );
+}
+
+
