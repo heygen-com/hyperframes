@@ -258,6 +258,7 @@ function mainTimelineStart(scope: DocScope, el: Element, start: number): number 
   });
 }
 
+// fallow-ignore-next-line complexity
 async function describeRow(scope: DocScope, node: DomNode, depth: number): Promise<ClipDraft> {
   const { el } = node;
   const { doc, startCache } = scope;
