@@ -213,4 +213,69 @@ describe("timeline edit command", () => {
       rmSync(appliedDir, { recursive: true, force: true });
     }
   });
+
+  it("stamps stable ids with ids", () => {
+    const dir = project();
+    try {
+      const indexPath = join(dir, "index.html");
+      writeFileSync(indexPath, readFileSync(indexPath, "utf8").replace(/ data-hf-id="[^"]+"/g, ""));
+      const result = run(dir, "ids");
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(indexPath, "utf8")).toMatch(/data-hf-id=/);
+      const output = JSON.parse(result.stdout) as { after: Array<{ ref: string }> };
+      expect(output.after.some((row) => row.ref.startsWith("hf:"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sets clip attributes", () => {
+    const dir = project();
+    try {
+      const result = run(dir, "set", "#clip", "volume=0.4", "rate=1.5", "track=2");
+      expect(result.status, result.stderr).toBe(0);
+      const html = readFileSync(join(dir, "index.html"), "utf8");
+      expect(html).toContain('data-volume="0.4"');
+      expect(html).toContain('data-playback-rate="1.5"');
+      expect(html).toContain('data-track-index="2"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("duplicates with insert-and-ripple", () => {
+    const dir = project();
+    try {
+      const result = run(dir, "duplicate", "#clip", "--at", "3");
+      expect(result.status, result.stderr).toBe(0);
+      const html = readFileSync(join(dir, "index.html"), "utf8");
+      expect(html).toContain('id="clip-copy"');
+      expect(html).toContain('id="neighbour" data-hf-id="neighbour" data-start="7"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("applies a JSON plan atomically and undoes its receipt", () => {
+    const dir = project();
+    try {
+      const planPath = join(dir, "edits.json");
+      writeFileSync(planPath, JSON.stringify([{ verb: "set", ref: "#clip", volume: "0.25" }]));
+      const before = readFileSync(join(dir, "index.html"), "utf8");
+      const planned = run(dir, "apply", planPath, "--plan");
+      expect(planned.status, planned.stderr).toBe(0);
+      expect(JSON.parse(planned.stdout)).toMatchObject({ ok: true, planned: true });
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
+
+      const applied = run(dir, "apply", planPath);
+      expect(applied.status, applied.stderr).toBe(0);
+      const appliedJson = JSON.parse(applied.stdout) as { receipt: Array<Record<string, unknown>> };
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toContain('data-volume="0.25"');
+      const undone = run(dir, "undo", JSON.stringify(appliedJson.receipt[0]));
+      expect(undone.status, undone.stderr).toBe(0);
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
