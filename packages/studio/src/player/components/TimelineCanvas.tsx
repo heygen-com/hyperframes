@@ -1,8 +1,6 @@
 import { memo } from "react";
 import { TimelineRuler } from "./TimelineRuler";
 import { PlayheadIndicator } from "./PlayheadIndicator";
-import type { TimelineRangeSelection } from "./timelineEditing";
-import type { TimelineDropPlacement } from "./timelineCallbacks";
 import {
   RULER_H,
   CLIP_Y,
@@ -15,40 +13,20 @@ import {
   getTimelineRowHeight,
 } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
-import type { ResizingClipState } from "./useTimelineClipDrag";
 import { type MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import type { Rect } from "../../utils/marqueeGeometry";
 import { TimelineLanes } from "./TimelineLanes";
-import type { TimelineLaneBaseProps } from "./timelineLaneProps";
-import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
 import { resolveSnapGuide } from "./timelineSnapping";
-
-interface TimelineCanvasProps extends TimelineLaneBaseProps {
-  major: number[];
-  minor: number[];
-  totalH: number;
-  effectiveDuration: number;
-  majorTickInterval: number;
-  rangeSelection: TimelineRangeSelection | null;
-  /** Live rubber-band multi-select rectangle (canvas coordinates), or null. */
-  marqueeRect: Rect | null;
-  resizingClip: ResizingClipState | null;
-  /** Playhead is being actively scrubbed — fills the grab-handle head. */
-  isScrubbing: boolean;
-  playheadRef: React.RefObject<HTMLDivElement | null>;
-  /** Gap strips: loud on gap-menu-row hover, quiet on the selected clip's lane. */
-  laneGapStrips: TimelineLaneGapStrips[];
-  /** Landing spot of an outside drag in progress, or null. */
-  dropPreview: TimelineDropPlacement | null;
-}
+import { useTimelineContext } from "./TimelineProvider";
 
 // A dropped clip's length is unknown until it lands; the preview shows a default.
 const DROP_PREVIEW_SECONDS = 3;
 
-export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
+export const TimelineCanvas = memo(function TimelineCanvas() {
+  const { state } = useTimelineContext();
+  const props = state.canvasProps;
   const { draggedClip, resizingClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
   const snapGuide = resolveSnapGuide(draggedClip, resizingClip);
   const draggedRowIndex =

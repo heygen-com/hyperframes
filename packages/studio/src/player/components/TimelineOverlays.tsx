@@ -14,6 +14,7 @@ import { TrackGapContextMenu } from "./TrackGapContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { trackStudioSegmentEaseEdit } from "../../telemetry/events";
+import { useTimelineContextOptional } from "./TimelineProvider";
 
 export interface ClipContextMenuState {
   x: number;
@@ -32,7 +33,7 @@ interface TrackGapContextMenuState {
   hasAnyGaps: boolean;
 }
 
-interface TimelineOverlaysProps {
+export interface TimelineOverlaysProps {
   elements: readonly TimelineElement[];
   elementsRef: MutableRefObject<readonly TimelineElement[]>;
   theme: TimelineTheme;
@@ -103,36 +104,42 @@ function readTimelineContextElement(
 // The timeline's floating overlays, rendered as siblings above the scroll area:
 // the shortcut hint, the range-edit popover, the keyframe-diamond context menu,
 // and the clip context menu.
-export function TimelineOverlays({
-  elements,
-  elementsRef,
-  theme,
-  showShortcutHint,
-  showPopover,
-  rangeSelection,
-  setShowPopover,
-  setRangeSelection,
-  kfContextMenu,
-  setKfContextMenu,
-  onDeleteKeyframe,
-  onDeleteAllKeyframes,
-  onMoveKeyframeToPlayhead,
-  clipContextMenu,
-  setClipContextMenu,
-  currentTime,
-  onSplitElement,
-  pinZoomBeforeEdit,
-  onDeleteElement,
-  onCopyClip,
-  onPasteClip,
-  onDuplicateClip,
-  canPasteClip,
-  gapContextMenu,
-  onDismissGapContextMenu,
-  onCloseTrackGap,
-  onCloseAllTrackGaps,
-  onHoverGapAction,
-}: TimelineOverlaysProps) {
+export function TimelineOverlays(props?: TimelineOverlaysProps) {
+  const context = useTimelineContextOptional();
+  const overlayProps = context?.state.overlaysProps ?? props;
+  if (overlayProps === undefined) {
+    throw new Error("TimelineOverlays requires TimelineProvider or props");
+  }
+  const {
+    elements,
+    elementsRef,
+    theme,
+    showShortcutHint,
+    showPopover,
+    rangeSelection,
+    setShowPopover,
+    setRangeSelection,
+    kfContextMenu,
+    setKfContextMenu,
+    onDeleteKeyframe,
+    onDeleteAllKeyframes,
+    onMoveKeyframeToPlayhead,
+    clipContextMenu,
+    setClipContextMenu,
+    currentTime,
+    onSplitElement,
+    pinZoomBeforeEdit,
+    onDeleteElement,
+    onCopyClip,
+    onPasteClip,
+    onDuplicateClip,
+    canPasteClip,
+    gapContextMenu,
+    onDismissGapContextMenu,
+    onCloseTrackGap,
+    onCloseAllTrackGaps,
+    onHoverGapAction,
+  } = overlayProps;
   const selectedElementId = usePlayerStore((state) => state.selectedElementId);
   const sessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
   const kfTargetSessionEpoch = kfContextMenu?.sessionEpoch;
