@@ -61,7 +61,6 @@
     "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/TimelineAutomationLane.tsx": 4,
     "packages/studio/src/player/components/TimelineCanvas.tsx": 13,
-    "packages/studio/src/player/components/TimelineClip.tsx": 0,
     "packages/studio/src/player/components/TimelineClipDiamonds.tsx": 2,
     "packages/studio/src/player/components/TimelineDiamondConnectors.tsx": 2,
     "packages/studio/src/player/components/TimelineEmptyState.tsx": 1,

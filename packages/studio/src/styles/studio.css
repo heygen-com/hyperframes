@@ -200,8 +200,8 @@ body {
 }
 
 .timeline-clip {
-  background-color: var(--timeline-clip-bg);
-  border: 1px solid var(--timeline-clip-border);
+  background-color: var(--clip-bg);
+  border: 1px solid var(--clip-border);
   border-radius: 8px;
 }
 
@@ -210,13 +210,13 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--timeline-clip-bg-active);
+  background: var(--clip-bg-active);
   opacity: 0;
   pointer-events: none;
 }
 
 .timeline-clip[data-active] {
-  border-color: var(--timeline-clip-border-active);
+  border-color: var(--clip-border-active);
 }
 
 .timeline-clip[data-active]::before {
@@ -240,11 +240,11 @@ body {
 }
 
 .timeline-clip.is-hovered {
-  background-color: var(--timeline-clip-bg-active);
+  background-color: var(--clip-bg-hover);
 }
 
 .timeline-clip[data-active].is-hovered {
-  border-color: var(--timeline-clip-border-hover);
+  border-color: var(--clip-border-hover);
 }
 
 .timeline-clip.is-selected {
@@ -258,7 +258,7 @@ body {
 .timeline-clip.is-dragging {
   /* Solid background so the picked-up clip reads clearly while dragging — audio
      clips (waveform drawn on a separate layer) would otherwise look transparent. */
-  background-color: var(--timeline-clip-bg-active);
+  background-color: var(--clip-bg-dragging);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 

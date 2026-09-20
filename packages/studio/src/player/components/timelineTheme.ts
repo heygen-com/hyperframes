@@ -22,6 +22,8 @@ export interface TimelineTheme {
   tickMinor: string;
   clipBackground: string;
   clipBackgroundActive: string;
+  clipBackgroundHover: string;
+  clipBackgroundDragging: string;
   clipBorder: string;
   clipBorderHover: string;
   clipBorderActive: string;
@@ -60,6 +62,8 @@ export const defaultTimelineTheme: TimelineTheme = {
   tickMinor: "var(--timeline-tick-minor)",
   clipBackground: "var(--timeline-clip-bg)",
   clipBackgroundActive: "var(--timeline-clip-bg-active)",
+  clipBackgroundHover: "var(--timeline-clip-bg-hover)",
+  clipBackgroundDragging: "var(--timeline-clip-bg-dragging)",
   clipBorder: "var(--timeline-clip-border)",
   clipBorderHover: "var(--timeline-clip-border-hover)",
   clipBorderActive: "var(--timeline-clip-border-active)",

@@ -65,12 +65,14 @@ export const TimelineClip = memo(function TimelineClip({
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
   const themeVariables = {
-    "--timeline-clip-bg": theme.clipBackground,
-    "--timeline-clip-bg-active": theme.clipBackgroundActive,
-    "--timeline-clip-border": theme.clipBorder,
-    "--timeline-clip-border-hover": theme.clipBorderHover,
-    "--timeline-clip-border-active": theme.clipBorderActive,
-    "--timeline-handle": theme.handleColor,
+    "--clip-bg": theme.clipBackground,
+    "--clip-bg-active": theme.clipBackgroundActive,
+    "--clip-bg-hover": theme.clipBackgroundHover,
+    "--clip-bg-dragging": theme.clipBackgroundDragging,
+    "--clip-border": theme.clipBorder,
+    "--clip-border-hover": theme.clipBorderHover,
+    "--clip-border-active": theme.clipBorderActive,
+    "--clip-handle": theme.handleColor,
   } as CSSProperties;
   const clipClassName = [
     "timeline-clip",
@@ -153,7 +155,7 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: "var(--timeline-handle)",
+              background: "var(--clip-handle)",
               opacity: handleOpacity * 0.6,
             }}
           />
@@ -183,7 +185,7 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: "var(--timeline-handle)",
+              background: "var(--clip-handle)",
               opacity: handleOpacity * 0.6,
             }}
           />

@@ -124,6 +124,8 @@ describe("TimelineClip", () => {
       ...defaultTimelineTheme,
       clipBackground: "var(--test-clip-bg)",
       clipBackgroundActive: "var(--test-clip-bg-active)",
+      clipBackgroundHover: "var(--test-clip-bg-hover)",
+      clipBackgroundDragging: "var(--test-clip-bg-dragging)",
       clipBorder: "var(--test-clip-border)",
       clipBorderHover: "var(--test-clip-border-hover)",
       clipBorderActive: "var(--test-clip-border-active)",
@@ -135,14 +137,33 @@ describe("TimelineClip", () => {
       theme,
     });
     const clip = host.querySelector<HTMLElement>(".timeline-clip")!;
-    expect(clip.style.getPropertyValue("--timeline-clip-bg")).toBe("var(--test-clip-bg)");
-    expect(clip.style.getPropertyValue("--timeline-clip-border-active")).toBe(
+    expect(clip.style.getPropertyValue("--clip-bg")).toBe("var(--test-clip-bg)");
+    expect(clip.style.getPropertyValue("--clip-border-active")).toBe(
       "var(--test-clip-border-active)",
     );
-    expect(clip.style.getPropertyValue("--timeline-handle")).toBe("var(--test-handle)");
+    expect(clip.style.getPropertyValue("--clip-handle")).toBe("var(--test-handle)");
     expect(clip.querySelector<HTMLElement>(".timeline-clip__handle-bar")?.style.background).toBe(
-      "var(--timeline-handle)",
+      "var(--clip-handle)",
     );
+    act(() => root.unmount());
+  });
+
+  it("keeps default token references off the properties they resolve", () => {
+    const { host, root } = renderClip({
+      element: {
+        id: "default-theme",
+        label: "Default",
+        tag: "div",
+        start: 0,
+        duration: 1,
+        track: 0,
+      },
+      isSelected: true,
+    });
+    const clip = host.querySelector<HTMLElement>(".timeline-clip")!;
+    expect(clip.style.getPropertyValue("--clip-bg")).toBe("var(--timeline-clip-bg)");
+    expect(clip.style.getPropertyValue("--clip-bg")).not.toBe("var(--clip-bg)");
+    expect(clip.style.getPropertyValue("--clip-handle")).toBe("var(--timeline-handle)");
     act(() => root.unmount());
   });
 
