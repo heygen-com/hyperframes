@@ -10,6 +10,7 @@ import {
   extensionForBundledSfxFile,
   inspectBundledSfxAssets,
 } from "./bundled-sfx-provider.mjs";
+import { rankMediaRows } from "./media-search.mjs";
 
 test("derives bundled SFX extension from the manifest filename", () => {
   assert.equal(extensionForBundledSfxFile("impact.wav"), ".wav");
@@ -107,4 +108,32 @@ test("prefers an exact key over a longer key with the same words", async () => {
   } finally {
     rmSync(libraryDir, { recursive: true, force: true });
   }
+});
+
+test("literal ids outrank distinct ids with the same stem", () => {
+  const rows = [
+    {
+      id: "cats",
+      title: "Cats Fighting",
+      description: "fighting cats",
+      tags: ["yowl", "fight"],
+      kind: "sfx",
+    },
+    {
+      id: "cat",
+      title: "Cat",
+      description: "single cat",
+      tags: ["meow"],
+      kind: "sfx",
+    },
+  ];
+
+  assert.deepEqual(
+    rankMediaRows("cat", rows).map((row) => row.id),
+    ["cat", "cats"],
+  );
+  assert.deepEqual(
+    rankMediaRows("cats", rows).map((row) => row.id),
+    ["cats", "cat"],
+  );
 });

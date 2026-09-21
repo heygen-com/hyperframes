@@ -29,25 +29,39 @@ const MEDIA_USE_ARGS = {
   help: { type: "boolean", alias: "h" },
 } as const;
 
-function enginePath(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
+export function resolveMediaUseEnginePath(
+  here: string,
+  fileExists: (path: string) => boolean = existsSync,
+): string {
   const candidates = [
     join(here, "..", "media-use", "resolve.mjs"),
     join(here, "skills", "media-use", "scripts", "resolve.mjs"),
   ];
-  const engine = candidates.find((candidate) => existsSync(candidate));
-  if (!engine) throw new Error("media-use engine is missing from this CLI build");
+  const engine = candidates.find((candidate) => fileExists(candidate));
+  if (!engine) {
+    throw new Error(
+      "media-use engine is missing from this CLI build; reinstall the CLI or run from a source checkout",
+    );
+  }
   return engine;
 }
 
+export function mediaUsePassthroughArgs(argv: readonly string[]): string[] {
+  const commandIndex = argv.indexOf("media-use");
+  return argv.slice(commandIndex + 2);
+}
+
 function invokeEngine(verb: string): never {
-  const commandIndex = process.argv.indexOf("media-use");
-  const verbIndex = commandIndex + 1;
-  const passed = process.argv.slice(verbIndex + 1);
+  const here = dirname(fileURLToPath(import.meta.url));
+  const passed = mediaUsePassthroughArgs(process.argv);
   const flag = verb === "resolve" ? [] : [`--${verb}`];
-  const result = spawnSync(process.execPath, [enginePath(), ...flag, ...passed], {
-    stdio: "inherit",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [resolveMediaUseEnginePath(here), ...flag, ...passed],
+    {
+      stdio: "inherit",
+    },
+  );
   if (result.error) throw result.error;
   finishCommand(result.status ?? 1);
 }

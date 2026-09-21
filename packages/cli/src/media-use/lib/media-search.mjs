@@ -34,6 +34,7 @@ function tokenize(text) {
 
 export function rankMediaRows(query, rows) {
   const asked = tokenize(query);
+  const normalizedLiteralQuery = String(query).trim().toLowerCase();
   const normalizedQuery = asked.join(" ");
   const want = new Map(asked.map((token) => [token, 1]));
   if (want.size === 0) return [];
@@ -48,7 +49,8 @@ export function rankMediaRows(query, rows) {
       row,
       strongTokens,
       allTokens,
-      exactId: tokenize(row.id).join(" ") === normalizedQuery,
+      literalId: row.id.trim().toLowerCase() === normalizedLiteralQuery,
+      stemmedId: tokenize(row.id).join(" ") === normalizedQuery,
     };
   });
   const vocabulary = new Set(parsed.flatMap(({ allTokens }) => [...allTokens]));
@@ -75,17 +77,22 @@ export function rankMediaRows(query, rows) {
     idf.set(token, Math.log((parsed.length + 1) / (documentFrequency + 1)) + 1);
   }
   return parsed
-    .map(({ row, strongTokens, allTokens, exactId }) => {
+    .map(({ row, strongTokens, allTokens, literalId, stemmedId }) => {
       let score = 0;
       for (const [token, asking] of want) {
         const weight = (idf.get(token) || 1) * asking;
         if (strongTokens.has(token)) score += STRONG_FIELD_WEIGHT * weight;
         else if (allTokens.has(token)) score += weight;
       }
-      return { row, score, exactId };
+      return { row, score, literalId, stemmedId };
     })
     .filter(({ score }) => score > 0)
-    .sort((a, b) => Number(b.exactId) - Number(a.exactId) || b.score - a.score)
+    .sort(
+      (a, b) =>
+        Number(b.literalId) - Number(a.literalId) ||
+        Number(b.stemmedId) - Number(a.stemmedId) ||
+        b.score - a.score,
+    )
     .map(({ row }) => row);
 }
 
