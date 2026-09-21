@@ -811,7 +811,8 @@ export class WebAudioTransport {
   }
 
   private applyMasterGain(): void {
-    if (this._monitorGain) this._monitorGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
+    if (this._monitorGain)
+      this._monitorGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
   }
 
   isActive(): boolean {
