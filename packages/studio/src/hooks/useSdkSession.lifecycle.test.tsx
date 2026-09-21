@@ -267,6 +267,34 @@ describe("useSdkSession unavailable telemetry", () => {
     await act(async () => root.unmount());
   });
 
+  // A fetch that REJECTS produces no response at all. It used to escape this
+  // function and be caught by the effect's outer `.catch`, which reported it as
+  // `stage: "open"` — a label that means openComposition threw. Every `stage:
+  // open` event on 0.8.56/0.8.57 carries a fetch-rejection message, so the
+  // largest failure class was a network problem reported as a parser one and
+  // was unaddressable in that bucket.
+  it("reports a rejected request as a read failure, not an open failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "network",
+    });
+    expect(trackMock).not.toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "open",
+      error: expect.anything(),
+    });
+    await act(async () => root.unmount());
+  });
+
   it("separates an unexpected response shape from a failed request", async () => {
     vi.stubGlobal(
       "fetch",

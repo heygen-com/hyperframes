@@ -16,12 +16,23 @@ import { addExternalFileReloadListener } from "./externalFileReloadBus";
  *
  * Every reason lives in this union so the full surface is readable from one
  * place — `absent_or_empty` included, even though it is a 2xx.
+ *
+ * `network` is a fetch that REJECTED — the request never produced a response.
+ * It was not in this union until 2026-09-21, so it escaped `readProjectFileOptional`
+ * and was caught by the effect's outer `.catch`, landing in `stage: "open"`.
+ * That label means `openComposition` threw (unparseable composition, OOM), and
+ * it is what the largest failure class was reported as. Every `stage: open`
+ * event measured on 0.8.56 and 0.8.57 carries a fetch-rejection message —
+ * "Failed to fetch", "Load failed", "NetworkError when attempting to fetch
+ * resource." — so the class was a network problem filed under a parser one, and
+ * unaddressable in that bucket.
  */
 type ProjectFileReadFailure =
   | { ok: false; reason: "unsafe_path" }
   | { ok: false; reason: "http_error"; status: number }
   | { ok: false; reason: "missing_content" }
-  | { ok: false; reason: "absent_or_empty" };
+  | { ok: false; reason: "absent_or_empty" }
+  | { ok: false; reason: "network" };
 
 type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
 
@@ -68,9 +79,20 @@ async function readProjectFileOptional(
   // and closes the CodeQL client-side-request-forgery flag). encodeURIComponent
   // already confines both values to single segments of this same-origin URL.
   if (path.includes("\0") || path.includes("..")) return { ok: false, reason: "unsafe_path" };
-  const res = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
-  );
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
+    );
+  } catch {
+    // The request never produced a response: offline, the dev server gone, a
+    // CSP/Private-Network-Access block, or an extension rewriting fetch. Caught
+    // here so it is reported as a READ failure — left to propagate, the effect's
+    // outer catch reported it as `stage: "open"`, which claims the composition
+    // failed to parse. Every `stage: open` event before this change was this
+    // branch, so the label made the largest class unaddressable.
+    return { ok: false, reason: "network" };
+  }
   if (!res.ok) return { ok: false, reason: "http_error", status: res.status };
   const data = (await res.json()) as { content?: string };
   // `optional=1` answers a missing file with 200 + `content: ""`, so a
@@ -299,6 +321,11 @@ export function useSdkSession(
           // openComposition threw (unparseable composition, OOM) — same total
           // bypass as the read failure above, but this one is a real defect
           // rather than a missing file. Carry the message; it is the only clue.
+          //
+          // A rejected read no longer reaches here: `readProjectFileOptional`
+          // catches its own fetch rejection and answers `reason: "network"`, so
+          // this stage now means what it says. Before that, every event in this
+          // bucket was a network error wearing a parser's label.
           trackStudioEvent("sdk_session_unavailable", {
             stage: "open",
             error: error instanceof Error ? error.message : String(error),
