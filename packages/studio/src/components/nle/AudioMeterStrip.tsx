@@ -121,6 +121,51 @@ function paint(bars: StripBars | undefined, channels: Pair): void {
   });
 }
 
+/** Attach to the live preview hook. Always returns `live`, even if start/stop throw. */
+export function followMeterHook(
+  active: AudioMeterHook | null,
+  live: AudioMeterHook | null,
+): AudioMeterHook | null {
+  if (live === active) return active;
+  try {
+    active?.stop();
+  } catch {
+    // Preview iframe was torn down; the old hook is uncallable.
+  }
+  try {
+    live?.start();
+  } catch {
+    // New preview is not ready to attach yet.
+  }
+  return live;
+}
+
+export function evictGoneMeterState(
+  state: Map<string | null, Pair>,
+  liveIds: ReadonlySet<string | null>,
+): void {
+  for (const id of [...state.keys()]) {
+    if (!liveIds.has(id)) state.delete(id);
+  }
+}
+
+export function stepAndPaintStrips(
+  strips: readonly { id: string | null }[],
+  state: Map<string | null, Pair>,
+  bars: Map<string | null, StripBars>,
+  levels: Levels | undefined,
+  now: number,
+  dt: number,
+): void {
+  for (const { id } of strips) {
+    const prev = state.get(id);
+    const next = stepPair(prev, id === null ? levels?.master : levels?.groups[id], now, dt);
+    if (next === prev) continue;
+    state.set(id, next);
+    paint(bars.get(id), next);
+  }
+}
+
 /** One rAF loop re-reads the hook off the live preview window, so a reloaded iframe is followed. */
 function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripBars>>) {
   const { previewIframeRef } = useStudioShellContext();
@@ -133,36 +178,12 @@ function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripB
     const state = new Map<string | null, Pair>();
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      const live = readHook(previewIframeRef.current);
-      if (live !== active) {
-        try {
-          active?.stop();
-        } catch {
-          // Preview iframe was torn down; the old hook is uncallable.
-        }
-        try {
-          live?.start();
-        } catch {
-          // New preview is not ready to attach yet.
-        }
-        active = live;
-      }
+      active = followMeterHook(active, readHook(previewIframeRef.current));
       const levels = active?.read();
       const dt = now - last;
       last = now;
-      const liveIds = new Set(stripsRef.current.map((s) => s.id));
-      for (const id of state.keys()) if (!liveIds.has(id)) state.delete(id);
-      for (const { id } of stripsRef.current) {
-        const next = stepPair(
-          state.get(id),
-          id === null ? levels?.master : levels?.groups[id],
-          now,
-          dt,
-        );
-        if (next === state.get(id)) continue;
-        state.set(id, next);
-        paint(bars.current.get(id), next);
-      }
+      evictGoneMeterState(state, new Set(stripsRef.current.map((s) => s.id)));
+      stepAndPaintStrips(stripsRef.current, state, bars.current, levels, now, dt);
     };
     raf = requestAnimationFrame(tick);
     return () => {

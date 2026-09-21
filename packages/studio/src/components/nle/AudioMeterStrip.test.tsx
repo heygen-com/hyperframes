@@ -7,8 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { TimelineElement } from "../../player/store/timelineElement";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
-import { fractionToLevel, levelToFraction } from "../../utils/audioMeterMath";
-import { AudioMeterStrip } from "./AudioMeterStrip";
+import { fractionToLevel, levelToFraction, SILENT_CHANNEL } from "../../utils/audioMeterMath";
+import {
+  AudioMeterStrip,
+  evictGoneMeterState,
+  followMeterHook,
+  stepAndPaintStrips,
+} from "./AudioMeterStrip";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -251,5 +256,78 @@ describe("AudioMeterStrip", () => {
     });
     const afterDown = usePlayerStore.getState().audioVolume;
     expect(startFraction - levelToFraction(afterDown)).toBeCloseTo(0.02, 6);
+  });
+});
+
+describe("followMeterHook", () => {
+  it("leaves the same hook attached", () => {
+    const hook = makeHook();
+    expect(followMeterHook(hook, hook)).toBe(hook);
+    expect(hook.stop).not.toHaveBeenCalled();
+    expect(hook.start).not.toHaveBeenCalled();
+  });
+
+  it("stops the old hook and starts the new one", () => {
+    const first = makeHook();
+    const second = makeHook();
+    expect(followMeterHook(first, second)).toBe(second);
+    expect(first.stop).toHaveBeenCalledTimes(1);
+    expect(second.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("still attaches the new hook when stop() throws", () => {
+    const first = makeHook();
+    first.stop.mockImplementation(() => {
+      throw new Error("dead realm");
+    });
+    const second = makeHook();
+    expect(followMeterHook(first, second)).toBe(second);
+    expect(second.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the live hook even when start() throws", () => {
+    const live = makeHook();
+    live.start.mockImplementation(() => {
+      throw new Error("not ready");
+    });
+    expect(followMeterHook(null, live)).toBe(live);
+  });
+});
+
+describe("evictGoneMeterState", () => {
+  it("drops ids that are no longer in the strip list", () => {
+    const rest: [typeof SILENT_CHANNEL, typeof SILENT_CHANNEL] = [SILENT_CHANNEL, SILENT_CHANNEL];
+    const state = new Map<string | null, typeof rest>([
+      ["gone", rest],
+      ["vo", rest],
+      [null, rest],
+    ]);
+    evictGoneMeterState(state, new Set(["vo", null]));
+    expect([...state.keys()]).toEqual(["vo", null]);
+  });
+});
+
+describe("stepAndPaintStrips", () => {
+  it("paints a loud group and skips a silent strip already at rest", () => {
+    const loudMask = document.createElement("div");
+    const restMask = document.createElement("div");
+    restMask.style.height = "50%";
+    const rest: [typeof SILENT_CHANNEL, typeof SILENT_CHANNEL] = [SILENT_CHANNEL, SILENT_CHANNEL];
+    const state = new Map<string | null, typeof rest>([["rest", rest]]);
+    const bars = new Map([
+      ["loud", [{ mask: loudMask, peak: null }, { mask: null, peak: null }] as const],
+      ["rest", [{ mask: restMask, peak: null }, { mask: null, peak: null }] as const],
+    ]);
+    stepAndPaintStrips(
+      [{ id: "loud" }, { id: "rest" }],
+      state,
+      bars as never,
+      { master: { l: 0, r: 0 }, groups: { loud: { l: 1, r: 1 } } },
+      0,
+      16,
+    );
+    expect(loudMask.style.height).toBe("0%");
+    expect(restMask.style.height).toBe("50%");
+    expect(state.has("loud")).toBe(true);
   });
 });
