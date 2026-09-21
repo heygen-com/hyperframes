@@ -34,6 +34,7 @@ function tokenize(text) {
 
 export function rankMediaRows(query, rows) {
   const asked = tokenize(query);
+  const normalizedQuery = asked.join(" ");
   const want = new Map(asked.map((token) => [token, 1]));
   if (want.size === 0) return [];
 
@@ -47,7 +48,7 @@ export function rankMediaRows(query, rows) {
       row,
       strongTokens,
       allTokens,
-      exactId: row.id.toLowerCase() === String(query).trim().toLowerCase(),
+      exactId: tokenize(row.id).join(" ") === normalizedQuery,
     };
   });
   const vocabulary = new Set(parsed.flatMap(({ allTokens }) => [...allTokens]));

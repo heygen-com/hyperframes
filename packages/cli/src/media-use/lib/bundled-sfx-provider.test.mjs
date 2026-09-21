@@ -100,6 +100,10 @@ test("prefers an exact key over a longer key with the same words", async () => {
     const result = await bundledSfxProvider.search("whoosh", { libraryDir });
     assert.equal(result?.localPath, join(libraryDir, "whoosh.mp3"));
     assert.equal(result?.metadata.provenance.library_key, "whoosh");
+
+    const stemmed = await bundledSfxProvider.search("whooshes", { libraryDir });
+    assert.equal(stemmed?.localPath, join(libraryDir, "whoosh.mp3"));
+    assert.equal(stemmed?.metadata.provenance.library_key, "whoosh");
   } finally {
     rmSync(libraryDir, { recursive: true, force: true });
   }
