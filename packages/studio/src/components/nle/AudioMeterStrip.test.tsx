@@ -90,6 +90,8 @@ describe("AudioMeterStrip", () => {
     tick();
     expect(first.start).toHaveBeenCalledTimes(1);
     expect(fill.style.transform).toBe("scaleY(1)");
+    const peak = host.querySelector<HTMLElement>("[class*=bg-green-400]")!;
+    expect(peak.style.bottom).toBe("calc(1 * (100% - 1px))");
 
     const second = makeHook();
     setHook(second);

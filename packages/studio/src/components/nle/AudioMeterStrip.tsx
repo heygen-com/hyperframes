@@ -51,10 +51,15 @@ function readHook(iframe: HTMLIFrameElement | null): AudioMeterHook | null {
   }
 }
 
+/** Peak-hold tick sits inside overflow-hidden: 0 dB is 1px below the top, not at 100%. */
+function peakHoldBottom(peak: number): string {
+  return `calc(${peak} * (100% - 1px))`;
+}
+
 function paint(bars: StripBars | undefined, channels: Pair): void {
   channels.forEach((ch, i) => {
     bars?.[i]?.fill?.style.setProperty("transform", `scaleY(${ch.level})`);
-    bars?.[i]?.peak?.style.setProperty("bottom", `${ch.peak * 100}%`);
+    bars?.[i]?.peak?.style.setProperty("bottom", peakHoldBottom(ch.peak));
   });
 }
 
