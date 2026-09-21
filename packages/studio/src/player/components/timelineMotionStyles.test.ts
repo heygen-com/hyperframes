@@ -71,12 +71,21 @@ describe("timeline motion styles", () => {
 
   it("layers the active mint bloom through opacity instead of a gradient background swap", () => {
     const baseTimelineClipRule = expectRule(studioCss, ".timeline-clip");
+    const timelineClipLabelRule = expectRule(studioCss, ".timeline-clip__label");
+    const activeTimelineClipLabelRule = expectRule(
+      studioCss,
+      ".timeline-clip[data-active] .timeline-clip__label",
+    );
+    const timelineClipTimecodeRule = expectRule(studioCss, ".timeline-clip__timecode");
     const activeTimelineClipRule = expectRule(studioCss, ".timeline-clip[data-active]");
     const bloomOverlayRule = expectRule(studioCss, ".timeline-clip::before");
     const activeBloomOverlayRule = expectRule(studioCss, ".timeline-clip[data-active]::before");
 
     expect(baseTimelineClipRule).toContain("background-color: rgba(255, 255, 255, 0.14)");
     expect(baseTimelineClipRule).toContain("border: 1px solid rgba(255, 255, 255, 0.22)");
+    expect(timelineClipLabelRule).toContain("color: rgba(255, 255, 255, 0.94)");
+    expect(timelineClipTimecodeRule).toContain("color: rgba(255, 255, 255, 0.8)");
+    expect(activeTimelineClipLabelRule).toContain("color: #f4fffb");
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
     expect(activeTimelineClipRule).toContain("border-color: var(--clip-border-active)");
     expect(activeTimelineClipRule).not.toContain("box-shadow");
