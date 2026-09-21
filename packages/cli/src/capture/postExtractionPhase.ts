@@ -1,4 +1,5 @@
-import { writeFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import {
   downloadAssets,
@@ -41,7 +42,7 @@ function hasVisionCredentials(skipVision: boolean): boolean {
 }
 
 function writeAssetDescriptionsFile(outputDir: string, lines: string[], header: string): void {
-  writeFileSync(
+  writeCaptureFileSync(
     join(outputDir, "extracted", "asset-descriptions.md"),
     header + lines.map((line) => `- ${line}`).join("\n") + "\n",
     "utf-8",
@@ -171,7 +172,7 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       };
 
       if (canWrite()) {
-        writeFileSync(
+        writeCaptureFileSync(
           join(outputDir, "extracted", "animations.json"),
           JSON.stringify(leanCatalog, null, 2),
           "utf-8",
@@ -201,7 +202,7 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
         // The brand-kit consumer needs the shape to decide which tile an icon belongs in; the
         // reason is what stops a substituted headline from being silent again.
         if (canWrite()) {
-          writeFileSync(
+          writeCaptureFileSync(
             join(outputDir, "extracted", "icons-manifest.json"),
             JSON.stringify(assetPass.icons, null, 2),
             "utf-8",
@@ -266,7 +267,7 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       applyLocalAssetPaths();
       if (assets.length && Array.isArray(tokens.sections)) {
         if (canWrite()) {
-          writeFileSync(
+          writeCaptureFileSync(
             join(outputDir, "extracted", "tokens.json"),
             serializeTokensForCapture(tokens),
             "utf-8",
@@ -282,14 +283,19 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
   try {
     const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
     state.pageHtml = pageHtml;
-    if (canWrite()) writeFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
+    if (canWrite())
+      writeCaptureFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
   } catch (err) {
     warnings.push(`page.html write failed: ${err}`);
   }
   // Save visible text content for AI agent to use
   if (visibleTextContent) {
     if (canWrite()) {
-      writeFileSync(join(outputDir, "extracted", "visible-text.txt"), visibleTextContent, "utf-8");
+      writeCaptureFileSync(
+        join(outputDir, "extracted", "visible-text.txt"),
+        visibleTextContent,
+        "utf-8",
+      );
     }
   }
 

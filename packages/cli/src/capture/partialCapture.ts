@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import { noDrops } from "./assetDownloader.js";
 import type {
@@ -76,15 +77,15 @@ export function writePartialCaptureBundle(
   mkdirSync(opts.outputDir, { recursive: true });
   const extractedDir = join(opts.outputDir, "extracted");
   mkdirSync(extractedDir, { recursive: true });
-  writeFileSync(join(extractedDir, "tokens.json"), serializeTokensForCapture(state.tokens));
-  writeFileSync(
+  writeCaptureFileSync(join(extractedDir, "tokens.json"), serializeTokensForCapture(state.tokens));
+  writeCaptureFileSync(
     join(extractedDir, "design-styles.json"),
     JSON.stringify(state.designStyles, null, 2),
   );
-  writeFileSync(join(extractedDir, "page.html"), state.pageHtml);
+  writeCaptureFileSync(join(extractedDir, "page.html"), state.pageHtml);
   const metaPath = join(opts.outputDir, "meta.json");
   try {
-    writeFileSync(
+    writeCaptureFileSync(
       metaPath,
       JSON.stringify({ id: hostname + "-video", name: hostname, partial: true }, null, 2),
       { flag: "wx" },

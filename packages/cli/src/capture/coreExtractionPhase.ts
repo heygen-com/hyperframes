@@ -9,7 +9,8 @@ import type { IconCandidate } from "./faviconRanker.js";
 import { startCdpAnimationCapture } from "./animationCataloger.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import { detectLibraries } from "./contentExtractor.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import { extractHtml } from "./htmlExtractor.js";
 import { extractTokens } from "./tokenExtractor.js";
@@ -202,7 +203,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
         });
         capturedShaders = unique;
         if (canWrite()) {
-          writeFileSync(
+          writeCaptureFileSync(
             join(outputDir, "extracted", "shaders.json"),
             JSON.stringify(unique, null, 2),
             "utf-8",
@@ -225,7 +226,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     state.tokens = tokens;
     // Save tokens.json without SVG outerHTML (kept in memory for asset downloader)
     if (canWrite()) {
-      writeFileSync(
+      writeCaptureFileSync(
         join(outputDir, "extracted", "tokens.json"),
         serializeTokensForCapture(tokens),
         "utf-8",
@@ -238,7 +239,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       const designStyles = await extractDesignStyles(page1);
       state.designStyles = designStyles;
       if (canWrite()) {
-        writeFileSync(
+        writeCaptureFileSync(
           join(outputDir, "extracted", "design-styles.json"),
           JSON.stringify(designStyles, null, 2),
           "utf-8",
