@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
+import { FlatSliderReadout } from "./propertyPanelFlatSliderReadout";
 import {
   VALUE_TIER_LABEL_CLASS,
   VALUE_TIER_VALUE_CLASS,
@@ -278,6 +279,7 @@ export function FlatSlider({
   centerTick,
   onReset,
   onCommit,
+  onCommitText,
 }: {
   label: string;
   value: number;
@@ -290,6 +292,13 @@ export function FlatSlider({
   centerTick?: boolean;
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
+  /**
+   * Makes the value readout editable: click it (or focus + Enter) and type.
+   * Receives the raw text on Enter/blur and returns false to refuse it, which
+   * keeps the field open and marks it invalid. Audio mixing is exact work —
+   * "-6 dB" or "0.25s" should be typeable, not hunted for on a 200px track.
+   */
+  onCommitText?: (text: string) => boolean | void;
 }) {
   const track = useTrackDesignInput();
   // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
@@ -538,14 +547,14 @@ export function FlatSlider({
           style={{ left: `${clampedPct}%` }}
         />
       </div>
-      <span
-        data-flat-slider-value="true"
-        className={`w-11 shrink-0 text-right font-mono text-[10px] ${
-          tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
-        }`}
-      >
-        {displayValue}
-      </span>
+      <FlatSliderReadout
+        label={label}
+        displayValue={displayValue}
+        tier={tier}
+        disabled={disabled}
+        onCommitText={onCommitText}
+        onCommitted={() => track("input", label)}
+      />
       {(centerTick || onReset) && (
         <span data-flat-slider-reset-slot="true" className="w-3.5 shrink-0">
           {tier === "explicitCustom" && onReset && (

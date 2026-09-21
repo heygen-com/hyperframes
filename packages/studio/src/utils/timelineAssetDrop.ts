@@ -116,6 +116,12 @@ export function buildTimelineAssetInsertHtml(input: {
   track: number;
   zIndex: number;
   geometry?: { left: number; top: number; width: number; height: number };
+  /**
+   * Video only: true when the file carries an audio stream, so the clip is
+   * inserted audible (`data-has-audio="true"`, no `muted`) and the mixer
+   * renders its sound. Unknown or false keeps the muted default.
+   */
+  hasAudio?: boolean;
 }): string {
   const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
@@ -126,7 +132,10 @@ export function buildTimelineAssetInsertHtml(input: {
   }
 
   if (input.kind === "video") {
-    return `<video ${sharedAttrs} muted playsinline style="${visualStyles}"></video>`;
+    // `muted` and `data-has-audio="true"` are mutually exclusive by the lint
+    // contract (video_has_audio_but_muted): an audible drop takes the latter.
+    const audio = input.hasAudio ? 'data-has-audio="true"' : "muted";
+    return `<video ${sharedAttrs} ${audio} playsinline style="${visualStyles}"></video>`;
   }
 
   return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;

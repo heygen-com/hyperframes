@@ -66,6 +66,12 @@ export interface MediaColorMetadata {
 export interface MediaMetadata {
   kind: "video" | "image" | "audio" | "unknown";
   color: MediaColorMetadata;
+  /**
+   * Whether a video carries an audio stream. Studio's drop path reads it to
+   * decide between a muted clip and an audible one (`data-has-audio="true"`);
+   * absent when the probe could not run, so callers fall back to muted.
+   */
+  hasAudio?: boolean;
   probeError?: string;
 }
 
@@ -221,7 +227,11 @@ export async function probeMediaMetadata(
       if (kind === "image") return item.codec_type === "video";
       return item.codec_type === kind && item.disposition?.attached_pic !== 1;
     });
-    return { kind, color: classifyMediaColor(stream) };
+    const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
+    if (kind === "video") {
+      metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
+    }
+    return metadata;
   } catch {
     return { kind, color: classifyMediaColor(null), probeError: "ffprobe returned invalid json" };
   }

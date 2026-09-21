@@ -11,6 +11,7 @@ import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
 import { clampAudioGain } from "@hyperframes/core/audio-gain";
+import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
 import {
   downloadToTemp,
   isHttpUrl,
@@ -349,6 +350,33 @@ function buildVolumeExpression(track: AudioTrack, ignoreKeyframes = false): stri
   return `volume=${escapeExpressionCommas(expression)}:eval=frame`;
 }
 
+/**
+ * `afade` stages for a track's clip-edge fades, ready to append after its
+ * volume filter (each begins with a comma), or "" when the track has none.
+ *
+ * Times are the track's own stream time: the input is already cut at
+ * `-ss mediaStart`, so 0 is the clip's start. Fades that outrun the clip are
+ * scaled to meet inside it, exactly as the preview does (`fadeGain`). Linear
+ * (`tri`, the default) on both sides for the same reason.
+ */
+export function buildFadeFilters(
+  track: Pick<AudioTrack, "start" | "end" | "fadeIn" | "fadeOut">,
+): string {
+  const duration = track.end - track.start;
+  const { fadeIn, fadeOut } = clampFadesToDuration(
+    { fadeIn: track.fadeIn ?? 0, fadeOut: track.fadeOut ?? 0 },
+    duration,
+  );
+  const stages: string[] = [];
+  if (fadeIn > 0) stages.push(`afade=t=in:st=0:d=${formatFilterNumber(fadeIn)}`);
+  if (fadeOut > 0 && duration > 0) {
+    stages.push(
+      `afade=t=out:st=${formatFilterNumber(Math.max(0, duration - fadeOut))}:d=${formatFilterNumber(fadeOut)}`,
+    );
+  }
+  return stages.length ? `,${stages.join(",")}` : "";
+}
+
 interface ExtractResult {
   success: boolean;
   outputPath: string;
@@ -585,6 +613,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   ): AudioElement => {
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
+    const fades = readElementFades(el);
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
     const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
     // Audio only in v1 (matches resolveAudioGroups, which only scans
@@ -600,6 +629,8 @@ export function parseAudioElements(html: string): AudioElement[] {
       playbackRate: readElementRateSpec(el),
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
+      ...(fades.fadeIn > 0 ? { fadeIn: fades.fadeIn } : {}),
+      ...(fades.fadeOut > 0 ? { fadeOut: fades.fadeOut } : {}),
       ...(fxChain ? { fxChain } : {}),
       ...(automation ? { automation } : {}),
       ...(group
@@ -854,7 +885,7 @@ async function mixAudioTracks(
       // 7.0.2, an 8.x nightly and 8.1.1; the un-reset form is wrong on the
       // middle two.
       filterParts.push(
-        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
+        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter}${buildFadeFilters(track)},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
       );
     });
 
@@ -1030,7 +1061,7 @@ async function mixGroupMembers(
       // on the same builds: these are delayed branches padded to length and then
       // amix'd, so without the renumbering a delayed member lands at t=0 and a
       // group of four or more loses its last one.
-      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
+      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter}${buildFadeFilters(track)},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
     });
   const mixInputs = memberTracks.map((_, i) => `[a${i}]`).join("");
 
@@ -1391,6 +1422,8 @@ export async function processCompositionAudio(
           // Gain is already in the samples when baked, so mix at unity.
           volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
           volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
+          ...(element.fadeIn ? { fadeIn: element.fadeIn } : {}),
+          ...(element.fadeOut ? { fadeOut: element.fadeOut } : {}),
           ...(tailSeconds > 0 ? { tailSeconds } : {}),
         };
 

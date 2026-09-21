@@ -202,6 +202,12 @@
       "import": "./src/audioGain.ts",
       "types": "./src/audioGain.ts"
     },
+    "./audio-fade": {
+      "bun": "./src/audioFade.ts",
+      "node": "./dist/audioFade.js",
+      "import": "./src/audioFade.ts",
+      "types": "./src/audioFade.ts"
+    },
     "./speed-ramp": {
       "bun": "./src/speedRamp.ts",
       "node": "./dist/speedRamp.js",
@@ -545,6 +551,10 @@
       "./audio-gain": {
         "import": "./dist/audioGain.js",
         "types": "./dist/audioGain.d.ts"
+      },
+      "./audio-fade": {
+        "import": "./dist/audioFade.js",
+        "types": "./dist/audioFade.d.ts"
       },
       "./speed-ramp": {
         "import": "./dist/speedRamp.js",

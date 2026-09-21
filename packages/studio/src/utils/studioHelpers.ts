@@ -377,6 +377,29 @@ export async function resolveDroppedAssetDuration(
   return duration;
 }
 
+/**
+ * Whether a dropped video carries an audio stream, from the server's ffprobe
+ * metadata. Decides muted vs `data-has-audio="true"` at insert time; any
+ * failure answers false so the drop still lands, muted, the way it always did.
+ */
+export async function resolveDroppedAssetHasAudio(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<boolean> {
+  if (kind !== "video") return false;
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(assetPath)}`,
+    );
+    if (!response.ok) return false;
+    const data = (await response.json()) as { metadata?: { hasAudio?: boolean } } | null;
+    return data?.metadata?.hasAudio === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveDroppedAssetDimensions(
   projectId: string,
   assetPath: string,

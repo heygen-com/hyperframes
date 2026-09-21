@@ -2,6 +2,7 @@ import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
+import { fadeGain, NO_FADES, readElementFades, type AudioFades } from "../audioFade.js";
 import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
 import { rateAt, sourceTimeAt, timeAtSourceTime, type RateSpec } from "../speedRamp.js";
 import { clampAudioGain } from "../audioGain.js";
@@ -61,6 +62,8 @@ export type RuntimeMediaClip = {
    * race between the 60 Hz transport tick and GSAP's own seek.
    */
   volumeKeyframes?: VolumeKeyframe[];
+  /** Clip-edge fades from `data-fade-in` / `data-fade-out`; see audioFade.ts. */
+  fades?: AudioFades;
 };
 
 export function refreshRuntimeMediaCache(params?: {
@@ -126,6 +129,7 @@ export function refreshRuntimeMediaCache(params?: {
       rate,
       loop,
       sourceDuration,
+      fades: readElementFades(el),
     };
     mediaClips.push(clip);
     if (el.tagName === "VIDEO") videoClips.push(clip);
@@ -360,6 +364,16 @@ export function syncRuntimeMedia(params: {
       } else {
         // Volume unchanged since last tick — use data-volume as the baseline.
         authorVolume = fallbackAuthorVolume;
+      }
+
+      // Clip-edge fades ride on top of whatever resolved the level above —
+      // static, lane, probed keyframes or GSAP — the same way the render puts
+      // `afade` after the `volume` filter (audioMixer.ts `buildFadeFilters`).
+      // Clip-local time, like the lane: the fade-out is anchored to the clip's
+      // end, not to a position in the source.
+      const fades = clip.fades ?? NO_FADES;
+      if (fades.fadeIn > 0 || fades.fadeOut > 0) {
+        authorVolume *= fadeGain(params.timeSeconds - clip.start, clip.duration, fades);
       }
 
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops

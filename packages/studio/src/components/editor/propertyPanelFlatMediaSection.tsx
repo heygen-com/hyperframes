@@ -25,6 +25,13 @@ import {
   audioGainToFaderPosition,
   audioGainToText,
 } from "@hyperframes/core/audio-gain";
+import {
+  HF_AUDIO_FADE_IN_DATA_KEY,
+  HF_AUDIO_FADE_OUT_DATA_KEY,
+  formatFadeSeconds,
+  readFadeSeconds,
+} from "@hyperframes/core/audio-fade";
+import { parseGainInput, parseRateInput, parseSecondsInput } from "./audioInspectorInput";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
@@ -92,6 +99,12 @@ export function FlatMediaSection({
     (el as HTMLMediaElement).duration ||
     0;
   const mediaStartMax = Math.max(30, Math.ceil(sourceDuration || mediaStart + 10));
+  const fadeIn = readFadeSeconds(element.dataAttributes[HF_AUDIO_FADE_IN_DATA_KEY]);
+  const fadeOut = readFadeSeconds(element.dataAttributes[HF_AUDIO_FADE_OUT_DATA_KEY]);
+  const clipDuration = Number.parseFloat(element.dataAttributes.duration ?? "") || 0;
+  // A fade cannot outrun the clip; without a known duration, offer 10 s.
+  const fadeMax = clipDuration > 0 ? clipDuration : 10;
+  const fadeText = (seconds: number) => (seconds > 0 ? formatFadeSeconds(seconds) : "");
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
   const hasAudio = element.dataAttributes["has-audio"] === "true";
@@ -256,6 +269,13 @@ export function FlatMediaSection({
                     void onSetAttribute("volume", formatAudioGain(gain));
                   }
                 }}
+                onCommitText={(text) => {
+                  const gain = parseGainInput(text);
+                  if (gain === null) return false;
+                  if (volumeAutomated) onCommitVolumeAt?.(gain);
+                  else void onSetAttribute("volume", formatAudioGain(gain));
+                  return true;
+                }}
               />
             </div>
             <AutomationToggle
@@ -285,6 +305,13 @@ export function FlatMediaSection({
                     void onSetAttribute("playback-rate", formatNumericValue(speed));
                   }
                 }}
+                onCommitText={(text) => {
+                  const speed = parseRateInput(text);
+                  if (speed === null) return false;
+                  if (rate?.automated) rate.onCommitAt(speed);
+                  else void onSetAttribute("playback-rate", formatNumericValue(speed));
+                  return true;
+                }}
               />
             </div>
             <AutomationToggle
@@ -295,7 +322,10 @@ export function FlatMediaSection({
               onRemoveAutomation={rate ? () => rate.onRemoveAutomation() : undefined}
             />
           </div>
-          {rate?.canApplyPreset && (
+          {/* Speed presets are picture-driven ramps (slow-mo reveals, whip
+              speed-ups); on a bare audio clip they only warp pitch, so the
+              row is video-only. */}
+          {rate?.canApplyPreset && !isAudio && (
             <FlatSelectRow
               label="Speed preset"
               value=""
@@ -312,7 +342,62 @@ export function FlatMediaSection({
             tier={mediaStart === 0 ? "default" : "explicitCustom"}
             displayValue={formatTimingValue(mediaStart)}
             onCommit={(next) => void onSetAttribute("media-start", (next / 100).toFixed(2))}
+            onCommitText={(text) => {
+              const seconds = parseSecondsInput(text);
+              if (seconds === null) return false;
+              void onSetAttribute("media-start", seconds.toFixed(2));
+              return true;
+            }}
           />
+          {(isAudio || hasAudio) && (
+            <>
+              {/* Clip-edge fades: `data-fade-in` / `data-fade-out`, seconds.
+                  The same two numbers the timeline's corner handles drag; an
+                  empty write removes the attribute. */}
+              <FlatSlider
+                label="Fade in"
+                value={Math.round(fadeIn * 100)}
+                min={0}
+                max={Math.round(fadeMax * 100)}
+                tier={fadeIn === 0 ? "default" : "explicitCustom"}
+                displayValue={formatTimingValue(fadeIn)}
+                onCommit={(next) =>
+                  void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(next / 100))
+                }
+                onCommitText={(text) => {
+                  const seconds = parseSecondsInput(text);
+                  if (seconds === null) return false;
+                  void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(seconds));
+                  return true;
+                }}
+                onReset={
+                  fadeIn > 0 ? () => void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, "") : undefined
+                }
+              />
+              <FlatSlider
+                label="Fade out"
+                value={Math.round(fadeOut * 100)}
+                min={0}
+                max={Math.round(fadeMax * 100)}
+                tier={fadeOut === 0 ? "default" : "explicitCustom"}
+                displayValue={formatTimingValue(fadeOut)}
+                onCommit={(next) =>
+                  void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(next / 100))
+                }
+                onCommitText={(text) => {
+                  const seconds = parseSecondsInput(text);
+                  if (seconds === null) return false;
+                  void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(seconds));
+                  return true;
+                }}
+                onReset={
+                  fadeOut > 0
+                    ? () => void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, "")
+                    : undefined
+                }
+              />
+            </>
+          )}
           <FlatToggle
             label="Loop"
             checked={hasLoop}

@@ -188,6 +188,12 @@
       "types": "./dist/audioGain.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-fade": {
+      "source": "./src/audioFade.ts",
+      "runtime": "./dist/audioFade.js",
+      "types": "./dist/audioFade.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./speed-ramp": {
       "source": "./src/speedRamp.ts",
       "runtime": "./dist/speedRamp.js",

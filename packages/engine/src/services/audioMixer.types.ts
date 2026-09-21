@@ -16,6 +16,9 @@ export interface AudioElement {
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
+  /** Clip-edge fades from `data-fade-in` / `data-fade-out`, seconds; absent means none. */
+  fadeIn?: number;
+  fadeOut?: number;
   /** Serialised FX chain JSON from `data-fx-chain`, when set. */
   fxChain?: string;
   /** Serialised automation JSON from `data-automation`, when set. */
@@ -44,6 +47,14 @@ export interface AudioTrack {
   duration: number;
   volume: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
+  /**
+   * Clip-edge fades in seconds, applied by `afade` after the volume filter so
+   * they ride on top of the static gain and any envelope. The fade-out ends at
+   * `end`, so it also silences an FX tail — a fade to silence is a fade to
+   * silence.
+   */
+  fadeIn?: number;
+  fadeOut?: number;
   /**
    * Seconds of FX tail past `end` that the mix should let through — a reverb or
    * delay still decaying when the clip's own audio stops. Absent means cut at

@@ -4,6 +4,7 @@ import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
+import { TimelineClipFades } from "./TimelineClipFades";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -74,6 +75,7 @@ export const TimelineClip = memo(function TimelineClip({
     "--clip-border-active": theme.clipBorderActive,
     "--clip-handle": theme.handleColor,
   } as CSSProperties;
+  const isAudioClip = isAudioTimelineElement(el);
   const clipClassName = [
     "timeline-clip",
     "absolute",
@@ -81,7 +83,7 @@ export const TimelineClip = memo(function TimelineClip({
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
-    isAudioTimelineElement(el) ? "is-audio" : "",
+    isAudioClip ? "is-audio" : "",
   ]
     .filter((className) => className.length > 0)
     .join(" ");
@@ -198,6 +200,17 @@ export const TimelineClip = memo(function TimelineClip({
         </span>
       )}
       {children}
+      {/* Fade handles + ramps for anything the mixer hears — audio clips and
+          videos marked data-has-audio. They write data-fade-in/out on the clip
+          and are the timeline half of the inspector's Fade rows. */}
+      {(isAudioClip || el.hasAudio) && !isGestureActor && (
+        <TimelineClipFades
+          el={el}
+          pps={pps}
+          widthPx={widthPx}
+          showHandles={(isHovered || isSelected) && !isDragging}
+        />
+      )}
     </button>
   );
 });

@@ -465,6 +465,36 @@ describe("syncRuntimeMedia", () => {
       expect(only).toBeCloseTo(0.55, 5);
     });
 
+    /**
+     * Clip-edge fades multiply whatever the level resolved to, at clip-local
+     * time, the way the render appends `afade` after the `volume` filter.
+     */
+    it("applies data-fade-in / data-fade-out on top of data-volume, anchored to the clip edges", () => {
+      const at = (t: number) => {
+        const clip = createMockClip({ start: 2, end: 12, duration: 10, volume: 0.8 });
+        Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+        clip.el.setAttribute("data-fade-in", "2");
+        clip.el.setAttribute("data-fade-out", "1");
+        clip.fades = { fadeIn: 2, fadeOut: 1 };
+        let authored = -1;
+        syncRuntimeMedia({
+          clips: [clip],
+          timeSeconds: t,
+          playing: true,
+          playbackRate: 1,
+          onElementVolume: (_el, _effective, authorVolume) => {
+            authored = authorVolume;
+          },
+        });
+        return authored;
+      };
+      expect(at(2.5)).toBeCloseTo(0.2, 5); // a quarter into the 2 s fade-in
+      expect(at(3)).toBeCloseTo(0.4, 5); // halfway through the fade-in
+      expect(at(6)).toBeCloseTo(0.8, 5); // body of the clip: data-volume alone
+      expect(at(11.5)).toBeCloseTo(0.4, 5); // halfway through the 1 s fade-out
+      expect(at(11.9)).toBeCloseTo(0.08, 5); // almost at the clip's end
+    });
+
     it("sends boosted author gain to Web Audio while keeping the native element legal", () => {
       const clip = createMockClip({ start: 0, end: 10, volume: 3.98 });
       Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
