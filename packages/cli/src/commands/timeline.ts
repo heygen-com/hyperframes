@@ -5,6 +5,7 @@ import { formatTimeline } from "../timeline/formatTimeline.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
+import { runApply, runIds, runUndo } from "../timeline/a2Commands.js";
 import { runMutation } from "../timeline/a2MutationCommand.js";
 import type { MutationVerb } from "../timeline/a2Shared.js";
 
@@ -54,7 +55,7 @@ export default defineCommand({
         meta: { name: "ids", description: "Stamp stable ids on timeline clips" },
         args: { dir: { type: "string" }, json: { type: "boolean", default: false } },
         async run({ args }) {
-          await (await import("../timeline/a2Commands.js")).runIds(args);
+          await runIds(args);
         },
       }),
     apply: () =>
@@ -67,7 +68,7 @@ export default defineCommand({
           plan: { type: "boolean", default: false },
         },
         async run({ args }) {
-          await (await import("../timeline/a2Commands.js")).runApply(args);
+          await runApply(args);
         },
       }),
     undo: () =>
@@ -79,7 +80,7 @@ export default defineCommand({
           json: { type: "boolean", default: false },
         },
         async run({ args }) {
-          await (await import("../timeline/a2Commands.js")).runUndo(args);
+          await runUndo(args);
         },
       }),
   },

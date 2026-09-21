@@ -123,7 +123,7 @@ export function diff(before: string, after: string): string {
   return output.length <= 8_000 ? output : `${output.slice(0, 7_997)}...`;
 }
 
-export function overlap(
+function overlap(
   row: TimelineRow,
   timeline: ProjectTimeline,
   start: number,
