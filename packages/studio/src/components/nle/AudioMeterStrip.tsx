@@ -51,15 +51,18 @@ function readHook(iframe: HTMLIFrameElement | null): AudioMeterHook | null {
   }
 }
 
-/** Peak-hold tick sits inside overflow-hidden: 0 dB is 1px below the top, not at 100%. */
-function peakHoldBottom(peak: number): string {
-  return `calc(${peak} * (100% - 1px))`;
+/** 0 dB is bottom 100% plus 1px down, so the tick stays inside overflow-hidden.
+ *  A calc() bottom does not stick as an inline style on Windows happy-dom. */
+function paintPeak(el: HTMLElement | null, peak: number): void {
+  if (!el) return;
+  el.style.setProperty("bottom", `${peak * 100}%`);
+  el.style.setProperty("transform", peak >= 1 ? "translateY(1px)" : "none");
 }
 
 function paint(bars: StripBars | undefined, channels: Pair): void {
   channels.forEach((ch, i) => {
     bars?.[i]?.fill?.style.setProperty("transform", `scaleY(${ch.level})`);
-    bars?.[i]?.peak?.style.setProperty("bottom", peakHoldBottom(ch.peak));
+    paintPeak(bars?.[i]?.peak ?? null, ch.peak);
   });
 }
 
@@ -124,7 +127,11 @@ function Bar({ fillRef, peakRef }: { fillRef: Ref<HTMLDivElement>; peakRef: Ref<
         className="absolute inset-0 origin-bottom bg-green-500"
         style={{ transform: "scaleY(0)" }}
       />
-      <div ref={peakRef} className="absolute inset-x-0 bottom-0 h-px bg-green-400" />
+      <div
+        ref={peakRef}
+        data-testid="meter-peak"
+        className="absolute inset-x-0 bottom-0 h-px bg-green-400"
+      />
     </div>
   );
 }
