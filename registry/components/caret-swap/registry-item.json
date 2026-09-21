@@ -1,0 +1,119 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "caret-swap",
+  "type": "hyperframes:component",
+  "title": "Caret Swap",
+  "description": "A gradient caret expands over one phrase, collapses to the left, then types its replacement with a blinking caret.",
+  "tags": ["motion-primitive", "text-effects", "typography", "swap", "typewriter", "remocn-port"],
+  "jobs": ["emphasize"],
+  "family": "text-effects",
+  "profile": "caret-swap",
+  "author": "Remocn",
+  "authorUrl": "https://github.com/Remocn/remocn",
+  "license": "MIT AND OFL-1.1",
+  "syncPoints": [
+    {
+      "id": "wipe-start",
+      "phase": "in",
+      "offset": 0.6666666666666666,
+      "description": "The caret starts covering the first phrase in the default 100-frame demo. Shorter hosts compress the phases together."
+    }
+  ],
+  "files": [
+    {
+      "path": "caret-swap.html",
+      "target": "compositions/components/caret-swap/caret-swap.html",
+      "type": "hyperframes:snippet"
+    },
+    {
+      "path": "Geist-Latin.woff2",
+      "target": "compositions/components/caret-swap/Geist-Latin.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "Geist-OFL.txt",
+      "target": "compositions/components/caret-swap/Geist-OFL.txt",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "from_text",
+      "type": "string",
+      "role": "content",
+      "label": "From text",
+      "description": "The phrase covered by the expanding caret.",
+      "default": "Executing it?"
+    },
+    {
+      "id": "to_text",
+      "type": "string",
+      "role": "content",
+      "label": "To text",
+      "description": "The replacement phrase, typed one character at a time.",
+      "default": "That's where everyone quits"
+    },
+    {
+      "id": "font_size",
+      "type": "number",
+      "role": "style",
+      "label": "Font size",
+      "description": "Maximum size in pixels. Both phrases shrink together to fit the host.",
+      "default": 72,
+      "min": 36,
+      "max": 160,
+      "step": 2,
+      "unit": "px"
+    },
+    {
+      "id": "font_weight",
+      "type": "enum",
+      "role": "style",
+      "label": "Font weight",
+      "description": "Weight used by both phrases. Every option is included in the bundled Geist font.",
+      "default": "400",
+      "options": [
+        {
+          "value": "400",
+          "label": "Regular"
+        },
+        {
+          "value": "500",
+          "label": "Medium"
+        },
+        {
+          "value": "600",
+          "label": "Semibold"
+        },
+        {
+          "value": "700",
+          "label": "Bold"
+        }
+      ]
+    },
+    {
+      "id": "color",
+      "type": "color",
+      "role": "style",
+      "label": "Text color",
+      "description": "Color of both phrases.",
+      "default": "#171717"
+    },
+    {
+      "id": "caret_color",
+      "type": "color",
+      "role": "style",
+      "label": "Caret top",
+      "description": "Top color of the caret gradient.",
+      "default": "#FF4DAA"
+    },
+    {
+      "id": "caret_color_end",
+      "type": "color",
+      "role": "style",
+      "label": "Caret bottom",
+      "description": "Bottom color of the caret gradient.",
+      "default": "#8A5CF6"
+    }
+  ]
+}

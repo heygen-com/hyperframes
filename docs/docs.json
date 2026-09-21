@@ -304,7 +304,7 @@
               },
               {
                 "group": "Text & captions",
-                "tag": "71",
+                "tag": "72",
                 "expanded": false,
                 "pages": [
                   {
@@ -333,12 +333,13 @@
                   },
                   {
                     "group": "Typography & Text",
-                    "tag": "42",
+                    "tag": "43",
                     "expanded": false,
                     "pages": [
                       "catalog/components/blur-out-up",
                       "catalog/components/bottom-up-letters",
                       "catalog/components/caption-blend-difference",
+                      "catalog/components/caret-swap",
                       "catalog/components/char-slam-explode",
                       "catalog/components/focus-blur-resolve",
                       "catalog/components/headline-slam",
