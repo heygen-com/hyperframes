@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { StereoLevel } from "@hyperframes/core/runtime/levelTap";
 import { usePlayerStore } from "../../player";
+import { clampNumber } from "../../utils/studioHelpers";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
@@ -40,7 +41,7 @@ interface Strip {
 type Bars = { mask: HTMLElement | null; peak: HTMLElement | null };
 type StripBars = [Bars, Bars];
 
-const MASTER_LABEL = "Master";
+const MONITOR_LABEL = "Monitor";
 
 /** Where the fill turns amber, then red, on the same piecewise dB scale the marks use. */
 const AMBER_AT = markFraction(-6);
@@ -60,13 +61,13 @@ function useStrips(): Strip[] {
     }
     return [
       ...[...labels].map(([id, label]) => ({ id, label, volume: volumes.get(id) ?? 1 })),
-      { id: null, label: MASTER_LABEL, volume: masterVolume },
+      { id: null, label: MONITOR_LABEL, volume: masterVolume },
     ];
   }, [elements, masterVolume]);
 }
 
 /** Group volume through the existing `data-volume` write path (live while dragging, one
- *  undo entry on release); master volume through the player store's own volume action —
+ *  undo entry on release); monitor volume through the player store's own volume action —
  *  the same one `VolumeControl` in `PlayerControls` already drives. */
 function useVolumeHandlers(): {
   onLive: (id: string | null, volume: number) => void;
@@ -149,6 +150,8 @@ function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripB
       const levels = active?.read();
       const dt = now - last;
       last = now;
+      const liveIds = new Set(stripsRef.current.map((s) => s.id));
+      for (const id of state.keys()) if (!liveIds.has(id)) state.delete(id);
       for (const { id } of stripsRef.current) {
         const next = stepPair(
           state.get(id),
@@ -208,11 +211,13 @@ function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<
  *  track jumps the thumb there, not just grabbing it exactly. */
 function Fader({
   label,
+  title,
   volume,
   onLive,
   onCommit,
 }: {
   label: string;
+  title: string;
   volume: number;
   onLive: (v: number) => void;
   onCommit: (v: number) => void;
@@ -225,13 +230,13 @@ function Fader({
     (clientY: number): number => {
       const rect = trackRef.current?.getBoundingClientRect();
       if (!rect || rect.height === 0) return fraction;
-      return Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
+      return clampNumber(1 - (clientY - rect.top) / rect.height, 0, 1);
     },
     [fraction],
   );
 
   const nudge = useCallback(
-    (delta: number) => onCommit(fractionToLevel(Math.max(0, Math.min(1, fraction + delta)))),
+    (delta: number) => onCommit(fractionToLevel(clampNumber(fraction + delta, 0, 1))),
     [onCommit, fraction],
   );
 
@@ -241,6 +246,7 @@ function Fader({
       role="slider"
       tabIndex={0}
       aria-label={label}
+      title={title}
       aria-orientation="vertical"
       aria-valuemin={0}
       aria-valuemax={100}
@@ -309,6 +315,7 @@ function MeterStrip({
       >
         <Fader
           label={`${strip.label} volume`}
+          title={strip.id === null ? "Preview monitor volume" : `${strip.label} volume`}
           volume={strip.volume}
           onLive={(v) => onLive(strip.id, v)}
           onCommit={(v) => onCommit(strip.id, v)}

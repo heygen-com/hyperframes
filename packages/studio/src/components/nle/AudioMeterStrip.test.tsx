@@ -96,7 +96,7 @@ describe("AudioMeterStrip", () => {
     expect(mount().host.querySelector("[data-testid=audio-meter-strip]")).toBeNull();
   });
 
-  it("shows one strip per group plus Master, and hides when toggled off", () => {
+  it("shows one strip per group plus Monitor, and hides when toggled off", () => {
     usePlayerStore.setState({
       elements: [
         clip({ id: "1", audioGroup: "music", audioGroupLabel: "Music" }),
@@ -106,7 +106,8 @@ describe("AudioMeterStrip", () => {
     const { host } = mount();
     expect(host.textContent).toContain("Music");
     expect(host.textContent).toContain("vo");
-    expect(host.textContent).toContain("Master");
+    expect(host.textContent).toContain("Monitor");
+    expect(host.textContent).not.toContain("Master");
     act(() => useAudioMetersVisible.getState().setVisible(false));
     expect(host.querySelector("[data-testid=audio-meter-strip]")).toBeNull();
   });
@@ -184,15 +185,15 @@ describe("AudioMeterStrip", () => {
       "Set volume",
     );
 
-    const masterFader = host.querySelector<HTMLElement>('[aria-label="Master volume"]')!;
+    const monitorFader = host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
     act(() => {
-      masterFader.dispatchEvent(
+      monitorFader.dispatchEvent(
         new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientY: 0 }),
       );
     });
     expect(usePlayerStore.getState().audioVolume).toBe(1);
     act(() => {
-      masterFader.dispatchEvent(
+      monitorFader.dispatchEvent(
         new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientY: 100 }),
       );
     });
@@ -202,10 +203,32 @@ describe("AudioMeterStrip", () => {
     restoreRect();
   });
 
+  it("the monitor fader writes setAudioVolume and is labeled Monitor", () => {
+    const restoreRect = stubTrackRect();
+    const originalPointerCapture = Element.prototype.setPointerCapture;
+    Element.prototype.setPointerCapture = vi.fn();
+    const setAudioVolume = vi.fn((volume: number) => {
+      usePlayerStore.setState({ audioVolume: volume });
+    });
+    usePlayerStore.setState({ elements: [clip({})], audioVolume: 1, setAudioVolume });
+    const { host } = mount();
+    expect(host.textContent).toContain("Monitor");
+    const fader = host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
+    expect(fader.getAttribute("title")).toBe("Preview monitor volume");
+    act(() => {
+      fader.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientY: 100 }),
+      );
+    });
+    expect(setAudioVolume).toHaveBeenCalledWith(0);
+    Element.prototype.setPointerCapture = originalPointerCapture;
+    restoreRect();
+  });
+
   it("nudges a consistent step in the visual (dB-scale) position, and aria-valuenow tracks the thumb", () => {
     usePlayerStore.setState({ elements: [clip({})], audioVolume: 0.5 });
     const { host } = mount();
-    const masterFader = host.querySelector<HTMLElement>('[aria-label="Master volume"]')!;
+    const masterFader = host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
     const startFraction = levelToFraction(0.5);
     expect(masterFader.getAttribute("aria-valuenow")).toBe(String(Math.round(startFraction * 100)));
 

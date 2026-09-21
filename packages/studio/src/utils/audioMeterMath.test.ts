@@ -39,6 +39,10 @@ describe("fractionToLevel", () => {
     expect(fractionToLevel(-0.5)).toBe(0);
     expect(fractionToLevel(1.5)).toBe(1);
   });
+  it("returns 0 for non-finite input", () => {
+    expect(fractionToLevel(Number.NaN)).toBe(0);
+    expect(fractionToLevel(Number.POSITIVE_INFINITY)).toBe(0);
+  });
 });
 
 describe("stepChannel", () => {
