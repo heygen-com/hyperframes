@@ -16,6 +16,7 @@ import {
   diff,
   fpsFor,
   mutationConflict,
+  publicReceipt,
   refusal,
   rowAt,
   type MutationContext,
@@ -190,15 +191,7 @@ async function applyAndPrint(args: {
     return refusal("mutation produced no receipt", "re-run hyperframes timeline", args.json);
   }
   args.result.after = rowsForFile(await args.describeSource(args.after), args.row.file);
-  args.result.receipt = receipt
-    ? {
-        file: receipt.sourceFile,
-        version: receipt.version,
-        writeToken: receipt.writeToken,
-        changed: receipt.changed,
-        backupPath: receipt.backupPath,
-      }
-    : null;
+  args.result.receipt = receipt ? publicReceipt(receipt) : null;
   if (args.json) {
     console.log(JSON.stringify(withMeta(args.result), null, 2));
     return;

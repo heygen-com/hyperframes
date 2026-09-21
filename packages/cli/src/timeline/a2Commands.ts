@@ -1,5 +1,5 @@
 import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-server";
-import type { AppliedFileMutation } from "@hyperframes/studio-server";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
@@ -8,7 +8,6 @@ import { parseTimeExpression } from "./timeExpr.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
-import { stampHfIds } from "./a2Mutations.js";
 import {
   allRows,
   decideMutation,
@@ -17,6 +16,7 @@ import {
   isRecord,
   mutationConflict,
   positional,
+  publicReceipt,
   refuse,
   rowAt,
   type MutationContext,
@@ -31,7 +31,7 @@ export async function runIds(args: Record<string, unknown>): Promise<void> {
   const files = [...new Set(["index.html", ...allRows(beforeTimeline).map((row) => row.file)])];
   const inputs = files.flatMap((file) => {
     const before = readFileSync(join(project.dir, file), "utf-8");
-    const after = stampHfIds(before);
+    const after = ensureHfIds(before);
     return after === before
       ? []
       : [{ sourceFile: file, absPath: join(project.dir, file), before, after }];
@@ -288,14 +288,4 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
   };
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else console.log(`undid ${value.file}`);
-}
-
-function publicReceipt(receipt: AppliedFileMutation) {
-  return {
-    file: receipt.sourceFile,
-    version: receipt.version,
-    writeToken: receipt.writeToken,
-    changed: receipt.changed,
-    backupPath: receipt.backupPath,
-  };
 }

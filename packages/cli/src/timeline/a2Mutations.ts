@@ -1,14 +1,8 @@
-import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-
 export type SetField = "volume" | "rate" | "track";
 
 export interface SetAssignment {
   field: SetField;
   value: string;
-}
-
-export function stampHfIds(source: string): string {
-  return ensureHfIds(source);
 }
 
 export function parseSetAssignments(

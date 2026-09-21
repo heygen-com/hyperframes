@@ -4,7 +4,7 @@ import {
   removeElementFromHtml,
   splitElementInHtml,
 } from "@hyperframes/studio-server";
-import type { PatchOperation } from "@hyperframes/studio-server";
+import type { AppliedFileMutation, PatchOperation } from "@hyperframes/studio-server";
 import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { readFileSync } from "node:fs";
@@ -44,6 +44,16 @@ export function refusal(reason: string, fix: string, json: boolean): void {
 
 export function refuse(kind: string, detail: { reason: string; fix: string }, json: boolean): void {
   refusal(`${kind}: ${detail.reason}`, detail.fix, json);
+}
+
+export function publicReceipt(receipt: AppliedFileMutation) {
+  return {
+    file: receipt.sourceFile,
+    version: receipt.version,
+    writeToken: receipt.writeToken,
+    changed: receipt.changed,
+    backupPath: receipt.backupPath,
+  };
 }
 
 export function fpsFor(indexPath: string): number {
