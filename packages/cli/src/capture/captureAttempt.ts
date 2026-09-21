@@ -1,15 +1,8 @@
 import { LottieDiscovery } from "./lottieDiscovery.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 /**
- * Website capture orchestrator.
- *
- * Two-pass capture approach:
- * Pass 1: Full page load (all JS) → catalog animations + snapshot canvases
- * Pass 2: Framework scripts blocked → extract stable HTML/CSS
- *
- * This ensures we get both:
+ * Two-pass capture: full load catalogs animations, then scripts are blocked to extract stable HTML.
  * - Rich animation metadata for Claude Code to recreate
- * - Stable, renderable HTML that won't crash in Puppeteer
  */
 
 import { mkdirSync, existsSync } from "node:fs";
