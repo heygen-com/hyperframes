@@ -54,12 +54,12 @@
     "packages/studio/src/player/components/CompositionThumbnail.tsx": 2,
     "packages/studio/src/player/components/Player.tsx": 2,
     "packages/studio/src/player/components/PlayerControls.tsx": 1,
-    "packages/studio/src/player/components/PlayheadIndicator.tsx": 3,
+    "packages/studio/src/player/components/PlayheadIndicator.tsx": 0,
     "packages/studio/src/player/components/ShortcutsPanel.tsx": 7,
     "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
     "packages/studio/src/telemetry/client.ts": 1,
     "packages/studio/src/webmcp/webmcpTestUtils.ts": 1,
-    "packages/studio/src/styles/studio.css": 51
+    "packages/studio/src/styles/studio.css": 48
   }
 }
