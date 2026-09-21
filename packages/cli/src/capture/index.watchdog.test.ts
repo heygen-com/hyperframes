@@ -48,7 +48,7 @@ describe("capture navigation retry launch", () => {
       dropped: partial.dropped,
       warnings: [],
       lastPhase: {
-          schema: CAPTURE_PHASE_SCHEMA,
+        schema: CAPTURE_PHASE_SCHEMA,
         phase: "complete",
         status: "completed",
         remainingMs: 1,
