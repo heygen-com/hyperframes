@@ -67,12 +67,12 @@ export const defaultTimelineTheme: TimelineTheme = {
   clipBorder: "var(--timeline-clip-border)",
   clipBorderHover: "var(--timeline-clip-border-hover)",
   clipBorderActive: "var(--timeline-clip-border-active)",
-  // Shadows stay literal: a light host still wants a dark contact shadow, so
-  // these are not part of the surface/hairline/text/clip-colour theming ask.
+  // Shadows keep their dark-mode values in tokens so hosts can override the
+  // complete timeline palette without changing this object.
   clipShadow: "none",
-  clipShadowHover: "0 2px 8px rgba(0,0,0,0.2)",
-  clipShadowActive: "0 2px 8px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.04)",
-  clipShadowDragging: "0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)",
+  clipShadowHover: "var(--timeline-clip-shadow-hover)",
+  clipShadowActive: "var(--timeline-clip-shadow-active)",
+  clipShadowDragging: "var(--timeline-clip-shadow-dragging)",
   handleColor: "var(--timeline-handle)",
   panelResizeSeam: "var(--timeline-resize-seam)",
   panelResizeActive: "var(--timeline-resize-active)",

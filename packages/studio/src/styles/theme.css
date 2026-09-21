@@ -61,9 +61,9 @@
   --timeline-tick-text: rgba(255, 255, 255, 0.34);
   --timeline-tick-major: rgba(255, 255, 255, 0.1);
   --timeline-tick-minor: rgba(255, 255, 255, 0.06);
-  --timeline-clip-bg: rgba(255, 255, 255, 0.14);
-  --timeline-clip-label: rgba(255, 255, 255, 0.94);
-  --timeline-clip-timecode: rgba(255, 255, 255, 0.8);
+  --timeline-clip-bg: rgba(255, 255, 255, 0.12);
+  --timeline-clip-label: rgba(255, 255, 255, 0.5);
+  --timeline-clip-timecode: rgba(255, 255, 255, 0.34);
   --timeline-clip-label-active: #f4fffb;
   --timeline-clip-bg-active: rgba(60, 230, 172, 0.2);
   --timeline-clip-bg-hover: rgba(255, 255, 255, 0.16);
@@ -77,6 +77,38 @@
   --timeline-track-clip-fill: rgba(255, 255, 255, 0.055);
   --timeline-track-clip-active: rgba(60, 230, 172, 0.16);
   --timeline-track-label: rgba(255, 255, 255, 0.5);
+  --timeline-accent: #3ce6ac;
+  --timeline-accent-soft: rgba(60, 230, 172, 0.18);
+  --timeline-accent-faint: rgba(60, 230, 172, 0.055);
+  --timeline-accent-fill: rgba(60, 230, 172, 0.1);
+  --timeline-accent-glow: rgba(60, 230, 172, 0.5);
+  --timeline-accent-border: rgba(60, 230, 172, 0.7);
+  --timeline-accent-rail: rgba(60, 230, 172, 0.35);
+  --timeline-accent-hover: rgba(60, 230, 172, 0.25);
+  --timeline-accent-button-bg: rgba(60, 230, 172, 0.15);
+  --timeline-danger: rgba(239, 68, 68, 0.7);
+  --timeline-info-bg: rgba(59, 130, 246, 0.12);
+  --timeline-info-border: rgba(59, 130, 246, 0.4);
+  --timeline-dialog-bg: #1b1b1f;
+  --timeline-diamond-bg: #171717;
+  --timeline-diamond-border: rgba(255, 255, 255, 0.14);
+  --timeline-text-solid: #ffffff;
+  --timeline-text-faint: rgba(255, 255, 255, 0.35);
+  --timeline-text-dim: rgba(255, 255, 255, 0.4);
+  --timeline-text-soft: rgba(255, 255, 255, 0.75);
+  --timeline-text-bright: rgba(255, 255, 255, 0.7);
+  --timeline-snap-guide: rgba(255, 255, 255, 0.6);
+  --timeline-overlay-bg: rgba(0, 0, 0, 0.8);
+  --timeline-overlay-bg-strong: rgba(0, 0, 0, 0.85);
+  --timeline-input-bg: rgba(0, 0, 0, 0.3);
+  --timeline-automation-rail: rgba(255, 255, 255, 0.08);
+  --timeline-automation-point-muted: rgba(0, 0, 0, 0.5);
+  --timeline-diamond-muted: #a3a3a3;
+  --timeline-beat: rgb(34, 197, 94);
+  --timeline-clip-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --timeline-clip-shadow-active: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --timeline-clip-shadow-dragging:
+    0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
   /* -------------------------------------------------------------- geometry */
 

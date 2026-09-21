@@ -87,10 +87,10 @@ describe("timeline motion styles", () => {
     expect(timelineClipLabelRule).toContain("color: var(--timeline-clip-label)");
     expect(timelineClipTimecodeRule).toContain("color: var(--timeline-clip-timecode)");
     expect(activeTimelineClipLabelRule).toContain("color: var(--timeline-clip-label-active)");
-    expect(themeCss).toContain("--timeline-clip-bg: rgba(255, 255, 255, 0.14)");
+    expect(themeCss).toContain("--timeline-clip-bg: rgba(255, 255, 255, 0.12)");
     expect(themeCss).toContain("--timeline-clip-border: rgba(255, 255, 255, 0.22)");
-    expect(themeCss).toContain("--timeline-clip-label: rgba(255, 255, 255, 0.94)");
-    expect(themeCss).toContain("--timeline-clip-timecode: rgba(255, 255, 255, 0.8)");
+    expect(themeCss).toContain("--timeline-clip-label: rgba(255, 255, 255, 0.5)");
+    expect(themeCss).toContain("--timeline-clip-timecode: rgba(255, 255, 255, 0.34)");
     expect(themeCss).toContain("--timeline-clip-label-active: #f4fffb");
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
     expect(activeTimelineClipRule).toContain("border-color: var(--clip-border-active)");

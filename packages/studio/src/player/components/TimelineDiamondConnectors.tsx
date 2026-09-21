@@ -213,8 +213,8 @@ function SegmentEaseControl({
           zIndex: 3,
           pointerEvents: "auto",
           padding: 0,
-          border: "1px solid rgba(255, 255, 255, 0.14)",
-          background: "#171717",
+          border: "1px solid var(--timeline-diamond-border)",
+          background: "var(--timeline-diamond-bg)",
           cursor: "pointer",
         }}
         onPointerDown={(e) => {

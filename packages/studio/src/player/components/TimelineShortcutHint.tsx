@@ -13,7 +13,7 @@ export function TimelineShortcutHint({ theme }: TimelineShortcutHintProps) {
       >
         <kbd
           className="text-[9px] font-mono px-1 py-0.5 rounded-sm"
-          style={{ color: theme.textSecondary, background: "rgba(255,255,255,0.06)" }}
+          style={{ color: theme.textSecondary, background: "var(--timeline-tick-minor)" }}
         >
           Shift
         </kbd>
