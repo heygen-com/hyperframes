@@ -7,6 +7,7 @@ import {
   cachedLocalVectorRevision,
   fetchLocalVectors,
   isMediaVectorRow,
+  mediaSemanticRanking,
   vectorPairAgrees,
 } from "./localSemantic.js";
 import { LOCAL_MODEL_DIMENSIONS } from "./localModel.js";
@@ -135,6 +136,10 @@ describe("fetchLocalVectors", () => {
     expect(cachedLocalVectorRevision(dir)).toBe("r1");
   });
 
+  it("reports no semantic result without a media-vector cache", async () => {
+    expect(await mediaSemanticRanking("click", dir)).toBeNull();
+  });
+
   it("accepts a complete media-vector pair with validated rows", async () => {
     serveMediaPair({
       names: ["click"],
@@ -222,7 +227,7 @@ describe("media-vector validation", () => {
     expect(isMediaVectorRow({ ...row, dimensions: { width: 1920, height: 1080 } })).toBe(true);
   });
 
-  it.each([
+  const invalidPairs: Array<[string, Array<[string, Buffer]>]> = [
     ["missing metadata", [["media-vectors.bin", Buffer.alloc(4)]]],
     ["missing matrix", [["media-vectors.json", Buffer.from("{}")]]],
     [
@@ -244,21 +249,23 @@ describe("media-vector validation", () => {
         ["media-vectors.bin", Buffer.alloc(4)],
       ],
     ],
-  ])("rejects pairs with %s", (_name, fetched) => {
+  ];
+
+  it.each(invalidPairs)("rejects pairs with %s", (_name, fetched) => {
     expect(vectorPairAgrees(fetched, "media-vectors")).toBe(false);
   });
 
   it("accepts a matching media-vector pair", () => {
     const metadata = {
       names: ["click"],
-      dimensions: 1,
+      dimensions: LOCAL_MODEL_DIMENSIONS,
       rows: [row],
     };
     expect(
       vectorPairAgrees(
         [
           ["media-vectors.json", Buffer.from(JSON.stringify(metadata))],
-          ["media-vectors.bin", Buffer.alloc(4)],
+          ["media-vectors.bin", Buffer.alloc(4 * LOCAL_MODEL_DIMENSIONS)],
         ],
         "media-vectors",
       ),
