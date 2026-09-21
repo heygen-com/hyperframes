@@ -112,7 +112,7 @@ interface CatalogEntry {
 
 // ── Discovery ──────────────────────────────────────────────────────────────
 
-function discoverItems(): { kind: ItemKind; manifest: RegistryItem }[] {
+export function discoverItems(): { kind: ItemKind; manifest: RegistryItem }[] {
   const items: { kind: ItemKind; manifest: RegistryItem }[] = [];
   const registryManifest = JSON.parse(
     readFileSync(join(registryDir, "registry.json"), "utf-8"),
@@ -765,7 +765,7 @@ function generateVariables(manifest: RegistryItem): string[] {
  * not installed yet. Collapsed because these run to several hundred lines and an
  * expanded wall of markup would push everything else off the page.
  */
-function primarySource(
+export function primarySource(
   kind: ItemKind,
   manifest: RegistryItem,
 ): { path: string; source: string } | null {

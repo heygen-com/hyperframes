@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isContainedIn } from "./registry-target-paths.mjs";
 
 interface MirrorEntry {
   status: number;
@@ -10,6 +11,25 @@ interface MirrorEntry {
 type MirrorIndex = Record<string, MirrorEntry>;
 
 export type MirrorMode = "replay" | "record";
+
+// Text/font/js cover what's recorded today; json/image/video are allowed for a future source.
+// Anything else, or any response over the size cap below, is refused, not silently recorded,
+// so an unexpected fetch fails the run instead of writing an unbounded, unvetted body to disk.
+const MIRROR_CONTENT_TYPES = [
+  /^text\//,
+  /^font\//,
+  /^image\//,
+  /^video\//,
+  /^application\/json/,
+  /^application\/javascript/,
+];
+const MAX_MIRROR_BYTES = 8 * 1024 * 1024;
+
+function mirrorableContentType(contentType: string | null): boolean {
+  if (!contentType) return false;
+  const base = (contentType.split(";")[0] ?? "").trim().toLowerCase();
+  return MIRROR_CONTENT_TYPES.some((re) => re.test(base));
+}
 
 export interface FetchMirror {
   /** Throws when a fetch during the run was not in the mirror, even if the caller swallowed the error. */
@@ -52,12 +72,23 @@ export function installFetchMirror(dir: string, mode: MirrorMode): FetchMirror {
   async function recordFetch(input: Parameters<typeof fetch>[0], init?: RequestInit) {
     const response = await realFetch(input, init);
     if (!response.ok) return response;
+    const url = requestUrl(input);
+    const contentType = response.headers.get("content-type");
+    if (!mirrorableContentType(contentType)) {
+      misses.push(`${url} (content-type ${contentType ?? "none"} is not mirrored)`);
+      return response;
+    }
     const body = Buffer.from(await response.arrayBuffer());
+    if (body.length > MAX_MIRROR_BYTES) {
+      misses.push(`${url} (${body.length} bytes exceeds the ${MAX_MIRROR_BYTES}-byte mirror cap)`);
+      return response;
+    }
     const file = `${createHash("sha256").update(body).digest("hex").slice(0, 24)}.bin`;
     mkdirSync(dir, { recursive: true });
+    if (!isContainedIn(dir, file))
+      throw new Error(`catalog fetch mirror: refusing to write outside ${dir}`);
     writeFileSync(join(dir, file), body);
-    const contentType = response.headers.get("content-type");
-    index[requestUrl(input)] = { status: response.status, contentType, file };
+    index[url] = { status: response.status, contentType, file };
     return new Response(body, { status: response.status, headers: response.headers });
   }
 

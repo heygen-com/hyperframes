@@ -7,7 +7,10 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     // still dedupes the actual script load across every instance).
     const PLAYER_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js';
     const REST_SECONDS = 3;
-    const MAX_DOM_PLAYERS = 6;
+    // The grid is 3 columns; the 200px prefetch margin keeps roughly a row above and below the
+    // viewport intersecting too. 24 covers every dom-tier tile a normal viewport can show at
+    // once, so a visible tile is never left on its dark fallback behind cheaper CSS-only cards.
+    const MAX_DOM_PLAYERS = 24;
     const MAX_WEBGL_PLAYERS = 1;
     const READY_TIMEOUT_MS = 6000;
     // BEGIN revealWhenPainted: calls reveal one frame after the player's assets have settled (the player fires assetsready within 8 s).

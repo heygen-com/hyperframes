@@ -62,6 +62,64 @@ export const CatalogSlot = ({ slot, children }) => (
   </div>
 );
 
+/** The Tune panel's variable list, with a pulsing cue while more rows sit below the fold. */
+export const TuneList = ({ variables, values, notes, onValues, onNotes, onTyping, control, readout }) => {
+  // BEGIN hasMoreBelow: true once unseen content sits past the scrolled viewport (4px epsilon).
+  const hasMoreBelow = (scrollHeight, scrollTop, clientHeight) => scrollHeight - scrollTop - clientHeight > 4;
+  // END hasMoreBelow
+  const listRef = useRef(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const check = () => {
+    const el = listRef.current;
+    if (el) setMoreBelow(hasMoreBelow(el.scrollHeight, el.scrollTop, el.clientHeight));
+  };
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    for (const child of el.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div className="hf-ve-tune-list-wrap">
+      <div className="hf-ve-tune-list" ref={listRef} onScroll={check}>
+        {variables.map((v) => (
+          <div key={v.id}>
+            <div className="hf-ve-row">
+              <label className="hf-ve-label">{v.label ?? v.id}</label>
+              <span className="hf-ve-value">{readout(v, values[v.id])}</span>
+            </div>
+            {control(
+              v,
+              values[v.id],
+              (next) => onValues((prev) => ({ ...prev, [v.id]: next })),
+              notes[v.id],
+              (note) => onNotes((prev) => ({ ...prev, [v.id]: note })),
+              onTyping,
+            )}
+            {v.description && <p className="hf-ve-desc">{v.description}</p>}
+          </div>
+        ))}
+      </div>
+      {moreBelow && (
+        <div className="hf-ve-tune-more" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M2.5 4.5L6 8L9.5 4.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const CatalogDetail = ({
   previewSrc,
   compositionId,
@@ -668,6 +726,7 @@ export const CatalogDetail = ({
   font-weight: 600;
 }
 .hf-ve-tune-head small { font-weight: 400; font-size: 13px; color: var(--ve-muted); }
+.hf-ve-tune-list-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
 .hf-ve-tune-list {
   flex: 1;
   min-height: 0;
@@ -678,6 +737,29 @@ export const CatalogDetail = ({
   padding: 16px;
   align-content: start;
   mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+}
+.hf-ve-tune-more {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: var(--ve-hover);
+  color: var(--ve-muted);
+  pointer-events: none;
+  animation: hf-ve-tune-more-pulse 1.6s ease-in-out infinite;
+}
+@keyframes hf-ve-tune-more-pulse {
+  0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+  50% { opacity: 0.55; transform: translateX(-50%) scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hf-ve-tune-more { animation: none; }
 }
 .hf-ve-tune-foot {
   display: grid;
@@ -2144,25 +2226,16 @@ export const CatalogDetail = ({
                 <div className="hf-ve-tune-head">
                   Tune <small>{variables.length} {variables.length === 1 ? "variable" : "variables"}</small>
                 </div>
-                <div className="hf-ve-tune-list">
-                  {variables.map((v) => (
-                    <div key={v.id}>
-                      <div className="hf-ve-row">
-                        <label className="hf-ve-label">{v.label ?? v.id}</label>
-                        <span className="hf-ve-value">{readout(v, values[v.id])}</span>
-                      </div>
-                      {control(
-                        v,
-                        values[v.id],
-                        (next) => setValues((prev) => ({ ...prev, [v.id]: next })),
-                        notes[v.id],
-                        (note) => setNotes((prev) => ({ ...prev, [v.id]: note })),
-                        setTyping,
-                      )}
-                      {v.description && <p className="hf-ve-desc">{v.description}</p>}
-                    </div>
-                  ))}
-                </div>
+                <TuneList
+                  variables={variables}
+                  values={values}
+                  notes={notes}
+                  onValues={setValues}
+                  onNotes={setNotes}
+                  onTyping={setTyping}
+                  control={control}
+                  readout={readout}
+                />
                 <div className="hf-ve-tune-foot">
                   <button
                     type="button"
