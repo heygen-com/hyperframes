@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  fractionToLevel,
   levelToFraction,
   markFraction,
   SILENT_CHANNEL,
@@ -21,27 +20,6 @@ describe("levelToFraction", () => {
   it("is monotonic between marks", () => {
     expect(levelToFraction(0.5)).toBeGreaterThan(markFraction(-12));
     expect(levelToFraction(0.5)).toBeLessThan(markFraction(-3));
-  });
-});
-
-describe("fractionToLevel", () => {
-  it("round-trips through levelToFraction at each dB mark", () => {
-    [0, -3, -6, -12, -24].forEach((db) => {
-      const f = markFraction(db);
-      expect(levelToFraction(fractionToLevel(f))).toBeCloseTo(f, 6);
-    });
-  });
-  it("pins the ends: silence at 0, unity at 1", () => {
-    expect(fractionToLevel(0)).toBe(0);
-    expect(fractionToLevel(1)).toBe(1);
-  });
-  it("clamps out-of-range fractions", () => {
-    expect(fractionToLevel(-0.5)).toBe(0);
-    expect(fractionToLevel(1.5)).toBe(1);
-  });
-  it("returns 0 for non-finite input", () => {
-    expect(fractionToLevel(Number.NaN)).toBe(0);
-    expect(fractionToLevel(Number.POSITIVE_INFINITY)).toBe(0);
   });
 });
 

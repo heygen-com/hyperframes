@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { isAudioTimelineElement } from "./timelineInspector";
-import { clampNumber } from "./studioHelpers";
 
 /** dB stops of the meter scale, top to bottom; equal spacing between stops. */
 export const METER_DB_MARKS = [0, -3, -6, -12, -24] as const;
@@ -25,22 +24,6 @@ export function levelToFraction(linear: number): number {
 /** Fraction of the bar height at which a dB mark sits, 0 at the bottom. */
 export function markFraction(db: number): number {
   return levelToFraction(10 ** (db / 20));
-}
-
-/** Inverse of `levelToFraction`: a 0..1 fader fraction back to a linear volume. */
-export function fractionToLevel(fraction: number): number {
-  if (!Number.isFinite(fraction)) return 0;
-  const f = clampNumber(fraction, 0, 1);
-  if (f <= 0) return 0;
-  if (f >= 1) return 1;
-  const n = STOPS.length - 1;
-  const scaled = f * n;
-  const seg = Math.min(n - 1, Math.floor(scaled));
-  const segFraction = scaled - seg;
-  const j = n - seg;
-  const hi = STOPS[j - 1] as number;
-  const lo = STOPS[j] as number;
-  return 10 ** ((lo + segFraction * (hi - lo)) / 20);
 }
 
 export interface MeterChannel {

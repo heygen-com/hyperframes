@@ -8,6 +8,14 @@ import {
   type Ref,
   type RefObject,
 } from "react";
+import {
+  AUDIO_GAIN_FADER_MIN,
+  AUDIO_GAIN_FADER_MAX,
+  audioGainToFaderPosition,
+  audioFaderPositionToGain,
+  audioGainToText,
+  formatAudioGain,
+} from "@hyperframes/core/audio-gain";
 import type { StereoLevel } from "@hyperframes/core/runtime/levelTap";
 import { usePlayerStore } from "../../player";
 import { clampNumber } from "../../utils/studioHelpers";
@@ -17,8 +25,6 @@ import { useTimelineEditContextOptional } from "../../contexts/TimelineEditConte
 import {
   METER_DB_MARKS,
   useProjectHasAudio,
-  fractionToLevel,
-  levelToFraction,
   markFraction,
   stepPair,
   type MeterPair as Pair,
@@ -79,14 +85,20 @@ function useVolumeHandlers(): {
   const onLive = useCallback(
     (id: string | null, volume: number) => {
       if (id === null) setAudioVolume(volume);
-      else onSetAudioGroupAttributeLive?.(id, "data-volume", String(volume));
+      else onSetAudioGroupAttributeLive?.(id, "data-volume", formatAudioGain(volume));
     },
     [onSetAudioGroupAttributeLive, setAudioVolume],
   );
   const onCommit = useCallback(
     (id: string | null, volume: number) => {
       if (id === null) setAudioVolume(volume);
-      else void onSetAudioGroupAttributeQuiet?.(id, "data-volume", String(volume), "Set volume");
+      else
+        void onSetAudioGroupAttributeQuiet?.(
+          id,
+          "data-volume",
+          formatAudioGain(volume),
+          "Set volume",
+        );
     },
     [onSetAudioGroupAttributeQuiet, setAudioVolume],
   );
@@ -227,39 +239,59 @@ function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<
   );
 }
 
-/** A vertical fader beside the meter, reusing the meter's own dB scale for its
- *  travel so the thumb lines up with the marks. Dragging anywhere on the
- *  track jumps the thumb there, not just grabbing it exactly. */
+/** Uses the authored clip-gain scale; meter readings have a separate scale. */
 function Fader({
   label,
   title,
   volume,
+  maxPosition,
   onLive,
   onCommit,
 }: {
   label: string;
   title: string;
   volume: number;
+  maxPosition: number;
   onLive: (v: number) => void;
   onCommit: (v: number) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-  const fraction = levelToFraction(Math.min(volume, 1));
+  const draggingRef = useRef<number | null>(null);
+  const position = audioGainToFaderPosition(volume);
+  const span = maxPosition - AUDIO_GAIN_FADER_MIN;
+  const fraction = (position - AUDIO_GAIN_FADER_MIN) / span;
+  const readout = audioGainToText(volume);
 
-  const fractionAt = useCallback(
+  const positionAt = useCallback(
     (clientY: number): number => {
       const rect = trackRef.current?.getBoundingClientRect();
-      if (!rect || rect.height === 0) return fraction;
-      return clampNumber(1 - (clientY - rect.top) / rect.height, 0, 1);
+      if (!rect || rect.height === 0) return position;
+      return (
+        AUDIO_GAIN_FADER_MIN + clampNumber(1 - (clientY - rect.top) / rect.height, 0, 1) * span
+      );
     },
-    [fraction],
+    [position, span],
   );
 
-  const nudge = useCallback(
-    (delta: number) => onCommit(fractionToLevel(clampNumber(fraction + delta, 0, 1))),
-    [onCommit, fraction],
-  );
+  const moveTo = (clientY: number) => {
+    const gain = audioFaderPositionToGain(positionAt(clientY));
+    draggingRef.current = gain;
+    onLive(gain);
+  };
+  const finishDrag = () => {
+    if (draggingRef.current === null) return;
+    const gain = draggingRef.current;
+    draggingRef.current = null;
+    onCommit(gain);
+  };
+  const keyPositions = new Map([
+    ["ArrowUp", position + span * 0.02],
+    ["ArrowDown", position - span * 0.02],
+    ["PageUp", position + span * 0.1],
+    ["PageDown", position - span * 0.1],
+    ["Home", AUDIO_GAIN_FADER_MIN],
+    ["End", maxPosition],
+  ]);
 
   return (
     <div
@@ -267,29 +299,27 @@ function Fader({
       role="slider"
       tabIndex={0}
       aria-label={label}
-      title={title}
+      title={`${title}: ${readout}`}
       aria-orientation="vertical"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(fraction * 100)}
+      aria-valuemin={AUDIO_GAIN_FADER_MIN}
+      aria-valuemax={maxPosition}
+      aria-valuenow={Math.round(position)}
+      aria-valuetext={readout}
       onPointerDown={(e: ReactPointerEvent<HTMLDivElement>) => {
         e.currentTarget.setPointerCapture(e.pointerId);
-        draggingRef.current = true;
-        onLive(fractionToLevel(fractionAt(e.clientY)));
+        moveTo(e.clientY);
       }}
       onPointerMove={(e: ReactPointerEvent<HTMLDivElement>) => {
-        if (!draggingRef.current) return;
-        onLive(fractionToLevel(fractionAt(e.clientY)));
+        if (draggingRef.current === null) return;
+        moveTo(e.clientY);
       }}
-      onPointerUp={(e: ReactPointerEvent<HTMLDivElement>) => {
-        if (!draggingRef.current) return;
-        draggingRef.current = false;
-        onCommit(fractionToLevel(fractionAt(e.clientY)));
-      }}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      onLostPointerCapture={finishDrag}
       onKeyDown={(e) => {
-        if (e.key === "ArrowUp") nudge(0.02);
-        else if (e.key === "ArrowDown") nudge(-0.02);
-        else return;
+        const next = keyPositions.get(e.key);
+        if (next === undefined) return;
+        onCommit(audioFaderPositionToGain(clampNumber(next, AUDIO_GAIN_FADER_MIN, maxPosition)));
         e.preventDefault();
       }}
       className="relative h-full w-2 shrink-0 cursor-ns-resize touch-none rounded-full bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
@@ -338,6 +368,7 @@ function MeterStrip({
           label={`${strip.label} volume`}
           title={strip.id === null ? "Preview monitor volume" : `${strip.label} volume`}
           volume={strip.volume}
+          maxPosition={strip.id === null ? audioGainToFaderPosition(1) : AUDIO_GAIN_FADER_MAX}
           onLive={(v) => onLive(strip.id, v)}
           onCommit={(v) => onCommit(strip.id, v)}
         />

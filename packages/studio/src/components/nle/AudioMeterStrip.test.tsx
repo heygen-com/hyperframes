@@ -2,12 +2,13 @@
 // fallow-ignore-file code-duplication
 
 import { act } from "react";
+import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { TimelineElement } from "../../player/store/timelineElement";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
-import { fractionToLevel, levelToFraction, SILENT_CHANNEL } from "../../utils/audioMeterMath";
+import { SILENT_CHANNEL } from "../../utils/audioMeterMath";
 import {
   AudioMeterStrip,
   evictGoneMeterState,
@@ -50,6 +51,22 @@ function stubTrackRect(): () => void {
   return () => {
     Element.prototype.getBoundingClientRect = original;
   };
+}
+
+function drag(fader: HTMLElement, clientY: number) {
+  const restoreRect = stubTrackRect();
+  const original = Element.prototype.setPointerCapture;
+  Element.prototype.setPointerCapture = vi.fn();
+  try {
+    for (const type of ["pointerdown", "pointermove", "pointerup"]) {
+      act(() =>
+        fader.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientY })),
+      );
+    }
+  } finally {
+    Element.prototype.setPointerCapture = original;
+    restoreRect();
+  }
 }
 
 const makeHook = (groups: Record<string, { l: number; r: number }> = {}) => ({
@@ -160,102 +177,135 @@ describe("AudioMeterStrip", () => {
     expect(second.read).toHaveBeenCalled();
   });
 
-  it("drags a group fader through the live/quiet data-volume path, and the master fader through the player store", () => {
-    const restoreRect = stubTrackRect();
-    const originalPointerCapture = Element.prototype.setPointerCapture;
-    Element.prototype.setPointerCapture = vi.fn();
-    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo", audioGroupLabel: "VO" })] });
+  it("keeps authored gain 2 above unity and writes exactly 1 at the midpoint", () => {
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo", audioGroupVolume: 2 })] });
     const { host } = mount();
-
-    const groupFader = host.querySelector<HTMLElement>('[aria-label="VO volume"]')!;
-    act(() => {
-      groupFader.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientY: 25 }),
-      );
-    });
-    // clientY 25 on a 0..100 track (stubTrackRect) is fraction 0.75; asserting
-    // the exact computed value (not just "a string") also catches a NaN regression.
-    const expectedVolume = String(fractionToLevel(0.75));
-    expect(onSetAudioGroupAttributeLive).toHaveBeenCalledWith("vo", "data-volume", expectedVolume);
-    expect(onSetAudioGroupAttributeQuiet).not.toHaveBeenCalled();
-    act(() => {
-      groupFader.dispatchEvent(
-        new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientY: 25 }),
-      );
-    });
-    expect(onSetAudioGroupAttributeQuiet).toHaveBeenCalledWith(
+    const fader = host.querySelector<HTMLElement>('[aria-label="vo volume"]')!;
+    expect(Number(fader.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+    expect(Number(fader.getAttribute("aria-valuenow"))).toBeLessThan(100);
+    expect(fader.getAttribute("aria-valuetext")).toBe("+6.0 dB");
+    expect(parseFloat(fader.querySelector<HTMLElement>("div")!.style.bottom)).toBeGreaterThan(50);
+    drag(fader, 50);
+    expect(onSetAudioGroupAttributeLive).toHaveBeenCalledWith("vo", "data-volume", "1");
+    expect(onSetAudioGroupAttributeQuiet).toHaveBeenCalledExactlyOnceWith(
       "vo",
       "data-volume",
-      expectedVolume,
+      "1",
       "Set volume",
     );
-
-    const monitorFader = host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
-    act(() => {
-      monitorFader.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientY: 0 }),
-      );
-    });
-    expect(usePlayerStore.getState().audioVolume).toBe(1);
-    act(() => {
-      monitorFader.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientY: 100 }),
-      );
-    });
-    expect(usePlayerStore.getState().audioVolume).toBe(0);
-
-    Element.prototype.setPointerCapture = originalPointerCapture;
-    restoreRect();
   });
 
-  it("the monitor fader writes setAudioVolume and is labeled Monitor", () => {
-    const restoreRect = stubTrackRect();
-    const originalPointerCapture = Element.prototype.setPointerCapture;
-    Element.prototype.setPointerCapture = vi.fn();
-    const setAudioVolume = vi.fn((volume: number) => {
-      usePlayerStore.setState({ audioVolume: volume });
-    });
-    usePlayerStore.setState({ elements: [clip({})], audioVolume: 1, setAudioVolume });
-    const { host } = mount();
-    expect(host.textContent).toContain("Monitor");
-    const fader = host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
-    expect(fader.getAttribute("title")).toBe("Preview monitor volume");
-    act(() => {
-      fader.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientY: 100 }),
-      );
-    });
-    expect(setAudioVolume).toHaveBeenCalledWith(0);
-    Element.prototype.setPointerCapture = originalPointerCapture;
-    restoreRect();
+  it("drags a group to the shared +12 dB ceiling", () => {
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo" })] });
+    const fader = mount().host.querySelector<HTMLElement>('[aria-label="vo volume"]')!;
+    drag(fader, 0);
+    expect(Number(onSetAudioGroupAttributeQuiet.mock.calls[0]![2])).toBeCloseTo(MAX_AUDIO_GAIN, 6);
+    expect(onSetAudioGroupAttributeLive).toHaveBeenCalledWith("vo", "data-volume", "3.981072");
   });
 
-  it("nudges a consistent step in the visual (dB-scale) position, and aria-valuenow tracks the thumb", () => {
-    usePlayerStore.setState({ elements: [clip({})], audioVolume: 0.5 });
-    const { host } = mount();
-    const masterFader = host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
-    const startFraction = levelToFraction(0.5);
-    expect(masterFader.getAttribute("aria-valuenow")).toBe(String(Math.round(startFraction * 100)));
+  it.each([0.5, 1, 2, 3.98])(
+    "round-trips authored group gain %s through its displayed thumb",
+    (gain) => {
+      usePlayerStore.setState({ elements: [clip({ audioGroup: "vo", audioGroupVolume: gain })] });
+      const fader = mount().host.querySelector<HTMLElement>('[aria-label="vo volume"]')!;
+      const thumb = fader.firstElementChild as HTMLElement;
+      drag(fader, 100 - parseFloat(thumb.style.bottom));
+      expect(Number(onSetAudioGroupAttributeQuiet.mock.calls[0]![2])).toBeCloseTo(gain, 6);
+    },
+  );
 
-    act(() => {
-      masterFader.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
-    });
-    const afterUp = usePlayerStore.getState().audioVolume;
-    const fractionAfterUp = levelToFraction(afterUp);
-    // A flat step in raw volume (the old, buggy behaviour) would move the
-    // visual position by a very different amount depending on where it starts;
-    // stepping in fraction space keeps every step visually the same size.
-    expect(fractionAfterUp - startFraction).toBeCloseTo(0.02, 6);
-    expect(masterFader.getAttribute("aria-valuenow")).toBe(
-      String(Math.round(fractionAfterUp * 100)),
+  it("preserves low authored gain instead of rounding it to mute", () => {
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo" })] });
+    const fader = mount().host.querySelector<HTMLElement>('[aria-label="vo volume"]')!;
+    drag(fader, 85);
+    expect(onSetAudioGroupAttributeQuiet).toHaveBeenCalledExactlyOnceWith(
+      "vo",
+      "data-volume",
+      "0.007943",
+      "Set volume",
     );
+  });
 
-    act(() => usePlayerStore.setState({ audioVolume: 0.5 }));
-    act(() => {
-      masterFader.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
-    });
-    const afterDown = usePlayerStore.getState().audioVolume;
-    expect(startFraction - levelToFraction(afterDown)).toBeCloseTo(0.02, 6);
+  it("keeps the Monitor fader within the player store range", () => {
+    usePlayerStore.setState({ elements: [clip({})] });
+    const fader = mount().host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
+    expect(fader.getAttribute("aria-valuemin")).toBe("-100");
+    expect(fader.getAttribute("aria-valuemax")).toBe("0");
+    drag(fader, 100);
+    expect(usePlayerStore.getState().audioVolume).toBe(0);
+    drag(fader, 0);
+    expect(usePlayerStore.getState().audioVolume).toBe(1);
+    act(() => fader.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+    expect(usePlayerStore.getState().audioVolume).toBe(1);
+    expect(fader.getAttribute("aria-valuetext")).toBe("0.0 dB");
+    expect(onSetAudioGroupAttributeQuiet).not.toHaveBeenCalled();
+  });
+
+  it.each(["pointercancel", "lostpointercapture"])(
+    "finishes %s once and ignores subsequent hovering",
+    (event) => {
+      const restoreRect = stubTrackRect();
+      const original = Element.prototype.setPointerCapture;
+      Element.prototype.setPointerCapture = vi.fn();
+      try {
+        usePlayerStore.setState({ elements: [clip({ audioGroup: "vo" })] });
+        const fader = mount().host.querySelector<HTMLElement>('[aria-label="vo volume"]')!;
+        for (const [type, clientY] of [
+          ["pointerdown", 50],
+          [event, 0],
+          ["pointermove", 0],
+          ["pointerup", 0],
+        ] as const) {
+          act(() =>
+            fader.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientY })),
+          );
+        }
+        expect(onSetAudioGroupAttributeLive).toHaveBeenCalledExactlyOnceWith(
+          "vo",
+          "data-volume",
+          "1",
+        );
+        expect(onSetAudioGroupAttributeQuiet).toHaveBeenCalledExactlyOnceWith(
+          "vo",
+          "data-volume",
+          "1",
+          "Set volume",
+        );
+      } finally {
+        Element.prototype.setPointerCapture = original;
+        restoreRect();
+      }
+    },
+  );
+
+  it.each([
+    ["Home", "0"],
+    ["End", "3.981072"],
+    ["PageUp", "1.318257"],
+    ["PageDown", "0.251189"],
+  ])("supports the %s slider key", (key, gain) => {
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo" })] });
+    const fader = mount().host.querySelector<HTMLElement>('[aria-label="vo volume"]')!;
+    act(() => fader.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+    expect(onSetAudioGroupAttributeQuiet).toHaveBeenCalledExactlyOnceWith(
+      "vo",
+      "data-volume",
+      gain,
+      "Set volume",
+    );
+  });
+
+  it("nudges by an equal visual step and exposes the gain readout", () => {
+    usePlayerStore.setState({ elements: [clip({})], audioVolume: 1 });
+    const fader = mount().host.querySelector<HTMLElement>('[aria-label="Monitor volume"]')!;
+    act(() =>
+      fader.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
+    expect(fader.getAttribute("aria-valuenow")).toBe("-2");
+    expect(fader.getAttribute("aria-valuetext")).toBe("-1.2 dB");
+    act(() => fader.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+    expect(usePlayerStore.getState().audioVolume).toBeCloseTo(1, 12);
+    expect(fader.getAttribute("aria-valuenow")).toBe("0");
   });
 });
 
