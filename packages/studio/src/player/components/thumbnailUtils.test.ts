@@ -20,6 +20,10 @@ describe("computeThumbnailStrip", () => {
     expect(frameCount * frameW).toBeGreaterThanOrEqual(500);
   });
 
+  it("caps rendered tiles at the shared visible-frame budget", () => {
+    expect(computeThumbnailStrip(10_000, 1).frameCount).toBe(33);
+  });
+
   it("returns one tile when the container width is unknown", () => {
     expect(computeThumbnailStrip(0, 16 / 9).frameCount).toBe(1);
     expect(computeThumbnailStrip(-10, 16 / 9).frameCount).toBe(1);

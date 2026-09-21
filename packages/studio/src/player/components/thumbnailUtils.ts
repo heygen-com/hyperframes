@@ -75,7 +75,10 @@ export function computeThumbnailStrip(
 ): ThumbnailStripLayout {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
   const frameW = Math.max(minFrameWidth, Math.round(clipHeight * safeAspect));
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const frameCount =
+    containerWidth > 0
+      ? Math.min(MAX_VISIBLE_THUMBNAIL_FRAMES, Math.max(1, Math.ceil(containerWidth / frameW)))
+      : 1;
   return { frameW, frameCount };
 }
 
