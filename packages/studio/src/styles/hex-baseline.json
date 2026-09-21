@@ -76,7 +76,7 @@
     "packages/studio/src/player/components/VideoThumbnail.tsx": 6,
     "packages/studio/src/player/components/timelineTheme.ts": 5,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
-    "packages/studio/src/styles/studio.css": 63,
+    "packages/studio/src/styles/studio.css": 60,
     "packages/studio/src/telemetry/client.ts": 1,
     "packages/studio/src/webmcp/webmcpTestUtils.ts": 1
   }
