@@ -267,6 +267,7 @@ export function patchElementInHtml(
   }
 
   const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
+  if (html === source) return { html: source, matched: true };
   return { html: ensureHfIds(html), matched: true };
 }
 

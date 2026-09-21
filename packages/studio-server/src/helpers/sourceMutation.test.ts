@@ -114,7 +114,7 @@ describe("patchElementInHtml", () => {
 
     expect(matched).toBe(true);
     expect(result).toContain("Updated");
-    expect(result).toMatch(/<div data-composition-id="main" data-hf-id="hf-[a-z0-9]+"/);
+    expect(result).toMatch(/<div data-hf-id="hf-[a-z0-9]+" data-composition-id="main"/);
   });
 
   it("patches a 4-side clip-path inset inline style", () => {

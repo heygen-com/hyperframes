@@ -1766,7 +1766,7 @@ gsap.set("#box", { rotation: 45 });
     expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     // The SECOND `.sub` (selectorIndex 1) is the one restacked, not the first.
-    expect(payload.content).toContain('<div class="sub" style="z-index: 1">A</div>');
+    expect(payload.content).toMatch(/<div class="sub"[^>]*style="z-index: 1"[^>]*>A<\/div>/);
     expect(payload.content).toContain("z-index: 0");
   });
 
@@ -1798,7 +1798,9 @@ gsap.set("#box", { rotation: 45 });
     expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     // First "main" untouched; second one restacked.
-    expect(payload.content).toContain('<div class="root" id="main" style="z-index: 5">first</div>');
+    expect(payload.content).toMatch(
+      /<div class="root" id="main"[^>]*style="z-index: 5"[^>]*>first<\/div>/,
+    );
     expect(payload.content).toContain("z-index: 0");
   });
 
