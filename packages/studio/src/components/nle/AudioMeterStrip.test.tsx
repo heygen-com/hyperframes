@@ -84,10 +84,11 @@ describe("AudioMeterStrip", () => {
     const first = makeHook({ vo: { l: 1, r: 1 } });
     setHook(first);
     const { host, root } = mount();
+    const fill = host.querySelector<HTMLElement>("[class*=bg-green-500]")!;
+    expect(fill.style.transform).toBe("scaleY(0)");
     tick();
     tick();
     expect(first.start).toHaveBeenCalledTimes(1);
-    const fill = host.querySelector<HTMLElement>("[class*=bg-green-500]")!;
     expect(fill.style.transform).toBe("scaleY(1)");
 
     const second = makeHook();
@@ -99,5 +100,22 @@ describe("AudioMeterStrip", () => {
     act(() => root.unmount());
     roots.length = 0;
     expect(second.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows a new preview hook even when the old stop() throws", () => {
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo" })] });
+    const first = makeHook({ vo: { l: 1, r: 1 } });
+    first.stop.mockImplementation(() => {
+      throw new Error("dead realm");
+    });
+    setHook(first);
+    mount();
+    tick();
+    const second = makeHook();
+    setHook(second);
+    tick();
+    expect(second.start).toHaveBeenCalledTimes(1);
+    tick();
+    expect(second.read).toHaveBeenCalled();
   });
 });

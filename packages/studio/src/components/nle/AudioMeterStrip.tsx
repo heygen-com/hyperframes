@@ -72,8 +72,16 @@ function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripB
       raf = requestAnimationFrame(tick);
       const live = readHook(previewIframeRef.current);
       if (live !== active) {
-        active?.stop();
-        live?.start();
+        try {
+          active?.stop();
+        } catch {
+          // Preview iframe was torn down; the old hook is uncallable.
+        }
+        try {
+          live?.start();
+        } catch {
+          // New preview is not ready to attach yet.
+        }
         active = live;
       }
       const levels = active?.read();
@@ -94,7 +102,11 @@ function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripB
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
-      active?.stop();
+      try {
+        active?.stop();
+      } catch {
+        // Preview iframe already gone.
+      }
     };
   }, [previewIframeRef, bars]);
 }
@@ -102,7 +114,11 @@ function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripB
 function Bar({ fillRef, peakRef }: { fillRef: Ref<HTMLDivElement>; peakRef: Ref<HTMLDivElement> }) {
   return (
     <div className="relative h-full w-1.5 overflow-hidden rounded-[1px] bg-neutral-900">
-      <div ref={fillRef} className="absolute inset-0 origin-bottom bg-green-500" />
+      <div
+        ref={fillRef}
+        className="absolute inset-0 origin-bottom bg-green-500"
+        style={{ transform: "scaleY(0)" }}
+      />
       <div ref={peakRef} className="absolute inset-x-0 bottom-0 h-px bg-green-400" />
     </div>
   );
