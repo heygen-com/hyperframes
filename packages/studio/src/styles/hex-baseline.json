@@ -54,7 +54,6 @@
     "packages/studio/src/player/components/CompositionThumbnail.tsx": 2,
     "packages/studio/src/player/components/Player.tsx": 2,
     "packages/studio/src/player/components/PlayerControls.tsx": 1,
-    "packages/studio/src/player/components/PlayheadIndicator.tsx": 0,
     "packages/studio/src/player/components/ShortcutsPanel.tsx": 7,
     "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
