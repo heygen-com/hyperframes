@@ -44,9 +44,7 @@ export interface MediaVectorRow {
   dimensions?: { width: number; height: number };
 }
 
-// Defensive row validation keeps malformed downloaded metadata out of the ranker.
-// fallow-ignore-next-line high-crap-score
-function isMediaVectorRow(value: unknown): value is MediaVectorRow {
+export function isMediaVectorRow(value: unknown): value is MediaVectorRow {
   if (!value || typeof value !== "object") return false;
   const row = value as Partial<MediaVectorRow>;
   return (
@@ -102,9 +100,7 @@ function localVectorDirectory(): string {
  * contract. A pair that fails it is a truncated download or a different
  * model, never something worth caching.
  */
-// Pair validation checks the metadata, row coverage, dimensions, and byte count together.
-// fallow-ignore-next-line high-crap-score
-function vectorPairAgrees(
+export function vectorPairAgrees(
   fetched: Array<[string, Buffer]>,
   artifactBasename: "local-vectors" | "media-vectors",
 ): boolean {
@@ -326,8 +322,6 @@ export async function localSemanticRanking(
   return scored;
 }
 
-// Internal ranker entry used by the CLI's vector-aware media search library.
-// fallow-ignore-next-line unused-export
 export async function mediaSemanticRanking(
   query: string,
   directory = localVectorDirectory(),
