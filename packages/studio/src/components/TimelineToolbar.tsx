@@ -4,7 +4,6 @@ import {
   Magnet,
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
-  SpeakerHigh,
   Waves,
 } from "@phosphor-icons/react";
 import {
@@ -23,6 +22,7 @@ import {
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
+import { AudioMetersIcon } from "./icons/AudioMetersIcon";
 import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
 import { TimelineHistoryButtons } from "./TimelineHistoryButtons";
 import { Scissors } from "../icons/SystemIcons";
@@ -264,7 +264,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 aria-pressed={audioMetersVisible}
                 className={audioMetersVisible ? flatActive : flatIdle}
               >
-                <SpeakerHigh size={16} weight="bold" aria-hidden="true" />
+                <AudioMetersIcon size={16} />
               </button>
             </Tooltip>
           )}
