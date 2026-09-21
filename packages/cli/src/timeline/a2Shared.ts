@@ -8,7 +8,7 @@ import type { PatchOperation } from "@hyperframes/studio-server";
 import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { readFileSync } from "node:fs";
-import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
+import type { ProjectTimeline, TimelineRow } from "./describeProject.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
