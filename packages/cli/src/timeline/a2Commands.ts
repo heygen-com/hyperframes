@@ -70,7 +70,11 @@ function preparePlanEdit(
   sourceByFile: Map<string, string>,
 ): PreparedPlanEdit | { ok: false; reason: string; fix: string } {
   if (!isRecord(edit) || typeof edit.verb !== "string" || typeof edit.ref !== "string") {
-    return { ok: false, reason: "each edit needs a verb and ref", fix: "pass {verb, ref, ...} objects" };
+    return {
+      ok: false,
+      reason: "each edit needs a verb and ref",
+      fix: "pass {verb, ref, ...} objects",
+    };
   }
   if (!PLAN_VERBS.has(edit.verb as MutationVerb)) {
     return {
