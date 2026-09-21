@@ -15,6 +15,8 @@ export {
   patchElementInHtml,
   splitElementInHtml,
   removeElementFromHtml,
+  findTargetElement,
+  parseSourceDocument,
   type PatchOperation,
   type SourceMutationTarget,
 } from "./helpers/sourceMutation.js";

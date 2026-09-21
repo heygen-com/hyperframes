@@ -1,6 +1,10 @@
-import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import type { SourceMutationTarget } from "./sourceMutation.js";
+import {
+  findTargetElement,
+  isHTMLElement,
+  parseSourceDocument,
+  type SourceMutationTarget,
+} from "./sourceMutation.js";
 
 export interface DuplicateElementResult {
   html: string;
@@ -14,8 +18,8 @@ export function duplicateElementInHtml(
   newId: string,
   at: number,
 ): DuplicateElementResult {
-  const document = parseHTML(source).document;
-  const element = findTarget(document, target);
+  const { document, wrappedFragment } = parseSourceDocument(source);
+  const element = findTargetElement(document, target);
   if (!element || !element.parentElement) return { html: source, matched: false, newId: null };
   const duration = numericAttribute(element, "data-duration");
   const track = numericAttribute(element, "data-track-index") ?? 0;
@@ -34,7 +38,7 @@ export function duplicateElementInHtml(
       candidate.setAttribute("data-start", String(start + duration));
   }
   const clone = element.cloneNode(true);
-  if (!isElementNode(clone)) return { html: source, matched: false, newId: null };
+  if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", uniqueId);
   clone.removeAttribute("data-hf-id");
   for (const child of Array.from(clone.querySelectorAll("[data-hf-id]"))) {
@@ -42,29 +46,11 @@ export function duplicateElementInHtml(
   }
   clone.setAttribute("data-start", String(at));
   element.parentElement.insertBefore(clone, element.nextSibling);
-  return { html: ensureHfIds(document.toString()), matched: true, newId: uniqueId };
+  const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
+  return { html: ensureHfIds(html), matched: true, newId: uniqueId };
 }
 
 function numericAttribute(element: Element, name: string): number | null {
   const value = Number(element.getAttribute(name));
   return Number.isFinite(value) ? value : null;
-}
-
-function findTarget(document: Document, target: SourceMutationTarget): Element | null {
-  if (target.hfId) {
-    const element = Array.from(document.querySelectorAll("[data-hf-id]")).find(
-      (candidate) => candidate.getAttribute("data-hf-id") === target.hfId,
-    );
-    if (element) return element;
-  }
-  if (target.id) {
-    const element = document.getElementById(target.id);
-    if (element) return element;
-  }
-  if (!target.selector) return null;
-  return document.querySelectorAll(target.selector)[target.selectorIndex ?? 0] ?? null;
-}
-
-function isElementNode(node: Node): node is Element {
-  return node.nodeType === 1 && "setAttribute" in node && "querySelectorAll" in node;
 }

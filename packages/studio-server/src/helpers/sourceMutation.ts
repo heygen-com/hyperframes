@@ -20,7 +20,10 @@ export interface SourceMutationTarget {
   selectorIndex?: number;
 }
 
-function parseSourceDocument(source: string): { document: Document; wrappedFragment: boolean } {
+export function parseSourceDocument(source: string): {
+  document: Document;
+  wrappedFragment: boolean;
+} {
   const hasDocumentShell = /<!doctype|<html[\s>]/i.test(source);
   if (hasDocumentShell) {
     return { document: parseHTML(source).document, wrappedFragment: false };
@@ -108,7 +111,10 @@ function findByHfId(document: Document, hfId: string): Element | null {
   }
 }
 
-function findTargetElement(document: Document, target: SourceMutationTarget): Element | null {
+export function findTargetElement(
+  document: Document,
+  target: SourceMutationTarget,
+): Element | null {
   if (target.hfId) {
     const el = findByHfId(document, target.hfId);
     if (el) return el;
