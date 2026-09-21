@@ -12,6 +12,7 @@ import { readCompositionFps } from "../utils/compositionFps.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
+import { formatTimeline } from "./formatTimeline.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
 import { ensureDOMParser } from "../utils/dom.js";
