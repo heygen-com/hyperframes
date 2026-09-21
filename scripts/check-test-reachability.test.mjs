@@ -163,3 +163,13 @@ test("quoted runner selection keys cannot silently change collection", () => {
   tree["vitest.config.ts"] = 'export default { test: { "exclude": ["**"] } }';
   assert.throws(() => check(tree), /Quoted test selection/);
 });
+
+test("quoted comments do not widen path filters", () => {
+  const tree = fixture("node --test scripts/parity.test.mjs", '"scripts/**" # "skills/**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"].join("\n"), /CI filters exclude skills/);
+});
+
+test("runner verbs must match exactly", () => {
+  const tree = fixture("vitest run-anything", '"**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});

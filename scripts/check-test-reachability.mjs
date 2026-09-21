@@ -35,7 +35,9 @@ function readFilters(source) {
   return Object.fromEntries(
     [...source.matchAll(/^            ([\w-]+):\n((?:              - .*\n)+)/gm)].map(
       ([, name, body]) => {
-        const globs = strings(body);
+        const globs = [...body.matchAll(/^              - (["'])(.*?)\1(?:\s+#.*)?$/gm)].map(
+          (match) => match[2],
+        );
         if (globs.some((glob) => glob.startsWith("!")))
           throw new Error("Negated path filters need an explicit reachability model");
         return [name, globs];
@@ -205,9 +207,9 @@ function runnerArguments(tokens, node, command) {
 }
 
 function runnerKind(command) {
-  if (/^node\s.*--test\b/.test(command)) return "node";
-  if (/^vitest run\b/.test(command)) return "vitest";
-  if (/^bun test\b/.test(command)) return "bun";
+  if (/^node\s.*--test(?:\s|$)/.test(command)) return "node";
+  if (/^vitest run(?:\s|$)/.test(command)) return "vitest";
+  if (/^bun test(?:\s|$)/.test(command)) return "bun";
   return undefined;
 }
 
