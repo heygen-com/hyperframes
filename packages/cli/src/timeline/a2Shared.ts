@@ -650,3 +650,5 @@ export function mutationConflict(
   return {
     reason: `${row.ref} would overlap ${conflict.ref} at ${nextStart}-${nextStart + nextDuration}`,
     fix: "pass --overwrite or move the named neighbour",
+  };
+}
