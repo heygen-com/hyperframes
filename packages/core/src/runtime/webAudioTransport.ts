@@ -141,6 +141,8 @@ export class WebAudioTransport {
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
+  /** Preview volume and mute. Downstream of `_masterGain`; meters tap the program. */
+  private _monitorGain: GainNode | null = null;
   private _masterVolume = 1;
   private _masterMuted = false;
   // One shared bus per group id, lazily built the first time a member of that
@@ -184,7 +186,9 @@ export class WebAudioTransport {
     try {
       this._ctx = new AudioContext();
       this._masterGain = this._ctx.createGain();
-      this._masterGain.connect(this._ctx.destination);
+      this._monitorGain = this._ctx.createGain();
+      this._masterGain.connect(this._monitorGain);
+      this._monitorGain.connect(this._ctx.destination);
       this.applyMasterGain();
       if (this._metering) this.attachMasterTap();
       return true;
@@ -807,7 +811,7 @@ export class WebAudioTransport {
   }
 
   private applyMasterGain(): void {
-    if (this._masterGain) this._masterGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
+    if (this._monitorGain) this._monitorGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
   }
 
   isActive(): boolean {
@@ -842,6 +846,7 @@ export class WebAudioTransport {
     }
     this._ctx = null;
     this._masterGain = null;
+    this._monitorGain = null;
     this._masterVolume = 1;
     this._masterMuted = false;
   }

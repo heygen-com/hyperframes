@@ -31,6 +31,10 @@ function createMockAudioContext(currentTime = 100) {
     gain: { value: 1 },
     connect: vi.fn(),
   };
+  const monitorGain = {
+    gain: { value: 1 },
+    connect: vi.fn(),
+  };
   const ctx = {
     currentTime,
     state: "running",
@@ -41,7 +45,7 @@ function createMockAudioContext(currentTime = 100) {
     destination: {},
     close: vi.fn(),
   };
-  return { ctx, sourceNode, mediaElementSourceNode, gainNode, masterGain, startFn };
+  return { ctx, sourceNode, mediaElementSourceNode, gainNode, masterGain, monitorGain, startFn };
 }
 
 function setupTransport(currentTime = 100) {
@@ -49,6 +53,7 @@ function setupTransport(currentTime = 100) {
   const mock = createMockAudioContext(currentTime);
   (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
   (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
+  (transport as unknown as { _monitorGain: unknown })._monitorGain = mock.monitorGain;
   const gen = transport.startGeneration();
   return { transport, mock, gen };
 }
@@ -87,12 +92,12 @@ describe("WebAudioTransport author gain vs user volume", () => {
 
   it("keeps the user's master volume spec-clamped — it is a fader, not a gain", () => {
     const transport = new WebAudioTransport();
-    const master = { gain: { value: 1 }, connect: vi.fn() };
-    (transport as unknown as { _masterGain: unknown })._masterGain = master;
+    const monitor = { gain: { value: 1 }, connect: vi.fn() };
+    (transport as unknown as { _monitorGain: unknown })._monitorGain = monitor;
 
     transport.setVolume(99);
 
-    expect(master.gain.value).toBe(1);
+    expect(monitor.gain.value).toBe(1);
   });
 });
 
@@ -341,11 +346,13 @@ describe("WebAudioTransport", () => {
     const { transport, mock } = setupTransport();
     transport.setVolume(0.4);
     transport.setMuted(true);
-    expect(mock.masterGain.gain.value).toBe(0);
+    expect(mock.monitorGain.gain.value).toBe(0);
+    expect(mock.masterGain.gain.value).toBe(1);
 
     transport.setMuted(false);
 
-    expect(mock.masterGain.gain.value).toBe(0.4);
+    expect(mock.monitorGain.gain.value).toBe(0.4);
+    expect(mock.masterGain.gain.value).toBe(1);
   });
 
   it("applies author and user volume once in separate gain layers", async () => {
@@ -354,8 +361,11 @@ describe("WebAudioTransport", () => {
     transport.setVolume(0.5);
 
     expect(mock.gainNode.gain.value).toBe(0.8);
-    expect(mock.masterGain.gain.value).toBe(0.5);
-    expect(mock.gainNode.gain.value * mock.masterGain.gain.value).toBeCloseTo(0.4);
+    expect(mock.masterGain.gain.value).toBe(1);
+    expect(mock.monitorGain.gain.value).toBe(0.5);
+    expect(
+      mock.gainNode.gain.value * mock.masterGain.gain.value * mock.monitorGain.gain.value,
+    ).toBeCloseTo(0.4);
   });
 
   describe("ownsElement (per-element mute gate)", () => {
@@ -738,6 +748,7 @@ describe("WebAudioTransport", () => {
         getFloatTimeDomainData: ReturnType<typeof vi.fn>;
       }[] = [];
       const masterGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      const monitorGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
       const mediaElementSource = { connect: vi.fn(), disconnect: vi.fn() };
       const ctx = {
         currentTime,
@@ -792,7 +803,7 @@ describe("WebAudioTransport", () => {
         destination: {},
         close: vi.fn(),
       };
-      return { ctx, gainNodes, analysers, masterGain, mediaElementSource };
+      return { ctx, gainNodes, analysers, masterGain, monitorGain, mediaElementSource };
     }
 
     function setupGroupTransport(currentTime = 100) {
@@ -800,6 +811,7 @@ describe("WebAudioTransport", () => {
       const mock = createGroupMockAudioContext(currentTime);
       (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
       (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
+      (transport as unknown as { _monitorGain: unknown })._monitorGain = mock.monitorGain;
       const gen = transport.startGeneration();
       return { transport, mock, gen };
     }
@@ -1144,6 +1156,22 @@ describe("WebAudioTransport", () => {
         expect(groupOutput.connect).toHaveBeenCalledTimes(connectsBefore + 1);
         expect(groupOutput.connect).toHaveBeenCalledWith(mock.masterGain);
         expect(mock.masterGain.connect).toHaveBeenCalledTimes(1);
+        expect(mock.monitorGain.connect).not.toHaveBeenCalled();
+      });
+
+      it("keeps program taps off the monitor fader", async () => {
+        addGroup("vo");
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        transport.startMetering();
+        transport.setVolume(0.5);
+        transport.setMuted(true);
+        const groupOutput = mock.gainNodes.find((n) =>
+          n.connect.mock.calls.some((call) => call[0] === mock.masterGain),
+        );
+        expect(mock.masterGain.gain.value).toBe(1);
+        expect(groupOutput?.gain.value).toBe(1);
+        expect(mock.monitorGain.gain.value).toBe(0);
       });
 
       it("reads the peak per channel and stops cleanly", async () => {
