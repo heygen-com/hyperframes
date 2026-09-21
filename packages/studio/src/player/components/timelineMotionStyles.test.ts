@@ -117,6 +117,10 @@ describe("timeline motion styles", () => {
       studioCss,
       ".timeline-clip.is-selected.is-dragging",
     );
+    const activeSelectedDraggingTimelineClipRule = expectRule(
+      studioCss,
+      ".timeline-clip[data-active].is-selected.is-dragging",
+    );
     const bloomOverlayRule = expectRule(studioCss, ".timeline-clip::before");
     const activeBloomOverlayRule = expectRule(studioCss, ".timeline-clip[data-active]::before");
 
@@ -154,6 +158,12 @@ describe("timeline motion styles", () => {
       "inset 0 0 0 1.5px var(--timeline-clip-selection)",
     );
     expect(selectedDraggingTimelineClipRule).toContain(
+      "0 8px 24px var(--timeline-clip-shadow-dragging)",
+    );
+    expect(activeSelectedDraggingTimelineClipRule).toContain(
+      "inset 0 0 0 1.5px var(--timeline-clip-selection)",
+    );
+    expect(activeSelectedDraggingTimelineClipRule).toContain(
       "0 8px 24px var(--timeline-clip-shadow-dragging)",
     );
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
