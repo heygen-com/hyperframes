@@ -74,6 +74,7 @@ describe("timeline motion styles", () => {
     ["--timeline-group-member-tint", "rgba(255, 255, 255, 0.035)"],
     ["--timeline-overlay-text", "rgba(255, 255, 255, 0.8)"],
     ["--timeline-clip-shadow-dragging", "rgba(0, 0, 0, 0.4)"],
+    ["--timeline-playhead-glow", "rgba(60, 230, 172, 0.14)"],
     ["--timeline-playhead-shadow", "rgba(0, 0, 0, 0.55)"],
   ])("keeps the migrated default for %s", (token, expected) => {
     expect(themeTokenValue(token)).toBe(expected);
@@ -120,7 +121,9 @@ describe("timeline motion styles", () => {
     expect(themeCss).toContain("--timeline-clip-border: rgba(255, 255, 255, 0.22)");
     expect(themeCss).toContain("--timeline-track-label: rgba(255, 255, 255, 0.5)");
     expect(themeCss).toContain("--timeline-tick-text: rgba(255, 255, 255, 0.34)");
-    expect(themeCss).toContain("--timeline-clip-label-active: #f4fffb");
+    expect(themeCss).toContain(
+      "--timeline-clip-label-active: rgba(232, 255, 247, 0.95)",
+    );
     expect(themeCss).toContain("--timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85)");
     expect(themeCss).toContain("--timeline-clip-selection: rgba(255, 255, 255, 0.85)");
     expect(themeCss).toContain("--timeline-clip-audio-bg: rgba(167, 139, 250, 0.16)");
