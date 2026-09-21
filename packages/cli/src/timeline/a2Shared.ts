@@ -405,6 +405,20 @@ export function mutationConflict(
   nextStart: number,
   nextDuration: number,
 ): { reason: string; fix: string } | null {
+  if (verb === "duplicate") {
+    const conflict = allRows(timeline).find(
+      (candidate) =>
+        candidate.file === row.file &&
+        candidate.trackIndex === row.trackIndex &&
+        candidate.start < nextStart &&
+        nextStart < candidate.end,
+    );
+    if (!conflict) return null;
+    return {
+      reason: `duplicate insertion at ${nextStart} falls inside ${conflict.ref}`,
+      fix: "choose a clip boundary or split the spanning clip first",
+    };
+  }
   if ((verb !== "move" && verb !== "trim") || overwrite) return null;
   const conflict = overlap(row, timeline, nextStart, nextStart + nextDuration);
   if (!conflict) return null;

@@ -17,6 +17,7 @@ export {
   removeElementFromHtml,
   findTargetElement,
   parseSourceDocument,
+  dedupeClonedCompositionId,
   type PatchOperation,
   type SourceMutationTarget,
 } from "./helpers/sourceMutation.js";

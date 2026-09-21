@@ -257,6 +257,23 @@ describe("timeline edit command", () => {
     }
   });
 
+  it("refuses duplicate insertion inside a spanning clip", () => {
+    const dir = project();
+    try {
+      const indexPath = join(dir, "index.html");
+      writeFileSync(
+        indexPath,
+        readFileSync(indexPath, "utf8").replace('data-duration="2"', 'data-duration="4"'),
+      );
+      const result = run(dir, "duplicate", "#clip", "--at", "3");
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("split the spanning clip first");
+      expect(readFileSync(indexPath, "utf8")).not.toContain('id="clip-copy"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("revalidates each apply edit against the previous edit's source", () => {
     const dir = project();
     try {

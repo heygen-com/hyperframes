@@ -1,6 +1,7 @@
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   findTargetElement,
+  dedupeClonedCompositionId,
   isHTMLElement,
   parseSourceDocument,
   type SourceMutationTarget,
@@ -40,6 +41,7 @@ export function duplicateElementInHtml(
   const clone = element.cloneNode(true);
   if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", uniqueId);
+  dedupeClonedCompositionId(document, clone);
   clone.removeAttribute("data-hf-id");
   for (const child of Array.from(clone.querySelectorAll("[data-hf-id]"))) {
     child.removeAttribute("data-hf-id");

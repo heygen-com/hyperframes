@@ -16,4 +16,14 @@ describe("duplicateElementInHtml", () => {
     expect(result.html).toContain('id="clip-copy"');
     expect(result.html).toContain('data-start="1"');
   });
+
+  it("deduplicates a composition id on the clone", () => {
+    const source = `<div data-composition-id="main"><div id="scene" data-composition-id="scene" data-start="0" data-duration="1">clip</div></div>`;
+
+    const result = duplicateElementInHtml(source, { id: "scene" }, "scene-copy", 1);
+
+    expect(result.matched).toBe(true);
+    expect(result.html).toContain('id="scene-copy" data-composition-id="scene-split"');
+    expect(result.html.match(/data-composition-id="scene"/g)).toHaveLength(1);
+  });
 });

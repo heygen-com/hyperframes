@@ -106,6 +106,17 @@ describe("patchElementInHtml", () => {
     expect(result).toContain('id="hero"');
   });
 
+  it("keeps a lowercase doctype byte-identical for a no-op patch", () => {
+    const source = '<!doctype html><html><body><div id="hero" data-start="0"></div></body></html>';
+
+    const { html, matched } = patchElementInHtml(source, { id: "hero" }, [
+      { type: "attribute", property: "start", value: "0" },
+    ]);
+
+    expect(matched).toBe(true);
+    expect(html).toBe(source);
+  });
+
   it("stamps the composition root before returning patched bytes", () => {
     const source = '<div data-composition-id="main"><div id="hero">Hello</div></div>';
     const { html: result, matched } = patchElementInHtml(source, { id: "hero" }, [
