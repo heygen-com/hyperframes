@@ -250,7 +250,32 @@ describe("timeline edit command", () => {
       expect(result.status, result.stderr).toBe(0);
       const html = readFileSync(join(dir, "index.html"), "utf8");
       expect(html).toContain('id="clip-copy"');
+      expect(html.match(/data-hf-id=/g)).toHaveLength(3);
       expect(html).toContain('id="neighbour" data-hf-id="neighbour" data-start="7"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("revalidates each apply edit against the previous edit's source", () => {
+    const dir = project();
+    try {
+      const indexPath = join(dir, "index.html");
+      writeFileSync(
+        indexPath,
+        readFileSync(indexPath, "utf8").replace('data-start="5"', 'data-start="7"'),
+      );
+      const planPath = join(dir, "edits.json");
+      writeFileSync(
+        planPath,
+        JSON.stringify([
+          { verb: "move", ref: "#clip", time: "+1" },
+          { verb: "move", ref: "#clip", time: "+2" },
+        ]),
+      );
+      const result = run(dir, "apply", planPath);
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(indexPath, "utf8")).toContain('data-start="4"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -1,4 +1,5 @@
 import { parseHTML } from "linkedom";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import type { SourceMutationTarget } from "./sourceMutation.js";
 
 export interface DuplicateElementResult {
@@ -41,7 +42,7 @@ export function duplicateElementInHtml(
   }
   clone.setAttribute("data-start", String(at));
   element.parentElement.insertBefore(clone, element.nextSibling);
-  return { html: document.toString(), matched: true, newId: uniqueId };
+  return { html: ensureHfIds(document.toString()), matched: true, newId: uniqueId };
 }
 
 function numericAttribute(element: Element, name: string): number | null {

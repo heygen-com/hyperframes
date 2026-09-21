@@ -160,16 +160,17 @@ function readPlanSources(
   return { sourceByFile, beforeByFile };
 }
 
-function applyPlanEdits(
+async function applyPlanEdits(
   edits: unknown[],
   timeline: ProjectTimeline,
   project: ReturnType<typeof resolveProject>,
   sourceByFile: Map<string, string>,
-): { ok: true } | { ok: false; reason: string; fix: string } {
+): Promise<{ ok: true } | { ok: false; reason: string; fix: string }> {
   for (const edit of edits) {
     const result = applyPlanEdit(edit, timeline, project, sourceByFile);
     if (!result.ok) return result;
     sourceByFile.set(result.file, result.after);
+    timeline = await describeProject(project.indexPath, undefined, sourceByFile);
   }
   return { ok: true };
 }
@@ -190,7 +191,7 @@ export async function runApply(args: Record<string, unknown>): Promise<void> {
   ensureDOMParser();
   const timeline = await describeProject(project.indexPath);
   const { sourceByFile, beforeByFile } = readPlanSources(timeline, project);
-  const editsResult = applyPlanEdits(planInput.edits, timeline, project, sourceByFile);
+  const editsResult = await applyPlanEdits(planInput.edits, timeline, project, sourceByFile);
   if (!editsResult.ok) return refuse("timeline apply", editsResult, json);
   const inputs = [...sourceByFile].flatMap(([fileName, after]) => {
     const before = beforeByFile.get(fileName)!;
