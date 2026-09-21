@@ -24,7 +24,6 @@ const rootElement: TimelineElement = {
   track: 0,
   domId: "root-clip",
   sourceFile: ROOT_FILE,
-  timingSource: "authored",
 };
 
 // An expanded sub-comp child: `start` is in MASTER coordinates (offset by the
@@ -38,7 +37,6 @@ const expandedChild: TimelineElement = {
   track: 1,
   domId: "child-clip",
   sourceFile: SUBCOMP_FILE,
-  timingSource: "authored",
   expandedParentStart: 2,
 };
 
@@ -88,7 +86,6 @@ function mountRazorSplit(): Harness {
         disk[path] = content;
       },
       recordEdit: async () => {},
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {},
     });
     singleRef.current = handleRazorSplit;
@@ -211,7 +208,6 @@ function mountRazorSplitWithHistory(): UndoHarness {
         disk[path] = content;
       },
       recordEdit: (input) => store.recordEdit(input),
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {},
       forceReloadSdkSession,
     });

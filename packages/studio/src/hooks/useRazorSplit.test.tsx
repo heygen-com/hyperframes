@@ -66,7 +66,6 @@ describe("useRazorSplit mutation versions", () => {
         writeProjectFile,
         observeProjectFileVersion,
         recordEdit,
-        domEditSaveTimestampRef: { current: 0 },
         reloadPreview: vi.fn(),
       }).handleRazorSplit;
       return null;
@@ -83,7 +82,6 @@ describe("useRazorSplit mutation versions", () => {
           start: 0,
           duration: 4,
           track: 0,
-          timingSource: "authored",
         },
         2,
       );

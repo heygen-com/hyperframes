@@ -33,10 +33,41 @@ describe("deduplicateIds", () => {
 });
 
 describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
-  it("round-trips a timeline clip payload", () => {
+  it("round-trips a single-clip timeline payload", () => {
     const payload: ClipboardPayload = {
       kind: "timeline-clip",
-      html: '<img id="photo" src="a.png" data-start="1" data-duration="3" />',
+      clips: [
+        {
+          html: '<img id="photo" src="a.png" data-start="1" data-duration="3" />',
+          start: 1,
+          duration: 3,
+          track: 0,
+        },
+      ],
+      sourceFile: "index.html",
+    };
+    const json = serializeClipboardPayload(payload);
+    const parsed = deserializeClipboardPayload(json);
+    expect(parsed).toEqual(payload);
+  });
+
+  it("round-trips a group timeline-clip payload", () => {
+    const payload: ClipboardPayload = {
+      kind: "timeline-clip",
+      clips: [
+        {
+          html: '<img id="a" data-start="1" data-duration="0.5" />',
+          start: 1,
+          duration: 0.5,
+          track: 0,
+        },
+        {
+          html: '<img id="b" data-start="2" data-duration="0.5" />',
+          start: 2,
+          duration: 0.5,
+          track: 1,
+        },
+      ],
       sourceFile: "index.html",
     };
     const json = serializeClipboardPayload(payload);
@@ -58,5 +89,14 @@ describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
   it("returns null for invalid JSON", () => {
     expect(deserializeClipboardPayload("not json")).toBeNull();
     expect(deserializeClipboardPayload('{"kind":"unknown"}')).toBeNull();
+  });
+
+  it("returns null for a timeline-clip payload with no clips", () => {
+    const json = serializeClipboardPayload({
+      kind: "timeline-clip",
+      clips: [],
+      sourceFile: "index.html",
+    });
+    expect(deserializeClipboardPayload(json)).toBeNull();
   });
 });

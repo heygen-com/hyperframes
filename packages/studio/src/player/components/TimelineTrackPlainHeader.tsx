@@ -39,7 +39,7 @@ export function VisibilityButton({
       type="button"
       aria-label={label}
       title={label}
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC] ${
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline-solid focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[#3CE6AC] ${
         hidden ? "text-[#3CE6AC] hover:text-white" : "text-white/35 hover:text-white/75"
       }`}
       onPointerDown={(event) => event.stopPropagation()}
@@ -93,14 +93,11 @@ export function PlainTrackHeader({
         )}
         {/* No `flex-1`: the name takes only the width it needs, so the clip
             count sits against it rather than being pushed out to meet the
-            controls. The slack goes to the `ml-auto` group below instead.
-
-            Wraps rather than truncating: a truncated name needs a hover to be
-            read at all, and a tooltip is no use to a name you are scanning a
-            column of. `break-words` so a long single token breaks instead of
-            forcing the column wider. */}
+            controls. The slack goes to the `ml-auto` group below instead. */}
         {showTrackLabel && (
-          <span className="min-w-0 break-words text-[11px] leading-tight">{trackLabel}</span>
+          <span title={trackLabel} className="min-w-0 truncate text-[11px] leading-tight">
+            {trackLabel}
+          </span>
         )}
         {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
         {/* `ml-auto` is what anchors the group right: it absorbs the slack the

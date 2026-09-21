@@ -13,6 +13,17 @@ export interface TimelineDiamondMarker {
   visualSize: number;
 }
 
+const EASE_BUTTON_PX = 16;
+const EASE_BUTTON_REST_GAP_PX = 4;
+
+/** Whether a segment is wide enough to show the ease button at rest (button
+ * box plus a clear gap each side) without overlapping either neighboring
+ * diamond. 24 coincides with roomForFullTarget's threshold below but is a
+ * separate constraint; don't assume changing one keeps the other in sync. */
+export function hasRoomForRestingEase(connectorWidth: number): boolean {
+  return connectorWidth >= EASE_BUTTON_PX + EASE_BUTTON_REST_GAP_PX * 2;
+}
+
 /**
  * The line between each pair of adjacent diamonds, plus the ease control that
  * sits at the segment's midpoint. Split out of TimelineClipDiamonds only to keep
@@ -96,6 +107,7 @@ export function TimelineDiamondConnectors({
                 // the hit test and steal their clicks at fit zoom. Grow the
                 // target only where the room exists.
                 roomForFullTarget={connectorWidth >= 24}
+                restingVisible={hasRoomForRestingEase(connectorWidth)}
                 onSelectSegment={onSelectSegment}
               />
             )}
@@ -133,6 +145,7 @@ function SegmentEaseControl({
   rovingTargetId,
   afterLabel,
   roomForFullTarget,
+  restingVisible,
   onSelectSegment,
 }: {
   left: number;
@@ -146,6 +159,9 @@ function SegmentEaseControl({
   /** Time label of the keyframe this segment starts at, for the accessible name. */
   afterLabel: string;
   roomForFullTarget: boolean;
+  /** Whether the segment is wide enough to show the button at rest; too
+   * narrow and it stays hover-only so it doesn't smear over the diamonds. */
+  restingVisible: boolean;
   onSelectSegment: (target: TimelineKeyframeTarget) => void;
 }) {
   // The ease button sits dead centre of its segment, which on a two-keyframe clip
@@ -187,7 +203,7 @@ function SegmentEaseControl({
         // for that overlay the button keeps its 16x16 hit area, which is WCAG's
         // target-spacing exception: the neighbouring diamonds are themselves the
         // reason it cannot grow, and stealing their clicks is the worse failure.
-        className={`absolute flex items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 ${roomForFullTarget ? "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']" : ""}`}
+        className={`absolute flex items-center justify-center rounded-sm ${restingVisible ? "opacity-40" : "opacity-0"} transition-opacity hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 ${roomForFullTarget ? "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']" : ""}`}
         style={{
           left: "50%",
           top: "50%",

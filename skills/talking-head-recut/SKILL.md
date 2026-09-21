@@ -298,7 +298,7 @@ Rules that apply to every channel:
 - If the user has already pre-approved defaults ("just use defaults",
   "no need to ask", "auto-pick everything"), asked you not to ask, or the
   run carries an ongoing autonomous signal ("surprise me" / "decide for me" —
-  `../hyperframes-core/references/brief-contract.md` § 1) — **skip
+  `../hyperframes/references/brief-contract.md` § 1) — **skip
   the question entirely** and use: `recommendedRatio`, `layout="stack"`
   (safest cross-ratio default), `style` chosen from transcript tone in
   the most neutral group (editorial/data), `autoCount`. Tell the user

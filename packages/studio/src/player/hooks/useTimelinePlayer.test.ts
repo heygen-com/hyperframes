@@ -330,34 +330,17 @@ describe("findTimelineDomNodeForClip", () => {
 });
 
 describe("anonymous timeline identity", () => {
-  it("adds root-level untimed DOM layers as implicit full-duration layers", () => {
+  it("does not invent rows for root-level untimed wrappers", () => {
     const doc = createDocument(`
       <div data-composition-id="compare" data-start="0" data-duration="18">
-        <link rel="stylesheet" href="styles.css" />
-        <div class="scene-shell">
-          <div class="topline">Title</div>
-        </div>
+        <div class="scene-shell"><div class="topline">Title</div></div>
         <video id="main-video" class="clip main-video" data-start="0" data-duration="18" data-track-index="1"></video>
-        <script></script>
       </div>
     `);
 
     const elements = parseTimelineFromDOM(doc, 18);
 
-    expect(elements).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          duration: 18,
-          label: "Scene Shell",
-          selector: ".scene-shell",
-          start: 0,
-          tag: "div",
-          timingSource: "implicit",
-        }),
-      ]),
-    );
-    expect(elements.find((element) => element.tag === "link")).toBeUndefined();
-    expect(elements.find((element) => element.tag === "script")).toBeUndefined();
+    expect(elements.map((element) => element.tag)).toEqual(["video"]);
   });
 
   it("keeps fallback-parsed anonymous clips distinct when labels match", () => {

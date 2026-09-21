@@ -1,4 +1,3 @@
-import type { MutableRefObject } from "react";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { patchMediaColorGradingInHtml } from "./editor/colorGradingScopePatch";
@@ -27,7 +26,6 @@ interface ApplyColorGradingScopeOptions {
   selectedSourceFile: string;
   fileTree: string[];
   projectId: string;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   waitForPendingDomEditSaves: () => Promise<void>;
   readProjectFile: ProjectFileReader;
   writeProjectFile: ProjectFileWriter;
@@ -78,7 +76,6 @@ export async function applyColorGradingScopeUpdate({
   selectedSourceFile,
   fileTree,
   projectId,
-  domEditSaveTimestampRef,
   waitForPendingDomEditSaves,
   readProjectFile,
   writeProjectFile,
@@ -105,7 +102,6 @@ export async function applyColorGradingScopeUpdate({
     return EMPTY_COLOR_GRADING_SCOPE_RESULT;
   }
 
-  domEditSaveTimestampRef.current = Date.now();
   const changedPaths = await saveProjectFilesWithHistory({
     projectId,
     label: value ? "Apply color grading" : "Clear color grading",

@@ -3480,7 +3480,13 @@ function makeCanvas(element: ColorGradingMediaElement): HTMLCanvasElement {
   return attachCanvas(document.createElement("canvas"), element);
 }
 
-export function createColorGradingRuntime(): RuntimeColorGradingApi {
+/** `pausedMediaLease` borrows an element's playback while the transport clock is
+ *  stopped. Optional so this module stays constructible alone; without it the
+ *  runtime's paused-side enforcement stops the preview. */
+export function createColorGradingRuntime(pausedMediaLease?: {
+  lease: (el: HTMLMediaElement) => void;
+  release: (el: HTMLMediaElement) => void;
+}): RuntimeColorGradingApi {
   const entries = new WeakMap<ColorGradingMediaElement, ColorGradingEntry>();
   const trackedElements = new Set<ColorGradingMediaElement>();
   const idleRenderers: ColorGradingRenderer[] = [];
@@ -3781,8 +3787,12 @@ export function createColorGradingRuntime(): RuntimeColorGradingApi {
     if (element.ended || (Number.isFinite(element.duration) && time >= element.duration)) {
       element.currentTime = 0;
     }
+    // Borrowed before play(): the runtime stops anything running under a paused
+    // clock, and the capture-phase `play` listener makes that immediate.
+    pausedMediaLease?.lease(element);
     void element.play().catch(() => undefined);
     return () => {
+      pausedMediaLease?.release(element);
       element.pause();
       element.loop = loop;
       element.muted = muted;

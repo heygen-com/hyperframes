@@ -93,9 +93,14 @@ export function useTimelineGeometry({
   useEffect(() => {
     if (zoomMode !== "manual" || isDragging.current) return;
     const el = scrollRef.current;
-    const target = lastScrollLeftRef.current;
-    if (!el || target <= 0) return;
+    if (!el) return;
+    // Read the ref inside the frame, not here: a sibling effect in the same
+    // commit (a fresh reveal) can still update lastScrollLeftRef before this
+    // frame runs, and a value captured now would fight that reveal with a
+    // stale target.
     const raf = requestAnimationFrame(() => {
+      const target = lastScrollLeftRef.current;
+      if (target <= 0) return;
       const max = Math.max(0, el.scrollWidth - el.clientWidth);
       const next = Math.min(target, max);
       if (Math.abs(el.scrollLeft - next) > 0.5) el.scrollLeft = next;

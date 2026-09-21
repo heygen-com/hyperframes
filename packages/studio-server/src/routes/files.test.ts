@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { commitElementPatchBatches, registerFileRoutes } from "./files";
 import type { StudioApiAdapter } from "../types";
 import {
-  consumeFileWriteReceipt,
+  identifyFileWrite,
   fileContentVersion,
   resetFileWriteReceipts,
 } from "../helpers/fileVersion";
@@ -150,7 +150,7 @@ describe("registerFileRoutes", () => {
     expect(result.after).toContain('data-duration="7"');
     expect(result.after).toContain(`id="${result.hostId}"`);
     expect(result.version).toBe(fileContentVersion(result.after));
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), result.version)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), result.version)).toEqual({
       path: "index.html",
       version: result.version,
       writeToken: "studio-insert-1",
@@ -362,7 +362,7 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, payload.backupPath))).toEqual(before);
     expect(payload.version).toBe(fileContentVersion(after));
     expect(response.headers.get("etag")).toBe(payload.version);
-    expect(consumeFileWriteReceipt(path, payload.version)).toEqual({
+    expect(identifyFileWrite(path, payload.version)).toEqual({
       path: "image.png",
       version: payload.version,
       writeToken: "binary-write",
@@ -475,7 +475,7 @@ describe("registerFileRoutes", () => {
     expect(payload.version).toBe(fileContentVersion("after"));
     expect(payload.writeToken).toBe("studio-write-1");
     expect(response.headers.get("etag")).toBe(payload.version);
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), payload.version!)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), payload.version!)).toEqual({
       path: "index.html",
       version: payload.version,
       writeToken: "studio-write-1",
@@ -483,6 +483,27 @@ describe("registerFileRoutes", () => {
     expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
     expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe("before");
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("after");
+  });
+
+  it("fails PUT closed when the backup cannot be created", async () => {
+    const projectDir = createProjectDir();
+    const original = "before";
+    writeFileSync(join(projectDir, "index.html"), original);
+    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/files/index.html", {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(original) },
+      body: "after",
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
+    });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
   });
 
   it("backs up the previous file content before delete", async () => {
@@ -499,6 +520,25 @@ describe("registerFileRoutes", () => {
     expect(response.status).toBe(200);
     expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
     expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe("before delete");
+  });
+
+  it("fails DELETE closed when the backup cannot be created", async () => {
+    const projectDir = createProjectDir();
+    const original = "before delete";
+    writeFileSync(join(projectDir, "index.html"), original);
+    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/files/index.html", {
+      method: "DELETE",
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
+    });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
   });
 
   it("backs up the previous file content before structured DOM mutations", async () => {
@@ -536,6 +576,33 @@ describe("registerFileRoutes", () => {
       '<div id="title">Before</div>',
     );
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
+  });
+
+  it("fails structured DOM mutations closed when the backup cannot be created", async () => {
+    const projectDir = createProjectDir();
+    const original = '<div id="title">Before</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: { id: "title" },
+          operations: [{ type: "text-content", property: "textContent", value: "After" }],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
+    });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
   });
 
   it("returns the current durable version for a matched no-op element patch", async () => {
@@ -601,7 +668,7 @@ describe("registerFileRoutes", () => {
 
     expect(response.status).toBe(200);
     const version = fileContentVersion(readFileSync(join(projectDir, "index.html"), "utf-8"));
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), version)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), version)).toEqual({
       path: "index.html",
       version,
       writeToken: "studio-patch-1",
@@ -647,7 +714,7 @@ describe("registerFileRoutes", () => {
     expect(payload.content).toContain('id="front" style="z-index: 1"');
     expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(original);
     const version = fileContentVersion(payload.content!);
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), version)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), version)).toEqual({
       path: "index.html",
       version,
       writeToken: "studio-layer-order-1",
@@ -751,7 +818,7 @@ describe("registerFileRoutes", () => {
     expect(response.status).toBe(200);
     for (const file of payload.files) {
       const version = fileContentVersion(file.after);
-      expect(consumeFileWriteReceipt(join(projectDir, file.sourceFile), version)).toEqual({
+      expect(identifyFileWrite(join(projectDir, file.sourceFile), version)).toEqual({
         path: file.sourceFile,
         version,
         writeToken: "studio-group-drag-1",
@@ -972,9 +1039,7 @@ describe("registerFileRoutes", () => {
     expect(payload.files[0].after).toContain('id="a-split"');
     expect(payload.files[0].after).toContain('id="b-split"');
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(payload.files[0].after);
-    expect(
-      consumeFileWriteReceipt(join(projectDir, "index.html"), payload.files[0].version),
-    ).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), payload.files[0].version)).toEqual({
       path: "index.html",
       version: payload.files[0].version,
       writeToken: "cut-test",
@@ -1242,30 +1307,40 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
   });
 
   it("rejects a stale semantic no-op after a concurrent file write", async () => {
-    const projectDir = createProjectDir();
-    writeHtml(projectDir, "comp.html", FROMTO_COMP);
-    const app = new Hono();
-    registerFileRoutes(app, createAdapter(projectDir));
-    const successor = FROMTO_COMP.replace('data-duration="3"', 'data-duration="9"');
-    let releaseImport = () => {};
-    recastImportGate.wait = new Promise<void>((resolve) => {
-      releaseImport = resolve;
-    });
-    const parserEntered = new Promise<void>((resolve) => {
-      recastImportGate.onEnter = resolve;
-    });
+    // Pins the recast writer: this test's interleave seam is recast's LAZY module
+    // import, which the acorn default no longer performs (acorn is statically
+    // imported). The 409 revalidation under test is writer-independent.
+    const previousWriter = process.env.HYPERFRAMES_GSAP_WRITER;
+    process.env.HYPERFRAMES_GSAP_WRITER = "recast";
+    try {
+      const projectDir = createProjectDir();
+      writeHtml(projectDir, "comp.html", FROMTO_COMP);
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
+      const successor = FROMTO_COMP.replace('data-duration="3"', 'data-duration="9"');
+      let releaseImport = () => {};
+      recastImportGate.wait = new Promise<void>((resolve) => {
+        releaseImport = resolve;
+      });
+      const parserEntered = new Promise<void>((resolve) => {
+        recastImportGate.onEnter = resolve;
+      });
 
-    const pending = postGsapMutationBatch(app, "comp.html", {
-      mutations: [{ type: "shift-positions", targetSelector: "#missing", delta: 1 }],
-    });
-    await parserEntered;
-    writeHtml(projectDir, "comp.html", successor);
-    releaseImport();
-    const response = await pending;
+      const pending = postGsapMutationBatch(app, "comp.html", {
+        mutations: [{ type: "shift-positions", targetSelector: "#missing", delta: 1 }],
+      });
+      await parserEntered;
+      writeHtml(projectDir, "comp.html", successor);
+      releaseImport();
+      const response = await pending;
 
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ conflict: true });
-    expect(readFileSync(join(projectDir, "comp.html"), "utf-8")).toBe(successor);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ conflict: true });
+      expect(readFileSync(join(projectDir, "comp.html"), "utf-8")).toBe(successor);
+    } finally {
+      if (previousWriter === undefined) delete process.env.HYPERFRAMES_GSAP_WRITER;
+      else process.env.HYPERFRAMES_GSAP_WRITER = previousWriter;
+    }
   });
 
   it("applies an ordered GSAP mutation batch with one before/after write result", async () => {

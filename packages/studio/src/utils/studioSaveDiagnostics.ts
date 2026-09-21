@@ -165,7 +165,19 @@ export function buildStudioSaveFailureProperties(
     target_id: input.targetId ?? undefined,
     target_selector: input.targetSelector ?? undefined,
     target_source_file: input.targetSourceFile ?? undefined,
+    block_detail: gsapBlockDetail(input.error),
   };
+}
+
+/**
+ * The specific cause behind a blocked GSAP edit. `error_message` only carries
+ * the coarse copy, and one of those strings covers six different situations,
+ * so the message alone cannot say which one a user hit.
+ */
+function gsapBlockDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name !== "GsapEditBlockedError") return undefined;
+  const detail = (error as { detail?: unknown }).detail;
+  return typeof detail === "string" ? detail : undefined;
 }
 
 export function trackStudioSaveFailure(input: StudioSaveFailureInput): void {

@@ -7,6 +7,7 @@ import {
   resolveVisionPhaseCompletion,
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
+import { loadOptionalPackage } from "../utils/optionalPackages.js";
 
 const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
   generateContentMock: vi.fn(),
@@ -60,13 +61,15 @@ vi.mock("sharp", () => {
   return { default: sharp };
 });
 
-vi.mock("@google/genai", () => ({
-  GoogleGenAI: class {
-    models = { generateContent: generateContentMock };
-    constructor(options: Record<string, unknown>) {
-      clientOptions.push(options);
-    }
-  },
+vi.mock("../utils/optionalPackages.js", () => ({
+  loadOptionalPackage: vi.fn(async () => ({
+    GoogleGenAI: class {
+      models = { generateContent: generateContentMock };
+      constructor(options: Record<string, unknown>) {
+        clientOptions.push(options);
+      }
+    },
+  })),
 }));
 
 // These tests exercise the OpenRouter provider path only — it makes a plain
@@ -524,6 +527,20 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
       googleAuthOptions: { credentials: JSON.parse(SERVICE_ACCOUNT) },
     });
     expect(clientOptions[0]).not.toHaveProperty("apiKey");
+  });
+
+  it("skips captioning with the loader's message when @google/genai cannot be installed", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.mocked(loadOptionalPackage).mockRejectedValueOnce(new Error("install it yourself"));
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({});
+    expect(warnings).toEqual(["Skipped vision captioning: install it yourself"]);
+    expect(generateContentMock).not.toHaveBeenCalled();
   });
 
   it("honours an explicit region", async () => {

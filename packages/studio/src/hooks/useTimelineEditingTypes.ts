@@ -4,6 +4,7 @@ import type { TimelineElement } from "../player";
 import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { PublishSdkSession } from "../utils/sdkCutover";
+import type { CanEditTimelineElement } from "./timelineEditPermission";
 
 interface RecordEditInput {
   label: string;
@@ -35,7 +36,6 @@ export interface UseTimelineEditingOptions {
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;
@@ -50,6 +50,8 @@ export interface UseTimelineEditingOptions {
   /** Reparse authored animations after a timing rewrite changes their positions. */
   invalidateGsapCache?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
+  /** Refuses a hand edit at the persist boundary when set; absent = Studio unchanged. */
+  canEdit?: CanEditTimelineElement;
 }
 
 export type TimelineFileDropHandler = (

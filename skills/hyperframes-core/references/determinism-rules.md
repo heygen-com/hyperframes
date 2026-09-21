@@ -15,18 +15,7 @@ For GSAP:
 - **Do not** call `tl.play()` for render-critical motion.
 - **Do not** create empty tweens only to set duration; use `data-duration` on the clip instead.
 
-Use the `hyperframes-animation` skill for tween syntax, position parameters, eases, and performance rules.
-
-### Duration Contract For Non-GSAP Runtimes
-
-The render engine needs a positive total duration before it will capture a single frame — without one, capture fails outright with "Composition has zero duration." A GSAP timeline supplies this automatically. CSS, WAAPI, and Lottie compositions have no timeline object, so the runtime infers duration itself:
-
-- **CSS**: longest `animation-delay` + `animation-duration` × finite `animation-iteration-count` across animated elements (offset by each element's `data-start`). `animation-iteration-count: infinite` cannot be inferred.
-- **WAAPI**: longest `element.animate()` effect's `getComputedTiming().endTime`. Infinite `iterations` cannot be inferred.
-- **Lottie**: the registered animation's native length (`totalFrames / frameRate`, or the dotLottie player's own `duration`) — always finite regardless of `loop`.
-- **Three.js**: **not inferable**. The `three` adapter only forwards time via `hf-seek` — it has no `AnimationClip`/`AnimationMixer` inspection.
-
-`data-duration` on the root `[data-composition-id]` element is therefore optional whenever every non-GSAP animation on the page is finite (CSS/WAAPI with finite iteration counts, or Lottie). It is **required** when: the composition has an infinite/unbounded CSS or WAAPI animation, the composition uses Three.js, or there is no GSAP timeline and no animation signal at all for any adapter to discover. `npx hyperframes lint` enforces exactly this (`root_composition_missing_duration_source`) — see the runtime/adapter-specific docs under `hyperframes-animation/adapters/` for the full contract per runtime.
+Use the `hyperframes-animation` skill for tween syntax, position parameters, eases, and performance rules. Non-GSAP duration inference lives in `hyperframes-animation/adapters/`.
 
 ## Determinism Rules
 
@@ -40,7 +29,7 @@ Rendered frames must be reproducible from the requested time. Do **not** use any
 
 Also avoid:
 
-- Tweening `display` or raw `visibility` **on a clip element**: HyperFrames timing owns a clip's visibility, and `lint` rejects it. Use GSAP `autoAlpha` (it interpolates opacity and flips visibility only at the hidden endpoint) or a zero-duration `tl.set(..., { visibility: "hidden" | "visible" })` at an explicit beat boundary for a deterministic hard kill. Animating a clip element's ordinary visual properties (`opacity`, transforms, `filter`, …) is fine and the shipped catalog does it constantly; what is forbidden is taking over its visibility.
+- Tweening `display`, raw `visibility`, or `autoAlpha` **on a clip element**: HyperFrames timing owns a clip's visibility, and `lint` rejects it (`gsap_animates_clip_element`). Fade with `opacity`, or tween a child wrapper. Do not tween `class="clip"`.
 - There is no fixed allowlist of animatable properties. `lint` enforces a **denylist**, so `filter`, `clipPath`, `strokeDashoffset`, `width`, `height` and similar are all legitimate targets. Prefer transforms and opacity where you have the choice, for performance rather than correctness. The per-runtime detail lives in `hyperframes-animation/adapters/`.
 - Animating the same property on the same element from multiple timelines at the same time — GSAP's overwrite behavior is order-dependent and can flip between renders.
 
@@ -62,9 +51,3 @@ Build the visible end-state in static HTML and CSS first, then animate from/to t
 - **Do not** use `<br>` in body text. Forced breaks ignore the actual rendered font width and produce an extra break when the line already wraps naturally, causing overlap. Let text wrap via `max-width`. Exception: short display titles where each word is deliberately on its own line.
 - **Transformed elements must be block-level + sized.** `transform`/`scaleX`/`scaleY` is a no-op on an inline `<span>`, and scaling an auto-width (0px) element shows nothing → invisible bars/fills. Give them `display: block`/`inline-block`/flex-item **and** a real `width`/`height` (e.g. `width: 100%` inside a sized parent). _(Silent — automated gates may miss it.)_
 - **Absolutely-positioned decoratives that pulse or overshoot** (`yoyo` scale, `back.out`) need clearance at their **peak** size and must not straddle an `overflow: hidden` edge — else they overlap a neighbor or get clipped. Position for the largest frame, not the resting one. _(silent.)_
-
-## Why This Matters
-
-The renderer takes a time value and produces a pixel buffer. There is no notion of "playback" — every frame is a fresh seek. Any state that depends on having reached this frame _through_ a prior frame (timers, accumulated state, event-driven animations) will desync when the renderer samples out of order or in parallel.
-
-If you find yourself reaching for `setTimeout`, `requestAnimationFrame`, or `addEventListener` to drive a visual, rebuild it as a tween on the timeline instead.

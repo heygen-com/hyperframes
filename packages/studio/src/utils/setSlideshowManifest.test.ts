@@ -59,7 +59,6 @@ describe("persistSlideshowManifest — op construction", () => {
       editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
       writeProjectFile,
       reloadPreview: vi.fn(),
-      domEditSaveTimestampRef: { current: 0 },
     };
   }
 

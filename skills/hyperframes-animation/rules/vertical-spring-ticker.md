@@ -87,7 +87,7 @@ springs.forEach((spring, i) => {
 | STEP_SPACING  | 0.3–0.5s              | **≤ STEP_DUR** so springs overlap (additive); wider gaps read as a lazy linear scroll |
 | BOUNCE_FACTOR | 1.4–2.5               | 1.4 gentle click / 2.0 firm / 2.5+ casino spin-and-land for a climax step             |
 
-Reference: `../../examples/proof-logo-chain.html` (204px, 1 step, 0.45s).
+Reference: `../examples/proof-logo-chain.html` (204px, 1 step, 0.45s).
 
 ## Critical Constraints
 

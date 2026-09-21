@@ -7,7 +7,7 @@
  * shared core `setAudioGroupAttribute` also uses.
  */
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import {
   buildPatchTarget,
@@ -32,6 +32,14 @@ function patchLiveElementAttribute(
   else target.setAttribute(attr, value);
 }
 
+function elementAttributeLiveKey(
+  element: TimelineElement,
+  activeCompPath: string | null,
+  attr: string,
+): string {
+  return `${element.sourceFile || activeCompPath || "index.html"}\0${element.key ?? element.domId ?? element.id}\0${attr}`;
+}
+
 interface SetElementAttributeInput {
   projectId: string;
   activeCompPath: string | null;
@@ -42,7 +50,6 @@ interface SetElementAttributeInput {
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: Parameters<typeof persistElementAttribute>[0]["recordEdit"];
-  domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
@@ -56,7 +63,6 @@ async function setElementAttribute({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: SetElementAttributeInput): Promise<string[]> {
   const targetPath = element.sourceFile || activeCompPath || "index.html";
@@ -72,7 +78,6 @@ async function setElementAttribute({
     label,
     writeProjectFile,
     recordEdit,
-    domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
     patchLive: (v) => patchLiveElementAttribute(previewIframe, element, attr, v, activeCompPath),
   });
@@ -84,7 +89,6 @@ export function useSetElementAttribute({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
@@ -96,10 +100,32 @@ export function useSetElementAttribute({
     value: string | null,
     label: string,
   ) => Promise<void>;
+  revertLive: (element: TimelineElement, attr: string) => void;
 } {
+  const liveBeforeRef = useRef(new Map<string, string | null>());
   const setLive = useCallback(
     (element: TimelineElement, attr: string, value: string | null) => {
+      const key = elementAttributeLiveKey(element, activeCompPath, attr);
+      const target = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
+      if (!liveBeforeRef.current.has(key)) {
+        liveBeforeRef.current.set(key, target?.getAttribute(attr) ?? null);
+      }
       patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
+    },
+    [previewIframeRef, activeCompPath],
+  );
+  const revertLive = useCallback(
+    (element: TimelineElement, attr: string) => {
+      const key = elementAttributeLiveKey(element, activeCompPath, attr);
+      if (!liveBeforeRef.current.has(key)) return;
+      patchLiveElementAttribute(
+        previewIframeRef.current,
+        element,
+        attr,
+        liveBeforeRef.current.get(key) ?? null,
+        activeCompPath,
+      );
+      liveBeforeRef.current.delete(key);
     },
     [previewIframeRef, activeCompPath],
   );
@@ -122,13 +148,14 @@ export function useSetElementAttribute({
           previewIframe: previewIframeRef.current,
           writeProjectFile,
           recordEdit,
-          domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
+        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update effect";
         showToast(message);
+        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
       }
     },
     [
@@ -136,12 +163,11 @@ export function useSetElementAttribute({
       previewIframeRef,
       writeProjectFile,
       recordEdit,
-      domEditSaveTimestampRef,
       pendingTimelineEditPathRef,
       isRecordingRef,
       showToast,
       projectIdRef,
     ],
   );
-  return { setLive, setQuiet };
+  return { setLive, setQuiet, revertLive };
 }

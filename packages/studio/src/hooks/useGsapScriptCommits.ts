@@ -313,7 +313,7 @@ function instantPatchesFor(
 
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
-export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, publishSdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
+export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, publishSdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
   const activeProjectId = projectIdRef.current;
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;
@@ -348,7 +348,6 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       }
       return;
     }
-    if (previewIsActive) domEditSaveTimestampRef.current = Date.now();
     await recordMutationEdit(targetPath, result, options);
     // The durable mutation belongs to the project captured when it was queued.
     // A later project must never receive its file state or preview refresh.
@@ -365,7 +364,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       reloadPreview,
       onCacheInvalidate,
     });
-  }, [projectIdRef, previewIframeRef, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, forceReloadSdkSession, recordMutationEdit]);
+  }, [projectIdRef, previewIframeRef, reloadPreview, onCacheInvalidate, onFileContentChanged, forceReloadSdkSession, recordMutationEdit]);
 
   const runCommit = useCallback(async (pid: string, compositionPath: string | null, targetPath: string, selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
     const result = await runMutationRequest([mutation], options, showToast, () =>
@@ -494,7 +493,6 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
             editHistory: { recordEdit: editHistory.recordEdit },
             writeProjectFile,
             reloadPreview,
-            domEditSaveTimestampRef,
             refresh: sdkRefresh,
             compositionPath: activeCompPath,
             readProjectFile: readProjectFileContent,
@@ -505,7 +503,6 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       editHistory.recordEdit,
       writeProjectFile,
       reloadPreview,
-      domEditSaveTimestampRef,
       sdkRefresh,
       activeCompPath,
       readProjectFileContent,

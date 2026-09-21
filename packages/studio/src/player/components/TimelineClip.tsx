@@ -64,6 +64,16 @@ export const TimelineClip = memo(function TimelineClip({
   const showDefaultText = !hasCustomContent && (widthPx >= 40 || isSelected);
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
+  const themeVariables = {
+    "--clip-bg": theme.clipBackground,
+    "--clip-bg-active": theme.clipBackgroundActive,
+    "--clip-bg-hover": theme.clipBackgroundHover,
+    "--clip-bg-dragging": theme.clipBackgroundDragging,
+    "--clip-border": theme.clipBorder,
+    "--clip-border-hover": theme.clipBorderHover,
+    "--clip-border-active": theme.clipBorderActive,
+    "--clip-handle": theme.handleColor,
+  } as CSSProperties;
   const clipClassName = [
     "timeline-clip",
     "absolute",
@@ -71,7 +81,6 @@ export const TimelineClip = memo(function TimelineClip({
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
-    showDefaultText ? "" : "is-micro",
     isAudioTimelineElement(el) ? "is-audio" : "",
   ]
     .filter((className) => className.length > 0)
@@ -82,6 +91,7 @@ export const TimelineClip = memo(function TimelineClip({
     top: clipY,
     ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
     borderRadius: theme.clipRadius,
+    ...themeVariables,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
     // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
     cursor: "default",
@@ -145,7 +155,7 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: "rgba(255, 255, 255, 0.55)",
+              background: "var(--clip-handle)",
               opacity: handleOpacity * 0.6,
             }}
           />
@@ -175,7 +185,7 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: "rgba(255, 255, 255, 0.55)",
+              background: "var(--clip-handle)",
               opacity: handleOpacity * 0.6,
             }}
           />

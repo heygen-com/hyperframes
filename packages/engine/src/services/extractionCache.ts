@@ -281,16 +281,35 @@ export function publishCacheEntry(entry: CacheEntry, partialDir: string): CacheP
 }
 
 /**
- * Update the LRU clock for a complete cache entry. Misses and filesystem
- * races are harmless: the caller can still use the entry it already found.
+ * Update the LRU clock for the cache entry directory at `dir`. Misses and
+ * filesystem races are harmless: the caller can still use the entry it already
+ * found. Takes a directory rather than a `CacheEntry` so a reader holding only
+ * a frame path can renew the clock with `dirname(framePath)`.
+ *
+ * Touches both signals `gcExtractionCache` reads, since which one is
+ * authoritative depends on the entry's state: `collectGcEntry` ages out a
+ * `.partial-*` writer dir by the DIRECTORY's own mtime before the sentinel is
+ * even considered, while a published (complete) entry is read by its
+ * `COMPLETE_SENTINEL` mtime. Touching only the sentinel would silently fail
+ * to renew a still-open partial dir a render depends on.
  */
-export function touchCacheEntry(entry: CacheEntry): void {
+export function touchCacheDir(dir: string): void {
+  const now = new Date();
   try {
-    const now = new Date();
-    utimesSync(join(entry.dir, COMPLETE_SENTINEL), now, now);
+    utimesSync(dir, now, now);
   } catch {
     // Best effort LRU touch.
   }
+  try {
+    utimesSync(join(dir, COMPLETE_SENTINEL), now, now);
+  } catch {
+    // Best effort LRU touch.
+  }
+}
+
+/** Update the LRU clock for a complete cache entry. See `touchCacheDir`. */
+export function touchCacheEntry(entry: CacheEntry): void {
+  touchCacheDir(entry.dir);
 }
 
 /**

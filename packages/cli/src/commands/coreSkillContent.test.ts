@@ -27,7 +27,7 @@ describe("hyperframes-core contract docs", () => {
 
   it("teaches check as the canonical quality gate", () => {
     const skill = read("skills", "hyperframes-core", "SKILL.md");
-    const brief = read("skills", "hyperframes-core", "references", "brief-contract.md");
+    const brief = read("skills", "hyperframes", "references", "brief-contract.md");
 
     expect(skill).toContain("`npx hyperframes check`");
     expect(brief).toContain("`hyperframes check`");

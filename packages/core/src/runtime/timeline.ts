@@ -12,6 +12,7 @@ import {
   parseStrictFiniteTimingNumber,
   resolveMediaElementDurationSeconds,
   resolveNaturalMediaTimelineDuration,
+  resolveTimedImageDurationSeconds,
 } from "./playbackRate";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
@@ -362,6 +363,7 @@ export function collectRuntimeTimelinePayload(params: {
         duration = resolveNaturalMediaTimelineDuration(node, node.duration);
       }
     }
+    if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);
     if (duration == null) {
       const inheritedDuration = compositionContext.inheritedDuration;
       if (inheritedDuration != null && inheritedDuration > 0) {

@@ -1,6 +1,6 @@
 # Frame worker — PR-to-video delta
 
-> The shared law is the core contract above (the packet builder prepends `../hyperframes-core/references/frame-worker-core.md` to this file as `_role.md`) — read the two as one role. This file carries only what's specific to a PR-to-video frame.
+> The shared law is the core contract above (the packet builder prepends `../hyperframes/references/frame-worker-core.md` to this file as `_role.md`) — read the two as one role. This file carries only what's specific to a PR-to-video frame.
 
 ## Batch dispatch — you build a small packet batch
 

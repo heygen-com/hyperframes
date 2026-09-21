@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type {
   Composition,
   CompositionVariable,
@@ -35,7 +35,6 @@ export interface StudioEditPersistenceProps {
   sdkSession: Composition | null;
   publishSdkSession: PublishSdkSession;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
     label: string;
     kind: EditHistoryKind;
@@ -97,12 +96,12 @@ function VariableRow({
     <div className="space-y-1.5 rounded-lg border border-neutral-800/70 p-2">
       <div className="flex items-center gap-1.5">
         <span className="truncate text-[10px] font-medium text-neutral-300">{decl.label}</span>
-        <span className="rounded bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
+        <span className="rounded-sm bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
           {decl.type}
         </span>
         {unused && (
           <span
-            className="rounded bg-amber-900/40 px-1 py-px text-[8px] text-amber-400"
+            className="rounded-sm bg-amber-900/40 px-1 py-px text-[8px] text-amber-400"
             title="No script reads this variable"
           >
             unused
@@ -190,7 +189,7 @@ function PreviewModeHeader({
         <button
           type="button"
           onClick={onReset}
-          className="h-6 rounded px-2 text-[10px] text-neutral-400 hover:text-neutral-200"
+          className="h-6 rounded-sm px-2 text-[10px] text-neutral-400 hover:text-neutral-200"
         >
           Reset
         </button>
@@ -247,26 +246,22 @@ const EMPTY_STATE = (
   </p>
 );
 
-// Panel orchestrator — JSX conditionals per section, same shape as StudioRightPanel.
+// Panel orchestrator — JSX conditionals per section, same shape as StudioRightPanels.
 // fallow-ignore-next-line complexity
 export const VariablesPanel = memo(function VariablesPanel({
   sdkSession,
   publishSdkSession,
   reloadPreview,
-  domEditSaveTimestampRef,
   recordEdit,
 }: VariablesPanelProps) {
   const { activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey } = useStudioPlaybackContext();
-  const { readProjectFile, writeProjectFile, fileTree } = useFileManagerContext();
+  const { readProjectFile, writeProjectFile, fileTree, compositions } = useFileManagerContext();
   const { domEditSelection } = useDomEditContext();
-  // On the master view (no activeCompPath) the panel targets the project's real
-  // main composition — the first .html in the tree — not a hardcoded index.html
-  // that may not exist. This same path is used for the persist write target (so
-  // an edit never lands in a phantom index.html) AND the handoff render command.
-  // Null only when the project has no composition yet, in which case sdkSession
-  // is also null and the panel is inert.
-  const effectiveCompPath = activeCompPath ?? resolveMasterCompositionPath(fileTree);
+  // Master view (no activeCompPath) targets the real main composition, not a
+  // hardcoded index.html — used for both the persist write target and the
+  // handoff render command. Null only when the project has no composition.
+  const effectiveCompPath = activeCompPath ?? resolveMasterCompositionPath(compositions);
   const previewValues = usePreviewVariablesStore((s) => s.values);
   const setPreviewValues = usePreviewVariablesStore((s) => s.setValues);
 
@@ -289,7 +284,6 @@ export const VariablesPanel = memo(function VariablesPanel({
     writeProjectFile,
     recordEdit,
     reloadPreview,
-    domEditSaveTimestampRef,
     publishSdkSession,
   });
 
@@ -552,7 +546,6 @@ export const VariablesPanel = memo(function VariablesPanel({
           writeProjectFile={writeProjectFile}
           recordEdit={recordEdit}
           reloadPreview={reloadPreview}
-          domEditSaveTimestampRef={domEditSaveTimestampRef}
         />
       </div>
     </div>

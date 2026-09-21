@@ -58,7 +58,7 @@ document.getElementById("title").textContent = title;
 ### Two JSON Shapes (Easy to Confuse)
 
 - `data-composition-variables` is an **array of declarations** (the schema): `[{id, type, label, default}, ...]`
-- `--variables` and `data-variable-values` are **objects keyed by id** (the values): `{ title: "Q4", accent: "#fff" }`
+- `--variables` and `data-variable-values` are **objects keyed by id** (the values): `{"title":"Q4","accent":"#fff"}`
 
 ## Media
 
@@ -100,7 +100,7 @@ Video elements must be muted and inline. Audio must be a separate `<audio>` elem
 - **Never** add `crossorigin` to `<video>`/`<audio>`. `lint` rejects it unconditionally (`media_crossorigin_breaks_preview`, error) because a media host without `Access-Control-Allow-Origin` then fails silently in preview while renders still work, hiding the bug. There is no suppression, so this holds even for the canvas/WebGL/WebAudio readback case.
 - **Every `<audio>` needs an `id`.** The mixer selects `audio[id][src]`, so an id-less `<audio>` is never mixed and the render is **silent**. `lint` catches it as `media_missing_id`.
 - Audio always lives on a separate `<audio>` element — even if its source file is the same as a `<video>`. The `<video>` is muted; the `<audio>` carries sound.
-- For volume fades/ducking, animate `volume` on the timeline (`tl.to("#bgm", { volume: 0, duration: 1 }, "outro")`) rather than swapping `data-volume`. The runtime probes the timeline's volume keyframes and applies them identically in preview and render; `data-volume` is the static baseline for elements no tween touches. A tween's values REPLACE that baseline rather than scaling it, so on a clip whose gain is not `1` you scale the tween's targets instead (`{ volume: 1.95 }`, not `{ volume: 1 }`) — `lint` warns with `audio_volume_tween_overrides_gain` when the two disagree.
+- For volume fades and ducking, use the `data-automation` volume lane; the exact form is in `creator-editing-recipes.md`. `data-volume` is the static baseline. A timeline `volume` tween is ignored when a lane is present.
 
 For media duration: `<video>` and `<audio>` can omit `data-duration` if the media's intrinsic length is known and you want the full clip. Otherwise provide `data-duration` explicitly.
 

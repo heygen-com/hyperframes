@@ -23,7 +23,6 @@ interface UseEditorSaveOptions {
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   showToast: (message: string, tone?: "error" | "info") => void;
 }
@@ -53,7 +52,6 @@ export function useEditorSave({
   readProjectFile,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   setRefreshKey,
   showToast,
 }: UseEditorSaveOptions): EditorSaveHandle {
@@ -156,11 +154,10 @@ export function useEditorSave({
       if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);
       saveRafRef.current = requestAnimationFrame(() => {
         saveRafRef.current = null;
-        domEditSaveTimestampRef.current = Date.now();
         void persistCandidate(candidate);
       });
     },
-    [domEditSaveTimestampRef, editingPathRef, projectIdRef, persistCandidate],
+    [editingPathRef, projectIdRef, persistCandidate],
   );
 
   const flushPendingSave = useCallback(async (): Promise<EditorSaveDrainResult> => {
@@ -173,11 +170,10 @@ export function useEditorSave({
       return inFlightRef.current;
     }
     if (candidate) {
-      domEditSaveTimestampRef.current = Date.now();
       return persistCandidate(candidate);
     }
     return (await inFlightRef.current) ?? { status: "clean" };
-  }, [domEditSaveTimestampRef, persistCandidate]);
+  }, [persistCandidate]);
 
   const discardPendingSave = useCallback(() => {
     if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);

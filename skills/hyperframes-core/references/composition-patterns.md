@@ -1,6 +1,6 @@
 # Composition Patterns
 
-How to architect a project — when to inline everything in one HTML, when to split into sub-compositions, what the `index.html` orchestrator looks like at scale, and the common sub-composition archetypes seen in real projects. Pair with `minimal-composition.md` (single-file shape) and `sub-compositions.md` (mechanics of a sub-comp file).
+How to architect a project: the `index.html` orchestrator at scale, and the common sub-composition archetypes. Pair with `minimal-composition.md` (single-file shape) and `sub-compositions.md` (mechanics of a sub-comp file).
 
 ## Two Architectures
 
@@ -12,27 +12,6 @@ How to architect a project — when to inline everything in one HTML, when to sp
 | Routing entry         | `references/minimal-composition.md`                     | `references/sub-compositions.md`                                                     |
 
 Both architectures use the same runtime contract — `data-*` attributes + `window.__timelines[id]`. The choice is structural, not behavioral.
-
-### Pick monolithic when
-
-- The whole video is one continuous scene with no hard cuts.
-- Scenes share heavy state (one canvas/WebGL context spanning the whole video, a single SVG that morphs across all beats).
-- Total scope is small (~200–400 lines of markup + script).
-- No scene is reused across projects.
-
-### Pick modular when
-
-- The video has clear scene cuts — each scene is its own segment of the timeline.
-- Some scenes are large (>100 lines of markup or significant scripted animation).
-- A scene is reusable (kinetic intro, end-card logo lockup, a transition).
-- The video has a continuous audio track over multiple visual segments. Keep audio at the root, visual segments as sub-comps.
-- You want to author/iterate on scenes in isolation (preview a single sub-comp file directly).
-
-### Refactor between them
-
-Conversion is mechanical and reversible. To lift a monolithic scene into a sub-comp: wrap the scene's markup + scoped CSS + its slice of the parent timeline into a `<template>`, save as `compositions/<scene>.html`, replace the inline content in `index.html` with a slot `<div data-composition-src="compositions/<scene>.html">`, and have the sub-comp register its own timeline at `window.__timelines["<scene>"]`. The parent timeline shrinks accordingly.
-
-If a monolithic project is approaching three or more scene cuts, prefer modularizing _before_ adding the next scene. Mixed projects where some scenes are inline and siblings are in `compositions/` are the hardest to maintain.
 
 ## Modular Orchestrator Pattern
 
@@ -51,8 +30,8 @@ When using sub-compositions, `index.html` should be **thin**. Its job is to decl
       }
       #root {
         position: relative;
-        width: 1920px;
-        height: 1080px;
+        width: 100%;
+        height: 100%;
         overflow: hidden;
       }
       /* Sub-comp slots stretch to fill the root. */
@@ -110,7 +89,6 @@ When using sub-compositions, `index.html` should be **thin**. Its job is to decl
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
       window.__timelines["root"] = gsap.timeline({ paused: true });
     </script>
   </body>
@@ -162,7 +140,6 @@ The reason to reach for it: a sub-comp timeline **cannot** drive host elements (
 
 <script>
   // MAIN timeline drives the host video. Global time: scene starts at 20.
-  window.__timelines = window.__timelines || {};
   const main = window.__timelines["main"];
   main.fromTo(
     "#final-video",
@@ -182,7 +159,6 @@ The reason to reach for it: a sub-comp timeline **cannot** drive host elements (
     style="position:absolute; inset:0; pointer-events:none;"
   >
     <script>
-      window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
       // animate ONLY this sub-comp's own elements here (labels, frame, overlays)
       window.__timelines["final-anim"] = tl;
@@ -216,7 +192,6 @@ When several beat-level scenes share continuous state — a chat thread that gro
     <div class="phase" id="phase-b">…</div>
     <div class="phase" id="phase-c">…</div>
     <script>
-      window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
       tl.set("#phase-a", { opacity: 1 }, 0);
       tl.to("#phase-a", { opacity: 0, duration: 0.4 }, 3.0);
@@ -247,17 +222,3 @@ Audio always lives at the host (`index.html`) as a root-level `<audio>` so playb
 | Audio at root                       | `data-track-index` well above visual tracks | `10` while visuals use `1`                 |
 
 The `-template` suffix on `<template>` is conventional but not required — the runtime extracts contents from whichever `<template>` is in `<body>`, regardless of id. The prefix on inner element ids is the only safeguard against id collisions when multiple sub-comps are mounted into the same host page at once.
-
-## Editing Existing Projects
-
-Before adding or modifying scenes, identify which architecture is in use:
-
-```bash
-ls compositions/ 2>/dev/null && echo "modular" || echo "monolithic"
-```
-
-- In a **monolithic** project, add new scenes as inline `<section class="clip">` elements with a deliberate `data-start` and a sensible `data-track-index`, and extend the existing single timeline.
-- In a **modular** project, match the pattern: add a new file under `compositions/`, add a slot in `index.html`, keep the root timeline thin. Do **not** start inlining new scenes into `index.html` when sibling scenes are sub-comps — the inconsistency is the worst of both worlds.
-- If a monolithic project needs a third or fourth scene cut, lift each scene into a sub-comp before adding more. The conversion is mechanical (see "Refactor between them" above).
-
-When picking the slot's `data-start`/`data-duration`, prefer continuing the existing sequencing convention (adjoining starts, deliberate overlaps for cross-fades). Don't introduce a new track index unless you actually need parallel visual layers — most sequential-scene projects use exactly one visual track.

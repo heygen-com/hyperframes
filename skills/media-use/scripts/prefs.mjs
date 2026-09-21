@@ -11,7 +11,7 @@
  *     Record one confirmed brief answer into the project tier; the same value
  *     confirmed in two different projects promotes the key to the user tier.
  *
- * Consumption rules live in hyperframes-core/references/brief-contract.md § 2
+ * Consumption rules live in hyperframes/references/brief-contract.md § 2
  * (Remembered defaults): a remembered value becomes the recommended option
  * with a receipt — it never skips a question.
  */

@@ -1,63 +1,13 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect } from "react";
 import type { TimelineElement } from "../store/playerStore";
-import { usePlayerStore } from "../store/playerStore";
-import type { TimelineTheme } from "./timelineTheme";
-import type { TimelineRangeSelection } from "./timelineEditing";
-import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { EditPopover } from "./EditModal";
-import {
-  KeyframeDiamondContextMenu,
-  type KeyframeDiamondContextMenuState,
-} from "./KeyframeDiamondContextMenu";
+import { KeyframeDiamondContextMenu } from "./KeyframeDiamondContextMenu";
 import { ClipContextMenu } from "./ClipContextMenu";
 import { TrackGapContextMenu } from "./TrackGapContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { trackStudioSegmentEaseEdit } from "../../telemetry/events";
-
-export interface ClipContextMenuState {
-  x: number;
-  y: number;
-  element: TimelineElement;
-  sessionEpoch: number;
-}
-
-/** Resolved model for the empty-lane-space (track gap) context menu. */
-interface TrackGapContextMenuState {
-  x: number;
-  y: number;
-  gapWidth: number | null;
-  canCloseGap: boolean;
-  canCloseAllGaps: boolean;
-  hasAnyGaps: boolean;
-}
-
-interface TimelineOverlaysProps {
-  elements: readonly TimelineElement[];
-  elementsRef: MutableRefObject<readonly TimelineElement[]>;
-  theme: TimelineTheme;
-  showShortcutHint: boolean;
-  showPopover: boolean;
-  rangeSelection: TimelineRangeSelection | null;
-  setShowPopover: (value: boolean) => void;
-  setRangeSelection: (value: TimelineRangeSelection | null) => void;
-  kfContextMenu: KeyframeDiamondContextMenuState | null;
-  setKfContextMenu: (value: KeyframeDiamondContextMenuState | null) => void;
-  onDeleteKeyframe: TimelineEditCallbacks["onDeleteKeyframe"];
-  onDeleteAllKeyframes: TimelineEditCallbacks["onDeleteAllKeyframes"];
-  onMoveKeyframeToPlayhead: TimelineEditCallbacks["onMoveKeyframeToPlayhead"];
-  clipContextMenu: ClipContextMenuState | null;
-  setClipContextMenu: (value: ClipContextMenuState | null) => void;
-  currentTime: number;
-  onSplitElement: TimelineEditCallbacks["onSplitElement"];
-  pinZoomBeforeEdit: () => void;
-  onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
-  gapContextMenu: TrackGapContextMenuState | null;
-  onDismissGapContextMenu: () => void;
-  onCloseTrackGap: () => void;
-  onCloseAllTrackGaps: () => void;
-  onHoverGapAction: (action: "close-gap" | "close-all" | null) => void;
-}
+import { useTimelineContext } from "./TimelineProvider";
 
 interface TimelineContextTargetInput {
   capturedElement: TimelineElement;
@@ -81,52 +31,43 @@ export function resolveTimelineContextElement({
   return elements.find((element) => (element.key ?? element.id) === identity) ?? null;
 }
 
-function readTimelineContextElement(
-  capturedElement: TimelineElement,
-  targetSessionEpoch: number | undefined,
-  elements: readonly TimelineElement[],
-): TimelineElement | null {
-  const state = usePlayerStore.getState();
-  return resolveTimelineContextElement({
-    capturedElement,
-    targetSessionEpoch,
-    sessionEpoch: state.timelineSessionEpoch,
-    selectedElementId: state.selectedElementId,
-    elements,
-  });
-}
-
 // The timeline's floating overlays, rendered as siblings above the scroll area:
 // the shortcut hint, the range-edit popover, the keyframe-diamond context menu,
 // and the clip context menu.
-export function TimelineOverlays({
-  elements,
-  elementsRef,
-  theme,
-  showShortcutHint,
-  showPopover,
-  rangeSelection,
-  setShowPopover,
-  setRangeSelection,
-  kfContextMenu,
-  setKfContextMenu,
-  onDeleteKeyframe,
-  onDeleteAllKeyframes,
-  onMoveKeyframeToPlayhead,
-  clipContextMenu,
-  setClipContextMenu,
-  currentTime,
-  onSplitElement,
-  pinZoomBeforeEdit,
-  onDeleteElement,
-  gapContextMenu,
-  onDismissGapContextMenu,
-  onCloseTrackGap,
-  onCloseAllTrackGaps,
-  onHoverGapAction,
-}: TimelineOverlaysProps) {
-  const selectedElementId = usePlayerStore((state) => state.selectedElementId);
-  const sessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
+export function TimelineOverlays() {
+  const { state, actions } = useTimelineContext();
+  const overlayProps = state.overlays;
+  const {
+    elements,
+    elementsRef,
+    theme,
+    showShortcutHint,
+    showPopover,
+    rangeSelection,
+    setShowPopover,
+    setRangeSelection,
+    kfContextMenu,
+    setKfContextMenu,
+    onDeleteKeyframe,
+    onDeleteAllKeyframes,
+    onMoveKeyframeToPlayhead,
+    clipContextMenu,
+    setClipContextMenu,
+    currentTime,
+    onSplitElement,
+    pinZoomBeforeEdit,
+    onDeleteElement,
+    onCopyClip,
+    onPasteClip,
+    onDuplicateClip,
+    canPasteClip,
+    gapContextMenu,
+    onDismissGapContextMenu,
+    onCloseTrackGap,
+    onCloseAllTrackGaps,
+    onHoverGapAction,
+  } = overlayProps;
+  const { selectedElementId, sessionEpoch, keyframeCache } = state;
   const kfTargetSessionEpoch = kfContextMenu?.sessionEpoch;
   const clipTargetSessionEpoch = clipContextMenu?.sessionEpoch;
   const keyframeElement = kfContextMenu
@@ -148,7 +89,13 @@ export function TimelineOverlays({
       })
     : null;
   const readCurrentElement = (element: TimelineElement, targetSessionEpoch: number | undefined) =>
-    readTimelineContextElement(element, targetSessionEpoch, elementsRef.current);
+    resolveTimelineContextElement({
+      capturedElement: element,
+      targetSessionEpoch,
+      sessionEpoch,
+      selectedElementId,
+      elements: elementsRef.current,
+    });
 
   useEffect(() => {
     if (kfContextMenu && !keyframeElement) setKfContextMenu(null);
@@ -209,7 +156,7 @@ export function TimelineOverlays({
                   ) {
                     return;
                   }
-                  usePlayerStore.getState().setFocusedEaseSegment({
+                  actions.setFocusedEaseSegment({
                     animationId: keyframe.animationId,
                     collidingAnimationTargets: keyframe.collidingAnimationTargets,
                     tweenPercentage: keyframe.tweenPercentage,
@@ -220,7 +167,7 @@ export function TimelineOverlays({
               : undefined
           }
           onCopyProperties={(elementId, keyframe) => {
-            const entry = usePlayerStore.getState().keyframeCache.get(elementId);
+            const entry = keyframeCache.get(elementId);
             // Tolerance match on clip-%, the same basis the cache is keyed on —
             // an exact float compare misses a keyframe the menu just opened over.
             const kf = entry?.keyframes.find(
@@ -249,6 +196,10 @@ export function TimelineOverlays({
             pinZoomBeforeEdit();
             onDeleteElement?.(element);
           }}
+          onCopy={onCopyClip}
+          onPaste={onPasteClip}
+          onDuplicate={onDuplicateClip}
+          canPaste={canPasteClip?.() ?? false}
         />
       )}
 

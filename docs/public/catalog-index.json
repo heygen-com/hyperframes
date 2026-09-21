@@ -400,6 +400,23 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/camera-shake.png"
   },
   {
+    "name": "canopy-part-title",
+    "type": "block",
+    "title": "Canopy Part Title",
+    "description": "Leaves sweep through the frame and part to reveal the headline.",
+    "tags": [
+      "3d-motion",
+      "title-card",
+      "leaves",
+      "organic",
+      "depth-of-field",
+      "two-headlines",
+      "sweep"
+    ],
+    "href": "/catalog/blocks/canopy-part-title",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/canopy-part-title.png"
+  },
+  {
     "name": "caption-blend-difference",
     "type": "component",
     "title": "Blend Difference",
@@ -1308,6 +1325,24 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-shader-dissolve.png"
   },
   {
+    "name": "code-slice-hero",
+    "type": "block",
+    "title": "Code Slice Hero",
+    "description": "A tiled headline surface flips cell by cell under a sweeping depth field to reveal the rear headline.",
+    "tags": [
+      "3d-motion",
+      "transition",
+      "typography",
+      "tiles",
+      "flip",
+      "webgl2",
+      "shadows",
+      "two-headlines"
+    ],
+    "href": "/catalog/blocks/code-slice-hero",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-slice-hero.png"
+  },
+  {
     "name": "code-snippet-apple-terminal-basic",
     "type": "block",
     "title": "Code Snippet - Apple Terminal Basic",
@@ -1845,6 +1880,23 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cta-lockup.png"
   },
   {
+    "name": "cuboid-carousel",
+    "type": "block",
+    "title": "Cuboid Carousel",
+    "description": "A chain of bevelled cuboids rides a travelling wave as a content carousel.",
+    "tags": [
+      "3d-motion",
+      "carousel",
+      "cards",
+      "travelling-wave",
+      "pbr",
+      "shadows",
+      "room-environment"
+    ],
+    "href": "/catalog/blocks/cuboid-carousel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cuboid-carousel.png"
+  },
+  {
     "name": "cursor-glyph-trail",
     "type": "component",
     "title": "Cursor Glyph Trail",
@@ -2140,6 +2192,24 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png"
   },
   {
+    "name": "frost-sequence-camera-orbit",
+    "type": "block",
+    "title": "Frost Sequence Camera Orbit",
+    "description": "An orbiting camera follows an ice logo as it breaks apart, reforms into two text moments, and fades.",
+    "tags": [
+      "3d-motion",
+      "ice",
+      "frost",
+      "camera-orbit",
+      "logo",
+      "particles",
+      "webgpu",
+      "two-headlines"
+    ],
+    "href": "/catalog/blocks/frost-sequence-camera-orbit",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/frost-sequence-camera-orbit.png"
+  },
+  {
     "name": "gallery-tunnel",
     "type": "block",
     "title": "Gallery Tunnel",
@@ -2169,6 +2239,23 @@
     ],
     "href": "/catalog/components/gesture-tap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gesture-tap.png"
+  },
+  {
+    "name": "glass-shard-title",
+    "type": "block",
+    "title": "Glass Shard Title",
+    "description": "Glass shards fly in through fog and tile themselves into the headline.",
+    "tags": [
+      "3d-motion",
+      "title-card",
+      "glass",
+      "voronoi",
+      "shards",
+      "fog",
+      "hdr"
+    ],
+    "href": "/catalog/blocks/glass-shard-title",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glass-shard-title.png"
   },
   {
     "name": "glitch",
@@ -3356,13 +3443,14 @@
     "name": "motion-blur",
     "type": "component",
     "title": "Motion Blur",
-    "description": "Velocity-driven motion blur — samples element position each frame and applies a one-sided SVG feGaussianBlur ghost trail proportional to speed",
+    "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
     "tags": [
       "effect",
       "motion-blur",
+      "shutter",
+      "after-effects",
       "velocity",
-      "animation",
-      "physics"
+      "animation"
     ],
     "href": "/catalog/components/motion-blur",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png"
@@ -3594,6 +3682,23 @@
     ],
     "href": "/catalog/components/onboarding-stepper-flow",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/onboarding-stepper-flow.png"
+  },
+  {
+    "name": "orbit-card",
+    "type": "block",
+    "title": "Orbit Card",
+    "description": "A single feature card orbits a dot sphere on approved Blender camera motion.",
+    "tags": [
+      "3d-motion",
+      "cards",
+      "feature-reveal",
+      "dots",
+      "orbit",
+      "blender-motion",
+      "sphere"
+    ],
+    "href": "/catalog/blocks/orbit-card",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/orbit-card.png"
   },
   {
     "name": "ordered-dither-pass",
@@ -4229,6 +4334,22 @@
     ],
     "href": "/catalog/components/shimmer-sweep",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
+  },
+  {
+    "name": "shutter-slam",
+    "type": "component",
+    "title": "Shutter Slam",
+    "description": "One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to",
+    "tags": [
+      "effect",
+      "motion-blur",
+      "shutter",
+      "after-effects",
+      "slam",
+      "animation"
+    ],
+    "href": "/catalog/components/shutter-slam",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shutter-slam.png"
   },
   {
     "name": "signup-flow",
@@ -5654,6 +5775,24 @@
     ],
     "href": "/catalog/components/whiteboard-ink",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/whiteboard-ink.png"
+  },
+  {
+    "name": "wireframe-portal-title",
+    "type": "block",
+    "title": "Wireframe Portal Title",
+    "description": "A wireframe portal bursts open, the title comes through, then its letters swap into a second phrase.",
+    "tags": [
+      "3d-motion",
+      "title-card",
+      "wireframe",
+      "portal",
+      "burst",
+      "typography",
+      "post-processing",
+      "phrase-swap"
+    ],
+    "href": "/catalog/blocks/wireframe-portal-title",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/wireframe-portal-title.png"
   },
   {
     "name": "wordmark-tiles",

@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
-import { registerStoryboardRoutes } from "./routes/storyboard.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerPreviewRoutes } from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
@@ -24,7 +23,6 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   const api = new Hono();
 
   registerProjectRoutes(api, adapter);
-  registerStoryboardRoutes(api, adapter);
   registerFileRoutes(api, adapter);
   registerPreviewRoutes(api, adapter);
   registerLintRoutes(api, adapter);

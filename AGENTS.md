@@ -8,7 +8,7 @@ This repo ships AI agent skills via [vercel-labs/skills](https://github.com/verc
 
 ```bash
 npx hyperframes skills update           # default: installs/refreshes the core set — workflows install on demand
-npx hyperframes skills                  # all 20 published skills at once
+npx hyperframes skills                  # all 21 published skills at once
 npx skills add heygen-com/hyperframes   # interactive picker (terminal only; repo-internal skills are excluded by default)
 ```
 

@@ -1,4 +1,4 @@
-import { useCallback, type MutableRefObject } from "react";
+import { useCallback } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { SlideshowManifest } from "@hyperframes/core/slideshow";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -16,7 +16,6 @@ export interface UseSlideshowPersistParams {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   /** Publish a fully persisted candidate SDK session. */
   publishSdkSession?: PublishSdkSession;
   /**
@@ -35,7 +34,6 @@ export function useSlideshowPersist({
   writeProjectFile,
   recordEdit,
   reloadPreview,
-  domEditSaveTimestampRef,
   publishSdkSession,
   coalesceKey,
 }: UseSlideshowPersistParams): (manifest: SlideshowManifest) => Promise<void> {
@@ -52,7 +50,6 @@ export function useSlideshowPersist({
           editHistory: { recordEdit },
           writeProjectFile,
           reloadPreview,
-          domEditSaveTimestampRef,
           readProjectFile,
           publishSession: publishSdkSession,
         },
@@ -66,7 +63,6 @@ export function useSlideshowPersist({
       writeProjectFile,
       recordEdit,
       reloadPreview,
-      domEditSaveTimestampRef,
       publishSdkSession,
       coalesceKey,
     ],

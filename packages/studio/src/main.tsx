@@ -1,7 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { IconContext } from "@phosphor-icons/react";
 import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
+import { readIconTokens } from "./styles/iconTokens";
 import { trackStudioEvent } from "./utils/studioTelemetry";
 import "./styles/studio.css";
 
@@ -63,6 +65,10 @@ window.addEventListener("error", (event) => {
 });
 
 let filteredAssetErrorCount = 0;
+let filteredAbortCount = 0;
+// Bounded so a hostile extension cannot grow it; a novel abort message still surfaces once.
+const seenAbortMessages = new Set<string>();
+const MAX_SEEN_ABORT_MESSAGES = 20;
 
 // fallow-ignore-next-line complexity
 window.addEventListener("unhandledrejection", (event) => {
@@ -74,6 +80,28 @@ window.addEventListener("unhandledrejection", (event) => {
         error_message: props.error_message.slice(0, 200),
         error_name: props.error_name,
         total_filtered: filteredAssetErrorCount,
+      });
+    }
+    return;
+  }
+  // An AbortError rejection is a cancellation we asked for, not a failure. Our own
+  // fetch chains handle it; the unhandled copies come from browser extensions that
+  // wrap window.fetch and derive a promise from each request without a rejection
+  // handler, so they reject with our abort reason whenever a thumbnail lease is
+  // released mid-fetch. Filtered before the cap so a scroll burst cannot exhaust
+  // ERROR_CAP and silence the session's real rejections. Sampled per distinct
+  // message, so an abort we have not seen before (e.g. our own "Aborted") is
+  // recorded once instead of drowning in the extension flood.
+  if (props.error_name === "AbortError") {
+    filteredAbortCount++;
+    const message = props.error_message.slice(0, 200);
+    const novel =
+      !seenAbortMessages.has(message) && seenAbortMessages.size < MAX_SEEN_ABORT_MESSAGES;
+    if (novel) seenAbortMessages.add(message);
+    if (novel || filteredAbortCount % 100 === 0) {
+      trackStudioEvent("abort_rejection_filtered", {
+        error_message: message,
+        total_filtered: filteredAbortCount,
       });
     }
     return;
@@ -93,8 +121,12 @@ window.addEventListener("unhandledrejection", (event) => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <StudioErrorBoundary>
-      <StudioApp />
-    </StudioErrorBoundary>
+    {/* One icon size and weight for the whole app, taken from the theme file.
+        Icons that pass their own size or weight still win. */}
+    <IconContext.Provider value={readIconTokens()}>
+      <StudioErrorBoundary>
+        <StudioApp />
+      </StudioErrorBoundary>
+    </IconContext.Provider>
   </StrictMode>,
 );

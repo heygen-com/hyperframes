@@ -13,6 +13,11 @@ import { hasPythonModules, describeRejectedPythonOverride } from "../tts/python.
 import { VERSION } from "../version.js";
 import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
 import {
+  OPTIONAL_PACKAGES,
+  installedOptionalPackageVersion,
+  type OptionalPackage,
+} from "../utils/optionalPackages.js";
+import {
   getSystemMeta,
   getShmSizeMb,
   getFreeDiskMb,
@@ -281,6 +286,15 @@ function checkLocalMusic(): CheckResult {
   };
 }
 
+/** Not a failure when missing: the package installs itself the first time a feature needs it. */
+export function checkOptionalPackage(name: OptionalPackage, cacheDir?: string): CheckResult {
+  const version = installedOptionalPackageVersion(name, cacheDir);
+  return {
+    ok: true,
+    detail: version ? `${version} installed` : "Not installed (installs on first use)",
+  };
+}
+
 export interface CheckOutcome {
   name: string;
   ok: boolean;
@@ -354,6 +368,9 @@ export default defineCommand({
     checks.push({ name: "whisper-cpp", run: checkWhisper });
     checks.push({ name: "TTS (Kokoro)", run: checkLocalVoice });
     checks.push({ name: "BGM (MusicGen)", run: checkLocalMusic });
+    for (const name of Object.keys(OPTIONAL_PACKAGES) as OptionalPackage[]) {
+      checks.push({ name, run: () => checkOptionalPackage(name) });
+    }
 
     const outcomes: CheckOutcome[] = [];
     for (const check of checks) {

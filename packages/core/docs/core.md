@@ -183,7 +183,7 @@ A clip is any discrete block on the timeline. We represent clips as HTML element
 
 - `id` — Unique identifier (e.g., "el-1")
 - `data-start` — Start time in seconds, or a clip `id` reference. See [Relative Timing](#relative-timing).
-- `data-duration` — Duration in seconds. Required for `<img>` clips. Optional for `<video>` and `<audio>` (defaults to the source media's full duration). Not used on compositions.
+- `data-duration` — Duration in seconds. Optional for `<img>` (defaults to 3 seconds), `<video>` and `<audio>` (default to the source media's length, less any playback offset, over the playback rate; an authored value trims). Not used on compositions.
 - `data-track-index` — Timeline track number. Tracks serve two purposes: they determine visual layering (higher tracks render in front) and they group clips into rows on the timeline. Clips on the same track **cannot overlap in time**.
 
 ### Media Clips (video, audio)

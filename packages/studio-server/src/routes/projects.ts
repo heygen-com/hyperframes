@@ -40,9 +40,7 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
     return c.json(result);
   });
 
-  // Current content signature for a project — a cheap poll target for clients
-  // that refresh themselves when files change on disk (the storyboard board
-  // re-fetches when this differs from the signature its data was loaded with).
+  // Current content signature for a project: a cheap poll target for clients that refresh when files change on disk.
   api.get("/projects/:id/signature", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);

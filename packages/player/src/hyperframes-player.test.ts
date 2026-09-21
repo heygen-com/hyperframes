@@ -12,6 +12,15 @@ function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document): vo
   });
 }
 
+// Bare test docs never run a runtime, so only paintAndIdleReadinessInput
+// is ever pending — drain real rAF frames past its quiet-frame minimum
+// on the given window (the iframe's own, not the test's global one).
+async function awaitPaintAndIdle(win: Window = window): Promise<void> {
+  for (let i = 0; i < 6; i++) {
+    await new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
+  }
+}
+
 function createForeignFrameMediaDocument(): {
   doc: Document;
   video: HTMLMediaElement & { pause: ReturnType<typeof vi.fn> };
@@ -2196,11 +2205,22 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     expect(readyEvents).toEqual([{ duration: 4 }]);
   });
 
-  it("honors autoplay after cross-origin runtime timeline readiness", () => {
+  it("honors autoplay after cross-origin runtime timeline readiness", async () => {
+    // A bare iframe fires its own async `load` a few ms after append, which
+    // resets pending-play state (see createConnectedPlayer's comment below) —
+    // await it first so it can't land mid-test during the readiness wait.
+    await new Promise<void>((resolve) => {
+      player.iframe.addEventListener("load", () => resolve(), { once: true });
+    });
     player.setAttribute("autoplay", "");
     postSpy.mockClear();
 
     player._onMessage(timelineMessage(120));
+    // The same-origin doc under test has no pending media, but play() is now
+    // gated on paint-and-idle too — it queues until that settles. The gate
+    // polls the real (unstubbed) iframe document's own window, not the
+    // stubbed contentWindow used for postMessage.
+    await awaitPaintAndIdle(player.iframe.contentDocument!.defaultView!);
 
     expect(player.paused).toBe(false);
     expect(findControlCalls("play")).toHaveLength(1);
@@ -2759,5 +2779,485 @@ describe("HyperframesPlayer retained runtime data", () => {
     );
     expect(applied).toHaveLength(1);
     expect(applied[0]?.detail).toEqual({ channel: "captions", requestId: requests[1] });
+  });
+});
+
+describe("HyperframesPlayer asset-ready gate", () => {
+  type PlayerInternal = HTMLElement & {
+    iframe: HTMLIFrameElement;
+    _ready: boolean;
+    _pendingPlay: boolean;
+    _paused: boolean;
+    assetsReady: boolean;
+    painted: boolean;
+    _waitForAssetsReady(doc: Document | null): void;
+    _onIframeLoad(): void;
+    play(): void;
+    pause(): void;
+    seek(timeInSeconds: number): void;
+    shaderLoader: { showAssetsLoading(): void };
+    _settleAssetsReady(generation: number): void;
+  };
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  // A bare iframe fires its own async `load` a few ms after append, which
+  // resets _assetsReady — await it first so it can't land mid-test.
+  async function createConnectedPlayer(): Promise<PlayerInternal> {
+    const player = document.createElement("hyperframes-player") as PlayerInternal;
+    document.body.appendChild(player);
+    await new Promise<void>((resolve) => {
+      player.iframe.addEventListener("load", () => resolve(), { once: true });
+    });
+    player._ready = true;
+    return player;
+  }
+
+  // A composition doc with one video stuck at readyState 0 — the shared
+  // "something is still loading" fixture for the defer/timeout tests below.
+  function createStalledVideoDoc(): { doc: Document; video: HTMLVideoElement } {
+    const doc = document.implementation.createHTMLDocument("composition");
+    const video = doc.createElement("video");
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+    doc.body.appendChild(video);
+    return { doc, video };
+  }
+
+  const post = (player: PlayerInternal, data: Record<string, unknown>) =>
+    (player as unknown as { _onMessage(e: MessageEvent): void })._onMessage({
+      source: player.iframe.contentWindow,
+      data: { source: "hf-preview", ...data },
+    } as unknown as MessageEvent);
+
+  it("holds an opaque-origin composition until its runtime posts assets-ready", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    expect(player.assetsReady).toBe(false);
+
+    post(player, { type: "assets-ready", timedOut: false });
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
+  it("keeps a queued play across the iframe load event while the runtime still reports assets pending", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    player._onIframeLoad();
+    post(player, { type: "assets-ready", timedOut: false });
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._ready).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
+  it("stays ready when a late iframe load follows a settled opaque-origin wait", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    post(player, { type: "assets-ready", timedOut: false });
+    expect(player._ready).toBe(true);
+
+    player._onIframeLoad();
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(true);
+    player.play();
+    expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
+  it("does not wait on an opaque-origin runtime that already settled its assets", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: true });
+
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
+  it("does not wait on an opaque-origin runtime that never announced the capability", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60 });
+
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
+  it("settles immediately for a cross-origin composition (doc === null)", async () => {
+    const player = await createConnectedPlayer();
+
+    player._waitForAssetsReady(null);
+
+    expect(player.assetsReady).toBe(true);
+    expect(player.hasAttribute("assets-loading")).toBe(false);
+
+    player.remove();
+  });
+
+  it("debounces the loading overlay so a fast, nothing-pending wait never shows it", async () => {
+    const player = await createConnectedPlayer();
+    const doc = player.iframe.contentDocument!;
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+
+    player._waitForAssetsReady(doc);
+    expect(player.assetsReady).toBe(false);
+
+    // Only paint-and-idle is pending on this blank iframe doc (no runtime,
+    // no media) — it settles well under ASSETS_LOADING_SHOW_DELAY_MS.
+    await awaitPaintAndIdle(doc.defaultView!);
+
+    expect(player.assetsReady).toBe(true);
+    expect(player.hasAttribute("assets-loading")).toBe(false);
+    expect(showSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("fires painted only after the raised loader has faded out, not at assetsready", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("assets-loading")).toBe(true);
+    expect(player.painted).toBe(false);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toEqual(["assetsready"]);
+    expect(player.painted).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(events).toEqual(["assetsready", "painted"]);
+    expect(player.painted).toBe(true);
+
+    player._waitForAssetsReady(doc);
+    expect(player.painted).toBe(false);
+
+    player.remove();
+  });
+
+  it("fires painted right after assetsready when no loader was ever raised", async () => {
+    const player = await createConnectedPlayer();
+    const painted = vi.fn();
+    player.addEventListener("painted", painted);
+
+    player._waitForAssetsReady(null);
+
+    expect(player.assetsReady).toBe(true);
+    expect(player.painted).toBe(true);
+    expect(painted).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("dispatches painted once for the current generation when settles share a loader fade", async () => {
+    vi.useFakeTimers();
+    try {
+      const player = await createConnectedPlayer();
+      const painted = vi.fn();
+      player.addEventListener("painted", painted);
+      player.shaderLoader.showAssetsLoading();
+
+      player._waitForAssetsReady(null);
+      player._waitForAssetsReady(null);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(painted).toHaveBeenCalledTimes(1);
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("defers play() until a pending video settles, then plays and clears the overlay attribute", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    expect(player.assetsReady).toBe(false);
+    // The loading overlay is debounced (ASSETS_LOADING_SHOW_DELAY_MS) so a
+    // wait that resolves fast never flashes it — advance past the debounce
+    // to exercise the shown state, since this video is still genuinely stuck.
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("assets-loading")).toBe(true);
+
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    video.dispatchEvent(new Event("canplay"));
+    // A macrotask flush drains the whole promise chain regardless of its
+    // depth (resolved media promise -> Promise.all -> Promise.race -> settle).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player.hasAttribute("assets-loading")).toBe(false);
+    expect(player._pendingPlay).toBe(false);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("cancels a queued play if the user pauses while assets are still buffering", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    player.pause();
+    expect(player._pendingPlay).toBe(false);
+    expect(player._paused).toBe(true);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(player._paused).toBe(true);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("cancels a queued play if the user seeks while assets are still buffering", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    player.seek(1.5);
+    expect(player._pendingPlay).toBe(false);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("settles a play() called twice while buffering into exactly one playback start (pre-existing idempotency, not the pause/seek cancel)", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    // Two queued play() calls settle into exactly one playback start, never two.
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("plays anyway once the 8s timeout elapses for an asset that never settles", async () => {
+    // Real timers for the initial (blank) iframe load, then switch to fake
+    // timers so the 8s asset-ready timeout can be advanced instantly.
+    const player = await createConnectedPlayer();
+    vi.useFakeTimers();
+    try {
+      const { doc } = createStalledVideoDoc();
+      // A document with no browsing context (created via createHTMLDocument,
+      // as this fixture is) reports hidden=true per spec regardless of the
+      // real page — stub it visible so this test isn't about visibility.
+      Object.defineProperty(doc, "hidden", { value: false, configurable: true });
+      stubIframeContentDocument(player.iframe, doc);
+
+      player._waitForAssetsReady(doc);
+      player.play();
+      expect(player._pendingPlay).toBe(true);
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      await vi.advanceTimersByTimeAsync(8_000);
+
+      expect(player.assetsReady).toBe(true);
+      expect(player._pendingPlay).toBe(false);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0]?.[0]).toContain("assets-loading timed out");
+      // computeReady is reported alongside the media/image/font scan, since
+      // compute (window.__renderReady) can also be why the timeout fired.
+      expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({
+        computeReady: false,
+        documentHidden: false,
+      });
+      warnSpy.mockRestore();
+
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports documentHidden: true when the composition document is backgrounded", async () => {
+    const player = await createConnectedPlayer();
+    vi.useFakeTimers();
+    try {
+      const { doc } = createStalledVideoDoc();
+      Object.defineProperty(doc, "hidden", { value: true, configurable: true });
+      stubIframeContentDocument(player.iframe, doc);
+
+      player._waitForAssetsReady(doc);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      await vi.advanceTimersByTimeAsync(8_000);
+
+      expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({ documentHidden: true });
+      warnSpy.mockRestore();
+
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores a superseded wait's settle after a composition swap mid-wait", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc: docA, video: videoA } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, docA);
+    player._waitForAssetsReady(docA);
+
+    // Simulates a src/srcdoc swap arriving while A's wait is still in flight,
+    // then B's own ready handler firing (which is what real navigation does:
+    // _onIframeLoad clears _ready, the new composition's ready handler sets
+    // it again before calling _waitForAssetsReady).
+    player._onIframeLoad();
+    player._ready = true;
+    const { doc: docB, video: videoB } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, docB);
+    player._waitForAssetsReady(docB);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    videoA.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // A's stale settle must not mark B ready or play it — B's own video is
+    // still stuck.
+    expect(player.assetsReady).toBe(false);
+    expect(player._pendingPlay).toBe(true);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    videoB.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("does not resume play() after disconnect once a pending wait settles late", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player.remove();
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("dispatches 'play' exactly once for a call made before the probe resolves", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    (
+      player as unknown as {
+        _onProbeReady: (r: {
+          duration: number;
+          adapter: { kind: string; getDuration: () => number };
+          compositionSize: null;
+        }) => void;
+      }
+    )._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: null,
+    });
+    // The blank iframe doc has no pending media, but play() also queues on
+    // the paint-and-idle default now — it fires once that settles.
+    await awaitPaintAndIdle(player.iframe.contentDocument!.defaultView!);
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
   });
 });

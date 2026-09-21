@@ -13,16 +13,21 @@
  * composition as a `srcdoc` string, so JSON is the delivery format that both
  * survives the deploy and matches what the player wants.
  *
+ * An item needing `chrome://flags/#canvas-draw-element` gets
+ * `{ unsupported: "canvas-draw-element" }` at the same path instead of `{ html }`.
+ *
  * Usage:
  *   npx tsx scripts/generate-catalog-payloads.ts                    # all items
  *   npx tsx scripts/generate-catalog-payloads.ts --only data-chart  # single item
  *   npx tsx scripts/generate-catalog-payloads.ts --type block       # blocks only
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { installFetchMirror } from "./catalog-fetch-mirror.ts";
 import {
   discoverItems,
   prepareProjectDir,
@@ -32,24 +37,30 @@ import {
 import { isLocalAsset } from "./registry-hosted-assets.ts";
 import { componentFiles } from "./catalog/component-files.ts";
 import { runAsCommand } from "./entrypoint.ts";
-import { parseHTMLContent } from "../packages/core/src/compiler/htmlDocument.ts";
-import {
-  snippetOwnsItsMotion,
-  SNIPPET_PREVIEW_RENDERS_STILL,
-} from "./catalog/component-variables.ts";
+import { snippetOwnsItsMotion, PREFER_AUTHORED_DEMO } from "./catalog/component-variables.ts";
 import {
   clearPinnedVariableValues,
   externalizeDataUris,
   inlineMountedComposition,
   HOSTED_EXTENSIONS,
   hostItemDirectory,
+  type HostItemDirectoryResult,
+  localReferences,
   processAssets,
   withBaseHref,
 } from "./catalog-payload-assets.ts";
+import {
+  inlineCatalogScripts,
+  needsScriptInlining,
+  writeSharedVendorScripts,
+} from "./catalog-script-inlining.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const payloadRoot = resolve(repoRoot, "docs/public/catalog");
+// The drift check points this at a temp dir to generate without touching the committed tree.
+export const payloadRoot = resolve(
+  process.env.CATALOG_PAYLOAD_ROOT ?? resolve(repoRoot, "docs/public/catalog"),
+);
 
 /**
  * Inlining budget for a single payload. A payload is fetched when the reader
@@ -104,9 +115,6 @@ function needsOwnDirectory(item: CatalogItem, unresolved: string[]): boolean {
 }
 
 /** Does the item ship anything the host can serve beside the payload? */
-// These marked functions are unchanged from main. Fallow reflags their inherited
-// complexity when this file changes; the preview-selection functions stay checked.
-// fallow-ignore-next-line complexity
 function hostsOwnDirectory(projectDir: string): boolean {
   const stack = [projectDir];
   while (stack.length > 0) {
@@ -153,55 +161,132 @@ function snippetFileFor(item: CatalogItem): string | null {
 
 function buildsFromSnippet(item: CatalogItem, snippetFile: string): boolean {
   return (
-    snippetOwnsItsMotion(readFileSync(snippetFile, "utf-8")) &&
-    !SNIPPET_PREVIEW_RENDERS_STILL.has(item.name)
+    snippetOwnsItsMotion(readFileSync(snippetFile, "utf-8")) && !PREFER_AUTHORED_DEMO.has(item.name)
   );
 }
 
-function previewSnippet(item: CatalogItem, interactive: boolean): string | null {
-  if (!interactive) return null;
+function previewSource(item: CatalogItem): { mode: "snippet" | "demo"; file: string } | null {
   const file = snippetFileFor(item);
   if (!file) return null;
-  return buildsFromSnippet(item, file) ? file : null;
+  return { mode: buildsFromSnippet(item, file) ? "snippet" : "demo", file };
 }
 
 /**
  * What the preview is built from, and whether that is the component's snippet.
  *
- * Keep a demo that mounts its live snippet. Otherwise, use a self-contained
- * snippet for interactive previews so its variables and animation travel together.
+ * A component whose snippet owns its motion gets its preview built from that
+ * snippet, so variables and animation arrive together. Everything else keeps
+ * its authored entry.
  */
-export function renderEntry(
+function renderEntry(
   item: CatalogItem,
   interactive: boolean,
 ): { entry: CatalogItem; fromSnippet: boolean } {
-  const snippetFile = previewSnippet(item, interactive);
-  if (!snippetFile) return { entry: item, fromSnippet: false };
+  const source = interactive ? previewSource(item) : null;
+  if (source?.mode !== "snippet") return { entry: item, fromSnippet: false };
 
-  // Mounted snippets retain their variables and motion inside the authored demo.
-  if (demoMountsSnippet(item, snippetFile)) return { entry: item, fromSnippet: false };
-
-  const entry = { ...item, entryFile: relative(item.sourceDir, snippetFile) };
+  const entry = { ...item, entryFile: relative(item.sourceDir, source.file) };
   return { entry, fromSnippet: true };
 }
 
-function demoMountsSnippet(item: CatalogItem, snippetFile: string): boolean {
-  const demoPath = join(item.sourceDir, item.entryFile);
-  const demo = parseHTMLContent(readFileSync(demoPath, "utf-8"));
-  return Array.from(demo.querySelectorAll("[data-composition-src]")).some((mount) => {
-    const src = mount.getAttribute("data-composition-src");
-    return src !== null && resolve(dirname(demoPath), src) === snippetFile;
-  });
+type ComposedPayload = { status: "over-budget" } | ({ status: "ok" } & ComposedParts);
+
+interface ComposedParts {
+  html: string;
+  hosted: number;
+  inlined: number;
+  externalized: number;
+  unresolved: string[];
 }
 
+/** Publishes the item's own directory and points `<base>` at it, rescuing paths a script
+ * builds at runtime. Only for items that need it: doing this for every item would double storage. */
+function resolveBaseHref(
+  item: CatalogItem,
+  projectDir: string,
+  interactive: boolean,
+  unresolved: string[],
+): HostItemDirectoryResult {
+  if (!interactive && !needsOwnDirectory(item, unresolved)) return { status: "not-needed" };
+  const itemUrl = `/public/catalog/items/${item.name}`;
+  return hostItemDirectory(projectDir, join(payloadRoot, "items", item.name), `${itemUrl}/`);
+}
+
+/** An interactive preview inlines the component and clears its pinned demo values,
+ * so the reader's own choices reach it instead. */
+function applyInteractiveMount(html: string, projectDir: string, interactive: boolean): string {
+  if (!interactive) return html;
+  return clearPinnedVariableValues(inlineMountedComposition(html, projectDir));
+}
+
+const SCRIPT_REF = /\.(js|mjs|hdr)(?:[?#].*)?$/i;
+
+/** For an item whose scripts are inlined, a script ref is resolved once the reference finder no
+ * longer sees it in the output. One still found stays unresolved: the docs host never serves
+ * script files, so no base URL can rescue it. */
+function dropInlinedScriptRefs(itemName: string, html: string, unresolved: string[]): string[] {
+  if (!needsScriptInlining(itemName)) return unresolved;
+  const remaining = new Set(localReferences(html));
+  return unresolved.filter((ref) => !SCRIPT_REF.test(ref) || remaining.has(ref));
+}
+
+/** Turns a compiled composition's HTML into the final payload markup: resolves/inlines
+ * every asset, publishes the item's own directory when needed, settles on a `<base href>`. */
+function composePayloadHtml(
+  item: CatalogItem,
+  projectDir: string,
+  html: string,
+  interactive: boolean,
+  vendorUrls: Record<string, string>,
+): ComposedPayload {
+  const assetTarget = { dir: join(payloadRoot, "assets"), urlBase: "/public/catalog/assets" };
+  const {
+    html: withAssets,
+    hosted,
+    inlined,
+    unresolved,
+  } = processAssets(html, projectDir, assetTarget, needsScriptInlining(item.name));
+
+  // Compositions arrive with their fonts already embedded, so this catches
+  // what never looked like a reference in the first place.
+  const { html: withShared, externalized } = externalizeDataUris(withAssets, assetTarget);
+
+  // The docs host's extension allowlist blocks `.js`/`.mjs`/`.hdr`, so the
+  // items registered in SCRIPT_INLINERS need their scripts travelling inside
+  // the payload instead of hosted as a file — see catalog-script-inlining.ts.
+  const withInlineScripts = inlineCatalogScripts(item.name, withShared, projectDir, vendorUrls);
+
+  const hostResult = resolveBaseHref(item, projectDir, interactive, unresolved);
+  if (hostResult.status === "over-budget") return { status: "over-budget" };
+  const baseHref = hostResult.status === "hosted" ? hostResult.baseHref : "";
+  const withMount = applyInteractiveMount(withInlineScripts, projectDir, interactive);
+
+  return {
+    status: "ok",
+    html: withBaseHref(withMount, baseHref),
+    hosted,
+    inlined,
+    externalized,
+    unresolved: dropInlinedScriptRefs(item.name, withInlineScripts, unresolved),
+  };
+}
+
+// Pre-existing complexity from the item's independent skip conditions.
 // fallow-ignore-next-line complexity
-async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
+export async function buildPayload(
+  item: CatalogItem,
+  vendorUrls: Record<string, string> = {},
+): Promise<"written" | "skipped"> {
   const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
 
   // An item that stops qualifying has to lose its payload, or the page
   // generator keeps finding one on disk and emits a player for a preview this
   // run just decided it cannot build.
   const dropStalePayload = () => rmSync(outPath, { force: true });
+  const writePayload = (body: object) => {
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, JSON.stringify(body), "utf-8");
+  };
 
   // A composition whose variables are meant to be changed has to reach the
   // reader uncompiled, or its values are already resolved into the markup.
@@ -233,45 +318,25 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
 
     if (needsCanvasDrawElement(html)) {
-      console.log(`  – ${item.name}: needs canvas drawElement, keeping the recorded video`);
+      // A marker file, not an absence: the catalog card reads this to show an honest
+      // "needs this flag" tile instead of silently falling back to nothing.
+      writePayload({ unsupported: "canvas-draw-element" });
+      console.log(`  – ${item.name}: needs canvas drawElement, marked unsupported`);
+      return "skipped";
+    }
+    const composed = composePayloadHtml(item, projectDir, html, interactive, vendorUrls);
+    if (composed.status === "over-budget") {
+      console.log(`  – ${item.name}: directory over the host budget, keeping the recorded video`);
       dropStalePayload();
       return "skipped";
     }
-    const assetTarget = { dir: join(payloadRoot, "assets"), urlBase: "/public/catalog/assets" };
-    const {
-      html: withAssets,
-      hosted,
-      inlined,
-      unresolved,
-    } = processAssets(html, projectDir, assetTarget);
-
-    // Compositions arrive with their fonts already embedded, so this catches
-    // what never looked like a reference in the first place.
-    const { html: withShared, externalized } = externalizeDataUris(withAssets, assetTarget);
-
-    // Publishing the item's own directory and pointing `<base>` at it is what
-    // rescues paths a script builds at run time, which no scan can predict.
-    //
-    // Only for the items that need it. Serving every item's directory would
-    // duplicate assets already shared by hash and roughly double what the
-    // repository carries, to fix a handful of compositions.
-    const itemUrl = `/public/catalog/items/${item.name}`;
-    const baseHref =
-      interactive || needsOwnDirectory(item, unresolved)
-        ? hostItemDirectory(projectDir, join(payloadRoot, "items", item.name), `${itemUrl}/`)
-        : "";
-    // An interactive preview keeps its mount, so the component travels inline
-    // and the demo's own pinned values come off — the reader's choices are what
-    // should reach it.
-    const withMount = interactive
-      ? clearPinnedVariableValues(inlineMountedComposition(withShared, projectDir))
-      : withShared;
-    const withBase = withBaseHref(withMount, baseHref);
+    const { html: withBase, hosted, inlined, externalized, unresolved } = composed;
 
     // A reference we could not inline is only fatal when the item's directory is
     // not being served either; with a base URL in place the browser can still
-    // fetch it by its own relative path.
-    if (unresolved.length > 0 && !hostsOwnDirectory(projectDir)) {
+    // fetch it by its own relative path. A script the inliner missed is always fatal.
+    const deadScript = needsScriptInlining(item.name) && unresolved.some((r) => SCRIPT_REF.test(r));
+    if (unresolved.length > 0 && (deadScript || !hostsOwnDirectory(projectDir))) {
       console.log(`  – ${item.name}: cannot inline ${unresolved.slice(0, 3).join(", ")}`);
       dropStalePayload();
       return "skipped";
@@ -283,8 +348,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
       return "skipped";
     }
 
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, JSON.stringify({ html: withBase }), "utf-8");
+    writePayload({ html: withBase });
 
     const counts = [
       hosted + externalized > 0 ? `${hosted + externalized} hosted` : "",
@@ -298,7 +362,6 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   }
 }
 
-// fallow-ignore-next-line complexity
 function parseArgs(): { only: string | null; type: ItemKind | null } {
   const argv = process.argv.slice(2);
   const value = (flag: string): string | null => {
@@ -313,18 +376,38 @@ function parseArgs(): { only: string | null; type: ItemKind | null } {
   return { only: value("--only"), type: (type as ItemKind | null) ?? null };
 }
 
-// fallow-ignore-next-line complexity
+const fetchMirrorDir = resolve(repoRoot, "scripts/catalog-fetch-mirror");
+
 async function main(): Promise<void> {
   const { only, type } = parseArgs();
+  const mode = process.env.CATALOG_FETCH_MIRROR === "record" ? "record" : "replay";
+  // A warm font cache would skip fetches the mirror needs to see, so every run starts with an empty one.
+  const fontCache = mkdtempSync(join(tmpdir(), "catalog-fonts-"));
+  process.env.HYPERFRAMES_FONT_CACHE_DIR = fontCache;
+  const mirror = installFetchMirror(fetchMirrorDir, mode);
+  try {
+    await generate(only, type);
+    mirror.assertNoMisses();
+  } finally {
+    mirror.finish();
+    rmSync(fontCache, { recursive: true, force: true });
+  }
+}
+
+async function generate(only: string | null, type: ItemKind | null): Promise<void> {
   const items = discoverItems(type, only);
   console.log(`Building ${items.length} catalog payload(s)...\n`);
+
+  // Written unconditionally, even for a single-item --only run, since that
+  // item's own build may depend on a vendor file it doesn't itself own.
+  const vendorUrls = writeSharedVendorScripts(repoRoot, payloadRoot);
 
   let written = 0;
   let skipped = 0;
   let failed = 0;
   for (const item of items) {
     try {
-      const result = await buildPayload(item);
+      const result = await buildPayload(item, vendorUrls);
       if (result === "written") written += 1;
       else skipped += 1;
     } catch (err) {
@@ -338,7 +421,10 @@ async function main(): Promise<void> {
   // could not be built at all. Reporting them apart keeps a breakage from
   // reading as a considered fallback.
   console.log(`\nDone. ${written} payload(s) written, ${skipped} still on video.`);
-  if (failed > 0) console.log(`${failed} item(s) failed to build.`);
+  if (failed > 0) {
+    console.log(`${failed} item(s) failed to build.`);
+    process.exitCode = 1;
+  }
 }
 
 runAsCommand(import.meta.url, main);

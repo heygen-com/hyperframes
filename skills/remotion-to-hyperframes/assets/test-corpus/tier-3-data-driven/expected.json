@@ -12,9 +12,9 @@
     "measured_mean_ssim": 0.953,
     "measured_min_ssim": 0.927,
     "measured_p05_ssim": 0.938,
-    "measured_p95_ssim": 0.977,
-    "measured_at": "2026-04-27",
-    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.4.15-alpha.1",
+    "measured_p95_ssim": 0.978,
+    "measured_at": "2026-09-18",
+    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.7.71 (sub-composition fixtures)",
     "notes": "Count-up timing in StatsScene shows a few-frame offset between Remotion's manual 1-(1-t)^3 and GSAP's power3.out — both formulas are identical, so the offset comes from sub-frame timing of when the seek + onUpdate fire. Final values converge correctly. Visible only as transient digit mismatches mid-animation; no SSIM impact above the noise floor."
   },
   "remotion_apis_exercised": [

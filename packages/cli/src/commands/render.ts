@@ -27,10 +27,18 @@ export const examples: Example[] = [
     "Render PNG sequence (RGBA frames for AE/Nuke/Fusion)",
     "hyperframes render --format png-sequence --output frames/",
   ],
+  [
+    "Render HLS VOD (master playlist + MPEG-TS segments in a directory)",
+    "hyperframes render --format hls --output stream/",
+  ],
   ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
   ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
+  [
+    "Show full lint findings instead of the summary line",
+    "hyperframes render --lint-verbose --output out.mp4",
+  ],
   [
     "Relocate frame cache off C: (Windows) or another small partition",
     "hyperframes render --frames-cache-dir D:/hf-cache --output out.mp4",
@@ -54,13 +62,22 @@ import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
-import { formatBytes, formatRenderSummaryDetail, errorBox } from "../ui/format.js";
+import {
+  formatBytes,
+  formatRenderSummaryDetail,
+  formatRenderPipelineDetail,
+  formatScreenshotFallbackHint,
+  resolvePrintedCaptureMode,
+  errorBox,
+} from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderProgress } from "../ui/progress.js";
 import {
   trackRenderComplete,
   trackRenderError,
   trackRenderObservation,
+  type RenderOutputShapeTelemetryPayload,
+  type RenderEnvironmentTelemetryPayload,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import {
@@ -75,23 +92,27 @@ import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
+import { createStderrTail, DockerRenderExitError } from "../utils/dockerStderrTail.js";
+import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import {
-  detectH264EncoderMode,
+  detectH264EncoderModeForRender,
   getFFmpegInstallHint,
   H264EncoderUnavailableError,
+  type H264EncoderMode,
 } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.js";
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
-import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
+import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
+import { createRenderCancellationScope } from "../utils/renderCancellation.js";
 import {
   markRenderSucceeded,
   runPostRenderStep,
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
-import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
+import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { EXTRACT_CACHE_DIR_DISABLED_ALIASES, type VideoFrameFormat } from "@hyperframes/engine";
 import {
   checkOutputResolutionCompatibility,
@@ -105,7 +126,7 @@ import {
 export default defineCommand({
   meta: {
     name: "render",
-    description: "Render a composition to MP4, WebM, MOV, GIF, or a PNG sequence",
+    description: "Render a composition to MP4, WebM, MOV, GIF, HLS, or a PNG sequence",
   },
   args: {
     dir: {
@@ -143,8 +164,8 @@ export default defineCommand({
       type: "string",
       alias: "q",
       description:
-        "Quality: draft, standard, high. MOV always uses the fixed alpha-preserving ProRes 4444 profile.",
-      default: "standard",
+        "Quality: draft, looks, delivery, or standard/high. looks is the default (CRF 16). delivery is high. MOV always uses the fixed alpha-preserving ProRes 4444 profile.",
+      default: "looks",
     },
     skill: {
       type: "string",
@@ -155,14 +176,22 @@ export default defineCommand({
     format: {
       type: "string",
       description:
-        "Output format: mp4, webm, mov, gif, png-sequence " +
+        "Output format: mp4, webm, mov, gif, png-sequence, hls " +
         "(MOV/WebM render with transparency; png-sequence writes RGBA frames " +
-        "to a directory for AE/Nuke/Fusion ingest; gif is best at 15fps for PRs/docs)",
+        "to a directory for AE/Nuke/Fusion ingest; gif is best at 15fps for PRs/docs; " +
+        "hls writes a VOD playlist directory — H.264/AAC, SDR only, no GPU encoding)",
       default: "mp4",
     },
     "gif-loop": {
       type: "string",
       description: "GIF loop count, 0 = infinite. Range: 0-65535. Only used with --format gif.",
+    },
+    "hls-segment-seconds": {
+      type: "string",
+      description:
+        "HLS target segment length in whole seconds (default: 4). Range: 1-60. " +
+        "Also fixes the encoder GOP at segment x fps frames so every segment " +
+        "starts on a keyframe. Only used with --format hls.",
     },
     "video-frame-format": {
       type: "string",
@@ -218,6 +247,11 @@ export default defineCommand({
     quiet: {
       type: "boolean",
       description: "Suppress verbose output",
+      default: false,
+    },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings instead of the summary line",
       default: false,
     },
     debug: {
@@ -323,6 +357,22 @@ export default defineCommand({
         "Increase for complex compositions on slow hardware. Default: 45000 (45 s). " +
         "Env: PRODUCER_PLAYER_READY_TIMEOUT_MS.",
     },
+    resume: {
+      type: "boolean",
+      description:
+        "Segmented capture only (HF_SEGMENTED_CAPTURE=true): reuse segments a " +
+        "previous run of the same composition and settings already finished, " +
+        "recorded in renders/.hf-segments/<hash>/segments.json. Each reused " +
+        "segment is re-validated before it is skipped.",
+      default: false,
+    },
+    "keep-segments": {
+      type: "boolean",
+      description:
+        "Segmented capture only: keep renders/.hf-segments/<hash> after a " +
+        "successful render instead of deleting it.",
+      default: false,
+    },
     "low-memory-mode": {
       type: "boolean",
       description:
@@ -361,15 +411,32 @@ export default defineCommand({
   // Keep the transport adapter thin: each phase has one ownership boundary.
   async run({ args }) {
     const plan = createRenderPlan(args);
-    // Teach the project its owning skill from an explicit --skill so every
-    // later flag-less render (re-render, `npm run render`, batch) inherits it.
-    seedProjectAuthoringSkill(plan.project.dir, args.skill);
-    await presentRenderPlan(plan);
-    await executeRenderPlan(plan, {
-      renderDocker,
-      renderLocal,
-      checkResolution: checkRenderResolutionPreflight,
-    });
+    const cancellation = plan.useDocker ? undefined : createRenderCancellationScope();
+    try {
+      // Teach the project its owning skill from an explicit --skill so every
+      // later flag-less render (re-render, `npm run render`, batch) inherits it.
+      seedProjectAuthoringSkill(plan.project.dir, args.skill);
+      await presentRenderPlan(plan);
+      await executeRenderPlan(
+        plan,
+        {
+          renderDocker,
+          renderLocal,
+          checkResolution: checkRenderResolutionPreflight,
+        },
+        cancellation,
+      );
+    } catch (error) {
+      if (cancellation?.signal.aborted) {
+        const reason = cancellation.signal.reason;
+        const message = reason instanceof Error ? reason.message : String(reason);
+        process.stderr.write(`Render cancelled: ${message}\n`);
+        requestCliExit(1);
+      }
+      throw error;
+    } finally {
+      cancellation?.dispose();
+    }
   },
 });
 
@@ -385,6 +452,12 @@ export interface RenderOptions {
   quality: "draft" | "standard" | "high";
   /** Authoring workflow skill that drove this render (telemetry attribution). */
   authoringSkill?: string;
+  /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
+  authoringSkillSource?: "flag" | "project-config";
+  /** Raw --skill value when it failed normalizeSkillSlug (an unrecognized skill name was passed). */
+  authoringSkillInvalid?: string;
+  /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
+  hfEnvOverrides?: readonly string[];
   /**
    * Catalog items installed in this project and those the rendered composition
    * reaches. Resolved once in the render plan; absent on programmatic callers
@@ -393,6 +466,14 @@ export interface RenderOptions {
   catalogUsage?: CatalogUsage;
   format: RenderFormat;
   gifLoop?: number;
+  /** True when `createRenderPlan` clamped a requested `--fps` above 30 to 30 for `--format gif`. */
+  gifFpsCapped?: boolean;
+  /** Major FFmpeg/Chrome version from local preflight (telemetry only); absent on Docker renders. */
+  ffmpegVersionMajor?: number;
+  browserVersionMajor?: number;
+  browserInstall?: BrowserInstallFacts;
+  /** HLS target segment length in seconds; ignored unless `format` is `"hls"`. */
+  hlsSegmentSeconds?: number;
   workers?: number;
   gpu: boolean;
   /**
@@ -408,6 +489,10 @@ export interface RenderOptions {
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
   debug?: boolean;
+  /** Segmented capture: reuse a prior run's validated segments. */
+  resumeSegments?: boolean;
+  /** Segmented capture: keep the segment directory after success. */
+  keepSegments?: boolean;
   bestEffort?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
@@ -716,6 +801,7 @@ async function renderDocker(
       quality: options.quality,
       format: options.format,
       gifLoop: options.gifLoop,
+      hlsSegmentSeconds: options.hlsSegmentSeconds,
       workers: options.workers,
       gpu: options.gpu,
       browserGpu: options.browserGpuMode === "hardware",
@@ -745,13 +831,18 @@ async function renderDocker(
 
   try {
     await new Promise<void>((resolvePromise, reject) => {
+      const stderrTail = createStderrTail();
+      // stderr is piped so the failure can name its cause; it is still echoed live.
       const child = spawn("docker", dockerArgs, {
-        // When quiet, still show stderr so container errors surface
-        stdio: options.quiet ? ["pipe", "pipe", "inherit"] : "inherit",
+        stdio: options.quiet ? ["pipe", "pipe", "pipe"] : ["inherit", "inherit", "pipe"],
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        process.stderr.write(chunk);
+        stderrTail.push(chunk.toString());
       });
       child.on("close", (code) => {
         if (code === 0) resolvePromise();
-        else reject(new Error(`Docker render exited with code ${code}`));
+        else reject(new DockerRenderExitError(code, stderrTail.tail()));
       });
       child.on("error", (err) => reject(err));
     });
@@ -777,7 +868,12 @@ async function renderDocker(
       docker: true,
       gpu: options.gpu,
       authoringSkill: options.authoringSkill,
+      authoringSkillSource: options.authoringSkillSource,
+      authoringSkillInvalid: options.authoringSkillInvalid,
+      hfEnvOverrides: options.hfEnvOverrides,
       catalogUsage: options.catalogUsage,
+      ...renderOutputShapeTelemetryPayload(options),
+      ...renderEnvironmentTelemetryPayload(options),
       ...getMemorySnapshot(),
     }),
   );
@@ -786,7 +882,12 @@ async function renderDocker(
   // threaded back here; the summary shows render time only (never a wrong video
   // length). Probe the output with ffprobe if a duration figure is wanted here.
   runPostRenderStep("printRenderComplete", () =>
-    printRenderComplete(outputPath, elapsed, options.quiet),
+    printRenderComplete({
+      outputPath,
+      elapsedMs: elapsed,
+      quiet: options.quiet,
+      format: options.format,
+    }),
   );
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
@@ -795,13 +896,37 @@ async function renderDocker(
   return { renderTimeMs: elapsed };
 }
 
-// fallow-ignore-next-line complexity
 export async function renderLocal(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
+  commandCancellation?: ReturnType<typeof createRenderCancellationScope>,
 ): Promise<SingleRenderResult> {
-  const recoveredOrphanTrees = killOrphanedProcesses();
+  const cancellation = commandCancellation ?? createRenderCancellationScope();
+  try {
+    return await executeLocalRender(projectDir, outputPath, options, cancellation);
+  } finally {
+    if (!commandCancellation) cancellation.dispose();
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function executeLocalRender(
+  projectDir: string,
+  outputPath: string,
+  options: RenderOptions,
+  cancellation: ReturnType<typeof createRenderCancellationScope>,
+): Promise<SingleRenderResult> {
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
+  let recoveredOrphanTrees = 0;
+  try {
+    recoveredOrphanTrees = await killOrphanedProcessesForRender(cancellation.signal);
+  } catch {
+    if (cancellation.signal.aborted) cancellation.signal.throwIfAborted();
+  }
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
   if (recoveredOrphanTrees > 0 && !options.quiet) {
     console.warn(
       c.warn(
@@ -817,7 +942,16 @@ export async function renderLocal(
     includeBrowser: true,
     includeDisk: true,
     includeWindowsUnc: true,
+    signal: cancellation.signal,
   });
+  options = {
+    ...options,
+    ffmpegVersionMajor: preflight.ffmpegVersionMajor,
+    browserVersionMajor: preflight.browserVersionMajor,
+    browserInstall: preflight.browserInstall,
+  };
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
   const failedChecks = preflight.outcomes.filter((outcome) => !outcome.ok);
   if (failedChecks.length > 0) {
     for (const check of failedChecks) {
@@ -840,18 +974,32 @@ export async function renderLocal(
     process.env.PRODUCER_HEADLESS_SHELL_PATH = preflight.browser.executablePath;
   }
 
-  if (!options.gpu && options.format === "mp4" && preflight.ffmpegPath) {
-    let encoderMode: ReturnType<typeof detectH264EncoderMode> = "software";
+  // HLS shares the H.264 encode path but cannot take the GPU fallback below:
+  // its fixed-length segments need the software encoder's forced-keyframe lock.
+  const isHls = options.format === "hls";
+  if (!options.gpu && (options.format === "mp4" || isHls) && preflight.ffmpegPath) {
+    let encoderMode: H264EncoderMode = "software";
     try {
-      encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
+      encoderMode = await detectH264EncoderModeForRender(
+        preflight.ffmpegPath,
+        false,
+        cancellation.signal,
+      );
     } catch (error) {
+      if (cancellation.signal.aborted) cancellation.signal.throwIfAborted();
       // HDR MP4 uses HEVC; auto mode cannot resolve the codec until sources
-      // have been inspected. Only forced SDR is definitely H.264 here.
-      if (error instanceof H264EncoderUnavailableError && options.hdrMode === "force-sdr") {
+      // have been inspected. Forced SDR and HLS are definitely H.264 here.
+      if (
+        error instanceof H264EncoderUnavailableError &&
+        (options.hdrMode === "force-sdr" || isHls)
+      ) {
         errorBox(
-          "MP4 H.264 encoder unavailable",
+          `${isHls ? "HLS" : "MP4"} H.264 encoder unavailable`,
           error.message,
-          `Install an FFmpeg build with libx264 support (${getFFmpegInstallHint()}), or render WebM instead: hyperframes render --format webm --output output.webm`,
+          `Install an FFmpeg build with libx264 support (${getFFmpegInstallHint()})` +
+            (isHls
+              ? "."
+              : ", or render WebM instead: hyperframes render --format webm --output output.webm"),
         );
         failCommand();
       }
@@ -862,6 +1010,14 @@ export async function renderLocal(
         console.warn(c.warn(`  Unable to probe H.264 encoder capabilities: ${detail}`));
       }
     }
+    if (encoderMode === "gpu" && isHls) {
+      errorBox(
+        "HLS H.264 encoder unavailable",
+        "FFmpeg does not include libx264, and HLS cannot fall back to VideoToolbox: fixed-length segments require the software encoder's forced-keyframe lock.",
+        `Install an FFmpeg build with libx264 support (${getFFmpegInstallHint()}).`,
+      );
+      failCommand();
+    }
     if (encoderMode === "gpu") {
       console.warn(
         c.warn("  FFmpeg does not include libx264; falling back to VideoToolbox H.264 encoding."),
@@ -870,6 +1026,8 @@ export async function renderLocal(
     }
   }
 
+  cancellation.checkAncestors();
+  cancellation.signal.throwIfAborted();
   const producer = await loadProducer();
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
@@ -885,6 +1043,13 @@ export async function renderLocal(
 
   const engineConfig = producer.resolveConfig({
     browserGpuMode: options.browserGpuMode ?? "software",
+    // Local auto opts out of the software-GPU screenshot clamp. Docker and
+    // --no-browser-gpu request software; --resolution supersamples via screenshot.
+    ...(options.browserGpuMode === "auto" &&
+    options.outputResolution == null &&
+    process.env.PRODUCER_FORCE_SCREENSHOT !== "true"
+      ? { forceScreenshot: false }
+      : {}),
     ...(options.pageNavigationTimeoutMs != null
       ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
       : {}),
@@ -901,6 +1066,7 @@ export async function renderLocal(
       quality: options.quality,
       format: options.format,
       gifLoop: options.gifLoop,
+      hlsSegmentSeconds: options.hlsSegmentSeconds,
       workers: options.workers,
       useGpu: options.gpu,
       hdrMode: options.hdrMode,
@@ -912,6 +1078,8 @@ export async function renderLocal(
       outputResolution: options.outputResolution,
       outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
       debug: options.debug,
+      resumeSegments: options.resumeSegments,
+      keepSegments: options.keepSegments,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
     },
   });
@@ -924,7 +1092,15 @@ export async function renderLocal(
       };
 
   try {
-    await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
+    cancellation.checkAncestors();
+    await producer.executeRenderJob(
+      job,
+      projectDir,
+      outputPath,
+      onProgress,
+      cancellation.signal,
+      cancellation.checkAncestors,
+    );
   } catch (error: unknown) {
     maybeConsumeDeParallelRouterTrial(deParallelRouterActive, job, options.quiet);
     // The render container sets `ENV CONTAINER=true`; suggesting `--docker`
@@ -957,13 +1133,14 @@ export async function renderLocal(
   }
   runPostRenderStep("trackRenderMetrics", () => trackRenderMetrics(job, elapsed, options, false));
   runPostRenderStep("printRenderComplete", () =>
-    printRenderComplete(
+    printRenderComplete({
       outputPath,
-      elapsed,
-      options.quiet,
-      job.perfSummary?.compositionDurationSeconds,
-      job.perfSummary?.totalFrames,
-    ),
+      elapsedMs: elapsed,
+      quiet: options.quiet,
+      format: options.format,
+      perf: job.perfSummary,
+      requestedGpuMode: options.browserGpuMode,
+    }),
   );
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
@@ -1014,6 +1191,30 @@ function getMemorySnapshot() {
   return {
     peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
     memoryFreeMb: bytesToMb(freemem()),
+  };
+}
+
+/** Output-shape request facts, resolved before the pipeline starts (survives a pre-perfSummary render_error). */
+function renderOutputShapeTelemetryPayload(
+  options: RenderOptions,
+): RenderOutputShapeTelemetryPayload {
+  return {
+    outputResolutionPreset: options.outputResolution,
+    outputFormat: options.format,
+    hdrMode: options.hdrMode,
+    videoFrameFormat: options.videoFrameFormat,
+    gifFpsCapped: options.gifFpsCapped,
+  };
+}
+
+/** Toolchain facts from local preflight; undefined on Docker renders (the container runs its own). */
+function renderEnvironmentTelemetryPayload(
+  options: RenderOptions,
+): RenderEnvironmentTelemetryPayload {
+  return {
+    ffmpegVersionMajor: options.ffmpegVersionMajor,
+    browserVersionMajor: options.browserVersionMajor,
+    browserInstall: options.browserInstall,
   };
 }
 
@@ -1425,6 +1626,37 @@ function reportDeParallelRouterBreakerTrip(quiet: boolean): void {
   );
 }
 
+/**
+ * `job.currentStage`/`failedStage` are free-text progress labels
+ * (`updateJobStatus`'s callers each pass their own human sentence — "Compiling
+ * composition", "Extracting video frames", …), which makes an exact string
+ * property unbounded in a telemetry event. This maps the known set to a
+ * stable snake_case code, and slugifies anything unrecognized instead of
+ * bucketing it into a single opaque "unknown" — a future stage string still
+ * gets a distinct, readable code without needing this map updated first.
+ */
+const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
+  Queued: "queued",
+  "Compiling composition": "compiling_composition",
+  "Extracting video frames": "extracting_video_frames",
+  "Processing audio tracks": "processing_audio_tracks",
+  "Starting frame capture": "starting_frame_capture",
+  "Render complete": "render_complete",
+  "Render cancelled": "render_cancelled",
+  pipeline: "pipeline",
+};
+
+export function normalizeStageCode(stage: string): string {
+  const known = KNOWN_STAGE_CODES[stage];
+  if (known) return known;
+  const slug = stage
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return slug || "unknown";
+}
+
 function handleRenderError(
   error: unknown,
   options: RenderOptions,
@@ -1442,9 +1674,22 @@ function handleRenderError(
     workers: options.workers,
     gpu: options.gpu,
     authoringSkill: options.authoringSkill,
+    authoringSkillSource: options.authoringSkillSource,
+    authoringSkillInvalid: options.authoringSkillInvalid,
+    hfEnvOverrides: options.hfEnvOverrides,
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
+    ...renderOutputShapeTelemetryPayload(options),
+    ...renderEnvironmentTelemetryPayload(options),
+    // A bucketable failure taxonomy alongside the free-text error_message
+    // above: error.name is one of ~20 typed producer error classes
+    // (CaptureFailure, DrawElementCaptureError, SwiftShaderAssertionError, …);
+    // failed_stage_code is the same job.currentStage value normalized to a
+    // stable code. Error-conditional by nature — there is no equivalent on
+    // the render_complete success path, since nothing failed to name.
+    errorName: error instanceof Error ? error.name : "unknown",
+    failedStageCode: normalizeStageCode(failedStage || "pipeline"),
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });
@@ -1532,7 +1777,17 @@ function trackRenderMetrics(
     docker,
     gpu: options.gpu,
     authoringSkill: options.authoringSkill,
+    authoringSkillSource: options.authoringSkillSource,
+    authoringSkillInvalid: options.authoringSkillInvalid,
+    hfEnvOverrides: options.hfEnvOverrides,
     catalogUsage: options.catalogUsage,
+    ...renderOutputShapeTelemetryPayload(options),
+    ...renderEnvironmentTelemetryPayload(options),
+    chromeBrowserRssPeakMb: perf?.chromeMemory?.browserRssPeakMb,
+    chromeRendererRssPeakMb: perf?.chromeMemory?.rendererRssPeakMb,
+    chromeRssLastMb: perf?.chromeMemory?.rssLastMb,
+    chromeGpuProcessSeenLastSample: perf?.chromeMemory?.gpuProcessSeenLastSample,
+    chromeMemorySamples: perf?.chromeMemory?.samples,
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,
@@ -1547,6 +1802,18 @@ function trackRenderMetrics(
     dePreInversionWorkers: perf?.drawElement?.preInversionWorkers,
     compositionElementCount: perf?.drawElement?.compositionElementCount,
     compositionElementCountSource: perf?.drawElement?.compositionElementCountSource,
+    compositionElementTags: perf?.drawElement?.compositionElementTags,
+    arollVideoCount: perf?.drawElement?.arollVideoCount,
+    heygenVideoCount: perf?.drawElement?.heygenVideoCount,
+    adaptersUsed: perf?.drawElement?.adaptersUsed,
+    audioCount: perf?.drawElement?.audioCount,
+    imageCount: perf?.drawElement?.imageCount,
+    subCompositionCount: perf?.drawElement?.subCompositionCount,
+    audioGroupCount: perf?.drawElement?.audioGroupCount,
+    colorGradingCount: perf?.drawElement?.colorGradingCount,
+    hasLut: perf?.drawElement?.hasLut,
+    rootBodyMismatch: perf?.drawElement?.rootBodyMismatch,
+    rootBodyDeltaPxBucket: perf?.drawElement?.rootBodyDeltaPxBucket,
     deShortBand: perf?.drawElement?.shortBand,
     deParallelRouter: perf?.drawElement?.parallelRouter,
     dePreRouterWorkers: perf?.drawElement?.preRouterWorkers,
@@ -1602,48 +1869,73 @@ function trackRenderMetrics(
   });
 }
 
-function printRenderComplete(
-  outputPath: string,
-  elapsedMs: number,
-  quiet: boolean,
-  outputDurationSeconds?: number,
-  frameCount?: number,
-): void {
-  if (quiet) return;
-
-  let fileSize = "unknown";
-  let isDirectory = false;
+function readOutputFootprint(outputPath: string): { fileSize: string; isDirectory: boolean } {
   try {
     const stat = statSync(outputPath);
-    isDirectory = stat.isDirectory();
-    if (stat.isDirectory()) {
-      // png-sequence output is a directory; sum the contained file sizes so
-      // the user sees the on-disk footprint of the deliverable rather than
-      // the platform-specific size of the directory inode itself.
-      let total = 0;
-      for (const entry of readdirSync(outputPath, { withFileTypes: true })) {
-        if (!entry.isFile()) continue;
-        try {
-          total += statSync(join(outputPath, entry.name)).size;
-        } catch {
-          // skip unreadable entries
-        }
+    if (!stat.isDirectory()) return { fileSize: formatBytes(stat.size), isDirectory: false };
+    // png-sequence and hls write a directory; sum contained file sizes so the
+    // user sees the deliverable footprint, not the directory inode size.
+    let total = 0;
+    for (const entry of readdirSync(outputPath, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      try {
+        total += statSync(join(outputPath, entry.name)).size;
+      } catch {
+        // skip unreadable entries
       }
-      fileSize = formatBytes(total);
-    } else {
-      fileSize = formatBytes(stat.size);
     }
+    return { fileSize: formatBytes(total), isDirectory: true };
   } catch {
-    // file doesn't exist or is inaccessible
+    return { fileSize: "unknown", isDirectory: false };
   }
+}
 
+function printRenderComplete(input: {
+  outputPath: string;
+  elapsedMs: number;
+  quiet: boolean;
+  format: RenderFormat;
+  perf?: RenderPerfSummary;
+  requestedGpuMode?: "auto" | "hardware" | "software";
+}): void {
+  if (input.quiet) return;
+  const { outputPath, elapsedMs, perf } = input;
+  const { fileSize, isDirectory } = readOutputFootprint(outputPath);
   const detail = formatRenderSummaryDetail({
     elapsedMs,
-    outputDurationSeconds,
+    outputDurationSeconds: perf?.compositionDurationSeconds,
     isDirectory,
-    frameCount,
+    frameCount: perf?.totalFrames,
+    playlistDirectory: input.format === "hls",
   });
   console.log("");
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
   console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
+  if (perf) printRenderPipeline(perf, input.requestedGpuMode);
+}
+
+function printRenderPipeline(
+  perf: RenderPerfSummary,
+  requestedGpuMode?: "auto" | "hardware" | "software",
+): void {
+  // aggregateDrawElement reports "unknown" when no session recorded a mode.
+  const capture = {
+    captureMode: resolvePrintedCaptureMode(
+      perf.drawElement?.mode,
+      perf.observability?.capture.captureMode,
+    ),
+    browserGpuMode: perf.observability?.capture.browserGpuMode,
+  };
+  const pipeline = formatRenderPipelineDetail({
+    ...capture,
+    streamingEncode: perf.observability?.capture.useStreamingEncode,
+    stages: perf.stages,
+  });
+  if (pipeline) console.log("   " + c.dim(pipeline));
+  const hint = formatScreenshotFallbackHint({
+    ...capture,
+    requestedGpuMode,
+    platform: process.platform,
+  });
+  if (hint) console.log("   " + c.dim(hint));
 }

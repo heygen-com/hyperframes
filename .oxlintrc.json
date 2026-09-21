@@ -13,6 +13,8 @@
     "packages/producer/tests/**/src/vendor/**",
     "docs/public/catalog/",
     "registry/blocks/**/lib/*.iife.js",
+    "registry/blocks/{glass-shard-title,code-slice-hero,cuboid-carousel,frost-sequence-camera-orbit,orbit-card}/**/*.{js,mjs}",
+    "registry/blocks/frost-sequence-camera-orbit/source/**",
     "chrome/"
   ],
   "overrides": [

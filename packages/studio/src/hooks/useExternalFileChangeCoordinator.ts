@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import { readStudioFileChangePath } from "../components/editor/manualEdits";
+import { readFileChangeField, readStudioFileChangePath } from "../components/editor/manualEdits";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
 import type { ExternalConflictSnapshot } from "../utils/externalConflictStorage";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
@@ -81,25 +81,39 @@ function testHotAdapter(): HotTestAdapter | null {
     : null;
 }
 
-function readFileChangeContent(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as Record<string, unknown>;
-  if (typeof record.content === "string") return record.content;
-  return "data" in record ? readFileChangeContent(record.data) : null;
+const readFileChangeContent = (payload: unknown) => readFileChangeField(payload, "content");
+const readFileChangeVersion = (payload: unknown) => readFileChangeField(payload, "version");
+const readFileChangeWriteToken = (payload: unknown) => readFileChangeField(payload, "writeToken");
+
+/**
+ * Decode one delivery into the payload shape every reader above assumes.
+ *
+ * SSE delivers a `MessageEvent` whose `data` is a JSON string; the hot-reload
+ * transports deliver the payload object. This is the only place that difference
+ * exists: a reader handed an undecoded envelope reports every field as absent,
+ * which is indistinguishable from a field that is genuinely unset.
+ */
+function decodeFileChange(delivery: unknown): unknown {
+  // Structural, not `instanceof`: a polyfilled or cross-realm event must still decode.
+  const data = (delivery as { data?: unknown } | null)?.data;
+  if (typeof data !== "string") return delivery;
+  try {
+    return JSON.parse(data);
+  } catch {
+    logReload("file-change", { path: null, why: "unparseable payload" });
+    return null;
+  }
 }
 
-function readFileChangeVersion(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as Record<string, unknown>;
-  if (typeof record.version === "string") return record.version;
-  return "data" in record ? readFileChangeVersion(record.data) : null;
-}
-
-function readFileChangeWriteToken(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as Record<string, unknown>;
-  if (typeof record.writeToken === "string") return record.writeToken;
-  return "data" in record ? readFileChangeWriteToken(record.data) : null;
+/**
+ * The production transport. vitest defines `import.meta.hot`, so the selection
+ * below never reaches this rung under test; the rung itself is exported so a test
+ * can drive a real `MessageEvent` through the listener it registers.
+ */
+export function sseFileChangeChannel(onDelivery: (delivery: unknown) => void): () => void {
+  const eventSource = new EventSource("/api/events");
+  eventSource.addEventListener("file-change", onDelivery);
+  return () => eventSource.close();
 }
 
 function eventIdentity(path: string, payload: unknown): string | null {
@@ -331,7 +345,10 @@ export function useExternalFileChangeCoordinator({
     // fallow-ignore-next-line complexity
     (payload: unknown) => {
       const path = readStudioFileChangePath(payload);
-      if (!path || !projectId) return;
+      if (!path || !projectId) {
+        logReload("file-change", { path: null, why: path ? "no project" : "no path in payload" });
+        return;
+      }
       pendingTimelineEditPathRef.current.delete(path);
 
       const content = readFileChangeContent(payload);
@@ -362,7 +379,8 @@ export function useExternalFileChangeCoordinator({
   );
 
   useEffect(() => {
-    const handler = (payload?: unknown) => processChange(payload);
+    // One decoder for all three transports; the rungs only choose the channel.
+    const handler = (delivery?: unknown) => processChange(decodeFileChange(delivery));
     const adapter = testHotAdapter();
     if (adapter) {
       adapter.on("hf:file-change", handler);
@@ -372,9 +390,7 @@ export function useExternalFileChangeCoordinator({
       import.meta.hot.on("hf:file-change", handler);
       return () => import.meta.hot?.off?.("hf:file-change", handler);
     }
-    const eventSource = new EventSource("/api/events");
-    eventSource.addEventListener("file-change", handler);
-    return () => eventSource.close();
+    return sseFileChangeChannel(handler);
   }, [processChange]);
 
   const retry = useCallback(async () => {

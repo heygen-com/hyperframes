@@ -3,6 +3,9 @@ import { initSandboxRuntimeModular } from "./init";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type { RuntimeTimelineLike } from "./types";
 
+// The readiness gate's 8s timeout is a one-shot timer these transport tests must not count.
+vi.mock("../compositionReadiness", () => ({ settleCompositionReadiness: vi.fn() }));
+
 /**
  * The transport parks itself when the editor is paused and settled. Everything
  * it used to discover by looking again on the next frame has to arrive by some
@@ -65,6 +68,28 @@ function createMockTimeline(duration: number): RuntimeTimelineLike {
     set: () => {},
     getChildren: () => [],
   };
+}
+
+/** jsdom implements neither play() nor pause(), and `paused` is the only state the
+ *  runtime reads. Returns a handle driving it the way a browser does, so a test can
+ *  start the element and watch whether the transport stops it. */
+function stubMediaPlayback(
+  el: HTMLMediaElement,
+  durationSeconds: number,
+): { start: () => void; isPaused: () => boolean } {
+  let paused = true;
+  Object.defineProperty(el, "duration", { value: durationSeconds, configurable: true });
+  Object.defineProperty(el, "paused", { configurable: true, get: () => paused });
+  el.pause = () => {
+    paused = true;
+  };
+  el.play = () => {
+    paused = false;
+    // A real browser fires this, and firing it is what makes the defect deterministic.
+    el.dispatchEvent(new Event("play"));
+    return Promise.resolve();
+  };
+  return { start: () => void el.play(), isPaused: () => paused };
 }
 
 /** MutationObserver records land in a microtask; nothing observes them sooner. */
@@ -419,5 +444,124 @@ describe("parked transport loop", () => {
 
     expect(before).toBeLessThan(20);
     expect(window.__player!.getDuration()).toBeCloseTo(20, 3);
+  });
+
+  it("stops a media element that starts playing while parked and the clock is paused", () => {
+    // Nothing may run while the clock is paused. `play` does not bubble, so the
+    // wake comes from a capture-phase listener; without it the enforcement is
+    // unreachable exactly when it is needed, because a parked loop runs no ticks.
+    mount(`<video id="rogue" data-start="0" data-duration="5"></video>`);
+    const media = stubMediaPlayback(document.getElementById("rogue") as HTMLVideoElement, 5);
+    initSandboxRuntimeModular();
+    quiesce();
+    expect(window.__player!.isPlaying()).toBe(false);
+    expect(raf.pending()).toBe(0);
+
+    // Autoplay, a composition script, a restored bfcache state.
+    media.start();
+    settle();
+
+    expect(media.isPaused()).toBe(true);
+  });
+
+  it("stops hosted media with no data-start of its own, which the transport also drives", () => {
+    // A clip inside a composition inherits its timing from the host. It is the
+    // transport's to play, so it is the transport's to stop; a probe keyed on
+    // data-start alone could not see it.
+    mount(`
+      <div data-composition-id="host" data-start="0" data-duration="10">
+        <video id="hosted" data-duration="5"></video>
+      </div>`);
+    const media = stubMediaPlayback(document.getElementById("hosted") as HTMLVideoElement, 5);
+    initSandboxRuntimeModular();
+    quiesce();
+
+    media.start();
+    settle();
+
+    expect(media.isPaused()).toBe(true);
+  });
+
+  it("leaves a LEASED element alone while paused, and stops it once released", () => {
+    // The colour-grading preview and the Studio's scrub audition both play media
+    // on purpose with the clock stopped. They borrow the element first; the
+    // enforcement is for anything that plays without borrowing.
+    mount(`<video id="grade" data-start="0" data-duration="5"></video>`);
+    const video = document.getElementById("grade") as HTMLVideoElement;
+    const media = stubMediaPlayback(video, 5);
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__hf!.leasePausedMedia!(video);
+    media.start();
+    settle();
+    // Several more ticks: a lease must survive more than the frame it was taken on.
+    for (let i = 0; i < 5; i += 1) {
+      window.__player!.seek(window.__player!.getTime());
+      settle();
+    }
+    expect(media.isPaused()).toBe(false);
+
+    window.__hf!.releasePausedMedia!(video);
+    media.start();
+    settle();
+    expect(media.isPaused()).toBe(true);
+  });
+
+  it("does not stop the colour-grading preview, which plays on purpose while paused", () => {
+    // The end-to-end wiring, not the lease in isolation: init constructs the
+    // grading runtime with the lease, so startPreviewPlayback borrows before the
+    // play() whose own event wakes the transport that would otherwise stop it.
+    mount(`<video id="graded" data-start="0" data-duration="5"></video>`);
+    const video = document.getElementById("graded") as HTMLVideoElement;
+    const media = stubMediaPlayback(video, 5);
+    let currentTime = 0;
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => currentTime,
+      set: (next: number) => {
+        currentTime = next;
+      },
+    });
+    initSandboxRuntimeModular();
+    quiesce();
+
+    const stop = window.__hf!.colorGrading!.startPreviewPlayback("graded");
+    expect(typeof stop).toBe("function");
+    settle();
+    for (let beat = 0; beat < 5; beat += 1) {
+      vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+      settle();
+    }
+    expect(media.isPaused()).toBe(false);
+
+    stop!();
+    expect(media.isPaused()).toBe(true);
+    // The stop closure must RELEASE, not just pause: a restart after it is an
+    // unleased play while paused, and the transport has to stop it.
+    media.start();
+    settle();
+    expect(media.isPaused()).toBe(true);
+  });
+
+  it("reclaims a leased element the moment the transport plays", () => {
+    // A lease is an exemption from the PAUSED-side enforcement only. Once the
+    // clock runs the transport owns every element again, so a leased clip that is
+    // outside the playhead's window is stopped like any other.
+    mount(`<video id="late" data-start="10" data-duration="5"></video>`);
+    const video = document.getElementById("late") as HTMLVideoElement;
+    const media = stubMediaPlayback(video, 5);
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__hf!.leasePausedMedia!(video);
+    media.start();
+    settle();
+    expect(media.isPaused()).toBe(false);
+
+    window.__player!.play();
+    settle();
+    expect(window.__player!.isPlaying()).toBe(true);
+    expect(media.isPaused()).toBe(true);
   });
 });

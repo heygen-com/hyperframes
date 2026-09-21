@@ -1,24 +1,18 @@
 // @vitest-environment happy-dom
 
 import React, { act, Profiler } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ShortcutsPanel } from "./ShortcutsPanel";
+import { createHappyDomRootHarness } from "./testRootHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const roots: Root[] = [];
-
-afterEach(() => {
-  for (const root of roots.splice(0)) act(() => root.unmount());
-  document.body.innerHTML = "";
-});
+const { mount } = createHappyDomRootHarness();
 
 function renderPanel(onRender = vi.fn()) {
   const host = document.createElement("div");
   document.body.append(host);
-  const root = createRoot(host);
-  roots.push(root);
+  const root = mount(host);
   act(() => {
     root.render(
       <Profiler id="shortcuts-panel" onRender={onRender}>

@@ -14,20 +14,20 @@ export interface TimelinePropertyGroupKeyframeToggle {
   remove: boolean;
 }
 
+/** Where an outside drop lands; `insertRow` opens a new track at that row boundary of `trackOrder`. */
+export type TimelineDropPlacement = { start: number; track: number } & (
+  | { insertRow?: null; trackOrder?: undefined }
+  | { insertRow: number; trackOrder: readonly number[] }
+);
+
 /**
  * Shared callback signatures for timeline editing operations.
  * Used by NLELayout, Timeline, and any component that passes through
  * the standard set of timeline mutation handlers.
  */
 export interface TimelineDropCallbacks {
-  onFileDrop?: (
-    files: File[],
-    placement?: { start: number; track: number },
-  ) => Promise<void> | void;
-  onAssetDrop?: (
-    assetPath: string,
-    placement: { start: number; track: number },
-  ) => Promise<void> | void;
+  onFileDrop?: (files: File[], placement?: TimelineDropPlacement) => Promise<void> | void;
+  onAssetDrop?: (assetPath: string, placement: TimelineDropPlacement) => Promise<void> | void;
   onBlockDrop?: (
     blockName: string,
     placement: { start: number; track: number },

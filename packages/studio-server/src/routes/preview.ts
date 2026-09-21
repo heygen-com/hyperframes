@@ -30,6 +30,7 @@ import {
   decideMediaProxyEligibility,
   isProxyVariantRequest,
   probeAssetCodec,
+  recordProxyRequest,
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
   type ProxyVariant,
@@ -469,7 +470,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // "v2" salts the etag for the hf-id-pinning change below: a client holding
     // a pre-pin cached response (preview-only ids, unstamped disk file) must
     // not revalidate to a 304 that skips the pin.
-    const etag = `"comp:v2:${compPath}:${signature}${variablesEtagSalt(vars.raw)}"`;
+    const compPathHash = createHash("sha1").update(compPath).digest("hex");
+    const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -569,6 +571,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     let servedPath = file;
     let servedContentType = contentType;
     if (proxyVariant !== undefined) {
+      // Here, not at the eligibility gate above: one count per resolved proxy
+      // shares a unit with `prewarmsRequested`, and a revalidated repeat that
+      // 304s no longer counts as fresh demand.
+      recordProxyRequest();
       try {
         servedPath = await resolveProxy(project.dir, file, proxyVariant);
       } catch (err) {

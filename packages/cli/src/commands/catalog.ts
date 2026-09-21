@@ -27,7 +27,7 @@ import {
   nonInteractiveConsentMessage,
   recordLocalModelConsent,
 } from "../registry/localModel.js";
-import { localRuntimeAvailable } from "../registry/localEmbedder.js";
+import { ensureLocalRuntime } from "../registry/localEmbedder.js";
 import {
   cachedLocalVectorRevision,
   fetchLocalVectors,
@@ -90,13 +90,10 @@ async function prepareOnDeviceTier(opts: {
     }
   }
 
-  if (!(await localRuntimeAvailable())) {
-    // Checked before downloading. Fetching 32 MB and then discovering the
-    // runtime is missing wastes the bandwidth the consent was granted for.
-    warn(
-      "on-device search needs the native ONNX runtime, which a single-file build cannot load. " +
-        "Install the CLI normally (npm i -g hyperframes) to use this tier.",
-    );
+  // Before the model download: fetching 32 MB and then finding the runtime missing wastes it.
+  const runtime = await ensureLocalRuntime();
+  if (!runtime.ok) {
+    warn(`on-device search skipped: ${runtime.reason}`);
     return warnings;
   }
 

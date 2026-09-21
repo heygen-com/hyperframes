@@ -29,7 +29,7 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
         e.stopPropagation();
         onClick();
       }}
-      className="relative flex-shrink-0 p-0.5 transition-opacity hover:opacity-100 before:absolute before:-inset-1.5 before:content-['']"
+      className="relative shrink-0 p-0.5 transition-opacity hover:opacity-100 before:absolute before:-inset-1.5 before:content-['']"
       style={{ color, opacity }}
       title={title}
       aria-label={title}

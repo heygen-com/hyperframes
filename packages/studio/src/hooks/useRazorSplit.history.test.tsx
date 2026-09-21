@@ -29,7 +29,6 @@ const element: TimelineElement = {
   track: 0,
   domId: "clip1",
   sourceFile: "index.html",
-  timingSource: "authored",
 };
 
 type Split = (element: TimelineElement, splitTime: number) => Promise<void>;
@@ -117,7 +116,6 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
         disk[path] = content;
       },
       recordEdit: store.recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {
         if (!opts.previewStamp) return;
         const stamped = ensureHfIds(disk["index.html"]);
@@ -258,7 +256,6 @@ function mountRazorSplitAll(failOnSplit?: number): SplitAllHarness {
         disk[path] = content;
       },
       recordEdit: store.recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {},
     });
     splitAllRef.current = handleRazorSplitAll;

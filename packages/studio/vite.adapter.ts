@@ -255,14 +255,14 @@ export function createViteAdapter(
       return signatureCache.get(projectDir);
     },
 
-    async lint(html: string, opts?: { filePath?: string }) {
+    async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const mod = await server.ssrLoadModule("@hyperframes/core/lint");
-      return await mod.lintHyperframeHtml(html, opts);
+      return await mod.lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
 
     async lintProject(projectDir: string) {
       const mod = await server.ssrLoadModule("@hyperframes/core/lint");
-      return await mod.lintProject(projectDir);
+      return await mod.lintProject(projectDir, undefined, { host: "studio" });
     },
 
     runtimeUrl: "/api/runtime.js",

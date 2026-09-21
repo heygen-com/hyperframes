@@ -20,6 +20,10 @@ import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import {
+  scanPendingCompositionAssets,
+  settleCompositionReadiness,
+} from "@hyperframes/core/composition-readiness";
 
 // Playback-rate bounds mirror the runtime clamp in
 // packages/core/src/runtime/init.ts (applyPlaybackRate) and media.ts so the
@@ -32,6 +36,15 @@ const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
+// Bounds how long the player waits on a same-origin composition's readiness
+// inputs (media, compute, paint-and-idle) before playing anyway — a stuck
+// asset or a composition that never goes quiet must not block playback forever.
+const ASSETS_READY_TIMEOUT_MS = 8_000;
+const ASSETS_LOADING_ATTR = "assets-loading";
+// paint-and-idle now always has a frame to wait on, so the overlay would
+// flash on every single Play without this debounce. ponytail: 150ms is
+// unmeasured, retune once there's production data on paint-and-idle timing.
+const ASSETS_LOADING_SHOW_DELAY_MS = 150;
 
 export type ColorGradingTarget =
   | string
@@ -95,6 +108,11 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  private _assetsReady = false;
+  private _painted = false;
+  private _pendingPlay = false;
+  private _assetsGeneration = 0;
+  private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentTime = 0;
   private _duration = 0;
   private _paused = true;
@@ -113,6 +131,7 @@ class HyperframesPlayer extends HTMLElement {
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
+  private _runtimeAssetsReadyGeneration = -1;
   private _runtimeData = new Map<string, unknown>();
   private _runtimeDataRequestId = 0;
   private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
@@ -212,6 +231,7 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi = null;
     this._paused = true;
     this._ready = false;
+    this._invalidateAssetsWait();
     this._runtimeBridgeReady = false;
     this._rejectAllRuntimeDataDeliveries("Player disconnected before runtime data was applied");
   }
@@ -227,6 +247,7 @@ class HyperframesPlayer extends HTMLElement {
         if (!this.isConnected) break;
         if (val) {
           this._ready = false;
+          this._invalidateAssetsWait();
           this._runtimeBridgeReady = false;
           this._rejectAllRuntimeDataDeliveries(
             "Composition navigated before runtime data was applied",
@@ -237,6 +258,7 @@ class HyperframesPlayer extends HTMLElement {
       case "srcdoc":
         if (!this.isConnected) break;
         this._ready = false;
+        this._invalidateAssetsWait();
         this._runtimeBridgeReady = false;
         this._rejectAllRuntimeDataDeliveries(
           "Composition navigated before runtime data was applied",
@@ -317,6 +339,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private _reloadForSandboxOriginPolicy(): void {
     this._ready = false;
+    this._invalidateAssetsWait();
     this._runtimeBridgeReady = false;
     this._rejectAllRuntimeDataDeliveries("Sandbox policy changed before runtime data was applied");
     const srcdoc = this.getAttribute("srcdoc");
@@ -343,7 +366,13 @@ class HyperframesPlayer extends HTMLElement {
     return this._scenes;
   }
 
+  // fallow-ignore-next-line complexity
   play() {
+    if (this._ready && !this._assetsReady) {
+      this._pendingPlay = true;
+      return;
+    }
+    this._pendingPlay = false;
     this.posterEl?.remove();
     this.posterEl = null;
     if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
@@ -351,19 +380,25 @@ class HyperframesPlayer extends HTMLElement {
     // check doesn't immediately self-terminate on the first callback.
     this._paused = false;
     const directTimelineStarted = this._tryDirectTimelinePlay();
+    // Set when the probe hasn't resolved yet: retried from _onProbeReady /
+    // _onRuntimeTimelineReady once ready, which is the call that actually
+    // starts playback — this premature call must not ALSO dispatch "play"
+    // for what hasn't started, or a host listener sees it fire twice.
+    let queuedForReady = false;
     if (!directTimelineStarted) {
       this._sendControl("play");
       // Only start the parent tick clock once the composition is ready and
       // confirmed on the runtime bridge path (not the direct-timeline path).
-      // Guards against firing ticks into an uninitialized iframe when play()
-      // is called before the probe has resolved.
       if (this._ready && !this._directTimelineAdapter) {
         this._startParentTickClock();
+      } else if (!this._ready) {
+        this._pendingPlay = true;
+        queuedForReady = true;
       }
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     this.controlsApi?.updatePlaying(true);
-    this.dispatchEvent(new Event("play"));
+    if (!queuedForReady) this.dispatchEvent(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
       this._directTimelineClock.start(
         this._directTimelineAdapter,
@@ -375,6 +410,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   pause() {
+    // A play queued while assets were still buffering must not survive an
+    // explicit user pause — otherwise it fires once assets settle, seconds
+    // after the user stopped playback.
+    this._pendingPlay = false;
     if (!this._tryDirectTimelinePause()) this._sendControl("pause");
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -391,6 +430,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   seek(timeInSeconds: number) {
+    // seek()'s own contract is that it lands paused, so a play still queued
+    // from the asset-buffering window is cancelled here too — same reason as
+    // pause() above.
+    this._pendingPlay = false;
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
         timeSeconds: timeInSeconds,
@@ -481,6 +524,19 @@ class HyperframesPlayer extends HTMLElement {
   }
   get ready() {
     return this._ready;
+  }
+
+  /** True once every readiness input (media, compute, paint-and-idle) has
+   *  settled or the wait timed out. Mirrors `assetsready`. Always true for
+   *  cross-origin compositions, which the player has no DOM access to wait on. */
+  get assetsReady() {
+    return this._assetsReady;
+  }
+
+  /** True once assets are ready and the loading panel has finished fading out,
+   *  so the document is what is on screen. Mirrors `painted`; resets per load. */
+  get painted() {
+    return this._painted;
   }
 
   get playbackRate() {
@@ -788,6 +844,7 @@ class HyperframesPlayer extends HTMLElement {
     // replaced, where it can only end in a delivery timeout rather than the immediate,
     // explanatory rejection the caller gets from every other navigating path.
     this._ready = false;
+    this._invalidateAssetsWait();
     this._runtimeBridgeReady = false;
     this._rejectAllRuntimeDataDeliveries("Shader options changed before runtime data was applied");
     if (getShaderModeFromElement(this) !== "player") this.shaderLoader.reset();
@@ -906,11 +963,17 @@ class HyperframesPlayer extends HTMLElement {
         this._replayBridgeState();
         this._replayRuntimeData();
       },
+      onRuntimeAssetsReady: () => {
+        if (this._runtimeAssetsReadyGeneration === this._assetsGeneration) {
+          this._settleAssetsReady(this._assetsGeneration);
+        }
+      },
       onRuntimeDataApplied: (channel, requestId) =>
         this._resolveRuntimeDataDelivery(channel, requestId),
       onRuntimeDataError: (channel, requestId, message) =>
         this._rejectRuntimeDataDelivery(channel, requestId, message),
-      onRuntimeTimelineReady: (duration) => this._onRuntimeTimelineReady(duration),
+      onRuntimeTimelineReady: (duration, assetsReady) =>
+        this._onRuntimeTimelineReady(duration, assetsReady),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
       },
@@ -929,7 +992,7 @@ class HyperframesPlayer extends HTMLElement {
     });
   }
 
-  private _onRuntimeTimelineReady(duration: number) {
+  private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
     if (this._ready) return;
     this.probe.stop();
     this._duration = duration;
@@ -947,7 +1010,8 @@ class HyperframesPlayer extends HTMLElement {
 
     this._replayBridgeState();
     this._setIframeMediaMuted(this.muted);
-    if (this.hasAttribute("autoplay")) this.play();
+    this._waitForAssetsReady(doc, assetsReady);
+    if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
   }
 
   private _onProbeReady({ duration, adapter, compositionSize }: ProbeResult) {
@@ -961,14 +1025,112 @@ class HyperframesPlayer extends HTMLElement {
       this._compositionHeight = compositionSize.height;
       this._rescale();
     }
-    try {
-      const doc = this.iframe.contentDocument;
-      if (doc) this._media.setupFromIframe(doc);
-    } catch {
-      /* cross-origin */
-    }
+    const doc = this._getSameOriginIframeDocument();
+    if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
-    if (this.hasAttribute("autoplay")) this.play();
+    this._waitForAssetsReady(doc);
+    if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
+  }
+
+  /** Gates play() on composition readiness (media, compute, paint-and-idle),
+   * bounded by ASSETS_READY_TIMEOUT_MS. The overlay is debounced by
+   * ASSETS_LOADING_SHOW_DELAY_MS rather than shown the instant a wait
+   * starts, since one is now pending on nearly every Play. */
+  private _waitForAssetsReady(doc: Document | null, runtimeAssetsReady?: boolean): void {
+    this._clearAssetsLoadingShowTimer();
+    this._assetsReady = false;
+    this._painted = false;
+    // Invalidates any earlier wait still in flight (a composition swap, or
+    // disconnect, mid-wait) — its eventual settle checks this and no-ops
+    // rather than resolving a since-superseded generation.
+    const generation = ++this._assetsGeneration;
+    if (!doc) {
+      // An opaque-origin iframe cannot be scanned from here; a runtime that
+      // reports `assetsReady: false` runs the same scan itself and posts the result.
+      if (runtimeAssetsReady === false) {
+        this._runtimeAssetsReadyGeneration = generation;
+        this._startAssetsLoadingOverlayTimer(generation);
+        setTimeout(() => this._settleAssetsReady(generation), ASSETS_READY_TIMEOUT_MS);
+      } else {
+        this._settleAssetsReady(generation);
+      }
+      return;
+    }
+    settleCompositionReadiness(
+      doc,
+      ({ timedOut }) => {
+        if (generation !== this._assetsGeneration) return;
+        if (timedOut) this._warnStuckAssets(doc);
+        this._settleAssetsReady(generation);
+      },
+      { timeoutMs: ASSETS_READY_TIMEOUT_MS },
+    );
+    if (!this._assetsReady) this._startAssetsLoadingOverlayTimer(generation);
+  }
+
+  private _startAssetsLoadingOverlayTimer(generation: number): void {
+    this._assetsLoadingShowTimer = setTimeout(() => {
+      this._assetsLoadingShowTimer = null;
+      if (generation !== this._assetsGeneration || this._assetsReady) return;
+      this.setAttribute(ASSETS_LOADING_ATTR, "");
+      this.shaderLoader.showAssetsLoading();
+    }, ASSETS_LOADING_SHOW_DELAY_MS);
+  }
+
+  /** Timeout diagnostic. Re-scans since some assets may have resolved by
+   *  now. Compute can cause the timeout, so it's reported too. A hidden
+   *  document can starve paint-and-idle of frames for the full 8s — that's
+   *  reported directly rather than inferred, since it can't be bounded. */
+  private _warnStuckAssets(doc: Document): void {
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc);
+    const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
+    console.warn(
+      `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms — playing anyway`,
+      {
+        stuckMedia: pendingMedia.map(
+          (el) => el.currentSrc || el.getAttribute("src") || `<${el.tagName.toLowerCase()}>`,
+        ),
+        stuckImages: pendingImages.map(
+          (img) => img.currentSrc || img.getAttribute("src") || "<img>",
+        ),
+        fontsLoading,
+        computeReady: win?.__renderReady === true,
+        documentHidden: doc.hidden === true,
+      },
+    );
+  }
+
+  private _settleAssetsReady(generation: number): void {
+    if (generation !== this._assetsGeneration || this._assetsReady) return;
+    this._clearAssetsLoadingShowTimer();
+    this._assetsReady = true;
+    this.removeAttribute(ASSETS_LOADING_ATTR);
+    this.shaderLoader.hide();
+    this.dispatchEvent(new Event("assetsready"));
+    this.shaderLoader.whenHidden(() => {
+      if (generation !== this._assetsGeneration) return;
+      this._painted = true;
+      this.dispatchEvent(new Event("painted"));
+    });
+    if (this._pendingPlay) this.play();
+  }
+
+  /** Abandons any in-flight asset wait — every `_ready = false` site calls
+   *  this first, so a stale wait's settle can't apply to what comes next. */
+  private _invalidateAssetsWait(): void {
+    this._clearAssetsLoadingShowTimer();
+    this._assetsReady = false;
+    this._painted = false;
+    this._pendingPlay = false;
+    this._assetsGeneration++;
+    this.removeAttribute(ASSETS_LOADING_ATTR);
+    this.shaderLoader.hide();
+  }
+
+  private _clearAssetsLoadingShowTimer(): void {
+    if (this._assetsLoadingShowTimer === null) return;
+    clearTimeout(this._assetsLoadingShowTimer);
+    this._assetsLoadingShowTimer = null;
   }
 
   private _rescale() {
@@ -997,6 +1159,11 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
+    // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
+    // host-initiated navigation clears `_ready` first. So a ready opaque-origin player already
+    // holds this document's handshake; a paused runtime would never post it again.
+    if (this._ready && this._getSameOriginIframeDocument() === null) return;
+
     this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
     // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
@@ -1005,6 +1172,7 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
+    this._invalidateAssetsWait();
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
     this.probe.start();

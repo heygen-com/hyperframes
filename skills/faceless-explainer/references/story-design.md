@@ -2,7 +2,7 @@
 
 Use this reference in Step 3 to write `STORYBOARD.md` and `SCRIPT.md` for a faceless explainer — a topic, concept, how-to, listicle, or narrative explainer built from text, with **no product, no website, and no captured assets**.
 
-This file defines the story: what the video teaches, in what order, and why each frame exists. It does not define layout, visual effects, animation, or final markdown schemas. For exact file syntax, follow `../hyperframes-core/references/storyboard-format.md` and `../hyperframes-core/references/script-format.md`.
+This file defines the story: what the video teaches, in what order, and why each frame exists. It does not define layout, visual effects, animation, or final markdown schemas. For exact file syntax, follow `../hyperframes/references/storyboard-format.md` and `../hyperframes/references/script-format.md`.
 
 ## Read first
 

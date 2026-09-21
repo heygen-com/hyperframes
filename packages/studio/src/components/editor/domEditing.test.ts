@@ -1103,7 +1103,7 @@ describe("patch builders and prompt builder", () => {
     expect(prompt).toContain("Computed styles (browser-resolved):");
     expect(prompt).toContain("Target HTML:");
     expect(prompt).toContain("Guardrails:");
-    expect(prompt).toContain("Do not modify other elements' data-* attributes or positioning.");
+    expect(prompt).toContain("Do not modify other elements' data-* attributes or positioning");
   });
 
   it("uses an absolute source path in copied agent prompts when provided", () => {

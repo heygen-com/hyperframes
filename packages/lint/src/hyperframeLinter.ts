@@ -17,6 +17,7 @@ import { adapterRules } from "./rules/adapters";
 import { textureRules } from "./rules/textures";
 import { fontRules } from "./rules/fonts";
 import { slideshowRules } from "./rules/slideshow";
+import { structureRules } from "./rules/structure";
 
 // Rules are grouped by source module so a timing can be attributed to
 // something a human can act on. Individual rules stay anonymous: an
@@ -43,6 +44,7 @@ const RULE_GROUPS: ReadonlyArray<{
   { group: "textures", rules: textureRules },
   { group: "fonts", rules: fontRules },
   { group: "slideshow", rules: slideshowRules },
+  { group: "structure", rules: structureRules },
 ];
 
 /**

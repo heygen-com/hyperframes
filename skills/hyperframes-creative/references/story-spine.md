@@ -21,7 +21,7 @@ Structure is value-first; the **voice** stays whatever the workflow prescribes (
 
 ## 3. The storyboard is a proposal, not a listing
 
-When Step 3 presents the plan (a checkpoint gate — `hyperframes-core/references/brief-contract.md` § 1):
+When Step 3 presents the plan (a checkpoint gate — `hyperframes/references/brief-contract.md` § 1):
 
 - Open by echoing the strategy line: **"This video tells [audience] that [message]."**
 - Present the frames as a markdown table, one row per frame:
@@ -33,6 +33,8 @@ When Step 3 presents the plan (a checkpoint gate — `hyperframes-core/reference
   **Why** is the frame's job in the story (from its `narrativeRole`), traced back to the message — a frame whose why cannot be traced to the message is a frame to cut, not to decorate.
 
 - Recommendations keep their receipts (brief-contract § 3): the archetype choice, the beat count, and any beat the user might question each state their basis.
+
+How to write the storyboard itself, and the `storyboard.html` page it is reviewed on, is `storyboard-recipe.md`.
 
 The proposal shape — echo line → frame table → style / duration footer → "approve or adjust" — is the cheapest place to iterate: a frame change here costs 30 seconds; the same change after build costs minutes.
 

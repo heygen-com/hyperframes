@@ -11,7 +11,11 @@
  */
 
 import type { RuntimeTimelineLike } from "./types";
-import { parseStrictFiniteTimingNumber, resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import {
+  parseStrictFiniteTimingNumber,
+  resolveNaturalMediaTimelineDuration,
+  resolveTimedImageDurationSeconds,
+} from "./playbackRate";
 import { isMediaElement } from "./domRealm";
 
 export interface ClipNode {
@@ -67,8 +71,12 @@ function durationFromTimeline(
 }
 
 function durationFromMedia(el: Element): number | null {
-  if (!isMediaElement(el) || !Number.isFinite(el.duration)) return null;
-  return resolveNaturalMediaTimelineDuration(el, el.duration);
+  if (isMediaElement(el)) {
+    return Number.isFinite(el.duration)
+      ? resolveNaturalMediaTimelineDuration(el, el.duration)
+      : null;
+  }
+  return resolveTimedImageDurationSeconds(el);
 }
 
 // Used only to filter out zero-duration (decorative) elements at build time.

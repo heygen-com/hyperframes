@@ -14,13 +14,6 @@ function tempDir(): string {
 }
 
 describe("createContactSheet", () => {
-  // Sharp on Windows CI runners exercises a native-binary fork per operation
-  // and the runner's I/O throughput varies with concurrent-job pressure. The
-  // default 20s ceiling has landed just-over the wall clock repeatedly (see
-  // PR #2492's earlier lightweighting attempt); the actual work here — two
-  // 16×9 PNG writes + one contact-sheet composite + one metadata probe —
-  // is milliseconds of compute, so the extra ceiling only absorbs runner
-  // I/O jitter, it does not hide a real slowdown.
   it("writes PNG output when the output path uses a .png extension", async () => {
     const dir = tempDir();
     try {
@@ -56,6 +49,19 @@ describe("createContactSheet", () => {
         maxImages: 2,
       });
 
+      // format alone would pass even if the SVG label overlay silently drew
+      // nothing (e.g. Fontconfig misconfigured): the label band (default
+      // padding=4, labelH=26 in contactSheet.ts) must contain pixels that
+      // aren't the label background (#1a1a1a), not just an empty rect.
+      const { data, info } = await sharp(out).raw().toBuffer({ resolveWithObject: true });
+      let nonBackgroundPixels = 0;
+      for (let y = 4; y < 30; y++) {
+        for (let x = 0; x < info.width; x++) {
+          const i = (y * info.width + x) * info.channels;
+          if (data[i] !== 26 || data[i + 1] !== 26 || data[i + 2] !== 26) nonBackgroundPixels++;
+        }
+      }
+      expect(nonBackgroundPixels).toBeGreaterThan(0);
       await expect(sharp(out).metadata()).resolves.toMatchObject({ format: "png" });
     } finally {
       rmSync(dir, { recursive: true, force: true });

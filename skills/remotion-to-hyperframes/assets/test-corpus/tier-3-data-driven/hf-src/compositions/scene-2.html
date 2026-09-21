@@ -1,0 +1,99 @@
+<template id="scene-2-template">
+  <div data-composition-id="scene-2" data-width="1280" data-height="720" data-duration="4">
+    <style>
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      .scene-2 {
+        gap: 48px;
+      }
+      .stat-card {
+        width: 280px;
+        height: 220px;
+        background: #1a1a1a;
+        border-radius: 16px;
+        border: 2px solid var(--card-color);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transform: scale(0);
+      }
+      .stat-card .number {
+        font-size: 72px;
+        font-weight: 800;
+        color: var(--card-color);
+        line-height: 1;
+      }
+      .stat-card .label {
+        font-size: 24px;
+        font-weight: 500;
+        color: #9ca3af;
+        margin-top: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+    </style>
+    <div class="scene scene-2">
+      <div
+        class="stat-card"
+        data-stat-index="0"
+        data-stat-value="1247"
+        style="--card-color: #fbbf24"
+      >
+        <div class="number">0</div>
+        <div class="label">Stars</div>
+      </div>
+      <div
+        class="stat-card"
+        data-stat-index="1"
+        data-stat-value="312"
+        style="--card-color: #60a5fa"
+      >
+        <div class="number">0</div>
+        <div class="label">Forks</div>
+      </div>
+      <div class="stat-card" data-stat-index="2" data-stat-value="48" style="--card-color: #f87171">
+        <div class="number">0</div>
+        <div class="label">Issues</div>
+      </div>
+    </div>
+    <script>
+      // Remotion: <Sequence 90..210> StatsScene; StatCard stagger i*12 frames = i*0.4s.
+      const tl = gsap.timeline({ paused: true });
+      const scene = document.querySelector(".scene-2");
+      tl.set(scene, { opacity: 1 }, 0);
+      scene.querySelectorAll(".stat-card").forEach((card, i) => {
+        const start = i * 0.4;
+        const value = Number(card.dataset.statValue);
+        const numberEl = card.querySelector(".number");
+        // spring({damping:14, stiffness:90, mass:1}) -> back.out(1.2) ~0.7s; opacity 0..0.4s linear
+        tl.to(card, { scale: 1, duration: 0.7, ease: "back.out(1.2)" }, start);
+        tl.to(card, { opacity: 1, duration: 0.4, ease: "none" }, start);
+        // AnimatedNumber: easeOutCubic over 45 frames (1.5s) is GSAP power3.out on a counter.
+        const counter = { v: 0 };
+        tl.to(
+          counter,
+          {
+            v: value,
+            duration: 1.5,
+            ease: "power3.out",
+            onUpdate: () => {
+              numberEl.textContent = Math.round(counter.v).toLocaleString();
+            },
+          },
+          start,
+        );
+      });
+      tl.set(scene, { opacity: 0 }, 4);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-2"] = tl;
+    </script>
+  </div>
+</template>

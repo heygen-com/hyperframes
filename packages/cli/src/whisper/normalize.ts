@@ -503,17 +503,21 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   const parsed = JSON.parse(content);
   const format = detectJsonFormat(parsed);
 
-  const words =
+  // JSON parsers never set id — assign w{index} like the srt/vtt branches above
+  // so caption overrides always have a stable key. `||` (not `??`) also repairs
+  // the empty-string ids older CLIs wrote to words-json transcript files.
+  const words = (
     format === "whisper-cpp"
       ? parseWhisperCpp(parsed)
       : format === "openai"
         ? parseOpenAI(parsed)
         : (parsed as Word[]).map((w) => ({
-            id: w.id ?? "",
+            id: w.id,
             text: w.text.trim(),
             start: round3(w.start),
             end: round3(w.end),
-          }));
+          }))
+  ).map((w, i) => ({ ...w, id: w.id || `w${i}` }));
 
   return { words, format };
 }

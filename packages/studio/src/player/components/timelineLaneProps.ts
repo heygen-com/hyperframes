@@ -8,6 +8,7 @@ import type { TrackVisualStyle } from "./timelineIcons";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
 import type { TimelineClipIndex, TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TimelineRowGeometry } from "./timelineLayout";
+import type { TimelineSnapTarget } from "./timelineSnapping";
 import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -112,6 +113,8 @@ export interface TimelineLaneBaseProps {
 export interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
   draggedElement: TimelineElement | null;
+  /** Live move or trim snap target, resolved once by TimelineCanvas. */
+  snapGuide: TimelineSnapTarget | null;
   multiDragPreview: MultiDragPreviewInput | null;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
   onTogglePropertyGroupKeyframe: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];

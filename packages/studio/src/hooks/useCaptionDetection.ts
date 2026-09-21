@@ -1,3 +1,4 @@
+import { useLivePreviewIframe } from "../player/store/previewIframeStore";
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useEffect, useRef } from "react";
 import { useCaptionStore } from "../captions/store";
@@ -26,6 +27,7 @@ export function useCaptionDetection({
   captionSync,
   setRightCollapsed,
 }: UseCaptionDetectionParams) {
+  const livePreviewIframe = useLivePreviewIframe();
   // Switching compositions must drop the previous comp's caption state — a
   // stale model + full-canvas overlay otherwise blocks normal element editing
   // on the new composition (and edit mode could never be exited).
@@ -145,7 +147,7 @@ export function useCaptionDetection({
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [activeCompPath, projectId, compIdToSrc, captionSync, previewIframeRef]);
+  }, [activeCompPath, projectId, compIdToSrc, captionSync, previewIframeRef, livePreviewIframe]);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {

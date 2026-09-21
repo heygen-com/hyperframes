@@ -1,28 +1,28 @@
 ---
 title: "Reddit Post Card"
 description: "Animated Reddit post card overlay with upvotes and comments"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/reddit-post.json"
+  compositionId="reddit-post"
+  compositionSrc="compositions/reddit-post.html"
+  title="Reddit Post Card"
+  description="Animated Reddit post card overlay with upvotes and comments"
+  variables={[]}
+  meta={{"duration":5,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":346}}
+  attribution={{"path":"registry/blocks/reddit-post","tags":["social","overlay","reddit"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/reddit-post/reddit-post.html"
+>
 
-<InstallCommand command="npx hyperframes add reddit-post" item="reddit-post" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/reddit-post.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="reddit-post preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/reddit-post.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/reddit-post.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title={`reddit-post.html`}>
-
-```html
+```html reddit-post.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -371,15 +371,36 @@ That writes one file: `compositions/reddit-post.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add reddit-post" item="reddit-post" />
 
-```html
-<div data-composition-id="reddit-post" data-composition-src="compositions/reddit-post.html" data-start="0" data-duration="5" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes one file: `compositions/reddit-post.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 5 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="reddit-post"
+  data-composition-src="compositions/reddit-post.html"
+  data-start="0"
+  data-duration="5"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -390,3 +411,7 @@ Tagged `social` `overlay` `reddit`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -1,28 +1,28 @@
 ---
 title: "US Hex Grid Map"
 description: "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/us-map-hex.json"
+  compositionId="us-map-hex"
+  compositionSrc="compositions/us-map-hex.html"
+  title="US Hex Grid Map"
+  description="Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label"
+  variables={[]}
+  meta={{"duration":10,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":559}}
+  attribution={{"path":"registry/blocks/us-map-hex","tags":["data","map","geography","usa","hexgrid","tilegrid"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/us-map-hex/us-map-hex.html"
+>
 
-<InstallCommand command="npx hyperframes add us-map-hex" item="us-map-hex" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/us-map-hex.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="us-map-hex preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/us-map-hex.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-hex.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title={`us-map-hex.html`}>
-
-```html
+```html us-map-hex.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -584,15 +584,36 @@ That writes one file: `compositions/us-map-hex.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add us-map-hex" item="us-map-hex" />
 
-```html
-<div data-composition-id="us-map-hex" data-composition-src="compositions/us-map-hex.html" data-start="0" data-duration="10" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes one file: `compositions/us-map-hex.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="us-map-hex"
+  data-composition-src="compositions/us-map-hex.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -603,3 +624,7 @@ Tagged `data` `map` `geography` `usa` `hexgrid` `tilegrid`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

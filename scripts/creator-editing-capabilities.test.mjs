@@ -241,7 +241,7 @@ test("creator editing recipes are copyable, owned, mathematical, and limitation-
       /final-source[\s\S]{0,100}subcomp[\s\S]{0,100}visual pose/i,
       /arbitrary mid-source[\s\S]{0,120}preprocess/i,
       /distinct tracks[\s\S]{0,120}overlap[\s\S]{0,120}opposing/i,
-      /same-track overlap[\s\S]{0,80}invalid/i,
+      /same-track overlap is valid/i,
       /inner wrapper[\s\S]{0,100}not[\s\S]{0,50}(clip element|timed clip)/i,
       /source cuts[\s\S]{0,80}hyperframes-core/i,
     ],

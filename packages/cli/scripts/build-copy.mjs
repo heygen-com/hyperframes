@@ -66,7 +66,7 @@ async function main() {
   await waitForStudioDist(studioDist);
   copyDirContents(studioDist, join(DIST, "studio"));
 
-  for (const tmpl of ["blank", "_shared"]) {
+  for (const tmpl of ["blank", "from-file", "_shared"]) {
     copyDir(join(CLI_ROOT, "src", "templates", tmpl), join(DIST, "templates", tmpl));
   }
 

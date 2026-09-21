@@ -1,41 +1,87 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import type { Composition } from "@hyperframes/sdk";
-import { readStudioFileChangePath } from "../components/editor/manualEdits";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import { addExternalFileReloadListener } from "./externalFileReloadBus";
 
 /**
- * Read a project file's content, or undefined on a non-2xx (optional read).
- * Replaces the removed SDK http adapter's `read()` — the only thing Studio used
- * it for (Studio is the sole writer, so the adapter's write path was dead).
+ * Why an optional project-file read produced no usable content. `stage: "read"`
+ * was a single opaque reason covering all of these, which made the largest
+ * remaining class of SDK-session failures undiagnosable: 56 users in a 7-day
+ * window hit it and, between them, never landed a single successful SDK edit.
+ * Knowing which branch fired is the difference between "the file legitimately
+ * is not there" and "the request never reached the file".
+ *
+ * Every reason lives in this union so the full surface is readable from one
+ * place — `absent_or_empty` included, even though it is a 2xx.
+ */
+type ProjectFileReadFailure =
+  | { ok: false; reason: "unsafe_path" }
+  | { ok: false; reason: "http_error"; status: number }
+  | { ok: false; reason: "missing_content" }
+  | { ok: false; reason: "absent_or_empty" };
+
+type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
+
+/**
+ * Record a read that produced no usable content, and answer which project — if
+ * any — the failure identifies as unreachable.
+ *
+ * No SDK session follows a failed read, so EVERY cutover chokepoint takes the
+ * server path and emits nothing — the shadow never runs either. A broken read
+ * would otherwise be a silent, total SDK bypass, which is why this is recorded
+ * at all.
+ *
+ * Only a 404 identifies the *project*: the server answered, and its answer was
+ * that it does not serve this id. A 5xx, a dropped request, an unexpected body
+ * and an empty file all say nothing about which project the server serves, so
+ * none of them claim it. See `unreachableProject` on the handle.
+ *
+ * A function rather than three more conditions inline: the read callback it is
+ * called from is a long pre-existing async body already near the complexity
+ * threshold, and this branch is one coherent unit.
+ */
+function reportReadFailure(read: ProjectFileReadFailure, projectId: string): string | null {
+  trackStudioEvent("sdk_session_unavailable", {
+    stage: "read",
+    reason: read.reason,
+    ...(read.reason === "http_error" ? { status: read.status } : {}),
+  });
+  if (read.reason !== "http_error") return null;
+  return read.status === 404 ? projectId : null;
+}
+
+/**
+ * Read a project file's content (optional read — a missing file is not an
+ * error). Replaces the removed SDK http adapter's `read()` — the only thing
+ * Studio used it for (Studio is the sole writer, so the adapter's write path
+ * was dead).
  */
 async function readProjectFileOptional(
   projectId: string,
   path: string,
-): Promise<string | undefined> {
+): Promise<ProjectFileReadResult> {
   // Reject traversal / NUL before building the request URL — `path` is a
   // user-influenced composition path (mirrors the guard in timelineEditingHelpers,
   // and closes the CodeQL client-side-request-forgery flag). encodeURIComponent
   // already confines both values to single segments of this same-origin URL.
-  if (path.includes("\0") || path.includes("..")) return undefined;
+  if (path.includes("\0") || path.includes("..")) return { ok: false, reason: "unsafe_path" };
   const res = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
   );
-  if (!res.ok) return undefined;
+  if (!res.ok) return { ok: false, reason: "http_error", status: res.status };
   const data = (await res.json()) as { content?: string };
-  return typeof data.content === "string" ? data.content : undefined;
-}
-
-/**
- * True when an external file-change payload targets the active composition and
- * the SDK session must be re-opened to pick up the new content.
- */
-export function shouldReloadSdkSession(payload: unknown, activeCompPath: string | null): boolean {
-  if (!activeCompPath) return false;
-  return readStudioFileChangePath(payload) === activeCompPath;
+  // `optional=1` answers a missing file with 200 + `content: ""`, so a
+  // non-string here means a response shape we did not expect, not absence.
+  if (typeof data.content !== "string") return { ok: false, reason: "missing_content" };
+  // An empty body parses into a session with no elements, which declines every
+  // edit wholesale — not a session worth opening. The absent-file shim and a
+  // genuinely 0-byte file are the same 200 on the wire and cannot be told
+  // apart here, hence the name; for a composition it is always the former.
+  if (data.content === "") return { ok: false, reason: "absent_or_empty" };
+  return { ok: true, content: data.content };
 }
 
 /**
@@ -73,9 +119,24 @@ export interface SdkSessionHandle {
   /**
    * Force a session reload immediately, bypassing the self-write suppress
    * window. Call after undo/redo writes the active composition file so the
-   * SDK in-memory document reflects the reverted content.
+   * SDK in-memory document reflects the reverted content. Without it the
+   * window swallows the file-change and the session stays stale; the write
+   * side of that path is covered by usePersistentEditHistory.test.ts.
    */
   forceReload: () => void;
+  /**
+   * Set when this server answered the composition read with a 404 for the
+   * project it was asked to open. In the CLI-embedded host — the only host
+   * that reports telemetry at all (`telemetry/policy.ts` suppresses Vite dev)
+   * — that does not mean the project is gone. It means this Studio is serving
+   * a *different* one; the project is untouched on disk. Either way every edit
+   * in this tab fails, and until now it failed silently.
+   *
+   * `null` for every other failure: a 500 or a dropped request says nothing
+   * about which project the server serves, and `absent_or_empty` /
+   * `missing_content` say nothing about the project at all.
+   */
+  unreachableProject: string | null;
 }
 
 interface SdkSessionOwner {
@@ -153,6 +214,7 @@ export function useSdkSession(
   const [reloadToken, setReloadToken] = useState(0);
   const reloadTokenRef = useRef(reloadToken);
   reloadTokenRef.current = reloadToken;
+  const [unreachableProject, setUnreachableProject] = useState<string | null>(null);
 
   useEffect(
     () =>
@@ -175,6 +237,7 @@ export function useSdkSession(
     if (previous) disposeSdkSession(previous.session);
 
     if (!projectId || !activeCompPath) {
+      setUnreachableProject(null);
       return () => {
         cancelled = true;
       };
@@ -188,8 +251,14 @@ export function useSdkSession(
     };
 
     readProjectFileOptional(projectId, activeCompPath)
-      .then(async (content) => {
-        if (cancelled || typeof content !== "string") return;
+      .then(async (read) => {
+        if (cancelled) return;
+        if (!read.ok) {
+          setUnreachableProject(reportReadFailure(read, projectId));
+          return;
+        }
+        setUnreachableProject(null);
+        const content = read.content;
         // No persist queue: Studio's writeProjectFile (via sdkCutover's
         // persistSdkSerialize) is the SINGLE writer. Wiring the SDK persist
         // queue too would double-write the file (queue auto-writes on every
@@ -214,6 +283,7 @@ export function useSdkSession(
           )
         ) {
           disposeSdkSession(comp);
+          trackStudioEvent("sdk_session_unavailable", { stage: "ownership" });
           return;
         }
         const displaced = ownedSessionRef.current;
@@ -223,8 +293,17 @@ export function useSdkSession(
         setOwnedSession(installed);
         if (displaced && displaced.session !== comp) disposeSdkSession(displaced.session);
       })
-      .catch(() => {
-        if (!cancelled && generationRef.current === generation) setOwnedSession(null);
+      .catch((error: unknown) => {
+        if (!cancelled && generationRef.current === generation) {
+          setOwnedSession(null);
+          // openComposition threw (unparseable composition, OOM) — same total
+          // bypass as the read failure above, but this one is a real defect
+          // rather than a missing file. Carry the message; it is the only clue.
+          trackStudioEvent("sdk_session_unavailable", {
+            stage: "open",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       });
 
     return () => {
@@ -273,5 +352,5 @@ export function useSdkSession(
     ownedSession.reloadToken === reloadToken
       ? ownedSession.session
       : null;
-  return { session, publish, forceReload };
+  return { session, publish, forceReload, unreachableProject };
 }

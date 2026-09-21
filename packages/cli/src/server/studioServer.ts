@@ -29,12 +29,13 @@ import {
 } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { isDevMode } from "../utils/env.js";
+import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
   createProjectSignature,
   createBackgroundRemovalJob,
-  consumeFileWriteReceipt,
+  identifyFileWrite,
   fileContentVersion,
   getMimeType,
   affectsProjectSignature,
@@ -50,7 +51,8 @@ import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip"
 import type { RenderJob } from "@hyperframes/producer";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
 import {
-  assertWebGpuRequirement,
+  assertWebGpuAdapterAvailable,
+  compositionRequiresWebGpu,
   resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
   type BrowserGpuMode,
@@ -58,6 +60,12 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+
+// Vite emits only content-hashed files under dist/assets; hand-authored
+// public/ files land at the dist root. The route is the signal because the
+// filename is not: rollup's base64url hash may itself contain a hyphen.
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
 const REMOTE_GIF_IMG_SRC_RE =
   /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
 
@@ -444,14 +452,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return cachedProjectSignature;
     },
 
-    async lint(html: string, opts?: { filePath?: string }) {
+    async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
-      return await lintHyperframeHtml(html, opts);
+      return await lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
 
     async lintProject(dir: string) {
       const { lintProject } = await import("@hyperframes/lint");
-      return await lintProject(dir);
+      return await lintProject(dir, undefined, { host: "studio" });
     },
 
     runtimeUrl: "/api/runtime.js",
@@ -493,15 +501,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         };
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
-          const { ensureBrowser } = await import("../browser/manager.js");
-
-          try {
-            const browser = await ensureBrowser({ preferManagedChrome: true });
-            if (browser.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-              process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
-            }
-          } catch {
-            // Continue without — acquireBrowser will try its own resolution
+          const browser = await resolveRenderBrowser(abortController.signal);
+          if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+            process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
           const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
@@ -588,13 +590,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         return null;
       }
       const sourcePath = join(opts.project.dir, opts.compPath);
-      if (existsSync(sourcePath)) {
-        assertWebGpuRequirement(
-          readFileSync(sourcePath, "utf-8"),
-          session.requestedGpuMode,
-          session.resolvedGpuMode,
-        );
-      }
+      // The shared browser launches once, before any composition is known,
+      // so it can't gain a WebGPU flag it didn't start with. Checked live
+      // below, against this page, after navigation — see assertWebGpuAdapterAvailable.
+      const requiresWebGpu = existsSync(sourcePath)
+        ? compositionRequiresWebGpu(readFileSync(sourcePath, "utf-8"))
+        : false;
       let page: import("puppeteer-core").Page | null = null;
       const closePage = () => void page?.close().catch(() => {});
       opts.signal.addEventListener("abort", closePage, { once: true });
@@ -609,6 +610,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           deviceScaleFactor: thumbnailDeviceScaleFactor(opts),
         });
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+        await assertWebGpuAdapterAvailable(page, requiresWebGpu);
         await page
           .waitForFunction(
             () => {
@@ -782,9 +784,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         } catch {
           // A deletion has no current bytes to match against an API write receipt.
         }
-        const receipt = version ? consumeFileWriteReceipt(absPath, version) : null;
+        // `version` ships even when no receipt matches: it is the client's only
+        // identity for an unlabelled change, and without it every duplicate
+        // delivery of one watcher event drains and reloads again.
+        const receipt = version ? identifyFileWrite(absPath, version) : null;
         stream
-          .writeSSE({ event: "file-change", data: JSON.stringify(receipt ?? { path }) })
+          .writeSSE({ event: "file-change", data: JSON.stringify({ path, version, ...receipt }) })
           .catch(() => {});
       };
       // Re-applied here because the watcher now also emits the signature
@@ -874,17 +879,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   });
 
   // Studio SPA static files
-  const serveStudioStaticFile = (c: Context) => {
+  const serveStudioStaticFile = (cacheControl: string) => (c: Context) => {
     const filePath = resolve(studioDir, c.req.path.slice(1));
     const content = readBundleFile(filePath);
     if (content === null) return c.text("not found", 404);
     return new Response(content, {
-      headers: { "Content-Type": getMimeType(filePath), "Cache-Control": "no-store" },
+      headers: { "Content-Type": getMimeType(filePath), "Cache-Control": cacheControl },
     });
   };
-  app.get("/assets/*", serveStudioStaticFile);
-  app.get("/icons/*", serveStudioStaticFile);
-  app.get("/favicon.svg", serveStudioStaticFile);
+  app.get("/assets/*", serveStudioStaticFile(IMMUTABLE_CACHE_CONTROL));
+  app.get("/icons/*", serveStudioStaticFile("no-store"));
+  app.get("/favicon.svg", serveStudioStaticFile("no-store"));
 
   // ── Runtime env injection ───────────────────────────────────────────────
   // When the studio is served as a pre-built SPA, Vite `VITE_STUDIO_*` env
@@ -980,7 +985,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     if (headScript) {
       html = html.replace("<head>", `<head>${headScript}`);
     }
-    return c.html(html);
+    // The shell names the current hashed bundle, so it always revalidates.
+    // `no-cache` not `no-store`: same refetch without an ETag, but `no-store`
+    // would blocklist the document from Chrome's bfcache.
+    return c.html(html, 200, { "Cache-Control": "no-cache" });
   });
 
   return { app, watcher, adapter };

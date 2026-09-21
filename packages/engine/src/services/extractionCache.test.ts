@@ -26,6 +26,7 @@ import {
   publishCacheEntry,
   readKeyStat,
   rehydrateCacheEntry,
+  touchCacheDir,
   type CacheKeyInput,
 } from "./extractionCache.js";
 
@@ -441,6 +442,23 @@ describe("gcExtractionCache", () => {
     expect(existsSync(freshPartial)).toBe(true);
   });
 
+  // A render still writing into its own (unpublished) partial dir depends on
+  // it exactly like a symlinked complete entry does. The aged-partial check
+  // reads the DIRECTORY's own mtime, not any sentinel — touchCacheDir must
+  // renew that too, or a long-lived partial dir is just as vulnerable to a
+  // concurrent GC sweep as an untouched complete entry.
+  it("touchCacheDir renews a partial directory's own mtime so a live writer survives the aged-partial sweep", () => {
+    const dependedOnPartial = join(tmpRoot, `${SCHEMA_PREFIX}ghi.partial-1234-cafef00d`);
+    mkdirSync(dependedOnPartial, { recursive: true });
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(dependedOnPartial, old, old);
+
+    touchCacheDir(dependedOnPartial);
+    gcExtractionCache(tmpRoot, { maxBytes: 1_000_000, minAgeMs: 60_000 });
+
+    expect(existsSync(dependedOnPartial)).toBe(true);
+  });
+
   it("ignores non-cache-prefix directories under the same root", () => {
     const animatedGif = join(tmpRoot, "animated-gif");
     mkdirSync(animatedGif, { recursive: true });
@@ -457,5 +475,18 @@ describe("gcExtractionCache", () => {
     expect(() =>
       gcExtractionCache(join(tmpRoot, "missing"), { maxBytes: 1, minAgeMs: 60_000 }),
     ).not.toThrow();
+  });
+
+  // A render can keep reading an entry long after the one-time touch its
+  // cache-hit lookup performed. touchCacheDir is how a live reader proves the
+  // entry is still in use — without it, an in-use entry idle past minAge is
+  // indistinguishable from an abandoned one and gets swept like `oldest` above.
+  it("touchCacheDir renews an entry's LRU clock so a live dependent survives the sweep", () => {
+    const dependedOnDir = makeEntry("depended-on", 60, 120_000);
+
+    touchCacheDir(dependedOnDir);
+    gcExtractionCache(tmpRoot, { maxBytes: 1, minAgeMs: 60_000 });
+
+    expect(existsSync(dependedOnDir)).toBe(true);
   });
 });

@@ -3,7 +3,9 @@ import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
   proxyVariantFor,
+  recordProxyPrewarm,
   scanProjectMediaCodecMap,
+  shouldPrewarmProxy,
   type HtmlSourceLike,
   type MediaCodecMap,
   type MediaCodecProbeCache,
@@ -68,12 +70,15 @@ function injectScriptTagIntoHead(html: string, scriptTag: string): string {
 /**
  * Injects `window.__HF_MEDIA_CODEC_MAP__` (the U1 codec-facts scan) into
  * served composition HTML, and fire-and-forget pre-warms `resolveProxy` for
- * every browser-hostile entry so an element's proactive swap usually hits a
- * warm cache (KTD: protects the per-origin connection budget under held
- * responses). No second concurrency limiter here — the transcoder's own
- * global bound throttles both pre-warm and element-triggered calls.
- * Pre-warm failures are swallowed; an actual `?hf-proxy=` request surfaces
- * them as a 502. Alpha-bearing entries pre-warm their VP8/WebM variant.
+ * every entry whose codec no browser decodes, so an element's proactive swap
+ * usually hits a warm cache (KTD: protects the per-origin connection budget
+ * under held responses). Conditionally hostile codecs are injected but NOT
+ * pre-warmed: the requesting browser usually plays them, and the transcode
+ * runs concurrently with its first layout. No second concurrency limiter here
+ * — the transcoder's own global bound throttles both pre-warm and
+ * element-triggered calls. Pre-warm failures are swallowed; an actual
+ * `?hf-proxy=` request surfaces them as a 502 and transcodes lazily.
+ * Alpha-bearing entries pre-warm their VP8/WebM variant.
  *
  * The single shared implementation for every auto-proxy surface — the studio
  * preview route (via `injectMediaCodecMap` below) and the CLI's composition /
@@ -100,7 +105,8 @@ export async function injectMediaCodecMapIntoHtml(
   }
   if (Object.keys(map).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
-    if (!facts.browserHostile) continue;
+    if (!shouldPrewarmProxy(facts)) continue;
+    recordProxyPrewarm();
     resolveProxy(
       projectDir,
       resolve(projectDir, rootRelativePathname.replace(/^\/+/, "")),

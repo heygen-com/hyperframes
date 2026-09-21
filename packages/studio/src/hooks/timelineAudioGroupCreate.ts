@@ -8,7 +8,6 @@
 
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { runtimeAudioId } from "../player/lib/timelineElementHelpers";
@@ -27,6 +26,19 @@ import {
   type MutableRef,
   type UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
+
+interface AudioGroupCarveInput extends UseTimelineElementVisibilityEditingInput {
+  checkEditable?: (elements: readonly TimelineElement[]) => boolean;
+}
+
+function assertAudioGroupEditable(
+  checkEditable: AudioGroupCarveInput["checkEditable"],
+  elements: readonly TimelineElement[],
+): void {
+  if (checkEditable && !checkEditable(elements)) {
+    throw new Error("Timeline edit blocked");
+  }
+}
 
 /**
  * Assign (or restore) `data-audio-group` across a set of members.
@@ -143,7 +155,6 @@ interface CreateAudioGroupAndAssignMembersInput {
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
@@ -164,7 +175,6 @@ export async function createAudioGroupAndAssignMembers({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: CreateAudioGroupAndAssignMembersInput): Promise<string[]> {
   // Throws rather than returning empty: the carve's auto-group awaits this and
@@ -222,7 +232,6 @@ export async function createAudioGroupAndAssignMembers({
       pendingTimelineEditPathRef.current.add(groupPath);
     }
 
-    domEditSaveTimestampRef.current = Date.now();
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label: groupLabel
@@ -238,7 +247,6 @@ export async function createAudioGroupAndAssignMembers({
       writeFile: writeProjectFile,
       recordEdit,
     });
-    domEditSaveTimestampRef.current = Date.now();
     for (const element of elements) {
       usePlayerStore.getState().updateElement(element.key ?? element.id, { audioGroup: groupId });
     }
@@ -268,16 +276,16 @@ export function useAudioGroupCarveAssignment({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
-}: UseTimelineElementVisibilityEditingInput): (
+  checkEditable,
+}: AudioGroupCarveInput): (
   clipIds: readonly string[],
   groupId: string,
   groupLabel?: string,
 ) => Promise<void> {
-  const expandedElements = useExpandedTimelineElements();
+  const timelineElements = usePlayerStore((state) => state.elements);
   return useCallback(
     async (clipIds: readonly string[], groupId: string, groupLabel?: string) => {
       if (isRecordingRef?.current) {
@@ -290,10 +298,11 @@ export function useAudioGroupCarveAssignment({
       // timeline's group-pointer button) name clips the way the document does,
       // because that is the only space `resolveAudioGroups` reads back.
       const wanted = new Set(clipIds);
-      const elements = expandedElements.filter((item) => {
+      const elements = timelineElements.filter((item) => {
         const domId = runtimeAudioId(item);
         return domId !== null && wanted.has(domId);
       });
+      if (elements.length === wanted.size) assertAudioGroupEditable(checkEditable, elements);
       try {
         // Loud, not silent: an unresolved id used to leave `elements` short,
         // `createAudioGroupAndAssignMembers` returning early with no write, and
@@ -314,7 +323,6 @@ export function useAudioGroupCarveAssignment({
           previewIframe: previewIframeRef.current,
           writeProjectFile,
           recordEdit,
-          domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
       } catch (error) {
@@ -331,15 +339,15 @@ export function useAudioGroupCarveAssignment({
     },
     [
       activeCompPath,
-      expandedElements,
+      timelineElements,
       previewIframeRef,
       writeProjectFile,
       recordEdit,
-      domEditSaveTimestampRef,
       pendingTimelineEditPathRef,
       isRecordingRef,
       showToast,
       projectIdRef,
+      checkEditable,
     ],
   );
 }

@@ -56,6 +56,12 @@
       "types": "./dist/mediaTiming.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./composition-readiness": {
+      "source": "./src/compositionReadiness.ts",
+      "runtime": "./dist/compositionReadiness.js",
+      "types": "./dist/compositionReadiness.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./editing": {
       "source": "./src/editing/affordances.ts",
       "runtime": "./dist/editing/affordances.js",
@@ -170,10 +176,22 @@
       "types": "./dist/audioAutomation.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./clip-facts": {
+      "source": "./src/clipFacts.ts",
+      "runtime": "./dist/clipFacts.js",
+      "types": "./dist/clipFacts.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-gain": {
       "source": "./src/audioGain.ts",
       "runtime": "./dist/audioGain.js",
       "types": "./dist/audioGain.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./speed-ramp": {
+      "source": "./src/speedRamp.ts",
+      "runtime": "./dist/speedRamp.js",
+      "types": "./dist/speedRamp.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./color-grading": {
@@ -234,6 +252,12 @@
       "source": "./src/runtime/protocol.ts",
       "runtime": "./dist/runtime/protocol.js",
       "types": "./dist/runtime/protocol.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/clip-window": {
+      "source": "./src/runtime/clipWindow.ts",
+      "runtime": "./dist/runtime/clipWindow.js",
+      "types": "./dist/runtime/clipWindow.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./runtime/stacking-context": {

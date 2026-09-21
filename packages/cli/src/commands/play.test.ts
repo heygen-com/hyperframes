@@ -64,6 +64,7 @@ const mediaMocks = vi.hoisted(() => ({
   ),
   isProxyVariant: (value: string) => value === "h264" || value === "vp8",
   isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp8",
+  recordProxyRequest: () => {},
   proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
   resolveProxyVariantRequest: (request: "auto" | "h264" | "vp8", facts: { hasAlpha?: boolean }) => {
     const expected = facts.hasAlpha ? "vp8" : "h264";

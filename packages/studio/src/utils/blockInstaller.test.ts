@@ -63,5 +63,9 @@ describe("addBlockToProject", () => {
     expect(source).toContain('data-start="2.5"');
     expect(source).toContain('data-duration="4.25"');
     expect(source).toContain('data-track-index="3"');
+    // hostKey addresses the new element the same way the timeline selects
+    // clips (sourceFile#domId), so the caller can select and reveal it.
+    expect(result?.hostKey).toBe("compositions/scene.html#camcorder-hud");
+    expect(source).toContain('id="camcorder-hud"');
   });
 });

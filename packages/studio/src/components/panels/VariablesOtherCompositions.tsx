@@ -6,7 +6,7 @@
  * follow-up (values are per-composition-scope), so no preview control is shown.
  */
 
-import { useCallback, useState, type MutableRefObject } from "react";
+import { useCallback, useState } from "react";
 import type { Composition, CompositionVariable } from "@hyperframes/sdk";
 import {
   useEditVariablesInFile,
@@ -51,7 +51,7 @@ function CompositionSection({
               <span className="truncate text-[10px] font-medium text-neutral-300">
                 {decl.label}
               </span>
-              <span className="rounded bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
+              <span className="rounded-sm bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
                 {decl.type}
               </span>
               <span className="ml-auto flex items-center gap-1">
@@ -92,7 +92,6 @@ export function VariablesOtherCompositions({
   writeProjectFile,
   recordEdit,
   reloadPreview,
-  domEditSaveTimestampRef,
 }: {
   fileTree: string[];
   excludePath: string;
@@ -101,7 +100,6 @@ export function VariablesOtherCompositions({
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: RecordEditFn;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
 }) {
   const [selfRefresh, setSelfRefresh] = useState(0);
   const groups = useProjectCompositionVariables(
@@ -115,7 +113,6 @@ export function VariablesOtherCompositions({
     writeProjectFile,
     recordEdit,
     reloadPreview,
-    domEditSaveTimestampRef,
   });
   const [editingKey, setEditingKey] = useState<string | null>(null);
 

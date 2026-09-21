@@ -6,7 +6,7 @@
  */
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
@@ -44,8 +44,13 @@ import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
 import {
   MEDIA_RENDER_ID_ATTR,
   normalizePlaybackRate,
+  normalizeRateSpec,
   parseStrictFiniteTimingNumber,
+  readElementRateSpec,
   readMediaStart,
+  sourceTimeAt,
+  timeAtSourceTime,
+  type RateSpec,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { AUDIO_GROUP_RENDER_ID_ATTR } from "@hyperframes/core";
@@ -129,7 +134,45 @@ function buildAtempoFilter(playbackRate: number): string | null {
   return stages.map((stage) => `atempo=${formatFilterNumber(stage)}`).join(",");
 }
 
-function preparedAudioOutputArgs(srcPath: string, playbackRate: number): Promise<string[]> {
+/** Composition seconds per constant-tempo slice when a rate lane is baked into audio. */
+const RAMP_SLICE_SECONDS = 0.25;
+const MAX_RAMP_SLICES = 240;
+
+/** Bake a rate lane as consecutive source slices, each stretched by its mean `sourceTimeAt` rate, keeping pitch. */
+function buildRampFilterComplex(
+  lane: RateSpec & object,
+  duration: number,
+  tailFilter: string | null,
+): string {
+  const slices = Math.min(MAX_RAMP_SLICES, Math.max(1, Math.ceil(duration / RAMP_SLICE_SECONDS)));
+  const step = duration / slices;
+  const split = Array.from({ length: slices }, (_, i) => `[s${i}]`).join("");
+  const parts = [`[0:a]asplit=${slices}${split}`];
+  for (let i = 0; i < slices; i += 1) {
+    const from = sourceTimeAt(lane, i * step);
+    const to = sourceTimeAt(lane, (i + 1) * step);
+    const tempo = buildAtempoFilter((to - from) / step);
+    const chain = [
+      `atrim=start=${formatFilterNumber(from)}:end=${formatFilterNumber(to)}`,
+      "asetpts=PTS-STARTPTS",
+      ...(tempo ? [tempo] : []),
+      "apad",
+      "asetpts=N/SR/TB",
+      `atrim=0:${formatFilterNumber(step)}`,
+    ].join(",");
+    parts.push(`[s${i}]${chain}[t${i}]`);
+  }
+  const joined = Array.from({ length: slices }, (_, i) => `[t${i}]`).join("");
+  parts.push(`${joined}concat=n=${slices}:v=0:a=1${tailFilter ? "[cat]" : "[out]"}`);
+  if (tailFilter) parts.push(`[cat]${tailFilter}[out]`);
+  return parts.join(";");
+}
+
+function preparedAudioOutputArgs(
+  srcPath: string,
+  playbackRate: RateSpec,
+  duration = 0,
+): Promise<string[]> {
   return stereoOutputArgs(srcPath).then((channelArgs) => {
     const filters: string[] = [];
     const outputArgs: string[] = [];
@@ -137,6 +180,10 @@ function preparedAudioOutputArgs(srcPath: string, playbackRate: number): Promise
       filters.push(channelArgs[1]);
     } else {
       outputArgs.push(...channelArgs);
+    }
+    if (typeof playbackRate === "object") {
+      const graph = buildRampFilterComplex(playbackRate, duration, filters.join(",") || null);
+      return ["-filter_complex", graph, "-map", "[out]", ...outputArgs];
     }
     const atempo = buildAtempoFilter(playbackRate);
     if (atempo) filters.push(atempo);
@@ -308,6 +355,21 @@ interface ExtractResult {
   durationMs: number;
   error?: string;
   failure?: AudioProcessingFailure;
+}
+
+// Absolute paths are omitted: boundedDetail redacts them to end-of-line and they name the host.
+function missingSourceMessage(
+  elementId: string,
+  src: string,
+  baseDir: string,
+  resolvedPath: string,
+): string {
+  const relativePath = relative(baseDir, resolvedPath).replace(/\\/g, "/");
+  const insideProject = !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  const authored = /^([\\/]|[A-Za-z]:)/.test(src) ? "" : `src="${src}" `;
+  return `Source not found for audio element ${elementId}: ${authored}resolved to ${
+    insideProject ? relativePath : "a path outside the project"
+  }`;
 }
 
 function boundedDetail(message: string, maxLength = 2_000): string {
@@ -521,7 +583,6 @@ export function parseAudioElements(html: string): AudioElement[] {
     src: string,
     type: AudioElement["type"],
   ): AudioElement => {
-    const playbackRateAttr = el.getAttribute("data-playback-rate");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
@@ -536,9 +597,7 @@ export function parseAudioElements(html: string): AudioElement[] {
       start: resolveStart(el),
       end: parseEnd(el.getAttribute("data-end")),
       mediaStart: readMediaStart(el),
-      playbackRate: normalizePlaybackRate(
-        playbackRateAttr ? parseFloat(playbackRateAttr) : Number.NaN,
-      ),
+      playbackRate: readElementRateSpec(el),
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
       ...(fxChain ? { fxChain } : {}),
@@ -585,7 +644,7 @@ export function parseAudioElements(html: string): AudioElement[] {
 async function extractAudioFromVideo(
   videoPath: string,
   outputPath: string,
-  options?: { startTime?: number; duration?: number; playbackRate?: number },
+  options?: { startTime?: number; duration?: number; playbackRate?: RateSpec },
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
@@ -593,12 +652,14 @@ async function extractAudioFromVideo(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const playbackRate = normalizePlaybackRate(options?.playbackRate ?? 1);
+  const playbackRate = normalizeRateSpec(options?.playbackRate);
   const args: string[] = [];
   if (options?.startTime !== undefined) args.push("-ss", String(options.startTime));
-  if (options?.duration !== undefined) args.push("-t", String(options.duration * playbackRate));
+  if (options?.duration !== undefined) {
+    args.push("-t", String(sourceTimeAt(playbackRate, options.duration)));
+  }
   args.push("-i", videoPath);
-  const outputArgs = await preparedAudioOutputArgs(videoPath, playbackRate);
+  const outputArgs = await preparedAudioOutputArgs(videoPath, playbackRate, options?.duration);
   args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
   if (playbackRate !== 1 && options?.duration !== undefined) {
     args.push("-t", String(options.duration));
@@ -641,21 +702,21 @@ async function prepareAudioTrack(
   outputPath: string,
   mediaStart: number,
   duration: number,
-  playbackRate = 1,
+  playbackRate: RateSpec = 1,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-  const normalizedPlaybackRate = normalizePlaybackRate(playbackRate);
-  const outputArgs = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate);
+  const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
+  const outputArgs = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate, duration);
 
   const args = [
     "-ss",
     String(mediaStart),
     "-t",
-    String(duration * normalizedPlaybackRate),
+    String(sourceTimeAt(normalizedPlaybackRate, duration)),
     "-i",
     srcPath,
     "-acodec",
@@ -1118,8 +1179,7 @@ export async function processCompositionAudio(
       try {
         let srcPath = element.src;
         if (!isHttpUrl(srcPath)) {
-          // Same browser-vs-filesystem path semantics as videos — see
-          // resolveProjectRelativeSrc in videoFrameExtractor for the full why.
+          // Same browser-URL path semantics as videos.
           srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);
         }
 
@@ -1148,7 +1208,7 @@ export async function processCompositionAudio(
             owner: "user",
             retryable: false,
             elementId: element.id,
-            detail: boundedDetail(`Source not found for audio element ${element.id}`),
+            detail: boundedDetail(missingSourceMessage(element.id, element.src, baseDir, srcPath)),
           });
           return;
         }
@@ -1184,9 +1244,10 @@ export async function processCompositionAudio(
             );
             return;
           }
-          const effectiveDuration =
-            (metadata.durationSeconds - element.mediaStart) /
-            normalizePlaybackRate(element.playbackRate ?? 1);
+          const effectiveDuration = timeAtSourceTime(
+            normalizeRateSpec(element.playbackRate),
+            metadata.durationSeconds - element.mediaStart,
+          );
           element.end =
             element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
         }

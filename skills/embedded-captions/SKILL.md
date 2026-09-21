@@ -57,7 +57,7 @@ Rail-surface identities build exactly this (rail = `rail.html`, embed = the clim
 
 **One front-end, three engines behind.** The user picks an IDENTITY from [CATALOG.md](CATALOG.md) (35 entries: 10 classic + 25 themed); the engine, compiler and authoring file are derived by lookup from the catalog row. **Never surface "Standard vs Cinematic vs Theme" as a question** — those are backend names (a product has one UX even with several engines). The catalog encodes everything routing needs: reading surface, voice, recommend-for, scene needs, adjacency notes for the genuinely-close pairs (loud↔ordnance, neon↔neonsign, cream↔stardust).
 
-The identity pick is a **preference gate** (`../hyperframes-core/references/brief-contract.md` § 1): in autonomous mode ("surprise me" / "decide for me"), pick from your shortlist yourself and state the one-line why instead of asking.
+The identity pick is a **preference gate** (`../hyperframes/references/brief-contract.md` § 1): in autonomous mode ("surprise me" / "decide for me"), pick from your shortlist yourself and state the one-line why instead of asking.
 
 Procedure: probe the clip → shortlist 2–3 identities from the catalog → recommend ONE with a one-line why → **the user picks** (autonomous mode: you pick, stating the why) → author that identity's file. Identities are engine-locked (no cross combos; opening one is a validation event — see dna/README.md).
 

@@ -102,7 +102,6 @@ export interface GsapScriptCommitsParams {
       files: Record<string, { before: string; after: string }>;
     }) => Promise<void>;
   };
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   reloadPreview: () => void;
   onCacheInvalidate: () => void;
   onFileContentChanged?: (path: string, content: string) => void;

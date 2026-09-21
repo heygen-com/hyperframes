@@ -16,7 +16,6 @@ export interface DomEditCommitBaseParams {
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: ProjectFileWriter;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   projectIdRef: MutableRefObject<string | null>;
   reloadPreview: () => void;

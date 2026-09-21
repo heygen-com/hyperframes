@@ -1,3 +1,4 @@
+import { inlineScriptRuns } from "./scriptRuns";
 import {
   ensureExternalScriptTag,
   readExternalScriptAttributes,
@@ -8,7 +9,7 @@ export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { cssVariableName } from "../tokenSlug";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
 import { transformSync } from "esbuild";
@@ -299,9 +300,60 @@ const INLINE_MIME: Record<string, string> = {
   ".txt": "text/plain",
   ".cube": "text/plain",
   ".xml": "application/xml",
+  // Fonts and raster images. A bundle handed to a consumer that stores it as a
+  // lone object — no sibling `assets/` directory — 404s on every surviving
+  // relative reference, and a missing font silently reflows the whole frame
+  // rather than failing loudly. Media (mp4/webm/mp3/wav) is deliberately absent:
+  // it is large, streamed rather than laid out, and its absence is obvious.
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
 };
 
-function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): string | null {
+/**
+ * Per-asset ceiling on base64 inlining.
+ *
+ * Base64 costs ~33% over the raw bytes, so an unbounded rule turns one careless
+ * 40 MB asset into a bundle no browser should be asked to parse. 2 MiB is
+ * measured against this repo's own assets rather than picked: the largest of
+ * 164 tracked `.woff2` files is 105 KB (p90 75 KB) and the largest of 284
+ * tracked raster images is 2.00 MB (p90 437 KB). So every font and effectively
+ * every image in-tree inlines, while a video-sized file cannot.
+ *
+ * Oversized assets keep their project-relative URL — correct wherever the
+ * bundle is served from its project directory, and warned about because that is
+ * exactly where "self-contained" stops being true.
+ */
+const MAX_INLINE_ASSET_BYTES = 2 * 1024 * 1024;
+
+function safeStatSize(filePath: string): number | null {
+  try {
+    return statSync(filePath).size;
+  } catch {
+    return null;
+  }
+}
+
+function warnAssetTooLargeToInline(assetPath: string, byteLength: number): void {
+  const mb = (byteLength / (1024 * 1024)).toFixed(1);
+  console.warn(
+    `[HyperFrames] Not inlining "${assetPath}" (${mb} MB exceeds the ${MAX_INLINE_ASSET_BYTES / (1024 * 1024)} MB inline limit). The bundle may not be self-contained.`,
+  );
+}
+
+function maybeInlineRelativeAssetUrl(
+  urlValue: string,
+  projectDir: string,
+  inlineAssets: boolean,
+): string | null {
+  if (!inlineAssets) return null;
   if (!urlValue || !isRelativeUrl(urlValue)) return null;
   const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
   if (!basePath) return null;
@@ -310,6 +362,13 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   const ext = filePath.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
   const mimeType = INLINE_MIME[ext];
   if (!mimeType) return null;
+  // Size-check before reading: an oversized asset must not be pulled into memory
+  // just to be discarded.
+  const byteLength = safeStatSize(filePath);
+  if (byteLength !== null && byteLength > MAX_INLINE_ASSET_BYTES) {
+    warnAssetTooLargeToInline(basePath, byteLength);
+    return null;
+  }
   const content = safeReadFileBuffer(filePath);
   if (content == null) return null;
   const dataUrl = `data:${mimeType};base64,${content.toString("base64")}`;
@@ -347,7 +406,9 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
 
   const lut = Reflect.get(parsed, "lut");
   if (typeof lut === "string") {
-    const inlined = maybeInlineRelativeAssetUrl(lut, projectDir);
+    // Gated by inlineAssets and inlineColorGradingLuts at the call site above;
+    // this call only runs once both have already passed.
+    const inlined = maybeInlineRelativeAssetUrl(lut, projectDir, true);
     if (!inlined) {
       warnColorGradingLutNotInlined(lut);
       return value;
@@ -358,7 +419,7 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   if (typeof lut !== "object" || lut === null || Array.isArray(lut)) return value;
   const lutSrc = Reflect.get(lut, "src");
   if (typeof lutSrc !== "string") return value;
-  const inlined = maybeInlineRelativeAssetUrl(lutSrc, projectDir);
+  const inlined = maybeInlineRelativeAssetUrl(lutSrc, projectDir, true);
   if (!inlined) {
     warnColorGradingLutNotInlined(lutSrc);
     return value;
@@ -367,7 +428,11 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   return JSON.stringify(parsed);
 }
 
-function rewriteSrcsetWithInlinedAssets(srcsetValue: string, projectDir: string): string {
+function rewriteSrcsetWithInlinedAssets(
+  srcsetValue: string,
+  projectDir: string,
+  inlineAssets: boolean,
+): string {
   if (!srcsetValue) return srcsetValue;
   return srcsetValue
     .split(",")
@@ -376,19 +441,27 @@ function rewriteSrcsetWithInlinedAssets(srcsetValue: string, projectDir: string)
       if (!candidate) return candidate;
       const parts = candidate.split(/\s+/);
       if (parts.length === 0) return candidate;
-      const maybeInlined = maybeInlineRelativeAssetUrl(parts[0] ?? "", projectDir);
+      const maybeInlined = maybeInlineRelativeAssetUrl(parts[0] ?? "", projectDir, inlineAssets);
       if (maybeInlined) parts[0] = maybeInlined;
       return parts.join(" ");
     })
     .join(", ");
 }
 
-function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): string {
+function rewriteCssUrlsWithInlinedAssets(
+  cssText: string,
+  projectDir: string,
+  inlineAssets: boolean,
+): string {
   if (!cssText) return cssText;
   return cssText.replace(
     /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g,
     (_full, quote: string, rawUrl: string) => {
-      const maybeInlined = maybeInlineRelativeAssetUrl((rawUrl || "").trim(), projectDir);
+      const maybeInlined = maybeInlineRelativeAssetUrl(
+        (rawUrl || "").trim(),
+        projectDir,
+        inlineAssets,
+      );
       if (!maybeInlined) return _full;
       return `url(${quote || ""}${maybeInlined}${quote || ""})`;
     },
@@ -615,20 +688,18 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     }
   }
 
-  const bodyInlineScripts = [...document.querySelectorAll("body script")].filter((el) => {
-    if (el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute("src")) return false;
-    const type = (el.getAttribute("type") || "").trim().toLowerCase();
-    return !type || type === "text/javascript" || type === "application/javascript";
-  });
-  if (bodyInlineScripts.length > 0) {
-    const mergedJs = joinJsChunks(bodyInlineScripts.map((el) => el.textContent || ""));
-    for (const el of bodyInlineScripts) el.remove();
-    if (mergedJs) {
-      const stripped = stripJsCommentsParserSafe(mergedJs);
-      const inlineScript = document.createElement("script");
-      inlineScript.textContent = stripped;
-      document.body.appendChild(inlineScript);
-    }
+  const isPinned = (el: Element) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR);
+  for (const { members, anchor } of inlineScriptRuns(
+    [...document.querySelectorAll("body script")],
+    isPinned,
+  )) {
+    const mergedJs = joinJsChunks(members.map((el) => el.textContent || ""));
+    for (const el of members) el.remove();
+    if (!mergedJs) continue;
+    const inlineScript = document.createElement("script");
+    inlineScript.textContent = stripJsCommentsParserSafe(mergedJs);
+    if (anchor) anchor.before(inlineScript);
+    else document.body.appendChild(inlineScript);
   }
 }
 
@@ -715,6 +786,16 @@ export interface BundleOptions {
    * keeps showing project asset paths instead of giant data URLs.
    */
   inlineColorGradingLuts?: boolean;
+  /**
+   * Inline fonts, raster images (img/href/poster/srcset/CSS url()) and color
+   * grading LUTs as data URLs, up to the per-asset size ceiling. Default:
+   * true, for a genuinely self-contained bundle. Set false when the caller
+   * serves the project's own files alongside the bundle (e.g. a same-origin
+   * asset route): assets then keep their authored relative URL, which the
+   * caller resolves. `inlineColorGradingLuts` narrows LUTs further; it cannot
+   * inline a LUT that this option has already excluded.
+   */
+  inlineAssets?: boolean;
 }
 
 /**
@@ -724,7 +805,9 @@ export interface BundleOptions {
  * - Injects the HyperFrames runtime script
  * - Inlines local CSS and JS files
  * - Inlines sub-composition HTML fragments (data-composition-src)
- * - Inlines small textual assets as data URLs
+ * - Inlines textual assets, fonts and raster images as data URLs, up to a
+ *   per-asset size limit; audio/video and oversized assets keep their
+ *   project-relative URL and require the project directory to be served
  */
 
 type DeferredScriptChunk = string | (() => string);
@@ -1140,6 +1223,7 @@ export async function bundleToSingleHtml(
   injectTextRenderingRule(document);
 
   // Inline textual assets
+  const inlineAssets = options?.inlineAssets !== false;
   for (const el of [...document.querySelectorAll("[src], [href], [poster], [xlink\\:href]")]) {
     for (const attr of ["src", "href", "poster", "xlink:href"] as const) {
       const value = el.getAttribute(attr);
@@ -1149,24 +1233,29 @@ export async function bundleToSingleHtml(
       // origin and triggers "Unsafe attempt to load URL ... from frame".
       // Keep the project-relative URL; render/check servers already expose it.
       if (isExternalSvgFragmentUse(el, attr, value)) continue;
-      const inlined = maybeInlineRelativeAssetUrl(value, projectDir);
+      const inlined = maybeInlineRelativeAssetUrl(value, projectDir, inlineAssets);
       if (inlined) el.setAttribute(attr, inlined);
     }
   }
   for (const el of [...document.querySelectorAll("[srcset]")]) {
     const srcset = el.getAttribute("srcset");
-    if (srcset) el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir));
+    if (srcset)
+      el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir, inlineAssets));
   }
   for (const styleEl of document.querySelectorAll("style")) {
-    styleEl.textContent = rewriteCssUrlsWithInlinedAssets(styleEl.textContent || "", projectDir);
+    styleEl.textContent = rewriteCssUrlsWithInlinedAssets(
+      styleEl.textContent || "",
+      projectDir,
+      inlineAssets,
+    );
   }
   for (const el of [...document.querySelectorAll("[style]")]) {
     el.setAttribute(
       "style",
-      rewriteCssUrlsWithInlinedAssets(el.getAttribute("style") || "", projectDir),
+      rewriteCssUrlsWithInlinedAssets(el.getAttribute("style") || "", projectDir, inlineAssets),
     );
   }
-  if (options?.inlineColorGradingLuts !== false) {
+  if (inlineAssets && options?.inlineColorGradingLuts !== false) {
     for (const el of [...document.querySelectorAll(`[${HF_COLOR_GRADING_ATTR}]`)]) {
       const value = el.getAttribute(HF_COLOR_GRADING_ATTR);
       if (value) {

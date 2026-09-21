@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
-import { classifyZone, normalizeToZones } from "./timelineZones";
+import { classifyZone, isMainTrackElement, normalizeToZones } from "./timelineZones";
 
 function el(id: string, tag: string, track: number, duration = 2): TimelineElement {
   return { id, tag, start: 0, duration, track };
@@ -52,6 +52,25 @@ describe("classifyZone", () => {
     const maxVisual = Math.max(laneOf("v"), laneOf("i"));
     const minAudio = Math.min(laneOf("a1"), laneOf("a2"));
     expect(maxVisual).toBeLessThan(minAudio);
+  });
+});
+
+describe("isMainTrackElement", () => {
+  it("is true for a visual clip on display track 0", () => {
+    expect(isMainTrackElement(el("v", "video", 0))).toBe(true);
+  });
+
+  it("is false for a visual clip on any other track", () => {
+    expect(isMainTrackElement(el("v", "video", 1))).toBe(false);
+  });
+
+  it("is false for an audio clip even on track 0 (audio-only project has no main track)", () => {
+    expect(isMainTrackElement(el("m", "audio", 0))).toBe(false);
+  });
+
+  it("is false for an inline-expanded sub-composition child on track 0", () => {
+    const child: TimelineElement = { ...el("c", "video", 0), expandedParentStart: 4 };
+    expect(isMainTrackElement(child)).toBe(false);
   });
 });
 

@@ -27,7 +27,6 @@ export function canSplitElement(el: TimelineElement): boolean {
     el.playbackRate == null || (Number.isFinite(el.playbackRate) && el.playbackRate > 0);
   return (
     !el.timelineLocked &&
-    el.timingSource !== "implicit" &&
     hasStableIdentity &&
     hasValidRate &&
     !!el.duration &&

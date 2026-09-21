@@ -31,10 +31,14 @@ afterEach(() => {
 function renderResizeHarness(
   elements: TimelineElement[],
   selected: string[],
-  options: { wireGroupResize?: boolean } = {},
+  options: {
+    wireGroupResize?: boolean;
+    snap?: boolean;
+    onSeek?: (time: number, seekOptions?: { keepPlaying?: boolean }) => void;
+  } = {},
 ) {
   usePlayerStore.getState().setElements(elements);
-  usePlayerStore.setState({ timelineSnapEnabled: false });
+  usePlayerStore.setState({ timelineSnapEnabled: options.snap === true });
   usePlayerStore.getState().setSelectedElementIds(new Set(selected));
 
   const scroll = document.createElement("div");
@@ -61,6 +65,7 @@ function renderResizeHarness(
       onMoveElement,
       onBlockedEditAttempt,
       onResizeElements: options.wireGroupResize === false ? undefined : onResizeElements,
+      onSeek: options.onSeek,
       setShowPopover: vi.fn(),
       setRangeSelectionRef: { current: vi.fn() },
       sessionEpoch,
@@ -91,6 +96,9 @@ function renderResizeHarness(
     },
     getResizeProjection() {
       return resizingClip?.groupPreview ?? [];
+    },
+    getResizingClip() {
+      return resizingClip;
     },
     getBlockedClip() {
       return blockedClipRef?.current ?? null;
@@ -438,6 +446,132 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
     expect(h.getResizeProjection()).toHaveLength(0);
     expect(h.storeById("b").duration).toBe(3);
     expect(h.onResizeElement).not.toHaveBeenCalled();
+    h.unmount();
+  });
+});
+
+describe("useTimelineClipDrag — trim guide and preview frame", () => {
+  /** Playhead at 1.25s that follows preview seeks; clip a's end edge grabbed and dragged once. */
+  function trimEndWithSeekingPlayhead(state: { isPlaying?: boolean } = {}) {
+    usePlayerStore.setState({ currentTime: 1.25, ...state });
+    const onSeek = vi.fn((t: number) => usePlayerStore.setState({ currentTime: t }));
+    const a = el("a", { start: 1, duration: 2 });
+    const h = renderResizeHarness([a], [], { onSeek });
+    h.startResize(a, "end");
+    h.movePointer(50);
+    return { onSeek, h };
+  }
+
+  /** Clip a (0-2s) with neighbour b starting at 5s, snapping on, a's end edge grabbed. */
+  function trimAEndBesideB() {
+    const a = el("a", { start: 0, duration: 2 });
+    const b = el("b", { start: 5, duration: 2 });
+    const h = renderResizeHarness([a, b], [], { snap: true });
+    h.startResize(a, "end");
+    return h;
+  }
+
+  it("publishes the snap target while a trimmed edge is on a neighbour edge", () => {
+    const h = trimAEndBesideB();
+    h.movePointer(296); // a's end lands at 4.96s, 4px from b's start
+    expect(h.getResizingClip()).toMatchObject({ snapTime: 5, snapType: "clip-edge" });
+    h.unmount();
+  });
+
+  it("keeps the guide when the trimmed edge sits exactly on the neighbour edge", () => {
+    const h = trimAEndBesideB();
+    h.movePointer(300);
+    expect(h.getResizingClip()).toMatchObject({ snapTime: 5, previewDuration: 5 });
+    h.unmount();
+  });
+
+  it("publishes no snap target when the trimmed edge is free", () => {
+    const h = trimAEndBesideB();
+    h.movePointer(150);
+    expect(h.getResizingClip()).toMatchObject({ snapTime: null, snapType: null });
+    h.unmount();
+  });
+
+  it("never snaps a trimmed edge to the playhead — the edge drives its own seek", () => {
+    usePlayerStore.setState({ currentTime: 5 }); // no clip edge or beat nearby, only the playhead
+    const a = el("a", { start: 0, duration: 2 });
+    const h = renderResizeHarness([a], [], { snap: true });
+    h.startResize(a, "end");
+    h.movePointer(296); // a's end lands at 4.96s, 4px from the playhead
+    expect(h.getResizingClip()).toMatchObject({
+      snapTime: null,
+      snapType: null,
+      previewDuration: 4.96,
+    });
+    h.unmount();
+  });
+
+  it("shows the frame at the dragged edge, then puts the playhead back on release", async () => {
+    usePlayerStore.setState({ currentTime: 1.25 });
+    const onSeek = vi.fn();
+    const a = el("a", { start: 1, duration: 2 });
+    const h = renderResizeHarness([a], [], { onSeek });
+    h.startResize(a, "end");
+    h.movePointer(50);
+    expect(onSeek).toHaveBeenLastCalledWith(3.5 - 1 / 30, { keepPlaying: true });
+    await h.dropPointer();
+    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true });
+    h.unmount();
+  });
+
+  it("previews the new in-point when the start edge is trimmed", () => {
+    const onSeek = vi.fn();
+    const a = el("a", { start: 1, duration: 2 });
+    const h = renderResizeHarness([a], [], { onSeek });
+    h.startResize(a, "start");
+    h.movePointer(50);
+    expect(onSeek).toHaveBeenLastCalledWith(1.5, { keepPlaying: true });
+    h.unmount();
+  });
+
+  it("publishes the guide when the start edge snaps to a neighbour's end", () => {
+    // playbackStart leaves source to reveal when the in-point moves left.
+    const a = el("a", { start: 3, duration: 2, playbackStart: 5 });
+    const b = el("b", { start: 0, duration: 2 });
+    const h = renderResizeHarness([a, b], [], { snap: true });
+    h.startResize(a, "start");
+    h.movePointer(-96); // a's start lands at 2.04s, 4px from b's end
+    expect(h.getResizingClip()).toMatchObject({ snapTime: 2, previewStart: 2 });
+    h.unmount();
+  });
+
+  it("restores the playhead it had before the first preview seek, not a seeked time", async () => {
+    const { onSeek, h } = trimEndWithSeekingPlayhead();
+    h.movePointer(80);
+    h.movePointer(120);
+    await h.dropPointer();
+    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true });
+    h.unmount();
+  });
+
+  it("leaves the playhead where playback is when a trim is released while playing", async () => {
+    const { onSeek, h } = trimEndWithSeekingPlayhead({ isPlaying: true });
+    h.movePointer(120);
+    const callsBeforeRelease = onSeek.mock.calls.length;
+    await h.dropPointer();
+    expect(onSeek).toHaveBeenCalledTimes(callsBeforeRelease);
+    expect(onSeek).not.toHaveBeenCalledWith(1.25, expect.anything());
+    usePlayerStore.setState({ isPlaying: false });
+    h.unmount();
+  });
+
+  it("draws no guide and seeks to the rendered edge when a group member clamps the trim", () => {
+    const onSeek = vi.fn();
+    const a = el("a", { start: 0, duration: 4 });
+    const b = el("b", { start: 0, duration: 1 });
+    const c = el("c", { start: 2, duration: 1 });
+    const h = renderResizeHarness([a, b, c], ["a", "b"], { snap: true, onSeek });
+    h.startResize(a, "end");
+    h.movePointer(-198); // a's raw end 2.02s snaps to c at 2s; b clamps the shared delta
+    const clip = h.getResizingClip()!;
+    expect(clip.previewStart + clip.previewDuration).toBeCloseTo(3.1, 3);
+    expect(clip).toMatchObject({ snapTime: null, snapType: null });
+    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(3.1 - 1 / 30, 3), { keepPlaying: true });
     h.unmount();
   });
 });

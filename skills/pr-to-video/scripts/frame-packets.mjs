@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
-// Thin wrapper over the shared packet builder in hyperframes-core — this file pins
+// Thin wrapper over the shared packet builder in hyperframes — this file pins
 // this workflow's paths plus its two behavioral differences: a code frame must carry
 // an upstream-selected `### Source excerpt`, and code frames get a code-vocabulary
 // excerpt appended to their packet. Everything else has one owner:
-// ../../hyperframes-core/scripts/lib/frame-packets-core.mjs
+// ../../hyperframes/scripts/lib/frame-packets-core.mjs
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as core from "../../hyperframes-core/scripts/lib/frame-packets-core.mjs";
+import * as core from "../../hyperframes/scripts/lib/frame-packets-core.mjs";
 
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -45,7 +45,7 @@ function codeVocabularySection(block) {
 
 const CONFIG = {
   animationDir: resolve(SKILL_DIR, "../hyperframes-animation"),
-  corePath: resolve(SKILL_DIR, "../hyperframes-core/references/frame-worker-core.md"),
+  corePath: resolve(SKILL_DIR, "../hyperframes/references/frame-worker-core.md"),
   deltaPath: resolve(SKILL_DIR, "sub-agents/frame-worker.md"),
   validateFrame,
   extraSections: codeVocabularySection,

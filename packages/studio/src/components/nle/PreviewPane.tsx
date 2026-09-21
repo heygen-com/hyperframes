@@ -6,6 +6,8 @@ import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
+import { PreviewGuides } from "../editor/PreviewGuides";
+import { PreviewOverlayProvider } from "../editor/PreviewOverlayProvider";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -59,6 +61,12 @@ export function PreviewPane({
     togglePlay,
     seek,
     onIframeLoad,
+    previewSlots,
+    onShadowIframeLoad,
+    onShadowReadyChange,
+    onShadowError,
+    setShadowIframeNode,
+    resetPreviewSlots,
     compositionStack,
     handleNavigateComposition,
     setCompositionLoading,
@@ -109,7 +117,7 @@ export function PreviewPane({
       ref={containerRef}
       // Panel chrome (rounded border) is dropped in fullscreen so the preview
       // fills the screen edge-to-edge.
-      className={`flex-1 min-h-0 flex flex-col overflow-hidden bg-neutral-950 ${
+      className={`flex-1 min-h-0 flex flex-col overflow-hidden bg-[var(--studio-preview-bg,var(--color-neutral-950))] ${
         isFullscreen ? "" : "rounded-lg border border-neutral-800/50"
       }`}
       data-studio-fullscreen-target=""
@@ -130,6 +138,12 @@ export function PreviewPane({
             projectId={projectId}
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
+            previewSlots={previewSlots}
+            onShadowIframeLoad={onShadowIframeLoad}
+            onShadowReadyChange={onShadowReadyChange}
+            onShadowError={onShadowError}
+            setShadowIframeNode={setShadowIframeNode}
+            resetPreviewSlots={resetPreviewSlots}
             onCompositionLoadingChange={setCompositionLoading}
             portrait={portrait}
             directUrl={directUrl}
@@ -138,15 +152,18 @@ export function PreviewPane({
             onCompositionSizeChange={setPreviewCompositionSize}
           />
           {previewDragOver && (
-            <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/[0.04] pointer-events-none" />
+            <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/4 pointer-events-none" />
           )}
           <AssetPreviewOverlay />
         </div>
-        {!isFullscreen && previewOverlay}
+        <PreviewOverlayProvider>
+          <PreviewGuides />
+          {!isFullscreen && previewOverlay}
+        </PreviewOverlayProvider>
       </div>
       {/* Transport row: no own background or border — the controls sit flat on
           the preview panel's surface (CapCut-style). */}
-      <div className="flex-shrink-0">
+      <div className="shrink-0">
         {!isFullscreen && compositionStack.length > 1 && (
           <CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />
         )}

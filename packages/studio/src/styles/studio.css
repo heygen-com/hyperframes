@@ -1,6 +1,19 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss" source(none);
+@import "./palette-reset.css";
+@import "./theme.css";
+
+/* Explicit sources: Studio's own TypeScript and its shell HTML. Automatic
+ * detection would walk up to the repo root and scan `data/projects`, gitignored user content. */
+@source "../**/*.{ts,tsx}";
+@source "../../index.html";
+
+/* Tailwind v4 preflight no longer gives enabled buttons a pointer cursor. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 /*
  * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
@@ -14,9 +27,9 @@
 body {
   margin: 0;
   padding: 0;
-  background: #0a0a0a;
-  color: #e5e5e5;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-bg-0);
+  color: var(--color-text-body);
+  font-family: var(--font-sans);
   overflow: hidden;
 }
 
@@ -187,8 +200,8 @@ body {
 }
 
 .timeline-clip {
-  background-color: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background-color: var(--clip-bg);
+  border: 1px solid var(--clip-border);
   border-radius: 8px;
 }
 
@@ -197,13 +210,13 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: rgba(60, 230, 172, 0.2);
+  background: var(--clip-bg-active);
   opacity: 0;
   pointer-events: none;
 }
 
 .timeline-clip[data-active] {
-  border-color: rgba(60, 230, 172, 0.55);
+  border-color: var(--clip-border-active);
 }
 
 .timeline-clip[data-active]::before {
@@ -227,11 +240,11 @@ body {
 }
 
 .timeline-clip.is-hovered {
-  background-color: rgba(255, 255, 255, 0.09);
+  background-color: var(--clip-bg-hover);
 }
 
 .timeline-clip[data-active].is-hovered {
-  border-color: rgba(60, 230, 172, 0.75);
+  border-color: var(--clip-border-hover);
 }
 
 .timeline-clip.is-selected {
@@ -245,7 +258,7 @@ body {
 .timeline-clip.is-dragging {
   /* Solid background so the picked-up clip reads clearly while dragging — audio
      clips (waveform drawn on a separate layer) would otherwise look transparent. */
-  background-color: rgba(38, 42, 52, 0.96);
+  background-color: var(--clip-bg-dragging);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -290,7 +303,7 @@ body {
   left: 12px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.34);
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -328,7 +341,7 @@ body {
 }
 
 .cm-editor .cm-scroller {
-  font-family: "JetBrains Mono", "Fira Code", "SF Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .cm-editor.cm-focused {
@@ -385,12 +398,7 @@ body {
 }
 
 .hf-loader-title {
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -406,12 +414,7 @@ body {
   min-height: 2.5rem;
   overflow: hidden;
   color: var(--hf-text-secondary, rgba(244, 244, 245, 0.68));
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   line-height: 1.6;
 }
@@ -423,7 +426,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--hf-text-tertiary, rgba(244, 244, 245, 0.46));
-  font-family: "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;

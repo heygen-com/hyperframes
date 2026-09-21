@@ -4,6 +4,8 @@
 // 600-line cap.
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { TimelineElement } from "../player";
+import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
+import { resolveDropTrack } from "../utils/timelineDropTrackInsert";
 import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
@@ -20,7 +22,33 @@ import { collectHtmlIds, resolveDroppedAssetDuration } from "../utils/studioHelp
 import { formatTimelineAttributeNumber } from "./timelineEditingHelpers";
 import { readFileContent } from "./timelineTimingSync";
 import { commitTimelineCompositionInsertion } from "../utils/timelineCompositionInsert";
-import { usePlayerStore } from "../player";
+import { extendRootDurationInSource } from "../utils/rootDuration";
+import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
+import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
+
+/** The first uploaded file opens the new track (if asked); the rest land on the lane it landed on. */
+function fileDropPlacement(
+  index: number,
+  next: { start: number; track: number },
+  dropped: TimelineDropPlacement | undefined,
+  landedTrack: number | undefined,
+): TimelineDropPlacement {
+  return index === 0 ? { ...dropped, ...next } : { ...next, track: landedTrack ?? next.track };
+}
+
+function timelineDropTarget(
+  sourceFile: string,
+  placement: Pick<TimelineElement, "start" | "track">,
+): TimelineElement {
+  return {
+    id: "timeline-drop",
+    tag: "div",
+    start: placement.start,
+    duration: 0,
+    track: placement.track,
+    sourceFile,
+  };
+}
 
 interface UseTimelineAssetDropOpsOptions {
   projectIdRef: MutableRefObject<string | null>;
@@ -29,12 +57,12 @@ interface UseTimelineAssetDropOpsOptions {
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
   isRecordingRef?: RefObject<boolean>;
   forceReloadSdkSession?: () => void;
   observeProjectFileVersion?: (path: string, version: string | null) => void;
+  checkEditable?: (targets: readonly TimelineElement[]) => boolean;
 }
 
 export function useTimelineAssetDropOps({
@@ -44,24 +72,28 @@ export function useTimelineAssetDropOps({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   reloadPreview,
   uploadProjectFiles,
   isRecordingRef,
   forceReloadSdkSession,
   observeProjectFileVersion,
+  checkEditable,
 }: UseTimelineAssetDropOpsOptions) {
   // fallow-ignore-next-line complexity
-  const handleTimelineAssetDrop = useCallback(
+  const dropAssetAt = useCallback(
     // fallow-ignore-next-line complexity
     async (
       assetPath: string,
-      placement: Pick<TimelineElement, "start" | "track">,
+      placement: TimelineDropPlacement,
       durationOverride?: number,
-    ) => {
+    ): Promise<number | undefined> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
-        return;
+        return undefined;
+      }
+      const targetPath = activeCompPath || "index.html";
+      if (checkEditable && !checkEditable([timelineDropTarget(targetPath, placement)])) {
+        return undefined;
       }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
@@ -69,10 +101,9 @@ export function useTimelineAssetDropOps({
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
         showToast("Only image, video, and audio assets can be dropped onto the timeline.");
-        return;
+        return undefined;
       }
 
-      const targetPath = activeCompPath || "index.html";
       try {
         const originalContent = await readFileContent(pid, targetPath);
 
@@ -91,25 +122,39 @@ export function useTimelineAssetDropOps({
         );
         const newElementZIndex = Math.max(1, relevantElements.length + 1);
 
-        const patchedContent = insertTimelineAssetIntoSource(
-          originalContent,
-          buildTimelineAssetInsertHtml({
+        const { source: sourceWithRoom, track } = resolveDropTrack({
+          source: originalContent,
+          // insertRow counts the rows the timeline shows, so plan against those.
+          elements: relevantElements,
+          placement,
+          dropped: {
             id: newId,
-            hfId: `hf-${generateId()}`,
-            assetPath: resolvedAssetSrc,
-            kind,
+            tag: kind === "image" ? "img" : kind,
             start: normalizedStart,
             duration: normalizedDuration,
-            track: placement.track,
-            zIndex: newElementZIndex,
-            geometry: fitTimelineAssetGeometry(
-              null,
-              resolveTimelineAssetCompositionSize(originalContent),
-            ),
-          }),
+          },
+        });
+        const patchedContent = extendRootDurationInSource(
+          insertTimelineAssetIntoSource(
+            sourceWithRoom,
+            buildTimelineAssetInsertHtml({
+              id: newId,
+              hfId: `hf-${generateId()}`,
+              assetPath: resolvedAssetSrc,
+              kind,
+              start: normalizedStart,
+              duration: normalizedDuration,
+              track,
+              zIndex: newElementZIndex,
+              geometry: fitTimelineAssetGeometry(
+                null,
+                resolveTimelineAssetCompositionSize(originalContent),
+              ),
+            }),
+          ),
+          normalizedStart + normalizedDuration,
         );
 
-        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Add timeline asset",
@@ -120,12 +165,15 @@ export function useTimelineAssetDropOps({
           recordEdit,
         });
 
+        selectAndRevealTimelineElement(deriveTimelineStoreKeyForDomId(newId, targetPath));
         forceReloadSdkSession?.();
         reloadPreview();
+        return track;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to drop asset onto timeline";
         showToast(message);
+        return undefined;
       }
     },
     [
@@ -135,19 +183,31 @@ export function useTimelineAssetDropOps({
       showToast,
       timelineElements,
       writeProjectFile,
-      domEditSaveTimestampRef,
       reloadPreview,
       isRecordingRef,
       forceReloadSdkSession,
+      checkEditable,
     ],
+  );
+
+  const handleTimelineAssetDrop = useCallback(
+    async (assetPath: string, placement: TimelineDropPlacement, durationOverride?: number) => {
+      await dropAssetAt(assetPath, placement, durationOverride);
+    },
+    [dropAssetAt],
   );
 
   // fallow-ignore-next-line complexity
   const handleTimelineFileDrop = useCallback(
     // fallow-ignore-next-line complexity
-    async (files: File[], placement?: Pick<TimelineElement, "start" | "track">) => {
+    async (files: File[], placement?: TimelineDropPlacement) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
+      const targetPath = activeCompPath || "index.html";
+      const initialPlacement = placement ?? { start: 0, track: 0 };
+      if (checkEditable && !checkEditable([timelineDropTarget(targetPath, initialPlacement)])) {
         return;
       }
       const pid = projectIdRef.current;
@@ -164,15 +224,26 @@ export function useTimelineAssetDropOps({
         placement ?? { start: 0, track: 0 },
         durations,
       );
+      let landedTrack: number | undefined;
       for (const [index, assetPath] of uploaded.entries()) {
-        await handleTimelineAssetDrop(
+        const next = placements[index] ?? placements[0];
+        const track = await dropAssetAt(
           assetPath,
-          placements[index] ?? placements[0],
+          fileDropPlacement(index, next, placement, landedTrack),
           durations[index],
         );
+        if (index === 0) landedTrack = track;
       }
     },
-    [handleTimelineAssetDrop, projectIdRef, uploadProjectFiles, isRecordingRef, showToast],
+    [
+      activeCompPath,
+      checkEditable,
+      dropAssetAt,
+      projectIdRef,
+      uploadProjectFiles,
+      isRecordingRef,
+      showToast,
+    ],
   );
 
   const handleTimelineCompositionDrop = useCallback(
@@ -181,9 +252,12 @@ export function useTimelineAssetDropOps({
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
+      const targetPath = activeCompPath || "index.html";
+      if (checkEditable && !checkEditable([timelineDropTarget(targetPath, placement)])) {
+        return;
+      }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
-      const targetPath = activeCompPath || "index.html";
       try {
         await commitTimelineCompositionInsertion({
           projectId: pid,
@@ -194,11 +268,10 @@ export function useTimelineAssetDropOps({
           writeFile: writeProjectFile,
           recordEdit,
           observeVersion: observeProjectFileVersion,
-          selectHost: (key) => usePlayerStore.getState().setSelectedElementId(key),
+          selectHost: selectAndRevealTimelineElement,
           resync: forceReloadSdkSession,
           refresh: reloadPreview,
         });
-        domEditSaveTimestampRef.current = Date.now();
         showToast("Composition added to the timeline.", "info");
       } catch (error) {
         showToast(
@@ -209,7 +282,7 @@ export function useTimelineAssetDropOps({
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
+      checkEditable,
       forceReloadSdkSession,
       isRecordingRef,
       observeProjectFileVersion,

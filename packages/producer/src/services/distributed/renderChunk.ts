@@ -43,6 +43,7 @@ import {
   BROWSER_GPU_NOT_SOFTWARE,
   calculateOptimalWorkers,
   classifyCaptureFailure,
+  compositionRequiresWebGpu,
   type CaptureOptions,
   type CaptureMode,
   type CapturePerfSummary,
@@ -215,7 +216,8 @@ interface DistributedCaptureSessionDependencies {
   readWebGlVendorInfo: typeof readWebGlVendorInfoFromCanvas;
 }
 
-const distributedCaptureSessionDependencies: DistributedCaptureSessionDependencies = {
+/** Mutable so tests can substitute a spy without a real browser; renderChunk() always calls through it. */
+export const distributedCaptureSessionDependencies: DistributedCaptureSessionDependencies = {
   createCaptureSession,
   assertSwiftShader,
   initializeSession,
@@ -728,6 +730,9 @@ export async function renderChunk(
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,
+      requiresWebGpu: compositionRequiresWebGpu(
+        readFileSync(join(compiledDir, "index.html"), "utf-8"),
+      ),
     };
 
     // Resolve worker count up-front. Sequential capture reuses the initialized
@@ -957,6 +962,7 @@ export async function renderChunk(
         width: plan.dimensions.width * encoder.deviceScaleFactor,
         height: plan.dimensions.height * encoder.deviceScaleFactor,
         needsAlpha: plan.dimensions.format !== "mp4",
+        captureImageFormat: captureOptions.format ?? "jpeg",
         // Each chunk produces video only — audio is muxed once at assemble
         // time. Suppressing `hasAudio` skips the png-sequence audio sidecar
         // AND the mp4 audio mux.

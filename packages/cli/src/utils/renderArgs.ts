@@ -298,3 +298,31 @@ export function parseGifLoopArg(raw: string | undefined): GifLoopParseResult {
   }
   return { ok: true, value: parsed };
 }
+
+export type HlsSegmentSecondsParseResult =
+  | { ok: true; value: number | undefined }
+  | { ok: false; message: string };
+
+const MAX_HLS_SEGMENT_SECONDS = 60;
+
+/**
+ * Parse and validate `--hls-segment-seconds <n>` (HLS target segment length).
+ * Whole seconds only: the value becomes ffmpeg's `-hls_time`, which writes an
+ * integer `#EXT-X-TARGETDURATION`. Returns `{ ok: true, value: undefined }`
+ * when the flag is absent so the caller can apply the format-dependent default.
+ */
+export function parseHlsSegmentSecondsArg(raw: string | undefined): HlsSegmentSecondsParseResult {
+  if (raw === undefined) return { ok: true, value: undefined };
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, message: "HLS segment length must not be empty." };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_HLS_SEGMENT_SECONDS) {
+    return {
+      ok: false,
+      message: `Got "${raw}". HLS segment length must be a whole number of seconds between 1 and ${MAX_HLS_SEGMENT_SECONDS}.`,
+    };
+  }
+  return { ok: true, value: parsed };
+}

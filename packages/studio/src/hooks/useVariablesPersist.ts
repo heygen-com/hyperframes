@@ -20,7 +20,6 @@ export function useVariablesPersist({
   writeProjectFile,
   recordEdit,
   reloadPreview,
-  domEditSaveTimestampRef,
   publishSdkSession,
 }: UseVariablesPersistParams): (
   label: string,
@@ -39,7 +38,6 @@ export function useVariablesPersist({
           editHistory: { recordEdit },
           writeProjectFile,
           reloadPreview,
-          domEditSaveTimestampRef,
           compositionPath: activeCompPath,
           readProjectFile,
           publishSession: publishSdkSession,
@@ -56,7 +54,6 @@ export function useVariablesPersist({
       writeProjectFile,
       recordEdit,
       reloadPreview,
-      domEditSaveTimestampRef,
       publishSdkSession,
     ],
   );

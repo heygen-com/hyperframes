@@ -15,6 +15,7 @@ export default defineConfig({
     cli: "src/cli.ts",
     fontLocalizeCli: "src/fontLocalizeCli.ts",
     runtimeVersion: "src/runtimeVersion.ts",
+    renderSetupWorker: "src/renderSetupWorker.ts",
     shaderTransitionWorker: "../producer/src/services/shaderTransitionWorker.ts",
   },
   format: ["esm"],
@@ -90,7 +91,11 @@ var __dirname = __hf_dirname(__filename);`,
       // Exact subpaths are generated from the same contracts as package
       // exports, avoiding esbuild's root-alias prefix substitution trap.
       ...sourceAliases(resolve(__dirname, "../producer"), [".", "./distributed"]),
-      ...sourceAliases(resolve(__dirname, "../engine"), [".", "./shader-transitions"]),
+      ...sourceAliases(resolve(__dirname, "../engine"), [
+        ".",
+        "./chrome-host-ceiling",
+        "./shader-transitions",
+      ]),
     };
     options.loader = { ...options.loader, ".browser.js": "text" };
   },

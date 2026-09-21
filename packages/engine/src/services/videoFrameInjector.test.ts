@@ -1,9 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Page } from "puppeteer-core";
+import { COMPLETE_SENTINEL } from "./extractionCache.js";
 
 // Hoist mocks before importing the module under test so the mock factory wins.
 // The cache-hygiene block exercises createVideoFrameInjector against stubbed
@@ -25,11 +26,17 @@ vi.mock("./screenshotService.js", () => ({
 
 import { __testing, createVideoFrameInjector } from "./videoFrameInjector.js";
 import { type FrameLookupTable } from "./videoFrameExtractor.js";
+import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG } from "../config.js";
 
-const { createFrameSourceCache } = __testing;
+const { createFrameSourceCache, CACHE_TOUCH_THROTTLE_MS } = __testing;
 
 const SHARED_STATS = { evictions: 0, oversizedRejections: 0 };
+
+// Bypass the on-disk frame cache by handing back a synthetic data URI.
+function inlineResolver(framePath: string): string {
+  return `data:image/png;base64,fake-${framePath}`;
+}
 
 describe("frame source cache eviction", () => {
   let dir: string;
@@ -178,11 +185,6 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     } as unknown as FrameLookupTable;
   }
 
-  // Bypass the on-disk frame cache by handing back a synthetic data URI.
-  function inlineResolver(framePath: string): string {
-    return `data:image/png;base64,fake-${framePath}`;
-  }
-
   function makeGpuInjector() {
     const evaluate = vi.fn(async () => undefined);
     const page = { evaluate } as unknown as Page;
@@ -316,5 +318,87 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     await hook!(page, 1.5);
 
     expect(evaluate.mock.calls.some((call) => call[1] === 1.5)).toBe(false);
+  });
+});
+
+describe("createVideoFrameInjector extraction-cache lease renewal", () => {
+  // Regression: a render can hold a compiled-dir symlink into a shared
+  // extraction-cache entry far longer than the entry's one-time cache-hit
+  // touch keeps it alive, so another render's GC sweep can evict a directory
+  // this render still reads from. Every active frame must renew the entry's
+  // LRU clock, throttled.
+  //
+  // Fake timers drive both halves of each assertion: they advance `Date.now()`
+  // for the injector's throttle AND the `new Date()` touchCacheDir stamps onto
+  // the sentinel, so renewal is observable without depending on real
+  // wall-clock resolution between two same-millisecond touches.
+  const fakePage = { evaluate: async () => undefined } as unknown as Page;
+  let cacheDir: string;
+  let sentinelPath: string;
+
+  function makeHook(framePath: string): BeforeCaptureHook {
+    const table = {
+      getActiveFramePayloads: () => new Map([["v", { framePath, frameIndex: 0 }]]),
+    } as unknown as FrameLookupTable;
+    const hook = createVideoFrameInjector(table, { frameSrcResolver: inlineResolver });
+    if (!hook) throw new Error("expected an injector hook for a non-null lookup table");
+    return hook;
+  }
+
+  function sentinelMtimeMs(): number {
+    return statSync(sentinelPath).mtimeMs;
+  }
+
+  beforeEach(() => {
+    injectVideoFramesBatchMock.mockReset();
+    syncVideoFrameVisibilityMock.mockReset();
+    syncVideoFrameVisibilityMock.mockResolvedValue(undefined);
+    injectVideoFramesBatchMock.mockResolvedValue(["v"]);
+
+    cacheDir = mkdtempSync(join(tmpdir(), "hf-cache-entry-"));
+    sentinelPath = join(cacheDir, COMPLETE_SENTINEL);
+    writeFileSync(sentinelPath, "", "utf-8");
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    utimesSync(sentinelPath, hourAgo, hourAgo);
+
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it("renews the cache entry's sentinel mtime on the first active frame", async () => {
+    const before = sentinelMtimeMs();
+    const hook = makeHook(join(cacheDir, "frame_00001.jpg"));
+
+    await hook(fakePage, 0);
+
+    expect(sentinelMtimeMs()).toBeGreaterThan(before);
+  });
+
+  it("throttles renewal so repeated frames don't hammer the filesystem clock", async () => {
+    const hook = makeHook(join(cacheDir, "frame_00001.jpg"));
+
+    await hook(fakePage, 0);
+    const firstTouch = sentinelMtimeMs();
+
+    vi.advanceTimersByTime(CACHE_TOUCH_THROTTLE_MS / 2);
+    await hook(fakePage, 1);
+    expect(sentinelMtimeMs()).toBe(firstTouch);
+
+    vi.advanceTimersByTime(CACHE_TOUCH_THROTTLE_MS);
+    await hook(fakePage, 2);
+    expect(sentinelMtimeMs()).toBeGreaterThan(firstTouch);
+  });
+
+  it("does not throw when the frame path is outside any cache directory", async () => {
+    // The resolver bypasses the frame read, but renewal still runs against
+    // dirname(framePath) — a non-cache dir has no sentinel to touch, and
+    // touchCacheDir's best-effort contract must swallow that.
+    const hook = makeHook("/no/such/cache/dir/frame_00001.jpg");
+
+    await expect(hook(fakePage, 0)).resolves.toBeUndefined();
   });
 });

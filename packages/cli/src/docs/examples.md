@@ -4,7 +4,7 @@ Built-in templates available via `npx hyperframes init --example <name>`.
 
 ## blank
 
-Empty 1920x1080 composition with GSAP timeline wired up. Start from scratch.
+Centered Inter stage, paused GSAP timeline. Default `hyperframes init` scaffold.
 
 ## title-card
 

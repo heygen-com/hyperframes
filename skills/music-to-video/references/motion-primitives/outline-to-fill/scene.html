@@ -1,0 +1,82 @@
+<template id="outline-to-fill-template">
+  <div data-composition-id="outline-to-fill" data-width="1920" data-height="1080" data-duration="2">
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .outline-stack {
+        position: relative;
+        font-family: "Playfair Display", serif;
+        font-weight: 900;
+        font-size: 320px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        white-space: nowrap;
+      }
+      .stroke-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        color: transparent;
+        -webkit-text-stroke: 3px var(--hg-violet-2);
+        text-shadow: 0 0 30px rgba(168, 85, 247, 0.5);
+        will-change:
+          opacity,
+          -webkit-text-stroke;
+      }
+      .fill-layer {
+        position: relative;
+        color: var(--hg-fg);
+        clip-path: inset(100% 0 0 0);
+        will-change: clip-path;
+      }
+      .spacer {
+        color: transparent;
+      }
+    </style>
+    <div class="stage">
+      <div class="outline-stack">
+        <span class="spacer">Premium</span>
+        <span class="stroke-layer">Premium</span>
+        <span class="fill-layer">Premium</span>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Stroke draws in
+      tl.fromTo(
+        ".stroke-layer",
+        { opacity: 0, scale: 1.04 },
+        { opacity: 1, scale: 1, duration: 0.45, ease: "power3.out" },
+        0.15,
+      );
+
+      // Fill rises from bottom
+      tl.set(".fill-layer", { clipPath: "inset(100% 0 0 0)" }, 0);
+      tl.to(".fill-layer", { clipPath: "inset(0% 0 0 0)", duration: 1.0, ease: "expo.out" }, 0.55);
+
+      // Stroke recedes once fill arrives
+      tl.to(".stroke-layer", { opacity: 0.35, duration: 0.6, ease: "power2.out" }, 1.0);
+
+      window.__timelines["outline-to-fill"] = tl;
+    </script>
+  </div>
+</template>

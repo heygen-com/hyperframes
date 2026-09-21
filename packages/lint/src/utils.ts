@@ -34,9 +34,8 @@ export const TIMELINE_REGISTRY_ASSIGN_PATTERN =
 // missed `window.__timelines[spec.id] = tl`, a pattern the shipped
 // code-particle-assemble/code-3d-extrude registry blocks actually use,
 // making gsap_timeline_not_registered false-fire on correctly registered
-// timelines. The computed-key alternative is deliberately non-capturing:
-// its text isn't a literal composition id, so callers reading group 1/2
-// (readRegisteredTimelineCompositionId) must keep falling back to null for it.
+// timelines. The computed-key alternative is non-capturing; remaining
+// callers only `.test()` this pattern.
 export const WINDOW_TIMELINE_ASSIGN_PATTERN =
   /window\.__timelines(?:\[\s*(?:["']([^"']+)["']|[A-Za-z_$][\w$.]*)\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=\s*([A-Za-z_$][\w$]*)/i;
 export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
@@ -70,12 +69,37 @@ export function parseHtmlStructure(source: string): {
     contentStart: number;
     index: number;
   }> = [];
+  let explicitOpenTag: { index: number; nameEnd: number } | null = null;
   const parser: Parser = new Parser(
     {
-      onopentag(name) {
-        const index = parser.startIndex;
+      onopentagname(name) {
+        // startIndex can still point into the preceding close. Bound this scan by
+        // HTML name delimiters, not '<' (which can occur in a malformed name).
+        // Keep the raw name end too: Unicode lowercasing can change UTF-16 length.
+        let tokenStart = parser.endIndex - 1;
+        while (
+          tokenStart >= parser.startIndex &&
+          !/[\t\n\f\r />]/.test(source.charAt(tokenStart))
+        ) {
+          tokenStart -= 1;
+        }
+        const index = source.indexOf("<", tokenStart + 1);
+        explicitOpenTag =
+          index >= 0 &&
+          index < parser.endIndex &&
+          source.slice(index + 1, parser.endIndex).toLowerCase() === name
+            ? { index, nameEnd: parser.endIndex }
+            : null;
+      },
+      onopentag(name, _attrs, isImplied) {
+        const origin = !isImplied ? explicitOpenTag : null;
+        const index = origin?.index ?? parser.startIndex;
+        explicitOpenTag = null;
         const raw = source.slice(index, parser.endIndex + 1);
-        const attrs = raw.slice(name.length + 1, -1).replace(/\s*\/$/, "");
+        const rawAttrs = origin
+          ? source.slice(origin.nameEnd, parser.endIndex)
+          : raw.slice(name.length + 1, -1);
+        const attrs = rawAttrs.replace(/\s*\/$/, "");
         const tag = { raw, name, attrs, index };
         tags.push(tag);
         const sameNameStack = openTagsByName.get(name) ?? [];

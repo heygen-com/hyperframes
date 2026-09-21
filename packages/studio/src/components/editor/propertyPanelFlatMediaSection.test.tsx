@@ -189,6 +189,41 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 
+  it("writes through the envelope instead of the attribute once volume is automated", () => {
+    const onSetAttribute = vi.fn();
+    const onCommitVolumeAt = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { volume: "1" } });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+          volumeAutomated
+          onCommitVolumeAt={onCommitVolumeAt}
+        />,
+      );
+    });
+    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    Object.defineProperty(volumeTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
+    });
+    expect(onCommitVolumeAt).toHaveBeenCalledTimes(1);
+    expect(onCommitVolumeAt.mock.calls[0][0]).toBeCloseTo(3.981072, 6);
+    expect(onSetAttribute).not.toHaveBeenCalledWith("volume", expect.anything());
+    act(() => root.unmount());
+  });
+
   it("commits a new rate value on slider track pointerdown", () => {
     const onSetAttribute = vi.fn();
     const element = makeVideoElement();
@@ -215,8 +250,8 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
       rateTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
       rateTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
     });
-    // min=25, max=300, ratio=1.0 -> raw=300 -> commit(300) -> 300/100=3 -> "3"
-    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "3");
+    // the speed slider is log-scaled 0.1x..10x, so the far end of the track is 10x
+    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "10");
     act(() => root.unmount());
   });
 

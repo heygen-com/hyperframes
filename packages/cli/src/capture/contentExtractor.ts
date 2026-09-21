@@ -22,6 +22,7 @@ import { basename, join } from "node:path";
 import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
+import { loadOptionalPackage, type OptionalPackageModules } from "../utils/optionalPackages.js";
 
 const DEFAULT_VISION_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -359,7 +360,15 @@ export async function captionImagesWithGemini(
         }, timeoutMs);
       };
     } else {
-      const { GoogleGenAI } = await import("@google/genai");
+      let GoogleGenAI: OptionalPackageModules["@google/genai"]["GoogleGenAI"];
+      try {
+        ({ GoogleGenAI } = await loadOptionalPackage("@google/genai", "vision captioning"));
+      } catch (err) {
+        warnings.push(`Skipped vision captioning: ${(err as Error).message}`);
+        internalError = true;
+        reportOutcome();
+        return geminiCaptions;
+      }
       let ai: InstanceType<typeof GoogleGenAI>;
       if (provider === "vertex") {
         // Re-narrow for TS; `useVertex` already guaranteed both are set.

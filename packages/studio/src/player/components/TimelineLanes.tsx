@@ -59,6 +59,7 @@ export function TimelineLanes({
   hoveredClip,
   draggedClip,
   draggedElement,
+  snapGuide,
   multiDragPreview,
   blockedClipRef,
   suppressClickRef,
@@ -331,11 +332,7 @@ export function TimelineLanes({
                   beatTimes={beatAnalysis?.beatTimes}
                   beatStrengths={beatAnalysis?.beatStrengths}
                   pps={pps}
-                  highlightTime={
-                    draggedClip?.started && draggedClip.snapType === "beat"
-                      ? draggedClip.snapTime
-                      : null
-                  }
+                  highlightTime={snapGuide?.type === "beat" ? snapGuide.time : null}
                   renderTimeRange={rowsVirtualized ? renderTimeRange : undefined}
                 />
                 {/* Beat dots on the active track (the one holding the selection),

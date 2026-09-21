@@ -80,6 +80,24 @@
       "types": "./dist/compositionContract.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./media-duration": {
+      "source": "./src/mediaDuration.ts",
+      "runtime": "./dist/mediaDuration.js",
+      "types": "./dist/mediaDuration.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./media-duration-fixtures": {
+      "source": "./src/mediaDurationFixtures.ts",
+      "runtime": "./dist/mediaDurationFixtures.js",
+      "types": "./dist/mediaDurationFixtures.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./top-level-elements": {
+      "source": "./src/topLevelElements.ts",
+      "runtime": "./dist/topLevelElements.js",
+      "types": "./dist/topLevelElements.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading-contract": {
       "source": "./src/colorGradingContract.ts",
       "runtime": "./dist/colorGradingContract.js",
@@ -103,6 +121,12 @@
       "runtime": "./dist/assetResolution.js",
       "types": "./dist/assetResolution.d.ts",
       "environments": ["bun", "node"]
+    },
+    "./composition-duration": {
+      "source": "./src/compositionDuration.ts",
+      "runtime": "./dist/compositionDuration.js",
+      "types": "./dist/compositionDuration.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }

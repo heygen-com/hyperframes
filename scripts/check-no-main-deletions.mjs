@@ -36,7 +36,42 @@ const BASE_FLAG = "--base";
  * Entries are for deletions that are NOT renames — git already pairs those on
  * its own. Remove an entry once its deletion has landed on the base.
  */
+const STORYBOARD_VIEW_REASON =
+  "owner-directed removal of the Studio storyboard view; its only readers were deleted with it";
+
 export const ALLOWED_DELETIONS = new Map([
+  [
+    "packages/studio/src/player/hooks/useTimelineRowElements.ts",
+    "D-834 removes the duplicate row-source hook; manifest elements are now the single timeline row owner",
+  ],
+  [
+    "packages/studio/src/player/hooks/useTimelineRowElements.test.ts",
+    "D-834 removes tests for the deleted duplicate row-source hook",
+  ],
+  [
+    "packages/studio/src/components/StudioGlobalDragOverlay.tsx",
+    "the full-screen drop-to-add box is replaced by a landing preview on the timeline; no remaining references",
+  ],
+  [
+    "packages/studio/src/components/PanelTabButton.tsx",
+    "replaced by the shared Tabs primitive in RightPanelTabs; no remaining references",
+  ],
+  [
+    "packages/studio/postcss.config.js",
+    "Tailwind v4 migration: postcss replaced by @tailwindcss/vite",
+  ],
+  [
+    "packages/studio/tailwind.config.js",
+    "Tailwind v4 migration: config moves into styles/studio.css via @theme",
+  ],
+  [
+    "docs/snippets/catalog-overview-player.jsx",
+    "#4051 removes the Catalog overview's only consumer of this snippet (replaced by the browse-grid mount); confirmed unreferenced repo-wide before deleting",
+  ],
+  [
+    "packages/studio/src/hooks/useSdkSession.test.ts",
+    "tests only shouldReloadSdkSession, a function with no production callers removed with the preview reload fix",
+  ],
   [
     "docs/catalog/components/ai-generation-canvas.mdx",
     "owner-directed removal of the AI Generation Canvas catalog item and its generated documentation",
@@ -153,6 +188,177 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/store/groupLevels.ts",
     "#3454 deliberately removes group level-meter state",
   ],
+  [
+    "docs/public/catalog/components/texture-mask-text.json",
+    "the item's directory exceeds the host budget and now falls back to its recorded video; the stale payload had no <base href> and dead relative asset references, so removing it is the fix, not the regression",
+  ],
+  [
+    "packages/studio/src/player/hooks/useExpandedTimelineElements.ts",
+    "the timeline shows top-level rows only, so the child-row expansion hook is replaced by useTimelineRowElements",
+  ],
+  [
+    "packages/studio/src/player/hooks/useExpandedTimelineElements.test.ts",
+    "tests for the removed child-row expansion hook",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k1.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k3.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r1k4.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r2k0.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/av_r2k2.mp4",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/bgm.m4a",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/eb-garamond-latin-400-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/eb-garamond-latin-700-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-400-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-500-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "registry/blocks/heygen-avatar-promo-card/assets/fonts/inter-latin-600-normal.woff2",
+    "#4056 the avatar promo card hosts its video, audio and fonts on the CDN instead of the repo",
+  ],
+  [
+    "docs/public/catalog/assets/0743c9b7b918b0d9.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/0ad78008621fe77d.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/1d083f9292fdd0f8.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/202dcdfded4c9ff5.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/44b382d4775c2bb8.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/5a88ad5abfd02f99.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/61facab3428ae59c.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/6fef5557664470a3.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/7254a2cfd76b60b5.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/bd3c8b0cb5fa618c.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/d0ff80e331a5ebdb.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/df3dc3536491ffca.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "docs/public/catalog/assets/e234267390ffd6ff.woff2",
+    "#4056 regenerated catalog font files are content-hashed, so a re-hashed file replaces the old one",
+  ],
+  [
+    "packages/studio/src/components/StudioLeftSidebar.tsx",
+    "replaced by StudioLeftPanels.tsx, which mounts the left-zone panels as dock panels instead of a fixed sidebar",
+  ],
+  [
+    "packages/studio/src/components/sidebar/LeftSidebar.tsx",
+    "replaced by the dock-mounted CompositionsPanel/StudioLeftPanels; sidebar tab-switching is now the dock's own tab strip",
+  ],
+  [
+    "packages/studio/src/components/sidebar/LeftSidebar.storage.test.ts",
+    "tested the fixed-sidebar tab persistence removed with LeftSidebar.tsx; the dock persists its own layout",
+  ],
+  [
+    "packages/studio/src/components/nle/TimelineResizeDivider.tsx",
+    "the timeline's own resize divider; panel sizing is now the dock's sash",
+  ],
+  [
+    "packages/studio/src/hooks/useInspectorSplitResize.ts",
+    "resized the old fixed Layers/Design split pane, removed with the split-inspector layout",
+  ],
+  [
+    "packages/studio/src/utils/fitPanels.ts",
+    "computed fixed left/right panel widths for the old EditorShell layout; the dock sizes its own panels",
+  ],
+  ["packages/studio/src/utils/fitPanels.test.ts", "tests for fitPanels.ts, removed with it"],
+  ...[
+    "docs/studio/storyboard.mdx",
+    "packages/studio-server/src/routes/storyboard.test.ts",
+    "packages/studio-server/src/routes/storyboard.ts",
+    "packages/studio/fixtures/storyboard-sample/README.md",
+    "packages/studio/fixtures/storyboard-sample/SCRIPT.md",
+    "packages/studio/fixtures/storyboard-sample/STORYBOARD.md",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/01-hook.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/02-problem.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/03-feature.html",
+    "packages/studio/fixtures/storyboard-sample/compositions/frames/04-proof.html",
+    "packages/studio/fixtures/storyboard-sample/index.html",
+    "packages/studio/src/components/storyboard/AgentChatMessageButton.test.tsx",
+    "packages/studio/src/components/storyboard/AgentChatMessageButton.tsx",
+    "packages/studio/src/components/storyboard/FramePoster.test.tsx",
+    "packages/studio/src/components/storyboard/FramePoster.tsx",
+    "packages/studio/src/components/storyboard/StoryboardDirection.tsx",
+    "packages/studio/src/components/storyboard/StoryboardFrameFocus.tsx",
+    "packages/studio/src/components/storyboard/StoryboardFrameTile.tsx",
+    "packages/studio/src/components/storyboard/StoryboardGrid.tsx",
+    "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
+    "packages/studio/src/components/storyboard/StoryboardReviewGuide.tsx",
+    "packages/studio/src/components/storyboard/StoryboardScriptPanel.tsx",
+    "packages/studio/src/components/storyboard/StoryboardSourceEditor.tsx",
+    "packages/studio/src/components/storyboard/StoryboardStatusLegend.tsx",
+    "packages/studio/src/components/storyboard/StoryboardView.tsx",
+    "packages/studio/src/components/storyboard/StoryboardViewModeGuard.test.tsx",
+    "packages/studio/src/components/storyboard/frameComments.test.ts",
+    "packages/studio/src/components/storyboard/frameComments.ts",
+    "packages/studio/src/components/storyboard/frameStatus.ts",
+    "packages/studio/src/components/storyboard/storyboardReviewStage.test.ts",
+    "packages/studio/src/components/storyboard/storyboardReviewStage.ts",
+    "packages/studio/src/components/storyboard/useFrameComments.ts",
+    "packages/studio/src/contexts/ViewModeContext.tsx",
+    "packages/studio/src/hooks/useProjectSignaturePoll.test.tsx",
+    "packages/studio/src/hooks/useProjectSignaturePoll.ts",
+    "packages/studio/src/hooks/useStoryboard.ts",
+  ].map((path) => [path, STORYBOARD_VIEW_REASON]),
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

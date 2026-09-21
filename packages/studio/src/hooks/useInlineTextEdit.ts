@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
+import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -89,6 +90,7 @@ export function useInlineTextEdit({
   /** Stop playback, so the element is not animating under the caret. */
   onPause?: () => void;
 }): InlineTextEditControls {
+  const readOnly = usePreviewReadOnly();
   const [session, setSession] = useState<InlineTextEditSession | null>(null);
   // The teardown reads this rather than the state, so an exit path that runs
   // before React re-renders still sees the element it has to clean up.
@@ -123,7 +125,7 @@ export function useInlineTextEdit({
 
   const start = useCallback(
     (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
-      if (openRef.current) return false;
+      if (openRef.current || readOnly) return false;
 
       const open = {
         element,
@@ -156,7 +158,7 @@ export function useInlineTextEdit({
       framesRef.current = raf ?? null;
       return true;
     },
-    [onPause],
+    [onPause, readOnly],
   );
 
   const commit = useCallback(() => {
@@ -178,6 +180,13 @@ export function useInlineTextEdit({
     if (open.element.isConnected) open.element.innerHTML = open.original;
     teardown();
   }, [teardown]);
+
+  // Read-only can be enabled while an edit is already open. Close that
+  // session as a cancellation so the preview cannot keep committing through
+  // the now-disabled editing surface.
+  useEffect(() => {
+    if (readOnly && openRef.current) cancel();
+  }, [cancel, readOnly]);
 
   // The keys belong to the element, not to the document: the element lives in
   // the preview's own document, so a listener on Studio's would never see them.

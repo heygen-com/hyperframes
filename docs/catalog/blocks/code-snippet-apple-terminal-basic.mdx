@@ -1,28 +1,28 @@
 ---
 title: "Code Snippet - Apple Terminal Basic"
 description: "Apple Terminal Basic profile: white background, black text, per-character typing animation of a shell session."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/code-snippet-apple-terminal-basic.json"
+  compositionId="code-snippet-apple-terminal-basic"
+  compositionSrc="compositions/code-snippet-apple-terminal-basic.html"
+  title="Code Snippet - Apple Terminal Basic"
+  description="Apple Terminal Basic profile: white background, black text, per-character typing animation of a shell session."
+  variables={[]}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"Code Snippets","badge":"Stable","codeLines":249}}
+  attribution={{"path":"registry/blocks/code-snippet-apple-terminal-basic","tags":["code","developer","showcase","terminal","apple","apple-terminal"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/code-snippet-apple-terminal-basic/code-snippet-apple-terminal-basic.html"
+>
 
-<InstallCommand command="npx hyperframes add code-snippet-apple-terminal-basic" item="code-snippet-apple-terminal-basic" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/code-snippet-apple-terminal-basic.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="code-snippet-apple-terminal-basic preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/code-snippet-apple-terminal-basic.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-basic.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title={`code-snippet-apple-terminal-basic.html`}>
-
-```html
+```html code-snippet-apple-terminal-basic.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -274,13 +274,23 @@ That writes one file: `compositions/code-snippet-apple-terminal-basic.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add code-snippet-apple-terminal-basic" item="code-snippet-apple-terminal-basic" />
 
-```html
+That writes one file: `compositions/code-snippet-apple-terminal-basic.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 12 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
 <div
   data-composition-id="code-snippet-apple-terminal-basic"
   data-composition-src="compositions/code-snippet-apple-terminal-basic.html"
@@ -292,14 +302,8 @@ After installing, add the block to your host composition:
 ></div>
 ```
 
-## Features
-
-- Faithful recreation of macOS Terminal.app Basic profile — white background, black text, solid cursor
-- macOS window chrome with traffic light buttons (close, minimize, fullscreen) and centered title bar
-- Per-character GSAP typing animation — command types out character by character
-- Output lines reveal sequentially after command executes
-- Cursor blinks three times at the end then holds steady
-- Self-contained HTML — no external assets, only GSAP CDN
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -310,3 +314,7 @@ Tagged `code` `developer` `showcase` `terminal` `apple` `apple-terminal`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -1,23 +1,28 @@
 ---
 title: "Blend Difference"
 description: "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/caption-blend-difference.json"
+  compositionId="caption-blend-difference"
+  compositionSrc="compositions/components/caption-blend-difference.html"
+  title="Blend Difference"
+  description="Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background"
+  variables={[]}
+  meta={{"category":"Typography & Text","badge":"Stable","codeLines":83}}
+  attribution={{"path":"registry/components/caption-blend-difference","tags":["text","text-effect","effect","blend-mode","contrast","inversion"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/caption-blend-difference/caption-blend-difference.html"
+>
 
-<InstallCommand command="npx hyperframes add caption-blend-difference" item="caption-blend-difference" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/caption-blend-difference.html`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-blend-difference.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-blend-difference.png" autoPlay muted loop playsInline />
-
-## Source
-
-<Accordion title={`caption-blend-difference.html`}>
-
-```html
+```html caption-blend-difference.html
 <!--
   Blend Difference — auto-inverting captions via mix-blend-mode.
 
@@ -103,11 +108,25 @@ That writes one file: `compositions/components/caption-blend-difference.html`.
 -->
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-Open `compositions/components/caption-blend-difference.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+<InstallCommand command="npx hyperframes add caption-blend-difference" item="caption-blend-difference" />
+
+That writes one file: `compositions/components/caption-blend-difference.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/caption-blend-difference.html` and copy what is inside into your own composition.
+The file opens with a comment header that walks you through it.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
@@ -118,3 +137,7 @@ Tagged `text` `text-effect` `effect` `blend-mode` `contrast` `inversion`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -2,13 +2,6 @@
 
 HyperFrames `init --tailwind` uses the Tailwind browser runtime pinned by the scaffold. Treat it as Tailwind v4, not Studio's Tailwind v3 setup.
 
-## When To Use
-
-- The project was scaffolded with `npx hyperframes init --tailwind`.
-- `index.html` contains `window.__tailwindReady`.
-- The task asks for Tailwind utility classes, `@theme`, custom utilities, or v3-to-v4 fixes in a composition.
-- Rendered frames have missing Tailwind styles or frame-0 flashes.
-
 ## Version Contract
 
 - **Pinned: `@tailwindcss/browser@4.2.4`** (source of truth: `packages/cli/src/commands/init.ts` `TAILWIND_BROWSER_VERSION`).
@@ -44,7 +37,7 @@ Avoid v3-only patterns in browser-runtime compositions:
 
 Do not add `tailwind.config.js` only for composition colors, fonts, spacing, or utilities. Use `@theme` and `@utility`.
 
-**Migrating from v3?** Load an existing JS config explicitly: put `@config "./tailwind.config.js";` inside a `text/tailwindcss` block. v4 does **not** auto-detect v3 config files.
+**`@config` / `@plugin` abort the browser compile.** The pinned `@tailwindcss/browser` build does not support JS config or plugins. Theme and utilities stay in a `text/tailwindcss` block.
 
 ## Composition Pattern
 
@@ -109,15 +102,3 @@ npx hyperframes check
 # Render proof — frame 0 must NOT flash unstyled content. Preview alone can hide this.
 npx hyperframes render . --workers 1 --quality draft --output tailwind-proof.mp4
 ```
-
-## Quick Debug Checklist
-
-When Tailwind styles don't apply in a render, check in order:
-
-1. Project scaffolded with `npx hyperframes init --tailwind`?
-2. `index.html` `<head>` has `<script src="…@tailwindcss/browser@4.2.4…">` (not `cdn.tailwindcss.com`)?
-3. `window.__tailwindReady` Promise present in `<head>`?
-4. No v3 directives (`@tailwind base/components/utilities`) in the file?
-5. Tokens moved from `tailwind.config.js` to `@theme` (or `@config` reference for v3 migration)?
-6. Every render-critical class appears as a complete static token (no `bg-${color}-500` style assembly)?
-7. Re-run `npx hyperframes check`, then the render proof above.

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { sourceTimeAt } from "@hyperframes/core";
 
 const snapshotState = vi.hoisted(() => ({
   openSettledPage: vi.fn(async () => {
@@ -29,7 +30,7 @@ import snapshotCommand, {
   requireSnapshotFfmpeg,
   resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
-  resolveSnapshotVideoPlaybackRate,
+  resolveSnapshotVideoRateSpec,
   tailFrameTime,
 } from "./snapshot.js";
 
@@ -274,9 +275,40 @@ describe("resolveSnapshotVideoClipStart", () => {
   });
 });
 
-describe("resolveSnapshotVideoPlaybackRate", () => {
+describe("resolveSnapshotVideoRateSpec", () => {
   it("prefers the authored data-playback-rate over the browser default", () => {
-    expect(resolveSnapshotVideoPlaybackRate({ authoredRate: "1.8", defaultRate: 1 })).toBe(1.8);
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "1.8", defaultRate: 1 })).toBe(1.8);
+  });
+
+  it("falls back to the browser default when the authored rate is invalid", () => {
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "abc", defaultRate: 2 })).toBe(2);
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "0", defaultRate: 2 })).toBe(2);
+  });
+
+  it("allows rates up to the shared 10x bound", () => {
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "8", defaultRate: 1 })).toBe(8);
+  });
+
+  it("maps a frame through a rate lane instead of the constant", () => {
+    const lane = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 3 },
+          ],
+        },
+      ],
+    });
+    const spec = resolveSnapshotVideoRateSpec({
+      authoredRate: "1",
+      authoredAutomation: lane,
+      defaultRate: 1,
+    });
+    expect(typeof spec).toBe("object");
+    expect(sourceTimeAt(spec, 2)).toBeCloseTo(3.641, 2);
   });
 });
 

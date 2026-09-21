@@ -7,7 +7,6 @@ vi.mock("./useFileTree", () => ({
   useFileTree: () => ({
     projectDir: "",
     fileTree: [],
-    setFileTree: vi.fn(),
     fileTreeLoaded: true,
     refreshFileTree: vi.fn(async () => {}),
     compositions: [],
@@ -37,7 +36,6 @@ function useTestFileManager(projectId: string) {
     projectId,
     showToast: vi.fn(),
     recordEdit: vi.fn(async () => {}),
-    domEditSaveTimestampRef: { current: 0 },
     setRefreshKey: vi.fn(),
   });
 }

@@ -108,7 +108,7 @@ charEls.forEach((el, i) => {
 | REVEAL_THRESHOLD | 0.5–0.7                         | lower reveals too early (no tension); higher reads as a hard end-reveal            |
 | FLICKER_RATE     | 3–6 frames per glyph swap       | <3 looks like noise; >6 looks like discrete typing                                 |
 
-Reference: `../../examples/proof-logo-chain.html` (163px, 0.55s, 0.033s, 0.6).
+Reference: `../examples/proof-logo-chain.html` (163px, 0.55s, 0.033s, 0.6).
 
 ## Critical Constraints
 

@@ -4,7 +4,7 @@
  * A storyboard is the plan for a video before any animation work happens: an
  * ordered set of frames (key moments) plus their narrative/script. It is
  * authored as a single canonical markdown file (`STORYBOARD.md`) and parsed
- * into this normalized shape for the Studio's storyboard view and for agents.
+ * into this normalized shape for agents.
  *
  * See PRD: "Storyboarding in HyperFrames". The markdown stays canonical; this
  * is the derived structure the parser produces.
@@ -22,7 +22,7 @@ export const SCRIPT_FILENAME = "SCRIPT.md";
 
 /**
  * Lifecycle of a single frame. The agent advances each frame
- * `outline → built → animated`; the Studio renders progress from this.
+ * `outline → built → animated`; scripts and the agent read progress from this.
  */
 export type FrameStatus = "outline" | "built" | "animated";
 

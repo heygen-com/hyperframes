@@ -20,6 +20,16 @@ function makeTempProject(files: Record<string, string>): string {
   return dir;
 }
 
+/**
+ * The data URL a correctly-resolved asset must inline to. Asserting on the
+ * asset's CONTENT, not on the rewritten path string, is what proves rebasing
+ * resolved to the right file: resolving from the wrong base directory finds no
+ * file at all, so nothing is inlined and the assertion fails.
+ */
+function inlinedAs(mime: string, content: string): string {
+  return `data:${mime};base64,${Buffer.from(content, "utf-8").toString("base64")}`;
+}
+
 function makeColorGradingProject(lutSrc: string, files: Record<string, string> = {}): string {
   return makeTempProject({
     "index.html": `<!doctype html>
@@ -1122,6 +1132,17 @@ describe("bundleToSingleHtml", () => {
     expect(lutSrc).toBe("assets/luts/identity.cube");
   });
 
+  it("inlineAssets: false also keeps a LUT path external, without inlineColorGradingLuts", async () => {
+    const dir = makeColorGradingProject("assets/luts/identity.cube", {
+      "assets/luts/identity.cube": "LUT_3D_SIZE 2",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { inlineAssets: false });
+    const lutSrc = readBundledColorGradingLutSrc(bundled);
+
+    expect(lutSrc).toBe("assets/luts/identity.cube");
+  });
+
   it("warns when a render bundle cannot inline a referenced color grading LUT", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -1211,7 +1232,7 @@ describe("bundleToSingleHtml", () => {
 
     const bundled = await bundleToSingleHtml(dir);
 
-    expect(bundled).toContain("url('styles/assets/fonts/brand.woff2')");
+    expect(bundled).toContain(`url('${inlinedAs("font/woff2", "fake-font-data")}')`);
     expect(bundled).not.toContain("url('assets/fonts/brand.woff2')");
     expect(bundled).not.toContain("@import");
   });
@@ -1230,7 +1251,7 @@ describe("bundleToSingleHtml", () => {
 
     const bundled = await bundleToSingleHtml(dir);
 
-    expect(bundled).toContain("url('theme/images/grain.png')");
+    expect(bundled).toContain(`url('${inlinedAs("image/png", "fake-image-data")}')`);
     expect(bundled).not.toContain("url('./images/grain.png')");
   });
 
@@ -1249,7 +1270,7 @@ describe("bundleToSingleHtml", () => {
 
     const bundled = await bundleToSingleHtml(dir);
 
-    expect(bundled).toContain("url('assets/bg.png')");
+    expect(bundled).toContain(`url('${inlinedAs("image/png", "fake-image")}')`);
     expect(bundled).not.toContain("url('../../assets/bg.png')");
   });
 
@@ -1273,7 +1294,7 @@ describe("bundleToSingleHtml", () => {
 
     expect(bundled).toContain("url('https://cdn.example.com/font.woff2')");
     expect(bundled).toContain("url('data:image/svg+xml,<svg/>')");
-    expect(bundled).toContain("url('styles/img/bg.png')");
+    expect(bundled).toContain(`url('${inlinedAs("image/png", "fake")}')`);
   });
 
   it("preserves url() query strings and hash fragments during rebasing", async () => {
@@ -1290,7 +1311,103 @@ describe("bundleToSingleHtml", () => {
 
     const bundled = await bundleToSingleHtml(dir);
 
-    expect(bundled).toContain("url('styles/sprite.png?v=2#section')");
+    // The query/hash suffix rides along onto the inlined data URL.
+    expect(bundled).toContain(`url('${inlinedAs("image/png", "fake-sprite")}?v=2#section')`);
+  });
+
+  it("inlines fonts, images and scripts so no relative asset reference survives", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <style>
+    @font-face { font-family: "Brand"; src: url('assets/fonts/brand.woff2') format('woff2'); }
+    .hero { background: url('assets/hero.jpg'); }
+  </style>
+</head><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <img id="logo" src="assets/logo.png" srcset="assets/logo2x.webp 2x">
+    <video id="clip" poster="assets/poster.gif"></video>
+  </div>
+  <script src="assets/app.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+      "assets/fonts/brand.woff2": "font-bytes",
+      "assets/hero.jpg": "hero-bytes",
+      "assets/logo.png": "logo-bytes",
+      "assets/logo2x.webp": "logo2x-bytes",
+      "assets/poster.gif": "poster-bytes",
+      "assets/app.js": "window.__APP_LOADED__ = true;",
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    // Each asset arrives as its own bytes, which is what proves its path
+    // resolved to the right file rather than merely being rewritten.
+    expect(bundled).toContain(inlinedAs("font/woff2", "font-bytes"));
+    expect(bundled).toContain(inlinedAs("image/jpeg", "hero-bytes"));
+    expect(bundled).toContain(inlinedAs("image/png", "logo-bytes"));
+    expect(bundled).toContain(inlinedAs("image/webp", "logo2x-bytes"));
+    expect(bundled).toContain(inlinedAs("image/gif", "poster-bytes"));
+    // A local classic script is folded in as source, not as a data: URL.
+    expect(bundled).toContain("window.__APP_LOADED__ = true;");
+
+    // Nothing still points into the sibling assets/ directory that a consumer
+    // storing this bundle as a lone file will not have.
+    expect(bundled).not.toMatch(/["'(]assets\//);
+  });
+
+  it("keeps every asset's literal relative src when inlineAssets is false", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <style>
+    @font-face { font-family: "Brand"; src: url('assets/fonts/brand.woff2') format('woff2'); }
+    .hero { background: url('assets/hero.jpg'); }
+  </style>
+</head><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <img id="avatar" src="assets/avatar-01.png" srcset="assets/avatar-01@2x.png 2x">
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+      "assets/fonts/brand.woff2": "font-bytes",
+      "assets/hero.jpg": "hero-bytes",
+      "assets/avatar-01.png": "avatar-bytes",
+      "assets/avatar-01@2x.png": "avatar-2x-bytes",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { inlineAssets: false });
+
+    // The composition's own script can read `img.getAttribute("src")` back and
+    // still find its authored path — this is what a same-origin asset route
+    // (a sibling preview endpoint) needs to serve the real bytes.
+    expect(bundled).toContain('src="assets/avatar-01.png"');
+    expect(bundled).toContain("assets/avatar-01@2x.png 2x");
+    expect(bundled).toContain("url('assets/fonts/brand.woff2')");
+    expect(bundled).toContain("url('assets/hero.jpg')");
+    expect(bundled).not.toContain("data:image/png");
+    expect(bundled).not.toContain("data:font/woff2");
+  });
+
+  it("leaves an oversized asset relative and warns rather than inlining it", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <img id="big" src="assets/huge.png">
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+      "assets/huge.png": "x".repeat(2 * 1024 * 1024 + 1),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain('src="assets/huge.png"');
+    expect(bundled).not.toContain("data:image/png");
+    expect(warn.mock.calls.flat().join(" ")).toContain("may not be self-contained");
+    warn.mockRestore();
   });
 
   it("deduplicates diamond @import (same file imported by two parents)", async () => {
@@ -1725,3 +1842,50 @@ it.each(["root", "sibling", "template"])(
     }
   },
 );
+
+describe("bundleToSingleHtml script order", () => {
+  it("keeps an inline script before the src script that follows it, and one after it after", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.MARK_BEFORE = 1;</script>
+  <script src="https://cdn.example.com/needs-before.js"></script>
+  <script>window.MARK_AFTER = 1;</script>
+</body></html>`,
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const before = bundled.indexOf("MARK_BEFORE");
+      const lib = bundled.indexOf("cdn.example.com/needs-before.js");
+      const after = bundled.indexOf("MARK_AFTER");
+      expect(before).toBeGreaterThan(-1);
+      expect(before).toBeLessThan(lib);
+      expect(lib).toBeLessThan(after);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still merges adjacent inline scripts into one at the end of the body", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <script>window.MARK_ONE = 1;</script>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.MARK_TWO = 1;</script>
+</body></html>`,
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const { document } = parseHTML(bundled);
+      const merged = [...document.querySelectorAll("body script")].filter((el) =>
+        (el.textContent || "").includes("MARK_ONE"),
+      );
+      expect(merged).toHaveLength(1);
+      expect(merged[0]!.textContent).toContain("MARK_TWO");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

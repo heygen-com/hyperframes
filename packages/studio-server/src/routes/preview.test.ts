@@ -464,6 +464,35 @@ describe("hf-id surfacing in preview route", () => {
     expect(readFileSync(compPath, "utf-8")).toContain('data-hf-id="hf-');
   });
 
+  it("returns ByteString-safe stable and distinct ETags for percent-encoded CJK sub-comp paths", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "compositions"));
+    writeFileSync(join(projectDir, "compositions/測試.html"), "<div>First</div>");
+    writeFileSync(join(projectDir, "compositions/別頁.html"), "<div>Second</div>");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, { getProjectSignature: () => "stable-signature" }),
+    );
+
+    const first = await app.request(
+      "http://localhost/projects/demo/preview/comp/compositions/%E6%B8%AC%E8%A9%A6.html",
+    );
+    const repeat = await app.request(
+      "http://localhost/projects/demo/preview/comp/compositions/%E6%B8%AC%E8%A9%A6.html",
+    );
+    const other = await app.request(
+      "http://localhost/projects/demo/preview/comp/compositions/%E5%88%A5%E9%A0%81.html",
+    );
+
+    expect([first.status, repeat.status, other.status]).toEqual([200, 200, 200]);
+    const firstEtag = first.headers.get("ETag");
+    expect(firstEtag).toBeTruthy();
+    expect(firstEtag).toMatch(/^[\x20-\x7e]+$/);
+    expect(repeat.headers.get("ETag")).toBe(firstEtag);
+    expect(other.headers.get("ETag")).not.toBe(firstEtag);
+  });
+
   it("sub-comp served ids equal disk ids even when relative asset paths are rewritten", async () => {
     // Regression guard for the setTiming element_not_found divergence class:
     // the sub-comp route rewrites relative src/href BEFORE minting, so an
@@ -748,7 +777,14 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       PROXY_PARAMS_VERSION: "v1",
       getProxyCachePath: () => "",
     }));
-    vi.doMock("../helpers/mediaCodecMap.js", () => ({
+    // Spread the real module first so the pre-warm gate (`shouldPrewarmProxy`
+    // and its codec table) is the production one — a hand-written copy of that
+    // rule would let the table and this suite drift apart. The explicit keys
+    // below still replace everything that would touch ffprobe or ffmpeg.
+    vi.doMock("../helpers/mediaCodecMap.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaCodecMap.js")>(
+        "../helpers/mediaCodecMap.js",
+      )),
       scanProjectMediaCodecMap: opts.scanMapImpl ?? (async () => ({})),
       createMediaCodecProbeCache: () => new Map(),
       probeAssetCodec:
@@ -861,6 +897,36 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(second.status).toBe(304);
       // The 304 shortcut never needs the proxy — no second transcode call.
       expect(resolveProxyMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("counts one proxy request per resolved proxy, not per HTTP request", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "0123456789proxybytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const { mediaProxyDemand } = await import("../helpers/mediaCodecMap.js");
+      const before = mediaProxyDemand().proxyRequests;
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const first = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      const etag = first.headers.get("ETag");
+      // A 304 revalidation is the same asset already served; counting it would
+      // put this on a different scale from `prewarmsRequested`.
+      await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264", {
+        headers: { "If-None-Match": etag! },
+      });
+
+      expect(mediaProxyDemand().proxyRequests - before).toBe(1);
     });
 
     it("returns 404 without transcoding when the asset is missing", async () => {

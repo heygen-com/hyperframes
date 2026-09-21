@@ -11,6 +11,8 @@ import {
   proxyVariantFor,
   resolveProxyVariantRequest,
   scanProjectMediaCodecMap,
+  shouldPrewarmProxy,
+  type AssetCodecFacts,
 } from "./mediaCodecMap.js";
 
 // Any real, existing file works as a stand-in ffprobe path — the runner
@@ -92,7 +94,7 @@ describe("probeAssetCodec", () => {
     expect(facts).toEqual({
       codecName: "hevc",
       browserHostile: true,
-      representativeMime: BROWSER_HOSTILE_CODECS.hevc,
+      representativeMime: BROWSER_HOSTILE_CODECS.hevc?.representativeMime,
       hasAlpha: false,
     });
   });
@@ -122,7 +124,7 @@ describe("probeAssetCodec", () => {
     expect(facts).toEqual({
       codecName: "vp9",
       browserHostile: true,
-      representativeMime: BROWSER_HOSTILE_CODECS.vp9,
+      representativeMime: BROWSER_HOSTILE_CODECS.vp9?.representativeMime,
       hasAlpha: false,
     });
   });
@@ -169,6 +171,71 @@ describe("probeAssetCodec", () => {
     process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
 
     await expect(probeAssetCodec(videoPath)).resolves.toBeNull();
+  });
+});
+
+describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
+  // Pinned because nulling one is silent and expensive: the runtime skips
+  // `canPlayType` when the mime is null (packages/core/src/runtime/mediaProxy.ts,
+  // `maybeProxyProactively`) and proxies on EVERY browser, reinstating exactly
+  // the transcodes the pre-warm split removed.
+  it.each(["hevc", "av1", "vp9"])("keeps a canPlayType probe for %s", (codecName) => {
+    expect(typeof BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBe("string");
+  });
+
+  it("has no representative mime for prores, which is never decodable", () => {
+    expect(BROWSER_HOSTILE_CODECS.prores?.representativeMime).toBeNull();
+  });
+});
+
+describe("shouldPrewarmProxy", () => {
+  function facts(codecName: string): AssetCodecFacts {
+    return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
+  }
+
+  it.each(["hevc", "prores"])(
+    "pre-warms %s, which has no cross-platform browser decode",
+    (codecName) => {
+      expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
+    },
+  );
+
+  it.each(["vp9", "av1"])(
+    "does not pre-warm %s, which every mainstream engine decodes itself",
+    (codecName) => {
+      expect(shouldPrewarmProxy(facts(codecName))).toBe(false);
+    },
+  );
+
+  it("does not pre-warm a browser-safe codec", () => {
+    expect(
+      shouldPrewarmProxy({
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      }),
+    ).toBe(false);
+  });
+
+  // `shouldPrewarmProxy` alone cannot catch a missing `Object.hasOwn` guard —
+  // `.prewarm === true` is already strict against `Object.prototype.constructor`.
+  // The input that misbehaves goes through `codecFactsFor`, which would report
+  // an ordinary asset as browser-hostile.
+  it("does not treat a codec named after an Object.prototype key as hostile", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "constructor" }));
+
+    expect(facts).toEqual({
+      codecName: "constructor",
+      browserHostile: false,
+      representativeMime: null,
+      hasAlpha: false,
+    });
+    expect(shouldPrewarmProxy(facts!)).toBe(false);
   });
 });
 

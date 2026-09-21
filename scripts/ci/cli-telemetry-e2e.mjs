@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * End-to-end check that `hyperframes add` reports what it installed.
+ * End-to-end check that `hyperframes add` reports what it installed, and that
+ * `hyperframes render` reports what it rendered.
  *
  * Unit tests can only assert the emit seam. `shouldTrack()` short-circuits
  * whenever `isDevMode()` is true, and that is true for any `.ts` entry — so
@@ -22,7 +23,7 @@
  */
 
 import { createServer } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -245,6 +246,199 @@ console.log("unknown item");
 const unknown = await runAdd("e2e-item-that-does-not-exist");
 check("install fails", unknown.status !== 0, unknown.status);
 check("a refused install is not counted", unknown.added.length === 0, unknown.added);
+
+// `render` telemetry: a real composition through the real pipeline. One fixture
+// sets every probed property and its pair sets none, so each is asserted on
+// both sides. ffmpeg/browser_version_major's Docker-absent side has no runtime
+// here; events.test.ts covers that side instead.
+
+// This harness's own HF_ vars would read back as operator overrides in the rendered
+// event, so every render below starts from an environment carrying none of them.
+const HF_ENV_RE = /^(HF|HYPERFRAMES)_/;
+function withoutHfEnv(env) {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !HF_ENV_RE.test(k)));
+}
+
+const PIXEL_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8DwHwAFAAH/RVeu5AAAAABJRU5ErkJggg==";
+
+/** The size the composition declares. The mismatched fixture's CSS sits far enough below
+ * it to land in the 51+ delta bucket; the matched fixture's CSS is this exact size. */
+const COMPOSITION_SIZE = { width: 800, height: 450 };
+const MISMATCHED_CSS_SIZE = { width: 640, height: 360 };
+
+const MEDIA_MARKUP = `<img src="pixel.png" data-start="0" data-duration="1" alt="" />
+      <audio src="tone.wav" data-start="0" data-duration="1" data-volume="0.3"></audio>`;
+
+function fixtureHtml(cssSize, media) {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: ${cssSize.width}px; height: ${cssSize.height}px; overflow: hidden; background: #111; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="e2e-render"
+      data-start="0"
+      data-duration="1"
+      data-width="${COMPOSITION_SIZE.width}"
+      data-height="${COMPOSITION_SIZE.height}"
+      data-no-timeline
+    >
+      ${media}
+    </div>
+  </body>
+</html>
+`;
+}
+
+function writeFixtureMedia(dir) {
+  writeFileSync(join(dir, "pixel.png"), Buffer.from(PIXEL_PNG_BASE64, "base64"));
+  const ffmpeg = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000",
+      "-t",
+      "1",
+      "-y",
+      join(dir, "tone.wav"),
+    ],
+    { stdio: "inherit" },
+  );
+  if (ffmpeg.status !== 0) {
+    throw new Error(`fixture audio generation failed (ffmpeg exit ${ffmpeg.status})`, {
+      cause: ffmpeg.error,
+    });
+  }
+}
+
+function writeRenderFixture(dir, { mismatched, withMedia }) {
+  const cssSize = mismatched ? MISMATCHED_CSS_SIZE : COMPOSITION_SIZE;
+  const media = withMedia ? MEDIA_MARKUP : "";
+  writeFileSync(join(dir, "index.html"), fixtureHtml(cssSize, media));
+  if (withMedia) writeFixtureMedia(dir);
+}
+
+function renderCompleteEvents(batches) {
+  return batches.flatMap((b) => b.batch).filter((e) => e.event === "render_complete");
+}
+
+function runRender(fixtureDir, { extraEnv = {}, skill } = {}) {
+  const capture = join(fixtureDir, "telemetry.jsonl");
+  const outputPath = join(fixtureDir, "out.mp4");
+  const args = [
+    "render",
+    fixtureDir,
+    "--quality",
+    "draft",
+    "--workers",
+    "1",
+    "--output",
+    outputPath,
+  ];
+  if (skill) args.push("--skill", skill);
+  return new Promise((done) => {
+    const child = spawn(process.execPath, ["--require", hookPath, cliPath, ...args], {
+      env: { ...withoutHfEnv(process.env), TELEMETRY_CAPTURE_FILE: capture, ...extraEnv },
+      stdio: "ignore",
+    });
+    child.on("close", (status) => {
+      const batches = readBatches(capture);
+      done({ status, outputPath, batches, completeEvents: renderCompleteEvents(batches) });
+    });
+  });
+}
+
+console.log(
+  "render: positive fixture (media present, root/body mismatched, skill flag, env override)",
+);
+const posDir = mkdtempSync(join(sandbox, "render-pos-"));
+writeRenderFixture(posDir, { mismatched: true, withMedia: true });
+const pos = await runRender(posDir, {
+  extraEnv: { HYPERFRAMES_E2E_MARKER: "1" },
+  skill: "e2e-smoke-test",
+});
+const posEvent = pos.completeEvents[0]?.properties ?? {};
+check("render succeeded", pos.status === 0, pos.status);
+check("output file written", existsSync(pos.outputPath));
+check(
+  "exactly one render_complete event",
+  pos.completeEvents.length === 1,
+  pos.completeEvents.length,
+);
+check("audio_count is 1", posEvent.audio_count === 1, posEvent.audio_count);
+check("image_count is 1", posEvent.image_count === 1, posEvent.image_count);
+check(
+  "root_body_mismatch is true",
+  posEvent.root_body_mismatch === true,
+  posEvent.root_body_mismatch,
+);
+check(
+  "root_body_delta_px_bucket is 51+",
+  posEvent.root_body_delta_px_bucket === "51+",
+  posEvent.root_body_delta_px_bucket,
+);
+check(
+  "authoring_skill_source is flag",
+  posEvent.authoring_skill_source === "flag",
+  posEvent.authoring_skill_source,
+);
+check(
+  "hf_env_overrides includes the injected var",
+  Array.isArray(posEvent.hf_env_overrides) &&
+    posEvent.hf_env_overrides.includes("HYPERFRAMES_E2E_MARKER"),
+  posEvent.hf_env_overrides,
+);
+check(
+  "ffmpeg_version_major is a positive number",
+  typeof posEvent.ffmpeg_version_major === "number" && posEvent.ffmpeg_version_major > 0,
+  posEvent.ffmpeg_version_major,
+);
+check(
+  "browser_version_major is a positive number",
+  typeof posEvent.browser_version_major === "number" && posEvent.browser_version_major > 0,
+  posEvent.browser_version_major,
+);
+
+console.log("render: negative fixture (no media, root/body matched, no skill flag, clean env)");
+const negDir = mkdtempSync(join(sandbox, "render-neg-"));
+writeRenderFixture(negDir, { mismatched: false, withMedia: false });
+const neg = await runRender(negDir);
+const negEvent = neg.completeEvents[0]?.properties ?? {};
+check("render succeeded", neg.status === 0, neg.status);
+check("audio_count is 0", negEvent.audio_count === 0, negEvent.audio_count);
+check("image_count is 0", negEvent.image_count === 0, negEvent.image_count);
+check(
+  "root_body_mismatch is false",
+  negEvent.root_body_mismatch === false,
+  negEvent.root_body_mismatch,
+);
+check(
+  "root_body_delta_px_bucket is 0",
+  negEvent.root_body_delta_px_bucket === "0",
+  negEvent.root_body_delta_px_bucket,
+);
+check(
+  "authoring_skill_source is absent, not a falsy placeholder",
+  !("authoring_skill_source" in negEvent),
+  negEvent.authoring_skill_source,
+);
+check(
+  "hf_env_overrides is an empty array",
+  Array.isArray(negEvent.hf_env_overrides) && negEvent.hf_env_overrides.length === 0,
+  negEvent.hf_env_overrides,
+);
 
 server.close();
 rmSync(sandbox, { recursive: true, force: true });

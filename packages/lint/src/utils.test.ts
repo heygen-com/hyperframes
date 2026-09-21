@@ -1,8 +1,80 @@
 import { describe, it, expect } from "vitest";
-import { stripCssComments, stripJsComments, stripJsStringLiterals } from "./utils.js";
+import {
+  parseHtmlStructure,
+  stripCssComments,
+  stripJsComments,
+  stripJsStringLiterals,
+} from "./utils.js";
 
 const scan = (src: string) => stripJsStringLiterals(stripJsComments(src));
 const findsRaf = (src: string) => /requestAnimationFrame\s*\(/.test(scan(src));
+
+describe("parseHtmlStructure source ranges", () => {
+  it("does not include ignored markup inside a preceding malformed closing tag", () => {
+    const source = "<p>x</p ignored<noise><span>y</span>";
+    const tags = parseHtmlStructure(source).tags;
+    expect(tags[1]).toMatchObject({ name: "span", raw: "<span>", attrs: "", index: 22 });
+  });
+
+  it("keeps a less-than inside a malformed tag name in the original source range", () => {
+    const tags = parseHtmlStructure("<div<foo>body</div<foo>").tags;
+    expect(tags.map(({ name, raw, attrs, index }) => ({ name, raw, attrs, index }))).toEqual([
+      { name: "div<foo", raw: "<div<foo>", attrs: "", index: 0 },
+    ]);
+  });
+
+  it("uses the original name boundary when Unicode lowercasing changes its length", () => {
+    const source = '<Aİİİ data-check="<" data-flag=x>body</Aİİİ>';
+    const tags = parseHtmlStructure(source).tags;
+    expect(tags.map(({ name, raw, attrs, index }) => ({ name, raw, attrs, index }))).toEqual([
+      {
+        name: "ai̇i̇i̇",
+        raw: '<Aİİİ data-check="<" data-flag=x>',
+        attrs: ' data-check="<" data-flag=x',
+        index: 0,
+      },
+    ]);
+  });
+
+  it("keeps malformed names and quoted less-than values after a multiline close", () => {
+    const source = '<p>x</p\n  ><div<foo data-expr="a < b">y</div<foo>';
+    const tags = parseHtmlStructure(source).tags;
+    expect(tags[1]).toMatchObject({
+      name: "div<foo",
+      raw: '<div<foo data-expr="a < b">',
+      attrs: ' data-expr="a < b"',
+      index: 11,
+    });
+  });
+
+  it("does not reuse implied-open origins for the following explicit tag", () => {
+    const source = '</p></br><Aİ data-expr="x < y">text</Aİ>';
+    const tags = parseHtmlStructure(source).tags;
+    expect(tags.map(({ name, raw, attrs, index }) => ({ name, raw, attrs, index }))).toEqual([
+      { name: "p", raw: "</p>", attrs: "p", index: 0 },
+      { name: "br", raw: "</br>", attrs: "r", index: 4 },
+      { name: "ai̇", raw: '<Aİ data-expr="x < y">', attrs: ' data-expr="x < y"', index: 9 },
+    ]);
+  });
+
+  it("does not use apparent tags in comments or raw-text scripts as an opening origin", () => {
+    const source = '<!-- <fake> --><script>const text = "<fake>";</script\n ><div<foo>x</div<foo>';
+    const tags = parseHtmlStructure(source).tags;
+    expect(tags.map(({ name, raw, attrs }) => ({ name, raw, attrs }))).toEqual([
+      { name: "script", raw: "<script>", attrs: "" },
+      { name: "div<foo", raw: "<div<foo>", attrs: "" },
+    ]);
+  });
+
+  it("starts each open tag at its own < after a multiline closing tag", () => {
+    const source = `<span data-expr="x < y">A</span\n    ><span>B</span>`;
+    const tags = parseHtmlStructure(source).tags;
+    expect(tags.map(({ raw, index }) => ({ raw, index }))).toEqual([
+      { raw: `<span data-expr="x < y">`, index: 0 },
+      { raw: `<span>`, index: source.indexOf("<span>") },
+    ]);
+  });
+});
 
 describe("stripJsStringLiterals", () => {
   it("blanks a call the composition only renders as text", () => {

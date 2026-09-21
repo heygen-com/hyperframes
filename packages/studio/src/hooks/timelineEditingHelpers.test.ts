@@ -243,7 +243,6 @@ describe("persistTimelineBatchEdit", () => {
         writes.push([path, content]);
       },
       recordEdit: async () => {},
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set<string>() },
     };
   }
@@ -452,7 +451,6 @@ describe("persistElementAttribute", () => {
         label: "Set volume",
         writeProjectFile,
         recordEdit: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
         pendingTimelineEditPathRef: { current: new Set() },
         patchLive,
       }),
@@ -496,7 +494,6 @@ describe("persistElementAttribute — unwind value", () => {
         label: "Set volume",
         writeProjectFile,
         recordEdit: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
         pendingTimelineEditPathRef: { current: new Set() },
         // The live DOM is ALREADY at the new value when the commit runs — that
         // is what `setLive` does on every drag frame.

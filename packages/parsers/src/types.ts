@@ -437,7 +437,10 @@ export interface PlayerAPI {
   ensureTimeline(): void;
   enableRenderMode(): void;
   disableRenderMode(): void;
-  renderSeek(time: number, options?: { suppressEvents?: boolean }): void;
+  renderSeek(
+    time: number,
+    options?: { suppressEvents?: boolean; subFrameDivisions?: number },
+  ): void;
   getElementVisibility(elementId: string): { visible: boolean; opacity?: number };
   getVisibleElements(): Array<{ id: string; tagName: string; start: number; end: number }>;
   getRenderState(): {

@@ -12,7 +12,11 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { ArtifactTransaction, type ArtifactDurationProbe } from "./artifactTransaction.js";
+import {
+  ArtifactTransaction,
+  buildArtifactExpectation,
+  type ArtifactDurationProbe,
+} from "./artifactTransaction.js";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-artifact-transaction-"));
@@ -352,5 +356,159 @@ describe("ArtifactTransaction", () => {
     );
 
     transaction.rollback();
+  });
+
+  // ── HLS: a directory artifact that still has to pass the duration gate ────
+  // png-sequence directories have no probeable container, so the directory
+  // branch historically stopped at "non-empty readable files". An HLS package
+  // does have one — its video playlist — and shipping a truncated playlist is
+  // exactly the #3395 failure mode in a new container.
+
+  function stageHlsDirectory(transaction: ArtifactTransaction): void {
+    mkdirSync(transaction.stagingPath);
+    writeFileSync(join(transaction.stagingPath, "master.m3u8"), "#EXTM3U\n");
+    writeFileSync(join(transaction.stagingPath, "video.m3u8"), "#EXTM3U\n#EXTINF:4.000000,\n");
+    writeFileSync(join(transaction.stagingPath, "video_00000.ts"), "ts-bytes");
+  }
+
+  it("probes the named playlist inside an HLS directory", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "render-hls");
+    const probed: string[] = [];
+    const probe: ArtifactDurationProbe = async (path) => {
+      probed.push(path);
+      return { durationSeconds: 4.0 };
+    };
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, probe);
+    stageHlsDirectory(transaction);
+
+    await expect(
+      transaction.validate({
+        expectedDurationSeconds: 4.0,
+        fps: 30,
+        probeTarget: "video.m3u8",
+        requiredFiles: ["master.m3u8"],
+      }),
+    ).resolves.toBeUndefined();
+    expect(probed).toEqual([join(transaction.stagingPath, "video.m3u8")]);
+
+    transaction.rollback();
+  });
+
+  it("rejects a truncated HLS package", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "render-hls");
+    const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 8.0 });
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, probe);
+    stageHlsDirectory(transaction);
+
+    await expect(
+      transaction.validate({
+        expectedDurationSeconds: 20.0,
+        fps: 30,
+        probeTarget: "video.m3u8",
+        requiredFiles: ["master.m3u8"],
+      }),
+    ).rejects.toThrow(/is truncated: expected 20\.000s, probed 8\.000s/);
+
+    transaction.rollback();
+  });
+
+  // ffprobe reports `nb_frames=N/A` through the hls demuxer, so the frame
+  // check is inert for a playlist probe. Assert it stays inert rather than
+  // failing a package whose duration is correct.
+  it("passes an HLS package whose probe reports no frame count", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "render-hls");
+    const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4.0 });
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, probe);
+    stageHlsDirectory(transaction);
+
+    await expect(
+      transaction.validate({
+        expectedDurationSeconds: 4.0,
+        fps: 30,
+        expectedFrames: 120,
+        probeTarget: "video.m3u8",
+        requiredFiles: ["master.m3u8"],
+      }),
+    ).resolves.toBeUndefined();
+
+    transaction.rollback();
+  });
+
+  it("rejects an HLS package with no master playlist before probing", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "render-hls");
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, neverCalled);
+    mkdirSync(transaction.stagingPath);
+    writeFileSync(join(transaction.stagingPath, "video.m3u8"), "#EXTM3U\n");
+
+    await expect(
+      transaction.validate({
+        expectedDurationSeconds: 4.0,
+        probeTarget: "video.m3u8",
+        requiredFiles: ["master.m3u8"],
+      }),
+    ).rejects.toThrow(/missing master\.m3u8/);
+
+    transaction.rollback();
+  });
+
+  it("surfaces a failed probe of the HLS playlist instead of passing the gate", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "render-hls");
+    const probe: ArtifactDurationProbe = async () => {
+      throw new Error("ffprobe: Invalid data found when processing input");
+    };
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, probe);
+    stageHlsDirectory(transaction);
+
+    await expect(
+      transaction.validate({
+        expectedDurationSeconds: 4.0,
+        probeTarget: "video.m3u8",
+        requiredFiles: ["master.m3u8"],
+      }),
+    ).rejects.toThrow(/duration probe failed for .*video\.m3u8/);
+
+    transaction.rollback();
+  });
+});
+
+describe("buildArtifactExpectation", () => {
+  const base = { durationSeconds: 4, fps: 30, expectedFrames: 120 };
+
+  it("returns no expectation for the formats with nothing probeable", () => {
+    expect(buildArtifactExpectation({ ...base, outputFormat: "png-sequence" })).toBeUndefined();
+    expect(buildArtifactExpectation({ ...base, outputFormat: "gif" })).toBeUndefined();
+  });
+
+  it("returns no expectation when the pipeline has no usable duration", () => {
+    for (const durationSeconds of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        buildArtifactExpectation({ ...base, durationSeconds, outputFormat: "mp4" }),
+      ).toBeUndefined();
+    }
+  });
+
+  it("probes the staged file itself for single-file formats", () => {
+    for (const outputFormat of ["mp4", "webm", "mov"] as const) {
+      expect(buildArtifactExpectation({ ...base, outputFormat })).toEqual({
+        expectedDurationSeconds: 4,
+        fps: 30,
+        expectedFrames: 120,
+      });
+    }
+  });
+
+  it("names the video playlist and requires the master for hls", () => {
+    expect(buildArtifactExpectation({ ...base, outputFormat: "hls" })).toEqual({
+      expectedDurationSeconds: 4,
+      fps: 30,
+      expectedFrames: 120,
+      probeTarget: "video.m3u8",
+      requiredFiles: ["master.m3u8"],
+    });
   });
 });

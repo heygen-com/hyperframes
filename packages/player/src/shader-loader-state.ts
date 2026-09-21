@@ -17,6 +17,7 @@ const HIDE_TRANSITION_MS = 420;
 export class ShaderLoaderState {
   private readonly _el: ShaderLoaderElements;
   private _hideTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _hiddenCallbacks: Array<() => void> = [];
 
   constructor(elements: ShaderLoaderElements) {
     this._el = elements;
@@ -42,18 +43,34 @@ export class ShaderLoaderState {
     this._scheduleCleanup();
   }
 
+  /** Runs `cb` once the panel is fully gone: now if it is not raised or
+   *  fading, otherwise when the fade's cleanup fires. */
+  whenHidden(cb: () => void): void {
+    const cls = this._el.root.classList;
+    if (cls.contains("hfp-visible") || cls.contains("hfp-hiding")) this._hiddenCallbacks.push(cb);
+    else cb();
+  }
+
+  private _flushHidden(): void {
+    const callbacks = this._hiddenCallbacks;
+    this._hiddenCallbacks = [];
+    for (const cb of callbacks) cb();
+  }
+
   reset(): void {
     if (this._hideTimeout) {
       clearTimeout(this._hideTimeout);
       this._hideTimeout = null;
     }
     this._el.root.classList.remove("hfp-visible", "hfp-hiding");
+    this._flushHidden();
     this._el.fill.style.transform = "scaleX(0)";
     this._el.transitionValue.textContent = "";
     this._el.frameValue.textContent = "";
     this._el.frameRow.style.visibility = "hidden";
   }
 
+  // fallow-ignore-next-line unused-class-member, complexity
   update(status: ShaderTransitionState, loadingMode: string): void {
     if (loadingMode !== "player") {
       this.reset();
@@ -63,6 +80,9 @@ export class ShaderLoaderState {
       this.hide();
       return;
     }
+    // showAssetsLoading() may have left "Loading assets" here for a prior
+    // show; this path owns the label whenever it's the one drawing the panel.
+    this._el.root.setAttribute("aria-label", "Preparing scene transitions");
 
     const progress =
       typeof status.progress === "number" && Number.isFinite(status.progress) ? status.progress : 0;
@@ -86,6 +106,7 @@ export class ShaderLoaderState {
 
     this._el.fill.style.transform = `scaleX(${ratio})`;
 
+    // fallow-ignore-next-line code-duplication
     this._el.transitionValue.textContent =
       status.currentTransition !== undefined && status.transitionTotal !== undefined
         ? `${status.currentTransition}/${status.transitionTotal}`
@@ -111,6 +132,17 @@ export class ShaderLoaderState {
     this.show();
   }
 
+  /** Second reason to show the same overlay — reuses the shader-transition
+   *  panel's DOM rather than drawing a second one. */
+  showAssetsLoading(): void {
+    this.reset();
+    this._el.title.textContent = "Loading assets";
+    this._el.detail.textContent = "Waiting for images, video and fonts to finish loading.";
+    this._el.root.setAttribute("aria-label", "Loading assets");
+    this.show();
+  }
+
+  // fallow-ignore-next-line unused-class-member
   get hideTimeout(): ReturnType<typeof setTimeout> | null {
     return this._hideTimeout;
   }
@@ -120,6 +152,7 @@ export class ShaderLoaderState {
       clearTimeout(this._hideTimeout);
       this._hideTimeout = null;
     }
+    this._hiddenCallbacks = [];
   }
 
   private _scheduleCleanup(): void {
@@ -127,6 +160,7 @@ export class ShaderLoaderState {
     this._hideTimeout = setTimeout(() => {
       this._el.root.classList.remove("hfp-hiding");
       this._hideTimeout = null;
+      this._flushHidden();
     }, HIDE_TRANSITION_MS);
   }
 }

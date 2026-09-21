@@ -2,7 +2,7 @@
 
 Use this reference in Step 3 to write `STORYBOARD.md` and `SCRIPT.md` for a **PR-to-video** — a code change (the diff, commits, files, +/− stats, and the people behind it) turned into an explainer. There is **no website and no captured assets**; the PR was ingested into `capture/extracted/` in Step 1.
 
-This file defines the story: what the video explains, in what order, and why each frame exists. It does not define layout, effects, animation, or file syntax. For exact storyboard syntax follow `../hyperframes-core/references/storyboard-format.md` and `../hyperframes-core/references/script-format.md`.
+This file defines the story: what the video explains, in what order, and why each frame exists. It does not define layout, effects, animation, or file syntax. For exact storyboard syntax follow `../hyperframes/references/storyboard-format.md` and `../hyperframes/references/script-format.md`.
 
 ## Read first
 

@@ -560,6 +560,109 @@ describe("hevc_preview_codec", () => {
   });
 });
 
+describe("video_media_start_at_or_past_eof", () => {
+  const mockExecFile = vi.mocked(execFile);
+  const FAKE_FFPROBE_PATH = process.execPath;
+
+  function videoProject(videoTags: string): { project: string; videoAbsPath: string } {
+    const project = makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    ${videoTags}
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`);
+    const videoAbsPath = join(project, "clip.mp4");
+    writeFileSync(videoAbsPath, "fake video bytes");
+    return { project, videoAbsPath };
+  }
+
+  function mockDurationProbe(streamDuration: number, containerDuration = streamDuration): void {
+    mockExecFile.mockImplementation((_file, _args, _options, callback) => {
+      callback(
+        null,
+        Buffer.from(
+          JSON.stringify({
+            streams: [{ codec_name: "h264", duration: String(streamDuration) }],
+            format: { duration: String(containerDuration) },
+          }),
+        ),
+        Buffer.alloc(0),
+      );
+      return new ChildProcess();
+    });
+  }
+
+  async function mediaStartFindings(project: string): Promise<HyperframeLintFinding[]> {
+    const { results } = await lintProject(project);
+    return results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "video_media_start_at_or_past_eof");
+  }
+
+  beforeEach(() => {
+    process.env.HYPERFRAMES_FFPROBE_PATH = FAKE_FFPROBE_PATH;
+    mockExecFile.mockReset();
+  });
+
+  afterEach(() => {
+    delete process.env.HYPERFRAMES_FFPROBE_PATH;
+    mockExecFile.mockReset();
+  });
+
+  it.each([2, 5])(
+    "warns that a finite non-looping local video starting at/past stream EOF (%ss) holds its final frame",
+    async (mediaStart) => {
+      const { project } = videoProject(
+        `<video id="clip" src="clip.mp4" data-start="0" data-duration="6" data-media-start="${mediaStart}" muted></video>`,
+      );
+      mockDurationProbe(2, 60);
+
+      const result = await lintProject(project);
+      const findings = result.results
+        .flatMap((entry) => entry.result.findings)
+        .filter((finding) => finding.code === "video_media_start_at_or_past_eof");
+
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({
+        severity: "warning",
+        file: "index.html",
+        elementId: "clip",
+      });
+      expect(findings[0]?.message).toContain("will hold its final frame");
+      expect(findings[0]?.fixHint).toContain("Trim data-media-start");
+      expect(result.totalWarnings).toBeGreaterThanOrEqual(1);
+      expect(result.totalErrors).toBe(0);
+      expect(result.results[0]?.result.ok).toBe(true);
+    },
+  );
+
+  it("does not warn when the media start is just inside EOF", async () => {
+    const { project } = videoProject(
+      '<video id="clip" src="clip.mp4" data-start="0" data-duration="6" data-media-start="1.999" muted></video>',
+    );
+    mockDurationProbe(2);
+
+    expect(await mediaStartFindings(project)).toEqual([]);
+  });
+
+  it("silently skips open, looping, remote, variable, missing, and unprobeable slots", async () => {
+    const { project } = videoProject(`
+      <video src="clip.mp4" data-start="0" data-duration="6" data-media-start="1.9" muted></video>
+      <video src="clip.mp4" data-start="0" data-media-start="5" muted></video>
+      <video src="clip.mp4" data-start="0" data-duration="6" data-media-start="5" loop muted></video>
+      <video src="clip.mp4" data-var-src="selectedVideo" data-start="0" data-duration="6" data-media-start="5" muted></video>
+      <video src="https://cdn.example.com/clip.mp4" data-start="0" data-duration="6" data-media-start="5" muted></video>
+      <video src="missing.mp4" data-start="0" data-duration="6" data-media-start="5" muted></video>
+    `);
+    // Every locally addressable source receives a successful duration probe;
+    // each listed attribute/path boundary, not a probe failure, must exclude it.
+    mockDurationProbe(2);
+
+    expect(await mediaStartFindings(project)).toEqual([]);
+  });
+});
+
 describe("audio_src_not_found with templating tokens", () => {
   // A src carrying an unresolved templating placeholder is late-bound before render,
   // so the static linter cannot resolve it to a file and must not report it missing.
@@ -586,6 +689,21 @@ describe("audio_src_not_found with templating tokens", () => {
 
   it("still flags a genuinely missing local audio file", async () => {
     expect(await hasAudioSrcNotFound(audioProject("audio/missing.mp3"))).toBe(true);
+  });
+
+  it("accepts an existing audio file addressed the way the renderer resolves it", async () => {
+    for (const src of [
+      "audio/bed.mp3",
+      "/audio/bed.mp3",
+      "../audio/bed.mp3",
+      "audio/bed.mp3?v=2",
+      "audio/bed.mp3#t=5",
+    ]) {
+      const project = audioProject(src);
+      mkdirSync(join(project, "audio"), { recursive: true });
+      writeFileSync(join(project, "audio", "bed.mp3"), "");
+      expect(await hasAudioSrcNotFound(project)).toBe(false);
+    }
   });
 });
 

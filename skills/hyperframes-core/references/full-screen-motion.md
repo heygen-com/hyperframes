@@ -2,10 +2,6 @@
 
 For full-frame motion (continuous backgrounds, color washes, full-bleed visual states that span multiple clips), prefer a **shared background layer + transparent timed content layers** over stacked opaque scene backgrounds.
 
-## Why
-
-Stacking opaque scene divs means every scene change has to repaint the entire frame, every cross-scene visual continuity has to be faked, and every "global" state (a hue shift, a vignette, a film grain) has to be duplicated on every scene. A shared background layer driven by the seekable timeline gives you one continuous visual surface and makes scenes themselves cheap and transparent.
-
 ## Pattern
 
 ```html
@@ -48,7 +44,6 @@ Stacking opaque scene divs means every scene change has to repaint the entire fr
 </div>
 
 <script>
-  window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
   // Drive the shared background from the seekable timeline.
@@ -70,7 +65,3 @@ Stacking opaque scene divs means every scene change has to repaint the entire fr
 - **Drive global state from the shared layer.** Hue shifts, vignettes, grain, film-look filters — animate them once on the shared layer, not per-scene.
 - **Do not animate visibility on `.clip` elements.** HyperFrames already shows/hides clips based on `data-start` and `data-duration`. Animating `display` / `visibility` on the clip itself races with the framework's own show/hide. Animate a _child wrapper_ inside the clip instead.
 - **Verify intentional overflow with snapshots.** Before adding `data-layout-allow-overflow` to silence an inspect warning, run `npx hyperframes snapshot` and confirm the overflow is what you want.
-
-## When Not to Use This Pattern
-
-If scenes really are visually disjoint — hard cuts between distinct color worlds with no continuity — the stacked-opaque pattern is fine. The shared-background pattern is for compositions where the background **is part of the motion language**, not just backdrop.

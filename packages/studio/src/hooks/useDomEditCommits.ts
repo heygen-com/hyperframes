@@ -50,7 +50,6 @@ export interface UseDomEditCommitsParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   fileTree: string[];
   importedFontAssetsRef: React.MutableRefObject<ImportedFontAsset[]>;
@@ -90,6 +89,7 @@ export interface UseDomEditCommitsParams {
   ) => Promise<CutoverResult>;
   /** Resolver-shadow tripwire for z-index reorder targets (telemetry-only, decoupled from cutover). */
   onReorderShadow?: (targets: string[]) => void;
+  readOnlyPreview: boolean;
 }
 
 export function useDomEditCommits({
@@ -98,7 +98,6 @@ export function useDomEditCommits({
   showToast,
   queueDomEditSave,
   writeProjectFile,
-  domEditSaveTimestampRef,
   editHistory,
   fileTree,
   importedFontAssetsRef,
@@ -114,6 +113,7 @@ export function useDomEditCommits({
   onTrySdkPersist,
   onTrySdkDelete,
   onReorderShadow,
+  readOnlyPreview,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -214,11 +214,6 @@ export function useDomEditCommits({
         }
       }
 
-      // Mark the save timestamp before the file write so the SSE file-change
-      // handler suppresses the reload even if the event arrives before the
-      // response (the server writes the file and emits SSE during the fetch).
-      domEditSaveTimestampRef.current = Date.now();
-
       const patchResponse = await fetch(
         buildProjectApiPath(pid, `/file-mutations/patch-element/${encodeURIComponent(targetPath)}`),
         {
@@ -315,7 +310,6 @@ export function useDomEditCommits({
       editHistory,
       writeProjectFile,
       projectIdRef,
-      domEditSaveTimestampRef,
       reloadPreview,
       showToast,
       forceReloadSdkSession,
@@ -359,7 +353,6 @@ export function useDomEditCommits({
             );
           }
 
-          domEditSaveTimestampRef.current = Date.now();
           const atomicResult = await patchElementBatches(pid, batches);
           const allMatched =
             atomicResult.durable && atomicResult.files.every((result) => result.allMatched);
@@ -385,8 +378,7 @@ export function useDomEditCommits({
           // produces a visible blink. Skip the reload when the caller asked for it
           // AND the persist is provably in sync: style-only ops, every target
           // matched. Any unmatched patch means the live DOM now shows state disk
-          // doesn't hold — reload so the preview reconverges. (The SSE/file-watcher
-          // reload is independently suppressed by domEditSaveTimestampRef above.)
+          // doesn't hold — reload so the preview reconverges.
           const skipSafe =
             options.skipReload === true && batchesAreInlineStyleOnly(batches) && durable;
           if (!durable || (changed && !skipSafe)) reloadPreview();
@@ -411,15 +403,7 @@ export function useDomEditCommits({
         throw error;
       });
     },
-    [
-      domEditSaveTimestampRef,
-      editHistory,
-      forceReloadSdkSession,
-      projectIdRef,
-      queueDomEditSave,
-      reloadPreview,
-      showToast,
-    ],
+    [editHistory, forceReloadSdkSession, projectIdRef, queueDomEditSave, reloadPreview, showToast],
   );
 
   // ── Text & style commits (delegated to useDomEditTextCommits) ──
@@ -470,25 +454,24 @@ export function useDomEditCommits({
     previewIframeRef,
     showToast,
     commitPositionPatchToHtml,
+    readOnlyPreview,
   });
 
   // ── Element lifecycle (delete, z-index reorder) ──
 
-  const { handleDomEditElementDelete, handleDomEditElementsDelete, handleDomZIndexReorderCommit } =
-    useElementLifecycleOps({
-      activeCompPath,
-      showToast,
-      writeProjectFile,
-      domEditSaveTimestampRef,
-      editHistory,
-      projectIdRef,
-      reloadPreview,
-      clearDomSelection,
-      onTrySdkDelete,
-      onReorderShadow,
-      forceReloadSdkSession,
-      commitDomEditPatchBatches,
-    });
+  const { handleDomEditElementsDelete, handleDomZIndexReorderCommit } = useElementLifecycleOps({
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    editHistory,
+    projectIdRef,
+    reloadPreview,
+    clearDomSelection,
+    onTrySdkDelete,
+    onReorderShadow,
+    forceReloadSdkSession,
+    commitDomEditPatchBatches,
+  });
 
   return {
     resolveImportedFontAsset,
@@ -510,7 +493,6 @@ export function useDomEditCommits({
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
-    handleDomEditElementDelete,
     handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   };

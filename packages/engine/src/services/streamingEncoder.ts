@@ -40,6 +40,8 @@ import { fpsToFfmpegArg, fpsToNumber, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 
+import { appendLockedGopArgs, lockedGopCodecParams, resolveLockedGopSize } from "./chunkEncoder.js";
+
 // Re-export EncoderOptions so callers can reference the type via this module.
 export type { EncoderOptions } from "./chunkEncoder.types.js";
 
@@ -154,6 +156,16 @@ export interface StreamingEncoderOptions {
   hdr?: { transfer: import("../utils/hdr.js").HdrTransfer };
   /** When set, use rawvideo input instead of image2pipe. For HDR PQ-encoded frames. */
   rawInputFormat?: "rgb48le";
+  /**
+   * Force an IDR keyframe every `gopSize` frames. Set by the HLS format so
+   * `-f hls -c copy` can cut segments on exact time boundaries — the segmenter
+   * only splits at keyframes the encoder already emitted. Default `false`
+   * leaves the arg list byte-identical. libx264 / libx265 only (GPU encoders,
+   * VP9 and ProRes ignore it); see `EncoderOptions.lockGopForChunkConcat`.
+   */
+  lockGopForChunkConcat?: boolean;
+  /** Required when `lockGopForChunkConcat` is `true`. Frames per GOP. */
+  gopSize?: number;
 }
 
 export interface StreamingEncoderResult {
@@ -320,11 +332,18 @@ export function buildStreamingArgs(
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
 
+      // Same closed-GOP lock as chunkEncoder.buildEncoderArgs, so the HLS
+      // packager can cut `-c copy` segments on exact keyframe boundaries.
+      const lockedGop = resolveLockedGopSize(options);
+      if (lockedGop !== null) appendLockedGopArgs(args, lockedGop);
+
       // Mirrors chunkEncoder: disable B-frames for h264 so PTS == DTS, no
       // negative DTS at stream start. Without this, files freeze on the
       // first frame in VS Code preview, several browsers, and some HW
       // decoders. See chunkEncoder.buildEncoderArgs for the full reasoning.
-      if (codec === "h264") {
+      // h265 also gets `-bf 0` under a locked GOP: B-frame reordering across
+      // a segment boundary brings the same negative-DTS hazard back at every seam.
+      if (codec === "h264" || lockedGop !== null) {
         args.push("-bf", "0");
       }
 
@@ -338,10 +357,11 @@ export function buildStreamingArgs(
         options.rawInputFormat && options.hdr
           ? getHdrEncoderColorParams(options.hdr.transfer).x265ColorParams
           : "colorprim=bt709:transfer=bt709:colormatrix=bt709";
+      const gopParams = lockedGop !== null ? `:${lockedGopCodecParams(codec, lockedGop)}` : "";
       if (preset === "ultrafast") {
-        args.push(xParamsFlag, `aq-mode=3:${colorParams}`);
+        args.push(xParamsFlag, `aq-mode=3:${colorParams}${gopParams}`);
       } else {
-        args.push(xParamsFlag, `aq-mode=3:aq-strength=0.8:deblock=1,1:${colorParams}`);
+        args.push(xParamsFlag, `aq-mode=3:aq-strength=0.8:deblock=1,1:${colorParams}${gopParams}`);
       }
       // Apple devices require hvc1 tag for HEVC playback (default hev1 won't open in QuickTime)
       if (codec === "h265") {
@@ -521,11 +541,20 @@ export async function spawnStreamingEncoder(
       const closePromise = once(ffmpeg, "close", { signal: abortController.signal }).then(
         () => "exit" as const,
       );
-      const racePromise = Promise.race([drainPromise, closePromise]).catch((err: unknown) => {
+      const racePromise = Promise.race([drainPromise, closePromise]).catch(async (err: unknown) => {
         if (err instanceof Error && err.name === "AbortError") {
           return "exit" as const;
         }
-        throw err;
+        // `once(stdin, "drain")` rejects with the stream's own error when
+        // ffmpeg's read end closes first — a bare `write EPIPE` (darwin/
+        // linux) or `write EOF` (win32). Rethrowing it here made that the
+        // render error, with ffmpeg's exit code and stderr discarded, so a
+        // parked write observed the same death uninformatively that an
+        // unparked one reports through `getExitError()`. Wait for the exit
+        // to settle so the caller's `ensureFrameWritten` reads the reason,
+        // then report the exit like the `close` race does.
+        await exitPromise;
+        return "exit" as const;
       });
 
       if (managed.isSettled || exitStatus !== "running") {

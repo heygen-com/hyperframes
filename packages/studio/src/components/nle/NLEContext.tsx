@@ -1,19 +1,14 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
-import { useTimelinePlayer, usePlayerStore } from "../../player";
-import type { TimelineElement } from "../../player";
+import { useTimelinePlayer } from "../../player/hooks/useTimelinePlayer";
+import { usePlayerStore, type TimelineElement } from "../../player/store/playerStore";
+import type { PreviewIframeSlot } from "../../player/hooks/useTimelineSyncCallbacks";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { useCompositionStack } from "./useCompositionStack";
-import { MIN_TIMELINE_H, fitTimelineHeight } from "../../utils/fitPanels";
 import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { createStableContext } from "../../utils/hmrStableContext";
-
-// Timeline gets a generous default height so the preview isn't oversized and the
-// tracks have room to breathe (CapCut-style). Users can still drag the divider.
-const DEFAULT_TIMELINE_H = 360;
 
 export function shouldDisableTimelineWhileCompositionLoading(compositionLoading: boolean): boolean {
   return compositionLoading;
@@ -23,10 +18,20 @@ export interface NLEContextValue {
   projectId: string;
   // player (from useTimelinePlayer — single instance for the whole shell)
   iframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
+  play: () => void;
+  pause: () => void;
   togglePlay: () => void;
   seek: (time: number, options?: { keepPlaying?: boolean }) => boolean;
   refreshPlayer: () => void;
   onIframeLoad: () => void;
+  // The hidden reload iframe NLEPreview renders next to the live one during a full reload.
+  previewSlots: PreviewIframeSlot[];
+  onShadowIframeLoad: (gen: number) => void;
+  onShadowReadyChange: (gen: number, ready: boolean) => void;
+  onShadowError: (gen: number, message: string) => void;
+  setShadowIframeNode: (node: HTMLIFrameElement | null) => void;
+  resetPreviewSlots: () => void;
+  containerRef: React.MutableRefObject<HTMLDivElement | null>;
   // composition stack (from useCompositionStack)
   compositionStack: CompositionLevel[];
   updateCompositionStack: React.Dispatch<React.SetStateAction<CompositionLevel[]>>;
@@ -34,10 +39,6 @@ export interface NLEContextValue {
   handleDrillDown: (element: TimelineElement) => void;
   compIdToSrc: Map<string, string>;
   // layout state
-  timelineH: number;
-  setTimelineH: React.Dispatch<React.SetStateAction<number>>;
-  persistTimelineH: (height: number) => void;
-  containerRef: React.RefObject<HTMLDivElement | null>;
   // composition loading
   compositionLoading: boolean;
   setCompositionLoading: (loading: boolean) => void;
@@ -65,6 +66,8 @@ export interface NLEProviderProps {
   onCompositionChange?: (compositionPath: string | null) => void;
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
+  /** A preview reload was abandoned; the previous preview is still showing. */
+  onPreviewReloadFailed?: (message: string) => void;
   children: ReactNode;
 }
 
@@ -76,15 +79,29 @@ export function NLEProvider({
   onCompositionChange,
   onCompIdToSrcChange,
   onCompositionLoadingChange,
+  onPreviewReloadFailed,
   children,
 }: NLEProviderProps) {
+  const shadowPromotedRef = useRef<() => void>(() => {});
+  const containerRef = useRef<HTMLDivElement>(null);
   const {
     iframeRef,
+    play,
+    pause,
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
     refreshPlayer,
-  } = useTimelinePlayer();
+    previewSlots,
+    onShadowIframeLoad,
+    onShadowReadyChange,
+    onShadowError,
+    setShadowIframeNode,
+    resetPreviewSlots,
+  } = useTimelinePlayer({
+    onShadowPromoted: () => shadowPromotedRef.current(),
+    onPreviewReloadFailed,
+  });
 
   // Reset timeline state when the project changes. Done in an effect, not during
   // render: reset() updates the player store, and updating another store/component
@@ -117,14 +134,20 @@ export function NLEProvider({
     refreshPlayer();
   }, [refreshKey, refreshPlayer]);
 
-  const onIframeLoad = useCallback(() => {
-    baseOnIframeLoad();
+  // Steps that follow every load of the live iframe, including a reload promoted in place.
+  const afterLiveIframeLoad = useCallback(() => {
     // Pre-load + register MotionPathPlugin once so adding a motion path in the
     // studio doesn't take the async plugin-load flash path on the first soft
     // reload (the comp may not ship the plugin until it actually uses one).
     ensureMotionPathPluginLoaded(iframeRef.current);
     onIframeRef?.(iframeRef.current);
-  }, [baseOnIframeLoad, iframeRef, onIframeRef]);
+  }, [iframeRef, onIframeRef]);
+  shadowPromotedRef.current = afterLiveIframeLoad;
+
+  const onIframeLoad = useCallback(() => {
+    baseOnIframeLoad();
+    afterLiveIframeLoad();
+  }, [baseOnIframeLoad, afterLiveIframeLoad]);
 
   const {
     compositionStack,
@@ -256,35 +279,6 @@ export function NLEProvider({
     });
   }, [compIdToSrc]);
 
-  // Resizable timeline height — persisted alongside zoom/pan so the user's
-  // workspace layout survives reloads.
-  const [timelineH, setTimelineH] = useState(() => {
-    const stored = readStudioUiPreferences().timelineHeight;
-    return stored !== undefined && stored >= MIN_TIMELINE_H ? stored : DEFAULT_TIMELINE_H;
-  });
-  const persistTimelineH = useCallback((height: number) => {
-    writeStudioUiPreferences({ timelineHeight: Math.round(height) });
-  }, []);
-  const containerRef = useRef<HTMLDivElement>(null);
-  // A height persisted on a tall window can exceed this window's container and
-  // collapse the flex-1 preview to 0px. Observing the container rather than
-  // clamping once at mount is what makes a window RESIZED after load behave the
-  // same as one loaded at that size: dragging 760 -> 520 tall used to leave the
-  // timeline at its stored 429px and the preview at 47px.
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const reconcile = () => {
-      const containerH = element.getBoundingClientRect().height;
-      if (!containerH) return;
-      setTimelineH((prev) => fitTimelineHeight(containerH, prev));
-    };
-    reconcile();
-    const observer = new ResizeObserver(reconcile);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
   const hasLoadedOnceRef = useRef(false);
   const [compositionLoading, setCompositionLoadingRaw] = useState(true);
   const setCompositionLoading = useCallback((loading: boolean) => {
@@ -308,19 +302,24 @@ export function NLEProvider({
   const value: NLEContextValue = {
     projectId,
     iframeRef,
+    play,
+    pause,
+    containerRef,
     togglePlay,
     seek,
     refreshPlayer,
     onIframeLoad,
+    previewSlots,
+    onShadowIframeLoad,
+    onShadowReadyChange,
+    onShadowError,
+    setShadowIframeNode,
+    resetPreviewSlots,
     compositionStack,
     updateCompositionStack,
     handleNavigateComposition,
     handleDrillDown,
     compIdToSrc,
-    timelineH,
-    setTimelineH,
-    persistTimelineH,
-    containerRef,
     compositionLoading,
     setCompositionLoading,
     timelineDisabled,

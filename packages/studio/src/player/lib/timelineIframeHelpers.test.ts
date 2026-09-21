@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// fallow-ignore-file code-duplication
 import { describe, expect, it, vi } from "vitest";
 import {
   applyPreviewAudioFlags,
@@ -53,6 +54,27 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
 
     expect(entry).toBeDefined();
     expect(entry?.hfId).toBeUndefined();
+  });
+
+  it("carries the resolved track onto authoredTrack, so splitting a recovered composition host can't drift to a new row", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div
+          data-composition-id="scene-c"
+          data-composition-src="scenes/c.html"
+          data-track-index="2"
+          data-start="0"
+          data-duration="5"
+        ></div>
+      </div>
+    `);
+
+    const { missing } = buildMissingCompositionElements(doc, window as IframeWindow, [], 10);
+    const entry = missing[0];
+
+    expect(entry).toBeDefined();
+    expect(entry?.track).toBe(2);
+    expect(entry?.authoredTrack).toBe(2);
   });
 });
 
@@ -122,6 +144,36 @@ describe("scrubPreviewAudio", () => {
     expect(music.play).toHaveBeenCalled();
     expect(voiceover.play).not.toHaveBeenCalled();
     stopScrubPreviewAudio();
+  });
+
+  /** A scrub audition is media running under a paused clock, which the runtime now
+   *  stops on sight. So it borrows the element. That a leased element survives the
+   *  tick is asserted runtime-side in core's `transportPark.test.ts`; here the
+   *  contract is that the hook is called with the right element and given back. */
+  it("borrows the element from the runtime for the audition and returns it on stop", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const previewDoc = iframe.contentDocument;
+    if (!previewDoc?.body) throw new Error("expected an iframe document");
+
+    const music = previewDoc.createElement("audio");
+    music.id = "music";
+    music.play = vi.fn(async () => {});
+    music.pause = vi.fn();
+    previewDoc.body.append(music);
+
+    const leasePausedMedia = vi.fn();
+    const releasePausedMedia = vi.fn();
+    (previewDoc.defaultView as IframeWindow).__hf = { leasePausedMedia, releasePausedMedia };
+
+    scrubPreviewAudio(iframe, 0.5, "music", 1);
+
+    expect(leasePausedMedia).toHaveBeenCalledWith(music);
+    expect(releasePausedMedia).not.toHaveBeenCalled();
+
+    stopScrubPreviewAudio();
+
+    expect(releasePausedMedia).toHaveBeenCalledWith(music);
   });
 });
 

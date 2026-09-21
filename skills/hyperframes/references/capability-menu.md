@@ -44,4 +44,4 @@ The narrative workflows carry genre-tuned design references — `story-design.md
 | a topic / mechanism / concept explainer  | `/faceless-explainer` → `references/`                                   |
 | a code-change walkthrough                | `/pr-to-video` → `references/` (+ `code-vocabulary.md` for code frames) |
 
-`motion-language.md` and `cut-catalog.md` are near-identical across the three — take them from the genre you already resembled, or `/faceless-explainer`'s as the neutral default. **Borrow the shape and the taste, never the machinery**: their scripts and directory rules belong to their pipelines; the generic back half of any build lives in `hyperframes-core/references/production-loop.md`.
+`motion-language.md` and `cut-catalog.md` are near-identical across the three — take them from the genre you already resembled, or `/faceless-explainer`'s as the neutral default. **Borrow the shape and the taste, never the machinery**: their scripts and directory rules belong to their pipelines; the generic back half of any build lives in `hyperframes/references/production-loop.md`.

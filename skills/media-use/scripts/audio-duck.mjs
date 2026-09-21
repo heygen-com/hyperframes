@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { duckKeyframes, speechSpans } from "./lib/duck.mjs";
+import { duckKeyframes, duckLane, speechSpans } from "./lib/duck.mjs";
 import { track } from "./lib/telemetry.mjs";
 
 const { values: args } = parseArgs({
@@ -25,7 +25,7 @@ const { values: args } = parseArgs({
 });
 
 if (args.help) {
-  console.log(`media-use audio-duck — generate GSAP volume ducking keyframes
+  console.log(`media-use audio-duck — generate a volume ducking lane (data-automation)
 
 Usage:
   node audio-duck.mjs --meta audio_meta.json --target "#bgm"
@@ -40,8 +40,8 @@ Options:
   --sequential    Place multi-line meta back to back at composition time
   --gap           Extra seconds between sequential lines (default: 0)
   --offsets       Explicit placement, "l1=0,l2=3.4" (voice id = start seconds)
-  --composition   Read target data-volume from this HTML file
-  --json          Output { spans, keyframes }
+  --composition   Read target data-volume and data-start from this HTML file
+  --json          Output { spans, keyframes, lane }
   --help, -h      Show this help`);
   process.exit(0);
 }
@@ -59,7 +59,7 @@ function run() {
   if (!args.meta || !args.target) throw new Error("--meta and --target are required");
   const meta = JSON.parse(readFileSync(resolve(args.meta), "utf8"));
   const target = args.target;
-  const baseVolume = readBaseVolume(args.composition, target);
+  const { baseVolume, clipStart } = readTargetAttrs(args.composition, target);
   const offsets = args.offsets
     ? Object.fromEntries(
         args.offsets.split(",").map((pair) => {
@@ -81,41 +81,33 @@ function run() {
     baseVolume,
   });
 
+  const lane = duckLane(keyframes, { clipStart, baseVolume });
+
   if (args.json) {
-    console.log(JSON.stringify({ spans, keyframes }));
+    console.log(JSON.stringify({ spans, keyframes, lane }));
     return;
   }
 
-  console.log(
-    `// auto-duck: ${target} under narration (generated; base volume ${fmt(baseVolume)})`,
-  );
-  for (const keyframe of keyframes) {
-    console.log(
-      `tl.to(${JSON.stringify(target)}, { volume: ${fmt(keyframe.volume)}, duration: ${fmt(
-        keyframe.duration,
-      )} }, ${fmt(keyframe.time)});`,
-    );
-  }
+  console.log(`<!-- auto-duck: ${target} under narration; add to its <audio> element -->`);
+  console.log(`data-automation='${JSON.stringify(lane)}'`);
 }
 
-function readBaseVolume(composition, target) {
-  if (!composition || !target.startsWith("#")) return 1;
+function readTargetAttrs(composition, target) {
+  if (!composition || !target.startsWith("#")) return { baseVolume: 1, clipStart: 0 };
   const id = target.slice(1);
   const html = readFileSync(resolve(composition), "utf8");
   // ponytail: regex is enough here because this only reads one attribute from
   // one user-authored composition element, not arbitrary HTML.
   const tag = html.match(new RegExp(`<[^>]*\\bid=["']${escapeRegExp(id)}["'][^>]*>`, "i"))?.[0];
-  const raw = tag?.match(/\bdata-volume=["']([^"']+)["']/i)?.[1];
-  const volume = Number(raw);
-  return Number.isFinite(volume) ? volume : 1;
+  const attr = (name) => Number(tag?.match(new RegExp(`\\b${name}=["']([^"']+)["']`, "i"))?.[1]);
+  const volume = attr("data-volume");
+  const start = attr("data-start");
+  return {
+    baseVolume: Number.isFinite(volume) ? volume : 1,
+    clipStart: Number.isFinite(start) ? start : 0,
+  };
 }
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function fmt(n) {
-  return Number(n)
-    .toFixed(3)
-    .replace(/\.?0+$/, "");
 }

@@ -36,6 +36,7 @@ mock.module("@hyperframes/engine", () => ({
   DEFAULT_CONFIG: { ffmpegEncodeTimeout: 600_000 },
   encodeFramesChunkedConcat: encodeFramesChunkedConcatMock,
   encodeFramesFromDir: encodeFramesFromDirMock,
+  frameFileExtension: (format: string | undefined) => (format === "png" ? "png" : "jpg"),
   formatFfmpegError: (code: number | null, stderr: string) => `${String(code)} ${stderr}`,
   getEncoderPreset: () => ({
     codec: "h264",
@@ -94,6 +95,7 @@ function makeInput(overrides: Partial<EncodeStageInput> = {}): EncodeStageInput 
     width: 2,
     height: 2,
     needsAlpha: false,
+    captureImageFormat: "jpeg" as const,
     hasAudio: false,
     isPngSequence: false,
     isGif: false,
@@ -167,6 +169,38 @@ describe("gif encode args", () => {
     expect(buildGifPaletteuseArgs(transparentInput)).toContain(
       "fps=15 [x]; [x][1:v] paletteuse=dither=sierra2_4a:alpha_threshold=128",
     );
+  });
+});
+
+describe("frame pattern follows the capture format, not the output's alpha need", () => {
+  it("encodes frame_%06d.png for a motion-blur render whose output is opaque", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const paths = createFramesDir("png");
+    encodeFramesFromDirMock.mockClear();
+
+    await runEncodeStage(
+      makeInput({
+        framesDir: paths.framesDir,
+        outputPath: join(paths.root, "out.mp4"),
+        videoOnlyPath: join(paths.root, "video-only.mp4"),
+        // Motion blur forces PNG capture even though an mp4 output needs no alpha. Before
+        // the capture format owned this, the encoder looked for frame_%06d.jpg against
+        // files written as .png and the render found no frames at all.
+        needsAlpha: false,
+        captureImageFormat: "png",
+      }),
+    );
+
+    expect(encodeFramesFromDirMock.mock.calls[0]?.[1]).toBe("frame_%06d.png");
+  });
+
+  it("still encodes frame_%06d.jpg for an ordinary opaque render", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    encodeFramesFromDirMock.mockClear();
+
+    await runEncodeStage(makeInput());
+
+    expect(encodeFramesFromDirMock.mock.calls[0]?.[1]).toBe("frame_%06d.jpg");
   });
 });
 
@@ -379,6 +413,7 @@ describe("runEncodeStage config plumbing", () => {
         videoOnlyPath: join(paths.root, "video-only.mp4"),
         isGif: true,
         needsAlpha: true,
+        captureImageFormat: "png",
       }),
     );
 

@@ -293,10 +293,16 @@ function resolveElementTiming(el: Element): {
   return { start: timing.start ?? 0, duration: timing.duration ?? 0 };
 }
 
-function setElementDuration(el: Element, start: number, duration: number): void {
+function setElementDuration(
+  el: Element,
+  start: number,
+  duration: number,
+  trackIndex?: number,
+): void {
   writeClipTiming(el, {
     start: Math.round(start * 1000) / 1000,
     duration: Math.round(duration * 1000) / 1000,
+    ...(trackIndex != null ? { trackIndex } : {}),
   });
 }
 
@@ -312,6 +318,11 @@ export function splitElementInHtml(
     playbackStart?: number;
     playbackRate?: number;
     stampPlaybackStart?: boolean;
+    // The element's current resolved track (authored, or the runtime's
+    // positional-index fallback when unauthored). Stamped onto both halves so
+    // inserting the clone can't shift either one to a different row — see
+    // parseAuthoredTrack's fallback in core/runtime/timeline.ts.
+    track?: number;
   },
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
@@ -363,7 +374,7 @@ export function splitElementInHtml(
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.
   for (const node of clone.querySelectorAll("[data-hf-id]")) node.removeAttribute("data-hf-id");
-  setElementDuration(clone, splitTime, secondDuration);
+  setElementDuration(clone, splitTime, secondDuration, fallbackTiming?.track);
 
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
@@ -401,7 +412,7 @@ export function splitElementInHtml(
 
   // Trim the original element's duration. A GSAP element had no data-start; stamp
   // it so the runtime windows the first half (visibility selects on [data-start]).
-  setElementDuration(el, start, firstDuration);
+  setElementDuration(el, start, firstDuration, fallbackTiming?.track);
 
   // Insert clone after original
   if (el.nextSibling) {
@@ -453,6 +464,10 @@ export interface ElementRebase {
   target: SourceMutationTarget;
   left: number;
   top: number;
+  /** The member's current resolved track (authored, or the runtime's
+   * positional-index fallback). Stamped explicitly so moving it into the
+   * wrapper can't shift its computed row — same hazard split closes. */
+  track?: number;
 }
 
 function getInlineStylePx(el: Element, property: string): number {
@@ -530,11 +545,11 @@ export function wrapElementsInHtml(
   const memberSet = new Set<Element>(els);
   const ordered = Array.from(parent.children).filter((c): c is HTMLElement => memberSet.has(c));
 
-  // Map each member to its rebased left/top (resolved against the same document).
-  const rebaseByEl = new Map<Element, { left: number; top: number }>();
+  // Map each member to its rebased left/top and track (resolved against the same document).
+  const rebaseByEl = new Map<Element, { left: number; top: number; track?: number }>();
   for (const rebase of rebases) {
     const el = findTargetElement(document, rebase.target);
-    if (el) rebaseByEl.set(el, { left: rebase.left, top: rebase.top });
+    if (el) rebaseByEl.set(el, { left: rebase.left, top: rebase.top, track: rebase.track });
   }
 
   const wrapper = document.createElement("div");
@@ -569,6 +584,7 @@ export function wrapElementsInHtml(
   for (const el of ordered) {
     const rebase = rebaseByEl.get(el);
     if (rebase) setInlineLeftTop(el, rebase.left, rebase.top);
+    if (rebase?.track != null) writeClipTiming(el, { trackIndex: Math.round(rebase.track) });
     wrapper.appendChild(el); // appendChild moves the node, preserving order
   }
 
@@ -579,9 +595,62 @@ export function wrapElementsInHtml(
   };
 }
 
+export interface UnwrapChildTrack {
+  target: SourceMutationTarget;
+  /** The child's current resolved track, same hazard and fix as wrap's members. */
+  track?: number;
+}
+
+// Only children actually inside the group and given a resolved track qualify —
+// same hazard and fix as wrap's members, scoped to this group's own children.
+function buildChildTrackMap(
+  document: Document,
+  group: Element,
+  childTracks: UnwrapChildTrack[],
+): Map<Element, number> {
+  const trackByEl = new Map<Element, number>();
+  for (const entry of childTracks) {
+    const el = findTargetElement(document, entry.target);
+    if (el && group.contains(el) && entry.track != null) trackByEl.set(el, entry.track);
+  }
+  return trackByEl;
+}
+
+// Undoes the wrap-side rebase (child absolute = child rebased + wrapper
+// origin), stamps each child's resolved track where one was given, and moves
+// every child back into the parent ahead of the wrapper — preserving order.
+function relocateGroupChildren(
+  group: Element,
+  parent: Element,
+  wLeft: number,
+  wTop: number,
+  trackByEl: Map<Element, number>,
+): Array<{ id: string; cx: number; cy: number }> {
+  const members: Array<{ id: string; cx: number; cy: number }> = [];
+  for (const child of Array.from(group.children)) {
+    if (isHTMLElement(child)) {
+      const newLeft = getInlineStylePx(child, "left") + wLeft;
+      const newTop = getInlineStylePx(child, "top") + wTop;
+      setInlineLeftTop(child, newLeft, newTop);
+      const track = trackByEl.get(child);
+      if (track != null) writeClipTiming(child, { trackIndex: Math.round(track) });
+      if (child.id) {
+        members.push({
+          id: child.id,
+          cx: newLeft + getInlineStylePx(child, "width") / 2,
+          cy: newTop + getInlineStylePx(child, "height") / 2,
+        });
+      }
+    }
+    parent.insertBefore(child, group);
+  }
+  return members;
+}
+
 export function unwrapElementsFromHtml(
   source: string,
   groupTarget: SourceMutationTarget,
+  childTracks: UnwrapChildTrack[] = [],
 ): UnwrapElementsResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const group = findTargetElement(document, groupTarget);
@@ -595,6 +664,8 @@ export function unwrapElementsFromHtml(
   const parent = group.parentElement;
   if (!parent) return { html: source, unwrapped: false };
 
+  const trackByEl = buildChildTrackMap(document, group, childTracks);
+
   // Undo the rebase: child absolute position = child (rebased) + wrapper origin.
   const wLeft = getInlineStylePx(group, "left");
   const wTop = getInlineStylePx(group, "top");
@@ -603,23 +674,7 @@ export function unwrapElementsFromHtml(
     cy: wTop + getInlineStylePx(group, "height") / 2,
   };
 
-  // Move children back to the wrapper's slot, preserving order.
-  const members: Array<{ id: string; cx: number; cy: number }> = [];
-  for (const child of Array.from(group.children)) {
-    if (isHTMLElement(child)) {
-      const newLeft = getInlineStylePx(child, "left") + wLeft;
-      const newTop = getInlineStylePx(child, "top") + wTop;
-      setInlineLeftTop(child, newLeft, newTop);
-      if (child.id) {
-        members.push({
-          id: child.id,
-          cx: newLeft + getInlineStylePx(child, "width") / 2,
-          cy: newTop + getInlineStylePx(child, "height") / 2,
-        });
-      }
-    }
-    parent.insertBefore(child, group);
-  }
+  const members = relocateGroupChildren(group, parent, wLeft, wTop, trackByEl);
   const groupId = group.id || undefined;
   group.remove();
 

@@ -1,3 +1,5 @@
+import type { RateSpec } from "@hyperframes/core";
+
 export interface AudioVolumeKeyframe {
   time: number;
   volume: number;
@@ -9,8 +11,8 @@ export interface AudioElement {
   start: number;
   end: number;
   mediaStart: number;
-  /** Constant normalized source-time multiplier (0.1..5). */
-  playbackRate?: number;
+  /** Normalized source-time multiplier: a constant, or the clip's `rate` lane. */
+  playbackRate?: RateSpec;
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];

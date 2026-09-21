@@ -15,28 +15,19 @@ function normalizeStudioFileChangePath(path: string): string {
     .replace(/^\.?\//, "");
 }
 
-function readStudioFileChangePathFromValue(value: unknown): string | null {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (trimmed.startsWith("{")) {
-      try {
-        return readStudioFileChangePathFromValue(JSON.parse(trimmed) as unknown);
-      } catch {
-        return normalizeStudioFileChangePath(trimmed);
-      }
-    }
-    return normalizeStudioFileChangePath(trimmed);
-  }
-
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  if (typeof record.path === "string") return normalizeStudioFileChangePath(record.path);
-  if (typeof record.filePath === "string") return normalizeStudioFileChangePath(record.filePath);
-  if ("data" in record) return readStudioFileChangePathFromValue(record.data);
-  return null;
+/**
+ * Read one string field out of an ALREADY-DECODED file-change payload. Every
+ * reader of that payload goes through here, so no reader can disagree with its
+ * siblings about the shape. Decoding a raw delivery is the transport's job.
+ */
+export function readFileChangeField(payload: unknown, key: string): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const value = record[key];
+  return typeof value === "string" ? value : null;
 }
 
 export function readStudioFileChangePath(payload: unknown): string | null {
-  return readStudioFileChangePathFromValue(payload);
+  const path = readFileChangeField(payload, "path") ?? readFileChangeField(payload, "filePath");
+  return path === null ? null : normalizeStudioFileChangePath(path);
 }
