@@ -250,7 +250,7 @@ describe("timeline edit command", () => {
       expect(result.status, result.stderr).toBe(0);
       const html = readFileSync(join(dir, "index.html"), "utf8");
       expect(html).toContain('id="clip-copy"');
-      expect(html.match(/data-hf-id=/g)).toHaveLength(3);
+      expect(html.match(/data-hf-id=/g)).toHaveLength(4);
       expect(html).toContain('id="neighbour" data-hf-id="neighbour" data-start="7"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
