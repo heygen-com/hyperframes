@@ -20,8 +20,10 @@ export type CapturePhase =
   | "scaffold"
   | "complete";
 
+export const CAPTURE_PHASE_SCHEMA = "hyperframes.capture.phase.v1" as const;
+
 export interface CapturePhaseProgress {
-  schema: "hyperframes.capture.phase.v1";
+  schema: typeof CAPTURE_PHASE_SCHEMA;
   phase: CapturePhase;
   status: "started" | "completed" | "degraded";
   /** Null before the post-navigation budget begins. */

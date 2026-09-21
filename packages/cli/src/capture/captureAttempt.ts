@@ -22,6 +22,7 @@ import type { DiscoveredLottie } from "./mediaCapture.js";
 import { detectLibraries } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
 import { captureProtocolTimeoutMs } from "./captureTimeout.js";
+import { CAPTURE_PHASE_SCHEMA } from "./types.js";
 import type {
   CaptureOptions,
   CapturePhase,
@@ -30,9 +31,9 @@ import type {
   DesignTokens,
   ExtractedHtml,
 } from "./types.js";
-import { createCaptureWatchdog } from "./captureWatchdog.js";
+import type { CaptureWatchdog } from "./captureWatchdog.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
-import { createPartialCaptureState } from "./partialCapture.js";
+import type { PartialCaptureState } from "./partialCapture.js";
 import { runNavigationChecks } from "./navigationPhase.js";
 import { runCoreExtraction } from "./coreExtractionPhase.js";
 import { runPostExtraction } from "./postExtractionPhase.js";
@@ -41,10 +42,10 @@ const DEFAULT_POST_NAVIGATION_BUDGET_MS = 120_000;
 
 export async function captureWebsiteAttempt(
   opts: CaptureOptions,
-  onProgress?: (stage: string, detail?: string) => void,
-  disableWebgl = false,
-  watchdog = createCaptureWatchdog(undefined),
-  state = createPartialCaptureState(opts),
+  onProgress: ((stage: string, detail?: string) => void) | undefined,
+  disableWebgl: boolean,
+  watchdog: CaptureWatchdog,
+  state: PartialCaptureState,
 ): Promise<CaptureResult> {
   const {
     url,
@@ -75,8 +76,9 @@ export async function captureWebsiteAttempt(
     postNavigationDeadline === undefined
       ? budgetMs
       : Math.max(0, postNavigationDeadline - Date.now());
+  const canWrite = (): boolean => !watchdog.expired();
   let lastPhase: CapturePhaseProgress = {
-    schema: "hyperframes.capture.phase.v1",
+    schema: CAPTURE_PHASE_SCHEMA,
     phase: "browser",
     status: "started",
     remainingMs: null,
@@ -90,13 +92,13 @@ export async function captureWebsiteAttempt(
     const remaining = postNavigationDeadline === undefined ? null : remainingMs();
     lastPhase = reason
       ? {
-          schema: "hyperframes.capture.phase.v1",
+          schema: CAPTURE_PHASE_SCHEMA,
           phase: name,
           status,
           remainingMs: remaining,
           reason,
         }
-      : { schema: "hyperframes.capture.phase.v1", phase: name, status, remainingMs: remaining };
+      : { schema: CAPTURE_PHASE_SCHEMA, phase: name, status, remainingMs: remaining };
     onPhase?.(lastPhase);
   };
 
@@ -226,7 +228,7 @@ export async function captureWebsiteAttempt(
       outputDir,
       phase,
       httpStatus,
-      canWrite: () => !watchdog.expired(),
+      canWrite,
     });
     ({ pageContentCheck, contentCheckTimedOut, httpStatus, postNavigationDeadline } =
       navigationResult);
@@ -256,7 +258,7 @@ export async function captureWebsiteAttempt(
       extracted,
       screenshots,
       downloadByteBudget,
-      canWrite: () => !watchdog.expired(),
+      canWrite,
     });
     ({
       animationCatalog,
@@ -290,7 +292,7 @@ export async function captureWebsiteAttempt(
       assets,
       dropped,
       fontDrops,
-      canWrite: () => !watchdog.expired(),
+      canWrite,
     });
     ({ assets, dropped, fontDrops, extracted, tokens, animationCatalog } = postResult);
 

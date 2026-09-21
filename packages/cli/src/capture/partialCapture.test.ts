@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createPartialCaptureState, writePartialCaptureBundle } from "./partialCapture.js";
+import { CAPTURE_PHASE_SCHEMA } from "./types.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -21,7 +22,7 @@ describe("writePartialCaptureBundle", () => {
     state.tokens.colors = ["#ABCDEF"];
 
     const result = writePartialCaptureBundle(opts, state, {
-      schema: "hyperframes.capture.phase.v1",
+      schema: CAPTURE_PHASE_SCHEMA,
       phase: "complete",
       status: "degraded",
       remainingMs: null,

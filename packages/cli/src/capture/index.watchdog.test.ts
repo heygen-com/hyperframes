@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createPartialCaptureState } from "./partialCapture.js";
+import { CAPTURE_PHASE_SCHEMA } from "./types.js";
 import type { CaptureOptions, CaptureResult } from "./types.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
 import { NavigationDeadlineError } from "./captureErrors.js";
@@ -47,7 +48,7 @@ describe("capture navigation retry launch", () => {
       dropped: partial.dropped,
       warnings: [],
       lastPhase: {
-        schema: "hyperframes.capture.phase.v1",
+          schema: CAPTURE_PHASE_SCHEMA,
         phase: "complete",
         status: "completed",
         remainingMs: 1,

@@ -3,6 +3,7 @@ import { createPartialCaptureState, writePartialCaptureBundle } from "./partialC
 import type { PartialCaptureState } from "./partialCapture.js";
 import { captureWebsiteAttempt } from "./captureAttempt.js";
 import { NavigationDeadlineError } from "./captureErrors.js";
+import { CAPTURE_PHASE_SCHEMA } from "./types.js";
 import type { CaptureOptions, CaptureResult } from "./types.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
@@ -26,7 +27,7 @@ export async function captureWebsite(
     onProgress?.("warn", "Navigation timed out; retrying once with WebGL disabled");
     state.warnings.push("Navigation timed out; retrying once with WebGL disabled");
     opts.onPhase?.({
-      schema: "hyperframes.capture.phase.v1",
+      schema: CAPTURE_PHASE_SCHEMA,
       phase: "navigation",
       status: "degraded",
       remainingMs: null,
@@ -47,7 +48,7 @@ export async function captureWebsite(
 
 function deadlineResult(opts: CaptureOptions, state: PartialCaptureState): CaptureResult {
   const lastPhase = {
-    schema: "hyperframes.capture.phase.v1" as const,
+    schema: CAPTURE_PHASE_SCHEMA,
     phase: "complete" as const,
     status: "degraded" as const,
     remainingMs: null,
