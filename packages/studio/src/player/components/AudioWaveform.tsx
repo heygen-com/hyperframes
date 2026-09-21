@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
@@ -157,6 +157,16 @@ export const AudioWaveform = memo(function AudioWaveform({
     },
     [draw],
   );
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(draw);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["class", "data-chrome", "data-theme", "style"],
+    });
+    return () => observer.disconnect();
+  }, [draw]);
 
   useMountEffect(() => () => observerRef.current?.disconnect());
 

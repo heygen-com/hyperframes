@@ -62,8 +62,6 @@
   --timeline-tick-major: rgba(255, 255, 255, 0.1);
   --timeline-tick-minor: rgba(255, 255, 255, 0.06);
   --timeline-clip-bg: rgba(255, 255, 255, 0.12);
-  --timeline-clip-label: rgba(255, 255, 255, 0.5);
-  --timeline-clip-timecode: rgba(255, 255, 255, 0.34);
   --timeline-clip-label-active: #f4fffb;
   --timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
   --timeline-clip-audio-bg: rgba(167, 139, 250, 0.16);
@@ -104,6 +102,9 @@
   --timeline-track-clip-fill: rgba(255, 255, 255, 0.055);
   --timeline-track-clip-active: rgba(60, 230, 172, 0.16);
   --timeline-track-label: rgba(255, 255, 255, 0.5);
+  --timeline-border-strong: rgba(255, 255, 255, 0.2);
+  --timeline-group-member-tint: rgba(255, 255, 255, 0.035);
+  --timeline-overlay-text: rgba(255, 255, 255, 0.8);
   --timeline-accent: #3ce6ac;
   --timeline-accent-soft: rgba(60, 230, 172, 0.18);
   --timeline-accent-faint: rgba(60, 230, 172, 0.055);
@@ -132,10 +133,9 @@
   --timeline-automation-point-muted: rgba(0, 0, 0, 0.5);
   --timeline-diamond-muted: #a3a3a3;
   --timeline-beat: rgb(34, 197, 94);
-  --timeline-clip-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --timeline-clip-shadow-active: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.04);
-  --timeline-clip-shadow-dragging:
-    0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --timeline-clip-shadow-dragging: rgba(0, 0, 0, 0.4);
+  --timeline-playhead-glow: rgba(60, 230, 172, 0.14);
+  --timeline-playhead-shadow: rgba(0, 0, 0, 0.55);
 
   /* -------------------------------------------------------------- geometry */
 

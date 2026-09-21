@@ -27,10 +27,6 @@ export interface TimelineTheme {
   clipBorder: string;
   clipBorderHover: string;
   clipBorderActive: string;
-  clipShadow: string;
-  clipShadowHover: string;
-  clipShadowActive: string;
-  clipShadowDragging: string;
   handleColor: string;
   panelResizeSeam: string;
   panelResizeActive: string;
@@ -67,12 +63,6 @@ export const defaultTimelineTheme: TimelineTheme = {
   clipBorder: "var(--timeline-clip-border)",
   clipBorderHover: "var(--timeline-clip-border-hover)",
   clipBorderActive: "var(--timeline-clip-border-active)",
-  // Shadows keep their dark-mode values in tokens so hosts can override the
-  // complete timeline palette without changing this object.
-  clipShadow: "none",
-  clipShadowHover: "var(--timeline-clip-shadow-hover)",
-  clipShadowActive: "var(--timeline-clip-shadow-active)",
-  clipShadowDragging: "var(--timeline-clip-shadow-dragging)",
   handleColor: "var(--timeline-handle)",
   panelResizeSeam: "var(--timeline-resize-seam)",
   panelResizeActive: "var(--timeline-resize-active)",

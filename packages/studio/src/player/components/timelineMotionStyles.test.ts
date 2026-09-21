@@ -60,7 +60,25 @@ function transitionProperties(transitionDeclaration: string): string[] {
   return items.map((transition) => transition.split(/\s+/)[0]);
 }
 
+function themeTokenValue(token: string): string {
+  const match = new RegExp(`${token}:\\s*([^;]+);`).exec(themeCss);
+  expect(match?.[1]).toBeDefined();
+  return match?.[1].trim() ?? "";
+}
+
 describe("timeline motion styles", () => {
+  it.each([
+    ["--timeline-track-label", "rgba(255, 255, 255, 0.5)"],
+    ["--timeline-tick-text", "rgba(255, 255, 255, 0.34)"],
+    ["--timeline-border-strong", "rgba(255, 255, 255, 0.2)"],
+    ["--timeline-group-member-tint", "rgba(255, 255, 255, 0.035)"],
+    ["--timeline-overlay-text", "rgba(255, 255, 255, 0.8)"],
+    ["--timeline-clip-shadow-dragging", "rgba(0, 0, 0, 0.4)"],
+    ["--timeline-playhead-shadow", "rgba(0, 0, 0, 0.55)"],
+  ])("keeps the migrated default for %s", (token, expected) => {
+    expect(themeTokenValue(token)).toBe(expected);
+  });
+
   it("keeps clip motion reduced-motion gated and layout safe", () => {
     const mediaStart = studioCss.indexOf("@media (prefers-reduced-motion: no-preference)");
     expect(mediaStart).toBeGreaterThanOrEqual(0);
@@ -94,14 +112,14 @@ describe("timeline motion styles", () => {
 
     expect(baseTimelineClipRule).toContain("background-color: var(--clip-bg)");
     expect(baseTimelineClipRule).toContain("border: 1px solid var(--clip-border)");
-    expect(timelineClipLabelRule).toContain("color: var(--timeline-clip-label)");
+    expect(timelineClipLabelRule).toContain("color: var(--timeline-track-label)");
     expect(timelineClipLabelRule).toContain("text-shadow: var(--timeline-clip-label-shadow)");
-    expect(timelineClipTimecodeRule).toContain("color: var(--timeline-clip-timecode)");
+    expect(timelineClipTimecodeRule).toContain("color: var(--timeline-tick-text)");
     expect(activeTimelineClipLabelRule).toContain("color: var(--timeline-clip-label-active)");
     expect(themeCss).toContain("--timeline-clip-bg: rgba(255, 255, 255, 0.12)");
     expect(themeCss).toContain("--timeline-clip-border: rgba(255, 255, 255, 0.22)");
-    expect(themeCss).toContain("--timeline-clip-label: rgba(255, 255, 255, 0.5)");
-    expect(themeCss).toContain("--timeline-clip-timecode: rgba(255, 255, 255, 0.34)");
+    expect(themeCss).toContain("--timeline-track-label: rgba(255, 255, 255, 0.5)");
+    expect(themeCss).toContain("--timeline-tick-text: rgba(255, 255, 255, 0.34)");
     expect(themeCss).toContain("--timeline-clip-label-active: #f4fffb");
     expect(themeCss).toContain("--timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85)");
     expect(themeCss).toContain("--timeline-clip-selection: rgba(255, 255, 255, 0.85)");

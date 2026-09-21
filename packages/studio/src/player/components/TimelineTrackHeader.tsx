@@ -28,10 +28,8 @@ import { useMemo } from "react";
  *  nesting its `aria-level` already reports. */
 const GROUP_MEMBER_RAIL = "var(--timeline-accent-rail)";
 const GROUP_MEMBER_INDENT = 14;
-/** A hair lighter than `gutterBackground`, so a member row reads as sitting
- *  INSIDE its group rather than beside it. Overlaid rather than hard-coded so
- *  it tracks whatever the theme's gutter is. */
-const GROUP_MEMBER_TINT = "var(--timeline-accent-faint)";
+/** A neutral wash keeps group membership visible without changing the row's hue. */
+const GROUP_MEMBER_TINT = "var(--timeline-group-member-tint)";
 
 /** The gutter fill for a row, tinted when it belongs to a group. */
 export function gutterFill(base: string, isGroupMember: boolean): string {

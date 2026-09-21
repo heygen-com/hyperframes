@@ -259,7 +259,7 @@ body {
   /* Solid background so the picked-up clip reads clearly while dragging — audio
      clips (waveform drawn on a separate layer) would otherwise look transparent. */
   background-color: var(--clip-bg-dragging);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
 /* Keep the white selection outline while dragging (a plain box-shadow alone gets
@@ -267,13 +267,13 @@ body {
 .timeline-clip.is-selected.is-dragging {
   box-shadow:
     0 0 0 1.5px var(--timeline-clip-selection),
-    0 8px 24px rgba(0, 0, 0, 0.4);
+    0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
 .timeline-clip[data-active].is-selected.is-dragging {
   box-shadow:
     0 0 0 1.5px var(--timeline-clip-selection),
-    0 8px 24px rgba(0, 0, 0, 0.4);
+    0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
 .timeline-clip__label {
@@ -283,7 +283,7 @@ body {
   right: 10px;
   z-index: 6;
   overflow: hidden;
-  color: var(--timeline-clip-label);
+  color: var(--timeline-track-label);
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
@@ -302,7 +302,7 @@ body {
   bottom: 6px;
   left: 12px;
   overflow: hidden;
-  color: var(--timeline-clip-timecode);
+  color: var(--timeline-tick-text);
   font-family: var(--font-mono);
   font-size: 9px;
   font-variant-numeric: tabular-nums;

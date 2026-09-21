@@ -115,7 +115,7 @@ function GroupNameDialog({
         aria-label="Group name"
         value={label}
         onChange={(event) => setLabel(event.currentTarget.value)}
-        className="w-full rounded-sm border border-[var(--timeline-clip-bg-active)] bg-[var(--timeline-input-bg)] px-1.5 py-1 text-[11px] text-[var(--timeline-text-solid)] outline-hidden focus:border-[var(--timeline-accent)]"
+        className="w-full rounded-sm border border-[var(--timeline-border-strong)] bg-[var(--timeline-input-bg)] px-1.5 py-1 text-[11px] text-[var(--timeline-text-solid)] outline-hidden focus:border-[var(--timeline-accent)]"
       />
       {/* The sentence. No jargon, and it names both things a bus does. */}
       <p className="mt-2 leading-snug">
@@ -125,7 +125,7 @@ function GroupNameDialog({
       <div className="mt-2.5 flex justify-end gap-1.5">
         <button
           type="button"
-          className="rounded-sm border border-[var(--timeline-clip-bg-active)] px-2 py-1 text-[10px] text-[var(--timeline-text-soft)] hover:bg-[var(--timeline-tick-major)]"
+          className="rounded-sm border border-[var(--timeline-border-strong)] px-2 py-1 text-[10px] text-[var(--timeline-text-soft)] hover:bg-[var(--timeline-tick-major)]"
           onClick={onCancel}
         >
           Cancel

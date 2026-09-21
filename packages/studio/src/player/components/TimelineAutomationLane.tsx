@@ -132,7 +132,7 @@ function ReadOnlyNote({
   return (
     <div
       data-automation-readonly-note=""
-      className="hf-automation-readonly-note pointer-events-none absolute rounded-[3px] bg-[var(--timeline-overlay-bg-strong)] px-1.5 py-0.5 text-[9px] text-[var(--timeline-clip-timecode)]"
+      className="hf-automation-readonly-note pointer-events-none absolute rounded-[3px] bg-[var(--timeline-overlay-bg-strong)] px-1.5 py-0.5 text-[9px] text-[var(--timeline-overlay-text)]"
       style={{ left: leftPx + 6, top: 2, zIndex: 3, maxWidth: Math.max(120, widthPx - 12) }}
     >
       {note}
