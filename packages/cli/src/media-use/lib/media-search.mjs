@@ -43,7 +43,12 @@ export function rankMediaRows(query, rows) {
       ...strongTokens,
       ...tokenize(`${row.description} ${row.tags.join(" ")} ${row.kind}`),
     ]);
-    return { row, strongTokens, allTokens };
+    return {
+      row,
+      strongTokens,
+      allTokens,
+      exactId: row.id.toLowerCase() === String(query).trim().toLowerCase(),
+    };
   });
   const vocabulary = new Set(parsed.flatMap(({ allTokens }) => [...allTokens]));
   for (const token of asked) {
@@ -69,17 +74,17 @@ export function rankMediaRows(query, rows) {
     idf.set(token, Math.log((parsed.length + 1) / (documentFrequency + 1)) + 1);
   }
   return parsed
-    .map(({ row, strongTokens, allTokens }) => {
+    .map(({ row, strongTokens, allTokens, exactId }) => {
       let score = 0;
       for (const [token, asking] of want) {
         const weight = (idf.get(token) || 1) * asking;
         if (strongTokens.has(token)) score += STRONG_FIELD_WEIGHT * weight;
         else if (allTokens.has(token)) score += weight;
       }
-      return { row, score };
+      return { row, score, exactId };
     })
     .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => Number(b.exactId) - Number(a.exactId) || b.score - a.score)
     .map(({ row }) => row);
 }
 
