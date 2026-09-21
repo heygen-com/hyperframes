@@ -54,36 +54,50 @@ type ApplyEditResult =
   | { ok: true; file: string; after: string }
   | { ok: false; reason: string; fix: string };
 
+const PLAN_VERBS = new Set<MutationVerb>(["move", "trim", "split", "delete", "set", "duplicate"]);
+
+type PreparedPlanEdit = {
+  edit: Record<string, unknown>;
+  row: TimelineRow;
+  before: string;
+  resolved: Extract<ReturnType<typeof resolveRef>, { ok: true }>;
+};
+
+function preparePlanEdit(
+  edit: unknown,
+  timeline: ProjectTimeline,
+  sourceByFile: Map<string, string>,
+): PreparedPlanEdit | { ok: false; reason: string; fix: string } {
+  if (!isRecord(edit) || typeof edit.verb !== "string" || typeof edit.ref !== "string") {
+    return { ok: false, reason: "each edit needs a verb and ref", fix: "pass {verb, ref, ...} objects" };
+  }
+  if (!PLAN_VERBS.has(edit.verb as MutationVerb)) {
+    return {
+      ok: false,
+      reason: `unsupported edit verb ${edit.verb}`,
+      fix: "use move, trim, split, delete, set, or duplicate",
+    };
+  }
+  const resolved = resolveRef(timeline, edit.ref);
+  if (!resolved.ok) return resolved;
+  const before = sourceByFile.get(resolved.row.file);
+  return before === undefined
+    ? { ok: false, reason: `${resolved.row.file} was not found`, fix: "choose an existing clip" }
+    : { ok: true, edit, row: resolved.row, before, resolved };
+}
+
 function applyPlanEdit(
   edit: unknown,
   timeline: ProjectTimeline,
   project: ReturnType<typeof resolveProject>,
   sourceByFile: Map<string, string>,
 ): ApplyEditResult {
-  if (!isRecord(edit) || typeof edit.verb !== "string" || typeof edit.ref !== "string") {
-    return {
-      ok: false,
-      reason: "each edit needs a verb and ref",
-      fix: "pass {verb, ref, ...} objects",
-    };
-  }
-  const verb = edit.verb;
-  const supported = ["move", "trim", "split", "delete", "set", "duplicate"];
-  if (!supported.includes(verb)) {
-    return {
-      ok: false,
-      reason: `unsupported edit verb ${verb}`,
-      fix: "use move, trim, split, delete, set, or duplicate",
-    };
-  }
-  const resolved = resolveRef(timeline, edit.ref);
-  if (!resolved.ok) return { ok: false, reason: resolved.reason, fix: resolved.fix };
-  const row = resolved.row;
-  const before = sourceByFile.get(row.file);
-  if (before === undefined)
-    return { ok: false, reason: `${row.file} was not found`, fix: "choose an existing clip" };
+  const prepared = preparePlanEdit(edit, timeline, sourceByFile);
+  if (!prepared.ok) return prepared;
+  const { edit: planEdit, row, before, resolved } = prepared;
+  const verb = planEdit.verb as MutationVerb;
   const context: MutationContext = {
-    ref: edit.ref,
+    ref: planEdit.ref as string,
     row,
     before,
     resolved,
@@ -99,11 +113,11 @@ function applyPlanEdit(
       }),
     duration: row.nested && row.hostRow ? rowAt(timeline, row.hostRow).duration : timeline.duration,
   };
-  const decision = decideMutation(verb as MutationVerb, context, { ...edit, _: [edit.ref] });
+  const decision = decideMutation(verb, context, { ...planEdit, _: [planEdit.ref] });
   if (!decision.ok) return { ok: false, reason: decision.reason, fix: decision.fix };
   const conflict = mutationConflict(
     verb as MutationVerb,
-    edit.overwrite === true,
+    planEdit.overwrite === true,
     row,
     timeline,
     decision.nextStart,
