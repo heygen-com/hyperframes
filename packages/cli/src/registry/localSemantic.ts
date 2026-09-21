@@ -198,8 +198,7 @@ export function hasLocalVectors(directory = localVectorDirectory()): boolean {
   );
 }
 
-// fallow-ignore-next-line unused-export
-export function hasMediaVectors(directory = localVectorDirectory()): boolean {
+function hasMediaVectors(directory = localVectorDirectory()): boolean {
   return (
     existsSync(join(directory, "media-vectors.bin")) &&
     existsSync(join(directory, "media-vectors.json"))

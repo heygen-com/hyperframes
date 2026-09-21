@@ -391,7 +391,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Discover and run skills tests
         # We expand the test list via bash so the job fails loudly when the
         # matcher comes back empty, rather than silently no-op'ing (which
@@ -405,7 +404,7 @@ jobs:
           fi
           printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
-          bun run test:skills
+          node --test "${SKILLS_TESTS[@]}"
 
   test-skill-bootstrap-windows:
     name: "Test: skill bootstrap (Windows, Node 24)"
