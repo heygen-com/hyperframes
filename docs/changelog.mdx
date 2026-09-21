@@ -9,6 +9,35 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.58"
+  description="Released - 2026-09-21"
+  tags={["Release", "Studio", "Docs", "CLI"]}
+>
+Studio now reports a failed file read as a network problem instead of blaming the composition, which is how the largest remaining editing failure went unnamed. The CLI gains timeline editing verbs, and Studio can hand its player to a host app.
+
+## Features
+
+- **CLI:** Add timeline editing verbs ([f92d017b9](https://github.com/heygen-com/hyperframes/commit/f92d017b999d26b14c49a8439dc16d2e476bffde), [#4221](https://github.com/heygen-com/hyperframes/pull/4221)).
+- **Studio:** Export player handle for hosts ([4ff4435e1](https://github.com/heygen-com/hyperframes/commit/4ff4435e1d46f16ae1f10a19109cd7824b9ae775), [#4227](https://github.com/heygen-com/hyperframes/pull/4227)).
+
+## Fixes
+
+- **Studio:** Report a rejected read as a network reason, not an open failure ([5a8ee663f](https://github.com/heygen-com/hyperframes/commit/5a8ee663f7fe98d71d72a0ccfba3d88662c1d652), [#4240](https://github.com/heygen-com/hyperframes/pull/4240)).
+- **Studio:** Keep narrow timeline headers readable ([b4787082b](https://github.com/heygen-com/hyperframes/commit/b4787082b272dfcdeabcc87ac9160053fffcbd15), [#4232](https://github.com/heygen-com/hyperframes/pull/4232)).
+- **CLI:** Update Puppeteer browser dependencies ([e86a530f0](https://github.com/heygen-com/hyperframes/commit/e86a530f0b29ac2bca949fd89beade2ef13e50e6), [#4233](https://github.com/heygen-com/hyperframes/pull/4233)).
+
+## Catalog
+
+- **Docs:** Restore the sidebar gutter on catalog pages ([c09594fef](https://github.com/heygen-com/hyperframes/commit/c09594fef848240894b585d9cf6630919a6c443e), [#4238](https://github.com/heygen-com/hyperframes/pull/4238)).
+
+## Internal
+
+- **Studio:** Close shadow reload regression gaps ([2fb6f6987](https://github.com/heygen-com/hyperframes/commit/2fb6f6987ecdefdfd88750026231d454546090d1), [#4223](https://github.com/heygen-com/hyperframes/pull/4223)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.57...v0.8.58).
+</Update>
+
+<Update
   label="HyperFrames v0.8.57"
   description="Released - 2026-09-20"
   tags={["Release", "Studio"]}
