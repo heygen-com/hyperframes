@@ -1,4 +1,4 @@
-import { applyFileMutations } from "@hyperframes/studio-server";
+import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-server";
 import type { AppliedFileMutation } from "@hyperframes/studio-server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11,6 +11,8 @@ import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
   allRows,
+  decideMutation,
+  declaredFps,
   diff,
   fpsFor,
   isRecord,
@@ -19,6 +21,7 @@ import {
   refusal,
   rowAt,
   type MutationContext,
+  type MutationDecision,
   type MutationVerb,
 } from "./a2Shared.js";
 
@@ -309,4 +312,3 @@ export function mutationConflict(
     fix: "pass --overwrite or move the named neighbour",
   };
 }
-

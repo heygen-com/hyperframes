@@ -23,7 +23,7 @@ import { parseSetAssignments, type SetAssignment } from "./a2Mutations.js";
 
 export type MutationVerb = "move" | "trim" | "split" | "delete" | "set" | "duplicate";
 
-type MutationDecision =
+export type MutationDecision =
   | { ok: true; after: string; nextStart: number; nextDuration: number }
   | { ok: false; reason: string; fix: string };
 
@@ -56,7 +56,7 @@ export function fpsFor(indexPath: string): number {
   return fpsToNumber(parsed.ok ? parsed.value : { num: 30, den: 1 });
 }
 
-function declaredFps(source: string): number | null {
+export function declaredFps(source: string): number | null {
   const raw = readCompositionFps(source);
   if (raw === null) return null;
   const parsed = parseFpsWithDefault(raw);
@@ -126,7 +126,7 @@ export function diff(before: string, after: string): string {
   return output.length <= 8_000 ? output : `${output.slice(0, 7_997)}...`;
 }
 
-function overlap(
+export function overlap(
   row: TimelineRow,
   timeline: ProjectTimeline,
   start: number,
@@ -367,4 +367,42 @@ export function decideMutation(
     case "duplicate":
       return duplicateMutation(context, args);
   }
+}
+
+export function rowAt(
+  timeline: ProjectTimeline,
+  pointer: { kind: TimelineRow["trackKind"]; index: number },
+): TimelineRow {
+  const track = timeline.tracks.find((candidate) => candidate.kind === pointer.kind);
+  if (!track) throw new Error(`missing track ${pointer.kind}`);
+  const row = track.rows[pointer.index];
+  if (!row) throw new Error(`missing row ${pointer.kind}/${pointer.index}`);
+  return row;
+}
+
+export function positional(args: Record<string, unknown>): string[] {
+  return Array.isArray(args._)
+    ? args._.filter((value): value is string => typeof value === "string")
+    : [];
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function mutationConflict(
+  verb: MutationVerb,
+  overwrite: boolean,
+  row: TimelineRow,
+  timeline: ProjectTimeline,
+  nextStart: number,
+  nextDuration: number,
+): { reason: string; fix: string } | null {
+  if ((verb !== "move" && verb !== "trim") || overwrite) return null;
+  const conflict = overlap(row, timeline, nextStart, nextStart + nextDuration);
+  if (!conflict) return null;
+  return {
+    reason: `${row.ref} would overlap ${conflict.ref} at ${nextStart}-${nextStart + nextDuration}`,
+    fix: "pass --overwrite or move the named neighbour",
+  };
 }
