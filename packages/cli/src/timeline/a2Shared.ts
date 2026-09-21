@@ -42,11 +42,7 @@ export function refusal(reason: string, fix: string, json: boolean): void {
   console.error(json ? JSON.stringify(payload, null, 2) : `${reason}; ${fix}.`);
 }
 
-export function refuse(
-  kind: string,
-  detail: { reason: string; fix: string },
-  json: boolean,
-): void {
+export function refuse(kind: string, detail: { reason: string; fix: string }, json: boolean): void {
   refusal(`${kind}: ${detail.reason}`, detail.fix, json);
 }
 
