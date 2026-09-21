@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const studioCss = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
+const themeCss = readFileSync(new URL("../../styles/theme.css", import.meta.url), "utf8");
 const timelineClipSource = readFileSync(new URL("./TimelineClip.tsx", import.meta.url), "utf8");
 const playheadSource = readFileSync(new URL("./PlayheadIndicator.tsx", import.meta.url), "utf8");
 
@@ -81,11 +82,16 @@ describe("timeline motion styles", () => {
     const bloomOverlayRule = expectRule(studioCss, ".timeline-clip::before");
     const activeBloomOverlayRule = expectRule(studioCss, ".timeline-clip[data-active]::before");
 
-    expect(baseTimelineClipRule).toContain("background-color: rgba(255, 255, 255, 0.14)");
-    expect(baseTimelineClipRule).toContain("border: 1px solid rgba(255, 255, 255, 0.22)");
-    expect(timelineClipLabelRule).toContain("color: rgba(255, 255, 255, 0.94)");
-    expect(timelineClipTimecodeRule).toContain("color: rgba(255, 255, 255, 0.8)");
-    expect(activeTimelineClipLabelRule).toContain("color: #f4fffb");
+    expect(baseTimelineClipRule).toContain("background-color: var(--clip-bg)");
+    expect(baseTimelineClipRule).toContain("border: 1px solid var(--clip-border)");
+    expect(timelineClipLabelRule).toContain("color: var(--timeline-clip-label)");
+    expect(timelineClipTimecodeRule).toContain("color: var(--timeline-clip-timecode)");
+    expect(activeTimelineClipLabelRule).toContain("color: var(--timeline-clip-label-active)");
+    expect(themeCss).toContain("--timeline-clip-bg: rgba(255, 255, 255, 0.14)");
+    expect(themeCss).toContain("--timeline-clip-border: rgba(255, 255, 255, 0.22)");
+    expect(themeCss).toContain("--timeline-clip-label: rgba(255, 255, 255, 0.94)");
+    expect(themeCss).toContain("--timeline-clip-timecode: rgba(255, 255, 255, 0.8)");
+    expect(themeCss).toContain("--timeline-clip-label-active: #f4fffb");
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
     expect(activeTimelineClipRule).toContain("border-color: var(--clip-border-active)");
     expect(activeTimelineClipRule).not.toContain("box-shadow");

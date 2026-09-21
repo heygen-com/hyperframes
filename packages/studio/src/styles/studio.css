@@ -200,8 +200,8 @@ body {
 }
 
 .timeline-clip {
-  background-color: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  background-color: var(--clip-bg);
+  border: 1px solid var(--clip-border);
   border-radius: 8px;
 }
 
@@ -283,7 +283,7 @@ body {
   right: 10px;
   z-index: 6;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.94);
+  color: var(--timeline-clip-label);
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
@@ -294,7 +294,7 @@ body {
 }
 
 .timeline-clip[data-active] .timeline-clip__label {
-  color: #f4fffb;
+  color: var(--timeline-clip-label-active);
 }
 
 .timeline-clip__timecode {
@@ -302,7 +302,7 @@ body {
   bottom: 6px;
   left: 12px;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--timeline-clip-timecode);
   font-family: var(--font-mono);
   font-size: 9px;
   font-variant-numeric: tabular-nums;

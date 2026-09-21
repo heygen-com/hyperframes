@@ -61,7 +61,10 @@
   --timeline-tick-text: rgba(255, 255, 255, 0.34);
   --timeline-tick-major: rgba(255, 255, 255, 0.1);
   --timeline-tick-minor: rgba(255, 255, 255, 0.06);
-  --timeline-clip-bg: rgba(255, 255, 255, 0.12);
+  --timeline-clip-bg: rgba(255, 255, 255, 0.14);
+  --timeline-clip-label: rgba(255, 255, 255, 0.94);
+  --timeline-clip-timecode: rgba(255, 255, 255, 0.8);
+  --timeline-clip-label-active: #f4fffb;
   --timeline-clip-bg-active: rgba(60, 230, 172, 0.2);
   --timeline-clip-bg-hover: rgba(255, 255, 255, 0.16);
   --timeline-clip-bg-dragging: rgba(38, 42, 52, 0.96);
