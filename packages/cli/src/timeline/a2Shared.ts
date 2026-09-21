@@ -369,7 +369,10 @@ export function decideMutation(
   }
 }
 
-export async function runMutation(verb: MutationVerb, args: Record<string, unknown>): Promise<void> {
+export async function runMutation(
+  verb: MutationVerb,
+  args: Record<string, unknown>,
+): Promise<void> {
   const setup = await prepareMutation(args);
   if (!setup.ok) return refusal(setup.reason, setup.fix, setup.json);
   const decision = decideMutation(verb, setup.context, args);
