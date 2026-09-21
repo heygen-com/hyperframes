@@ -9,6 +9,32 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.59"
+  description="Released - 2026-09-21"
+  tags={["Release", "Studio", "CLI", "Player"]}
+>
+Studio makes audio edits easier with typed values, fades, sound-aware video drops, and timeline meters. The CLI can search media and let agents edit timelines while previews reach their first frame with less setup.
+
+## Features
+
+- **Studio:** Type audio values, fade clip edges, and keep sound when dropping a video with audio ([839ae426d](https://github.com/heygen-com/hyperframes/commit/839ae426ddbcb3ad13ba21c586d87cde3aefa6f5), [#4250](https://github.com/heygen-com/hyperframes/pull/4250)).
+- **CLI:** Search media assets through media-use ([3091dcb78](https://github.com/heygen-com/hyperframes/commit/3091dcb787163db2e9d6082d926fe7a332d4ae4d), [#4230](https://github.com/heygen-com/hyperframes/pull/4230)).
+- **CLI:** Let agents edit timelines through timeline workflows ([4e9059ad5](https://github.com/heygen-com/hyperframes/commit/4e9059ad598add05f9b74346526e7ee3daddb1c4), [#4241](https://github.com/heygen-com/hyperframes/pull/4241)).
+- **Studio:** See audio level meters at the timeline's right edge ([97420736d](https://github.com/heygen-com/hyperframes/commit/97420736d56e6feef7396c8d100a33b2e913844a), [#4193](https://github.com/heygen-com/hyperframes/pull/4193)).
+- **Studio:** Compose a timeline from the parts a host app needs ([064192155](https://github.com/heygen-com/hyperframes/commit/0641921558eadcee0a026fa6db39e3e9e5b76f62), [#4229](https://github.com/heygen-com/hyperframes/pull/4229)).
+
+## Fixes
+
+- **CLI:** Keep partial site captures after a deadline and navigate pages without WebGL ([952e9228b](https://github.com/heygen-com/hyperframes/commit/952e9228b5cdf4387ecb4b6f220ef8e5d9143a73), [#4215](https://github.com/heygen-com/hyperframes/pull/4215)).
+
+## Performance
+
+- **Player:** Prepare previews from only the assets needed for their first frame ([16fab47a8](https://github.com/heygen-com/hyperframes/commit/16fab47a8eb245feab1cc786b9c9c14e41487283), [#4239](https://github.com/heygen-com/hyperframes/pull/4239)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.58...v0.8.59).
+</Update>
+
+<Update
   label="HyperFrames v0.8.58"
   description="Released - 2026-09-21"
   tags={["Release", "Studio", "Docs", "CLI"]}
