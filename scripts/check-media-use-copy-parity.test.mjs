@@ -32,21 +32,24 @@ export const INTENTIONAL_MEDIA_USE_DIVERGENCES = new Map([
   ],
 ]);
 
+function copyPaths(name, skillDir, cliDir) {
+  return { skillPath: join(skillDir, name), cliPath: join(cliDir, name) };
+}
+
 export function findMediaUseCopyParityIssues({ skillDir = skillLibDir, cliDir = cliLibDir } = {}) {
-  return MEDIA_USE_COPY_NAMES.flatMap((name) => {
-    const skillPath = join(skillDir, name);
-    const cliPath = join(cliDir, name);
-    if (!existsSync(skillPath) || !existsSync(cliPath)) {
-      return [`${name}: both media-use copies must exist`];
-    }
-    if (
-      !INTENTIONAL_MEDIA_USE_DIVERGENCES.has(name) &&
-      !readFileSync(skillPath).equals(readFileSync(cliPath))
-    ) {
-      return [`${name}: standalone and CLI copies differ without an allowlist reason`];
-    }
-    return [];
-  });
+  const missing = MEDIA_USE_COPY_NAMES.filter((name) => {
+    const { skillPath, cliPath } = copyPaths(name, skillDir, cliDir);
+    return !existsSync(skillPath) || !existsSync(cliPath);
+  }).map((name) => `${name}: both media-use copies must exist`);
+  const drifted = MEDIA_USE_COPY_NAMES.filter(
+    (name) => !INTENTIONAL_MEDIA_USE_DIVERGENCES.has(name),
+  )
+    .filter((name) => {
+      const { skillPath, cliPath } = copyPaths(name, skillDir, cliDir);
+      return !readFileSync(skillPath).equals(readFileSync(cliPath));
+    })
+    .map((name) => `${name}: standalone and CLI copies differ without an allowlist reason`);
+  return [...missing, ...drifted];
 }
 
 describe("media-use source parity", () => {
