@@ -292,12 +292,7 @@ export function FlatSlider({
   centerTick?: boolean;
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
-  /**
-   * Makes the value readout editable: click it (or focus + Enter) and type.
-   * Receives the raw text on Enter/blur and returns false to refuse it, which
-   * keeps the field open and marks it invalid. Audio mixing is exact work —
-   * "-6 dB" or "0.25s" should be typeable, not hunted for on a 200px track.
-   */
+  /** Typed readout: return false to refuse the text, keep the field open, and mark it invalid. */
   onCommitText?: (text: string) => boolean | void;
 }) {
   const track = useTrackDesignInput();

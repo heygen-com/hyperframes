@@ -116,11 +116,7 @@ export function buildTimelineAssetInsertHtml(input: {
   track: number;
   zIndex: number;
   geometry?: { left: number; top: number; width: number; height: number };
-  /**
-   * Video only: true when the file carries an audio stream, so the clip is
-   * inserted audible (`data-has-audio="true"`, no `muted`) and the mixer
-   * renders its sound. Unknown or false keeps the muted default.
-   */
+  /** Video only: true inserts `data-has-audio="true"` with no `muted`. Unknown or false stays muted. */
   hasAudio?: boolean;
 }): string {
   const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;

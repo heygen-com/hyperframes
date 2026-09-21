@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFadeFilters, parseAudioElements } from "./audioMixer.js";
+import { buildFadeFilters, buildTrackInputFilter, parseAudioElements } from "./audioMixer.js";
 
 describe("parseAudioElements — clip-edge fades", () => {
   it("reads data-fade-in / data-fade-out in seconds and omits them when absent", () => {
@@ -43,5 +43,24 @@ describe("buildFadeFilters", () => {
     expect(buildFadeFilters({ start: 0, end: 4, fadeIn: 4, fadeOut: 4 })).toBe(
       ",afade=t=in:st=0:d=2,afade=t=out:st=2:d=2",
     );
+  });
+
+  it("keeps fade-out anchored to the clip end after a trim", () => {
+    expect(buildFadeFilters({ start: 2, end: 12, fadeOut: 3 })).toBe(",afade=t=out:st=7:d=3");
+    expect(buildFadeFilters({ start: 2, end: 8, fadeOut: 3 })).toBe(",afade=t=out:st=3:d=3");
+  });
+});
+
+describe("buildTrackInputFilter", () => {
+  it("appends afade after the volume filter on the chain master and group mixes share", () => {
+    const filter = buildTrackInputFilter(
+      { start: 0, end: 10, fadeIn: 1, fadeOut: 2 },
+      0,
+      "volume=0.5",
+      20,
+    );
+    expect(filter.indexOf("volume=0.5")).toBeGreaterThanOrEqual(0);
+    expect(filter.indexOf("volume=0.5")).toBeLessThan(filter.indexOf("afade="));
+    expect(filter).toContain("volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=8:d=2");
   });
 });

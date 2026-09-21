@@ -102,9 +102,7 @@ export function FlatMediaSection({
   const fadeIn = readFadeSeconds(element.dataAttributes[HF_AUDIO_FADE_IN_DATA_KEY]);
   const fadeOut = readFadeSeconds(element.dataAttributes[HF_AUDIO_FADE_OUT_DATA_KEY]);
   const clipDuration = Number.parseFloat(element.dataAttributes.duration ?? "") || 0;
-  // A fade cannot outrun the clip; without a known duration, offer 10 s.
   const fadeMax = clipDuration > 0 ? clipDuration : 10;
-  const fadeText = (seconds: number) => (seconds > 0 ? formatFadeSeconds(seconds) : "");
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
   const hasAudio = element.dataAttributes["has-audio"] === "true";
@@ -350,53 +348,12 @@ export function FlatMediaSection({
             }}
           />
           {(isAudio || hasAudio) && (
-            <>
-              {/* Clip-edge fades: `data-fade-in` / `data-fade-out`, seconds.
-                  The same two numbers the timeline's corner handles drag; an
-                  empty write removes the attribute. */}
-              <FlatSlider
-                label="Fade in"
-                value={Math.round(fadeIn * 100)}
-                min={0}
-                max={Math.round(fadeMax * 100)}
-                tier={fadeIn === 0 ? "default" : "explicitCustom"}
-                displayValue={formatTimingValue(fadeIn)}
-                onCommit={(next) =>
-                  void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(next / 100))
-                }
-                onCommitText={(text) => {
-                  const seconds = parseSecondsInput(text);
-                  if (seconds === null) return false;
-                  void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(seconds));
-                  return true;
-                }}
-                onReset={
-                  fadeIn > 0 ? () => void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, "") : undefined
-                }
-              />
-              <FlatSlider
-                label="Fade out"
-                value={Math.round(fadeOut * 100)}
-                min={0}
-                max={Math.round(fadeMax * 100)}
-                tier={fadeOut === 0 ? "default" : "explicitCustom"}
-                displayValue={formatTimingValue(fadeOut)}
-                onCommit={(next) =>
-                  void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(next / 100))
-                }
-                onCommitText={(text) => {
-                  const seconds = parseSecondsInput(text);
-                  if (seconds === null) return false;
-                  void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(seconds));
-                  return true;
-                }}
-                onReset={
-                  fadeOut > 0
-                    ? () => void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, "")
-                    : undefined
-                }
-              />
-            </>
+            <MediaFadeSliders
+              fadeIn={fadeIn}
+              fadeOut={fadeOut}
+              fadeMax={fadeMax}
+              onSetAttribute={onSetAttribute}
+            />
           )}
           <FlatToggle
             label="Loop"
@@ -454,5 +411,57 @@ export function FlatMediaSection({
         </>
       )}
     </div>
+  );
+}
+
+function MediaFadeSliders({
+  fadeIn,
+  fadeOut,
+  fadeMax,
+  onSetAttribute,
+}: {
+  fadeIn: number;
+  fadeOut: number;
+  fadeMax: number;
+  onSetAttribute: (attr: string, value: string) => void | Promise<void>;
+}) {
+  const fadeText = (seconds: number) => (seconds > 0 ? formatFadeSeconds(seconds) : "");
+  return (
+    <>
+      <FlatSlider
+        label="Fade in"
+        value={Math.round(fadeIn * 100)}
+        min={0}
+        max={Math.round(fadeMax * 100)}
+        tier={fadeIn === 0 ? "default" : "explicitCustom"}
+        displayValue={formatTimingValue(fadeIn)}
+        onCommit={(next) => void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(next / 100))}
+        onCommitText={(text) => {
+          const seconds = parseSecondsInput(text);
+          if (seconds === null) return false;
+          void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(seconds));
+          return true;
+        }}
+        onReset={fadeIn > 0 ? () => void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, "") : undefined}
+      />
+      <FlatSlider
+        label="Fade out"
+        value={Math.round(fadeOut * 100)}
+        min={0}
+        max={Math.round(fadeMax * 100)}
+        tier={fadeOut === 0 ? "default" : "explicitCustom"}
+        displayValue={formatTimingValue(fadeOut)}
+        onCommit={(next) => void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(next / 100))}
+        onCommitText={(text) => {
+          const seconds = parseSecondsInput(text);
+          if (seconds === null) return false;
+          void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(seconds));
+          return true;
+        }}
+        onReset={
+          fadeOut > 0 ? () => void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, "") : undefined
+        }
+      />
+    </>
   );
 }

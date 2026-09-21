@@ -30,13 +30,7 @@ interface TimelineClipFadesProps {
   showHandles: boolean;
 }
 
-/**
- * CapCut-style fade handles on an audio clip: a dot at each top corner that
- * drags inward to set `data-fade-in` / `data-fade-out`, with the faded region
- * shaded as a ramp so the clip reads at a glance. Writes go through the same
- * live-then-quiet attribute path the FX rack uses, so the preview follows the
- * drag and the release lands one undoable edit in the source file.
- */
+/** Corner dots that drag `data-fade-in` / `data-fade-out`; the wedge is the faded region. */
 export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineClipFadesProps) {
   const { onSetElementAttributeLive, onSetElementAttributeQuiet } =
     useTimelineEditContextOptional();

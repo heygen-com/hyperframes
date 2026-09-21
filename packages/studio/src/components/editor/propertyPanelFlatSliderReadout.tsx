@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-/**
- * The value readout beside a FlatSlider. With `onCommitText` it is
- * click-to-type: the readout becomes an input prefilled with the display text,
- * Enter or blur commits, Escape cancels, and a refused value stays open marked
- * invalid. Audio mixing is exact work: "-6 dB" or "0.25s" should be typeable,
- * not hunted for on a 200px track.
- */
+/** Click-to-type readout. Enter/blur commits; a refused value stays open and turns red. */
 export function FlatSliderReadout({
   label,
   displayValue,

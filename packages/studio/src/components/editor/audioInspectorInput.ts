@@ -1,21 +1,9 @@
-/**
- * Typed-value parsers for the audio rows of the media inspector.
- *
- * Each accepts what a person would plausibly type after clicking the readout —
- * the readout's own format first, then the obvious neighbours — and returns
- * null for anything else, so the field can refuse rather than guess.
- */
-
-import { clampAudioGain } from "@hyperframes/core/audio-gain";
+import { audioDbToGain, clampAudioGain } from "@hyperframes/core/audio-gain";
 import { RATE_RANGE } from "@hyperframes/core/audio-automation";
 
 const NUMBER = String.raw`[-+]?(?:\d+\.?\d*|\.\d+)`;
 
-/**
- * Gain, as the readout shows it: decibels ("+0.5 dB", "-6", "-inf"). Also
- * takes a linear multiplier ("x0.8", "0.8x") or a percentage ("80%").
- * Returns linear gain, clamped to the fader's range.
- */
+/** Gain as the readout shows it (dB, "x0.8", "80%"). Returns linear gain, or null to refuse. */
 export function parseGainInput(text: string): number | null {
   const t = text.trim().toLowerCase().replace(/\s+/g, "");
   if (!t) return null;
@@ -25,7 +13,7 @@ export function parseGainInput(text: string): number | null {
   m = new RegExp(`^(?:x(${NUMBER})|(${NUMBER})x)$`).exec(t);
   if (m) return finiteGain(Number(m[1] ?? m[2]));
   m = new RegExp(`^(${NUMBER})(?:db)?$`).exec(t);
-  if (m) return finiteGain(10 ** (Number(m[1]) / 20));
+  if (m) return finiteGain(audioDbToGain(Number(m[1])));
   return null;
 }
 
@@ -49,10 +37,7 @@ export function parseRateInput(text: string): number | null {
   return Math.min(RATE_RANGE.max, Math.max(RATE_RANGE.min, value));
 }
 
-/**
- * A non-negative duration or offset: "2.5", "2.5s", "500ms", "1:02.5"
- * (minutes:seconds). Returns seconds.
- */
+/** Non-negative duration or offset: "2.5", "2.5s", "500ms", "1:02.5". Returns seconds, or null to refuse. */
 export function parseSecondsInput(text: string): number | null {
   const t = text.trim().toLowerCase().replace(/\s+/g, "");
   if (!t) return null;

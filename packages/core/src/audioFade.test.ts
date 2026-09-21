@@ -74,6 +74,18 @@ describe("fadeGain", () => {
     expect(fadeGain(100, Number.POSITIVE_INFINITY, fades)).toBe(1);
     expect(fadeGain(1, Number.POSITIVE_INFINITY, fades)).toBe(0.5);
   });
+  it("treats 0, negative, and NaN fades as no fade", () => {
+    expect(fadeGain(0, 10, { fadeIn: 0, fadeOut: 0 })).toBe(1);
+    expect(fadeGain(0, 10, { fadeIn: -1, fadeOut: -4 })).toBe(1);
+    expect(fadeGain(0, 10, { fadeIn: Number.NaN, fadeOut: Number.NaN })).toBe(1);
+  });
+  it("returns a finite 0..1 gain for NaN elapsed and for fades longer than the clip", () => {
+    expect(fadeGain(Number.NaN, 10, fades)).toBe(1);
+    const overlapping = fadeGain(0.5, 2, { fadeIn: 10, fadeOut: 10 });
+    expect(overlapping).toBeGreaterThanOrEqual(0);
+    expect(overlapping).toBeLessThanOrEqual(1);
+    expect(Number.isFinite(overlapping)).toBe(true);
+  });
 });
 
 describe("formatFadeSeconds", () => {

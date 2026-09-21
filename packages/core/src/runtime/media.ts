@@ -366,11 +366,7 @@ export function syncRuntimeMedia(params: {
         authorVolume = fallbackAuthorVolume;
       }
 
-      // Clip-edge fades ride on top of whatever resolved the level above —
-      // static, lane, probed keyframes or GSAP — the same way the render puts
-      // `afade` after the `volume` filter (audioMixer.ts `buildFadeFilters`).
-      // Clip-local time, like the lane: the fade-out is anchored to the clip's
-      // end, not to a position in the source.
+      // Clip-local fade on top of the resolved level, matching render's afade-after-volume.
       const fades = clip.fades ?? NO_FADES;
       if (fades.fadeIn > 0 || fades.fadeOut > 0) {
         authorVolume *= fadeGain(params.timeSeconds - clip.start, clip.duration, fades);

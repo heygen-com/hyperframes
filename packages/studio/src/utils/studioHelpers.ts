@@ -377,11 +377,7 @@ export async function resolveDroppedAssetDuration(
   return duration;
 }
 
-/**
- * Whether a dropped video carries an audio stream, from the server's ffprobe
- * metadata. Decides muted vs `data-has-audio="true"` at insert time; any
- * failure answers false so the drop still lands, muted, the way it always did.
- */
+/** Dropped video audio stream from the metadata endpoint. Failure answers false so the drop still lands muted. */
 export async function resolveDroppedAssetHasAudio(
   projectId: string,
   assetPath: string,

@@ -47,12 +47,7 @@ export interface AudioTrack {
   duration: number;
   volume: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
-  /**
-   * Clip-edge fades in seconds, applied by `afade` after the volume filter so
-   * they ride on top of the static gain and any envelope. The fade-out ends at
-   * `end`, so it also silences an FX tail — a fade to silence is a fade to
-   * silence.
-   */
+  /** Clip-edge fades in seconds, applied by `afade` after the volume filter. Fade-out ends at `end`. */
   fadeIn?: number;
   fadeOut?: number;
   /**
