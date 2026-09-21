@@ -214,17 +214,6 @@ function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
   return allRows(timeline).filter((candidate) => candidate.file === file);
 }
 
-export function rowAt(
-  timeline: ProjectTimeline,
-  pointer: { kind: TimelineRow["trackKind"]; index: number },
-): TimelineRow {
-  const track = timeline.tracks.find((candidate) => candidate.kind === pointer.kind);
-  if (!track) throw new Error(`missing track ${pointer.kind}`);
-  const row = track.rows[pointer.index];
-  if (!row) throw new Error(`missing row ${pointer.kind}/${pointer.index}`);
-  return row;
-}
-
 function mutationResult(row: TimelineRow, before: ProjectTimeline, planned: boolean) {
   return {
     ok: true,
@@ -276,16 +265,6 @@ function applyMutation(
   }
 }
 
-export function positional(args: Record<string, unknown>): string[] {
-  return Array.isArray(args._)
-    ? args._.filter((value): value is string => typeof value === "string")
-    : [];
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function mutationRefusal(
   verb: MutationVerb,
   after: string,
@@ -294,21 +273,4 @@ function mutationRefusal(
 ): { reason: string; fix: string } | null {
   if (verb !== "delete" || after !== before) return null;
   return { reason: `${ref} was not found`, fix: "choose an existing clip" };
-}
-
-export function mutationConflict(
-  verb: MutationVerb,
-  overwrite: boolean,
-  row: TimelineRow,
-  timeline: ProjectTimeline,
-  nextStart: number,
-  nextDuration: number,
-): { reason: string; fix: string } | null {
-  if ((verb !== "move" && verb !== "trim") || overwrite) return null;
-  const conflict = overlap(row, timeline, nextStart, nextStart + nextDuration);
-  if (!conflict) return null;
-  return {
-    reason: `${row.ref} would overlap ${conflict.ref} at ${nextStart}-${nextStart + nextDuration}`,
-    fix: "pass --overwrite or move the named neighbour",
-  };
 }
