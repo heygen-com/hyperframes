@@ -377,6 +377,10 @@ export async function resolveDroppedAssetDuration(
   return duration;
 }
 
+export function mediaMetadataUrl(projectId: string, assetPath: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(assetPath)}`;
+}
+
 /** Dropped video audio stream from the metadata endpoint. Failure answers false so the drop still lands muted. */
 export async function resolveDroppedAssetHasAudio(
   projectId: string,
@@ -385,9 +389,7 @@ export async function resolveDroppedAssetHasAudio(
 ): Promise<boolean> {
   if (kind !== "video") return false;
   try {
-    const response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(assetPath)}`,
-    );
+    const response = await fetch(mediaMetadataUrl(projectId, assetPath));
     if (!response.ok) return false;
     const data = (await response.json()) as { metadata?: { hasAudio?: boolean } } | null;
     return data?.metadata?.hasAudio === true;

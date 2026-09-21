@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { audioDbToGain, audioGainToDb } from "@hyperframes/core/audio-gain";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { isAudioTimelineElement } from "./timelineInspector";
 
@@ -12,7 +13,7 @@ const HOLD_MS = 1200;
 
 /** Linear peak (0..1) to a 0..1 bar fraction along the piecewise-linear dB scale. */
 export function levelToFraction(linear: number): number {
-  const db = linear > 0 ? 20 * Math.log10(linear) : FLOOR_DB;
+  const db = linear > 0 ? audioGainToDb(linear) : FLOOR_DB;
   if (db >= 0) return 1;
   if (db <= FLOOR_DB) return 0;
   const j = STOPS.findIndex((stop) => db >= stop);
@@ -23,7 +24,7 @@ export function levelToFraction(linear: number): number {
 
 /** Fraction of the bar height at which a dB mark sits, 0 at the bottom. */
 export function markFraction(db: number): number {
-  return levelToFraction(10 ** (db / 20));
+  return levelToFraction(audioDbToGain(db));
 }
 
 export interface MeterChannel {

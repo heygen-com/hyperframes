@@ -28,6 +28,7 @@ import {
 import {
   HF_AUDIO_FADE_IN_DATA_KEY,
   HF_AUDIO_FADE_OUT_DATA_KEY,
+  clampFadesToDuration,
   formatFadeSeconds,
   readFadeSeconds,
 } from "@hyperframes/core/audio-fade";
@@ -343,7 +344,7 @@ export function FlatMediaSection({
             onCommitText={(text) => {
               const seconds = parseSecondsInput(text);
               if (seconds === null) return false;
-              void onSetAttribute("media-start", seconds.toFixed(2));
+              void onSetAttribute("media-start", Math.min(seconds, mediaStartMax).toFixed(2));
               return true;
             }}
           />
@@ -426,42 +427,31 @@ function MediaFadeSliders({
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
 }) {
   const fadeText = (seconds: number) => (seconds > 0 ? formatFadeSeconds(seconds) : "");
-  return (
-    <>
+  return (["in", "out"] as const).map((edge) => {
+    const seconds = edge === "in" ? fadeIn : fadeOut;
+    const dataKey = edge === "in" ? HF_AUDIO_FADE_IN_DATA_KEY : HF_AUDIO_FADE_OUT_DATA_KEY;
+    return (
       <FlatSlider
-        label="Fade in"
-        value={Math.round(fadeIn * 100)}
+        key={edge}
+        label={`Fade ${edge}`}
+        value={Math.round(seconds * 100)}
         min={0}
         max={Math.round(fadeMax * 100)}
-        tier={fadeIn === 0 ? "default" : "explicitCustom"}
-        displayValue={formatTimingValue(fadeIn)}
-        onCommit={(next) => void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(next / 100))}
+        tier={seconds === 0 ? "default" : "explicitCustom"}
+        displayValue={formatTimingValue(seconds)}
+        onCommit={(next) => void onSetAttribute(dataKey, fadeText(next / 100))}
         onCommitText={(text) => {
-          const seconds = parseSecondsInput(text);
-          if (seconds === null) return false;
-          void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, fadeText(seconds));
+          const parsed = parseSecondsInput(text);
+          if (parsed === null) return false;
+          const bounded = clampFadesToDuration(
+            { fadeIn: edge === "in" ? parsed : 0, fadeOut: edge === "out" ? parsed : 0 },
+            fadeMax,
+          );
+          void onSetAttribute(dataKey, fadeText(edge === "in" ? bounded.fadeIn : bounded.fadeOut));
           return true;
         }}
-        onReset={fadeIn > 0 ? () => void onSetAttribute(HF_AUDIO_FADE_IN_DATA_KEY, "") : undefined}
+        onReset={seconds > 0 ? () => void onSetAttribute(dataKey, "") : undefined}
       />
-      <FlatSlider
-        label="Fade out"
-        value={Math.round(fadeOut * 100)}
-        min={0}
-        max={Math.round(fadeMax * 100)}
-        tier={fadeOut === 0 ? "default" : "explicitCustom"}
-        displayValue={formatTimingValue(fadeOut)}
-        onCommit={(next) => void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(next / 100))}
-        onCommitText={(text) => {
-          const seconds = parseSecondsInput(text);
-          if (seconds === null) return false;
-          void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, fadeText(seconds));
-          return true;
-        }}
-        onReset={
-          fadeOut > 0 ? () => void onSetAttribute(HF_AUDIO_FADE_OUT_DATA_KEY, "") : undefined
-        }
-      />
-    </>
-  );
+    );
+  });
 }

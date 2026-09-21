@@ -582,6 +582,30 @@ describe("FlatMediaSection — audio clips", () => {
     act(() => root.unmount());
   });
 
+  it.each([
+    ["Media start", "media-start", "45.00"],
+    ["Fade in", "fade-in", "10"],
+    ["Fade out", "fade-out", "10"],
+  ])("bounds typed %s to the slider limit", (label, attribute, expected) => {
+    const { host, root, onSetAttribute } = renderWithRate(
+      makeAudioElement({ "source-duration": "45" }),
+    );
+    const row = host.querySelector<HTMLElement>(
+      `[data-flat-slider-track="true"][aria-label="${label}"]`,
+    )?.parentElement;
+    const readout = row?.querySelector<HTMLElement>('[data-flat-slider-value="true"]');
+    if (!readout) throw new Error(`expected ${label} readout`);
+    act(() => readout.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const input = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
+    if (!input) throw new Error(`expected ${label} input`);
+    act(() => {
+      typeInto(input, "9999");
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onSetAttribute.mock.calls).toEqual([[attribute, expected]]);
+    act(() => root.unmount());
+  });
+
   it("commits a typed volume in dB and a typed fade in seconds", () => {
     const { host, root, onSetAttribute } = renderWithRate(makeAudioElement());
     const readouts = host.querySelectorAll<HTMLElement>('[data-flat-slider-value="true"]');
