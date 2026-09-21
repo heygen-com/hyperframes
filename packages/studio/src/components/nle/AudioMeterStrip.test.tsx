@@ -315,8 +315,20 @@ describe("stepAndPaintStrips", () => {
     const rest: [typeof SILENT_CHANNEL, typeof SILENT_CHANNEL] = [SILENT_CHANNEL, SILENT_CHANNEL];
     const state = new Map<string | null, typeof rest>([["rest", rest]]);
     const bars = new Map([
-      ["loud", [{ mask: loudMask, peak: null }, { mask: null, peak: null }] as const],
-      ["rest", [{ mask: restMask, peak: null }, { mask: null, peak: null }] as const],
+      [
+        "loud",
+        [
+          { mask: loudMask, peak: null },
+          { mask: null, peak: null },
+        ] as const,
+      ],
+      [
+        "rest",
+        [
+          { mask: restMask, peak: null },
+          { mask: null, peak: null },
+        ] as const,
+      ],
     ]);
     stepAndPaintStrips(
       [{ id: "loud" }, { id: "rest" }],
