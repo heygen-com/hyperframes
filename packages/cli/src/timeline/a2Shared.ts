@@ -1,24 +1,17 @@
 import {
-  applyFileMutations,
   duplicateElementInHtml,
-  fileContentVersion,
   patchElementInHtml,
   removeElementFromHtml,
   splitElementInHtml,
 } from "@hyperframes/studio-server";
-import type { AppliedFileMutation, PatchOperation } from "@hyperframes/studio-server";
+import type { PatchOperation } from "@hyperframes/studio-server";
 import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
-import { formatTimeline } from "./formatTimeline.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
-import { ensureDOMParser } from "../utils/dom.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
-import { resolveProject } from "../utils/project.js";
-import { withMeta } from "../utils/updateCheck.js";
 import { parseSetAssignments, type SetAssignment } from "./a2Mutations.js";
 
 export type MutationVerb = "move" | "trim" | "split" | "delete" | "set" | "duplicate";
@@ -47,6 +40,14 @@ export function refusal(reason: string, fix: string, json: boolean): void {
   setCommandExitCode(2);
   const payload = { ok: false, reason, fix };
   console.error(json ? JSON.stringify(payload, null, 2) : `${reason}; ${fix}.`);
+}
+
+export function refuse(
+  kind: string,
+  detail: { reason: string; fix: string },
+  json: boolean,
+): void {
+  refusal(`${kind}: ${detail.reason}`, detail.fix, json);
 }
 
 export function fpsFor(indexPath: string): number {

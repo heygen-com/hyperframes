@@ -17,7 +17,7 @@ import {
   isRecord,
   mutationConflict,
   positional,
-  refusal,
+  refuse,
   rowAt,
   type MutationContext,
   type MutationVerb,
@@ -113,23 +113,26 @@ function applyPlanEdit(
   return { ok: true, file: row.file, after: decision.after };
 }
 
-export async function runApply(args: Record<string, unknown>): Promise<void> {
-  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
-  const json = args.json === true;
-  const plan = args.plan === true;
-  const file = typeof args.file === "string" ? args.file : positional(args)[1];
-  if (!file) return refusal("an edit plan is required", "pass an edits.json path or -", json);
+type EditPlan =
+  | { ok: true; edits: unknown[] }
+  | { ok: false; reason: string; fix: string };
+
+function readEditPlan(file: string): EditPlan {
   const raw = file === "-" ? readFileSync(0, "utf-8") : readFileSync(file, "utf-8");
-  let edits: unknown;
   try {
-    edits = JSON.parse(raw);
+    const edits: unknown = JSON.parse(raw);
+    return Array.isArray(edits)
+      ? { ok: true, edits }
+      : { ok: false, reason: "edit plan must be a JSON array", fix: "pass a JSON array of edits" };
   } catch {
-    return refusal("edit plan is not valid JSON", "pass a JSON array of edits", json);
+    return { ok: false, reason: "edit plan is not valid JSON", fix: "pass a JSON array of edits" };
   }
-  if (!Array.isArray(edits))
-    return refusal("edit plan must be a JSON array", "pass a JSON array of edits", json);
-  ensureDOMParser();
-  const timeline = await describeProject(project.indexPath);
+}
+
+function readPlanSources(
+  timeline: ProjectTimeline,
+  project: ReturnType<typeof resolveProject>,
+): { sourceByFile: Map<string, string>; beforeByFile: Map<string, string> } {
   const sourceByFile = new Map<string, string>();
   const beforeByFile = new Map<string, string>();
   for (const fileName of new Set(allRows(timeline).map((row) => row.file))) {
@@ -137,11 +140,36 @@ export async function runApply(args: Record<string, unknown>): Promise<void> {
     sourceByFile.set(fileName, source);
     beforeByFile.set(fileName, source);
   }
+  return { sourceByFile, beforeByFile };
+}
+
+function applyPlanEdits(
+  edits: unknown[],
+  timeline: ProjectTimeline,
+  project: ReturnType<typeof resolveProject>,
+  sourceByFile: Map<string, string>,
+): { ok: true } | { ok: false; reason: string; fix: string } {
   for (const edit of edits) {
     const result = applyPlanEdit(edit, timeline, project, sourceByFile);
-    if (!result.ok) return refusal(result.reason, result.fix, json);
+    if (!result.ok) return result;
     sourceByFile.set(result.file, result.after);
   }
+  return { ok: true };
+}
+
+export async function runApply(args: Record<string, unknown>): Promise<void> {
+  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const json = args.json === true;
+  const plan = args.plan === true;
+  const file = typeof args.file === "string" ? args.file : positional(args)[1];
+  if (!file) return refuse("timeline apply", { reason: "an edit plan is required", fix: "pass an edits.json path or -" }, json);
+  const planInput = readEditPlan(file);
+  if (!planInput.ok) return refuse("timeline apply", planInput, json);
+  ensureDOMParser();
+  const timeline = await describeProject(project.indexPath);
+  const { sourceByFile, beforeByFile } = readPlanSources(timeline, project);
+  const editsResult = applyPlanEdits(planInput.edits, timeline, project, sourceByFile);
+  if (!editsResult.ok) return refuse("timeline apply", editsResult, json);
   const inputs = [...sourceByFile].flatMap(([fileName, after]) => {
     const before = beforeByFile.get(fileName)!;
     return after === before
@@ -186,7 +214,7 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
   const json = args.json === true;
   const input = typeof args.receipt === "string" ? args.receipt : positional(args)[1];
   if (!input)
-    return refusal("an undo receipt is required", "pass the receipt JSON or its file", json);
+    return refuse("timeline undo", { reason: "an undo receipt is required", fix: "pass the receipt JSON or its file" }, json);
   let raw: string;
   try {
     raw = readFileSync(input, "utf-8");
@@ -197,7 +225,7 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return refusal("undo receipt is not valid JSON", "pass the applied JSON receipt", json);
+    return refuse("timeline undo", { reason: "undo receipt is not valid JSON", fix: "pass the applied JSON receipt" }, json);
   }
   const value = isRecord(parsed) && isRecord(parsed.receipt) ? parsed.receipt : parsed;
   if (
@@ -206,11 +234,10 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
     typeof value.version !== "string" ||
     typeof value.backupPath !== "string"
   ) {
-    return refusal(
-      "undo receipt is missing file, version, or backupPath",
-      "pass an applied timeline receipt",
-      json,
-    );
+    return refuse("timeline undo", {
+      reason: "undo receipt is missing file, version, or backupPath",
+      fix: "pass an applied timeline receipt",
+    }, json);
   }
   const backup = join(project.dir, value.backupPath);
   const target = join(project.dir, value.file);
