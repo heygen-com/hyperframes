@@ -272,6 +272,12 @@
       "types": "./dist/runtime/webAudioRoute.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/levelTap": {
+      "source": "./src/runtime/levelTap.ts",
+      "runtime": "./dist/runtime/levelTap.js",
+      "types": "./dist/runtime/levelTap.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./compiler/html-document": {
       "source": "./src/compiler/htmlDocument.ts",
       "runtime": "./dist/compiler/htmlDocument.js",

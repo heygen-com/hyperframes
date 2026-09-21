@@ -8,6 +8,7 @@ import {
   type Ref,
   type RefObject,
 } from "react";
+import type { StereoLevel } from "@hyperframes/core/runtime/levelTap";
 import { usePlayerStore } from "../../player";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -23,8 +24,8 @@ import {
 } from "../../utils/audioMeterMath";
 
 interface Levels {
-  master: { l: number; r: number };
-  groups: Record<string, { l: number; r: number }>;
+  master: StereoLevel;
+  groups: Record<string, StereoLevel>;
 }
 interface AudioMeterHook {
   start(): void;

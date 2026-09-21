@@ -281,6 +281,12 @@
       "import": "./src/runtime/webAudioRoute.ts",
       "types": "./src/runtime/webAudioRoute.ts"
     },
+    "./runtime/levelTap": {
+      "bun": "./src/runtime/levelTap.ts",
+      "node": "./dist/runtime/levelTap.js",
+      "import": "./src/runtime/levelTap.ts",
+      "types": "./src/runtime/levelTap.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
@@ -598,6 +604,10 @@
       "./runtime/web-audio-route": {
         "import": "./dist/runtime/webAudioRoute.js",
         "types": "./dist/runtime/webAudioRoute.d.ts"
+      },
+      "./runtime/levelTap": {
+        "import": "./dist/runtime/levelTap.js",
+        "types": "./dist/runtime/levelTap.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
