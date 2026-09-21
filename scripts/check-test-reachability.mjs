@@ -46,11 +46,15 @@ function readFilters(source) {
   );
 }
 
+function jobField(body, key) {
+  return body.match(new RegExp(`^    ${key}: (.*)$`, "m"))?.[1] ?? "";
+}
+
 function readJob(block) {
   const name = block.match(/^  ([\w-]+):/)[1];
   const body = block.slice(block.indexOf("\n") + 1);
-  const condition = body.match(/^    if: (.*)$/m)?.[1] ?? "";
-  const needs = body.match(/^    needs: (.*)$/m)?.[1] ?? "";
+  const condition = jobField(body, "if");
+  const needs = jobField(body, "needs");
   return {
     name,
     body,
@@ -142,21 +146,28 @@ function flatOptions(tokens) {
   throw new Error("Unsupported test configuration");
 }
 
-function testOptions(config) {
+function optionTokens(source) {
+  return (
+    source.match(
+      /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*|[{}]|[^{}"'`/]+|./g,
+    ) ?? []
+  );
+}
+
+function rejectQuotedSelectors(config) {
   if (/["'](?:test|include|exclude|projects|workspace)["']\s*:/.test(config))
     throw new Error("Quoted test selection keys need an explicit reachability model");
+}
+
+function testOptions(config) {
+  rejectQuotedSelectors(config);
   const start = config.match(/\btest:\s*\{/);
   if (!start) {
     if (/\btest:/.test(config)) throw new Error("Nonliteral test configuration");
     return "";
   }
-  const tokens =
-    config
-      .slice(start.index + start[0].length)
-      .match(
-        /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*|[{}]|[^{}"'`/]+|./g,
-      ) ?? [];
-  const result = flatOptions(tokens.filter((token) => !/^\/[/\*]/.test(token)));
+  const tokens = optionTokens(config.slice(start.index + start[0].length));
+  const result = flatOptions(tokens.filter((token) => !/^\/[/*]/.test(token)));
   if (result.includes("...")) throw new Error("Unsupported test configuration");
   return result;
 }
@@ -179,7 +190,9 @@ function runnerSelection(cwd, files, read) {
   if (configurations.some((path) => !path.endsWith(".ts")))
     throw new Error(`Unsupported runner config: ${configurations.join(", ")}`);
   const config =
-    read(posix.join(cwd, "vitest.config.ts")) ?? read(posix.join(cwd, "vite.config.ts")) ?? "";
+    ["vitest", "vite"]
+      .map((name) => read(posix.join(cwd, `${name}.config.ts`)))
+      .find((value) => value !== undefined) ?? "";
   const testConfig = testOptions(config);
   if (/\bprojects:|\bworkspace:/.test(testConfig))
     throw new Error(`Unsupported test projects in ${cwd}`);
@@ -217,7 +230,7 @@ function runnerCommand(command) {
   const kind = runnerKind(command);
   if (!kind) return undefined;
   const tokens = command.match(/"[^"]*"|'[^']*'|\S+/g).map((s) => s.replace(/^["']|["']$/g, ""));
-  if (tokens.some((token) => /[$`|;<>]/.test(token))) return undefined;
+  if (/[\n$`|;<>]/.test(command)) return undefined;
   return {
     node: kind === "node",
     vitest: kind === "vitest",
@@ -245,11 +258,15 @@ function pinnedJob(text, name) {
   return readWorkflow(text).jobs.find((job) => job.name === name)?.body ?? "";
 }
 
+function pinnedScript(text, name) {
+  return JSON.parse(text).scripts[name] ?? "";
+}
+
 export function pinnedSource(path, read) {
   const [file, kind, name] = path.split("#");
   const text = read(file) ?? "";
   if (kind === "job") return pinnedJob(text, name);
-  if (kind === "script") return JSON.parse(text).scripts[name] ?? "";
+  if (kind === "script") return pinnedScript(text, name);
   return text;
 }
 
@@ -291,7 +308,6 @@ function expandPackage(call, cwd, packages, files, read, adapters, seen) {
 function expand(command, cwd, packages, files, read, adapters, seen = []) {
   const adapter = adapters.find((entry) => entry.command === command && entry.cwd === cwd);
   if (adapter) return adapterTests(adapter, files, read);
-  if (command.includes("${") || command.includes("\n")) return [];
   if (command.includes("&&"))
     return command
       .split(/\s*&&\s*/)
@@ -304,11 +320,11 @@ function expand(command, cwd, packages, files, read, adapters, seen = []) {
 }
 
 function testRoutes(workflow, packages, files, read, adapters) {
-  const routes = new Map();
+  const routes = new Map(files.filter((file) => TEST.test(file)).map((file) => [file, []]));
   for (const job of workflow.jobs) {
     for (const command of commands(job.body)) {
       for (const file of expand(command, ".", packages, files, read, adapters)) {
-        routes.set(file, [...(routes.get(file) ?? []), job]);
+        routes.get(file).push(job);
       }
     }
   }
@@ -373,12 +389,17 @@ export function ratchet(issues, baseline, previous = baseline) {
   return [...errors, ...budgetErrors];
 }
 
+function baseArgument(index) {
+  const base = process.argv[index + 1];
+  if (!base || base.startsWith("-")) throw new Error("--base needs a Git ref");
+  return base;
+}
+
 function previousBaseline(baseline) {
   const index = process.argv.indexOf("--base");
   let previous = baseline;
   if (index !== -1) {
-    const base = process.argv[index + 1];
-    if (!base || base.startsWith("-")) throw new Error("--base needs a Git ref");
+    const base = baseArgument(index);
     const paths = execFileSync("git", ["ls-tree", "--name-only", base, "--", BASELINE], {
       encoding: "utf8",
     });
