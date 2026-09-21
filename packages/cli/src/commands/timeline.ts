@@ -6,7 +6,8 @@ import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { runApply, runIds, runUndo } from "../timeline/a2Commands.js";
-import { runMutation, type MutationVerb } from "../timeline/a2Shared.js";
+import { runMutation } from "../timeline/a2MutationCommand.js";
+import type { MutationVerb } from "../timeline/a2Shared.js";
 
 export const examples: Example[] = [
   ["Show every track and clip of the project in the current directory", "hyperframes timeline"],
