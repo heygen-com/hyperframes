@@ -121,9 +121,7 @@ describe("timeline motion styles", () => {
     expect(themeCss).toContain("--timeline-clip-border: rgba(255, 255, 255, 0.22)");
     expect(themeCss).toContain("--timeline-track-label: rgba(255, 255, 255, 0.5)");
     expect(themeCss).toContain("--timeline-tick-text: rgba(255, 255, 255, 0.34)");
-    expect(themeCss).toContain(
-      "--timeline-clip-label-active: rgba(232, 255, 247, 0.95)",
-    );
+    expect(themeCss).toContain("--timeline-clip-label-active: rgba(232, 255, 247, 0.95)");
     expect(themeCss).toContain("--timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85)");
     expect(themeCss).toContain("--timeline-clip-selection: rgba(255, 255, 255, 0.85)");
     expect(themeCss).toContain("--timeline-clip-audio-bg: rgba(167, 139, 250, 0.16)");
