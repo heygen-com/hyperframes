@@ -31,7 +31,7 @@ import {
 } from "./useTimelineTrackLayout";
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
-import { TimelineRazorGuide, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
+import { TimelineRazorGuideOverlay, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
 import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
 import {
   getEffectiveTimelineDuration,
@@ -566,7 +566,7 @@ export function useTimelineProviderState({
     labelColumnWidth: LABEL_COL_W,
     razorGuide:
       activeTool === "razor" && razorGuideX !== null ? (
-        <TimelineRazorGuide x={razorGuideX} />
+        <TimelineRazorGuideOverlay x={razorGuideX} />
       ) : null,
   });
   const contextValue: TimelineContextValue = {

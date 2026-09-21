@@ -50,7 +50,7 @@ export function useTimelineRazorInteraction({
   return { razorGuideX, updateRazorGuide, clearRazorGuide, splitAllAtPointer };
 }
 
-export function TimelineRazorGuide({ x }: { x: number }) {
+export function TimelineRazorGuideOverlay({ x }: { x: number }) {
   return (
     <div
       className="absolute top-0 bottom-0 pointer-events-none z-10"

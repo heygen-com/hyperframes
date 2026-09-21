@@ -1,8 +1,7 @@
-import { memo } from "react";
 import { TimelineRuler as TimelineRulerImpl } from "./TimelineRuler";
 import { useTimelineContext } from "./TimelineProvider";
 
-export const TimelineRulerPart = memo(function TimelineRulerPart() {
+export function TimelineRulerPart() {
   const { state } = useTimelineContext();
   const props = state.canvas;
   return (
@@ -20,4 +19,4 @@ export const TimelineRulerPart = memo(function TimelineRulerPart() {
       renderTimeRange={props.rowsVirtualized ? props.renderTimeRange : undefined}
     />
   );
-});
+}
