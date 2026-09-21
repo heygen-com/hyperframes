@@ -2,7 +2,7 @@ import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-serv
 import type { AppliedFileMutation } from "@hyperframes/studio-server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describeProject, type ProjectTimeline } from "./describeProject.js";
+import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -57,6 +57,7 @@ type ApplyEditResult =
 const PLAN_VERBS = new Set<MutationVerb>(["move", "trim", "split", "delete", "set", "duplicate"]);
 
 type PreparedPlanEdit = {
+  ok: true;
   edit: Record<string, unknown>;
   row: TimelineRow;
   before: string;
