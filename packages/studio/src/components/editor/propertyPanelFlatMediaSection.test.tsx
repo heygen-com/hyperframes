@@ -567,12 +567,12 @@ describe("FlatMediaSection — audio clips", () => {
     Object.defineProperty(fadeInTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
-    // The fade slider spans the clip (10 s): a quarter of the way is 2.5 s.
+    // The other fade reserves 2 s: a quarter of the remaining 8 s is 2 s.
     act(() => {
       fadeInTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 25 }));
       fadeInTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 25 }));
     });
-    expect(onSetAttribute).toHaveBeenCalledWith("fade-in", "2.5");
+    expect(onSetAttribute).toHaveBeenCalledWith("fade-in", "2");
     act(() => {
       fadeInTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }));
       fadeInTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 0 }));
@@ -583,12 +583,14 @@ describe("FlatMediaSection — audio clips", () => {
   });
 
   it.each([
-    ["Media start", "media-start", "45.00"],
-    ["Fade in", "fade-in", "10"],
-    ["Fade out", "fade-out", "10"],
-  ])("bounds typed %s to the slider limit", (label, attribute, expected) => {
+    ["Media start", "media-start", "45.00", {}, "9999"],
+    ["Fade in", "fade-in", "10", {}, "9999"],
+    ["Fade out", "fade-out", "10", {}, "9999"],
+    ["Fade in", "fade-in", "5", { "fade-out": "5" }, "8"],
+    ["Fade out", "fade-out", "5", { "fade-in": "5" }, "8"],
+  ] as const)("bounds typed %s to the slider limit", (label, attribute, expected, fades, typed) => {
     const { host, root, onSetAttribute } = renderWithRate(
-      makeAudioElement({ "source-duration": "45" }),
+      makeAudioElement({ "source-duration": "45", ...fades }),
     );
     const row = host.querySelector<HTMLElement>(
       `[data-flat-slider-track="true"][aria-label="${label}"]`,
@@ -599,7 +601,7 @@ describe("FlatMediaSection — audio clips", () => {
     const input = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
     if (!input) throw new Error(`expected ${label} input`);
     act(() => {
-      typeInto(input, "9999");
+      typeInto(input, typed);
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });
     expect(onSetAttribute.mock.calls).toEqual([[attribute, expected]]);

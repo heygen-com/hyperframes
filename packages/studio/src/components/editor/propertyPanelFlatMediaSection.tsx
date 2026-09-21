@@ -430,21 +430,23 @@ function MediaFadeSliders({
   return (["in", "out"] as const).map((edge) => {
     const seconds = edge === "in" ? fadeIn : fadeOut;
     const dataKey = edge === "in" ? HF_AUDIO_FADE_IN_DATA_KEY : HF_AUDIO_FADE_OUT_DATA_KEY;
+    const edgeMax = Math.max(0, fadeMax - (edge === "in" ? fadeOut : fadeIn));
     return (
       <FlatSlider
         key={edge}
         label={`Fade ${edge}`}
         value={Math.round(seconds * 100)}
         min={0}
-        max={Math.round(fadeMax * 100)}
+        max={Math.round(edgeMax * 100)}
         tier={seconds === 0 ? "default" : "explicitCustom"}
         displayValue={formatTimingValue(seconds)}
         onCommit={(next) => void onSetAttribute(dataKey, fadeText(next / 100))}
         onCommitText={(text) => {
           const parsed = parseSecondsInput(text);
           if (parsed === null) return false;
+          const next = Math.min(parsed, edgeMax);
           const bounded = clampFadesToDuration(
-            { fadeIn: edge === "in" ? parsed : 0, fadeOut: edge === "out" ? parsed : 0 },
+            { fadeIn: edge === "in" ? next : fadeIn, fadeOut: edge === "out" ? next : fadeOut },
             fadeMax,
           );
           void onSetAttribute(dataKey, fadeText(edge === "in" ? bounded.fadeIn : bounded.fadeOut));
