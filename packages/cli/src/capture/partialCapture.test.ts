@@ -20,13 +20,15 @@ describe("writePartialCaptureBundle", () => {
     state.tokens.title = "Collected before deadline";
     state.tokens.colors = ["#ABCDEF"];
 
-    writePartialCaptureBundle(opts, state, {
+    const result = writePartialCaptureBundle(opts, state, {
       schema: "hyperframes.capture.phase.v1",
       phase: "complete",
       status: "degraded",
       remainingMs: null,
       reason: "deadline",
     });
+    expect(result.ok).toBe(false);
+    expect(result.lastPhase.reason).toBe("deadline");
 
     const tokensPath = join(outputDir, "extracted", "tokens.json");
     expect(existsSync(tokensPath)).toBe(true);

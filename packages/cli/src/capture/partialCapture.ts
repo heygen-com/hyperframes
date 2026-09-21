@@ -95,7 +95,7 @@ export function writePartialCaptureBundle(
     if (code !== "EEXIST") throw err;
   }
   return {
-    ok: true,
+    ok: false,
     projectDir: opts.outputDir,
     url: opts.url,
     httpStatus: null,
