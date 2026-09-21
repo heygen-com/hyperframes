@@ -266,10 +266,8 @@ export function patchElementInHtml(
     }
   }
 
-  return {
-    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
-    matched: true,
-  };
+  const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
+  return { html: ensureHfIds(html), matched: true };
 }
 
 export function probeElementInSource(source: string, target: SourceMutationTarget): boolean {
