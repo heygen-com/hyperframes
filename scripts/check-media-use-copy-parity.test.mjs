@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, it } from "node:test";
 
 const skillLibDir = resolve("skills/media-use/scripts/lib");
@@ -37,12 +38,13 @@ function copyPaths(name, skillDir, cliDir) {
 }
 
 export function findMediaUseCopyParityIssues({ skillDir = skillLibDir, cliDir = cliLibDir } = {}) {
-  const missing = MEDIA_USE_COPY_NAMES.filter((name) => {
+  const missingNames = MEDIA_USE_COPY_NAMES.filter((name) => {
     const { skillPath, cliPath } = copyPaths(name, skillDir, cliDir);
     return !existsSync(skillPath) || !existsSync(cliPath);
-  }).map((name) => `${name}: both media-use copies must exist`);
+  });
+  const missing = missingNames.map((name) => `${name}: both media-use copies must exist`);
   const drifted = MEDIA_USE_COPY_NAMES.filter(
-    (name) => !INTENTIONAL_MEDIA_USE_DIVERGENCES.has(name),
+    (name) => !missingNames.includes(name) && !INTENTIONAL_MEDIA_USE_DIVERGENCES.has(name),
   )
     .filter((name) => {
       const { skillPath, cliPath } = copyPaths(name, skillDir, cliDir);
@@ -55,5 +57,21 @@ export function findMediaUseCopyParityIssues({ skillDir = skillLibDir, cliDir = 
 describe("media-use source parity", () => {
   it("keeps every standalone copy equal or explicitly allowlisted", () => {
     assert.deepEqual(findMediaUseCopyParityIssues(), []);
+  });
+
+  it("reports a missing copy without reading it as drift", () => {
+    const root = mkdtempSync(join(tmpdir(), "media-use-parity-"));
+    const skillDir = join(root, "skill");
+    const cliDir = join(root, "cli");
+    try {
+      const name = MEDIA_USE_COPY_NAMES[0];
+      mkdirSync(skillDir, { recursive: true });
+      mkdirSync(cliDir, { recursive: true });
+      writeFileSync(join(skillDir, name), "same");
+      const issues = findMediaUseCopyParityIssues({ skillDir, cliDir });
+      assert.equal(issues[0], `${name}: both media-use copies must exist`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

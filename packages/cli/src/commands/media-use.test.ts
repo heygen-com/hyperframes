@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mediaUsePassthroughArgs, resolveMediaUseEnginePath } from "./media-use.js";
+import {
+  createMediaUseCommand,
+  MEDIA_USE_VERBS,
+  mediaUsePassthroughArgs,
+  mediaUseVerbFlags,
+  resolveMediaUseEnginePath,
+} from "./media-use.js";
 
 function tempCommandDir(): string {
   return mkdtempSync(join(tmpdir(), "hyperframes-media-use-command-"));
@@ -53,5 +59,28 @@ describe("media-use command wiring", () => {
         "cat",
       ]),
     ).toEqual(["--type", "sfx", "--intent", "cat"]);
+  });
+
+  it("maps every verb to the engine flag, leaving resolve unflagged", () => {
+    for (const verb of MEDIA_USE_VERBS) {
+      expect(mediaUseVerbFlags(verb)).toEqual(verb === "resolve" ? [] : [`--${verb}`]);
+    }
+  });
+
+  it("wires every subcommand to invoke its matching verb", () => {
+    const invoked: string[] = [];
+    const command = createMediaUseCommand((verb) => {
+      invoked.push(verb);
+      throw new Error("stop after dispatch");
+    });
+
+    for (const verb of MEDIA_USE_VERBS) {
+      const factory = (command.subCommands as Record<string, unknown> | undefined)?.[verb];
+      expect(factory).toBeTypeOf("function");
+      const child = (factory as () => { run?: () => never })();
+      expect(() => child.run?.()).toThrow("stop after dispatch");
+    }
+
+    expect(invoked).toEqual(MEDIA_USE_VERBS);
   });
 });

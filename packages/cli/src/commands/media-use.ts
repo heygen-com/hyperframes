@@ -29,6 +29,19 @@ const MEDIA_USE_ARGS = {
   help: { type: "boolean", alias: "h" },
 } as const;
 
+export const MEDIA_USE_VERBS = [
+  "resolve",
+  "doctor",
+  "stats",
+  "adopt",
+  "candidates",
+  "reuse",
+  "from",
+  "params",
+  "analyze",
+] as const;
+export type MediaUseVerb = (typeof MEDIA_USE_VERBS)[number];
+
 export function resolveMediaUseEnginePath(
   here: string,
   fileExists: (path: string) => boolean = existsSync,
@@ -51,10 +64,16 @@ export function mediaUsePassthroughArgs(argv: readonly string[]): string[] {
   return argv.slice(commandIndex + 2);
 }
 
-function invokeEngine(verb: string): never {
+export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
+  return verb === "resolve" ? [] : [`--${verb}`];
+}
+
+type InvokeMediaUse = (verb: MediaUseVerb) => never;
+
+function invokeEngine(verb: MediaUseVerb): never {
   const here = dirname(fileURLToPath(import.meta.url));
   const passed = mediaUsePassthroughArgs(process.argv);
-  const flag = verb === "resolve" ? [] : [`--${verb}`];
+  const flag = mediaUseVerbFlags(verb);
   const result = spawnSync(
     process.execPath,
     [resolveMediaUseEnginePath(here), ...flag, ...passed],
@@ -66,26 +85,23 @@ function invokeEngine(verb: string): never {
   finishCommand(result.status ?? 1);
 }
 
-function subcommand(name: string) {
+function subcommand(name: MediaUseVerb, invoke: InvokeMediaUse) {
   return defineCommand({
     meta: { name, description: `media-use ${name}` },
     args: MEDIA_USE_ARGS,
-    run: () => invokeEngine(name),
+    run: () => invoke(name),
   });
 }
 
-export default defineCommand({
-  meta: { name: "media-use", description: "Resolve and operate on project media" },
-  subCommands: {
-    resolve: () => subcommand("resolve"),
-    doctor: () => subcommand("doctor"),
-    stats: () => subcommand("stats"),
-    adopt: () => subcommand("adopt"),
-    candidates: () => subcommand("candidates"),
-    reuse: () => subcommand("reuse"),
-    from: () => subcommand("from"),
-    params: () => subcommand("params"),
-    analyze: () => subcommand("analyze"),
-  },
-  run: () => console.log("Run `hyperframes media-use <resolve|doctor|stats|...> --help`"),
-});
+export function createMediaUseCommand(invoke: InvokeMediaUse = invokeEngine) {
+  const subCommands = Object.fromEntries(
+    MEDIA_USE_VERBS.map((name) => [name, () => subcommand(name, invoke)]),
+  );
+  return defineCommand({
+    meta: { name: "media-use", description: "Resolve and operate on project media" },
+    subCommands,
+    run: () => console.log("Run `hyperframes media-use <resolve|doctor|stats|...> --help`"),
+  });
+}
+
+export default createMediaUseCommand();
