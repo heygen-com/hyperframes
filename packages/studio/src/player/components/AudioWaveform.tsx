@@ -136,11 +136,12 @@ export const AudioWaveform = memo(function AudioWaveform({
     const end = Math.max(start + 1, Math.ceil(endFraction * peaks.length));
     const span = end - start;
     const barCount = Math.floor(width / BAR_STEP);
+    const waveformBarRgb = getComputedStyle(canvas).getPropertyValue("--timeline-waveform-bar-rgb");
     for (let index = 0; index < barCount; index++) {
       const peakIndex = start + Math.min(span - 1, Math.floor((index / barCount) * span));
       const amplitude = peaks[peakIndex] ?? 0;
       const barHeight = Math.max(2, amplitude * height);
-      context.fillStyle = `rgba(75,163,210,${(0.45 + amplitude * 0.4).toFixed(2)})`;
+      context.fillStyle = `rgba(${waveformBarRgb},${(0.45 + amplitude * 0.4).toFixed(2)})`;
       context.fillRect(index * BAR_STEP, height - barHeight, BAR_WIDTH, barHeight);
     }
   }, [peaks, trimEndFraction, trimStartFraction]);
@@ -170,8 +171,7 @@ export const AudioWaveform = memo(function AudioWaveform({
         <div
           className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
           style={{
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
+            background: "var(--timeline-thumbnail-shimmer)",
           }}
         />
       )}
@@ -187,8 +187,7 @@ export const AudioWaveform = memo(function AudioWaveform({
             style={{
               bottom: "20%",
               height: 2,
-              background:
-                "repeating-linear-gradient(90deg, rgba(75,163,210,0.35) 0 2px, transparent 2px 5px)",
+              background: "var(--timeline-waveform-error)",
             }}
           />
           <span className="relative rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
@@ -200,7 +199,7 @@ export const AudioWaveform = memo(function AudioWaveform({
         <div className="absolute inset-x-0 top-0 z-10 px-1.5 py-0.5">
           <span
             className="block truncate text-[9px] font-semibold leading-tight"
-            style={{ color: labelColor, textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
+            style={{ color: labelColor, textShadow: "var(--timeline-waveform-label-shadow)" }}
           >
             {label}
           </span>

@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 
 const studioCss = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
 const themeCss = readFileSync(new URL("../../styles/theme.css", import.meta.url), "utf8");
+const timelineOverlaySources = [
+  "TimelineShortcutHint.tsx",
+  "LayerDisclosureRow.tsx",
+  "ImageThumbnail.tsx",
+  "AudioWaveform.tsx",
+  "VideoThumbnail.tsx",
+].map((fileName) => readFileSync(new URL(`./${fileName}`, import.meta.url), "utf8"));
 const timelineClipSource = readFileSync(new URL("./TimelineClip.tsx", import.meta.url), "utf8");
 const playheadSource = readFileSync(new URL("./PlayheadIndicator.tsx", import.meta.url), "utf8");
 
@@ -78,6 +85,9 @@ describe("timeline motion styles", () => {
       ".timeline-clip[data-active] .timeline-clip__label",
     );
     const timelineClipTimecodeRule = expectRule(studioCss, ".timeline-clip__timecode");
+    const audioClipRule = expectRule(studioCss, ".timeline-clip.is-audio");
+    const audioClipHoverRule = expectRule(studioCss, ".timeline-clip.is-audio.is-hovered");
+    const audioClipDraggingRule = expectRule(studioCss, ".timeline-clip.is-audio.is-dragging");
     const activeTimelineClipRule = expectRule(studioCss, ".timeline-clip[data-active]");
     const bloomOverlayRule = expectRule(studioCss, ".timeline-clip::before");
     const activeBloomOverlayRule = expectRule(studioCss, ".timeline-clip[data-active]::before");
@@ -85,6 +95,7 @@ describe("timeline motion styles", () => {
     expect(baseTimelineClipRule).toContain("background-color: var(--clip-bg)");
     expect(baseTimelineClipRule).toContain("border: 1px solid var(--clip-border)");
     expect(timelineClipLabelRule).toContain("color: var(--timeline-clip-label)");
+    expect(timelineClipLabelRule).toContain("text-shadow: var(--timeline-clip-label-shadow)");
     expect(timelineClipTimecodeRule).toContain("color: var(--timeline-clip-timecode)");
     expect(activeTimelineClipLabelRule).toContain("color: var(--timeline-clip-label-active)");
     expect(themeCss).toContain("--timeline-clip-bg: rgba(255, 255, 255, 0.12)");
@@ -92,6 +103,19 @@ describe("timeline motion styles", () => {
     expect(themeCss).toContain("--timeline-clip-label: rgba(255, 255, 255, 0.5)");
     expect(themeCss).toContain("--timeline-clip-timecode: rgba(255, 255, 255, 0.34)");
     expect(themeCss).toContain("--timeline-clip-label-active: #f4fffb");
+    expect(themeCss).toContain("--timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85)");
+    expect(themeCss).toContain("--timeline-clip-selection: rgba(255, 255, 255, 0.85)");
+    expect(themeCss).toContain("--timeline-clip-audio-bg: rgba(167, 139, 250, 0.16)");
+    expect(themeCss).toContain("--timeline-clip-audio-border: rgba(167, 139, 250, 0.4)");
+    expect(themeCss).toContain("--timeline-clip-audio-bg-hover: rgba(167, 139, 250, 0.24)");
+    expect(themeCss).toContain("--timeline-clip-audio-bg-dragging: rgba(60, 52, 84, 0.96)");
+    expect(audioClipRule).toContain("background-color: var(--timeline-clip-audio-bg)");
+    expect(audioClipRule).toContain("border-color: var(--timeline-clip-audio-border)");
+    expect(audioClipHoverRule).toContain("background-color: var(--timeline-clip-audio-bg-hover)");
+    expect(audioClipDraggingRule).toContain(
+      "background-color: var(--timeline-clip-audio-bg-dragging)",
+    );
+    expect(studioCss).toContain("box-shadow: 0 0 0 1.5px var(--timeline-clip-selection)");
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
     expect(activeTimelineClipRule).toContain("border-color: var(--clip-border-active)");
     expect(activeTimelineClipRule).not.toContain("box-shadow");
@@ -99,6 +123,20 @@ describe("timeline motion styles", () => {
     expect(bloomOverlayRule).not.toContain("linear-gradient");
     expect(bloomOverlayRule).toContain("opacity: 0");
     expect(activeBloomOverlayRule).toContain("opacity: 1");
+  });
+
+  it("routes timeline overlay colours through theme tokens", () => {
+    const overlaySource = timelineOverlaySources.join("\n");
+
+    expect(overlaySource).toContain("var(--timeline-shortcut-bg)");
+    expect(overlaySource).toContain("var(--timeline-thumbnail-shimmer)");
+    expect(overlaySource).toContain("var(--timeline-thumbnail-label-gradient)");
+    expect(overlaySource).toContain("var(--timeline-thumbnail-label-shadow)");
+    expect(overlaySource).toContain("var(--timeline-waveform-bar-rgb)");
+    expect(overlaySource).toContain("var(--timeline-waveform-error)");
+    expect(overlaySource).toContain("var(--timeline-waveform-label-shadow)");
+    expect(overlaySource).toContain("var(--timeline-text-solid)");
+    expect(overlaySource).toContain("var(--timeline-accent)");
   });
 
   it("targets trim handle bars without changing drag geometry", () => {

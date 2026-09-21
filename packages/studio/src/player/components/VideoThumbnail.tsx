@@ -112,8 +112,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         <div
           className="absolute inset-0 animate-pulse motion-reduce:animate-none"
           style={{
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
+            background: "var(--timeline-thumbnail-shimmer)",
           }}
         />
       )}
@@ -128,13 +127,12 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         <div
           className="absolute inset-x-0 bottom-0 z-10 px-1.5 pb-0.5 pt-3"
           style={{
-            background:
-              "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)",
+            background: "var(--timeline-thumbnail-label-gradient)",
           }}
         >
           <span
             className="block truncate text-[9px] font-semibold leading-tight"
-            style={{ color: labelColor, textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
+            style={{ color: labelColor, textShadow: "var(--timeline-thumbnail-label-shadow)" }}
           >
             {label}
           </span>
