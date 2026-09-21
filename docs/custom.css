@@ -1320,12 +1320,9 @@ samp {
   }
 }
 
-/* Catalog pages set `mode: "frame"` for the width the stage and Tune panel need.
- * Frame mode drops the theme's `main#content-container`, and with it that
- * element's `px-5 lg:pr-10 lg:pl-[5.5rem]`, so the title, install block and
- * stage sat flush against the sidebar's border on desktop and against the
- * screen edge on a phone. Mirror the same padding the theme gives every other
- * page; the values are that class list, not new ones. */
+/* Frame mode (every catalog page) renders no `main#content-container`, so it loses
+ * that element's `px-5 lg:pr-10 lg:pl-[5.5rem]` and sits flush against the sidebar.
+ * These are those same values, nothing new. */
 header.is-frame ~ #body-content #content-area {
   padding-left: 1.25rem;
   padding-right: 1.25rem;
