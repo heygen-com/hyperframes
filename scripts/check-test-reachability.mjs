@@ -93,19 +93,17 @@ function enabled(job, path, workflow, seen = []) {
     .some((part) => part.split("&&").every((term) => term.trim() === "true"));
   return (
     active &&
-    job.needs.every(
-      (name) =>
-        name === "changes" ||
-        enabled(
-          workflow.jobs.find((entry) => entry.name === name) ?? {
-            name,
-            condition: "false",
-            needs: [],
-          },
-          path,
-          workflow,
-          [...seen, job.name],
-        ),
+    job.needs.every((name) =>
+      enabled(
+        workflow.jobs.find((entry) => entry.name === name) ?? {
+          name,
+          condition: "false",
+          needs: [],
+        },
+        path,
+        workflow,
+        [...seen, job.name],
+      ),
     )
   );
 }
@@ -130,6 +128,8 @@ function commands(body) {
 }
 
 function testOptions(config) {
+  if (/["'](?:test|include|exclude|projects|workspace)["']\s*:/.test(config))
+    throw new Error("Quoted test selection keys need an explicit reachability model");
   const start = config.match(/\btest:\s*\{/);
   if (!start) {
     if (/\btest:/.test(config)) throw new Error("Nonliteral test configuration");

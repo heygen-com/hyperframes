@@ -148,3 +148,18 @@ test("runner excludes after nested coverage options still apply", () => {
     'export default { test: { coverage: { include: ["**"] }, exclude: ["**"] } }';
   assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
 });
+
+test("a disabled change detector prevents dependent tests from running", () => {
+  const tree = fixture("node --test scripts/parity.test.mjs", '"**"');
+  tree[".github/workflows/ci.yml"] = tree[".github/workflows/ci.yml"].replace(
+    "  changes:\n",
+    "  changes:\n    if: false\n",
+  );
+  assert.match(check(tree)["scripts/parity.test.mjs"].join("\n"), /CI filters exclude/);
+});
+
+test("quoted runner selection keys cannot silently change collection", () => {
+  const tree = fixture("vitest run", '"**"');
+  tree["vitest.config.ts"] = 'export default { test: { "exclude": ["**"] } }';
+  assert.throws(() => check(tree), /Quoted test selection/);
+});
