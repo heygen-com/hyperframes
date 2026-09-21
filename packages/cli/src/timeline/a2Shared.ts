@@ -368,7 +368,7 @@ export function decideMutation(
   }
 }
 
-async function runMutation(verb: MutationVerb, args: Record<string, unknown>): Promise<void> {
+export async function runMutation(verb: MutationVerb, args: Record<string, unknown>): Promise<void> {
   const setup = await prepareMutation(args);
   if (!setup.ok) return refusal(setup.reason, setup.fix, setup.json);
   const decision = decideMutation(verb, setup.context, args);
@@ -550,4 +550,103 @@ async function applyAndPrint(args: {
   );
 }
 
+function rowsForFile(timeline: ProjectTimeline, file: string): TimelineRow[] {
+  return allRows(timeline).filter((candidate) => candidate.file === file);
+}
 
+export function rowAt(
+  timeline: ProjectTimeline,
+  pointer: { kind: TimelineRow["trackKind"]; index: number },
+): TimelineRow {
+  const track = timeline.tracks.find((candidate) => candidate.kind === pointer.kind);
+  if (!track) throw new Error(`missing track ${pointer.kind}`);
+  const row = track.rows[pointer.index];
+  if (!row) throw new Error(`missing row ${pointer.kind}/${pointer.index}`);
+  return row;
+}
+
+function mutationResult(row: TimelineRow, before: ProjectTimeline, planned: boolean) {
+  return {
+    ok: true,
+    receipt: null as unknown,
+    file: row.file,
+    before: rowsForFile(before, row.file),
+    after: [] as TimelineRow[],
+    warnings: row.warnings,
+    planned,
+  };
+}
+
+async function printPlan(
+  result: ReturnType<typeof mutationResult>,
+  json: boolean,
+  timeline: ProjectTimeline,
+  describeSource: (source: string) => Promise<ProjectTimeline>,
+  after: string,
+  before: string,
+): Promise<void> {
+  const plannedTimeline = await describeSource(after);
+  result.after = rowsForFile(plannedTimeline, result.file);
+  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
+  else
+    console.log(
+      `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${diff(before, after)}`,
+    );
+}
+
+function applyMutation(
+  setup: MutationSetup,
+  after: string,
+): AppliedFileMutation | { error: string } | undefined {
+  try {
+    return applyFileMutations(setup.project.dir, [
+      {
+        sourceFile: setup.row.file,
+        absPath: setup.filePath,
+        before: setup.before,
+        after,
+        expectedVersion: setup.expectedVersion,
+      },
+    ])[0];
+  } catch (error) {
+    if (error instanceof Error && error.message === "file changed since the timeline was read") {
+      return { error: error.message };
+    }
+    throw error;
+  }
+}
+
+export function positional(args: Record<string, unknown>): string[] {
+  return Array.isArray(args._)
+    ? args._.filter((value): value is string => typeof value === "string")
+    : [];
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mutationRefusal(
+  verb: MutationVerb,
+  after: string,
+  before: string,
+  ref: string,
+): { reason: string; fix: string } | null {
+  if (verb !== "delete" || after !== before) return null;
+  return { reason: `${ref} was not found`, fix: "choose an existing clip" };
+}
+
+export function mutationConflict(
+  verb: MutationVerb,
+  overwrite: boolean,
+  row: TimelineRow,
+  timeline: ProjectTimeline,
+  nextStart: number,
+  nextDuration: number,
+): { reason: string; fix: string } | null {
+  if ((verb !== "move" && verb !== "trim") || overwrite) return null;
+  const conflict = overlap(row, timeline, nextStart, nextStart + nextDuration);
+  if (!conflict) return null;
+  return {
+    reason: `${row.ref} would overlap ${conflict.ref} at ${nextStart}-${nextStart + nextDuration}`,
+    fix: "pass --overwrite or move the named neighbour",
