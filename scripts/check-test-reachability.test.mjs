@@ -173,3 +173,11 @@ test("runner verbs must match exactly", () => {
   const tree = fixture("vitest run-anything", '"**"');
   assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
 });
+
+test("conditional shell blocks are not split into unconditional runners", () => {
+  const tree = fixture(
+    "|\n          if false; then\n            true && node --test scripts/parity.test.mjs && true\n          fi",
+    '"**"',
+  );
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});

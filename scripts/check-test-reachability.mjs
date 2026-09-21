@@ -308,10 +308,12 @@ function expandPackage(call, cwd, packages, files, read, adapters, seen) {
 function expand(command, cwd, packages, files, read, adapters, seen = []) {
   const adapter = adapters.find((entry) => entry.command === command && entry.cwd === cwd);
   if (adapter) return adapterTests(adapter, files, read);
-  if (command.includes("&&"))
-    return command
-      .split(/\s*&&\s*/)
-      .flatMap((part) => expand(part, cwd, packages, files, read, adapters, seen));
+  if (command.includes("\n")) return [];
+  return command
+    .split(/\s*&&\s*/)
+    .flatMap((part) => expandSimple(part, cwd, packages, files, read, adapters, seen));
+}
+function expandSimple(command, cwd, packages, files, read, adapters, seen) {
   const call = command.match(
     /^bun run (?:(--cwd|--filter) (?:'([^']+)'|"([^"]+)"|(\S+)) )?([\w:*-]+)(.*)$/,
   );
