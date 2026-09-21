@@ -14,6 +14,7 @@ import {
   getShaderModeFromElement,
   prepareSrcForElement,
   prepareSrcdocForElement,
+  resolveRuntimeUrlFromElement,
 } from "./shader-options.js";
 import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
@@ -180,6 +181,9 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this.dispatchEvent(new CustomEvent("error", { detail: { message } })),
+      // Same resolution as the srcdoc path, so `runtime-src` applies to an
+      // `src` embed too instead of being silently replaced by the CDN URL.
+      resolveRuntimeUrl: () => resolveRuntimeUrlFromElement(this),
     });
 
     this.addEventListener("click", (event) => {

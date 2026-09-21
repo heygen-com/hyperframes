@@ -1537,6 +1537,39 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     player.remove();
   });
 
+  it("uses a configured runtime source when the probe injects into an src embed", () => {
+    // `runtime-src` used to be read on the srcdoc path only; an `src` embed always
+    // fetched the runtime from jsDelivr, so a local copy could never be used
+    // offline or behind a `script-src 'self'` CSP. Both paths resolve it the
+    // same way now.
+    vi.useFakeTimers();
+    const player = document.createElement("hyperframes-player") as PlayerInternal;
+    player.setAttribute("src", "/comp-nested.html");
+    player.setAttribute("runtime-src", "http://127.0.0.1:8900/hyperframe.runtime.iife.js");
+    document.body.appendChild(player);
+
+    const appended: Array<{ src: string }> = [];
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<div data-composition-src="child.html"></div>';
+    Object.defineProperty(player.iframe, "contentWindow", { configurable: true, get: () => ({}) });
+    stubIframeContentDocument(player.iframe, {
+      querySelector: (selector: string) => doc.querySelector(selector),
+      querySelectorAll: () => [],
+      createElement: () => ({ src: "" }),
+      head: { appendChild: (node: { src: string }) => appended.push(node) },
+    } as unknown as Document);
+
+    player.iframe.dispatchEvent(new Event("load"));
+    vi.advanceTimersByTime(200);
+
+    expect(appended.map((node) => node.src)).toEqual([
+      "http://127.0.0.1:8900/hyperframe.runtime.iife.js",
+    ]);
+
+    player.remove();
+    vi.useRealTimers();
+  });
+
   it("falls back to the pinned runtime for an unsafe runtime source", () => {
     const player = document.createElement("hyperframes-player") as PlayerInternal;
     player.setAttribute("runtime-src", 'javascript:alert("no")');
