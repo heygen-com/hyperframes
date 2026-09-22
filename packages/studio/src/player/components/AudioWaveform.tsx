@@ -20,7 +20,6 @@ interface AudioWaveformProps {
   linked?: boolean;
 }
 
-const BAR_WIDTH = 2;
 const BAR_STEP = 3;
 
 function extractPeaks(channelData: Float32Array, barCount: number): number[] {
@@ -138,7 +137,7 @@ export const AudioWaveform = memo(function AudioWaveform({
     if (!context) return;
     context.scale(scale, scale);
     context.clearRect(0, 0, width, height);
-    const barCount = Math.floor(width / BAR_STEP);
+    const barCount = Math.max(1, Math.ceil(width / BAR_STEP));
     const bars = decimatePeaks(peaks, trimStartFraction ?? 0, trimEndFraction ?? 1, barCount);
     const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
     const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
@@ -146,7 +145,11 @@ export const AudioWaveform = memo(function AudioWaveform({
       const amplitude = bars[index] ?? 0;
       const barHeight = Math.max(2, amplitude * height);
       context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
-      context.fillRect(index * BAR_STEP, height - barHeight, BAR_WIDTH, barHeight);
+      // Map each decimated bar to the full canvas interval. Fixed pixel
+      // offsets leave a visible tail gap when the clip width is fractional.
+      const x = (index * width) / bars.length;
+      const barWidth = Math.max(1, width / bars.length);
+      context.fillRect(x, height - barHeight, barWidth, barHeight);
     }
   }, [muted, peaks, trimEndFraction, trimStartFraction]);
 
