@@ -43,8 +43,8 @@ describe("writeCaptureFileSync", () => {
     writeCaptureFileSync(target, "<html></html>", "utf-8");
 
     expect(readFileSync(victim, "utf8")).toBe("do not touch");
-    expect(lstatSync(target).isSymbolicLink()).toBe(false);
     expect(readFileSync(target, "utf8")).toBe("<html></html>");
+    expect(lstatSync(target).isSymbolicLink()).toBe(false);
   });
 
   it("replaces a pre-planted hard link instead of truncating the shared file", () => {

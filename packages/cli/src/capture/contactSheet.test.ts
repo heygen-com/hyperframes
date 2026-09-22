@@ -95,8 +95,8 @@ describe("createContactSheet", () => {
         await createContactSheet([image], out, { cellWidth: 16, maxImages: 1 });
 
         expect(readFileSync(victim, "utf8")).toBe("do not touch");
-        expect(lstatSync(out).isSymbolicLink()).toBe(false);
         await expect(sharp(out).metadata()).resolves.toMatchObject({ format: "jpeg" });
+        expect(lstatSync(out).isSymbolicLink()).toBe(false);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

@@ -19,17 +19,14 @@ export function writeCaptureFileSync(
   options?: Parameters<typeof writeFileSync>[2],
 ): void {
   const normalized = typeof options === "string" ? { encoding: options } : options;
-  if (normalized?.flag !== undefined && normalized.flag !== "w") {
-    writeFileSync(path, data, { ...normalized, mode: 0o600 });
-    return;
-  }
+  const callerFlag = normalized?.flag !== undefined && normalized.flag !== "w";
 
   let stagingDir: string | undefined;
   try {
-    stagingDir = mkdtempSync(join(dirname(path), ".capture-"));
-    const stagedPath = join(stagingDir, basename(path));
-    writeFileSync(stagedPath, data, { ...normalized, mode: 0o600 });
-    renameSync(stagedPath, path);
+    if (!callerFlag) stagingDir = mkdtempSync(join(dirname(path), ".capture-"));
+    const writePath = stagingDir ? join(stagingDir, basename(path)) : path;
+    writeFileSync(writePath, data, { ...normalized, mode: 0o600 });
+    if (stagingDir) renameSync(writePath, path);
   } finally {
     if (stagingDir) rmSync(stagingDir, { recursive: true, force: true });
   }

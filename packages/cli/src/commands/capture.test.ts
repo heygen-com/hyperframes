@@ -248,8 +248,8 @@ describe("capture command — vision control", () => {
         ).rejects.toBeInstanceOf(CliRuntimeError);
 
         expect(readFileSync(victim, "utf8")).toBe("do not touch");
-        expect(lstatSync(join(dir, "BLOCKED.md")).isSymbolicLink()).toBe(false);
         expect(readFileSync(join(dir, "BLOCKED.md"), "utf8")).toContain("# Capture Failed");
+        expect(lstatSync(join(dir, "BLOCKED.md")).isSymbolicLink()).toBe(false);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
