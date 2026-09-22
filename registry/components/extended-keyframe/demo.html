@@ -93,16 +93,7 @@
 
     <script>
       // ===== ease kit =====
-      // extended-ease.js — the "never fully lands" ease (After Effects extended-last-keyframe technique) as a GSAP ease.
-      // Direction- and property-agnostic: use it on x, y, scale, rotation, letter-spacing, blur — anything GSAP tweens.
-      //
-      //   gsap.fromTo(el, { x: -900 }, { x: 0, duration: 2.5, ease: EK.ease() });
-      //   gsap.fromTo(el, { scale: 0.4 }, { scale: 1, duration: 2.5, ease: EK.ease() });
-      //   tl.add(nextMove, EK.next(2.5));          // ignite the next move INSIDE this one's tail
-      //
-      // Profile: velocity = ramp(t) · ( e^(−t/τ) + c·e^(−t/τ2) ). τ is solved so progress = `reach` at time `at`.
-      // One continuous velocity curve — no piecewise join, so there is no velocity cliff where the fast phase hands
-      // over to the creep. The slow component keeps the element moving to the last frame.
+      // Extended ease helpers for deterministic, direction-agnostic GSAP motion.
       window.EK =
         window.EK ||
         (() => {
@@ -379,11 +370,7 @@
             return acc;
           }, []);
 
-          // motionSource: read the trajectory from THIS element instead of the target. Use it to filter a fixed-size
-          // clipping container while following the scroller inside it — an SVG filter region is relative to the
-          // target's own box and CLIPS anything outside it, so filtering a 1080 px box whose children overflow
-          // thousands of px (a scrolling world) would erase the visible content. Filtering the container instead
-          // keeps the region at frame size and the cost bounded.
+          // Read motion from the source element so a fixed-size container owns the bounded filter region.
           var srcEl = opts.motionSource
             ? typeof opts.motionSource === "string"
               ? document.querySelector(opts.motionSource)
@@ -415,12 +402,7 @@
               offsets.push(feOff);
             }
 
-            // Balanced averaging tree: every feComposite blends two inputs at 0.5/0.5, level by level
-            // (N/2 -> N/4 -> ... -> 1). Chrome runs SVG filters in 8-bit buffers, so the earlier
-            // 1/N-weighted chain quantised each copy to a few levels and posterised the output at
-            // high sample counts (visible as banding / colour shifts at 48-64 samples). Averaging
-            // pairs keeps full precision: each level rounds once, log2(N) levels in total. The
-            // last primitive is left unnamed so it becomes the filter output.
+            // Build a balanced averaging tree so each level rounds once before the final filter output.
             var level = offsets.map(function (_, i) {
               return "s" + i;
             });
@@ -487,13 +469,7 @@
             var duration = tl.duration();
             var windowStart = t0 + shutterPhase / 360 / fps;
 
-            // Sample the real trajectory WITHOUT seeking the timeline. Seeking (tl.time(t, true))
-            // re-renders every tween in the timeline — including the runtime's video-sync hooks —
-            // so on a media-heavy composition each sub-frame sample re-seeks every <video>. The
-            // HeyGen cloud capture path waits on those seeks and times out. Instead, for each
-            // target we take its own tweens (gsap.getTweensOf) and render just those at the
-            // sub-frame time, then restore them at the frame time. Only the target's transform
-            // is touched; videos, other elements and callbacks never see the samples.
+            // Sample target tweens directly instead of seeking the full timeline, preserving video hooks.
             var toLocal = function (anim, tlTime) {
               var chain = [];
               for (var a = anim; a && a !== tl; a = a.parent) chain.unshift(a);
@@ -604,7 +580,7 @@
           // seeking GSAP from inside its own render reads stale tween state, while the microtask
           // runs after the seek returns and before the frame is captured or painted.
           var _proxy = { t: 0 };
-          // gsap.to() returns the TWEEN (tl.to() would return the timeline), so the tracker can be tagged and added at 0.
+          // gsap.to() returns the tween, so the tracker can be tagged and added at time zero.
           var _tracker = gsap.to(_proxy, {
             t: 1,
             duration: Math.max(tl.duration(), 0.1),
