@@ -109,6 +109,10 @@ describe("studio theme", () => {
     expect(vars.get("--text-lg")).toBe("1.125rem");
   });
 
+  it("reads a zero open duration so menus and popovers paint immediately", () => {
+    expect(declaredValue("--duration-open")).toBe("0ms");
+  });
+
   it("compiles a motion-duration utility with a reduced-motion variant", async () => {
     const css = await build("studio.css", ["duration-press", "duration-open"]);
 

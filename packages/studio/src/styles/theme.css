@@ -208,7 +208,8 @@
   --duration-press: 120ms;
   --duration-hover: 150ms;
   --duration-expand: 160ms;
-  --duration-open: 180ms;
+  /* Menus and popovers share this for open and close. Zero so they paint. */
+  --duration-open: 0ms;
 
   /* ------------------------------------------------------------------ icon */
 
