@@ -125,6 +125,7 @@ export const AudioWaveform = memo(function AudioWaveform({
   const peaks =
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
 
+  // fallow-ignore-next-line high-crap-score -- canvas draw keeps geometry, token lookup, and paint order together
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !peaks) return;

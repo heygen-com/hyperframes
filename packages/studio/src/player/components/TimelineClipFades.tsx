@@ -237,6 +237,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
       )}
       {canEdit && (
         <>
+          {/* fallow-ignore-next-line code-duplication -- mirrored handles intentionally share the same accessible contract */}
           <div
             role="slider"
             tabIndex={-1}
@@ -258,6 +259,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
           >
             <FadeDot active={dragging === "in"} />
           </div>
+          {/* fallow-ignore-next-line code-duplication -- mirrored handles intentionally share the same accessible contract */}
           <div
             role="slider"
             tabIndex={-1}
