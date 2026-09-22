@@ -314,6 +314,27 @@ describe("TimelineLanes audio disclosure", () => {
     expect(usePlayerStore.getState().expandedLaneOwnerIds).toEqual(new Set(["audio-1", "audio-2"]));
     act(() => view.root.unmount());
   });
+
+  it("keeps a second automation label aligned with its own curve", () => {
+    const audio = element("audio-clip", TRACK_A);
+    audio.tag = "audio";
+    audio.automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        { target: "volume", points: [{ t: 0, v: 1 }] },
+        { target: "rate", points: [{ t: 0, v: 1 }] },
+      ],
+    });
+    usePlayerStore.setState({ expandedLaneOwnerIds: new Set([audio.id]) });
+    const view = renderLanes({ elements: [audio] });
+
+    const labels = [...view.host.querySelectorAll<HTMLElement>("[data-automation-lane-label]")];
+    const curves = [...view.host.querySelectorAll<HTMLElement>("[data-automation-lane]")];
+    expect(labels).toHaveLength(2);
+    expect(curves).toHaveLength(2);
+    expect(labels.map((el) => el.style.top)).toEqual(curves.map((el) => el.style.top));
+    act(() => view.root.unmount());
+  });
 });
 
 describe("TimelineLanes selection", () => {
