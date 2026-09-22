@@ -138,14 +138,28 @@ async function resolveProjectPath(
     return { error: c.json({ error: "not found" }, 404) } as const;
   }
 
+  // The CLI host's `resolveProject` is static (`id === projectId ? project : null`),
+  // so it keeps answering with this project even after its folder is renamed
+  // or deleted out from under a running `preview` — mount-time validation
+  // (`/api/projects/:id`) still passes, so nothing upstream catches this.
+  // Every subsequent read then failed closed inside `isSafePath` (its
+  // `realpathSync(base)` throws when the base itself is gone) and reported as
+  // `403 forbidden` — indistinguishable from a real path-traversal attempt.
+  // Checked here, once, so every route built on this shares the fix.
+  if (!existsSync(project.dir)) {
+    return {
+      error: c.json({ error: "not found", why: "project_dir_missing" }, 404),
+    } as const;
+  }
+
   const filePath = decodeURIComponent(c.req.path.replace(pathPrefix(project.id), ""));
   if (filePath.includes("\0")) {
-    return { error: c.json({ error: "forbidden" }, 403) } as const;
+    return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }
 
   const absPath = resolveWithinProject(project.dir, filePath);
   if (!absPath) {
-    return { error: c.json({ error: "forbidden" }, 403) } as const;
+    return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
   }
 
   if (opts?.mustExist && !existsSync(absPath)) {

@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -263,6 +264,64 @@ describe("useSdkSession unavailable telemetry", () => {
       stage: "read",
       reason: "http_error",
       status: 404,
+      why: undefined,
+    });
+    await act(async () => root.unmount());
+  });
+
+  // `why` distinguishes the studio-server route's own 403/404 causes (the
+  // project's folder having been renamed or deleted out from under a running
+  // server, vs. a NUL byte, vs. a path escaping the project) from a bare
+  // status code. Optional and best-effort: an older server or a non-JSON body
+  // just omits it, which must not crash the read.
+  it("carries the server's why when the error body has one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 404,
+            json: async () => ({ error: "not found", why: "project_dir_missing" }),
+          }) as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "http_error",
+      status: 404,
+      why: "project_dir_missing",
+    });
+    await act(async () => root.unmount());
+  });
+
+  it("stays quiet about why when the response body cannot be parsed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 500,
+            json: async () => {
+              throw new Error("not json");
+            },
+          }) as unknown as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "http_error",
+      status: 500,
+      why: undefined,
     });
     await act(async () => root.unmount());
   });
@@ -287,12 +346,78 @@ describe("useSdkSession unavailable telemetry", () => {
     expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
       stage: "read",
       reason: "network",
+      elapsed_ms: expect.any(Number),
+      hidden: expect.any(Boolean),
     });
     expect(trackMock).not.toHaveBeenCalledWith("sdk_session_unavailable", {
       stage: "open",
       error: expect.anything(),
     });
     await act(async () => root.unmount());
+  });
+
+  // `elapsed_ms` is the discriminator this event exists for: a policy block
+  // (CSP, PNA, an extension rewriting fetch) rejects near-instantly; a dropped
+  // connection (the tab or `preview` server going away mid-flight) rejects
+  // after a real delay. Both look identical without the timing.
+  it("times the network rejection from fetch start to reject", async () => {
+    // Fake only the clock `performance.now` reads, not timers: other code in
+    // this tree (React's own scheduler included) also calls `performance.now`,
+    // so pinning return values by call order (`mockReturnValueOnce`) is
+    // unreliable — a real run showed React consuming the queued values first.
+    // A fake clock that only advances when we say so sidesteps that entirely.
+    vi.useFakeTimers({ toFake: ["performance"] });
+    let rejectFetch: ((error: unknown) => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFetch = reject;
+          }),
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    // The effect runs synchronously up to `await fetch(...)`, capturing
+    // `fetchStarted` at the current (fake) clock value before this returns.
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await vi.advanceTimersByTimeAsync(3_200);
+    await act(async () => rejectFetch?.(new TypeError("Failed to fetch")));
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "network",
+      elapsed_ms: 3_200,
+      hidden: false,
+    });
+    vi.useRealTimers();
+    await act(async () => root.unmount());
+  });
+
+  it("records the page as hidden when the rejection lands after the tab is backgrounded", async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(document, "visibilityState");
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "network",
+      elapsed_ms: expect.any(Number),
+      hidden: true,
+    });
+    await act(async () => root.unmount());
+    if (originalDescriptor) Object.defineProperty(document, "visibilityState", originalDescriptor);
   });
 
   it("separates an unexpected response shape from a failed request", async () => {
@@ -324,11 +449,65 @@ describe("useSdkSession unavailable telemetry", () => {
     await act(async () => root.render(<Probe projectId="project-a" />));
     await flushAsyncEffects();
 
+    // No fileTree passed (this Probe doesn't have one) — path_in_tree stays
+    // null, same as before the tree loads. See the tree-aware tests below.
     expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
       stage: "read",
       reason: "absent_or_empty",
+      path_in_tree: null,
     });
     await act(async () => root.unmount());
+  });
+
+  // The graveyard-refuted fix's proposed next step: instrument, don't act.
+  // `path_in_tree` separates "genuinely not in the loaded tree" from
+  // "concurrent/duplicate open" without deciding anything on Studio's behalf.
+  // Two separate mounts (not a re-render of one): fileTree/fileTreeLoaded are
+  // deliberately outside the open effect's deps — re-running the whole
+  // open/dispose cycle on every tree refresh would drop a perfectly good
+  // session far more often than the tree actually changes — so a prop-only
+  // change on an already-mounted probe would never re-fire the read this
+  // event comes from.
+  it("reports path_in_tree against the caller's loaded file tree", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ content: "" }) }) as Response),
+    );
+    function TreeProbe({
+      fileTree,
+      fileTreeLoaded,
+    }: {
+      fileTree: string[];
+      fileTreeLoaded: boolean;
+    }) {
+      useSdkSession("project-a", "index.html", fileTree, fileTreeLoaded);
+      return null;
+    }
+
+    const rootA = createRoot(document.createElement("div"));
+    await act(async () =>
+      rootA.render(<TreeProbe fileTree={["other.html"]} fileTreeLoaded={true} />),
+    );
+    await flushAsyncEffects();
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "absent_or_empty",
+      path_in_tree: false,
+    });
+    await act(async () => rootA.unmount());
+
+    trackMock.mockClear();
+    const rootB = createRoot(document.createElement("div"));
+    await act(async () =>
+      rootB.render(<TreeProbe fileTree={["index.html"]} fileTreeLoaded={true} />),
+    );
+    await flushAsyncEffects();
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "absent_or_empty",
+      path_in_tree: true,
+    });
+    await act(async () => rootB.unmount());
   });
 
   it("reports a parse failure with its message", async () => {

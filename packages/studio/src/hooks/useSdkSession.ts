@@ -26,13 +26,22 @@ import { addExternalFileReloadListener } from "./externalFileReloadBus";
  * "Failed to fetch", "Load failed", "NetworkError when attempting to fetch
  * resource." — so the class was a network problem filed under a parser one, and
  * unaddressable in that bucket.
+ *
+ * `network` carries `elapsedMs` (time from fetch start to rejection) and
+ * `hidden` (`document.visibilityState` at the moment of rejection) because
+ * "the fetch rejected" alone conflates two very different situations: a
+ * closing tab or a server that exited under a live one (rejects after a real
+ * delay, `hidden` often true by the time it lands) versus a request blocked
+ * before it left the browser — CSP `connect-src`, Private Network Access, an
+ * extension rewriting `fetch` (rejects near-instantly, tab stays visible and
+ * alive). Telemetry before this change could not tell the two apart.
  */
 type ProjectFileReadFailure =
   | { ok: false; reason: "unsafe_path" }
-  | { ok: false; reason: "http_error"; status: number }
+  | { ok: false; reason: "http_error"; status: number; why?: string }
   | { ok: false; reason: "missing_content" }
   | { ok: false; reason: "absent_or_empty" }
-  | { ok: false; reason: "network" };
+  | { ok: false; reason: "network"; elapsedMs: number; hidden: boolean };
 
 type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
 
@@ -54,14 +63,59 @@ type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFail
  * called from is a long pre-existing async body already near the complexity
  * threshold, and this branch is one coherent unit.
  */
-function reportReadFailure(read: ProjectFileReadFailure, projectId: string): string | null {
+function reportReadFailure(
+  read: ProjectFileReadFailure,
+  projectId: string,
+  pathInTree: boolean | null,
+): string | null {
   trackStudioEvent("sdk_session_unavailable", {
     stage: "read",
     reason: read.reason,
-    ...(read.reason === "http_error" ? { status: read.status } : {}),
+    ...(read.reason === "http_error" ? { status: read.status, why: read.why } : {}),
+    ...(read.reason === "network" ? { elapsed_ms: read.elapsedMs, hidden: read.hidden } : {}),
+    // Only meaningful for `absent_or_empty` — the graveyard-refuted "clear
+    // activeCompPath when it's not in the tree" fix's proposed next step,
+    // scoped to instrumentation only. `null` while the tree hasn't loaded
+    // yet: a false-negative there would read as "genuinely absent" when it is
+    // really "haven't looked".
+    ...(read.reason === "absent_or_empty" ? { path_in_tree: pathInTree } : {}),
   });
   if (read.reason !== "http_error") return null;
   return read.status === 404 ? projectId : null;
+}
+
+// The request never produced a response: offline, the dev server gone, a
+// CSP/Private-Network-Access block, or an extension rewriting fetch. Called
+// from the fetch's own catch so it is reported as a READ failure — left to
+// propagate, the effect's outer catch reported it as `stage: "open"`, which
+// claims the composition failed to parse. Every `stage: open` event before
+// this change was this branch, so the label made the largest class
+// unaddressable.
+//
+// `elapsedMs` and `hidden` (read synchronously, right at the moment of
+// rejection, so they survive whenever the event itself does) are the
+// discriminator between "blocked before send" (near-zero elapsed) and "the
+// tab/server went away mid-flight" (real elapsed, often already hidden) —
+// see the type's doc comment.
+function networkReadFailure(
+  fetchStarted: number,
+): Extract<ProjectFileReadFailure, { reason: "network" }> {
+  return {
+    ok: false,
+    reason: "network",
+    elapsedMs: Math.round(performance.now() - fetchStarted),
+    hidden: typeof document !== "undefined" && document.visibilityState === "hidden",
+  };
+}
+
+// `why` distinguishes the studio-server route's own 403/404 causes (a NUL
+// byte, a path escaping the project, or — the one that used to read as a
+// plain path-traversal 403 — this project's folder having been renamed or
+// deleted out from under a still-running server) that a bare status code
+// cannot. Best-effort: an older server or a non-JSON error body just omits it.
+async function httpReadFailureWhy(res: Response): Promise<string | undefined> {
+  const body = (await res.json().catch(() => null)) as { why?: unknown } | null;
+  return typeof body?.why === "string" ? body.why : undefined;
 }
 
 /**
@@ -80,20 +134,18 @@ async function readProjectFileOptional(
   // already confines both values to single segments of this same-origin URL.
   if (path.includes("\0") || path.includes("..")) return { ok: false, reason: "unsafe_path" };
   let res: Response;
+  const fetchStarted = performance.now();
   try {
     res = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
     );
   } catch {
-    // The request never produced a response: offline, the dev server gone, a
-    // CSP/Private-Network-Access block, or an extension rewriting fetch. Caught
-    // here so it is reported as a READ failure — left to propagate, the effect's
-    // outer catch reported it as `stage: "open"`, which claims the composition
-    // failed to parse. Every `stage: open` event before this change was this
-    // branch, so the label made the largest class unaddressable.
-    return { ok: false, reason: "network" };
+    return networkReadFailure(fetchStarted);
   }
-  if (!res.ok) return { ok: false, reason: "http_error", status: res.status };
+  if (!res.ok) {
+    const why = await httpReadFailureWhy(res);
+    return { ok: false, reason: "http_error", status: res.status, ...(why ? { why } : {}) };
+  }
   const data = (await res.json()) as { content?: string };
   // `optional=1` answers a missing file with 200 + `content: ""`, so a
   // non-string here means a response shape we did not expect, not absence.
@@ -224,6 +276,13 @@ function disposeSdkSession(session: Composition): void {
 export function useSdkSession(
   projectId: string | null,
   activeCompPath: string | null,
+  // Optional: only the app's primary session (App.tsx, wired to
+  // useFileManager's tree) can answer `path_in_tree` on an `absent_or_empty`
+  // read. A secondary session opened for a promote/bind target
+  // (DesignPanelPromoteProvider) has no tree of its own to check against and
+  // reports `null`, same as before the tree loads.
+  fileTree: readonly string[] = [],
+  fileTreeLoaded = false,
 ): SdkSessionHandle {
   const [ownedSession, setOwnedSession] = useState<OwnedSdkSession | null>(null);
   const ownedSessionRef = useRef<OwnedSdkSession | null>(null);
@@ -276,7 +335,8 @@ export function useSdkSession(
       .then(async (read) => {
         if (cancelled) return;
         if (!read.ok) {
-          setUnreachableProject(reportReadFailure(read, projectId));
+          const pathInTree = fileTreeLoaded ? fileTree.includes(activeCompPath) : null;
+          setUnreachableProject(reportReadFailure(read, projectId, pathInTree));
           return;
         }
         setUnreachableProject(null);
@@ -305,7 +365,11 @@ export function useSdkSession(
           )
         ) {
           disposeSdkSession(comp);
-          trackStudioEvent("sdk_session_unavailable", { stage: "ownership" });
+          // Not a failure: project/path/reloadToken moved on while this open was
+          // in flight, and the effect that owns the new identity already opened
+          // (or is opening) its own session. Emitting this as `sdk_session_unavailable`
+          // counted a benign race as a broken precondition on the cutover dashboard.
+          trackStudioEvent("sdk_session_superseded", {});
           return;
         }
         const displaced = ownedSessionRef.current;
@@ -343,6 +407,12 @@ export function useSdkSession(
         disposeSdkSession(owned.session);
       }
     };
+    // fileTree/fileTreeLoaded deliberately excluded: they only annotate a
+    // read-failure event fired from this same effect run (the diagnostic
+    // "was the path in the last-loaded tree" snapshot), and re-running the
+    // whole open/dispose cycle on every tree refresh would drop and reopen a
+    // perfectly good session far more often than the tree actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activeCompPath, reloadToken]);
 
   const forceReload = useCallback(() => setReloadToken((t) => t + 1), []);
