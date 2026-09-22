@@ -48,7 +48,7 @@ describe("WCAG contrast calculation", () => {
   });
   it("parses channel tokens directly and rejects incomplete triplets", () => {
     const config = themes([{ ...pair, format: "rgb-channels" }]);
-    expect(measure(css("255, 255, 255"), config)[0].ratio).toBe(21);
+    expect(measure(css("255, 255, 255"), config)[0]!.ratio).toBe(21);
     expect(() => measure(css("255, 255"), config)).toThrow("Invalid RGB");
   });
   it("composites a translucent foreground after all backdrop layers", () => {
@@ -58,15 +58,15 @@ describe("WCAG contrast calculation", () => {
     const config = themes([{ ...pair, background: ["--layer"], opacity: 0.5 }]);
     const source = ":root { --bg: #000; --layer: rgba(255,255,255,0.5); --fg: #fff; }";
     const expected = contrast([0.75, 0.75, 0.75, 1], [0.5, 0.5, 0.5, 1]);
-    expect(measure(source, config)[0].ratio).toBe(expected);
+    expect(measure(source, config)[0]!.ratio).toBe(expected);
   });
   it("compares border paint on clip fill against the adjacent exterior", () => {
     const config = themes([{ ...pair, paintBacking: ["--fill"] }]);
     const source = ":root { --bg: #000; --fill: #fff; --fg: rgba(0,0,0,0.5); }";
-    expect(measure(source, config)[0].ratio).toBeCloseTo(5.2808228096, 9);
+    expect(measure(source, config)[0]!.ratio).toBeCloseTo(5.2808228096, 9);
   });
   it("resolves aliases and rejects missing or cyclic tokens", () => {
-    expect(measure(":root {--fg:var(--white);--white:#fff;--bg:#000;}", themes())[0].ratio).toBe(
+    expect(measure(":root {--fg:var(--white);--white:#fff;--bg:#000;}", themes())[0]!.ratio).toBe(
       21,
     );
     expect(() => measure(":root {--bg:#000;}", themes())).toThrow("Missing token");

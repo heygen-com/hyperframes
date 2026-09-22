@@ -117,22 +117,23 @@ function rgbColor(value: string): Color {
   const parts = value.trim().split(/[\s,/]+/);
   if (![3, 4].includes(parts.length)) throw new Error(`Invalid RGB color: ${value}`);
   return [
-    channel(parts[0], 255),
-    channel(parts[1], 255),
-    channel(parts[2], 255),
+    channel(parts[0]!, 255),
+    channel(parts[1]!, 255),
+    channel(parts[2]!, 255),
     channel(parts[3] ?? "1", 1),
   ];
 }
 export function parseColor(value: string): Color {
   const hex = value.match(/^#([\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i);
-  if (hex) return hexColor(hex[1]);
+  if (hex) return hexColor(hex[1]!);
   const rgb = value.match(/^rgba?\(([^)]+)\)$/);
   if (!rgb) throw new Error(`Unsupported sRGB color: ${value}`);
-  return rgbColor(rgb[1]);
+  return rgbColor(rgb[1]!);
 }
 export function composite(foreground: Color, background: Color): Color {
   if (background[3] !== 1) throw new Error("Compositing requires an opaque backing");
-  const mix = (at: number) => foreground[at] * foreground[3] + background[at] * (1 - foreground[3]);
+  const mix = (at: 0 | 1 | 2) =>
+    foreground[at] * foreground[3] + background[at] * (1 - foreground[3]);
   return [mix(0), mix(1), mix(2), 1];
 }
 function linear(channel: number): number {
@@ -149,11 +150,11 @@ export function contrast(a: Color, b: Color): number {
 function tokensFor(css: string, selector: string): Map<string, string> {
   const clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const blocks = [...clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(
-    (match) => match[1].trim() === selector,
+    (match) => match[1]!.trim() === selector,
   );
   if (blocks.length !== 1) throw new Error(`Expected exactly one theme block: ${selector}`);
-  const entries = [...blocks[0][2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(
-    (match) => [match[1], match[2].trim()] as const,
+  const entries = [...blocks[0]![2]!.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(
+    (match) => [match[1]!, match[2]!.trim()] as const,
   );
   const tokens = new Map(entries);
   if (tokens.size !== entries.length) throw new Error("Duplicate token declaration");
@@ -164,7 +165,7 @@ function tokenValue(name: string, tokens: Map<string, string>, seen: string[] = 
   const value = tokens.get(name);
   if (value === undefined) throw new Error(`Missing token: ${name}`);
   const alias = value.match(/^var\((--[\w-]+)\)$/);
-  return alias ? tokenValue(alias[1], tokens, [...seen, name]) : value;
+  return alias ? tokenValue(alias[1]!, tokens, [...seen, name]) : value;
 }
 function surface(layers: string[], canvas: Color, tokens: Map<string, string>): Color {
   return layers.reduce(
