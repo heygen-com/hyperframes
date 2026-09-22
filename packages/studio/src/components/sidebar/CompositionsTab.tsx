@@ -127,6 +127,7 @@ function CompCard({
   lintInfo,
   onAddToTimeline,
   contentRevision,
+  previewBooted,
 }: {
   projectId: string;
   comp: string;
@@ -138,6 +139,7 @@ function CompCard({
   lintInfo?: { count: number; messages: string[] };
   onAddToTimeline?: () => void;
   contentRevision: number;
+  previewBooted: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
@@ -250,7 +252,7 @@ function CompCard({
           <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-[8px] leading-tight text-neutral-600">
             Preview unavailable
           </div>
-        ) : (
+        ) : !previewBooted ? null : (
           <img
             src={thumbnailUrl}
             alt=""
@@ -390,6 +392,8 @@ export const CompositionsTab = memo(function CompositionsTab({
   lintFindingsByFile,
 }: CompositionsTabProps) {
   const thumbnailRevisions = usePlayerStore((state) => state.thumbnailRevisions);
+  // A card thumbnail is a server render of a whole composition; it waits for the live preview.
+  const previewBooted = usePlayerStore((state) => state.previewBooted);
   if (compositions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
@@ -413,6 +417,7 @@ export const CompositionsTab = memo(function CompositionsTab({
           isRendering={isRendering}
           lintInfo={lintFindingsByFile?.get(comp)}
           contentRevision={thumbnailRevisionOf(thumbnailRevisions, comp)}
+          previewBooted={previewBooted}
         />
       ))}
     </div>
