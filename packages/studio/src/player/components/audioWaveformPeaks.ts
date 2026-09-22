@@ -1,5 +1,5 @@
 /** Quietest bar that still clears the timeline contrast gate on the 70% pill. */
-export const LOUDNESS_OPACITY_FLOOR = 0.64;
+const LOUDNESS_OPACITY_FLOOR = 0.64;
 
 const LOUDNESS_OPACITY_SPAN = 1 - LOUDNESS_OPACITY_FLOOR;
 
