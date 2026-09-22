@@ -248,6 +248,9 @@ function runInject(argv) {
     gsapLines.push(
       ...buildGsap(rec, outgoing.id, incoming.id, dur, T, spec.direction, CW, CH, die),
     );
+    gsapLines.push(
+      `tl.addLabel("hf:transition:${outgoing.id}:${incoming.id}:${rec.name}", ${T});`,
+    );
     applied.push({ from: outgoing.id, to: incoming.id, type: rec.name, dur, T });
   }
 
