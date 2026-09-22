@@ -4,6 +4,42 @@
   "homepage": "https://hyperframes.heygen.com",
   "items": [
     {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vscode-theme-visualizer",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "ai-chat-reveal",
       "type": "hyperframes:block"
     },
@@ -1492,6 +1528,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "text-match-cut",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "text-shimmer",
       "type": "hyperframes:component"
     },
@@ -1630,45 +1670,9 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
-    },
-    {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vscode-theme-visualizer",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
     }
   ],
   "catalogArtifact": {
-    "revision": "fc655a7cbb3bd455b9c6cb55df3fdf6b35da2cbcb25474068ec796fddd3c8b55"
+    "revision": "e3c5a8dd4bc9feff12ea16e0cd6f861035aa662a105e8bdac6c2212d748b19d0"
   }
 }
