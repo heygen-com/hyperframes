@@ -86,6 +86,17 @@ describe("VideoThumbnail", () => {
     expect(host.querySelectorAll("img").length).toBeGreaterThan(0);
   });
 
+  it("issues a single decode job for a narrow clip", async () => {
+    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
+      value: { kind: "image", url: "blob:poster", aspect: 16 / 9 },
+      weight: 128,
+    });
+
+    await render(100);
+
+    expect(decodeVideoThumbnail).toHaveBeenCalledTimes(1);
+  });
+
   it("clears the loading shimmer when the scheduled decode fails", async () => {
     vi.mocked(decodeVideoThumbnail).mockRejectedValue(new Error("decode failed"));
 

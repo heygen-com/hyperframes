@@ -20,8 +20,8 @@ describe("computeThumbnailStrip", () => {
     expect(frameCount * frameW).toBeGreaterThanOrEqual(500);
   });
 
-  it("caps rendered tiles at the shared visible-frame budget", () => {
-    expect(computeThumbnailStrip(10_000, 1).frameCount).toBe(33);
+  it("paints tiles across the full clip past the shared visible-frame budget", () => {
+    expect(computeThumbnailStrip(14_400, 16 / 9).frameCount).toBeGreaterThan(33);
   });
 
   it("returns one tile when the container width is unknown", () => {
@@ -60,6 +60,10 @@ describe("quantizeThumbnailFrameCount", () => {
     expect(quantizeThumbnailFrameCount(5)).toBe(8);
     expect(quantizeThumbnailFrameCount(32)).toBe(32);
     expect(quantizeThumbnailFrameCount(34)).toBe(33);
+  });
+
+  it("caps decode requests at the shared visible-frame budget", () => {
+    expect(quantizeThumbnailFrameCount(124)).toBe(33);
   });
 });
 

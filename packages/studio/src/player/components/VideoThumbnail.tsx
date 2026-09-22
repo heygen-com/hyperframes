@@ -26,28 +26,13 @@ interface VideoThumbnailProps {
 }
 
 function createVideoThumbnailRequest(
-  props: Pick<
-    VideoThumbnailProps,
-    | "videoSrc"
-    | "sourceStart"
-    | "sourceRangeDuration"
-    | "duration"
-    | "projectId"
-    | "sessionEpoch"
-    | "priority"
-  >,
+  props: Pick<VideoThumbnailProps, "videoSrc" | "sourceStart" | "sourceRangeDuration"> &
+    Required<Pick<VideoThumbnailProps, "duration" | "projectId" | "sessionEpoch" | "priority">>,
   frameCount: number,
   rich: boolean,
 ) {
-  const {
-    videoSrc,
-    sourceStart,
-    sourceRangeDuration,
-    duration = 5,
-    projectId = videoSrc,
-    sessionEpoch = 0,
-    priority = "visible",
-  } = props;
+  const { videoSrc, sourceStart, sourceRangeDuration, duration, projectId, sessionEpoch, priority } =
+    props;
   return {
     key: createThumbnailKey({
       kind: "video",
@@ -124,7 +109,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   );
   const measured = containerWidth > 0;
   const posterSnapshot = useThumbnailLease(measured ? posterRequest : null);
-  const richSnapshot = useThumbnailLease(measured ? richRequest : null);
+  const richSnapshot = useThumbnailLease(measured && requestFrameCount > 1 ? richRequest : null);
   const snapshot = selectThumbnailSnapshot(posterSnapshot, richSnapshot);
   const value = snapshot.status === "ready" ? snapshot.value : null;
   const urls =
