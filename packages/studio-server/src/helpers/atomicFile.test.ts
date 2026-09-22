@@ -43,6 +43,17 @@ describe("replaceFileAtomically", () => {
     expect(fs.statSync(file).mode & 0o777).toBe(0o640);
   });
 
+  it("replaces an existing destination", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atomic-file-replace-test-"));
+    dirs.push(dir);
+    const file = join(dir, "index.html");
+    writeFileSync(file, "old destination");
+
+    replaceFileAtomically(file, "new destination", 0o640);
+
+    expect(readFileSync(file, "utf-8")).toBe("new destination");
+  });
+
   it("allocates a distinct temporary sibling for each writer", () => {
     const dir = mkdtempSync(join(tmpdir(), "atomic-file-unique-test-"));
     dirs.push(dir);

@@ -17,6 +17,7 @@ export function replaceFileAtomically(
   try {
     operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode });
     operations.chmodSync(tempPath, mode);
+    // Node fs.rename uses libuv uv_fs_rename; win32 calls MoveFileExW with MOVEFILE_REPLACE_EXISTING.
     operations.renameSync(tempPath, filePath);
   } catch (error) {
     try {
