@@ -30,6 +30,10 @@ function overlaps(a: TimelineElement, b: TimelineElement): boolean {
   return a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
 }
 
+function isTransitionPair(a: TimelineElement, b: TimelineElement): boolean {
+  return Boolean(a.transitionLabel && a.transitionLabel === b.transitionLabel);
+}
+
 /** Deterministic order on the stable clip id (never the mutated lane/track). */
 function byStableId(a: TimelineElement, b: TimelineElement): number {
   const ka = keyOf(a);
@@ -66,7 +70,9 @@ function packTrackLanes(
   const ordered = [...clips].sort(byStableId);
   const lanes: TimelineElement[][] = [];
   for (const el of ordered) {
-    let sub = lanes.findIndex((occ) => occ.every((o) => !overlaps(o, el)));
+    let sub = lanes.findIndex((occ) =>
+      occ.every((o) => !overlaps(o, el) || isTransitionPair(o, el)),
+    );
     if (sub === -1) {
       sub = lanes.length;
       lanes.push([]);

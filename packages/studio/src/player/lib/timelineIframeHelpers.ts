@@ -438,6 +438,7 @@ function buildMissingCompositionEntry(params: {
   const identity = buildTimelineElementIdentity({
     preferredId,
     label,
+    transitionLabel: element.getAttribute("data-transition-label") || undefined,
     fallbackIndex,
     domId: optionalNonEmpty(element.id),
     selector,

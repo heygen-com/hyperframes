@@ -108,6 +108,7 @@ export function createTimelineElementFromManifestClip(params: {
   const entry: TimelineElement = {
     id: identity.id,
     label,
+    transitionLabel: hostEl?.getAttribute("data-transition-label") || undefined,
     key: identity.key,
     kind: clip.kind,
     tag: resolveClipTag(clip),
