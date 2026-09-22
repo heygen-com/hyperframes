@@ -245,6 +245,24 @@ body {
     0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
+/* Mute greys the pill in place. Hot path: no transition. */
+.timeline-clip.is-audio[data-clip-hidden="true"],
+.timeline-clip.is-audio[data-audio-muted="true"] {
+  background-color: var(--timeline-clip-audio-muted-bg);
+  transition: none;
+}
+
+.timeline-audio-link {
+  position: absolute;
+  z-index: 4;
+  top: -9px;
+  left: 50%;
+  width: 1px;
+  height: 10px;
+  background: var(--timeline-audio-link);
+  pointer-events: none;
+}
+
 .timeline-clip.is-hovered {
   background-color: var(--clip-bg-hover);
 }

@@ -13,7 +13,7 @@ import { useRenderClipContent } from "./useRenderClipContent";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
-  usePlayerStore.setState({ thumbnailMode: "hidden" });
+  usePlayerStore.setState({ thumbnailMode: "hidden", elements: [] });
   document.body.innerHTML = "";
 });
 
@@ -141,6 +141,36 @@ describe("useRenderClipContent", () => {
         audioUrl: "/api/projects/my-project/preview/assets/clip.mp4",
         waveformUrl: "/api/projects/my-project/waveform/assets/clip.mp4",
       });
+    }
+  });
+
+  it("marks audio linked when a video clip uses the same file, and muted when hidden", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "hidden",
+      elements: [
+        {
+          id: "picture",
+          tag: "video",
+          start: 0,
+          duration: 4,
+          track: 0,
+          src: "assets/clip.mp4",
+        },
+      ],
+    });
+    const linked = renderClipContent({
+      id: "bed",
+      tag: "audio",
+      start: 0,
+      duration: 4,
+      track: 1,
+      src: "assets/clip.mp4",
+      hidden: true,
+    });
+    expect(isValidElement<{ linked: boolean; muted: boolean }>(linked)).toBe(true);
+    if (isValidElement<{ linked: boolean; muted: boolean }>(linked)) {
+      expect(linked.props.linked).toBe(true);
+      expect(linked.props.muted).toBe(true);
     }
   });
 

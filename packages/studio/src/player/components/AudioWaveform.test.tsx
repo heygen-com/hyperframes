@@ -50,4 +50,32 @@ describe("AudioWaveform", () => {
 
     act(() => root.unmount());
   });
+
+  it("greys the clip in place when muted and draws the parent tick when linked", () => {
+    const host = document.createElement("div");
+    host.className = "timeline-clip is-audio";
+    document.body.append(host);
+    const root = createRoot(host);
+
+    act(() => {
+      root.render(
+        <AudioWaveform
+          audioUrl="/media/voice.wav"
+          label=""
+          labelColor="#fff"
+          projectId="project-a"
+          sessionEpoch={1}
+          priority="visible"
+          muted
+          linked
+        />,
+      );
+    });
+
+    expect(host.getAttribute("data-audio-muted")).toBe("true");
+    expect(host.querySelector(".timeline-audio-link")).not.toBeNull();
+
+    act(() => root.unmount());
+    expect(host.hasAttribute("data-audio-muted")).toBe(false);
+  });
 });

@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import type { TimelineElement } from "../player";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
+import { audioPillFlags } from "../player/components/audioClipLink";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
@@ -70,6 +71,7 @@ function renderAudioClip(
   sessionEpoch: number,
   labelColor: string,
   context: TimelineClipRenderContext,
+  elements: readonly TimelineElement[],
 ): ReactNode {
   const audioUrl = resolveMediaPreviewUrl(el.src ?? "", pid, window.location.origin);
   const srcRelative = resolvePreviewRelative(audioUrl, pid, window.location.origin);
@@ -91,6 +93,7 @@ function renderAudioClip(
     projectId: pid,
     sessionEpoch,
     priority: context.priority,
+    ...audioPillFlags(el, elements),
   });
 }
 
@@ -112,6 +115,7 @@ export function useRenderClipContent({
   const effectiveMode = effectiveThumbnailMode(thumbnailMode);
   const sessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   const contentRevision = usePlayerStore((s) => s.thumbnailContentRevision);
+  const elements = usePlayerStore((s) => s.elements);
   return useCallback(
     // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
     // fallow-ignore-next-line complexity
@@ -127,7 +131,7 @@ export function useRenderClipContent({
       // its waveform (cheap, not a frame thumbnail). Toggle: timeline toolbar.
       if (effectiveMode === "hidden") {
         return el.tag === "audio"
-          ? renderAudioClip(el, pid, sessionEpoch, style.label, context)
+          ? renderAudioClip(el, pid, sessionEpoch, style.label, context, elements)
           : null;
       }
 
@@ -165,7 +169,7 @@ export function useRenderClipContent({
       // activePreviewUrl thumbnail branch; audio rows need waveform data, not a
       // captured frame from the currently drilled composition preview.
       if (el.tag === "audio") {
-        return renderAudioClip(el, pid, sessionEpoch, style.label, context);
+        return renderAudioClip(el, pid, sessionEpoch, style.label, context, elements);
       }
 
       // When drilled into a composition, render all inner elements via
@@ -252,6 +256,7 @@ export function useRenderClipContent({
       effectiveMode,
       sessionEpoch,
       contentRevision,
+      elements,
     ],
   );
 }

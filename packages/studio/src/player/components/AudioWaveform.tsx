@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
+import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 
 interface AudioWaveformProps {
   audioUrl: string;
@@ -13,6 +14,10 @@ interface AudioWaveformProps {
   projectId: string;
   sessionEpoch: number;
   priority: ThumbnailPriority;
+  /** `data-hidden` or a muted audio group. Greys the pill; the clip stays. */
+  muted?: boolean;
+  /** Same media file as a video clip. Draws the 1px parent tick. */
+  linked?: boolean;
 }
 
 const BAR_WIDTH = 2;
@@ -92,7 +97,10 @@ export const AudioWaveform = memo(function AudioWaveform({
   projectId,
   sessionEpoch,
   priority,
+  muted = false,
+  linked = false,
 }: AudioWaveformProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
@@ -130,21 +138,17 @@ export const AudioWaveform = memo(function AudioWaveform({
     if (!context) return;
     context.scale(scale, scale);
     context.clearRect(0, 0, width, height);
-    const startFraction = Math.max(0, Math.min(1, trimStartFraction ?? 0));
-    const endFraction = Math.max(startFraction, Math.min(1, trimEndFraction ?? 1));
-    const start = Math.floor(startFraction * peaks.length);
-    const end = Math.max(start + 1, Math.ceil(endFraction * peaks.length));
-    const span = end - start;
     const barCount = Math.floor(width / BAR_STEP);
-    const waveformBarRgb = getComputedStyle(canvas).getPropertyValue("--timeline-waveform-bar-rgb");
-    for (let index = 0; index < barCount; index++) {
-      const peakIndex = start + Math.min(span - 1, Math.floor((index / barCount) * span));
-      const amplitude = peaks[peakIndex] ?? 0;
+    const bars = decimatePeaks(peaks, trimStartFraction ?? 0, trimEndFraction ?? 1, barCount);
+    const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
+    const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
+    for (let index = 0; index < bars.length; index++) {
+      const amplitude = bars[index] ?? 0;
       const barHeight = Math.max(2, amplitude * height);
-      context.fillStyle = `rgba(${waveformBarRgb},${(0.45 + amplitude * 0.4).toFixed(2)})`;
+      context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
       context.fillRect(index * BAR_STEP, height - barHeight, BAR_WIDTH, barHeight);
     }
-  }, [peaks, trimEndFraction, trimStartFraction]);
+  }, [muted, peaks, trimEndFraction, trimStartFraction]);
 
   const setCanvasRef = useCallback(
     (canvas: HTMLCanvasElement | null) => {
@@ -170,13 +174,23 @@ export const AudioWaveform = memo(function AudioWaveform({
 
   useMountEffect(() => () => observerRef.current?.disconnect());
 
+  useEffect(() => {
+    const clip = rootRef.current?.closest(".timeline-clip");
+    if (!(clip instanceof HTMLElement)) return;
+    if (muted) clip.setAttribute("data-audio-muted", "true");
+    else clip.removeAttribute("data-audio-muted");
+    return () => clip.removeAttribute("data-audio-muted");
+  }, [muted]);
+
   return (
-    <div className="absolute inset-0 overflow-hidden">
-      <canvas
-        ref={setCanvasRef}
-        className="absolute inset-x-0 bottom-0 w-full"
-        style={{ top: 16 }}
-      />
+    <div ref={rootRef} className="absolute inset-0">
+      {linked ? <span className="timeline-audio-link" aria-hidden="true" /> : null}
+      <div className="absolute inset-0 overflow-hidden">
+        <canvas
+          ref={setCanvasRef}
+          className="absolute inset-x-0 bottom-0 w-full"
+          style={{ top: 16 }}
+        />
       {snapshot.status === "loading" && (
         <div
           className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
@@ -215,6 +229,7 @@ export const AudioWaveform = memo(function AudioWaveform({
           </span>
         </div>
       )}
+      </div>
     </div>
   );
 });
