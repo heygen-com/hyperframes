@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
 import type { TimelineElement } from "../store/playerStore";
-import { LABEL_COL_W } from "./timelineLayout";
+import { LABEL_COL_W, TRACK_H } from "./timelineLayout";
+import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 afterEach(() => (document.body.innerHTML = ""));
@@ -104,6 +105,26 @@ describe("TimelineTrackHeader", () => {
     };
     const { host, root } = renderHeader({ clip, audio: true, expanded: false });
     expect(host.querySelectorAll("[data-automation-lane-label]")).toHaveLength(0);
+    act(() => root.unmount());
+  });
+
+  it("stacks a second automation label at the curve's own stride, not the keyframe stride", () => {
+    const clip: TimelineElement = {
+      ...ELEMENT,
+      tag: "audio",
+      automation: JSON.stringify({
+        version: 1,
+        lanes: [
+          { target: "volume", points: [{ t: 0, v: 1 }] },
+          { target: "rate", points: [{ t: 0, v: 1 }] },
+        ],
+      }),
+    };
+    const { host, root } = renderHeader({ clip, audio: true });
+    const labels = [...host.querySelectorAll<HTMLElement>("[data-automation-lane-label]")];
+    expect(labels).toHaveLength(2);
+    const curveTops = labels.map((_, index) => TRACK_H + index * AUTOMATION_LANE_H);
+    expect(labels.map((el) => Number(el.dataset.timelineLaneTop))).toEqual(curveTops);
     act(() => root.unmount());
   });
 

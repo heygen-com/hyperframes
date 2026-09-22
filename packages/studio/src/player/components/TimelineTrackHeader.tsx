@@ -14,7 +14,8 @@ import { runtimeAudioId } from "../lib/timelineElementHelpers";
 import { TimelineFxButton } from "./TimelineFxButton";
 import { elementFxChain, groupAutomationLanes, isCarveLane } from "./automationLaneData";
 import { LaneToggleButton } from "./LayerDisclosureRow";
-import { getTimelineLaneTop, LABEL_COL_W, TRACK_H } from "./timelineLayout";
+import { LABEL_COL_W, TRACK_H } from "./timelineLayout";
+import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { TimelineTheme } from "./timelineTheme";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 import { AutomationLaneHeaderRow } from "./trackHeaderLabelRows";
@@ -348,7 +349,7 @@ export function TimelineTrackHeader({
               alsoAutomatedBy={
                 groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
               }
-              top={getTimelineLaneTop(index)}
+              top={TRACK_H + index * AUTOMATION_LANE_H}
               isLastLane={index === automationRows.length - 1}
               gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
               columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
