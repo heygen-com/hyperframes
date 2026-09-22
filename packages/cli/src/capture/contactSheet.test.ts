@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -67,6 +75,34 @@ describe("createContactSheet", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it.skipIf(process.platform === "win32")(
+    "replaces a pre-planted symlink at the sheet path instead of writing through it",
+    async () => {
+      const dir = tempDir();
+      try {
+        const image = join(dir, "a.png");
+        const victim = join(dir, "victim.txt");
+        const out = join(dir, "contact-sheet.jpg");
+        await sharp({
+          create: { width: 16, height: 9, channels: 3, background: { r: 255, g: 0, b: 0 } },
+        })
+          .png()
+          .toFile(image);
+        writeFileSync(victim, "do not touch");
+        symlinkSync(victim, out);
+
+        await createContactSheet([image], out, { cellWidth: 16, maxImages: 1 });
+
+        expect(readFileSync(victim, "utf8")).toBe("do not touch");
+        expect(lstatSync(out).isSymbolicLink()).toBe(false);
+        await expect(sharp(out).metadata()).resolves.toMatchObject({ format: "jpeg" });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
 });
 
 describe("contact-sheet capture budget", () => {
