@@ -111,6 +111,23 @@ describe("registerThumbnailRoutes", () => {
     );
   });
 
+  it("answers a cache-only request from the cache and never renders on a miss", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=0&output=source";
+
+    expect((await app.request(`${url}&cached=1`)).status).toBe(404);
+    expect(adapter.generateThumbnail).not.toHaveBeenCalled();
+
+    expect((await app.request(url)).status).toBe(200);
+    const hit = await app.request(`${url}&cached=1`);
+    expect(hit.status).toBe(200);
+    expect(await hit.text()).toBe("thumb");
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
+  });
+
   it("deduplicates concurrent generation and writes one complete cache entry", async () => {
     const adapter = createAdapter();
     const project = await adapter.resolveProject("demo");
