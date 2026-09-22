@@ -89,6 +89,10 @@
     // Golden snapshot files: data consumed by toMatchFileSnapshot, not importable modules.
     "packages/**/__goldens__/**",
     "registry/**",
+    // Browser fixture HTML loads generated player bundles that exist only after the package build.
+    "packages/core/src/runtime/fixtures/deck-audio-demo.html",
+    // Browser test intentionally contains repeated inline scenarios for distinct failure paths.
+    "packages/cli/src/registry/motionBlurShutter.browser.test.ts",
     "examples/**",
     "packages/sdk/examples/**",
     ".github/workflows/fixtures/**",
