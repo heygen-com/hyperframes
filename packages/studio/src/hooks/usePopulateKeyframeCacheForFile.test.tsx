@@ -18,6 +18,7 @@ let container: HTMLElement | null = null;
 
 beforeEach(() => {
   usePlayerStore.setState({
+    previewBooted: true,
     elements: [
       {
         id: "lab",
