@@ -4,6 +4,42 @@
   "homepage": "https://hyperframes.heygen.com",
   "items": [
     {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vscode-theme-visualizer",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "ai-chat-reveal",
       "type": "hyperframes:block"
     },
@@ -708,10 +744,6 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "week-in-merges",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "weight-wave",
       "type": "hyperframes:block"
     },
@@ -925,6 +957,10 @@
     },
     {
       "name": "code-terminal-run",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "colorama-wipe",
       "type": "hyperframes:component"
     },
     {
@@ -1634,45 +1670,9 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
-    },
-    {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vscode-theme-visualizer",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
     }
   ],
   "catalogArtifact": {
-    "revision": "eda107eecb902f204b6308c85794d269d5d53a8583c12008b3972f3efacb312a"
+    "revision": "656d5d91e8e44f809baa80031dac6af45afdadec7784cffa47ab1b7940c1a137"
   }
 }
