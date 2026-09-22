@@ -318,12 +318,12 @@
             return (parts[0] || "?").charAt(0).toUpperCase();
           }
 
-          // Linear between a floor and the leader pace, so 1 merge still travels
-          // and a higher count is never slower.
-          function speedFor(merges, minM, maxM) {
-            if (!(maxM > minM)) return LEADER_SPEED;
-            var u = (merges - minM) / (maxM - minM);
-            return FLOOR_SPEED + (LEADER_SPEED - FLOOR_SPEED) * u;
+          // Distance tracks merges / the leader's count. The floor is only for a
+          // genuine zero, so a near-tie stays a near-tie.
+          function speedFor(merges, maxM) {
+            if (!(merges > 0)) return FLOOR_SPEED;
+            if (!(maxM > 0)) return LEADER_SPEED;
+            return (LEADER_SPEED * merges) / maxM;
           }
 
           function bounceX(distance, span) {
@@ -344,10 +344,8 @@
           });
           var rows = ranked.slice(0, rowsMax);
           var hidden = ranked.slice(rowsMax);
-          var minM = rows[0].merges;
           var maxM = rows[0].merges;
           for (var i = 1; i < rows.length; i++) {
-            if (rows[i].merges < minM) minM = rows[i].merges;
             if (rows[i].merges > maxM) maxM = rows[i].merges;
           }
 
@@ -419,7 +417,7 @@
             rowEl.appendChild(meta);
             rowEl.appendChild(lane);
             mount.appendChild(rowEl);
-            avatars.push({ el: avatar, nameEl: nameEl, speed: speedFor(row.merges, minM, maxM) });
+            avatars.push({ el: avatar, nameEl: nameEl, speed: speedFor(row.merges, maxM) });
           }
 
           var rowH = avatars.length ? document.getElementById("wim-row-0").clientHeight : 120;
