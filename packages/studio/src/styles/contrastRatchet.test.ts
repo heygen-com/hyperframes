@@ -27,13 +27,13 @@ const themes = (pairs: unknown[] = [pair]) =>
   );
 const css = (fg: string) => `:root { --fg: ${fg}; --bg: #000; }`;
 
-function previousBaseline(fallback: ReturnType<typeof parseBaseline>) {
+function previousBaseline(fallback: ReturnType<typeof parseBaseline>, base = "origin/main") {
   const path = "packages/studio/src/styles/contrast-baseline.json";
-  const files = execFileSync("git", ["ls-tree", "--name-only", "origin/main", "--", path], {
+  const files = execFileSync("git", ["ls-tree", "--full-tree", "--name-only", base, "--", path], {
     encoding: "utf8",
   });
   if (!files.trim()) return fallback;
-  return parseBaseline(execFileSync("git", ["show", `origin/main:${path}`], { encoding: "utf8" }));
+  return parseBaseline(execFileSync("git", ["show", `${base}:${path}`], { encoding: "utf8" }));
 }
 
 describe("WCAG contrast calculation", () => {
@@ -94,6 +94,10 @@ describe("WCAG contrast calculation", () => {
 });
 
 describe("contrast ratchet", () => {
+  it("reads a committed baseline using repository paths from the package directory", () => {
+    expect(previousBaseline({}, "HEAD")).toEqual(parseBaseline(read("contrast-baseline.json")));
+  });
+
   it("rejects a planted low-contrast value and passes after restoring contrast", () => {
     expect(verdict(measure(css("#111"), themes()), {}).join("\n")).toContain("new contrast debt");
     expect(verdict(measure(css("#fff"), themes()), {})).toEqual([]);
