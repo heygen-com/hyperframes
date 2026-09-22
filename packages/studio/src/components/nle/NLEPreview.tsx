@@ -20,6 +20,7 @@ import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesS
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, previewPosterUrl } from "./PreviewPoster";
+import { usePlayerStore } from "../../player/store/playerStore";
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -524,7 +525,10 @@ export const NLEPreview = memo(function NLEPreview({
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
                   onReadyToShowChange={onLiveReadyToShowChange}
-                  onPreviewError={() => setPosterDoneFor(activeKey)}
+                  onPreviewError={() => {
+                    setPosterDoneFor(activeKey);
+                    usePlayerStore.getState().markPreviewBooted();
+                  }}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
