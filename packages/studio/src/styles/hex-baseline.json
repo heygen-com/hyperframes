@@ -1,5 +1,5 @@
 {
-  "total": 302,
+  "total": 297,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -49,7 +49,7 @@
     "packages/studio/src/components/sidebar/AudioRow.tsx": 2,
     "packages/studio/src/components/ui/HyperframesMark.tsx": 4,
     "packages/studio/src/hooks/useInlineTextEdit.ts": 1,
-    "packages/studio/src/player/components/AudioWaveform.tsx": 1,
+    "packages/studio/src/player/components/AudioWaveform.tsx": 2,
     "packages/studio/src/player/components/BeatStrip.tsx": 6,
     "packages/studio/src/player/components/CompositionThumbnail.tsx": 2,
     "packages/studio/src/player/components/Player.tsx": 2,
@@ -58,7 +58,7 @@
     "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
     "packages/studio/src/telemetry/client.ts": 1,
-    "packages/studio/src/webmcp/webmcpTestUtils.ts": 1,
-    "packages/studio/src/styles/studio.css": 48
+    "packages/studio/src/styles/studio.css": 48,
+    "packages/studio/src/webmcp/webmcpTestUtils.ts": 1
   }
 }
