@@ -8,6 +8,8 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
 import { readBundleFile } from "./readBundleFile.js";
 import {
@@ -43,6 +45,7 @@ import {
   affectsProjectSignature,
   type PreviewApiAdapter,
   PREVIEW_BUNDLE_OPTIONS,
+  createPreviewDocumentStore,
   thumbnailDeviceScaleFactor,
   type ResolvedProject,
   type RenderJobState,
@@ -420,6 +423,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     autoProxy: options.autoProxy ?? resolveAutoProxy(projectDir, undefined),
 
     listProjects: () => [project],
+
+    // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
+    previewDocuments: createPreviewDocumentStore(
+      join(projectDir, ".hyperframes", "preview"),
+      createHash("sha256")
+        .update(readFileSync(fileURLToPath(import.meta.url)))
+        .digest("hex"),
+    ),
 
     resolveProject: (id: string) => (id === projectId ? project : null),
 
