@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
@@ -400,6 +400,10 @@ function stubFlatTweenConversion(id: string): {
 }
 
 describe("useEnableKeyframes — flat tween transaction", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ previewBooted: true });
+  });
+
   it("skips the convert reload and coalesces an outside-range terminal soft reload", async () => {
     window.location.hash = "#/project/test-project";
     usePlayerStore.setState({ currentTime: 3 });
@@ -468,6 +472,10 @@ describe("useEnableKeyframes — flat tween transaction", () => {
 });
 
 describe("useEnableKeyframes — new tween on a class-only element", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ previewBooted: true });
+  });
+
   it("targets the selected sibling alone, not every element sharing its class", async () => {
     window.location.hash = "#/project/test-project";
     usePlayerStore.setState({ currentTime: 1 });

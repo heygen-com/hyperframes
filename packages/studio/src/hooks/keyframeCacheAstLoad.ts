@@ -70,10 +70,23 @@ export function fetchParsedAnimations(
   return request;
 }
 
+/** The parse feeds keyframes and the Design panel, not the first frame, and it runs on the
+ * server's only event loop, so it waits until the project's live preview has booted. */
+function afterPreviewBoot(): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = usePlayerStore.subscribe((state) => {
+      if (!state.previewBooted) return;
+      stop();
+      resolve();
+    });
+  });
+}
+
 async function requestParsedAnimations(
   projectId: string,
   sourceFile: string,
 ): Promise<ParsedGsapAnimations | null> {
+  if (!usePlayerStore.getState().previewBooted) await afterPreviewBoot();
   try {
     const res = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
