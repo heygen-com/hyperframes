@@ -304,7 +304,7 @@
               },
               {
                 "group": "Text & captions",
-                "tag": "71",
+                "tag": "72",
                 "expanded": false,
                 "pages": [
                   {
@@ -333,13 +333,14 @@
                   },
                   {
                     "group": "Typography & Text",
-                    "tag": "42",
+                    "tag": "43",
                     "expanded": false,
                     "pages": [
                       "catalog/components/blur-out-up",
                       "catalog/components/bottom-up-letters",
                       "catalog/components/caption-blend-difference",
                       "catalog/components/char-slam-explode",
+                      "catalog/components/extended-keyframe",
                       "catalog/components/focus-blur-resolve",
                       "catalog/components/headline-slam",
                       "catalog/blocks/hw-path-text",
@@ -488,12 +489,12 @@
               },
               {
                 "group": "Data & charts",
-                "tag": "17",
+                "tag": "18",
                 "expanded": false,
                 "pages": [
                   {
                     "group": "Data",
-                    "tag": "17",
+                    "tag": "18",
                     "expanded": false,
                     "pages": [
                       "catalog/components/animated-bar-chart",
@@ -512,7 +513,7 @@
                       "catalog/blocks/us-map-bubble",
                       "catalog/blocks/us-map-flow",
                       "catalog/blocks/us-map-hex",
-                      "catalog/blocks/week-in-merges", 
+                      "catalog/blocks/week-in-merges",
                       "catalog/blocks/world-map"
                     ]
                   }
