@@ -237,53 +237,82 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
       )}
       {canEdit && (
         <>
-          {/* fallow-ignore-next-line code-duplication -- mirrored handles intentionally share the same accessible contract */}
-          <div
-            role="slider"
-            tabIndex={-1}
-            aria-label="Fade in"
-            aria-valuemin={0}
-            aria-valuemax={Math.max(0, el.duration - fades.fadeOut)}
-            aria-valuenow={fades.fadeIn}
-            aria-valuetext={`${formatFadeSeconds(fades.fadeIn)}s`}
-            data-testid="clip-fade-handle-in"
-            title={`Fade in: ${formatFadeSeconds(fades.fadeIn)}s — drag to change`}
-            style={handleStyle(inPx)}
+          <FadeHandle
+            direction="in"
+            value={fades.fadeIn}
+            max={Math.max(0, el.duration - fades.fadeOut)}
+            position={inPx}
+            dragging={dragging === "in"}
             onPointerDown={onHandlePointerDown("in")}
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
             onKeyDown={onHandleKeyDown}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <FadeDot active={dragging === "in"} />
-          </div>
-          {/* fallow-ignore-next-line code-duplication -- mirrored handles intentionally share the same accessible contract */}
-          <div
-            role="slider"
-            tabIndex={-1}
-            aria-label="Fade out"
-            aria-valuemin={0}
-            aria-valuemax={Math.max(0, el.duration - fades.fadeIn)}
-            aria-valuenow={fades.fadeOut}
-            aria-valuetext={`${formatFadeSeconds(fades.fadeOut)}s`}
-            data-testid="clip-fade-handle-out"
-            title={`Fade out: ${formatFadeSeconds(fades.fadeOut)}s — drag to change`}
-            style={handleStyle(widthPx - outPx)}
+          />
+          <FadeHandle
+            direction="out"
+            value={fades.fadeOut}
+            max={Math.max(0, el.duration - fades.fadeIn)}
+            position={widthPx - outPx}
+            dragging={dragging === "out"}
             onPointerDown={onHandlePointerDown("out")}
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
             onKeyDown={onHandleKeyDown}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <FadeDot active={dragging === "out"} />
-          </div>
+          />
         </>
       )}
     </>
+  );
+}
+
+function FadeHandle({
+  direction,
+  value,
+  max,
+  position,
+  dragging,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onKeyDown,
+}: {
+  direction: "in" | "out";
+  value: number;
+  max: number;
+  position: number;
+  dragging: boolean;
+  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
+  onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+}) {
+  const label = direction === "in" ? "Fade in" : "Fade out";
+  return (
+    <div
+      role="slider"
+      tabIndex={-1}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      aria-valuetext={`${formatFadeSeconds(value)}s`}
+      data-testid={`clip-fade-handle-${direction}`}
+      title={`${label}: ${formatFadeSeconds(value)}s — drag to change`}
+      style={handleStyle(position)}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onKeyDown={onKeyDown}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <FadeDot active={dragging} />
+    </div>
   );
 }
 
