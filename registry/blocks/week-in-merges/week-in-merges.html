@@ -233,7 +233,9 @@
             }
             var hf = window.__hyperframes;
             var overrides =
-              hf && typeof hf.getVariables === "function" ? hf.getVariables() : window.__hfVariables;
+              hf && typeof hf.getVariables === "function"
+                ? hf.getVariables()
+                : window.__hfVariables;
             if (overrides && typeof overrides === "object") {
               for (var key in overrides) {
                 if (overrides[key] !== undefined) out[key] = overrides[key];
@@ -318,7 +320,10 @@
             if (rows[i].merges > maxM) maxM = rows[i].merges;
           }
 
-          document.getElementById("wim-eyebrow").textContent = str(V.eyebrow, "ACME / WEEK IN MERGES");
+          document.getElementById("wim-eyebrow").textContent = str(
+            V.eyebrow,
+            "ACME / WEEK IN MERGES",
+          );
           document.getElementById("wim-title").textContent = str(
             V.title,
             "Pull requests merged this week",

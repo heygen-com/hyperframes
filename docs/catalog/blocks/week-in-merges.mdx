@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Week in Merges"
   description="Each author's avatar bounces across their row at a speed set by how many pull requests they merged"
   variables={[{"id":"eyebrow","type":"string","label":"Eyebrow","default":"ACME / WEEK IN MERGES"},{"id":"title","type":"string","label":"Title","default":"Pull requests merged this week"},{"id":"period","type":"string","label":"Period","default":"1 September - 7 September 2026 · America/Los_Angeles"},{"id":"total","type":"string","label":"Total","default":"12 PRs"},{"id":"footer","type":"string","label":"Footer","default":"Speed proportional to merges · By PR author"},{"id":"source","type":"string","label":"Source line","default":"Example org · 1 repo · Bots · 0"},{"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"}]}
-  meta={{"duration":16,"width":1080,"height":1350,"category":"Data","badge":"Stable","codeLines":431}}
+  meta={{"duration":16,"width":1080,"height":1350,"category":"Data","badge":"Stable","codeLines":436}}
   attribution={{"path":"registry/blocks/week-in-merges","tags":["data","chart","ranking","leaderboard"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/week-in-merges/week-in-merges.html"
@@ -258,7 +258,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             }
             var hf = window.__hyperframes;
             var overrides =
-              hf && typeof hf.getVariables === "function" ? hf.getVariables() : window.__hfVariables;
+              hf && typeof hf.getVariables === "function"
+                ? hf.getVariables()
+                : window.__hfVariables;
             if (overrides && typeof overrides === "object") {
               for (var key in overrides) {
                 if (overrides[key] !== undefined) out[key] = overrides[key];
@@ -343,7 +345,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             if (rows[i].merges > maxM) maxM = rows[i].merges;
           }
 
-          document.getElementById("wim-eyebrow").textContent = str(V.eyebrow, "ACME / WEEK IN MERGES");
+          document.getElementById("wim-eyebrow").textContent = str(
+            V.eyebrow,
+            "ACME / WEEK IN MERGES",
+          );
           document.getElementById("wim-title").textContent = str(
             V.title,
             "Pull requests merged this week",
