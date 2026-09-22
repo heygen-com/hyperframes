@@ -313,10 +313,12 @@ function resolveProjectMainHtml(
 }
 
 /** The bundler options every adapter's `bundle()` uses. This route serves project files under a
- * `<base href>`, so assets keep their URLs: inlined base64 multiplies the document per reference. */
+ * `<base href>`, so assets keep their URLs: inlined base64 multiplies the document per reference.
+ * The lint route owns linting, so the bundle skips its own contract lint. */
 export const PREVIEW_BUNDLE_OPTIONS = {
   runtime: "placeholder",
   inlineAssets: false,
+  staticGuard: false,
 } as const satisfies BundleOptions;
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
