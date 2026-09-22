@@ -191,44 +191,44 @@ export const AudioWaveform = memo(function AudioWaveform({
           className="absolute inset-x-0 bottom-0 w-full"
           style={{ top: 16 }}
         />
-      {snapshot.status === "loading" && (
-        <div
-          className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
-          style={{
-            background: "var(--timeline-thumbnail-shimmer)",
-          }}
-        />
-      )}
-      {/* Degraded state — the decode failed; say so rather than paint a
-          waveform the author could edit against. */}
-      {snapshot.status === "error" && (
-        <div
-          className="absolute inset-x-0 flex items-center justify-center gap-1.5"
-          style={{ top: 16, bottom: 0 }}
-        >
+        {snapshot.status === "loading" && (
           <div
-            className="absolute inset-x-0"
+            className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
             style={{
-              bottom: "20%",
-              height: 2,
-              background: "var(--timeline-waveform-error)",
+              background: "var(--timeline-thumbnail-shimmer)",
             }}
           />
-          <span className="relative rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
-            waveform unavailable
-          </span>
-        </div>
-      )}
-      {label && (
-        <div className="absolute inset-x-0 top-0 z-10 px-1.5 py-0.5">
-          <span
-            className="block truncate text-[9px] font-semibold leading-tight"
-            style={{ color: labelColor, textShadow: "var(--timeline-waveform-label-shadow)" }}
+        )}
+        {/* Degraded state — the decode failed; say so rather than paint a
+          waveform the author could edit against. */}
+        {snapshot.status === "error" && (
+          <div
+            className="absolute inset-x-0 flex items-center justify-center gap-1.5"
+            style={{ top: 16, bottom: 0 }}
           >
-            {label}
-          </span>
-        </div>
-      )}
+            <div
+              className="absolute inset-x-0"
+              style={{
+                bottom: "20%",
+                height: 2,
+                background: "var(--timeline-waveform-error)",
+              }}
+            />
+            <span className="relative rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
+              waveform unavailable
+            </span>
+          </div>
+        )}
+        {label && (
+          <div className="absolute inset-x-0 top-0 z-10 px-1.5 py-0.5">
+            <span
+              className="block truncate text-[9px] font-semibold leading-tight"
+              style={{ color: labelColor, textShadow: "var(--timeline-waveform-label-shadow)" }}
+            >
+              {label}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

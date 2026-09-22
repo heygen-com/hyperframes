@@ -26,10 +26,9 @@ describe("isLinkedVideoAudio", () => {
 
   it("leaves a standalone audio file unlinked", () => {
     expect(
-      isLinkedVideoAudio(
-        { id: "vo", tag: "audio", src: "assets/voice.wav" },
-        [{ id: "picture", tag: "video", src: "assets/city.mp4" }],
-      ),
+      isLinkedVideoAudio({ id: "vo", tag: "audio", src: "assets/voice.wav" }, [
+        { id: "picture", tag: "video", src: "assets/city.mp4" },
+      ]),
     ).toBe(false);
   });
 });
