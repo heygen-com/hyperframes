@@ -100,7 +100,10 @@ describe("stampFileHfIds", () => {
 
     stampFileHfIds(file);
 
-    expect(rename).toHaveBeenCalledWith(`${file}.tmp`, file);
+    const tempPath = rename.mock.calls[0]?.[0];
+    expect(tempPath?.startsWith(file + ".")).toBe(true);
+    expect(tempPath?.endsWith(".tmp")).toBe(true);
+    expect(rename.mock.calls[0]?.[1]).toBe(file);
   });
 
   it("does not rewrite an already-stamped file", () => {

@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { randomUUID } from "node:crypto";
 
 type AtomicFileSystem = Pick<
   typeof fs,
@@ -12,7 +13,7 @@ export function replaceFileAtomically(
   mode: number,
   operations: AtomicFileSystem = fs,
 ): void {
-  const tempPath = `${filePath}.tmp`;
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode });
     operations.chmodSync(tempPath, mode);
