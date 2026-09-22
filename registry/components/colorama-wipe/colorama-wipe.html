@@ -330,6 +330,11 @@
       // one linear clock tween at `at`; at progress 0 the mask shows nothing, at progress 1 the exit has closed,
       // so a seek anywhere outside the window still paints an empty stage
       var clock = { t: 0 };
+      function cleanup() {
+        stage.remove();
+        el.classList.remove("cw-src");
+        delete el.__cw;
+      }
       draw(0);
       tl.fromTo(
         clock,
@@ -341,6 +346,7 @@
           onUpdate: function () {
             draw(clock.t);
           },
+          onInterrupt: cleanup,
         },
         o.at,
       );
