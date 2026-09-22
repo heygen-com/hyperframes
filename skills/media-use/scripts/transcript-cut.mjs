@@ -98,7 +98,7 @@ function run() {
       // with priming silence (~25-35ms for AAC), which concat then bakes in as a
       // gap at each cut -- a defect distinct from, and surviving, the fades
       // below. PCM has no priming, so audio is encoded exactly once, at concat.
-      const ext = Boolean(args.copy)
+      const ext = args.copy
         ? extname(outPath) || ".mp4"
         : isAudioOnly(outPath)
           ? ".wav"
@@ -107,13 +107,13 @@ function run() {
       // --copy stays fade-free (stream copy cannot filter). A segment's true
       // start/end (index 0's start, the last segment's end) borders nothing
       // kept, so only an interior splice edge gets a ramp.
-      const fade = Boolean(args.copy)
+      const fade = args.copy
         ? null
         : fadeFilterFor(segment.end - segment.start, {
             fadeIn: index > 0,
             fadeOut: index < segments.length - 1,
           });
-      cutSegment(inputPath, segment, out, Boolean(args.copy), fade);
+      cutSegment(inputPath, segment, out, args.copy, fade);
       return out;
     });
     const listPath = join(tmpDir, "list.txt");
@@ -126,7 +126,7 @@ function run() {
     const tmpOut = `${outPath}.part${extname(outPath) || ".mp4"}`;
     // --copy already produced final-codec segments, so concat can stream-copy.
     // Otherwise the PCM intermediates are encoded here, once, for the whole file.
-    const concatCodecs = Boolean(args.copy)
+    const concatCodecs = args.copy
       ? ["-c", "copy"]
       : isAudioOnly(outPath)
         ? encodeArgsFor(extname(outPath).toLowerCase())

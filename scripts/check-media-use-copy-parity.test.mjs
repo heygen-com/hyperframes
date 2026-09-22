@@ -19,6 +19,7 @@ export const MEDIA_USE_COPY_NAMES = [
   "prefs-store.mjs",
   "recipe-store.mjs",
   "telemetry.mjs",
+  "transcriptCutFade.mjs",
   "words.mjs",
 ];
 
