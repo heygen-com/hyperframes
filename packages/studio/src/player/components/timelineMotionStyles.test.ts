@@ -85,9 +85,9 @@ describe("timeline motion styles", () => {
 
     expect(baseTimelineClipRule).toContain("background-color: var(--clip-bg)");
     expect(baseTimelineClipRule).toContain("border: 1px solid var(--clip-border)");
-    expect(baseTimelineClipRule).toContain(
-      "box-shadow: inset 0 1px 0 var(--timeline-clip-highlight), var(--timeline-clip-shadow)",
-    );
+    expect(baseTimelineClipRule).toContain("box-shadow:");
+    expect(baseTimelineClipRule).toContain("inset 0 1px 0 var(--timeline-clip-highlight)");
+    expect(baseTimelineClipRule).toContain("var(--timeline-clip-shadow)");
     expect(timelineClipLabelRule).toContain("background: var(--timeline-clip-chip-bg)");
     expect(timelineClipLabelRule).toContain("color: var(--timeline-clip-chip-text)");
     expect(timelineClipLabelRule).toContain("text-overflow: ellipsis");

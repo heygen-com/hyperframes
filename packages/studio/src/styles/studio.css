@@ -324,6 +324,10 @@ body {
   .timeline-clip {
     transition: background-color 120ms ease-out;
   }
+
+  .timeline-clip__handle-bar {
+    transition: opacity 120ms ease-out;
+  }
 }
 
 /* CodeMirror overrides */
