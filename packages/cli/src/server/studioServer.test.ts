@@ -35,13 +35,13 @@ const engineState = vi.hoisted(() => ({
   acquireBrowser: async (..._args: unknown[]): Promise<unknown> => {
     throw new Error("acquireBrowser called without a test double");
   },
-  drainBrowserPool: async (): Promise<void> => {},
+  closeBrowserPool: async (): Promise<void> => {},
 }));
 vi.mock("@hyperframes/engine", () => ({
   acquireBrowser: (...args: unknown[]) => engineState.acquireBrowser(...args),
   buildChromeArgs: () => [],
   killTrackedProcesses: () => {},
-  drainBrowserPool: () => engineState.drainBrowserPool(),
+  closeBrowserPool: () => engineState.closeBrowserPool(),
 }));
 vi.mock("../browser/gpuPolicy.js", () => ({
   resolveCaptureBrowserGpuMode: async () => "software",
@@ -293,14 +293,14 @@ describe("createStudioServer shutdown", () => {
     const reachedBrowserClosePromise = new Promise<void>(
       (resolve) => (reachedBrowserClose = resolve),
     );
-    engineState.drainBrowserPool = async () => reachedBrowserClose();
+    engineState.closeBrowserPool = async () => reachedBrowserClose();
     server = createStudioServer({ projectDir: tmpProject() });
     const thumbnail = server.adapter.generateThumbnail?.(thumbnailOpts());
     await launchedPromise;
 
     const shutdown = server.shutdown();
-    // shutdown() starts the pool drain alongside the thumbnail-browser close,
-    // before it waits on renders: draining is the signal the close has begun
+    // shutdown() starts the pool close alongside the thumbnail-browser close,
+    // before it waits on renders: closing is the signal the close has begun
     // while the launch is still pending, without racing a fixed sleep.
     await reachedBrowserClosePromise;
     finishLaunch();
@@ -311,8 +311,8 @@ describe("createStudioServer shutdown", () => {
   });
 
   it("closes browsers within a bounded timeout even when a render's done promise never settles", async () => {
-    const drainBrowserPool = vi.fn(async () => {});
-    engineState.drainBrowserPool = drainBrowserPool;
+    const closeBrowserPool = vi.fn(async () => {});
+    engineState.closeBrowserPool = closeBrowserPool;
     const release = vi.fn(async () => {});
     let launched!: () => void;
     const launchedPromise = new Promise<void>((resolve) => (launched = resolve));
@@ -356,7 +356,7 @@ describe("createStudioServer shutdown", () => {
     }
 
     expect(release).toHaveBeenCalledTimes(1);
-    expect(drainBrowserPool).toHaveBeenCalledTimes(1);
+    expect(closeBrowserPool).toHaveBeenCalledTimes(1);
     await expect(thumbnail).resolves.toBeNull();
   });
 

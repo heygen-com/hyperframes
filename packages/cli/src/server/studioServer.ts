@@ -1040,14 +1040,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     shuttingDown = true;
     const renders = [...inFlightRenders];
     for (const [abortController] of renders) abortController.abort();
-    const { killTrackedProcesses, drainBrowserPool } = await import("@hyperframes/engine");
+    const { killTrackedProcesses, closeBrowserPool } = await import("@hyperframes/engine");
     killTrackedProcesses();
     // Browser close must not wait on renders: a render can outlast preview.ts's
-    // 3s exit watchdog, which calls process.exit() without running this cleanup.
-    // Start closing in parallel; only bound how long we wait for renders.
+    // 3s watchdog, which exits without running this cleanup. closeBrowserPool
+    // (not drainBrowserPool) also refuses a still-unwinding render's acquire().
     const closeBrowsers = Promise.allSettled([
       closeThumbnailBrowser().catch(() => {}),
-      drainBrowserPool().catch(() => {}),
+      closeBrowserPool().catch(() => {}),
     ]);
     await Promise.race([
       Promise.allSettled(renders.map(([, done]) => done)),
