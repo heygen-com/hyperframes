@@ -31,8 +31,15 @@ function createVideoThumbnailRequest(
   frameCount: number,
   rich: boolean,
 ) {
-  const { videoSrc, sourceStart, sourceRangeDuration, duration, projectId, sessionEpoch, priority } =
-    props;
+  const {
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  } = props;
   return {
     key: createThumbnailKey({
       kind: "video",
