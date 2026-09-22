@@ -196,16 +196,21 @@ export function measure(css: string, themes: ContrastTheme[]): Measurement[] {
     return theme.pairs.map((pair) => measurePair(pair, theme, tokens));
   });
 }
+function newDebt(row: Measurement): string[] {
+  return row.ratio < row.minimum ? [`${row.id}: new contrast debt ${row.ratio}`] : [];
+}
 function debtIssue(row: Measurement, baseline: ContrastBaseline): string[] {
   const previous = baseline[row.id];
-  if (previous === undefined)
-    return row.ratio < row.minimum ? [`${row.id}: new contrast debt ${row.ratio}`] : [];
+  if (previous === undefined) return newDebt(row);
   if (row.ratio >= row.minimum) return [`${row.id}: remove passing pair from baseline`];
   if (Math.abs(row.ratio - previous) > 1e-10)
     return [
       `${row.id}: ratio ${row.ratio}, baseline ${previous}; bank improvements, reject regressions`,
     ];
   return [];
+}
+function baselineDirection(id: string, ratio: number, previous: ContrastBaseline): string[] {
+  return ratio < (previous[id] ?? Infinity) ? [`${id}: baseline may only improve`] : [];
 }
 export function verdict(
   rows: Measurement[],
@@ -216,7 +221,7 @@ export function verdict(
   const ids = new Set(rows.map((row) => row.id));
   for (const [id, ratio] of Object.entries(baseline)) {
     if (!ids.has(id)) issues.push(`${id}: stale baseline pair`);
-    if (ratio < (previous[id] ?? Infinity)) issues.push(`${id}: baseline may only improve`);
+    issues.push(...baselineDirection(id, ratio, previous));
   }
   return issues;
 }

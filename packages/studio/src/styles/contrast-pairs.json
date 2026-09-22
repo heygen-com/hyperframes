@@ -133,13 +133,10 @@
           "sources": [
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
-            "packages/studio/src/player/components/timelineTheme.ts:85",
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:243",
-            "packages/studio/src/styles/studio.css:261"
+            "packages/studio/src/player/components/timelineTheme.ts:86",
+            "packages/studio/src/styles/studio.css:203"
           ],
-          "opacity": 0.49199999999999994
+          "opacity": 0.492
         },
         {
           "id": "active-selected-handle",
@@ -150,13 +147,12 @@
           "sources": [
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
-            "packages/studio/src/player/components/timelineTheme.ts:85",
+            "packages/studio/src/player/components/timelineTheme.ts:86",
             "packages/studio/src/styles/studio.css:203",
             "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:243",
-            "packages/studio/src/styles/studio.css:261"
+            "packages/studio/src/styles/studio.css:223"
           ],
-          "opacity": 0.49199999999999994
+          "opacity": 0.492
         },
         {
           "id": "hovered-handle",
@@ -167,13 +163,10 @@
           "sources": [
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
-            "packages/studio/src/player/components/timelineTheme.ts:85",
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:243",
-            "packages/studio/src/styles/studio.css:261"
+            "packages/studio/src/player/components/timelineTheme.ts:87",
+            "packages/studio/src/styles/studio.css:243"
           ],
-          "opacity": 0.45599999999999996
+          "opacity": 0.456
         },
         {
           "id": "active-hovered-handle",
@@ -188,13 +181,12 @@
           "sources": [
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
-            "packages/studio/src/player/components/timelineTheme.ts:85",
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/player/components/timelineTheme.ts:87",
             "packages/studio/src/styles/studio.css:243",
-            "packages/studio/src/styles/studio.css:261"
+            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/styles/studio.css:223"
           ],
-          "opacity": 0.45599999999999996
+          "opacity": 0.456
         },
         {
           "id": "dragging-handle",
@@ -206,9 +198,6 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:85",
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:243",
             "packages/studio/src/styles/studio.css:261"
           ],
           "opacity": 0.57
@@ -227,10 +216,9 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:85",
-            "packages/studio/src/styles/studio.css:203",
+            "packages/studio/src/styles/studio.css:261",
             "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:243",
-            "packages/studio/src/styles/studio.css:261"
+            "packages/studio/src/styles/studio.css:223"
           ],
           "opacity": 0.57
         },
