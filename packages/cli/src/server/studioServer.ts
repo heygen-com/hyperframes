@@ -29,6 +29,8 @@ import {
 } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { isDevMode } from "../utils/env.js";
+import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
@@ -455,10 +457,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return await lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
 
-    async lintProject(dir: string) {
-      const { lintProject } = await import("@hyperframes/lint");
-      return await lintProject(dir, undefined, { host: "studio" });
-    },
+    // Out of process: linting a large composition is seconds of synchronous parsing, and on
+    // this event loop it stalls every other Studio request, the preview included.
+    lintProject: (dir: string) =>
+      runRenderSetupWorker<ProjectLintResult>(
+        "lint",
+        { projectDir: dir, host: "studio" },
+        { maxBufferBytes: 8 * 1024 * 1024 },
+      ),
 
     runtimeUrl: "/api/runtime.js",
 
