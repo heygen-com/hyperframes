@@ -304,7 +304,7 @@
               },
               {
                 "group": "Text & captions",
-                "tag": "72",
+                "tag": "73",
                 "expanded": false,
                 "pages": [
                   {
@@ -333,7 +333,7 @@
                   },
                   {
                     "group": "Typography & Text",
-                    "tag": "43",
+                    "tag": "44",
                     "expanded": false,
                     "pages": [
                       "catalog/components/blur-out-up",
@@ -369,6 +369,7 @@
                       "catalog/components/soft-blur-in",
                       "catalog/blocks/split-flap-board",
                       "catalog/components/strikethrough-replace",
+                      "catalog/components/text-match-cut",
                       "catalog/components/text-shimmer",
                       "catalog/components/ticker-takeover",
                       "catalog/components/titlecard-calm",

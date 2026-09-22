@@ -1404,6 +1404,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "text-match-cut",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "text-shimmer",
       "type": "hyperframes:component"
     },
@@ -1577,6 +1581,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "b3b64e9c13284851d47cd4551533b841d8eb51f025ec040babd312bb207aed02"
+    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
   }
 }
