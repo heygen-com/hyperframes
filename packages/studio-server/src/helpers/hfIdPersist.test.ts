@@ -1,6 +1,5 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
-import * as fs from "node:fs";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "./hfIdPersist.js";
@@ -94,16 +93,13 @@ describe("stampFileHfIds", () => {
     expect(readFileSync(file, "utf-8")).toBe(returned);
   });
 
-  it("replaces the stamped file by renaming a complete sibling", () => {
+  it("replaces the stamped file and removes its temporary sibling", () => {
     const file = tmpFile(`<div class="clip" data-start="0" data-end="3">Hi</div>`);
-    const rename = vi.spyOn(fs, "renameSync");
 
-    stampFileHfIds(file);
+    const returned = stampFileHfIds(file);
 
-    const tempPath = rename.mock.calls[0]?.[0];
-    expect(tempPath?.startsWith(file + ".")).toBe(true);
-    expect(tempPath?.endsWith(".tmp")).toBe(true);
-    expect(rename.mock.calls[0]?.[1]).toBe(file);
+    expect(readFileSync(file, "utf-8")).toBe(returned);
+    expect(readdirSync(file.replace(/\/[^/]+$/, ""))).toEqual(["scene.html"]);
   });
 
   it("does not rewrite an already-stamped file", () => {
