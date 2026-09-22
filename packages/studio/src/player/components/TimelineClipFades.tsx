@@ -241,7 +241,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             direction="in"
             value={fades.fadeIn}
             max={Math.max(0, el.duration - fades.fadeOut)}
-            position={inPx}
+            style={handleStyle(inPx)}
             dragging={dragging === "in"}
             onPointerDown={onHandlePointerDown("in")}
             onPointerMove={onHandlePointerMove}
@@ -253,7 +253,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             direction="out"
             value={fades.fadeOut}
             max={Math.max(0, el.duration - fades.fadeIn)}
-            position={widthPx - outPx}
+            style={handleStyle(widthPx - outPx)}
             dragging={dragging === "out"}
             onPointerDown={onHandlePointerDown("out")}
             onPointerMove={onHandlePointerMove}
@@ -271,7 +271,7 @@ function FadeHandle({
   direction,
   value,
   max,
-  position,
+  style,
   dragging,
   onPointerDown,
   onPointerMove,
@@ -282,7 +282,7 @@ function FadeHandle({
   direction: "in" | "out";
   value: number;
   max: number;
-  position: number;
+  style: CSSProperties;
   dragging: boolean;
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
@@ -302,7 +302,7 @@ function FadeHandle({
       aria-valuetext={`${formatFadeSeconds(value)}s`}
       data-testid={`clip-fade-handle-${direction}`}
       title={`${label}: ${formatFadeSeconds(value)}s — drag to change`}
-      style={handleStyle(position)}
+      style={style}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
