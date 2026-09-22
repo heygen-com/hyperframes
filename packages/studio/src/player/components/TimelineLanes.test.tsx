@@ -333,6 +333,20 @@ describe("TimelineLanes selection", () => {
 });
 
 describe("TimelineLanes clip thumbnails", () => {
+  it("keeps thumbnail content inside a selected clip", () => {
+    const selected = element("clip-a", TRACK_A);
+    const view = renderLanes({
+      elements: [selected],
+      selectedElementIds: new Set([selected.id]),
+      renderClipContent: () => <div className="absolute inset-0 bg-neutral-900" data-thumbnail />,
+    });
+
+    const clip = view.host.querySelector('[data-el-id="clip-a"]');
+    expect(clip?.classList.contains("is-selected")).toBe(true);
+    expect(clip?.querySelector("[data-thumbnail]")).not.toBeNull();
+    act(() => view.root.unmount());
+  });
+
   it("asks for the same frames at rest, hovered and selected", () => {
     const rich: unknown[] = [];
     const renderClipContent = vi.fn(

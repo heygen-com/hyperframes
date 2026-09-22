@@ -93,7 +93,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
               left: props.contentOrigin + gap.start * props.pps,
               width: Math.max((gap.end - gap.start) * props.pps, 2),
               height: TRACK_H - CLIP_Y * 2,
-              background: loud ? "rgba(60,230,172,0.18)" : "rgba(60,230,172,0.055)",
+              background: loud ? "var(--timeline-accent-soft)" : "var(--timeline-accent-faint)",
               borderRadius: 4,
               zIndex: 25,
             }}
@@ -111,8 +111,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             left: props.contentOrigin + draggedClip.previewStart * props.pps,
             width: Math.max(draggedClip.element.duration * props.pps, 4),
             height: draggedClipHeight,
-            border: "1px solid color-mix(in srgb, var(--color-accent) 55%, transparent)",
-            background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--timeline-accent) 55%, transparent)",
+            background: "color-mix(in srgb, var(--timeline-accent) 12%, transparent)",
             borderRadius: 4,
             zIndex: 30,
           }}
@@ -131,8 +131,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             left: props.contentOrigin + props.dropPreview.start * props.pps,
             width: DROP_PREVIEW_SECONDS * props.pps,
             height: TRACK_H - CLIP_Y * 2,
-            border: "1px solid color-mix(in srgb, var(--color-accent) 55%, transparent)",
-            background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--timeline-accent) 55%, transparent)",
+            background: "color-mix(in srgb, var(--timeline-accent) 12%, transparent)",
             borderRadius: 4,
             zIndex: 30,
           }}
@@ -150,8 +150,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             left: props.contentOrigin,
             width: props.trackContentWidth,
             height: 1,
-            background: "#3CE6AC",
-            boxShadow: "0 0 3px rgba(60,230,172,0.5)",
+            background: "var(--timeline-accent)",
+            boxShadow: "0 0 3px var(--timeline-accent-glow)",
             zIndex: 55,
           }}
         />
@@ -166,11 +166,14 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             top: RULER_H,
             bottom: 0,
             width: 1,
-            background: snapGuide.type === "playhead" ? "#3CE6AC" : "rgba(255,255,255,0.6)",
+            background:
+              snapGuide.type === "playhead"
+                ? "var(--timeline-accent)"
+                : "var(--timeline-snap-guide)",
             boxShadow:
               snapGuide.type === "playhead"
-                ? "0 0 6px rgba(60,230,172,0.5)"
-                : "0 0 6px rgba(255,255,255,0.4)",
+                ? "0 0 6px var(--timeline-accent-glow)"
+                : "0 0 6px var(--timeline-text-dim)",
             zIndex: 60,
           }}
         />
@@ -200,8 +203,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             top: props.marqueeRect.top,
             width: props.marqueeRect.width,
             height: props.marqueeRect.height,
-            background: "rgba(60,230,172,0.10)",
-            border: "1px dashed rgba(60,230,172,0.7)",
+            background: "var(--timeline-accent-fill)",
+            border: "1px dashed var(--timeline-accent-border)",
             borderRadius: 2,
             zIndex: 70,
           }}
@@ -219,9 +222,9 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             width: Math.abs(props.rangeSelection.end - props.rangeSelection.start) * props.pps,
             top: RULER_H,
             bottom: 0,
-            backgroundColor: "rgba(59, 130, 246, 0.12)",
-            borderLeft: "1px solid rgba(59, 130, 246, 0.4)",
-            borderRight: "1px solid rgba(59, 130, 246, 0.4)",
+            backgroundColor: "var(--timeline-info-bg)",
+            borderLeft: "1px solid var(--timeline-info-border)",
+            borderRight: "1px solid var(--timeline-info-border)",
             zIndex: 50,
           }}
         />

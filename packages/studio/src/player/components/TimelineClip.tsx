@@ -1,9 +1,15 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
-import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
+import {
+  clipWidthLadder,
+  defaultTimelineTheme,
+  getClipHandleOpacity,
+  type TimelineTheme,
+} from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
+import { TimelineClipFades } from "./TimelineClipFades";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -59,9 +65,10 @@ export const TimelineClip = memo(function TimelineClip({
   const widthPx = Math.max(el.duration * pps, 4);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = el.label || el.id || el.tag;
+  const ladder = clipWidthLadder(widthPx);
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
-  const showLabel = widthPx >= 40 || isSelected;
-  const showDefaultText = !hasCustomContent && (widthPx >= 40 || isSelected);
+  const showLabel = ladder === "labeled";
+  const showDefaultText = !hasCustomContent && ladder === "labeled";
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
   const themeVariables = {
@@ -74,6 +81,7 @@ export const TimelineClip = memo(function TimelineClip({
     "--clip-border-active": theme.clipBorderActive,
     "--clip-handle": theme.handleColor,
   } as CSSProperties;
+  const isAudioClip = isAudioTimelineElement(el);
   const clipClassName = [
     "timeline-clip",
     "absolute",
@@ -81,7 +89,7 @@ export const TimelineClip = memo(function TimelineClip({
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
-    isAudioTimelineElement(el) ? "is-audio" : "",
+    isAudioClip ? "is-audio" : "",
   ]
     .filter((className) => className.length > 0)
     .join(" ");
@@ -90,7 +98,7 @@ export const TimelineClip = memo(function TimelineClip({
     width: widthPx,
     top: clipY,
     ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
-    borderRadius: theme.clipRadius,
+    borderRadius: isAudioClip ? theme.audioClipRadius : theme.clipRadius,
     ...themeVariables,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
     // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
@@ -112,6 +120,7 @@ export const TimelineClip = memo(function TimelineClip({
       data-clip-start={el.start}
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
+      data-ladder={ladder}
       data-active={isActive ? "" : undefined}
       aria-hidden={isGestureActor ? "true" : undefined}
       tabIndex={isGestureActor ? undefined : tabIndex}
@@ -198,6 +207,17 @@ export const TimelineClip = memo(function TimelineClip({
         </span>
       )}
       {children}
+      {/* Fade handles + ramps for anything the mixer hears — audio clips and
+          videos marked data-has-audio. They write data-fade-in/out on the clip
+          and are the timeline half of the inspector's Fade rows. */}
+      {(isAudioClip || el.hasAudio) && !isGestureActor && (
+        <TimelineClipFades
+          el={el}
+          pps={pps}
+          widthPx={widthPx}
+          showHandles={(isHovered || isSelected) && !isDragging}
+        />
+      )}
     </button>
   );
 });

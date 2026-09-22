@@ -21,6 +21,7 @@
     "src/runtime/protocol.ts",
     "src/runtime/stackingContext.ts",
     "src/runtime/webAudioRoute.ts",
+    "src/runtime/levelTap.ts",
     "src/runtime/wiggleEase.ts"
   ],
   "include": ["src/**/*"],

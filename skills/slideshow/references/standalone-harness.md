@@ -14,9 +14,6 @@ Do not treat these as the blessed authoring model. When the engine-hosted path s
 
 **Living reference implementations:**
 
-- `registry/examples/airbnb-deck/index.html` + `demo.html` — full pattern set (Three.js, fragments, SFX, branch slide)
-- `registry/examples/startup-pitch/index.html` — minimal version (no 3D), good starting point
-
 ---
 
 ## 2. The parent wrapper (`index.html` for deliverables, `demo.html` in examples)

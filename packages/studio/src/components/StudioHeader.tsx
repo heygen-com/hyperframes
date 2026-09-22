@@ -5,6 +5,7 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Tooltip } from "./ui";
 import { Dock } from "./dock/Dock";
+import { InspectorIcon } from "./icons/InspectorIcon";
 
 export interface StudioHeaderProps {
   captureFrameHref: string;
@@ -247,19 +248,7 @@ export function StudioHeader({
                 "h-full rounded-none",
                 inspectorButtonActive && "bg-hover text-accent enabled:hover:text-accent",
               )}
-              icon={
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
-                </svg>
-              }
+              icon={<InspectorIcon size={16} />}
               onClick={() => {
                 if (shouldOpenInspector(rightCollapsed, inspectorPanelActive)) {
                   trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });

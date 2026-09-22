@@ -79,7 +79,7 @@ node <SKILL_DIR>/scripts/dither.mjs \
   --palette '#0f380f,#306230,#8bac0f,#9bbc0f' \
   --point-size 3
 
-node <SKILL_DIR>/scripts/resolve.mjs \
+npx hyperframes media-use resolve \
   --from source.atkinson.mp4 --type video --project .
 ```
 

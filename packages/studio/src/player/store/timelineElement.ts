@@ -12,6 +12,7 @@ import type { ClipManifestClip } from "../lib/playbackTypes";
 export interface TimelineElement {
   id: string;
   label?: string;
+  transitionLabel?: string;
   key?: string;
   kind?: ClipManifestClip["kind"];
   tag: string;
@@ -54,6 +55,11 @@ export interface TimelineElement {
   playbackRate?: number;
   sourceDuration?: number;
   volume?: number;
+  /** `data-has-audio="true"` on a video: its sound is mixed, so it takes audio affordances (fades). */
+  hasAudio?: boolean;
+  /** Clip-edge fades from `data-fade-in` / `data-fade-out`, seconds; absent means none. */
+  fadeIn?: number;
+  fadeOut?: number;
   /** Verbatim `data-fx-chain` / `data-automation`; see automationLaneData. */
   fxChain?: string;
   automation?: string;

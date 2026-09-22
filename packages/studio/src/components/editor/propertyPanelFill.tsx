@@ -1,6 +1,6 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useMemo, useRef, useState } from "react";
-import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
+import { Plus, X } from "../../icons/SystemIcons";
 import {
   buildDefaultGradientModel,
   insertGradientStop,
@@ -8,6 +8,7 @@ import {
   serializeGradient,
   type GradientModel,
 } from "./gradientValue";
+import { ReverseGradientIcon } from "../icons/ReverseGradientIcon";
 import { IMAGE_EXT } from "../../utils/mediaTypes";
 import { FIELD, LABEL, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import {
@@ -358,7 +359,7 @@ export function GradientField({
             }}
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
           >
-            <RotateCcw size={12} />
+            <ReverseGradientIcon size={16} />
             Reverse
           </button>
         </div>

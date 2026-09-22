@@ -198,6 +198,38 @@ describe("insertTimelineAssetIntoSource", () => {
   });
 });
 
+describe("buildTimelineAssetInsertHtml — video audio", () => {
+  const base = {
+    id: "clip_asset",
+    hfId: "hf-vid-1",
+    assetPath: "assets/clip.mp4",
+    kind: "video" as const,
+    start: 0,
+    duration: 8,
+    track: 1,
+    zIndex: 2,
+  };
+
+  it("inserts a video muted when nothing says it carries audio", () => {
+    const html = buildTimelineAssetInsertHtml(base);
+    expect(html).toContain(" muted ");
+    expect(html).not.toContain("data-has-audio");
+  });
+
+  it("inserts a video with an audio stream audible: data-has-audio and no muted", () => {
+    const html = buildTimelineAssetInsertHtml({ ...base, hasAudio: true });
+    expect(html).toContain('data-has-audio="true"');
+    expect(html).not.toContain("muted");
+    expect(html).toContain("playsinline");
+  });
+
+  it("keeps a video without an audio stream muted", () => {
+    const html = buildTimelineAssetInsertHtml({ ...base, hasAudio: false });
+    expect(html).toContain(" muted ");
+    expect(html).not.toContain("data-has-audio");
+  });
+});
+
 describe("buildTimelineAssetInsertHtml markup quality", () => {
   const base = {
     id: "clip_1",

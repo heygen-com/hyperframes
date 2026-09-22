@@ -56,6 +56,16 @@ declare global {
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
       releasePausedMedia?: (el: HTMLMediaElement) => void;
+      /** Read-only level taps for the Studio meters: nothing exists until
+       *  `start()`, and `stop()` removes every tap. Peaks are linear per channel. */
+      audioMeter?: {
+        start(): void;
+        stop(): void;
+        read(): {
+          master: { l: number; r: number };
+          groups: Record<string, { l: number; r: number }>;
+        };
+      };
       /** Declared-compute hold for setup no adapter can see (mesh building,
        * shader compiles). Runtime and player hold until every promise
        * registered here, under any key unique to your piece, resolves. */

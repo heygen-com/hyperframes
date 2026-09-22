@@ -386,7 +386,7 @@ describe("TimelinePropertyLanes", () => {
     const positionFill = laneDiamonds(host, "position")[0]?.querySelector("path:last-child");
     const visualFill = laneDiamonds(host, "visual")[0]?.querySelector("path:last-child");
     expect(positionFill?.getAttribute("fill")).toBe("#4ba3d2");
-    expect(visualFill?.getAttribute("fill")).toBe("#a3a3a3");
+    expect(visualFill?.getAttribute("fill")).toBe("var(--timeline-diamond-muted)");
     act(() => root.unmount());
   });
 

@@ -82,6 +82,35 @@ describe("probeMediaMetadata", () => {
     });
   });
 
+  it("reports whether a video carries an audio stream", async () => {
+    const withAudio = await probeMediaMetadata("/tmp/clip.mp4", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [
+          { codec_type: "video", codec_name: "h264" },
+          { codec_type: "audio", codec_name: "aac" },
+        ],
+      }),
+      stderr: "",
+    }));
+    expect(withAudio).toMatchObject({ kind: "video", hasAudio: true });
+
+    const silent = await probeMediaMetadata("/tmp/silent.mp4", () => ({
+      status: 0,
+      stdout: JSON.stringify({ streams: [{ codec_type: "video", codec_name: "h264" }] }),
+      stderr: "",
+    }));
+    expect(silent).toMatchObject({ kind: "video", hasAudio: false });
+
+    // An audio file is not a video; the flag is a video question only.
+    const audioFile = await probeMediaMetadata("/tmp/music.wav", () => ({
+      status: 0,
+      stdout: "{}",
+      stderr: "",
+    }));
+    expect(audioFile).not.toHaveProperty("hasAudio");
+  });
+
   it("ignores attached cover art and reads the real video stream", async () => {
     const metadata = await probeMediaMetadata("/tmp/clip.mp4", () => ({
       status: 0,

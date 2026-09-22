@@ -19,7 +19,7 @@ import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs
 import { dirname, join } from "path";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";
-import { riffChunks } from "./wavChunks.js";
+import { riffChunks, wavFormatTag } from "./wavChunks.js";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
 const FLOAT_FORMAT = 3; // WAVE_FORMAT_IEEE_FLOAT
@@ -51,8 +51,8 @@ interface WavFmt {
 }
 
 /** The `fmt ` chunk, or null for a format this cannot safely edit in place. */
-function readFmtChunk(buffer: Buffer, body: number): WavFmt | null {
-  const format = buffer.readUInt16LE(body);
+function readFmtChunk(buffer: Buffer, body: number, size: number): WavFmt | null {
+  const format = wavFormatTag(buffer, body, size);
   const bits = buffer.readUInt16LE(body + 14);
   const float = format === FLOAT_FORMAT;
   if (!float && format !== PCM_FORMAT) return null;
@@ -78,7 +78,7 @@ function parseWavLayout(buffer: Buffer): WavLayout | null {
 
   for (const { id, body, size } of riffChunks(buffer)) {
     if (id === "fmt " && body + 16 <= buffer.length) {
-      fmt = readFmtChunk(buffer, body);
+      fmt = readFmtChunk(buffer, body, size);
     } else if (id === "data") {
       data = { offset: body, size: Math.min(size, buffer.length - body) };
     }

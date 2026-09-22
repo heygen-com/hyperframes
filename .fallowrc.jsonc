@@ -72,6 +72,9 @@
     "packages/engine/tests/**",
     "skills/**/test-corpus/**",
     "skills/**/scripts/**",
+    // The relocated media-use .mjs files are agent-invoked scripts outside the
+    // import graph; keep the exemption scoped to that shipped script type.
+    "packages/cli/src/media-use/**/*.mjs",
     // Agent-invoked motion-graphics tools co-located with their docs (run via
     // `node <path>` per grounding/PROTOCOL.md / categories/maps/module.md
     // prose), not import-graph reachable.
@@ -86,6 +89,9 @@
     // Golden snapshot files: data consumed by toMatchFileSnapshot, not importable modules.
     "packages/**/__goldens__/**",
     "registry/**",
+    // Browser fixture HTML loads generated player bundles that exist only after the package build.
+    "packages/core/src/runtime/fixtures/deck-audio-demo.html",
+    // Browser test intentionally contains repeated inline scenarios for distinct failure paths.
     "examples/**",
     "packages/sdk/examples/**",
     ".github/workflows/fixtures/**",
@@ -464,6 +470,7 @@
       // retry semantics. The Plan v2 AWS adapter extends that existing symmetry;
       // extracting a shared cloud abstraction would couple independent packages.
       "packages/aws-lambda/src/handler.ts",
+      "packages/cli/src/registry/motionBlurShutter.browser.test.ts",
       "packages/aws-lambda/src/s3Transport.ts",
       // The GCP handler deliberately mirrors the AWS protocol lifecycle while
       // retaining provider-specific GCS, HTTP, and Cloud Workflows semantics.

@@ -26,6 +26,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test-reachability:
+    name: Test reachability
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Report base reachability
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/reachability-base" "$BASE_SHA"
+          (cd "$RUNNER_TEMP/reachability-base" && node scripts/check-test-reachability.mjs --report)
+          git worktree remove "$RUNNER_TEMP/reachability-base"
+      - name: Report head reachability
+        run: node scripts/check-test-reachability.mjs --report
+      - run: node --test scripts/check-test-reachability.test.mjs
+      - run: node scripts/check-test-reachability.mjs
+
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
@@ -57,6 +81,7 @@ jobs:
             catalog_index:
               - "registry/registry.json"
               - "registry/catalog-artifact/**"
+              - "skills/media-use/audio/assets/sfx/**"
               - "scripts/catalog/check-artifact-coverage.ts"
             docs_catalog:
               - "docs/**"
@@ -69,6 +94,7 @@ jobs:
               - "package.json"
               - ".github/workflows/ci.yml"
             code:
+              - "registry/**"
               - "packages/**"
               - "scripts/**"
               - "package.json"
@@ -82,6 +108,8 @@ jobs:
               - "bun.lock"
               - ".github/workflows/ci.yml"
             skills:
+              - "packages/cli/src/media-use/**"
+              - "scripts/check-media-use-copy-parity.test.mjs"
               - "skills/**"
               - ".claude/skills/**"
               - ".agents/skills/**"
@@ -310,21 +338,37 @@ jobs:
       - run: bun run --filter '*' typecheck
       - run: bun run typecheck:scripts
 
-  test:
-    name: Test
-    needs: [changes, producer-source-tests]
-    # Keep the existing required `Test` context authoritative for producer
-    # failures too. The dedicated producer matrix remains parallel and legible,
-    # while this job fails closed if either lane fails or is cancelled.
-    if: always() && needs.changes.outputs.code == 'true'
+  test-studio:
+    name: Test (studio)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Require producer source tests
-        if: needs.producer-source-tests.result != 'success'
-        run: |
-          echo "::error::Producer unit/integration tests did not succeed."
-          exit 1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install FFmpeg for catalog preview tests
+        uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: bun run --cwd packages/core build:hyperframes-runtime
+      - run: bun run --cwd packages/studio test
+
+  test-runtime:
+    name: Test (runtime)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -332,16 +376,65 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/install-ffmpeg-linux
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
-      # After the builds: the preview scripts drive the producer, which imports
-      # @hyperframes/core from dist, so running these first fails on a missing
-      # module rather than on anything the test is actually checking.
+      - run: bun run --filter '@hyperframes/{cli,core,engine}' test
+
+  test-support:
+    name: Test (support)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: bun run --cwd packages/core build:hyperframes-runtime
+      - name: Install Chrome for catalog preview tests
+        id: catalog-chrome
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
+        with:
+          chrome-version: stable
       - run: bun run test:scripts
-      - run: bun run --filter '!@hyperframes/producer' test
+        env:
+          HYPERFRAMES_BROWSER_PATH: ${{ steps.catalog-chrome.outputs.chrome-path }}
+      - run: bun run --filter '@hyperframes/{lint,parsers,studio-server,sdk,player,aws-lambda,gcp-cloud-run,sdk-playground,shader-transitions}' test
+
+  test:
+    name: Test
+    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support]
+    # Keep the existing required `Test` context authoritative for producer
+    # failures too. It also fails closed if any package shard fails or is cancelled.
+    if: always() && needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Require producer source tests
+        if: needs.producer-source-tests.result != 'success'
+        run: |
+          echo "::error::Producer unit/integration tests did not succeed."
+          exit 1
+      - name: Require package test shards
+        if: needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success'
+        run: |
+          echo "::error::A package test shard did not succeed."
+          echo "studio=${{ needs.test-studio.result }} runtime=${{ needs.test-runtime.result }} support=${{ needs.test-support.result }}"
+          exit 1
 
   producer-source-tests:
     name: "Producer: ${{ matrix.lane }} tests"
@@ -375,8 +468,8 @@ jobs:
   # `node:` built-in imports. They aren't part of any workspace package, and
   # the main `Test` job's `code` path filter excludes `skills/**`, so without
   # this dedicated job they'd never run in CI. Examples:
-  #   * skills/media-use/scripts/resolve.test.mjs
-  #   * skills/media-use/scripts/lib/manifest.test.mjs
+  #   * packages/cli/src/media-use/resolve.test.mjs
+  #   * packages/cli/src/media-use/lib/manifest.test.mjs
   # Several of these are regression guards (e.g. shell-injection cases), so
   # the whole point is that they fire on PRs that touch skills/.
   test-skills:
@@ -396,11 +489,12 @@ jobs:
         # would defeat the whole point of this job).
         run: |
           set -euo pipefail
-          mapfile -t SKILLS_TESTS < <(find skills -type f -name "*.test.mjs" | sort)
+          mapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name "*.test.mjs" | sort)
           if [ "${#SKILLS_TESTS[@]}" -eq 0 ]; then
             echo "::error::No skills/**/*.test.mjs files found. Did the layout change?"
             exit 1
           fi
+          SKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)
           printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
           node --test "${SKILLS_TESTS[@]}"

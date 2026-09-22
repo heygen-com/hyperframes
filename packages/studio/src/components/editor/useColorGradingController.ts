@@ -1,3 +1,4 @@
+import { mediaMetadataUrl } from "../../utils/studioHelpers";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -288,12 +289,7 @@ export function useColorGradingController({
       return;
     }
     const controller = new AbortController();
-    fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(
-        selectedAssetPath,
-      )}`,
-      { signal: controller.signal },
-    )
+    fetch(mediaMetadataUrl(projectId, selectedAssetPath), { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) return { ok: false as const };
         const data: MediaMetadataResponse | null = await response.json();

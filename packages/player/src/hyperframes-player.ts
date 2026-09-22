@@ -21,8 +21,9 @@ import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import {
+  FIRST_FRAME_READINESS_SCOPE,
   scanPendingCompositionAssets,
-  settleCompositionReadiness,
+  settleFirstFrameCompositionReadiness,
 } from "@hyperframes/core/composition-readiness";
 
 // Playback-rate bounds mirror the runtime clamp in
@@ -1056,7 +1057,7 @@ class HyperframesPlayer extends HTMLElement {
       }
       return;
     }
-    settleCompositionReadiness(
+    settleFirstFrameCompositionReadiness(
       doc,
       ({ timedOut }) => {
         if (generation !== this._assetsGeneration) return;
@@ -1082,7 +1083,9 @@ class HyperframesPlayer extends HTMLElement {
    *  document can starve paint-and-idle of frames for the full 8s — that's
    *  reported directly rather than inferred, since it can't be bounded. */
   private _warnStuckAssets(doc: Document): void {
-    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc);
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
+      scope: FIRST_FRAME_READINESS_SCOPE,
+    });
     const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
     console.warn(
       `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms — playing anyway`,

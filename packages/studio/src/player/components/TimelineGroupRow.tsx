@@ -21,7 +21,7 @@ import { usePlayerStore } from "../store/playerStore";
 
 /** Accent rail on a group-owned lane — the same green the member rail uses, so
  *  "this belongs to the group" reads the same in both places (groups doc §5). */
-const GROUP_LANE_ACCENT = "#3CE6AC";
+const GROUP_LANE_ACCENT = "var(--timeline-accent)";
 
 interface TimelineGroupRowProps {
   index: number;

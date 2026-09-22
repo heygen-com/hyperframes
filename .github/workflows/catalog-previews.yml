@@ -93,7 +93,7 @@ jobs:
                scripts/catalog-preview-temp.ts)
           if [ -n "$RENDERER_CHANGED" ]; then
             CHANGED_ITEMS=$(printf '%s\n' $CHANGED_ITEMS \
-              code-snippet-visual-studio-dark code-snippet-apple-terminal-pro | sort -u)
+              code-snippet-dark-modern code-snippet-apple-terminal-pro | sort -u)
           fi
 
           if [ -z "$CHANGED_ITEMS" ]; then

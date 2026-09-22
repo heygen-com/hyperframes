@@ -130,6 +130,8 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     projectId,
     activeCompPath,
     masterCompPath,
+    fileManager.fileTree,
+    fileManager.fileTreeLoaded,
   );
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;

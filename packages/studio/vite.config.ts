@@ -9,7 +9,7 @@ import {
   lstatSync,
   realpathSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
@@ -258,10 +258,17 @@ function devProjectApi(): Plugin {
         }
         const receipt =
           version && studioServer ? studioServer.identifyFileWrite(filePath, version) : null;
+        // First path segment under `dataDir` is the project id (`data/projects/<id>/...`).
+        // Mirrors the CLI host's `project.id` field on the same event — see its
+        // doc comment for why a stale tab needs this to ignore another
+        // project's saves on a shared connection. This host is multi-project
+        // (any dir under `dataDir` resolves), so unlike the CLI host it can't
+        // assume one fixed id.
+        const projectId = relative(dataDir, filePath).split(sep)[0];
         server.ws.send({
           type: "custom",
           event: "hf:file-change",
-          data: { path: filePath, version, ...receipt },
+          data: { path: filePath, version, projectId, ...receipt },
         });
       });
       server.httpServer?.on("close", () => void projectWatcher.close());

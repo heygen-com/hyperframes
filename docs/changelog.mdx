@@ -9,6 +9,64 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.61"
+  description="Released - 2026-09-22"
+  tags={["Release", "Studio", "Studio Server", "Registry"]}
+>
+Studio's transition seams pick up a soft blur and a label, audio pills show real peaks, and video filmstrips render at their true size. Thumbnails load from Chrome's own cache, served files write atomically, and low-use catalog items are gone.
+
+## Features
+
+- **Studio:** Transition seams blur and carry a badge ([e5a037072](https://github.com/heygen-com/hyperframes/commit/e5a03707272936777abbe3d08e4097fec4937fd2), [#4280](https://github.com/heygen-com/hyperframes/pull/4280)).
+- **Studio:** Audio pills show real peaks and loudness ([94609daf4](https://github.com/heygen-com/hyperframes/commit/94609daf445bb956888872af5faa8d6b635d40e2), [#4282](https://github.com/heygen-com/hyperframes/pull/4282)).
+- **Studio:** Render geometry-sized video filmstrips ([5ca2e7838](https://github.com/heygen-com/hyperframes/commit/5ca2e78383a1db3ed632a2eb5db9233db125afb3), [#4234](https://github.com/heygen-com/hyperframes/pull/4234)).
+
+## Fixes
+
+- **Studio Server:** Prefer Puppeteer's cached Chrome for thumbnails ([189bead8c](https://github.com/heygen-com/hyperframes/commit/189bead8cbe2096af9a49ed43234a722dbd9221a), [#4272](https://github.com/heygen-com/hyperframes/pull/4272)).
+- **Studio Server:** Write served files atomically ([9f19d9d32](https://github.com/heygen-com/hyperframes/commit/9f19d9d32521ff3375e1c0bce11e9c234933d253), [#4285](https://github.com/heygen-com/hyperframes/pull/4285)).
+- **Studio:** Cutover gate classification, SSE cross-project bleed, benign races ([24c3e197e](https://github.com/heygen-com/hyperframes/commit/24c3e197ef075e9d53fb30a8dcb308fcb79e71b5), [#4269](https://github.com/heygen-com/hyperframes/pull/4269)).
+
+## Catalog
+
+- **Registry:** Remove low-use catalog items and variant tails ([05d09a745](https://github.com/heygen-com/hyperframes/commit/05d09a7452a5b099e527a7119fd1227b56376c4e), [#4274](https://github.com/heygen-com/hyperframes/pull/4274)).
+- **Registry:** Examples show the most-installed blocks ([53153d4a5](https://github.com/heygen-com/hyperframes/commit/53153d4a5470913586633738855a23caa8e0ca5f), [#4284](https://github.com/heygen-com/hyperframes/pull/4284)).
+- **Registry:** Colorama-wipe ([01734fae3](https://github.com/heygen-com/hyperframes/commit/01734fae3c41b1f0c62779afece54133b1892f03), [#4277](https://github.com/heygen-com/hyperframes/pull/4277)).
+
+## Internal
+
+- Shard the Test job by package group ([658d9afa3](https://github.com/heygen-com/hyperframes/commit/658d9afa30a7d09516f8abea89fb9376d16f2709), [#4286](https://github.com/heygen-com/hyperframes/pull/4286)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.60...v0.8.61).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.59"
+  description="Released - 2026-09-21"
+  tags={["Release", "Studio", "CLI", "Player"]}
+>
+Studio makes audio edits easier with typed values, fades, sound-aware video drops, and timeline meters. The CLI can search media and let agents edit timelines while previews reach their first frame with less setup.
+
+## Features
+
+- **Studio:** Type audio values, fade clip edges, and keep sound when dropping a video with audio ([839ae426d](https://github.com/heygen-com/hyperframes/commit/839ae426ddbcb3ad13ba21c586d87cde3aefa6f5), [#4250](https://github.com/heygen-com/hyperframes/pull/4250)).
+- **CLI:** Search media assets through media-use ([3091dcb78](https://github.com/heygen-com/hyperframes/commit/3091dcb787163db2e9d6082d926fe7a332d4ae4d), [#4230](https://github.com/heygen-com/hyperframes/pull/4230)).
+- **CLI:** Let agents edit timelines through timeline workflows ([4e9059ad5](https://github.com/heygen-com/hyperframes/commit/4e9059ad598add05f9b74346526e7ee3daddb1c4), [#4241](https://github.com/heygen-com/hyperframes/pull/4241)).
+- **Studio:** See audio level meters at the timeline's right edge ([97420736d](https://github.com/heygen-com/hyperframes/commit/97420736d56e6feef7396c8d100a33b2e913844a), [#4193](https://github.com/heygen-com/hyperframes/pull/4193)).
+- **Studio:** Compose a timeline from the parts a host app needs ([064192155](https://github.com/heygen-com/hyperframes/commit/0641921558eadcee0a026fa6db39e3e9e5b76f62), [#4229](https://github.com/heygen-com/hyperframes/pull/4229)).
+
+## Fixes
+
+- **CLI:** Keep partial site captures after a deadline and navigate pages without WebGL ([952e9228b](https://github.com/heygen-com/hyperframes/commit/952e9228b5cdf4387ecb4b6f220ef8e5d9143a73), [#4215](https://github.com/heygen-com/hyperframes/pull/4215)).
+
+## Performance
+
+- **Player:** Prepare previews from only the assets needed for their first frame ([16fab47a8](https://github.com/heygen-com/hyperframes/commit/16fab47a8eb245feab1cc786b9c9c14e41487283), [#4239](https://github.com/heygen-com/hyperframes/pull/4239)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.58...v0.8.59).
+</Update>
+
+<Update
   label="HyperFrames v0.8.58"
   description="Released - 2026-09-21"
   tags={["Release", "Studio", "Docs", "CLI"]}

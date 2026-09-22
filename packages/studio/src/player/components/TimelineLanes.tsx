@@ -29,6 +29,8 @@ import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
+import { deriveTimelineTransitionSeams } from "./timelineTransitionSeams";
+import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
 
 export function TimelineLanes({
   pps,
@@ -97,13 +99,15 @@ export function TimelineLanes({
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
+  const allTransitionElements = useMemo(
+    () => tracks.flatMap(([, elements]) => elements.map(getPreviewElement)),
+    [getPreviewElement, tracks],
+  );
   // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
   // synthetic lane element spans the whole composition rather than a clip.
   const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
   const { logicalRowsByTrack, groupByAnchor } = useTimelineLaneRowIndexes(logicalRows, groups);
-  // Which tracks are group MEMBERS, so their headers can render the level-2
-  // nesting their `aria-level` already reports.
   const groupMemberTracks = useMemo(
     () => new Set(groups.flatMap((group) => group.memberTracks)),
     [groups],
@@ -189,11 +193,7 @@ export function TimelineLanes({
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
-          // All lanes use the same uniform color — no alternating stripes.
           const rowBackground = theme.rowBackground;
-          // The beat-dot strip occupies the top of this track's lane (active track,
-          // or the music track when nothing is selected). When shown, keyframe
-          // diamonds shrink + drop to the bottom half so they don't collide with it.
           const beatStripOnTrack = trackShowsBeatStrip(els, beatAnalysis?.beatTimes, {
             selectedElementId,
             isMusicTrack,
@@ -215,9 +215,10 @@ export function TimelineLanes({
           // property lanes are showing. Undefined means "fill the row", which is
           // right only while it is collapsed and the row is nothing but bar.
           const clipBarHeight = rowExpanded ? TRACK_H - 2 * CLIP_Y : undefined;
-          // The clips whose envelopes this row draws, at their dragged positions.
-          // Once per row, not once per clip in the map below.
           const automationElements = els.map(getPreviewElement);
+          const transitionSeams = deriveTimelineTransitionSeams(allTransitionElements).filter(
+            (seam) => seam.incoming.track === trackNum,
+          );
           // Minted here because this is the only place that sees BOTH ends of
           // the disclosure: the caret in the sticky header and the diamond lanes
           // on the canvas. Keyed by display row, not by `trackNum`, which is a
@@ -487,6 +488,12 @@ export function TimelineLanes({
                     );
                   })
                 }
+                <TimelineTransitionOverlays
+                  seams={transitionSeams}
+                  pixelsPerSecond={pps}
+                  rowHeight={rowHeight}
+                  clipBarHeight={clipBarHeight}
+                />
                 {/* The automation lanes belong to the ROW, so they are mounted
                     here rather than under the active clip's property lanes.
                     Hanging off that clip meant selecting a sibling moved the

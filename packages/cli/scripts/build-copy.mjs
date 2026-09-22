@@ -1,7 +1,7 @@
 // Cross-platform replacement for the previous `mkdir -p … && cp -r …` shell
 // chain, which failed on Windows because `cp` doesn't accept `-r` there.
 
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -80,14 +80,32 @@ async function main() {
   // Skills bundled into the published CLI. Branches don't all carry the same
   // skills/ tree (it gets restructured), so each entry is existsSync-guarded:
   // a missing skill dir warns + skips instead of crashing the build.
-  for (const skill of ["hyperframes", "hyperframes-cli", "gsap"]) {
+  for (const skill of ["hyperframes", "hyperframes-cli", "gsap", "media-use"]) {
     const src = join(REPO_ROOT, "skills", skill);
     if (!existsSync(src)) {
       console.warn(`[build-copy] skill not found, skipping: skills/${skill}`);
       continue;
     }
-    copyDir(src, join(DIST, "skills", skill));
+    const destination = join(DIST, "skills", skill);
+    rmSync(destination, { recursive: true, force: true });
+    copyDir(src, destination);
   }
+
+  // The media-use engine lives with the CLI source, but keeps its published
+  // skill-relative layout so the moved .mjs tree can run without a rewrite.
+  const mediaEngine = join(CLI_ROOT, "src", "media-use");
+  const publishedMediaLib = join(DIST, "skills", "media-use", "scripts", "lib");
+  rmSync(publishedMediaLib, { recursive: true, force: true });
+  mkdirSync(publishedMediaLib, { recursive: true });
+  copyDirContents(join(mediaEngine, "lib"), publishedMediaLib);
+  cpSync(
+    join(mediaEngine, "resolve.mjs"),
+    join(DIST, "skills", "media-use", "scripts", "resolve.mjs"),
+  );
+  mkdirSync(join(DIST, "skills", "registry"), { recursive: true });
+  copyDirContents(join(DIST, "registry"), join(DIST, "skills", "registry"));
+  mkdirSync(join(DIST, "skills", "media-use", "registry"), { recursive: true });
+  copyDirContents(join(DIST, "registry"), join(DIST, "skills", "media-use", "registry"));
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
   if (existsSync(dockerfile)) {
