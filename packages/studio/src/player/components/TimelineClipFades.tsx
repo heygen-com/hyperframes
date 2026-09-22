@@ -192,13 +192,14 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
           viewBox={`0 0 ${Math.max(widthPx, 1)} 100`}
           preserveAspectRatio="none"
         >
-          {/* The shaded wedge is the gain that is NOT there: above the ramp. */}
+          {/* Keep the #4250 wedge geometry, but let the real waveform read through it. */}
           {showIn && (
             <>
               <polygon
                 data-testid="clip-fade-in"
                 points={`0,0 ${inPx},0 0,100`}
                 fill="var(--timeline-fade-shade)"
+                fillOpacity={0.35}
               />
               <line
                 x1={0}
@@ -218,6 +219,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
                 data-testid="clip-fade-out"
                 points={`${widthPx - outPx},0 ${widthPx},0 ${widthPx},100`}
                 fill="var(--timeline-fade-shade)"
+                fillOpacity={0.35}
               />
               <line
                 x1={widthPx - outPx}
