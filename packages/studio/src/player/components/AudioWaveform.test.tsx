@@ -11,7 +11,7 @@ vi.mock("../../hooks/useThumbnailLease", () => ({
   useThumbnailLease: leaseSpy,
 }));
 
-import { AudioWaveform } from "./AudioWaveform";
+import { AudioWaveform, drawWaveformCanvas } from "./AudioWaveform";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,6 +21,30 @@ afterEach(() => {
 });
 
 describe("AudioWaveform", () => {
+  it("paints a baseline and peak bar for every mapped waveform bin", () => {
+    const fillRect = vi.fn();
+    const context = {
+      scale: vi.fn(),
+      clearRect: vi.fn(),
+      fillRect,
+      fillStyle: "",
+    } as unknown as CanvasRenderingContext2D;
+    const canvas = document.createElement("canvas");
+    Object.defineProperties(canvas, {
+      clientWidth: { value: 6 },
+      clientHeight: { value: 20 },
+    });
+    vi.spyOn(canvas, "getContext").mockReturnValue(context);
+    drawWaveformCanvas(canvas, [0.25, 1], false, 0, 1);
+    expect(fillRect).toHaveBeenCalledTimes(4);
+    expect(fillRect.mock.calls.map(([x, y, width, height]) => [x, y, width, height])).toEqual([
+      [0, 18, 3, 2],
+      [0, 15, 3, 5],
+      [3, 18, 3, 2],
+      [3, 0, 3, 20],
+    ]);
+  });
+
   it("leases waveform decoding with the clip's project, session, and viewport priority", () => {
     const host = document.createElement("div");
     document.body.append(host);
