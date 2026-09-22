@@ -113,14 +113,6 @@ describe("timeline motion styles", () => {
       studioCss,
       ".timeline-clip[data-active].is-selected",
     );
-    const selectedDraggingTimelineClipRule = expectRule(
-      studioCss,
-      ".timeline-clip.is-selected.is-dragging",
-    );
-    const activeSelectedDraggingTimelineClipRule = expectRule(
-      studioCss,
-      ".timeline-clip[data-active].is-selected.is-dragging",
-    );
     const bloomOverlayRule = expectRule(studioCss, ".timeline-clip::before");
     const activeBloomOverlayRule = expectRule(studioCss, ".timeline-clip[data-active]::before");
 
@@ -149,23 +141,13 @@ describe("timeline motion styles", () => {
     );
     expect(themeCss).toContain("--timeline-clip-selection: rgba(255, 255, 255, 0.85)");
     expect(selectedTimelineClipRule).toContain(
-      "box-shadow: inset 0 0 0 1.5px var(--timeline-clip-selection)",
+      "outline: 1.5px solid var(--timeline-clip-selection)",
     );
+    expect(selectedTimelineClipRule).toContain("outline-offset: -1.5px");
     expect(activeSelectedTimelineClipRule).toContain(
-      "box-shadow: inset 0 0 0 1.5px var(--timeline-clip-selection)",
+      "outline: 1.5px solid var(--timeline-clip-selection)",
     );
-    expect(selectedDraggingTimelineClipRule).toContain(
-      "inset 0 0 0 1.5px var(--timeline-clip-selection)",
-    );
-    expect(selectedDraggingTimelineClipRule).toContain(
-      "0 8px 24px var(--timeline-clip-shadow-dragging)",
-    );
-    expect(activeSelectedDraggingTimelineClipRule).toContain(
-      "inset 0 0 0 1.5px var(--timeline-clip-selection)",
-    );
-    expect(activeSelectedDraggingTimelineClipRule).toContain(
-      "0 8px 24px var(--timeline-clip-shadow-dragging)",
-    );
+    expect(activeSelectedTimelineClipRule).toContain("outline-offset: -1.5px");
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
     expect(activeTimelineClipRule).toContain("border-color: var(--clip-border-active)");
     expect(activeTimelineClipRule).not.toContain("box-shadow");

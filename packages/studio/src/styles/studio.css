@@ -248,11 +248,13 @@ body {
 }
 
 .timeline-clip.is-selected {
-  box-shadow: inset 0 0 0 1.5px var(--timeline-clip-selection);
+  outline: 1.5px solid var(--timeline-clip-selection);
+  outline-offset: -1.5px;
 }
 
 .timeline-clip[data-active].is-selected {
-  box-shadow: inset 0 0 0 1.5px var(--timeline-clip-selection);
+  outline: 1.5px solid var(--timeline-clip-selection);
+  outline-offset: -1.5px;
 }
 
 .timeline-clip.is-dragging {
@@ -260,20 +262,6 @@ body {
      clips (waveform drawn on a separate layer) would otherwise look transparent. */
   background-color: var(--clip-bg-dragging);
   box-shadow: 0 8px 24px var(--timeline-clip-shadow-dragging);
-}
-
-/* Keep the white selection outline while dragging (a plain box-shadow alone gets
-   overridden by .is-dragging's drop shadow, so re-state both together). */
-.timeline-clip.is-selected.is-dragging {
-  box-shadow:
-    inset 0 0 0 1.5px var(--timeline-clip-selection),
-    0 8px 24px var(--timeline-clip-shadow-dragging);
-}
-
-.timeline-clip[data-active].is-selected.is-dragging {
-  box-shadow:
-    inset 0 0 0 1.5px var(--timeline-clip-selection),
-    0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
 .timeline-clip__label {
