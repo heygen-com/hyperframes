@@ -233,7 +233,7 @@
   // ===== bundled house shutter blur (feOffset filter; translation) → window.attachMotionBlurFilter =====
 
   (function () {
-    if (!window._hfMbfUid) window._hfMbfUid = 0;
+    var nextUid = 0;
 
     // The renderer injects its frame rate into the page before any composition
     // script runs. The HTML compiler treats inline scripts that spell out that
@@ -347,7 +347,7 @@
       // with equal weight. Averaging in sRGB matches AE's default (non-linear)
       // 8-bpc working space.
       var state = targets.map(function (el) {
-        var uid = "hf-mbf-" + (window._hfMbfUid = (window._hfMbfUid || 0) + 1);
+        var uid = "hf-mbf-" + ++nextUid;
         var svg = document.createElementNS(ns, "svg");
         svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
 
@@ -407,6 +407,7 @@
           offsets: offsets,
           filter: filter,
           filterId: uid,
+          svg: svg,
           xs: [],
           ys: [],
         };
@@ -426,8 +427,18 @@
       }
 
       var scheduled = false;
+      var disposed = false;
+
+      function cleanup() {
+        disposed = true;
+        state.forEach(function (s) {
+          clearBlur(s);
+          s.svg.remove();
+        });
+      }
 
       function applyShutter() {
+        if (disposed) return;
         var shutterTime = shutterAngle / 360 / fps;
         if (!(shutterTime > 0)) {
           state.forEach(clearBlur);
@@ -568,6 +579,7 @@
             applyShutter();
           });
         },
+        onInterrupt: cleanup,
       });
       _tracker._mbTracker = true;
       tl.add(_tracker, 0);
