@@ -30,7 +30,14 @@ import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
 export type PreviewApiAdapter = StudioApiAdapter & {
   autoProxy?: boolean;
   mediaCodecProbeCache?: MediaCodecProbeCache;
+  /** Keeps built preview documents across restarts, keyed by project id and preview ETag. */
+  previewDocuments?: PreviewDocumentStore;
 };
+
+export interface PreviewDocumentStore {
+  read(key: string): string | null;
+  write(key: string, html: string): void;
+}
 
 export function isAutoProxyEnabled(adapter: PreviewApiAdapter): boolean {
   return adapter.autoProxy !== false;

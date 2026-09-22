@@ -29,6 +29,7 @@ export {
 } from "./helpers/applyFileMutations.js";
 export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
 export { PREVIEW_BUNDLE_OPTIONS } from "./routes/preview.js";
+export { createPreviewDocumentStore } from "./helpers/previewDocumentStore.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
 export {
   consumeFileWriteReceipt,
