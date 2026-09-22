@@ -193,7 +193,7 @@ export const AudioWaveform = memo(function AudioWaveform({
   return (
     <div ref={rootRef} className="absolute inset-0">
       {linked ? <span className="timeline-audio-link" aria-hidden="true" /> : null}
-      <div className="absolute inset-0 z-[6] overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 10 }}>
         <canvas
           ref={setCanvasRef}
           className="absolute inset-x-0 bottom-0 w-full"
