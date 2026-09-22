@@ -18,7 +18,7 @@ export function TimelineEmptyState({
 }: TimelineEmptyStateProps) {
   return (
     <div
-      className={`h-full border-t bg-[#0a0a0b] flex flex-col select-none transition-colors duration-150 ${
+      className={`h-full border-t bg-[var(--timeline-shell-bg)] flex flex-col select-none transition-colors duration-150 ${
         isDragOver ? "border-studio-accent/50 bg-studio-accent/3" : "border-neutral-800/50"
       }`}
       onDragOver={onDragOver}

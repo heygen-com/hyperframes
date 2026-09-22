@@ -25,7 +25,7 @@ export interface StudioUiPreferences {
   snapToGrid?: boolean;
   /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
   timelineSnapEnabled?: boolean;
-  /** Audio level meters at the timeline's right edge; shown unless hidden here. */
+  /** Audio level meters at the timeline's right edge; hidden unless enabled here. */
   audioMetersVisible?: boolean;
   /** Keeps the main track gapless: deleting a clip closes the gap. Distinct
    *  from `timelineSnapEnabled` ("Magnet", drag/trim snapping). */

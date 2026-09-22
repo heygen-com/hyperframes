@@ -12,6 +12,7 @@ import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
+import { readElementFades } from "@hyperframes/core/audio-fade";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -173,8 +174,27 @@ function applyPlaybackMetadataFromElement(entry: TimelineElement, el: Element): 
   }
 }
 
+/** Sets or clears an optional field, so a re-parse after the attribute is removed drops it. */
+function setOptional<K extends keyof TimelineElement>(
+  entry: TimelineElement,
+  key: K,
+  value: TimelineElement[K] | undefined,
+): void {
+  if (value === undefined) delete entry[key];
+  else entry[key] = value;
+}
+
+/** `data-has-audio` and the clip-edge fades: what the mixer hears and how it enters and leaves. */
+function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): void {
+  setOptional(entry, "hasAudio", el.getAttribute("data-has-audio") === "true" ? true : undefined);
+  const fades = readElementFades(el);
+  setOptional(entry, "fadeIn", fades.fadeIn > 0 ? fades.fadeIn : undefined);
+  setOptional(entry, "fadeOut", fades.fadeOut > 0 ? fades.fadeOut : undefined);
+}
+
 export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
   applyPlaybackMetadataFromElement(entry, el);
+  applyAudioMetadataFromElement(entry, el);
 
   const mediaEl = resolveMediaElement(el);
   if (!mediaEl) return;

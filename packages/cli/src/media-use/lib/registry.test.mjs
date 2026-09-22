@@ -32,12 +32,13 @@ test("listTypes exposes the v2 media types", () => {
   }
 });
 
-test("heygen provider is first for every type it serves", () => {
-  for (const t of ["bgm", "sfx", "image", "icon"]) {
+test("heygen provider is first for every type it serves except bundled sfx", () => {
+  for (const t of ["bgm", "image", "icon"]) {
     const first = getProviders(t)[0];
     assert.ok(first, `no enabled provider for ${t}`);
     assert.match(first.name, /^heygen/, `${t} first provider is ${first.name}`);
   }
+  assert.equal(getProviders("sfx")[0].name, "bundled.sfx");
 });
 
 test("sanctioned providers only: heygen, local mflux/kokoro/ltx, codex, design spec, logo tiers", () => {
@@ -84,13 +85,13 @@ test("video cascade: HeyGen first, LTX local fallback, generate-only", async () 
   assert.equal(await runCapability("video", "search", "x", {}), null);
 });
 
-test("sfx cascade: HeyGen catalog first, bundled library remains the local fallback", () => {
+test("sfx cascade: bundled library first, HeyGen catalog remains the network fallback", () => {
   const ps = getProviders("sfx");
-  assert.equal(ps[0].name, "heygen.audio.sounds");
-  assert.ok(ps[0].network, "HeyGen SFX catalog is network-only");
-  assert.equal(ps[1].name, "bundled.sfx");
-  assert.equal(typeof ps[1].search, "function");
-  assert.ok(!ps[1].network, "bundled SFX remain available offline");
+  assert.equal(ps[0].name, "bundled.sfx");
+  assert.equal(typeof ps[0].search, "function");
+  assert.ok(!ps[0].network, "bundled SFX remain available offline");
+  assert.equal(ps[1].name, "heygen.audio.sounds");
+  assert.ok(ps[1].network, "HeyGen SFX catalog is network-only");
 });
 
 test("ctx.provider forces one generator (e.g. 'make an image WITH codex')", async () => {

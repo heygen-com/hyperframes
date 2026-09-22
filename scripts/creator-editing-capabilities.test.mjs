@@ -96,7 +96,8 @@ test("keyframes states truthful creator capabilities and ownership boundaries", 
   );
   assert.match(keyframes, /non-timed|non-clip/);
   assert.match(keyframes, /wrapper inside the clip|inner.*wrapper/i);
-  assert.match(keyframes, /speed ramps?[\s\S]{0,300}(not supported|preprocess)/i);
+  assert.match(keyframes, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
+  assert.match(keyframes, /speed ramps?[\s\S]{0,220}wins over the constant/i);
   assert.match(keyframes, /arbitrary mid-source freeze[\s\S]{0,300}(not supported|preprocess)/i);
   assert.doesNotMatch(keyframes, /keyframe(?:d|ing)?\s+(?:the\s+)?data-playback-rate/i);
 });
@@ -132,7 +133,8 @@ test("audio skill owns placed-track fades, automation, ducking, and effects", as
     files.audio,
   );
   assert.match(audio, /constant.*playback rate|data-playback-rate/i);
-  assert.match(audio, /speed ramps?[\s\S]{0,220}(not supported|preprocess)/i);
+  assert.match(audio, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
+  assert.match(audio, /speed ramps?[\s\S]{0,220}wins over the constant/i);
 });
 
 test("WebAudio scheduling combines per-element and global transport playback rates", async () => {

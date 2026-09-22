@@ -22,7 +22,7 @@ import {
 import { buildCube } from "./cube-build.mjs";
 import { validateCube, validateCubeFile } from "./cube-validate.mjs";
 
-const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..");
+const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..", "..");
 
 function corePresetIdsFromSource() {
   const src = readFileSync(join(REPO_ROOT, "packages/core/src/colorGrading.ts"), "utf8");

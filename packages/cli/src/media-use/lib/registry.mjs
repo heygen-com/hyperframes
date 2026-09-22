@@ -51,8 +51,8 @@ const P = (name, caps) => ({ name, network: true, paid: true, ...caps }); // rem
 const REGISTRY = {
   bgm: [N("heygen.audio.sounds", { search: bgmProvider.search })],
   sfx: [
-    N("heygen.audio.sounds", { search: sfxProvider.search }),
     A("bundled.sfx", { search: bundledSfxProvider.search }),
+    N("heygen.audio.sounds", { search: sfxProvider.search }),
   ],
   image: [
     N("heygen.asset.search", { search: imageProvider.search }),

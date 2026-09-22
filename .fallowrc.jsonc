@@ -72,6 +72,9 @@
     "packages/engine/tests/**",
     "skills/**/test-corpus/**",
     "skills/**/scripts/**",
+    // The relocated media-use .mjs files are agent-invoked scripts outside the
+    // import graph; keep the exemption scoped to that shipped script type.
+    "packages/cli/src/media-use/**/*.mjs",
     // Agent-invoked motion-graphics tools co-located with their docs (run via
     // `node <path>` per grounding/PROTOCOL.md / categories/maps/module.md
     // prose), not import-graph reachable.

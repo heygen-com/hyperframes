@@ -793,7 +793,7 @@ describe("TimelineTrackHeader", () => {
         isGroupMember: true,
       });
       expect(header()?.style.paddingLeft).toBe("14px");
-      expect(header()?.style.borderLeft).toContain("2px");
+      expect(header()?.style.borderLeft).toContain("var(--timeline-accent-rail)");
       act(() => view.root.unmount());
     });
 

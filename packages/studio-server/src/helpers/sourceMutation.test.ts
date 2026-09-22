@@ -106,6 +106,28 @@ describe("patchElementInHtml", () => {
     expect(result).toContain('id="hero"');
   });
 
+  it("keeps a lowercase doctype byte-identical for a no-op patch", () => {
+    const source = '<!doctype html><html><body><div id="hero" data-start="0"></div></body></html>';
+
+    const { html, matched } = patchElementInHtml(source, { id: "hero" }, [
+      { type: "attribute", property: "start", value: "0" },
+    ]);
+
+    expect(matched).toBe(true);
+    expect(html).toBe(source);
+  });
+
+  it("stamps the composition root before returning patched bytes", () => {
+    const source = '<div data-composition-id="main"><div id="hero">Hello</div></div>';
+    const { html: result, matched } = patchElementInHtml(source, { id: "hero" }, [
+      { type: "text-content", property: "textContent", value: "Updated" },
+    ]);
+
+    expect(matched).toBe(true);
+    expect(result).toContain("Updated");
+    expect(result).toMatch(/<div data-hf-id="hf-[a-z0-9]+" data-composition-id="main"/);
+  });
+
   it("patches a 4-side clip-path inset inline style", () => {
     const { html: result, matched } = patchElementInHtml(FIXTURE, { id: "hero" }, [
       { type: "inline-style", property: "clip-path", value: "inset(10px 20px 30px 40px)" },

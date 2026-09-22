@@ -8,7 +8,20 @@ import { test } from "node:test";
 import { duckKeyframes, duckLane, speechSpans } from "./duck.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, "..", "audio-duck.mjs");
+// Keep the skill-owned wrapper path under test until the compatibility layer
+// is removed in a later release.
+const SCRIPT = join(
+  HERE,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+  "skills",
+  "media-use",
+  "scripts",
+  "audio-duck.mjs",
+);
 
 test("speechSpans bridges gaps smaller than mergeGap", () => {
   const meta = {

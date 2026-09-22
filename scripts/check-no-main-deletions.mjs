@@ -41,6 +41,10 @@ const STORYBOARD_VIEW_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "scripts/test-reachability-baseline.json",
+    "Reachability now requires zero orphans and rejects baseline files.",
+  ],
+  [
     "packages/studio/src/player/hooks/useTimelineRowElements.ts",
     "D-834 removes the duplicate row-source hook; manifest elements are now the single timeline row owner",
   ],

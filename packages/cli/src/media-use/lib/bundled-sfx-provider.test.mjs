@@ -10,6 +10,7 @@ import {
   extensionForBundledSfxFile,
   inspectBundledSfxAssets,
 } from "./bundled-sfx-provider.mjs";
+import { rankMediaRows } from "./media-search.mjs";
 
 test("derives bundled SFX extension from the manifest filename", () => {
   assert.equal(extensionForBundledSfxFile("impact.wav"), ".wav");
@@ -82,4 +83,57 @@ test("accepts a complete bundled SFX library", () => {
   } finally {
     rmSync(libraryDir, { recursive: true, force: true });
   }
+});
+
+test("prefers an exact key over a longer key with the same words", async () => {
+  const libraryDir = mkdtempSync(join(tmpdir(), "media-use-sfx-exact-key-"));
+  try {
+    writeFileSync(
+      join(libraryDir, "manifest.json"),
+      JSON.stringify({
+        "whoosh-cinematic": { file: "whoosh-cinematic.mp3", description: "long whoosh" },
+        whoosh: { file: "whoosh.mp3", description: "short whoosh" },
+      }),
+    );
+    writeFileSync(join(libraryDir, "whoosh-cinematic.mp3"), "cinematic audio");
+    writeFileSync(join(libraryDir, "whoosh.mp3"), "exact audio");
+
+    const result = await bundledSfxProvider.search("whoosh", { libraryDir });
+    assert.equal(result?.localPath, join(libraryDir, "whoosh.mp3"));
+    assert.equal(result?.metadata.provenance.library_key, "whoosh");
+
+    const stemmed = await bundledSfxProvider.search("whooshes", { libraryDir });
+    assert.equal(stemmed?.localPath, join(libraryDir, "whoosh.mp3"));
+    assert.equal(stemmed?.metadata.provenance.library_key, "whoosh");
+  } finally {
+    rmSync(libraryDir, { recursive: true, force: true });
+  }
+});
+
+test("literal ids outrank distinct ids with the same stem", () => {
+  const rows = [
+    {
+      id: "cats",
+      title: "Cats Fighting",
+      description: "fighting cats",
+      tags: ["yowl", "fight"],
+      kind: "sfx",
+    },
+    {
+      id: "cat",
+      title: "Cat",
+      description: "single cat",
+      tags: ["meow"],
+      kind: "sfx",
+    },
+  ];
+
+  assert.deepEqual(
+    rankMediaRows("cat", rows).map((row) => row.id),
+    ["cat", "cats"],
+  );
+  assert.deepEqual(
+    rankMediaRows("cats", rows).map((row) => row.id),
+    ["cats", "cat"],
+  );
 });

@@ -21,7 +21,7 @@ import { freezeLocalFile } from "./lib/freeze.mjs";
 import { cachePut, cacheGet, importFromCache } from "./lib/cache.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 
-const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
+const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..");
 const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
 // The "Test: skills" CI job has no ffmpeg on PATH (by design). The smart-grade
 // test shells to ffmpeg, so it's skipped there and runs where ffmpeg exists.

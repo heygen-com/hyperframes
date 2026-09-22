@@ -18,7 +18,11 @@ import {
 } from "../utils/timelineAssetDrop";
 import { generateId } from "../utils/generateId";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
-import { collectHtmlIds, resolveDroppedAssetDuration } from "../utils/studioHelpers";
+import {
+  collectHtmlIds,
+  resolveDroppedAssetDuration,
+  resolveDroppedAssetHasAudio,
+} from "../utils/studioHelpers";
 import { formatTimelineAttributeNumber } from "./timelineEditingHelpers";
 import { readFileContent } from "./timelineTimingSync";
 import { commitTimelineCompositionInsertion } from "../utils/timelineCompositionInsert";
@@ -113,6 +117,9 @@ export function useTimelineAssetDropOps({
             ? durationOverride
             : await resolveDroppedAssetDuration(pid, assetPath, kind);
         const normalizedDuration = Number(formatTimelineAttributeNumber(duration));
+        // A video with an audio stream lands audible; the mixer only hears a
+        // <video> marked data-has-audio, and a muted drop was losing the sound.
+        const hasAudio = await resolveDroppedAssetHasAudio(pid, assetPath, kind);
         const newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
         const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
 
@@ -146,6 +153,7 @@ export function useTimelineAssetDropOps({
               duration: normalizedDuration,
               track,
               zIndex: newElementZIndex,
+              hasAudio,
               geometry: fitTimelineAssetGeometry(
                 null,
                 resolveTimelineAssetCompositionSize(originalContent),

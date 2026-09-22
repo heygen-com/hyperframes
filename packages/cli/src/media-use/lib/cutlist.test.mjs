@@ -8,7 +8,21 @@ import { test } from "node:test";
 import { compileCutList } from "./cutlist.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, "..", "transcript-cut.mjs");
+// These legacy wrappers remain under skills/media-use/scripts because the
+// skill's public audio entrypoints still invoke them; the moved engine tests
+// their implementation here while preserving that compatibility surface.
+const SCRIPT = join(
+  HERE,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+  "skills",
+  "media-use",
+  "scripts",
+  "transcript-cut.mjs",
+);
 
 test("explicit --remove ranges invert to kept segments", () => {
   const transcript = [

@@ -5716,6 +5716,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
   },
   {
+    "name": "week-in-merges",
+    "type": "block",
+    "title": "Week in Merges",
+    "description": "Each author's avatar bounces across their row at a speed set by how many pull requests they merged",
+    "tags": [
+      "data",
+      "chart",
+      "ranking",
+      "leaderboard"
+    ],
+    "href": "/catalog/blocks/week-in-merges",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/week-in-merges.png"
+  },
+  {
     "name": "weight-wave",
     "type": "block",
     "title": "Weight Wave",

@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
-import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
+import { isInClipWindow } from "./clipWindow";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
@@ -36,7 +36,7 @@ import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEn
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
-import { collectRuntimeTimelinePayload } from "./timeline";
+import { collectRuntimeTimelinePayload, isRuntimeElementVisibleAt } from "./timeline";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
@@ -58,11 +58,7 @@ import {
   isMemberGroupHidden,
 } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
-import {
-  quantizeSeekTime,
-  quantizeTimeToFrame,
-  snapTimeToFrameBoundary,
-} from "../inline-scripts/parityContract";
+import { quantizeSeekTime, quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { createManualEditGestureWatch } from "./manualEditGestureWatch";
 import type {
   RuntimeDeterministicAdapter,
@@ -81,7 +77,8 @@ import {
 import { installStudioCustomEase } from "./customEase";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { MEDIA_START_BASIS_ATTR } from "../mediaTiming";
-import { settleCompositionReadiness } from "../compositionReadiness";
+import { settleFirstFrameCompositionReadiness } from "../compositionReadiness";
+import { AUTHORED_DURATION_ATTR, AUTHORED_END_ATTR } from "./authoredTiming";
 import {
   clearRuntimeData,
   setRuntimeData,
@@ -96,9 +93,6 @@ import {
   isMediaElement,
   isVideoElement,
 } from "./domRealm";
-
-const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
-const AUTHORED_END_ATTR = "data-hf-authored-end";
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -806,54 +800,6 @@ export function initSandboxRuntimeModular(): void {
       delete window.__hfResolveMediaStartSeconds;
     }
   });
-
-  const isTimedElementVisibleAt = (
-    rawNode: HTMLElement,
-    currentTime: number,
-    compositionDuration: number,
-  ): boolean => {
-    const tag = rawNode.tagName.toLowerCase();
-    if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
-      return false;
-    }
-
-    const isMedia = tag === "video" || tag === "audio";
-    const start = isMedia
-      ? resolveAbsoluteMediaStartSeconds(rawNode)
-      : resolveStartForElement(rawNode, 0);
-    let duration = resolveDurationForElement(rawNode);
-    const compId = rawNode.getAttribute("data-composition-id");
-    if (compId) {
-      const compTimeline = (window.__timelines ?? {})[compId];
-      let liveDuration: number | null = null;
-      if (compTimeline && typeof compTimeline.duration === "function") {
-        const compDur = Number(compTimeline.duration());
-        if (Number.isFinite(compDur) && compDur > 0) {
-          liveDuration = compDur;
-        }
-      }
-
-      const hasAuthoredTiming =
-        rawNode.hasAttribute("data-duration") ||
-        rawNode.hasAttribute("data-end") ||
-        rawNode.hasAttribute(AUTHORED_DURATION_ATTR) ||
-        rawNode.hasAttribute(AUTHORED_END_ATTR);
-
-      if (!hasAuthoredTiming && (duration == null || duration <= 0) && liveDuration != null) {
-        duration = liveDuration;
-      }
-    }
-    const computedEnd =
-      duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
-    const visibilityStart = window.__HF_EXPORT_RENDER_SEEK_CONFIG
-      ? snapTimeToFrameBoundary(start, state.canonicalFps)
-      : start;
-    const visibilityEnd =
-      window.__HF_EXPORT_RENDER_SEEK_CONFIG && Number.isFinite(computedEnd)
-        ? snapTimeToFrameBoundary(computedEnd, state.canonicalFps)
-        : computedEnd;
-    return isClipVisibleAt(currentTime, visibilityStart, visibilityEnd, compositionDuration);
-  };
 
   const hasExternalCompositions = !!document.querySelector("[data-composition-src]");
   let hasInlineTemplateCompositions = false;
@@ -2535,7 +2481,14 @@ export function initSandboxRuntimeModular(): void {
         groupMuteDirty = true;
       }
 
-      let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime, compositionDuration);
+      let isVisibleNow = isRuntimeElementVisibleAt(rawNode, {
+        currentTime,
+        compositionDuration,
+        canonicalFps: state.canonicalFps,
+        exportRenderSeek: Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
+        timelineRegistry: window.__timelines ?? {},
+        resolver: timingResolverFor(true),
+      });
       // Descendants must not override a hidden ancestor clip. CSS visibility can
       // otherwise leak child pixels through inactive scenes because a descendant
       // with visibility:visible escapes an ancestor's visibility:hidden.
@@ -2544,7 +2497,16 @@ export function initSandboxRuntimeModular(): void {
         while (ancestor) {
           if (ancestor === rootComp) break;
           if (isHtmlElement(ancestor) && ancestor.hasAttribute("data-start")) {
-            if (!isTimedElementVisibleAt(ancestor, currentTime, compositionDuration)) {
+            if (
+              !isRuntimeElementVisibleAt(ancestor, {
+                currentTime,
+                compositionDuration,
+                canonicalFps: state.canonicalFps,
+                exportRenderSeek: Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
+                timelineRegistry: window.__timelines ?? {},
+                resolver: timingResolverFor(true),
+              })
+            ) {
               isVisibleNow = false;
               break;
             }
@@ -2936,7 +2898,7 @@ export function initSandboxRuntimeModular(): void {
     postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
     if (!assetsReadyStarted) {
       assetsReadyStarted = true;
-      settleCompositionReadiness(document, ({ timedOut }) => {
+      settleFirstFrameCompositionReadiness(document, ({ timedOut }) => {
         if (state.tornDown) return;
         assetsSettled = true;
         postRuntimeMessage({ source: "hf-preview", type: "assets-ready", timedOut });

@@ -1,0 +1,293 @@
+{
+  "themes": [
+    {
+      "id": "dark",
+      "selector": "@theme static",
+      "canvas": "--timeline-shell-bg",
+      "pairs": [
+        {
+          "id": "ruler-ticks",
+          "foreground": "--timeline-tick-text",
+          "background": ["--timeline-shell-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/player/components/TimelineRuler.tsx:105",
+            "packages/studio/src/player/components/TimelineRuler.tsx:133"
+          ]
+        },
+        {
+          "id": "group-secondary-label",
+          "foreground": "--timeline-text-secondary",
+          "background": ["--timeline-gutter-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/player/components/TimelineLayerGroupHeader.tsx:62",
+            "packages/studio/src/player/components/TimelineLayerGroupHeader.tsx:86"
+          ]
+        },
+        {
+          "id": "pending-track-label",
+          "foreground": "--timeline-track-label",
+          "background": ["--timeline-row-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/player/components/TimelineLanes.tsx:270",
+            "packages/studio/src/player/components/TimelineLanes.tsx:353",
+            "packages/studio/src/player/components/TimelineLanes.tsx:357"
+          ],
+          "opacity": 0.5
+        },
+        {
+          "id": "clip-label",
+          "foreground": "--timeline-clip-chip-text",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-chip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/studio.css:203",
+            "packages/studio/src/styles/studio.css:286"
+          ]
+        },
+        {
+          "id": "audio-clip-label",
+          "foreground": "--timeline-clip-chip-text",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-audio-bg",
+            "--timeline-clip-chip-audio-bg"
+          ],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/studio.css:230",
+            "packages/studio/src/styles/studio.css:300"
+          ]
+        },
+        {
+          "id": "clip-timecode",
+          "foreground": "--timeline-tick-text",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/studio.css:203",
+            "packages/studio/src/styles/studio.css:305"
+          ]
+        },
+        {
+          "id": "active-clip-timecode",
+          "foreground": "--timeline-tick-text",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-bg-active"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/studio.css:203",
+            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/styles/studio.css:305"
+          ]
+        },
+        {
+          "id": "clip-border-exterior",
+          "foreground": "--timeline-clip-border",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/studio.css:203",
+            "packages/studio/src/styles/studio.css:204",
+            "packages/studio/src/player/components/TimelineLanes.tsx:270"
+          ],
+          "paintBacking": ["--timeline-row-bg", "--timeline-clip-bg"]
+        },
+        {
+          "id": "active-border-exterior",
+          "foreground": "--timeline-clip-border-active",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/studio.css:203",
+            "packages/studio/src/styles/studio.css:219",
+            "packages/studio/src/player/components/TimelineLanes.tsx:270"
+          ],
+          "paintBacking": ["--timeline-row-bg", "--timeline-clip-bg"]
+        },
+        {
+          "id": "selected-outline",
+          "foreground": "--timeline-clip-selection",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/studio.css:251",
+            "packages/studio/src/player/components/TimelineLanes.tsx:270"
+          ]
+        },
+        {
+          "id": "selected-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:86",
+            "packages/studio/src/styles/studio.css:203"
+          ],
+          "opacity": 0.492
+        },
+        {
+          "id": "active-selected-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-bg-active"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:86",
+            "packages/studio/src/styles/studio.css:203",
+            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/styles/studio.css:223"
+          ],
+          "opacity": 0.492
+        },
+        {
+          "id": "hovered-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg-hover"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:87",
+            "packages/studio/src/styles/studio.css:243"
+          ],
+          "opacity": 0.456
+        },
+        {
+          "id": "active-hovered-handle",
+          "foreground": "--timeline-handle",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-bg-hover",
+            "--timeline-clip-bg-active"
+          ],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:87",
+            "packages/studio/src/styles/studio.css:243",
+            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/styles/studio.css:223"
+          ],
+          "opacity": 0.456
+        },
+        {
+          "id": "dragging-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg-dragging"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:85",
+            "packages/studio/src/styles/studio.css:261"
+          ],
+          "opacity": 0.57
+        },
+        {
+          "id": "active-dragging-handle",
+          "foreground": "--timeline-handle",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-bg-dragging",
+            "--timeline-clip-bg-active"
+          ],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:85",
+            "packages/studio/src/styles/studio.css:261",
+            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/styles/studio.css:223"
+          ],
+          "opacity": 0.57
+        },
+        {
+          "id": "quiet-waveform",
+          "foreground": "--timeline-waveform-bar-rgb",
+          "background": ["--timeline-row-bg", "--timeline-clip-audio-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/studio.css:230",
+            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/player/components/AudioWaveform.tsx:139",
+            "packages/studio/src/player/components/AudioWaveform.tsx:145"
+          ],
+          "opacity": 0.45,
+          "format": "rgb-channels"
+        },
+        {
+          "id": "active-quiet-waveform",
+          "foreground": "--timeline-waveform-bar-rgb",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-audio-bg",
+            "--timeline-clip-bg-active"
+          ],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/studio.css:230",
+            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/player/components/AudioWaveform.tsx:139",
+            "packages/studio/src/player/components/AudioWaveform.tsx:145"
+          ],
+          "opacity": 0.45,
+          "format": "rgb-channels"
+        }
+      ]
+    },
+    {
+      "id": "paper",
+      "selector": ":root[data-theme=\"paper\"]",
+      "canvas": "--timeline-row-bg",
+      "pairs": [
+        {
+          "id": "clip-label",
+          "foreground": "--timeline-clip-chip-text",
+          "background": ["--timeline-clip-bg", "--timeline-clip-chip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/theme.css",
+            "packages/studio/src/styles/studio.css"
+          ]
+        },
+        {
+          "id": "selected-outline",
+          "foreground": "--timeline-clip-selection",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/theme.css",
+            "packages/studio/src/styles/studio.css"
+          ]
+        }
+      ]
+    }
+  ]
+}

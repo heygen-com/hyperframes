@@ -6,7 +6,11 @@ import { tokenOverlap } from "./match.mjs";
 import { buildCube } from "./cube-build.mjs";
 import { validateCube, validateCubeFile } from "./cube-validate.mjs";
 
-const SKILL_DIR = join(import.meta.dirname, "..", "..");
+const SKILL_DIR = [
+  join(import.meta.dirname, ".."),
+  join(import.meta.dirname, "..", "..", "..", "..", "skills", "media-use"),
+  join(import.meta.dirname, "..", "..", "..", "..", "..", "skills", "media-use"),
+].find((candidate) => existsSync(join(candidate, "luts", "index.json")));
 const LUT_DIR = join(SKILL_DIR, "luts");
 const LUT_INDEX = join(LUT_DIR, "index.json");
 export const LIBRARY_LUT_OFFLINE_CODE = "MEDIA_USE_LIBRARY_LUT_OFFLINE";

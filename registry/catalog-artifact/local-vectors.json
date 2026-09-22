@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "e3c5a8dd4bc9feff12ea16e0cd6f861035aa662a105e8bdac6c2212d748b19d0",
+  "revision": "cf2a7c8f9a69ae455c51a70fd368f4935961245bec3906e7829e94a9929a4384",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -392,6 +392,7 @@
     "vignette",
     "vox-annotate",
     "vpn-youtube-spot",
+    "week-in-merges",
     "weight-wave",
     "whip-pan",
     "whip-pan-cut",

@@ -1,12 +1,5 @@
 import { useEffect, useRef } from "react";
-import {
-  Image,
-  Magnet,
-  MagnifyingGlassMinus,
-  MagnifyingGlassPlus,
-  SpeakerHigh,
-  Waves,
-} from "@phosphor-icons/react";
+import { Image, Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -23,6 +16,8 @@ import {
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
+import { AudioMetersIcon } from "./icons/AudioMetersIcon";
+import { RippleEditIcon } from "./icons/RippleEditIcon";
 import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
 import { TimelineHistoryButtons } from "./TimelineHistoryButtons";
 import { Scissors } from "../icons/SystemIcons";
@@ -252,7 +247,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               aria-pressed={rippleEditEnabled}
               className={rippleEditEnabled ? flatActive : flatIdle}
             >
-              <Waves size={16} weight="bold" aria-hidden="true" />
+              <RippleEditIcon size={16} />
             </button>
           </Tooltip>
           {projectHasAudio && (
@@ -264,7 +259,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 aria-pressed={audioMetersVisible}
                 className={audioMetersVisible ? flatActive : flatIdle}
               >
-                <SpeakerHigh size={16} weight="bold" aria-hidden="true" />
+                <AudioMetersIcon size={16} />
               </button>
             </Tooltip>
           )}
