@@ -129,6 +129,12 @@ describe("contrast ratchet", () => {
       "only improve",
     );
   });
+  it("requires a zero baseline entry to be removed", () => {
+    const row = { id: "dark/label", ratio: 2, minimum: 4.5 };
+    expect(verdict([row], { "dark/label": 0 })).toEqual([
+      "dark/label: remove zero entry from baseline",
+    ]);
+  });
   it("holds every declared timeline state at its committed contrast", () => {
     const manifest = parseManifest(read("contrast-pairs.json"));
     const baseline = parseBaseline(read("contrast-baseline.json"));

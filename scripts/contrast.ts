@@ -203,7 +203,11 @@ function newDebt(row: Measurement): string[] {
 function debtIssue(row: Measurement, baseline: ContrastBaseline): string[] {
   const previous = baseline[row.id];
   if (previous === undefined) return newDebt(row);
+  if (previous === 0) return [`${row.id}: remove zero entry from baseline`];
   if (row.ratio >= row.minimum) return [`${row.id}: remove passing pair from baseline`];
+  return changedRatioIssue(row, previous);
+}
+function changedRatioIssue(row: Measurement, previous: number): string[] {
   if (Math.abs(row.ratio - previous) > 1e-10)
     return [
       `${row.id}: ratio ${row.ratio}, baseline ${previous}; bank improvements, reject regressions`,
