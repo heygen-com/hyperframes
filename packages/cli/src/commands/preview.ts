@@ -1647,8 +1647,6 @@ async function runEmbeddedMode(
     const shutdown = (): void => {
       if (shuttingDown) return;
       shuttingDown = true;
-      process.off("SIGINT", shutdown);
-      process.off("SIGTERM", shutdown);
       rl?.close();
       reportPreviewShutdown(Boolean(options?.json));
 
@@ -1664,8 +1662,11 @@ async function runEmbeddedMode(
           result.server.close(() => resolveRun());
         });
     };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
+    // `on`, not `once`: a repeat Ctrl+C/SIGTERM while shutdown is running must
+    // stay caught and no-op via `shuttingDown`, not fall through to the OS
+    // default once a one-shot listener has self-removed after the first signal.
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
 
     // Last-resort cleanup for crash paths (unhandled exceptions/rejections)
     // that bypass the signal handlers. Eagerly resolve the sync killer so

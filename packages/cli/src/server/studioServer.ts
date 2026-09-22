@@ -61,6 +61,10 @@ import {
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
+// Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
+// before that watchdog can fire and skip this file's browser cleanup.
+const RENDER_SHUTDOWN_WAIT_MS = 2_000;
+
 // Vite emits only content-hashed files under dist/assets; hand-authored
 // public/ files land at the dist root. The route is the signal because the
 // filename is not: rollup's base64url hash may itself contain a hyphen.
@@ -225,6 +229,7 @@ async function getThumbnailBrowser(
   requestedGpuMode: BrowserGpuMode,
   isShuttingDown: () => boolean,
 ): Promise<ThumbnailBrowserSession | null> {
+  if (isShuttingDown()) return null;
   if (
     _thumbnailBrowserLease?.browser.connected &&
     _thumbnailBrowserModes?.requested === requestedGpuMode
@@ -289,10 +294,9 @@ async function getThumbnailBrowser(
 }
 
 async function closeThumbnailBrowser(): Promise<void> {
-  // A launch kicked off just before this call is not yet reflected in
-  // _thumbnailBrowserLease; awaiting it here is what lets shutdown() close a
-  // browser that was mid-launch when the stop signal arrived, instead of
-  // leaving it to finish launching, unreferenced, after the process exits.
+  // A launch kicked off just before this call isn't in _thumbnailBrowserLease
+  // yet; awaiting it here closes a browser that was mid-launch when the stop
+  // signal arrived, instead of leaving it running, unreferenced, after exit.
   if (_thumbnailBrowserInitializing) await _thumbnailBrowserInitializing.catch(() => {});
   if (!_thumbnailBrowserLease) return;
   const lease = _thumbnailBrowserLease;
@@ -1026,9 +1030,18 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     for (const [abortController] of renders) abortController.abort();
     const { killTrackedProcesses, drainBrowserPool } = await import("@hyperframes/engine");
     killTrackedProcesses();
-    await Promise.allSettled(renders.map(([, done]) => done));
-    await closeThumbnailBrowser().catch(() => {});
-    await drainBrowserPool().catch(() => {});
+    // Browser close must not wait on renders: a render can outlast preview.ts's
+    // 3s exit watchdog, which calls process.exit() without running this cleanup.
+    // Start closing in parallel; only bound how long we wait for renders.
+    const closeBrowsers = Promise.allSettled([
+      closeThumbnailBrowser().catch(() => {}),
+      drainBrowserPool().catch(() => {}),
+    ]);
+    await Promise.race([
+      Promise.allSettled(renders.map(([, done]) => done)),
+      new Promise<void>((resolve) => setTimeout(resolve, RENDER_SHUTDOWN_WAIT_MS).unref()),
+    ]);
+    await closeBrowsers;
   };
 
   return { app, watcher, adapter, shutdown };

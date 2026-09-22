@@ -35,12 +35,13 @@ const engineState = vi.hoisted(() => ({
   acquireBrowser: async (..._args: unknown[]): Promise<unknown> => {
     throw new Error("acquireBrowser called without a test double");
   },
+  drainBrowserPool: async (): Promise<void> => {},
 }));
 vi.mock("@hyperframes/engine", () => ({
   acquireBrowser: (...args: unknown[]) => engineState.acquireBrowser(...args),
   buildChromeArgs: () => [],
   killTrackedProcesses: () => {},
-  drainBrowserPool: async () => {},
+  drainBrowserPool: () => engineState.drainBrowserPool(),
 }));
 vi.mock("../browser/gpuPolicy.js", () => ({
   resolveCaptureBrowserGpuMode: async () => "software",
@@ -288,18 +289,100 @@ describe("createStudioServer shutdown", () => {
       await new Promise<void>((resolve) => (finishLaunch = resolve));
       return { browser: new EventEmitter(), release };
     };
+    let reachedBrowserClose!: () => void;
+    const reachedBrowserClosePromise = new Promise<void>(
+      (resolve) => (reachedBrowserClose = resolve),
+    );
+    engineState.drainBrowserPool = async () => reachedBrowserClose();
     server = createStudioServer({ projectDir: tmpProject() });
     const thumbnail = server.adapter.generateThumbnail?.(thumbnailOpts());
     await launchedPromise;
 
     const shutdown = server.shutdown();
-    // Let shutdown reach the browser close while the launch is still pending.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // shutdown() starts the pool drain alongside the thumbnail-browser close,
+    // before it waits on renders: draining is the signal the close has begun
+    // while the launch is still pending, without racing a fixed sleep.
+    await reachedBrowserClosePromise;
     finishLaunch();
     await shutdown;
 
     await expect(thumbnail).resolves.toBeNull();
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes browsers within a bounded timeout even when a render's done promise never settles", async () => {
+    const drainBrowserPool = vi.fn(async () => {});
+    engineState.drainBrowserPool = drainBrowserPool;
+    const release = vi.fn(async () => {});
+    let launched!: () => void;
+    const launchedPromise = new Promise<void>((resolve) => (launched = resolve));
+    let finishLaunch: () => void = () => {};
+    engineState.acquireBrowser = async () => {
+      launched();
+      await new Promise<void>((resolve) => (finishLaunch = resolve));
+      return { browser: new EventEmitter(), release };
+    };
+
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = () => {
+      started();
+      // Never settles, even once aborted -- the pathological case the CLI's
+      // 3s exit watchdog exists to survive.
+      return new Promise<void>(() => {});
+    };
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender(startRenderOpts("job-1", join(tmpdir(), "hang.mp4")));
+    await untilStarted(startedPromise, state);
+
+    const thumbnail = server.adapter.generateThumbnail?.(thumbnailOpts());
+    await launchedPromise;
+    finishLaunch();
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const never = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("shutdown() did not resolve within its bound")),
+        3_000,
+      );
+    });
+    try {
+      await Promise.race([server.shutdown(), never]);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(drainBrowserPool).toHaveBeenCalledTimes(1);
+    await expect(thumbnail).resolves.toBeNull();
+  });
+
+  it("does not hand an already-leased browser to a new caller once shutdown has begun", async () => {
+    const release = vi.fn(async () => {});
+    const newPage = vi.fn(async () => {
+      throw new Error("no real page in this test double");
+    });
+    engineState.acquireBrowser = async () => ({
+      browser: { connected: true, newPage, on: () => {} },
+      release,
+    });
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    await server.adapter.generateThumbnail?.(thumbnailOpts());
+    expect(newPage).toHaveBeenCalledTimes(1);
+
+    const shutdownPromise = server.shutdown();
+    // shuttingDown flips true synchronously as shutdown()'s first statement,
+    // before its closeThumbnailBrowser() call runs -- this request lands in
+    // that window and must not reuse the still-connected lease.
+    const late = server.adapter.generateThumbnail?.(thumbnailOpts());
+
+    await expect(late).resolves.toBeNull();
+    expect(newPage).toHaveBeenCalledTimes(1);
+    await shutdownPromise;
   });
 });
 
