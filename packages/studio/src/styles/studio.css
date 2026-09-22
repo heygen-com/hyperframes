@@ -203,7 +203,9 @@ body {
   background-color: var(--clip-bg);
   border: 1px solid var(--clip-border);
   border-radius: var(--timeline-clip-radius);
-  box-shadow: inset 0 1px 0 var(--timeline-clip-highlight), var(--timeline-clip-shadow);
+  box-shadow:
+    inset 0 1px 0 var(--timeline-clip-highlight),
+    var(--timeline-clip-shadow);
 }
 
 .timeline-clip::before {
