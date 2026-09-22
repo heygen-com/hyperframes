@@ -118,7 +118,18 @@ const beforeSet = new Set(before);
 const afterSet = new Set(after);
 const missing = before.filter((p) => !afterSet.has(p));
 const added = after.filter((p) => !beforeSet.has(p));
-assert.equal(missing.length, 0, `Pages present before but missing after: ${missing.join(", ")}`);
+const liveRegistryPages = new Set(
+  readJson(path.join(root, "registry", "registry.json")).items.map((item) => {
+    const kind = item.type === "hyperframes:block" ? "blocks" : "components";
+    return `/catalog/${kind}/${item.name}`;
+  }),
+);
+const unexpectedMissing = missing.filter((page) => liveRegistryPages.has(page));
+assert.equal(
+  unexpectedMissing.length,
+  0,
+  `Live catalog pages missing after: ${unexpectedMissing.join(", ")}`,
+);
 console.log(
   `PASS no page lost: ${before.length} pages before, ${after.length} after` +
     (added.length ? ` (${added.length} legitimately new: ${added.join(", ")})` : ""),

@@ -403,12 +403,12 @@
               },
               {
                 "group": "Code",
-                "tag": "34",
+                "tag": "12",
                 "expanded": false,
                 "pages": [
                   {
                     "group": "Code Animations",
-                    "tag": "10",
+                    "tag": "9",
                     "expanded": false,
                     "pages": [
                       "catalog/blocks/code-3d-extrude",
@@ -418,40 +418,18 @@
                       "catalog/blocks/code-particle-assemble",
                       "catalog/blocks/code-scroll",
                       "catalog/blocks/code-shader-dissolve",
-                      "catalog/blocks/code-snippet-flight",
                       "catalog/blocks/code-typing",
                       "catalog/components/terminal-simulator"
                     ]
                   },
                   {
                     "group": "Code Snippets",
-                    "tag": "24",
+                    "tag": "3",
                     "expanded": false,
                     "pages": [
-                      "catalog/blocks/code-snippet-apple-terminal-basic",
-                      "catalog/blocks/code-snippet-apple-terminal-clear-dark",
-                      "catalog/blocks/code-snippet-apple-terminal-clear-light",
-                      "catalog/blocks/code-snippet-apple-terminal-grass",
-                      "catalog/blocks/code-snippet-apple-terminal-homebrew",
-                      "catalog/blocks/code-snippet-apple-terminal-man-page",
-                      "catalog/blocks/code-snippet-apple-terminal-novel",
-                      "catalog/blocks/code-snippet-apple-terminal-ocean",
                       "catalog/blocks/code-snippet-apple-terminal-pro",
-                      "catalog/blocks/code-snippet-apple-terminal-red-sands",
-                      "catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
-                      "catalog/blocks/code-snippet-apple-terminal-solid-colors",
                       "catalog/blocks/code-snippet-dark-2026",
-                      "catalog/blocks/code-snippet-dark-modern",
-                      "catalog/blocks/code-snippet-dark-plus",
-                      "catalog/blocks/code-snippet-high-contrast",
-                      "catalog/blocks/code-snippet-high-contrast-light",
-                      "catalog/blocks/code-snippet-light-2026",
-                      "catalog/blocks/code-snippet-light-modern",
-                      "catalog/blocks/code-snippet-light-plus",
-                      "catalog/blocks/code-snippet-monokai",
-                      "catalog/blocks/code-snippet-solarized-light",
-                      "catalog/blocks/code-snippet-visual-studio-dark",
-                      "catalog/blocks/code-snippet-visual-studio-light"
+                      "catalog/blocks/code-snippet-dark-modern"
                     ]
                   }
                 ]
@@ -794,7 +772,7 @@
               },
               {
                 "group": "Surfaces",
-                "tag": "20",
+                "tag": "18",
                 "expanded": false,
                 "pages": [
                   {
@@ -813,12 +791,10 @@
                   },
                   {
                     "group": "HTML-in-Canvas",
-                    "tag": "13",
+                    "tag": "11",
                     "expanded": false,
                     "pages": [
                       "catalog/blocks/ios26-liquid-glass",
-                      "catalog/blocks/liquid-glass-context-menu",
-                      "catalog/blocks/liquid-glass-media-controls",
                       "catalog/blocks/liquid-glass-notification",
                       "catalog/blocks/liquid-glass-widgets",
                       "catalog/blocks/macos-tahoe-liquid-glass",
