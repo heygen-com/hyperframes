@@ -103,7 +103,16 @@ function run() {
           ? ".wav"
           : ".mkv";
       const out = join(tmpDir, `segment-${String(index).padStart(4, "0")}${ext}`);
-      cutSegment(inputPath, segment, out, Boolean(args.copy));
+      // --copy stays fade-free (stream copy cannot filter). A segment's true
+      // start/end (index 0's start, the last segment's end) borders nothing
+      // kept, so only an interior splice edge gets a ramp.
+      const fade = Boolean(args.copy)
+        ? null
+        : fadeFilterFor(segment.end - segment.start, {
+            fadeIn: index > 0,
+            fadeOut: index < segments.length - 1,
+          });
+      cutSegment(inputPath, segment, out, Boolean(args.copy), fade);
       return out;
     });
     const listPath = join(tmpDir, "list.txt");
@@ -172,7 +181,7 @@ function run() {
   console.log(`next: resolve --from ${outPath} --type <type>`);
 }
 
-function cutSegment(inputPath, segment, outPath, copy) {
+function cutSegment(inputPath, segment, outPath, copy, fade) {
   const argv = [
     "-y",
     "-nostdin",
@@ -186,17 +195,14 @@ function cutSegment(inputPath, segment, outPath, copy) {
   if (copy) {
     argv.push("-c", "copy", "-avoid_negative_ts", "make_zero");
   } else if (extname(outPath).toLowerCase() === ".mkv") {
-    // Video intermediate: keep the picture cheap and the audio uncompressed.
-    argv.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "pcm_s16le");
-  } else if (extname(outPath).toLowerCase() === ".wav") {
-    argv.push("-c:a", "pcm_s16le");
-  } else {
     // Concat splices raw segment edges together; without a short ramp the
     // waveform steps discontinuously at every boundary and you hear a click.
-    // Stream copy cannot filter, so --copy trades pop-free cuts for speed.
-    const fade = fadeFilterFor(segment.end - segment.start);
     if (fade) argv.push("-af", fade);
-    argv.push(...encodeArgsFor(extname(outPath).toLowerCase()));
+    // Video intermediate: keep the picture cheap and the audio uncompressed.
+    argv.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "pcm_s16le");
+  } else {
+    if (fade) argv.push("-af", fade);
+    argv.push("-c:a", "pcm_s16le");
   }
   argv.push(outPath);
   execFileSync("ffmpeg", argv, { stdio: "ignore" });
