@@ -152,7 +152,7 @@ export const AudioWaveform = memo(function AudioWaveform({
       const x = (index * width) / bars.length;
       const barWidth = Math.max(1, width / bars.length);
       context.fillStyle = `rgb(${waveformBaselineRgb})`;
-      context.fillRect(x, height - 1, barWidth, 1);
+      context.fillRect(x, height - 2, barWidth, 2);
       context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
       context.fillRect(x, height - barHeight, barWidth, barHeight);
     }
