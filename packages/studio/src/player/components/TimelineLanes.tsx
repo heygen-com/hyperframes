@@ -568,6 +568,8 @@ export function TimelineLanes({
                     centerPx={seam.centerTime * pps}
                     top={CLIP_Y + (clipBarHeight ?? (rowHeight - 2 * CLIP_Y)) / 2}
                     widthPx={Math.min(Math.max(seam.duration * pps, 24), 32)}
+                    outgoingSrc={seam.outgoing.src}
+                    incomingSrc={seam.incoming.src}
                   />
                 ))}
                 {/* The automation lanes belong to the ROW, so they are mounted

@@ -460,6 +460,9 @@ function buildMissingCompositionEntry(params: {
     selectorIndex,
     sourceFile,
     zIndex: readTimelineElementZIndex(element),
+    src: optionalNonEmpty(element.getAttribute("src"))
+      ? new URL(element.getAttribute("src")!, element.baseURI).href
+      : undefined,
   };
   return attachCompositionSource(entry, element, compositionSrc);
 }

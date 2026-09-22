@@ -4,9 +4,17 @@ interface TimelineTransitionBadgeProps {
   centerPx: number;
   top: number;
   widthPx: number;
+  outgoingSrc?: string;
+  incomingSrc?: string;
 }
 
-export function TimelineTransitionBadge({ centerPx, top, widthPx }: TimelineTransitionBadgeProps) {
+export function TimelineTransitionBadge({
+  centerPx,
+  top,
+  widthPx,
+  outgoingSrc,
+  incomingSrc,
+}: TimelineTransitionBadgeProps) {
   const style = {
     left: centerPx,
     top,
@@ -14,7 +22,16 @@ export function TimelineTransitionBadge({ centerPx, top, widthPx }: TimelineTran
   } as CSSProperties;
   return (
     <div className="timeline-transition" style={style} aria-hidden="true">
-      <div className="timeline-transition__zone" />
+      <div className="timeline-transition__zone">
+        <div
+          className="timeline-transition__image timeline-transition__image--out"
+          style={outgoingSrc ? { backgroundImage: `url("${outgoingSrc}")` } : undefined}
+        />
+        <div
+          className="timeline-transition__image timeline-transition__image--in"
+          style={incomingSrc ? { backgroundImage: `url("${incomingSrc}")` } : undefined}
+        />
+      </div>
       <div className="timeline-transition__badge">
         <svg viewBox="0 0 20 20" role="presentation">
           <defs>

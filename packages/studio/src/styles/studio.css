@@ -210,7 +210,8 @@ body {
 
 .timeline-transition {
   position: absolute;
-  inset: 0;
+  width: 0;
+  height: 0;
   pointer-events: none;
   z-index: 30;
 }
@@ -218,13 +219,29 @@ body {
 .timeline-transition__zone {
   position: absolute;
   left: calc(var(--timeline-transition-zone-width) / -2);
-  top: 3px;
+  top: -21px;
   width: var(--timeline-transition-zone-width);
   height: 42px;
   border-radius: 8px;
+  overflow: hidden;
   background: var(--timeline-transition-zone);
-  filter: blur(3px);
-  opacity: 0.75;
+  filter: blur(2.5px);
+  opacity: 0.95;
+}
+
+.timeline-transition__image {
+  position: absolute;
+  inset: -4px;
+  background-position: center;
+  background-size: cover;
+}
+
+.timeline-transition__image--out {
+  mask-image: linear-gradient(90deg, black 0%, transparent 100%);
+}
+
+.timeline-transition__image--in {
+  mask-image: linear-gradient(90deg, transparent 0%, black 100%);
 }
 
 .timeline-transition__badge {

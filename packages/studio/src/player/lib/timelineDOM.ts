@@ -135,6 +135,10 @@ export function createTimelineElementFromManifestClip(params: {
 
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
+    if (!entry.src) {
+      const rawSrc = hostEl.getAttribute("src");
+      if (rawSrc) entry.src = new URL(rawSrc, hostEl.baseURI).href;
+    }
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
