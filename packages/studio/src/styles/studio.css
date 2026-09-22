@@ -262,7 +262,9 @@ body {
   width: 17px;
   height: 17px;
 }
-.timeline-transition__frame {
+.timeline-transition__frame,
+.timeline-transition__frame--out,
+.timeline-transition__frame--in {
   fill: none;
   stroke: var(--timeline-transition-badge-ink);
   stroke-width: 1.5;
