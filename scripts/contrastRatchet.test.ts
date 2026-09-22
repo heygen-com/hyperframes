@@ -28,7 +28,7 @@ const themes = (pairs: unknown[] = [pair]) =>
 const css = (fg: string) => `:root { --fg: ${fg}; --bg: #000; }`;
 
 function previousBaseline(fallback: ReturnType<typeof parseBaseline>, base = "origin/main") {
-  const path = "packages/studio/src/styles/contrast-baseline.json";
+  const path = "scripts/contrast-baseline.json";
   const files = execFileSync("git", ["ls-tree", "--full-tree", "--name-only", base, "--", path], {
     encoding: "utf8",
   });
@@ -99,7 +99,7 @@ describe("WCAG contrast calculation", () => {
 });
 
 describe("contrast ratchet", () => {
-  it("reads a committed baseline using repository paths from the package directory", () => {
+  it("reads a committed baseline using repository paths", () => {
     expect(previousBaseline({}, "HEAD")).toEqual(parseBaseline(read("contrast-baseline.json")));
   });
 
@@ -132,7 +132,7 @@ describe("contrast ratchet", () => {
   it("holds every declared timeline state at its committed contrast", () => {
     const manifest = parseManifest(read("contrast-pairs.json"));
     const baseline = parseBaseline(read("contrast-baseline.json"));
-    const rows = measure(read("theme.css"), manifest);
+    const rows = measure(read("../packages/studio/src/styles/theme.css"), manifest);
     expect(verdict(rows, baseline, previousBaseline(baseline))).toEqual([]);
     console.log(
       `Contrast ratchet verified: ${rows.length} pairs, ${Object.keys(baseline).length} baseline debts.`,

@@ -418,7 +418,6 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref }}
           lfs: true
-          fetch-depth: 0
 
       # -----------------------------------------------------------------
       # Install FFmpeg so vitest suites that gate on `HAS_FFMPEG`
