@@ -40,6 +40,7 @@ import {
   getMimeType,
   affectsProjectSignature,
   type PreviewApiAdapter,
+  PREVIEW_BUNDLE_OPTIONS,
   thumbnailDeviceScaleFactor,
   type ResolvedProject,
   type RenderJobState,
@@ -407,10 +408,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // we can point it at our hot-reloadable local runtime endpoint. Inlining
         // ~150 KB of runtime body on every preview render would defeat browser
         // caching across composition edits.
-        let html = await bundleToSingleHtml(dir, {
-          runtime: "placeholder",
-          inlineColorGradingLuts: false,
-        });
+        let html = await bundleToSingleHtml(dir, PREVIEW_BUNDLE_OPTIONS);
         html = html.replace(
           'data-hyperframes-preview-runtime="1" src=""',
           'data-hyperframes-preview-runtime="1" src="/api/runtime.js"',

@@ -3,7 +3,11 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
+import {
+  injectScriptsIntoHtml,
+  stripEmbeddedRuntimeScripts,
+  type BundleOptions,
+} from "@hyperframes/core/compiler";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
@@ -306,6 +310,13 @@ function resolveProjectMainHtml(
   }
   return null;
 }
+
+/** The bundler options every adapter's `bundle()` uses. This route serves project files under a
+ * `<base href>`, so assets keep their URLs: inlined base64 multiplies the document per reference. */
+export const PREVIEW_BUNDLE_OPTIONS = {
+  runtime: "placeholder",
+  inlineAssets: false,
+} as const satisfies BundleOptions;
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({
