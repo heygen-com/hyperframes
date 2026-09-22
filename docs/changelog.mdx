@@ -9,6 +9,38 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.61"
+  description="Released - 2026-09-22"
+  tags={["Release", "Studio", "Studio Server", "Registry"]}
+>
+Studio's transition seams pick up a soft blur and a label, audio pills show real peaks, and video filmstrips render at their true size. Thumbnails load from Chrome's own cache, served files write atomically, and low-use catalog items are gone.
+
+## Features
+
+- **Studio:** Transition seams blur and carry a badge ([e5a037072](https://github.com/heygen-com/hyperframes/commit/e5a03707272936777abbe3d08e4097fec4937fd2), [#4280](https://github.com/heygen-com/hyperframes/pull/4280)).
+- **Studio:** Audio pills show real peaks and loudness ([94609daf4](https://github.com/heygen-com/hyperframes/commit/94609daf445bb956888872af5faa8d6b635d40e2), [#4282](https://github.com/heygen-com/hyperframes/pull/4282)).
+- **Studio:** Render geometry-sized video filmstrips ([5ca2e7838](https://github.com/heygen-com/hyperframes/commit/5ca2e78383a1db3ed632a2eb5db9233db125afb3), [#4234](https://github.com/heygen-com/hyperframes/pull/4234)).
+
+## Fixes
+
+- **Studio Server:** Prefer Puppeteer's cached Chrome for thumbnails ([189bead8c](https://github.com/heygen-com/hyperframes/commit/189bead8cbe2096af9a49ed43234a722dbd9221a), [#4272](https://github.com/heygen-com/hyperframes/pull/4272)).
+- **Studio Server:** Write served files atomically ([9f19d9d32](https://github.com/heygen-com/hyperframes/commit/9f19d9d32521ff3375e1c0bce11e9c234933d253), [#4285](https://github.com/heygen-com/hyperframes/pull/4285)).
+- **Studio:** Cutover gate classification, SSE cross-project bleed, benign races ([24c3e197e](https://github.com/heygen-com/hyperframes/commit/24c3e197ef075e9d53fb30a8dcb308fcb79e71b5), [#4269](https://github.com/heygen-com/hyperframes/pull/4269)).
+
+## Catalog
+
+- **Registry:** Remove low-use catalog items and variant tails ([05d09a745](https://github.com/heygen-com/hyperframes/commit/05d09a7452a5b099e527a7119fd1227b56376c4e), [#4274](https://github.com/heygen-com/hyperframes/pull/4274)).
+- **Registry:** Examples show the most-installed blocks ([53153d4a5](https://github.com/heygen-com/hyperframes/commit/53153d4a5470913586633738855a23caa8e0ca5f), [#4284](https://github.com/heygen-com/hyperframes/pull/4284)).
+- **Registry:** Colorama-wipe ([01734fae3](https://github.com/heygen-com/hyperframes/commit/01734fae3c41b1f0c62779afece54133b1892f03), [#4277](https://github.com/heygen-com/hyperframes/pull/4277)).
+
+## Internal
+
+- Shard the Test job by package group ([658d9afa3](https://github.com/heygen-com/hyperframes/commit/658d9afa30a7d09516f8abea89fb9376d16f2709), [#4286](https://github.com/heygen-com/hyperframes/pull/4286)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.60...v0.8.61).
+</Update>
+
+<Update
   label="HyperFrames v0.8.59"
   description="Released - 2026-09-21"
   tags={["Release", "Studio", "CLI", "Player"]}
