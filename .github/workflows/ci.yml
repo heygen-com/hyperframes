@@ -26,6 +26,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  token-parity:
+    name: Token value parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: node --test scripts/check-token-parity.test.mjs
+      - run: node scripts/check-token-parity.mjs origin/main
+
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
