@@ -4594,6 +4594,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/testimonial-proof-card.png"
   },
   {
+    "name": "text-match-cut",
+    "type": "component",
+    "title": "Text Match Cut",
+    "description": "One line of text becomes another mid-move: both ride a single 85 % easy-ease curve and hard-swap at the speed peak, as scale, tracking, or a same-direction slide.",
+    "tags": [
+      "motion-primitive",
+      "transition",
+      "typography",
+      "match-cut",
+      "hard-cut",
+      "continuity"
+    ],
+    "href": "/catalog/components/text-match-cut",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-match-cut.png"
+  },
+  {
     "name": "text-shimmer",
     "type": "component",
     "title": "Text Shimmer",
