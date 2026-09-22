@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { compileCutList } from "./lib/cutlist.mjs";
+import { fadeFilterFor } from "./lib/transcriptCutFade.mjs";
 import { track } from "./lib/telemetry.mjs";
 
 const { values: args } = parseArgs({
@@ -206,18 +207,6 @@ function cutSegment(inputPath, segment, outPath, copy, fade) {
   }
   argv.push(outPath);
   execFileSync("ffmpeg", argv, { stdio: "ignore" });
-}
-
-// 30ms in/out ramps kill the click at every concat boundary. A segment shorter
-// than 4x the ramp would spend its whole length fading, so scale down there and
-// skip entirely on a degenerate one.
-function fadeFilterFor(durationSeconds) {
-  const FADE_SECONDS = 0.03;
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0.01) return null;
-  const d = Math.min(FADE_SECONDS, durationSeconds / 4);
-  const out = round3(durationSeconds - d);
-  if (out <= 0) return null;
-  return `afade=t=in:st=0:d=${round3(d)},afade=t=out:st=${out}:d=${round3(d)}`;
 }
 
 // Codec set per output container. Audio-only outputs must not get the
