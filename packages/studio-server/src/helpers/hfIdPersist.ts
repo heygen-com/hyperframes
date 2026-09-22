@@ -1,14 +1,6 @@
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  ftruncateSync,
-  openSync,
-  readFileSync,
-  writeFileSync,
-  writeSync,
-} from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, statSync } from "node:fs";
+import { replaceFileAtomically } from "./atomicFile.js";
 
 /**
  * Ensure `html` has `data-hf-id` attributes minted, and write the result back
@@ -35,7 +27,7 @@ export function persistHfIdsIfNeeded(filePath: string, html: string): string {
       // still be overwritten (microsecond window).
       const current = readFileSync(filePath, "utf-8");
       if (current === html) {
-        writeFileSync(filePath, normalized, "utf-8");
+        replaceFileAtomically(filePath, normalized, statSync(filePath).mode);
       }
     } catch (err) {
       // Non-fatal — serve with ids even if the disk write fails (e.g. read-only
@@ -75,7 +67,7 @@ function openNoFollow(filePath: string, flags: number): number | null {
  * persistHfIdsIfNeeded documents) — the next save simply re-persists.
  */
 export function stampFileHfIds(filePath: string): string | null {
-  let fd = openNoFollow(filePath, constants.O_RDWR);
+  let fd: number | null = openNoFollow(filePath, constants.O_RDWR);
   let writable = true;
   if (fd === null) {
     fd = openNoFollow(filePath, constants.O_RDONLY);
@@ -91,14 +83,16 @@ export function stampFileHfIds(filePath: string): string | null {
     const idsBefore = (html.match(/\bdata-hf-id=/g) ?? []).length;
     const idsAfter = (normalized.match(/\bdata-hf-id=/g) ?? []).length;
     if (writable && idsAfter > idsBefore) {
-      ftruncateSync(fd, 0);
-      writeSync(fd, normalized, 0, "utf-8");
+      const mode = fstatSync(fd).mode;
+      closeSync(fd);
+      fd = null;
+      replaceFileAtomically(filePath, normalized, mode);
     }
     return normalized;
   } catch (err) {
     console.warn("[hyperframes] stampFileHfIds: failed to stamp ids:", err);
     return null;
   } finally {
-    closeSync(fd);
+    if (fd !== null) closeSync(fd);
   }
 }

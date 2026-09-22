@@ -1,4 +1,5 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import * as fs from "node:fs";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -91,6 +92,15 @@ describe("stampFileHfIds", () => {
     const returned = stampFileHfIds(file);
     expect(returned).toContain('data-hf-id="hf-');
     expect(readFileSync(file, "utf-8")).toBe(returned);
+  });
+
+  it("replaces the stamped file by renaming a complete sibling", () => {
+    const file = tmpFile(`<div class="clip" data-start="0" data-end="3">Hi</div>`);
+    const rename = vi.spyOn(fs, "renameSync");
+
+    stampFileHfIds(file);
+
+    expect(rename).toHaveBeenCalledWith(`${file}.tmp`, file);
   });
 
   it("does not rewrite an already-stamped file", () => {
