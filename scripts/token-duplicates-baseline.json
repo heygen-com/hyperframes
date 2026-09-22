@@ -1,0 +1,14 @@
+{
+  "total": 6,
+  "files": {
+    "packages/studio/src/styles/theme.css": 6
+  },
+  "pairs": {
+    "--color-border-input + --color-hover": "#27272a",
+    "--timeline-clip-bg-hover + --timeline-ruler-border": "rgba(255, 255, 255, 0.16)",
+    "--timeline-row-border + --timeline-tick-minor": "rgba(255, 255, 255, 0.06)",
+    "--timeline-gutter-border + --timeline-tick-major": "rgba(255, 255, 255, 0.1)",
+    "--timeline-clip-bg + --timeline-resize-seam": "rgba(255, 255, 255, 0.12)",
+    "--icon-size + --text-step-16": "16px"
+  }
+}
