@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { audit, digest, ratchet } from "./check-test-reachability.mjs";
+import { audit, digest, pinnedSource, ratchet } from "./check-test-reachability.mjs";
 
 function fixture(command = "bun run test:scripts", filter = '"scripts/**"') {
   return {
@@ -180,4 +180,49 @@ test("conditional shell blocks are not split into unconditional runners", () => 
     '"**"',
   );
   assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
+test("single-line shell conditions cannot credit their guarded runner", () => {
+  const tree = fixture("test -f dist/bundle.js && node --test scripts/parity.test.mjs", '"**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
+test("folded shell conditions cannot credit their guarded runner", () => {
+  const tree = fixture(
+    ">-\n          test -f dist/bundle.js &&\n          node --test scripts/parity.test.mjs",
+    '"**"',
+  );
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
+test("directory changes cannot credit a runner at the original working directory", () => {
+  const tree = fixture("cd elsewhere && node --test scripts/parity.test.mjs", '"**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
+test("fallback shell branches cannot credit conditional runners", () => {
+  const tree = fixture("false || true && node --test scripts/parity.test.mjs", '"**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
+test("ordinary sequential runners remain reachable", () => {
+  const tree = fixture("node --test scripts/parity.test.mjs && vitest run", '"**"');
+  assert.deepEqual(check(tree), {});
+});
+
+test("known false commands cannot credit later runners", () => {
+  const tree = fixture("false && node --test scripts/parity.test.mjs", '"**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
+test("negated shell commands cannot credit later runners", () => {
+  const tree = fixture("! true && node --test scripts/parity.test.mjs", '"**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
+test("a missing pinned package gives the runner mapping diagnostic", () => {
+  assert.throws(
+    () => pinnedSource("missing/package.json#script#test", () => undefined),
+    /Runner mapping needs review: missing\/package.json#script#test/,
+  );
 });

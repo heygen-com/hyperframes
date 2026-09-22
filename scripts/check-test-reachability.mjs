@@ -264,7 +264,8 @@ function pinnedScript(text, name) {
 
 export function pinnedSource(path, read) {
   const [file, kind, name] = path.split("#");
-  const text = read(file) ?? "";
+  const text = read(file);
+  if (text === undefined) throw new Error(`Runner mapping needs review: ${path}`);
   if (kind === "job") return pinnedJob(text, name);
   if (kind === "script") return pinnedScript(text, name);
   return text;
@@ -305,13 +306,40 @@ function expandPackage(call, cwd, packages, files, read, adapters, seen) {
   });
 }
 
+const SHELL_CONTROL = new Set([
+  "if",
+  "then",
+  "else",
+  "elif",
+  "fi",
+  "for",
+  "while",
+  "until",
+  "do",
+  "done",
+  "case",
+  "esac",
+  "test",
+  "[",
+  "[[",
+  "cd",
+  "false",
+  "!",
+]);
+
+function shellParts(command) {
+  if (command.includes("\n") || command.includes("||")) return [];
+  const parts = command.split(/\s*&&\s*/);
+  if (parts.some((part) => SHELL_CONTROL.has(part.trim().split(/\s+/)[0]))) return [];
+  return parts;
+}
+
 function expand(command, cwd, packages, files, read, adapters, seen = []) {
   const adapter = adapters.find((entry) => entry.command === command && entry.cwd === cwd);
   if (adapter) return adapterTests(adapter, files, read);
-  if (command.includes("\n")) return [];
-  return command
-    .split(/\s*&&\s*/)
-    .flatMap((part) => expandSimple(part, cwd, packages, files, read, adapters, seen));
+  return shellParts(command).flatMap((part) =>
+    expandSimple(part, cwd, packages, files, read, adapters, seen),
+  );
 }
 function expandSimple(command, cwd, packages, files, read, adapters, seen) {
   const call = command.match(
