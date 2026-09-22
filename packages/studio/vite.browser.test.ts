@@ -150,8 +150,14 @@ describe("findSystemChrome", () => {
     const systemPath = "/usr/bin/google-chrome";
     const pathExists = vi.fn((path: string) => path === systemPath);
 
-    expect(findSystemChrome({}, pathExists, "linux", () => "Google Chrome 113.0.1", () => [])).toBe(
-      undefined,
-    );
+    expect(
+      findSystemChrome(
+        {},
+        pathExists,
+        "linux",
+        () => "Google Chrome 113.0.1",
+        () => [],
+      ),
+    ).toBe(undefined);
   });
 });
