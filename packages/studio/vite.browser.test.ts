@@ -127,6 +127,31 @@ describe("findSystemChrome", () => {
     const chromePath = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
     const pathExists = vi.fn((path: string) => path === chromePath);
 
-    expect(findSystemChrome({}, pathExists, "win32")).toBe(chromePath);
+    expect(findSystemChrome({}, pathExists, "win32", () => "Chrome/140.0.1")).toBe(chromePath);
+  });
+
+  it("prefers the newest Puppeteer cache entry over a compatible system Chrome", () => {
+    const cachePath = "/tmp/puppeteer/chrome/chrome-152.0.1/chrome-linux64/chrome";
+    const systemPath = "/usr/bin/google-chrome";
+    const pathExists = vi.fn((path: string) => path === cachePath || path === systemPath);
+
+    expect(
+      findSystemChrome(
+        { PUPPETEER_CACHE_DIR: "/tmp/puppeteer" },
+        pathExists,
+        "linux",
+        () => "Chrome/113.0.1",
+        () => ["chrome-152.0.1"],
+      ),
+    ).toBe(cachePath);
+  });
+
+  it("rejects a system Chrome older than the Puppeteer-supported major", () => {
+    const systemPath = "/usr/bin/google-chrome";
+    const pathExists = vi.fn((path: string) => path === systemPath);
+
+    expect(findSystemChrome({}, pathExists, "linux", () => "Google Chrome 113.0.1", () => [])).toBe(
+      undefined,
+    );
   });
 });
