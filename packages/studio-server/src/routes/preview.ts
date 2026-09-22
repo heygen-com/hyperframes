@@ -331,6 +331,15 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   // benefit in scanProjectMediaCodecMap actually applies.
   const mediaCodecProbeCache = resolvePreviewMediaCodecProbeCache(adapter);
 
+  // A build is a function of the project content its ETag names, so it is served again until the
+  // content changes, to a cold browser as well as a revalidating one.
+  const builtPreviews = new Map<string, string>();
+  const rememberPreview = (key: string, html: string) => {
+    builtPreviews.delete(key);
+    builtPreviews.set(key, html);
+    if (builtPreviews.size > 4) builtPreviews.delete(builtPreviews.keys().next().value!);
+  };
+
   // Bundled composition preview
   // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview", async (c) => {
@@ -350,6 +359,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         status: 304,
         headers: previewCacheHeaders(etag),
       });
+    }
+    const builtKey = `${project.id}\n${etag}`;
+    const built = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
+    if (built) {
+      rememberPreview(builtKey, built);
+      return c.html(built, 200, previewCacheHeaders(etag));
     }
 
     // Normalize + persist data-hf-id to disk before bundle reads it. Idempotent.
@@ -406,6 +421,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mainCompositionPath,
         mediaCodecProbeCache,
       );
+      rememberPreview(builtKey, bundled);
+      adapter.previewDocuments?.write(builtKey, bundled);
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,

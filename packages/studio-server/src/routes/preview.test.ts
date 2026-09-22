@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerPreviewRoutes } from "./preview";
+import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import type { StudioApiAdapter } from "../types";
 
 const tempDirs: string[] = [];
@@ -388,6 +389,51 @@ describe("registerPreviewRoutes", () => {
     const signature = await getPreviewSignature(projectDir);
 
     expect(signature).toMatch(/^[a-f0-9]{24}$/);
+  });
+});
+
+describe("built preview reuse", () => {
+  const BUILT = "<!doctype html><html><head></head><body>Preview</body></html>";
+
+  it("serves one build per ETag to cold browsers and rebuilds when the content changes", async () => {
+    const projectDir = createProjectDir();
+    const bundle = vi.fn(async () => BUILT);
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const first = await app.request("http://localhost/projects/demo/preview");
+    const second = await app.request("http://localhost/projects/demo/preview");
+    expect(await second.text()).toBe(await first.text());
+    expect(second.headers.get("ETag")).toBe(first.headers.get("ETag"));
+    expect(bundle).toHaveBeenCalledTimes(1);
+
+    writeFileSync(join(projectDir, "index.html"), "<html><body>edited</body></html>");
+    await app.request("http://localhost/projects/demo/preview");
+    expect(bundle).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves a restarted server from the document store unless the build changed", async () => {
+    const projectDir = createProjectDir();
+    const storeDir = join(projectDir, ".hyperframes", "preview");
+    const serve = async (salt: string) => {
+      const bundle = vi.fn(async () => BUILT);
+      const app = new Hono();
+      registerPreviewRoutes(
+        app,
+        createAdapter(projectDir, {
+          bundle,
+          previewDocuments: createPreviewDocumentStore(storeDir, salt),
+        } as Partial<StudioApiAdapter>),
+      );
+      const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+      return { html, builds: bundle.mock.calls.length };
+    };
+
+    const cold = await serve("build-a");
+    expect(cold.builds).toBe(1);
+    const restarted = await serve("build-a");
+    expect(restarted).toEqual({ html: cold.html, builds: 0 });
+    expect((await serve("build-b")).builds).toBe(1);
   });
 });
 
