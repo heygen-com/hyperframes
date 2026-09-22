@@ -22,6 +22,46 @@ interface AudioWaveformProps {
 
 const BAR_STEP = 3;
 
+type BarGeometry = { x: number; width: number; height: number };
+
+function mapWaveformBars(
+  peaks: readonly number[],
+  width: number,
+  height: number,
+  trimStartFraction: number,
+  trimEndFraction: number,
+): BarGeometry[] {
+  const bars = decimatePeaks(
+    peaks,
+    trimStartFraction,
+    trimEndFraction,
+    Math.max(1, Math.ceil(width / BAR_STEP)),
+  );
+  const barWidth = Math.max(1, width / bars.length);
+  return bars.map((amplitude, index) => ({
+    x: (index * width) / bars.length,
+    width: barWidth,
+    height: Math.max(3, amplitude * height),
+  }));
+}
+
+function paintWaveformBars(
+  context: CanvasRenderingContext2D,
+  bars: readonly BarGeometry[],
+  height: number,
+  waveformBarRgb: string,
+  waveformBaselineRgb: string,
+  amplitudes: readonly number[],
+) {
+  bars.forEach((bar, index) => {
+    const amplitude = amplitudes[index] ?? 0;
+    context.fillStyle = `rgb(${waveformBaselineRgb})`;
+    context.fillRect(bar.x, height - 2, bar.width, 2);
+    context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
+    context.fillRect(bar.x, height - bar.height, bar.width, bar.height);
+  });
+}
+
 function extractPeaks(channelData: Float32Array, barCount: number): number[] {
   const peaks: number[] = [];
   const samplesPerBar = Math.floor(channelData.length / barCount);
@@ -125,7 +165,6 @@ export const AudioWaveform = memo(function AudioWaveform({
   const peaks =
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
 
-  // fallow-ignore-next-line high-crap-score -- canvas draw keeps geometry, token lookup, and paint order together
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !peaks) return;
@@ -138,25 +177,25 @@ export const AudioWaveform = memo(function AudioWaveform({
     if (!context) return;
     context.scale(scale, scale);
     context.clearRect(0, 0, width, height);
-    const barCount = Math.max(1, Math.ceil(width / BAR_STEP));
-    const bars = decimatePeaks(peaks, trimStartFraction ?? 0, trimEndFraction ?? 1, barCount);
+    const mappedBars = mapWaveformBars(
+      peaks,
+      width,
+      height,
+      trimStartFraction ?? 0,
+      trimEndFraction ?? 1,
+    );
+    const amplitudes = decimatePeaks(
+      peaks,
+      trimStartFraction ?? 0,
+      trimEndFraction ?? 1,
+      mappedBars.length,
+    );
     const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
     const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
     const waveformBaselineRgb = getComputedStyle(canvas).getPropertyValue(
       "--timeline-waveform-baseline-rgb",
     );
-    for (let index = 0; index < bars.length; index++) {
-      const amplitude = bars[index] ?? 0;
-      const barHeight = Math.max(3, amplitude * height);
-      // Map each decimated bar to the full canvas interval. Fixed pixel
-      // offsets leave a visible tail gap when the clip width is fractional.
-      const x = (index * width) / bars.length;
-      const barWidth = Math.max(1, width / bars.length);
-      context.fillStyle = `rgb(${waveformBaselineRgb})`;
-      context.fillRect(x, height - 2, barWidth, 2);
-      context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
-      context.fillRect(x, height - barHeight, barWidth, barHeight);
-    }
+    paintWaveformBars(context, mappedBars, height, waveformBarRgb, waveformBaselineRgb, amplitudes);
   }, [muted, peaks, trimEndFraction, trimStartFraction]);
 
   const setCanvasRef = useCallback(
