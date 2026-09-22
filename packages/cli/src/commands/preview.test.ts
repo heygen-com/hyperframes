@@ -21,6 +21,16 @@ import {
   waitForStudioChildClose,
 } from "./preview.js";
 
+const lint = vi.hoisted(() => ({ inProcess: vi.fn(), worker: vi.fn() }));
+vi.mock("../utils/lintProject.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/lintProject.js")>()),
+  lintProject: lint.inProcess,
+}));
+vi.mock("../utils/cancellableProcess.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/cancellableProcess.js")>()),
+  runRenderSetupWorker: lint.worker,
+}));
+
 const tempDirs: string[] = [];
 
 afterEach(() => {
@@ -373,6 +383,40 @@ describe("preview lifecycle JSON failures", () => {
     });
     expect(error).not.toHaveBeenCalled();
   });
+});
+
+describe("startup lint", () => {
+  const neverSettles = () => new Promise<never>(() => {});
+
+  it("never lints for a --json start", async () => {
+    lint.inProcess.mockImplementation(neverSettles);
+    lint.worker.mockImplementation(neverSettles);
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(previewCommand, {
+      rawArgs: [dir, "--background", "--json", "--user-data-dir", join(dir, "profile")],
+    });
+
+    expect(lint.inProcess).not.toHaveBeenCalled();
+    expect(lint.worker).not.toHaveBeenCalled();
+  });
+
+  it("does not hold a start behind a lint that has not finished", async () => {
+    lint.inProcess.mockImplementation(neverSettles);
+    lint.worker.mockImplementation(neverSettles);
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const error = vi.spyOn(clack.log, "error").mockImplementation(() => {});
+
+    await runCommand(previewCommand, {
+      rawArgs: [dir, "--background", "--user-data-dir", join(dir, "profile")],
+    });
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("--user-data-dir"));
+    expect(lint.inProcess).not.toHaveBeenCalled();
+  }, 5_000);
 });
 
 describe("foreground preview JSON", () => {
