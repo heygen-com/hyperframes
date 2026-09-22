@@ -24,6 +24,7 @@ import {
   PREVIEW_BUNDLE_OPTIONS,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
+import type { BundleOptions } from "@hyperframes/core/compiler";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
@@ -101,12 +102,7 @@ export function createViteAdapter(
   server: ViteDevServer,
   signatureCache: ProjectSignatureCache,
 ): StudioApiAdapter {
-  let _bundler:
-    | ((
-        dir: string,
-        options?: { runtime?: "inline" | "placeholder"; inlineColorGradingLuts?: boolean },
-      ) => Promise<string>)
-    | null = null;
+  let _bundler: ((dir: string, options?: BundleOptions) => Promise<string>) | null = null;
   let _producerModuleLoader:
     | (() => Promise<{
         createRenderJob: (config: {
