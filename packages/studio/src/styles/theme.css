@@ -93,12 +93,12 @@
     transparent 100%
   );
   --timeline-thumbnail-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
-  --timeline-waveform-bar-rgb: 75, 163, 210;
+  --timeline-waveform-bar-rgb: 245, 237, 255;
   --timeline-waveform-muted-rgb: 236, 238, 242;
   --timeline-waveform-baseline-rgb: 226, 216, 238;
   --timeline-waveform-error: repeating-linear-gradient(
     90deg,
-    rgba(75, 163, 210, 0.35) 0 2px,
+    rgba(245, 237, 255, 0.35) 0 2px,
     transparent 2px 5px
   );
   --timeline-waveform-label-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
