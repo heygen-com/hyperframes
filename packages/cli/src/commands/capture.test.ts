@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CliRuntimeError } from "../utils/commandResult.js";
+import { CAPTURE_PHASE_SCHEMA } from "../capture/types.js";
 
 const { captureWebsiteMock } = vi.hoisted(() => ({
   captureWebsiteMock: vi.fn(async (options: unknown) => {
@@ -10,7 +11,7 @@ const { captureWebsiteMock } = vi.hoisted(() => ({
       const onPhase = Reflect.get(options, "onPhase");
       if (typeof onPhase === "function") {
         onPhase({
-          schema: "hyperframes.capture.phase.v1",
+          schema: CAPTURE_PHASE_SCHEMA,
           phase: "vision",
           status: "degraded",
           remainingMs: 0,
@@ -85,6 +86,31 @@ describe("capture command — vision control", () => {
     );
   });
 
+  it("plumbs the optional whole-capture deadline from the environment", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS = "240000";
+
+    try {
+      await captureCommand.run!({
+        args: {
+          url: "https://example.com",
+          output: "/tmp/hf-capture-deadline-test",
+          "skip-assets": false,
+          "skip-vision": false,
+          json: true,
+        },
+      } as never);
+
+      expect(captureWebsiteMock).toHaveBeenCalledWith(
+        expect.objectContaining({ captureDeadlineMs: 240_000 }),
+        undefined,
+      );
+    } finally {
+      delete process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS;
+    }
+  });
+
   it.each([
     ["1", 1],
     ["45000", 45_000],
@@ -156,7 +182,7 @@ describe("capture command — vision control", () => {
     if (typeof line !== "string") throw new Error("Expected capture phase diagnostic");
     const event = JSON.parse(line.slice("HYPERFRAMES_CAPTURE_PHASE ".length));
     expect(event).toEqual({
-      schema: "hyperframes.capture.phase.v1",
+      schema: CAPTURE_PHASE_SCHEMA,
       phase: "vision",
       status: "degraded",
       remainingMs: 0,

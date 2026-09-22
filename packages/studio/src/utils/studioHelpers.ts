@@ -22,13 +22,6 @@ export type RightPanelTab =
   | "block-params"
   | "slideshow"
   | "variables";
-export type RightInspectorPane = "layers" | "design";
-
-export interface RightInspectorPanes {
-  layers: boolean;
-  design: boolean;
-}
-
 export interface AgentModalAnchorPoint {
   x: number;
   y: number;
@@ -119,11 +112,21 @@ export function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean
   return isTypingTarget(target);
 }
 
-export function getHistoryShortcutLabel(action: "undo" | "redo"): string {
+function getHistoryShortcutLabel(action: "undo" | "redo"): string {
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
   const modifier = isMac ? "Cmd" : "Ctrl";
   return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
+}
+
+/** The Undo / Redo tooltip: the shortcut always, the last action's name when there is one. */
+export function historyTooltipLabel(
+  action: "undo" | "redo",
+  lastAction: string | null | undefined,
+): string {
+  const shortcut = getHistoryShortcutLabel(action);
+  const verb = action === "undo" ? "Undo" : "Redo";
+  return lastAction ? `${verb} ${lastAction} (${shortcut})` : `${verb} (${shortcut})`;
 }
 
 export type ElementMatchSelection = Pick<
@@ -372,6 +375,27 @@ export async function resolveDroppedAssetDuration(
   media.src = "";
   media.load();
   return duration;
+}
+
+export function mediaMetadataUrl(projectId: string, assetPath: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(assetPath)}`;
+}
+
+/** Dropped video audio stream from the metadata endpoint. Failure answers false so the drop still lands muted. */
+export async function resolveDroppedAssetHasAudio(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<boolean> {
+  if (kind !== "video") return false;
+  try {
+    const response = await fetch(mediaMetadataUrl(projectId, assetPath));
+    if (!response.ok) return false;
+    const data = (await response.json()) as { metadata?: { hasAudio?: boolean } } | null;
+    return data?.metadata?.hasAudio === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function resolveDroppedAssetDimensions(

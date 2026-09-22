@@ -33,7 +33,7 @@ interface ApplyCallbacks {
   serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
 }
 
-interface UsePersistentEditHistoryOptions {
+export interface UsePersistentEditHistoryOptions {
   projectId: string | null;
   storage?: EditHistoryStorageAdapter;
   now?: () => number;

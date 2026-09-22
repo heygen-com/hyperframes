@@ -58,16 +58,16 @@ export function macosOldChromeCrashRemediation(errorMessage: string): string | u
   if (!isMacosOldChromeCrashError(errorMessage)) return undefined;
   return [
     "chrome-headless-shell crashed at launch (macOS dyld: Symbol not found in VideoToolbox).",
-    "The pinned Chromium build requires macOS 13+; on macOS 12 or older, install an older",
-    "chrome-headless-shell and point hyperframes at it:",
+    "The pinned Chromium build requires macOS 13+. HyperFrames installs Chrome 150 on macOS 12 by",
+    "itself, so this crash means a newer browser was supplied. Unset the override, or point it at",
+    "an older chrome-headless-shell:",
     "",
     "  npx @puppeteer/browsers install chrome-headless-shell@150",
-    '  export HYPERFRAMES_BROWSER_PATH="$HOME/.cache/puppeteer/chrome-headless-shell/mac-150.0.7422.0/chrome-headless-shell-mac-x64/chrome-headless-shell"',
+    '  export HYPERFRAMES_BROWSER_PATH="$HOME/.cache/puppeteer/chrome-headless-shell/mac-150.0.7871.124/chrome-headless-shell-mac-x64/chrome-headless-shell"',
     "",
     "(PRODUCER_HEADLESS_SHELL_PATH works as an alias for the same override.)",
-    "Any working chrome-headless-shell build resolves this — the exact version above is one",
-    "known-good macOS-12 combination. Alternatively, point HYPERFRAMES_BROWSER_PATH at your",
-    'installed Google Chrome ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")',
-    "to fall back to the screenshot capture path.",
+    "Alternatively, point HYPERFRAMES_BROWSER_PATH at your installed Google Chrome",
+    '("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome") to fall back to the screenshot',
+    "capture path.",
   ].join("\n");
 }

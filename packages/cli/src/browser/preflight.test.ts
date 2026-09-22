@@ -7,6 +7,7 @@ import {
   checkDisk,
   extractMajorVersion,
   parseToolVersion,
+  resolveRenderBrowser,
   runEnvironmentChecks,
 } from "./preflight.js";
 import * as manager from "./manager.js";
@@ -177,6 +178,7 @@ describe("runEnvironmentChecks", () => {
       versionMajor: 7,
     });
     expect(result.browserVersionMajor).toBe(7);
+    expect(result.browserInstall).toMatchObject({ pathAscii: true });
   });
 
   it("reports Chrome as not found (no throw) when browser discovery throws on a corrupt cache", async () => {
@@ -319,6 +321,23 @@ describe("runEnvironmentChecks — Chrome shared libraries (Linux/WSL)", () => {
 
     const result = await runEnvironmentChecks({ includeBrowser: true });
     expect(result.outcomes.find((o) => o.name === "Chrome")).toMatchObject({ ok: true });
+  });
+
+  it("resolveRenderBrowser returns the browser the render check found", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "system",
+    });
+    await expect(resolveRenderBrowser()).resolves.toMatchObject({
+      executablePath: process.execPath,
+    });
+  });
+
+  it("resolveRenderBrowser refuses with the Chrome check's own message when none resolves", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue(undefined);
+    await expect(resolveRenderBrowser()).rejects.toThrow(
+      /Chrome not found: Chrome Headless Shell is required.*npx hyperframes browser ensure/,
+    );
   });
 });
 

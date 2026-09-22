@@ -69,7 +69,7 @@ function sumDataAttribute(root: ParentNode, selector: string, dataKey: string): 
 export function readTimelinePerformanceDiagnostics(
   root: ParentNode = document,
 ): Readonly<TimelinePerformanceDiagnostics> {
-  const timelineRoots = root.querySelectorAll<HTMLElement>('[aria-label="Timeline"]');
+  const timelineRoots = root.querySelectorAll<HTMLElement>('[aria-label="Timeline track view"]');
   let mountedTimelineDescendants = 0;
   for (const timelineRoot of timelineRoots) {
     mountedTimelineDescendants += timelineRoot.querySelectorAll("*").length;

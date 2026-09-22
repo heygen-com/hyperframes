@@ -1132,6 +1132,17 @@ describe("bundleToSingleHtml", () => {
     expect(lutSrc).toBe("assets/luts/identity.cube");
   });
 
+  it("inlineAssets: false also keeps a LUT path external, without inlineColorGradingLuts", async () => {
+    const dir = makeColorGradingProject("assets/luts/identity.cube", {
+      "assets/luts/identity.cube": "LUT_3D_SIZE 2",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { inlineAssets: false });
+    const lutSrc = readBundledColorGradingLutSrc(bundled);
+
+    expect(lutSrc).toBe("assets/luts/identity.cube");
+  });
+
   it("warns when a render bundle cannot inline a referenced color grading LUT", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -1343,6 +1354,39 @@ describe("bundleToSingleHtml", () => {
     // Nothing still points into the sibling assets/ directory that a consumer
     // storing this bundle as a lone file will not have.
     expect(bundled).not.toMatch(/["'(]assets\//);
+  });
+
+  it("keeps every asset's literal relative src when inlineAssets is false", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <style>
+    @font-face { font-family: "Brand"; src: url('assets/fonts/brand.woff2') format('woff2'); }
+    .hero { background: url('assets/hero.jpg'); }
+  </style>
+</head><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <img id="avatar" src="assets/avatar-01.png" srcset="assets/avatar-01@2x.png 2x">
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+      "assets/fonts/brand.woff2": "font-bytes",
+      "assets/hero.jpg": "hero-bytes",
+      "assets/avatar-01.png": "avatar-bytes",
+      "assets/avatar-01@2x.png": "avatar-2x-bytes",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { inlineAssets: false });
+
+    // The composition's own script can read `img.getAttribute("src")` back and
+    // still find its authored path — this is what a same-origin asset route
+    // (a sibling preview endpoint) needs to serve the real bytes.
+    expect(bundled).toContain('src="assets/avatar-01.png"');
+    expect(bundled).toContain("assets/avatar-01@2x.png 2x");
+    expect(bundled).toContain("url('assets/fonts/brand.woff2')");
+    expect(bundled).toContain("url('assets/hero.jpg')");
+    expect(bundled).not.toContain("data:image/png");
+    expect(bundled).not.toContain("data:font/woff2");
   });
 
   it("leaves an oversized asset relative and warns rather than inlining it", async () => {

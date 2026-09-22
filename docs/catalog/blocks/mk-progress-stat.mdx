@@ -1,47 +1,28 @@
 ---
 title: "Count-Up Stat Card"
 description: "Big-numeral statistic with count-up, label, thin progress track filling to value/max, and caption; light and dark schemes"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/mk-progress-stat.json"
+  compositionId="mk-progress-stat"
+  compositionSrc="compositions/mk-progress-stat.html"
+  title="Count-Up Stat Card"
+  description="Big-numeral statistic with count-up, label, thin progress track filling to value/max, and caption; light and dark schemes"
+  variables={[]}
+  meta={{"duration":7,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":185}}
+  attribution={{"path":"registry/blocks/mk-progress-stat","tags":["data-viz","stat","minimal"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/mk-progress-stat/mk-progress-stat.html"
+>
 
-<InstallCommand command="npx hyperframes add mk-progress-stat" item="mk-progress-stat" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/mk-progress-stat.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="mk-progress-stat preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/mk-progress-stat.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/mk-progress-stat.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 7 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="mk-progress-stat"
-  data-composition-src="compositions/mk-progress-stat.html"
-  data-start="0"
-  data-duration="7"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="mk-progress-stat.html">
-
-```html
+```html mk-progress-stat.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -229,7 +210,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add mk-progress-stat" item="mk-progress-stat" />
+
+That writes one file: `compositions/mk-progress-stat.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 7 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="mk-progress-stat"
+  data-composition-src="compositions/mk-progress-stat.html"
+  data-start="0"
+  data-duration="7"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -240,3 +250,7 @@ Tagged `data-viz` `stat` `minimal`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -22,6 +22,7 @@ import {
   readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 import { postRuntimeControlMessage } from "./runtimeProtocol";
+import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
 
 // ---------------------------------------------------------------------------
 // Viewport / DOM normalisation
@@ -414,6 +415,7 @@ function buildMissingCompositionEntry(params: {
 }): TimelineElement | null {
   const { doc, iframeWin, element, compositionId, rootDuration, fallbackIndex, resolveEnd } =
     params;
+  const transitionLabels = transitionLabelsForDocument(doc, iframeWin.__timelines);
   const timing = readClipTiming(element, {
     resolveReferenceEnd: (refId) => resolveEnd(refId, new Set([compositionId])),
   });
@@ -447,6 +449,8 @@ function buildMissingCompositionEntry(params: {
   const entry: TimelineElement = {
     id: identity.id,
     label,
+    transitionLabel:
+      transitionLabels.get(element) ?? element.getAttribute("data-transition-label") ?? undefined,
     key: identity.key,
     tag: element.tagName.toLowerCase(),
     start: window.start,
@@ -459,6 +463,9 @@ function buildMissingCompositionEntry(params: {
     selectorIndex,
     sourceFile,
     zIndex: readTimelineElementZIndex(element),
+    src: optionalNonEmpty(element.getAttribute("src"))
+      ? new URL(element.getAttribute("src")!, element.baseURI).href
+      : undefined,
   };
   return attachCompositionSource(entry, element, compositionSrc);
 }

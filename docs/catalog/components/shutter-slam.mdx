@@ -1,35 +1,28 @@
 ---
 title: "Shutter Slam"
 description: "One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/shutter-slam.json"
+  compositionId="shutter-slam"
+  compositionSrc="compositions/components/shutter-slam.html"
+  title="Shutter Slam"
+  description="One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to"
+  variables={[{"id":"text","type":"string","role":"content","label":"Word","description":"The word driven through the six beats.","default":"MOTION"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Word color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"blur","type":"enum","role":"motion","label":"Blur","description":"Integrate each frame over the shutter window, or capture one instant per frame.","default":"shutter","options":[{"value":"shutter","label":"Shutter"},{"value":"none","label":"None"}]},{"id":"cues","type":"string","role":"motion","label":"Cues","description":"Comma seconds from mount start for each of the six beats; empty keeps the authored rhythm.","default":""},{"id":"exit","type":"enum","role":"motion","label":"Exit","description":"How the word leaves.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+  meta={{"category":"Effects","badge":"Stable","codeLines":541}}
+  attribution={{"path":"registry/components/shutter-slam","tags":["effect","motion-blur","shutter","after-effects","slam","animation"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/shutter-slam/shutter-slam.html"
+>
 
-<InstallCommand command="npx hyperframes add shutter-slam" item="shutter-slam" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/shutter-slam.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="shutter-slam preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/shutter-slam.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shutter-slam.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Paste it into your composition
-
-Open `compositions/components/shutter-slam.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Source
-
-<Accordion title="shutter-slam.html">
-
-```html
+```html shutter-slam.html
 <!doctype html>
 <!--
   shutter-slam: HyperFrames video primitive
@@ -862,7 +855,24 @@ you paste it into.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add shutter-slam" item="shutter-slam" />
+
+That writes one file: `compositions/components/shutter-slam.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/shutter-slam.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
@@ -873,3 +883,7 @@ Tagged `effect` `motion-blur` `shutter` `after-effects` `slam` `animation`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -1,28 +1,28 @@
 ---
 title: "Apple Money Count"
 description: "Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/apple-money-count.json"
+  compositionId="apple-money-count"
+  compositionSrc="compositions/apple-money-count.html"
+  title="Apple Money Count"
+  description="Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound."
+  variables={[]}
+  meta={{"duration":5,"width":1920,"height":1080,"category":"Showcases","badge":"Stable","codeLines":320}}
+  attribution={{"author":"Stronkter","authorUrl":"https://x.com/Stronkter","path":"registry/blocks/apple-money-count","tags":["showcase","finance","kinetic","youtube","sfx"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/apple-money-count/apple-money-count.html"
+>
 
-<InstallCommand command="npx hyperframes add apple-money-count" item="apple-money-count" />
+<CatalogSlot slot="code">
 
-That writes `compositions/apple-money-count.html`, plus 1 supporting file under `assets/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="apple-money-count preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/apple-money-count.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/apple-money-count.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="apple-money-count.html">
-
-```html
+```html apple-money-count.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -345,15 +345,36 @@ That writes `compositions/apple-money-count.html`, plus 1 supporting file under 
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add apple-money-count" item="apple-money-count" />
 
-```html
-<div data-composition-id="apple-money-count" data-composition-src="compositions/apple-money-count.html" data-start="0" data-duration="5" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes `compositions/apple-money-count.html`, plus 1 supporting file under `assets/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 5 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="apple-money-count"
+  data-composition-src="compositions/apple-money-count.html"
+  data-start="0"
+  data-duration="5"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -374,3 +395,7 @@ Created by [Stronkter](https://x.com/Stronkter).
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

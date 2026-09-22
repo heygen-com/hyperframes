@@ -372,6 +372,14 @@ function printReleaseNextSteps(version: string) {
     console.log(`\nDo NOT push the local tag. Run:`);
     console.log(`  git push origin HEAD:refs/heads/release/v${version}`);
     console.log(`  gh pr create --base main --head release/v${version} --fill`);
+    // Every release bumps packages/studio and packages/player, which the
+    // captures gate watches, so it asks a version bump for before/after media.
+    // Its own hatch covers this: the watched diff is 4 lines of package.json.
+    console.log(
+      `\nThe PR body needs a '## No visible change' section — a release bumps` +
+        `\npackages/studio and packages/player, so scripts/check-pr-captures.mjs` +
+        `\notherwise demands before/after captures for a version bump.`,
+    );
     console.log(
       `\nMerging that PR publishes: the workflow checks out the merge SHA, creates` +
         `\nthe v${version} tag there, publishes npm, and cuts the GitHub release.` +

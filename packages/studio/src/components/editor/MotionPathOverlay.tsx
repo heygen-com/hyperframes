@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
 import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
@@ -141,7 +142,8 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // No one-element selector means the path could only be authored onto the
   // element's class siblings, so the toolbar toggle stays hidden instead of
   // arming a press that the effect below would silently drop.
-  const canCreate = createMode && !!createSelector && hasMotionPathPlugin(iframeRef.current);
+  const livePreviewIframe = useLivePreviewIframe();
+  const canCreate = createMode && !!createSelector && hasMotionPathPlugin(livePreviewIframe);
 
   // Publish whether the selected element can take a path so the preview toolbar
   // shows its "set destination" toggle. Drops to false when this overlay unmounts

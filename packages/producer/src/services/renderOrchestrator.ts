@@ -88,6 +88,7 @@ import {
   compositionRequiresWebGpu,
   applyConcreteGpuScreenshotClamp,
   explainDrawElementDisabled,
+  chromeMajorCeiling,
   scaleProtocolTimeoutForComposition,
   classifyCaptureFailure,
   type CaptureFailureKind,
@@ -3088,6 +3089,7 @@ async function executeRenderPipeline(input: {
           platform: process.platform,
           browserGpuMode: cfg.browserGpuMode,
           workerEncode: cfg.enableDrawElementWorkerEncode,
+          chromeCeiling: chromeMajorCeiling(),
         });
     // "inverted" = fired and held; "reverted" = fired but the self-verify
     // retry rolled back to the parallel path; undefined = never fired.

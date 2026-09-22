@@ -348,7 +348,12 @@ function warnAssetTooLargeToInline(assetPath: string, byteLength: number): void 
   );
 }
 
-function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): string | null {
+function maybeInlineRelativeAssetUrl(
+  urlValue: string,
+  projectDir: string,
+  inlineAssets: boolean,
+): string | null {
+  if (!inlineAssets) return null;
   if (!urlValue || !isRelativeUrl(urlValue)) return null;
   const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
   if (!basePath) return null;
@@ -401,7 +406,9 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
 
   const lut = Reflect.get(parsed, "lut");
   if (typeof lut === "string") {
-    const inlined = maybeInlineRelativeAssetUrl(lut, projectDir);
+    // Gated by inlineAssets and inlineColorGradingLuts at the call site above;
+    // this call only runs once both have already passed.
+    const inlined = maybeInlineRelativeAssetUrl(lut, projectDir, true);
     if (!inlined) {
       warnColorGradingLutNotInlined(lut);
       return value;
@@ -412,7 +419,7 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   if (typeof lut !== "object" || lut === null || Array.isArray(lut)) return value;
   const lutSrc = Reflect.get(lut, "src");
   if (typeof lutSrc !== "string") return value;
-  const inlined = maybeInlineRelativeAssetUrl(lutSrc, projectDir);
+  const inlined = maybeInlineRelativeAssetUrl(lutSrc, projectDir, true);
   if (!inlined) {
     warnColorGradingLutNotInlined(lutSrc);
     return value;
@@ -421,7 +428,11 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   return JSON.stringify(parsed);
 }
 
-function rewriteSrcsetWithInlinedAssets(srcsetValue: string, projectDir: string): string {
+function rewriteSrcsetWithInlinedAssets(
+  srcsetValue: string,
+  projectDir: string,
+  inlineAssets: boolean,
+): string {
   if (!srcsetValue) return srcsetValue;
   return srcsetValue
     .split(",")
@@ -430,19 +441,27 @@ function rewriteSrcsetWithInlinedAssets(srcsetValue: string, projectDir: string)
       if (!candidate) return candidate;
       const parts = candidate.split(/\s+/);
       if (parts.length === 0) return candidate;
-      const maybeInlined = maybeInlineRelativeAssetUrl(parts[0] ?? "", projectDir);
+      const maybeInlined = maybeInlineRelativeAssetUrl(parts[0] ?? "", projectDir, inlineAssets);
       if (maybeInlined) parts[0] = maybeInlined;
       return parts.join(" ");
     })
     .join(", ");
 }
 
-function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): string {
+function rewriteCssUrlsWithInlinedAssets(
+  cssText: string,
+  projectDir: string,
+  inlineAssets: boolean,
+): string {
   if (!cssText) return cssText;
   return cssText.replace(
     /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g,
     (_full, quote: string, rawUrl: string) => {
-      const maybeInlined = maybeInlineRelativeAssetUrl((rawUrl || "").trim(), projectDir);
+      const maybeInlined = maybeInlineRelativeAssetUrl(
+        (rawUrl || "").trim(),
+        projectDir,
+        inlineAssets,
+      );
       if (!maybeInlined) return _full;
       return `url(${quote || ""}${maybeInlined}${quote || ""})`;
     },
@@ -767,6 +786,16 @@ export interface BundleOptions {
    * keeps showing project asset paths instead of giant data URLs.
    */
   inlineColorGradingLuts?: boolean;
+  /**
+   * Inline fonts, raster images (img/href/poster/srcset/CSS url()) and color
+   * grading LUTs as data URLs, up to the per-asset size ceiling. Default:
+   * true, for a genuinely self-contained bundle. Set false when the caller
+   * serves the project's own files alongside the bundle (e.g. a same-origin
+   * asset route): assets then keep their authored relative URL, which the
+   * caller resolves. `inlineColorGradingLuts` narrows LUTs further; it cannot
+   * inline a LUT that this option has already excluded.
+   */
+  inlineAssets?: boolean;
 }
 
 /**
@@ -1194,6 +1223,7 @@ export async function bundleToSingleHtml(
   injectTextRenderingRule(document);
 
   // Inline textual assets
+  const inlineAssets = options?.inlineAssets !== false;
   for (const el of [...document.querySelectorAll("[src], [href], [poster], [xlink\\:href]")]) {
     for (const attr of ["src", "href", "poster", "xlink:href"] as const) {
       const value = el.getAttribute(attr);
@@ -1203,24 +1233,29 @@ export async function bundleToSingleHtml(
       // origin and triggers "Unsafe attempt to load URL ... from frame".
       // Keep the project-relative URL; render/check servers already expose it.
       if (isExternalSvgFragmentUse(el, attr, value)) continue;
-      const inlined = maybeInlineRelativeAssetUrl(value, projectDir);
+      const inlined = maybeInlineRelativeAssetUrl(value, projectDir, inlineAssets);
       if (inlined) el.setAttribute(attr, inlined);
     }
   }
   for (const el of [...document.querySelectorAll("[srcset]")]) {
     const srcset = el.getAttribute("srcset");
-    if (srcset) el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir));
+    if (srcset)
+      el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir, inlineAssets));
   }
   for (const styleEl of document.querySelectorAll("style")) {
-    styleEl.textContent = rewriteCssUrlsWithInlinedAssets(styleEl.textContent || "", projectDir);
+    styleEl.textContent = rewriteCssUrlsWithInlinedAssets(
+      styleEl.textContent || "",
+      projectDir,
+      inlineAssets,
+    );
   }
   for (const el of [...document.querySelectorAll("[style]")]) {
     el.setAttribute(
       "style",
-      rewriteCssUrlsWithInlinedAssets(el.getAttribute("style") || "", projectDir),
+      rewriteCssUrlsWithInlinedAssets(el.getAttribute("style") || "", projectDir, inlineAssets),
     );
   }
-  if (options?.inlineColorGradingLuts !== false) {
+  if (inlineAssets && options?.inlineColorGradingLuts !== false) {
     for (const el of [...document.querySelectorAll(`[${HF_COLOR_GRADING_ATTR}]`)]) {
       const value = el.getAttribute(HF_COLOR_GRADING_ATTR);
       if (value) {

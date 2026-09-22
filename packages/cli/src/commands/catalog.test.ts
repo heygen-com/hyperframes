@@ -143,6 +143,7 @@ vi.mock("../registry/localEmbedder.js", () => ({
 }));
 
 vi.mock("../registry/localSemantic.js", () => ({
+  mediaSemanticRanking: async () => null,
   localSemanticRanking: async () => {
     if (state.rankingError) throw state.rankingError;
     return state.ranking;

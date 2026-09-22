@@ -29,7 +29,7 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
 }: AutomationSelectionMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
   const row =
-    "block w-full px-2 py-1 text-left text-[11px] text-panel-text-1 hover:bg-panel-bg-3 disabled:opacity-40";
+    "block w-full px-2 py-1 text-left text-[11px] text-panel-text-1 hover:bg-panel-hover disabled:opacity-40";
   // Same edge-clamping precedent as TrackGapContextMenu: without it a
   // right-click near the bottom/right of the timeline renders this menu
   // partially off-screen.

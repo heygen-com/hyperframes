@@ -15,7 +15,8 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
-import { addRegisteredPanel, buildEditLayout } from "./dockLayout";
+import { installDockAccessibility } from "./dockAccessibility";
+import { addRegisteredPanel, applySideMinimums, buildEditLayout } from "./dockLayout";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
 import { useDockLayoutStore, type DockController, type DockSnapshot } from "./dockLayoutStore";
 import {
@@ -68,8 +69,17 @@ function snapshot(api: DockviewApi): DockSnapshot {
     openPanels.add(panel.id);
     if (panel.api.isVisible && panel.group.api.isVisible) visiblePanels.add(panel.id);
   }
+  const groupActivePanels = api.groups.flatMap((group) => {
+    const id = group.activePanel?.id;
+    return isPanelId(id) ? [id] : [];
+  });
   const active = api.activePanel?.id;
-  return { openPanels, visiblePanels, activePanel: isPanelId(active) ? active : null };
+  return {
+    openPanels,
+    visiblePanels,
+    activePanel: isPanelId(active) ? active : null,
+    groupActivePanels,
+  };
 }
 
 function createController(api: DockviewApi): DockController {
@@ -135,7 +145,14 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
 
   const onReady = useCallback(
     ({ api }: DockviewReadyEvent) => {
+      disposeRef.current();
       restoreOrBuild(api, projectId);
+      applySideMinimums(api);
+      const root = api.groups[0]?.element.closest<HTMLElement>(".hf-dock");
+      const disposeAccessibility = root ? installDockAccessibility(api, root) : () => {};
+      // The dock spans the window (buildEditLayout sizes against it too); its own box lags a resize.
+      const resizeObserver = new ResizeObserver(() => applySideMinimums(api, window.innerWidth));
+      if (root) resizeObserver.observe(root);
       const store = useDockLayoutStore.getState();
       store.attach(createController(api));
       store.sync(snapshot(api));
@@ -156,7 +173,14 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
         persist();
       };
       const subscriptions = [
-        api.onDidAddPanel(onDockChange),
+        api.onDidAddPanel(() => {
+          applySideMinimums(api);
+          onDockChange();
+        }),
+        api.onDidMovePanel(() => {
+          applySideMinimums(api);
+          onDockChange();
+        }),
         api.onDidRemovePanel(onDockChange),
         api.onDidActivePanelChange(onDockChange),
         api.onDidLayoutChange(onDockChange),
@@ -164,6 +188,8 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       disposeRef.current = () => {
         clearTimeout(timer);
         for (const subscription of subscriptions) subscription.dispose();
+        disposeAccessibility();
+        resizeObserver.disconnect();
         useDockLayoutStore.getState().detach();
       };
     },
@@ -189,10 +215,11 @@ function Panel({ id, title, children }: { id: PanelId; title?: string; children:
   const element = useSlots().slots[id];
   const visible = useDockLayoutStore((state) => state.visiblePanels.has(id));
   const controller = useDockLayoutStore((state) => state.controller);
+  const open = useDockLayoutStore((state) => state.openPanels.has(id));
   const label = title ?? PANEL_DEFINITIONS[id].title;
   useEffect(() => {
-    controller?.setTitle(id, label);
-  }, [controller, id, label]);
+    if (open) controller?.setTitle(id, label);
+  }, [controller, id, label, open]);
   const definition: PanelDefinition = PANEL_DEFINITIONS[id];
   const shown = visible || definition.keepMounted;
   return element && shown ? createPortal(children, element) : null;

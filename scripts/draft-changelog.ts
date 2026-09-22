@@ -11,7 +11,7 @@ import {
   validateCliVersion,
   type InlineValueOption,
 } from "./cli-options.ts";
-import { CHANGELOG_REVIEW_TODO, CHANGELOG_STYLE_NOTE } from "./set-version.ts";
+import { CHANGELOG_REVIEW_TODO, CHANGELOG_STYLE_NOTE, compareSemver } from "./set-version.ts";
 
 /**
  * The generator only ever produces mechanical bullets from commit subjects. The
@@ -108,7 +108,7 @@ function main() {
 function createDraft(options: Options): DraftOutput {
   const versionTag = `v${options.version}`;
   const to = options.to ?? (tagExists(versionTag) ? versionTag : "HEAD");
-  const from = options.from ?? resolvePreviousTag(versionTag, to);
+  const from = options.from ?? resolvePreviousTag(versionTag, to, options.version);
   const commits = getCommits(from, to).filter((commit) => !shouldSkipCommit(commit));
   const parsedCommits = commits.map(parseCommit);
 
@@ -212,15 +212,64 @@ function tagExists(tag: string) {
   }
 }
 
-function resolvePreviousTag(versionTag: string, to: string) {
+function resolvePreviousTag(versionTag: string, to: string, version: string) {
+  const ref = tagExists(versionTag) ? `${versionTag}^` : to;
+  let from: string;
   try {
-    if (tagExists(versionTag)) {
-      return git(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", `${versionTag}^`]);
-    }
-    return git(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", to]);
+    from = git(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", ref]);
   } catch {
     fail("Could not resolve the previous release tag. Pass --from <tag> explicitly.");
   }
+  // Only guards an auto-resolved baseline; an explicit --from never reaches here.
+  assertNoSkippedTags(from, version);
+  return from;
+}
+
+/**
+ * Stable tags that belong between `from` and the release being drafted.
+ *
+ * `git describe` only ever returns a tag *reachable* from its argument, so a
+ * tag in this range means describe could not reach it and silently fell back
+ * to an older baseline. That happens when a local tag points at a commit that
+ * is not in this history: `release:prepare` creates `vX.Y.Z` locally at the
+ * branch commit, then the publish workflow creates the same tag at the merge
+ * SHA, and after a squash merge those differ. `git fetch --tags` will not move
+ * a tag that already exists locally, so the stale one survives and the next
+ * draft re-lists every commit of the release it skipped.
+ */
+export function findSkippedReleaseTags(
+  stableVersions: string[],
+  from: string,
+  version: string,
+): string[] {
+  const fromVersion = from.replace(/^v/, "");
+  return stableVersions
+    .filter((tag) => compareSemver(tag, fromVersion) > 0 && compareSemver(tag, version) < 0)
+    .sort(compareSemver);
+}
+
+/** Stable `vX.Y.Z` tags in this worktree; prereleases carry a `-` and are excluded. */
+function listStableTags(): string[] {
+  try {
+    return git(["tag", "--list", "v[0-9]*"])
+      .split("\n")
+      .filter((tag) => tag && !tag.includes("-"))
+      .map((tag) => tag.replace(/^v/, ""));
+  } catch {
+    return [];
+  }
+}
+
+function assertNoSkippedTags(from: string, version: string) {
+  const skipped = findSkippedReleaseTags(listStableTags(), from, version);
+  if (skipped.length === 0) return;
+  const names = skipped.map((tag) => `v${tag}`).join(", ");
+  fail(
+    `Baseline v${from.replace(/^v/, "")} skips ${names} — tagged locally, but not in this history.\n` +
+      "Those tags are stale, so the draft would re-list work that already shipped.\n\n" +
+      "  git fetch origin --tags --force\n\n" +
+      "Then re-run. Pass --from <tag> to override when the baseline is deliberate.",
+  );
 }
 
 function getCommits(from: string, to: string): RawCommit[] {

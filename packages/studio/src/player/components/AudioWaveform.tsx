@@ -1,7 +1,8 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
+import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 
 interface AudioWaveformProps {
   audioUrl: string;
@@ -13,10 +14,67 @@ interface AudioWaveformProps {
   projectId: string;
   sessionEpoch: number;
   priority: ThumbnailPriority;
+  /** `data-hidden` or a muted audio group. Greys the pill; the clip stays. */
+  muted?: boolean;
+  /** Same media file as a video clip. Draws the 1px parent tick. */
+  linked?: boolean;
 }
 
-const BAR_WIDTH = 2;
 const BAR_STEP = 3;
+
+type BarGeometry = { x: number; width: number; height: number };
+
+function paintWaveformBars(
+  context: CanvasRenderingContext2D,
+  bars: readonly BarGeometry[],
+  height: number,
+  waveformBarRgb: string,
+  waveformBaselineRgb: string,
+  amplitudes: readonly number[],
+) {
+  bars.forEach((bar, index) => {
+    const amplitude = amplitudes[index] ?? 0;
+    context.fillStyle = `rgb(${waveformBaselineRgb})`;
+    context.fillRect(bar.x, height - 2, bar.width, 2);
+    context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
+    context.fillRect(bar.x, height - bar.height, bar.width, bar.height);
+  });
+}
+
+export function drawWaveformCanvas(
+  canvas: HTMLCanvasElement,
+  peaks: readonly number[],
+  muted: boolean,
+  trimStartFraction: number,
+  trimEndFraction: number,
+) {
+  const width = Math.max(1, canvas.clientWidth);
+  const height = Math.max(1, canvas.clientHeight);
+  const scale = window.devicePixelRatio || 1;
+  canvas.width = Math.ceil(width * scale);
+  canvas.height = Math.ceil(height * scale);
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  context.scale(scale, scale);
+  context.clearRect(0, 0, width, height);
+  const amplitudes = decimatePeaks(
+    peaks,
+    trimStartFraction,
+    trimEndFraction,
+    Math.max(1, Math.ceil(width / BAR_STEP)),
+  );
+  const bars = amplitudes.map((amplitude, index) => ({
+    x: (index * width) / amplitudes.length,
+    width: Math.max(1, width / amplitudes.length),
+    height: Math.max(3, amplitude * height),
+  }));
+  const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
+  const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
+  const waveformBaselineRgb = getComputedStyle(canvas).getPropertyValue(
+    "--timeline-waveform-baseline-rgb",
+  );
+  paintWaveformBars(context, bars, height, waveformBarRgb, waveformBaselineRgb, amplitudes);
+}
 
 function extractPeaks(channelData: Float32Array, barCount: number): number[] {
   const peaks: number[] = [];
@@ -92,7 +150,10 @@ export const AudioWaveform = memo(function AudioWaveform({
   projectId,
   sessionEpoch,
   priority,
+  muted = false,
+  linked = false,
 }: AudioWaveformProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
@@ -121,29 +182,8 @@ export const AudioWaveform = memo(function AudioWaveform({
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !peaks) return;
-    const width = Math.max(1, canvas.clientWidth);
-    const height = Math.max(1, canvas.clientHeight);
-    const scale = window.devicePixelRatio || 1;
-    canvas.width = Math.ceil(width * scale);
-    canvas.height = Math.ceil(height * scale);
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.scale(scale, scale);
-    context.clearRect(0, 0, width, height);
-    const startFraction = Math.max(0, Math.min(1, trimStartFraction ?? 0));
-    const endFraction = Math.max(startFraction, Math.min(1, trimEndFraction ?? 1));
-    const start = Math.floor(startFraction * peaks.length);
-    const end = Math.max(start + 1, Math.ceil(endFraction * peaks.length));
-    const span = end - start;
-    const barCount = Math.floor(width / BAR_STEP);
-    for (let index = 0; index < barCount; index++) {
-      const peakIndex = start + Math.min(span - 1, Math.floor((index / barCount) * span));
-      const amplitude = peaks[peakIndex] ?? 0;
-      const barHeight = Math.max(2, amplitude * height);
-      context.fillStyle = `rgba(75,163,210,${(0.45 + amplitude * 0.4).toFixed(2)})`;
-      context.fillRect(index * BAR_STEP, height - barHeight, BAR_WIDTH, barHeight);
-    }
-  }, [peaks, trimEndFraction, trimStartFraction]);
+    drawWaveformCanvas(canvas, peaks, muted, trimStartFraction ?? 0, trimEndFraction ?? 1);
+  }, [muted, peaks, trimEndFraction, trimStartFraction]);
 
   const setCanvasRef = useCallback(
     (canvas: HTMLCanvasElement | null) => {
@@ -157,55 +197,74 @@ export const AudioWaveform = memo(function AudioWaveform({
     [draw],
   );
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(draw);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["class", "data-chrome", "data-theme", "style"],
+    });
+    return () => observer.disconnect();
+  }, [draw]);
+
   useMountEffect(() => () => observerRef.current?.disconnect());
 
+  useEffect(() => {
+    const clip = rootRef.current?.closest(".timeline-clip");
+    if (!(clip instanceof HTMLElement)) return;
+    if (muted) clip.setAttribute("data-audio-muted", "true");
+    else clip.removeAttribute("data-audio-muted");
+    return () => clip.removeAttribute("data-audio-muted");
+  }, [muted]);
+
   return (
-    <div className="absolute inset-0 overflow-hidden">
-      <canvas
-        ref={setCanvasRef}
-        className="absolute inset-x-0 bottom-0 w-full"
-        style={{ top: 16 }}
-      />
-      {snapshot.status === "loading" && (
-        <div
-          className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
-          }}
+    <div ref={rootRef} className="absolute inset-0">
+      {linked ? <span className="timeline-audio-link" aria-hidden="true" /> : null}
+      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 10 }}>
+        <canvas
+          ref={setCanvasRef}
+          className="absolute inset-x-0 bottom-0 w-full"
+          style={{ top: 16, height: "calc(100% - 16px)" }}
         />
-      )}
-      {/* Degraded state — the decode failed; say so rather than paint a
-          waveform the author could edit against. */}
-      {snapshot.status === "error" && (
-        <div
-          className="absolute inset-x-0 flex items-center justify-center gap-1.5"
-          style={{ top: 16, bottom: 0 }}
-        >
+        {snapshot.status === "loading" && (
           <div
-            className="absolute inset-x-0"
+            className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
             style={{
-              bottom: "20%",
-              height: 2,
-              background:
-                "repeating-linear-gradient(90deg, rgba(75,163,210,0.35) 0 2px, transparent 2px 5px)",
+              background: "var(--timeline-thumbnail-shimmer)",
             }}
           />
-          <span className="relative rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
-            waveform unavailable
-          </span>
-        </div>
-      )}
-      {label && (
-        <div className="absolute inset-x-0 top-0 z-10 px-1.5 py-0.5">
-          <span
-            className="block truncate text-[9px] font-semibold leading-tight"
-            style={{ color: labelColor, textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
+        )}
+        {/* Degraded state — the decode failed; say so rather than paint a
+          waveform the author could edit against. */}
+        {snapshot.status === "error" && (
+          <div
+            className="absolute inset-x-0 flex items-center justify-center gap-1.5"
+            style={{ top: 16, bottom: 0 }}
           >
-            {label}
-          </span>
-        </div>
-      )}
+            <div
+              className="absolute inset-x-0"
+              style={{
+                bottom: "20%",
+                height: 2,
+                background: "var(--timeline-waveform-error)",
+              }}
+            />
+            <span className="relative rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
+              waveform unavailable
+            </span>
+          </div>
+        )}
+        {label && (
+          <div className="absolute inset-x-0 top-0 z-10 px-1.5 py-0.5">
+            <span
+              className="block truncate text-[9px] font-semibold leading-tight"
+              style={{ color: labelColor, textShadow: "var(--timeline-waveform-label-shadow)" }}
+            >
+              {label}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 });

@@ -7,7 +7,7 @@ import { usePreviewVariablesStore } from "../../hooks/previewVariablesStore";
 /**
  * The Renders tab, wired to the shell context.
  *
- * Split out of StudioRightPanel because every field it needs already lives in
+ * Split out of StudioRightPanels because every field it needs already lives in
  * that context, so routing them through the panel only made the panel longer
  * without giving anything a second reader.
  */

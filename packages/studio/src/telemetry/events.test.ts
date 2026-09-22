@@ -9,6 +9,7 @@ vi.mock("./client", () => ({
 
 const {
   trackStudioSessionStart,
+  trackPreviewFirstFrame,
   trackStudioRenderStart,
   trackStudioRazorSplit,
   trackStudioExpandedClipEdit,
@@ -32,6 +33,23 @@ describe("studio telemetry events", () => {
   it("trackStudioSessionStart preserves false for has_project (scratch open)", () => {
     trackStudioSessionStart({ has_project: false });
     expect(trackEvent).toHaveBeenCalledWith("studio_session_start", { has_project: false });
+  });
+
+  it("trackPreviewFirstFrame emits timing, composition duration, and version", () => {
+    trackPreviewFirstFrame({
+      duration_ms: 842,
+      composition_seconds: 12.5,
+      clip_count: 8,
+      media_clip_count: 5,
+      studio_version: "0.8.56",
+    });
+    expect(trackEvent).toHaveBeenCalledWith("preview_first_frame", {
+      duration_ms: 842,
+      composition_seconds: 12.5,
+      clip_count: 8,
+      media_clip_count: 5,
+      studio_version: "0.8.56",
+    });
   });
 
   it("trackStudioRenderStart emits 'studio_render_start' with all render opts", () => {

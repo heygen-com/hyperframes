@@ -1,3 +1,4 @@
+import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
   HF_COLOR_GRADING_ACTIVE_EFFECT_KEYS,
@@ -155,6 +156,7 @@ export function useColorGradingPreviews({
   }
   const previews = state.identityKey === identityKey ? state.previews : emptyPreviews();
 
+  const livePreviewIframe = useLivePreviewIframe();
   useEffect(() => {
     if (!request) return;
     const { kind } = request;
@@ -245,7 +247,15 @@ export function useColorGradingPreviews({
       iframe.removeEventListener("load", attempt);
       window.removeEventListener("message", onMessage);
     };
-  }, [grading.effects, grading.lut, grading.palette, previewIframeRef, request, target]);
+  }, [
+    grading.effects,
+    grading.lut,
+    grading.palette,
+    previewIframeRef,
+    livePreviewIframe,
+    request,
+    target,
+  ]);
 
   const stopAnimatedPreview = useCallback(() => {
     const session = animatedRef.current;

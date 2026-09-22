@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.50",
+  "version": "0.8.62",
   "description": "",
   "repository": {
     "type": "git",
@@ -202,6 +202,18 @@
       "import": "./src/audioGain.ts",
       "types": "./src/audioGain.ts"
     },
+    "./audio-fade": {
+      "bun": "./src/audioFade.ts",
+      "node": "./dist/audioFade.js",
+      "import": "./src/audioFade.ts",
+      "types": "./src/audioFade.ts"
+    },
+    "./speed-ramp": {
+      "bun": "./src/speedRamp.ts",
+      "node": "./dist/speedRamp.js",
+      "import": "./src/speedRamp.ts",
+      "types": "./src/speedRamp.ts"
+    },
     "./color-grading": {
       "bun": "./src/colorGrading.ts",
       "node": "./dist/colorGrading.js",
@@ -274,6 +286,12 @@
       "node": "./dist/runtime/webAudioRoute.js",
       "import": "./src/runtime/webAudioRoute.ts",
       "types": "./src/runtime/webAudioRoute.ts"
+    },
+    "./runtime/levelTap": {
+      "bun": "./src/runtime/levelTap.ts",
+      "node": "./dist/runtime/levelTap.js",
+      "import": "./src/runtime/levelTap.ts",
+      "types": "./src/runtime/levelTap.ts"
     },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
@@ -540,6 +558,14 @@
         "import": "./dist/audioGain.js",
         "types": "./dist/audioGain.d.ts"
       },
+      "./audio-fade": {
+        "import": "./dist/audioFade.js",
+        "types": "./dist/audioFade.d.ts"
+      },
+      "./speed-ramp": {
+        "import": "./dist/speedRamp.js",
+        "types": "./dist/speedRamp.d.ts"
+      },
       "./color-grading": {
         "import": "./dist/colorGrading.js",
         "types": "./dist/colorGrading.d.ts"
@@ -588,6 +614,10 @@
       "./runtime/web-audio-route": {
         "import": "./dist/runtime/webAudioRoute.js",
         "types": "./dist/runtime/webAudioRoute.d.ts"
+      },
+      "./runtime/levelTap": {
+        "import": "./dist/runtime/levelTap.js",
+        "types": "./dist/runtime/levelTap.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",

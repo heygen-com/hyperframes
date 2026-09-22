@@ -400,10 +400,27 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/camera-shake.png"
   },
   {
+    "name": "canopy-part-title",
+    "type": "block",
+    "title": "Canopy Part Title",
+    "description": "Leaves sweep through the frame and part to reveal the headline.",
+    "tags": [
+      "3d-motion",
+      "title-card",
+      "leaves",
+      "organic",
+      "depth-of-field",
+      "two-headlines",
+      "sweep"
+    ],
+    "href": "/catalog/blocks/canopy-part-title",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/canopy-part-title.png"
+  },
+  {
     "name": "caption-blend-difference",
     "type": "component",
     "title": "Blend Difference",
-    "description": "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background",
+    "description": "Auto-inverting text using mix-blend-mode: difference \u2014 flips between white and black per-pixel against the background",
     "tags": [
       "text",
       "text-effect",
@@ -627,7 +644,7 @@
     "name": "caption-texture",
     "type": "component",
     "title": "Texture",
-    "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
+    "description": "Flowing texture mask over large uppercase text \u2014 ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
     "tags": [
       "captions",
       "caption-style",
@@ -900,7 +917,7 @@
     "name": "carousel-text-circle-1",
     "type": "block",
     "title": "Text + Circle Carousel 1",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 1).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 1).",
     "tags": [
       "carousel",
       "title-card",
@@ -916,7 +933,7 @@
     "name": "carousel-text-circle-2",
     "type": "block",
     "title": "Text + Circle Carousel 2",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 2).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 2).",
     "tags": [
       "carousel",
       "title-card",
@@ -932,7 +949,7 @@
     "name": "carousel-text-circle-3",
     "type": "block",
     "title": "Text + Circle Carousel 3",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 3).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 3).",
     "tags": [
       "carousel",
       "title-card",
@@ -948,7 +965,7 @@
     "name": "carousel-text-circle-4",
     "type": "block",
     "title": "Text + Circle Carousel 4",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 4).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 4).",
     "tags": [
       "carousel",
       "title-card",
@@ -964,7 +981,7 @@
     "name": "carousel-text-circle-5",
     "type": "block",
     "title": "Text + Circle Carousel 5",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 5).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 5).",
     "tags": [
       "carousel",
       "title-card",
@@ -1192,7 +1209,7 @@
     "name": "code-3d-extrude",
     "type": "block",
     "title": "Code 3D Extrude",
-    "description": "Syntax-highlighted code on a lit, beveled 3D slab that rotates through real space and settles to a readable rest — true WebGL depth and lighting, not a 2D transform.",
+    "description": "Syntax-highlighted code on a lit, beveled 3D slab that rotates through real space and settles to a readable rest \u2014 true WebGL depth and lighting, not a 2D transform.",
     "tags": [
       "code",
       "code-animation",
@@ -1207,7 +1224,7 @@
     "name": "code-diff",
     "type": "block",
     "title": "Code Diff",
-    "description": "An edit shown as a colored diff — removed lines collapse in red, added lines expand in green.",
+    "description": "An edit shown as a colored diff \u2014 removed lines collapse in red, added lines expand in green.",
     "tags": [
       "code",
       "code-animation",
@@ -1221,7 +1238,7 @@
     "name": "code-highlight",
     "type": "block",
     "title": "Code Highlight Sweep",
-    "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line.",
+    "description": "A highlight band sweeps across a target line while the surrounding context dims \u2014 draws the eye to one line.",
     "tags": [
       "code",
       "code-animation",
@@ -1235,7 +1252,7 @@
     "name": "code-morph",
     "type": "block",
     "title": "Code Morph",
-    "description": "One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
+    "description": "One snippet transforms into another \u2014 tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
     "tags": [
       "code",
       "code-animation",
@@ -1250,7 +1267,7 @@
     "name": "code-particle-assemble",
     "type": "block",
     "title": "Code Particle Assemble",
-    "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text — a particle system, not a token tween.",
+    "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text \u2014 a particle system, not a token tween.",
     "tags": [
       "code",
       "code-animation",
@@ -1266,7 +1283,7 @@
     "name": "code-scroll",
     "type": "block",
     "title": "Code Scroll To Line",
-    "description": "The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules.",
+    "description": "The camera scrolls a long file to bring a target line to center and spotlights it \u2014 for walking through real modules.",
     "tags": [
       "code",
       "code-animation",
@@ -1292,132 +1309,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-shader-dissolve.png"
   },
   {
-    "name": "code-snippet-apple-terminal-basic",
+    "name": "code-slice-hero",
     "type": "block",
-    "title": "Code Snippet - Apple Terminal Basic",
-    "description": "Apple Terminal Basic profile: white background, black text, per-character typing animation of a shell session.",
+    "title": "Code Slice Hero",
+    "description": "A tiled headline surface flips cell by cell under a sweeping depth field to reveal the rear headline.",
     "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
+      "3d-motion",
+      "transition",
+      "typography",
+      "tiles",
+      "flip",
+      "webgl2",
+      "shadows",
+      "two-headlines"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-basic",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-basic.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-clear-dark",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Clear Dark",
-    "description": "Apple Terminal Clear Dark profile: semi-transparent dark background, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-clear-dark",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-clear-dark.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-clear-light",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Clear Light",
-    "description": "Apple Terminal Clear Light profile: semi-transparent light background, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-clear-light",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-clear-light.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-grass",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Grass",
-    "description": "Apple Terminal Grass profile: black background with green text, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-grass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-grass.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-homebrew",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Homebrew",
-    "description": "Apple Terminal Homebrew profile: black background with bright green text and lime cursor, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-homebrew",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-homebrew.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-man-page",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Man Page",
-    "description": "Apple Terminal Man Page profile: pale yellow background with black text, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-man-page",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-man-page.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-novel",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Novel",
-    "description": "Apple Terminal Novel profile: warm parchment background with dark brown text, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-novel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-novel.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-ocean",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Ocean",
-    "description": "Apple Terminal Ocean profile: deep blue background with white text, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-ocean",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-ocean.png"
+    "href": "/catalog/blocks/code-slice-hero",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-slice-hero.png"
   },
   {
     "name": "code-snippet-apple-terminal-pro",
@@ -1434,54 +1341,6 @@
     ],
     "href": "/catalog/blocks/code-snippet-apple-terminal-pro",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-pro.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-red-sands",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Red Sands",
-    "description": "Apple Terminal Red Sands profile: deep red background with sandy text, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-red-sands",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-red-sands.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-silver-aerogel",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Silver Aerogel",
-    "description": "Apple Terminal Silver Aerogel profile: dark grey background with white text, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-silver-aerogel.png"
-  },
-  {
-    "name": "code-snippet-apple-terminal-solid-colors",
-    "type": "block",
-    "title": "Code Snippet - Apple Terminal Solid Colors",
-    "description": "Apple Terminal Solid Colors profile: deep purple background with white text, per-character typing animation of a shell session.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "terminal",
-      "apple",
-      "apple-terminal"
-    ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-solid-colors",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-solid-colors.png"
   },
   {
     "name": "code-snippet-dark-2026",
@@ -1512,160 +1371,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-dark-modern.png"
   },
   {
-    "name": "code-snippet-dark-plus",
-    "type": "block",
-    "title": "Code Snippet - Dark+",
-    "description": "VS Code workbench with per-character typing animation in the Dark+ theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-dark-plus",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-dark-plus.png"
-  },
-  {
-    "name": "code-snippet-flight",
-    "type": "block",
-    "title": "Code Snippet Flight",
-    "description": "Discrete code snippets fly in from the side and assemble into a stacked program, staggered. Block-level FLIP.",
-    "tags": [
-      "code",
-      "code-animation",
-      "flight",
-      "developer"
-    ],
-    "href": "/catalog/blocks/code-snippet-flight",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-flight.png"
-  },
-  {
-    "name": "code-snippet-high-contrast",
-    "type": "block",
-    "title": "Code Snippet - High Contrast",
-    "description": "VS Code workbench with per-character typing animation in the High Contrast theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-high-contrast",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-high-contrast.png"
-  },
-  {
-    "name": "code-snippet-high-contrast-light",
-    "type": "block",
-    "title": "Code Snippet - High Contrast Light",
-    "description": "VS Code workbench with per-character typing animation in the High Contrast Light theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-high-contrast-light",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-high-contrast-light.png"
-  },
-  {
-    "name": "code-snippet-light-2026",
-    "type": "block",
-    "title": "Code Snippet - Light 2026",
-    "description": "VS Code workbench with per-character typing animation in the Light 2026 theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-light-2026",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-light-2026.png"
-  },
-  {
-    "name": "code-snippet-light-modern",
-    "type": "block",
-    "title": "Code Snippet - Light Modern",
-    "description": "VS Code workbench with per-character typing animation in the Light Modern theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-light-modern",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-light-modern.png"
-  },
-  {
-    "name": "code-snippet-light-plus",
-    "type": "block",
-    "title": "Code Snippet - Light+",
-    "description": "VS Code workbench with per-character typing animation in the Light+ theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-light-plus",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-light-plus.png"
-  },
-  {
-    "name": "code-snippet-monokai",
-    "type": "block",
-    "title": "Code Snippet - Monokai",
-    "description": "VS Code workbench with per-character typing animation in the Monokai theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-monokai",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-monokai.png"
-  },
-  {
-    "name": "code-snippet-solarized-light",
-    "type": "block",
-    "title": "Code Snippet - Solarized Light",
-    "description": "VS Code workbench with per-character typing animation in the Solarized Light theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-solarized-light",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-solarized-light.png"
-  },
-  {
-    "name": "code-snippet-visual-studio-dark",
-    "type": "block",
-    "title": "Code Snippet - Visual Studio Dark",
-    "description": "VS Code workbench with per-character typing animation in the Visual Studio Dark theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-visual-studio-dark",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-visual-studio-dark.png"
-  },
-  {
-    "name": "code-snippet-visual-studio-light",
-    "type": "block",
-    "title": "Code Snippet - Visual Studio Light",
-    "description": "VS Code workbench with per-character typing animation in the Visual Studio Light theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
-    "tags": [
-      "code",
-      "developer",
-      "showcase",
-      "vscode"
-    ],
-    "href": "/catalog/blocks/code-snippet-visual-studio-light",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-visual-studio-light.png"
-  },
-  {
     "name": "code-terminal-run",
     "type": "component",
     "title": "Code Terminal Run",
@@ -1684,7 +1389,7 @@
     "name": "code-typing",
     "type": "block",
     "title": "Code Typing",
-    "description": "Token-streamed typing reveal with a caret that tracks the frontier — deterministic, no CSS animation.",
+    "description": "Token-streamed typing reveal with a caret that tracks the frontier \u2014 deterministic, no CSS animation.",
     "tags": [
       "code",
       "code-animation",
@@ -1693,6 +1398,24 @@
     ],
     "href": "/catalog/blocks/code-typing",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-typing.png"
+  },
+  {
+    "name": "colorama-wipe",
+    "type": "component",
+    "title": "Colorama Wipe",
+    "description": "Headline reveal through a feathered, leaning wipe front that is blurred and colour-mapped as it passes, then settles to clean type and wipes off again — the After Effects masked-text + Compound Blur + Colorama 'shiny wipe' as a deterministic canvas effect on any text element",
+    "tags": [
+      "text",
+      "reveal",
+      "wipe",
+      "colorama",
+      "gradient",
+      "blur",
+      "headline",
+      "saas"
+    ],
+    "href": "/catalog/components/colorama-wipe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/colorama-wipe.png"
   },
   {
     "name": "comparison-split",
@@ -1827,6 +1550,23 @@
     ],
     "href": "/catalog/components/cta-lockup",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cta-lockup.png"
+  },
+  {
+    "name": "cuboid-carousel",
+    "type": "block",
+    "title": "Cuboid Carousel",
+    "description": "A chain of bevelled cuboids rides a travelling wave as a content carousel.",
+    "tags": [
+      "3d-motion",
+      "carousel",
+      "cards",
+      "travelling-wave",
+      "pbr",
+      "shadows",
+      "room-environment"
+    ],
+    "href": "/catalog/blocks/cuboid-carousel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cuboid-carousel.png"
   },
   {
     "name": "cursor-glyph-trail",
@@ -1993,6 +1733,25 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.png"
   },
   {
+    "name": "extended-keyframe",
+    "type": "component",
+    "title": "Extended Keyframe",
+    "description": "The never-fully-lands arrival: an element covers most of its move in the first fifth of the duration and creeps the rest to the last frame, exits along its arrival vector, and carries shutter motion blur — from any side or by scale, one call per element, plus the ease on its own for any tween",
+    "tags": [
+      "motion",
+      "ease",
+      "arrival",
+      "kinetic-type",
+      "text",
+      "motion-blur",
+      "after-effects",
+      "slide-in",
+      "scale-in"
+    ],
+    "href": "/catalog/components/extended-keyframe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/extended-keyframe.png"
+  },
+  {
     "name": "facet-morph",
     "type": "component",
     "title": "Facet Morph",
@@ -2124,6 +1883,24 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png"
   },
   {
+    "name": "frost-sequence-camera-orbit",
+    "type": "block",
+    "title": "Frost Sequence Camera Orbit",
+    "description": "An orbiting camera follows an ice logo as it breaks apart, reforms into two text moments, and fades.",
+    "tags": [
+      "3d-motion",
+      "ice",
+      "frost",
+      "camera-orbit",
+      "logo",
+      "particles",
+      "webgpu",
+      "two-headlines"
+    ],
+    "href": "/catalog/blocks/frost-sequence-camera-orbit",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/frost-sequence-camera-orbit.png"
+  },
+  {
     "name": "gallery-tunnel",
     "type": "block",
     "title": "Gallery Tunnel",
@@ -2153,6 +1930,23 @@
     ],
     "href": "/catalog/components/gesture-tap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gesture-tap.png"
+  },
+  {
+    "name": "glass-shard-title",
+    "type": "block",
+    "title": "Glass Shard Title",
+    "description": "Glass shards fly in through fog and tile themselves into the headline.",
+    "tags": [
+      "3d-motion",
+      "title-card",
+      "glass",
+      "voronoi",
+      "shards",
+      "fog",
+      "hdr"
+    ],
+    "href": "/catalog/blocks/glass-shard-title",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glass-shard-title.png"
   },
   {
     "name": "glitch",
@@ -2219,7 +2013,7 @@
     "name": "grain-overlay",
     "type": "component",
     "title": "Grain Overlay",
-    "description": "Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition",
+    "description": "Animated film grain texture overlay using CSS keyframes \u2014 adds warmth and analog character to any composition",
     "tags": [
       "texture",
       "grain",
@@ -2262,7 +2056,7 @@
     "name": "grid-pixelate-wipe",
     "type": "component",
     "title": "Grid Pixelate Wipe",
-    "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing — use between scenes",
+    "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing \u2014 use between scenes",
     "tags": [
       "transition",
       "wipe",
@@ -2350,7 +2144,7 @@
     "name": "hw-boil",
     "type": "component",
     "title": "Hand-Drawn Boil",
-    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher, a wobbled-ellipse path generator, the boil pose control (off/calm/lively over the family-locked frameDrop), a curvature-adaptive pen-velocity ease, and the completed stroke matrix (plain/soft/sharp/spray — spray is index-seeded deterministic dots, no turbulence) with texture-safe draw-on",
+    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher, a wobbled-ellipse path generator, the boil pose control (off/calm/lively over the family-locked frameDrop), a curvature-adaptive pen-velocity ease, and the completed stroke matrix (plain/soft/sharp/spray \u2014 spray is index-seeded deterministic dots, no turbulence) with texture-safe draw-on",
     "tags": [
       "handwritten",
       "effect",
@@ -2363,7 +2157,7 @@
     "name": "hw-box-label",
     "type": "component",
     "title": "Hand-Drawn Box Label",
-    "description": "Wobbled rounded rectangle draws on — across the authored stroke matrix (plain/soft/sharp/spray) — or drops in and lands with a volume-true contact squash and bouncy spring recovery, with a handwritten label above or centered; boils",
+    "description": "Wobbled rounded rectangle draws on \u2014 across the authored stroke matrix (plain/soft/sharp/spray) \u2014 or drops in and lands with a volume-true contact squash and bouncy spring recovery, with a handwritten label above or centered; boils",
     "tags": [
       "handwritten",
       "annotation",
@@ -2717,32 +2511,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-swap.png"
   },
   {
-    "name": "liquid-glass-context-menu",
-    "type": "block",
-    "title": "Liquid Glass Context Menu",
-    "description": "Frosted glass context menu panel drifting over an aurora shader background",
-    "tags": [
-      "html-in-canvas",
-      "liquid-glass-html-in-canvas",
-      "webgpu"
-    ],
-    "href": "/catalog/blocks/liquid-glass-context-menu",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-context-menu.png"
-  },
-  {
-    "name": "liquid-glass-media-controls",
-    "type": "block",
-    "title": "Liquid Glass Media Controls",
-    "description": "Frosted glass media control panels spreading over an aurora shader background",
-    "tags": [
-      "html-in-canvas",
-      "liquid-glass-html-in-canvas",
-      "webgpu"
-    ],
-    "href": "/catalog/blocks/liquid-glass-media-controls",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-media-controls.png"
-  },
-  {
     "name": "liquid-glass-notification",
     "type": "block",
     "title": "Liquid Glass Notification",
@@ -2847,7 +2615,7 @@
   {
     "name": "lower-third-bild",
     "type": "block",
-    "title": "Lower Third — BILD Style",
+    "title": "Lower Third \u2014 BILD Style",
     "description": "News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow.",
     "tags": [
       "broadcast",
@@ -2861,7 +2629,7 @@
   {
     "name": "lt-accent-underline",
     "type": "block",
-    "title": "Lower Third — Accent Underline",
+    "title": "Lower Third \u2014 Accent Underline",
     "description": "Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility",
     "tags": [
       "lower-third",
@@ -2876,7 +2644,7 @@
   {
     "name": "lt-bold-block",
     "type": "block",
-    "title": "Lower Third — Bold Block",
+    "title": "Lower Third \u2014 Bold Block",
     "description": "High-energy podcast lower third: solid dark block wipes in, uppercase name slams up, accent tag pops",
     "tags": [
       "lower-third",
@@ -2891,7 +2659,7 @@
   {
     "name": "lt-clean-bar",
     "type": "block",
-    "title": "Lower Third — Clean Bar",
+    "title": "Lower Third \u2014 Clean Bar",
     "description": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance",
     "tags": [
       "lower-third",
@@ -2905,7 +2673,7 @@
   {
     "name": "lt-color-block",
     "type": "block",
-    "title": "Lower Third — Color Block",
+    "title": "Lower Third \u2014 Color Block",
     "description": "High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role",
     "tags": [
       "lower-third",
@@ -2920,7 +2688,7 @@
   {
     "name": "lt-dark-card",
     "type": "block",
-    "title": "Lower Third — Dark Card",
+    "title": "Lower Third \u2014 Dark Card",
     "description": "Charcoal card lower third for bright footage: name, drawn accent underline, role; slide-up entrance",
     "tags": [
       "lower-third",
@@ -2935,7 +2703,7 @@
   {
     "name": "lt-kicker-name",
     "type": "block",
-    "title": "Lower Third — Kicker Name",
+    "title": "Lower Third \u2014 Kicker Name",
     "description": "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage",
     "tags": [
       "lower-third",
@@ -2950,7 +2718,7 @@
   {
     "name": "lt-mask-reveal",
     "type": "block",
-    "title": "Lower Third — Mask Reveal",
+    "title": "Lower Third \u2014 Mask Reveal",
     "description": "Cardless lower third: an accent sweep crosses and clip-path-reveals a heavy name, role fades up; for footage",
     "tags": [
       "lower-third",
@@ -2979,7 +2747,7 @@
   {
     "name": "lt-side-rule",
     "type": "block",
-    "title": "Lower Third — Side Rule",
+    "title": "Lower Third \u2014 Side Rule",
     "description": "Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage",
     "tags": [
       "lower-third",
@@ -2994,7 +2762,7 @@
   {
     "name": "lt-soft-pill",
     "type": "block",
-    "title": "Lower Third — Soft Pill",
+    "title": "Lower Third \u2014 Soft Pill",
     "description": "Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance",
     "tags": [
       "lower-third",
@@ -3009,7 +2777,7 @@
   {
     "name": "lt-stack-bars",
     "type": "block",
-    "title": "Lower Third — Stack Bars",
+    "title": "Lower Third \u2014 Stack Bars",
     "description": "Two stacked bars: a dark name bar wipes from the left, an accent role bar wipes from the right",
     "tags": [
       "lower-third",
@@ -3182,7 +2950,7 @@
     "name": "mk-callout-highlight",
     "type": "block",
     "title": "Word-Sweep Highlight",
-    "description": "A sentence whose word-by-word emphasis is driven by a single scalar — tween it to sync the highlight with a voiceover",
+    "description": "A sentence whose word-by-word emphasis is driven by a single scalar \u2014 tween it to sync the highlight with a voiceover",
     "tags": [
       "typography",
       "karaoke",
@@ -3196,7 +2964,7 @@
     "name": "mk-clone-wall-transition",
     "type": "block",
     "title": "Text Clone Wall Transition",
-    "description": "Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears — hard-cut the content beneath while covered",
+    "description": "Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears \u2014 hard-cut the content beneath while covered",
     "tags": [
       "transition",
       "typography",
@@ -3209,7 +2977,7 @@
     "name": "mk-emphasis-type",
     "type": "component",
     "title": "Background Emphasis Type",
-    "description": "Oversized low-contrast background word drifting slowly behind the subject — typography as texture",
+    "description": "Oversized low-contrast background word drifting slowly behind the subject \u2014 typography as texture",
     "tags": [
       "typography",
       "text-treatment",
@@ -3324,7 +3092,7 @@
     "name": "morph-text",
     "type": "component",
     "title": "Morph Text",
-    "description": "Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect",
+    "description": "Gooey text morph \u2014 cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect",
     "tags": [
       "text",
       "text-effect",
@@ -3340,7 +3108,7 @@
     "name": "motion-blur",
     "type": "component",
     "title": "Motion Blur",
-    "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
+    "description": "After Effects-style motion blur \u2014 integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
     "tags": [
       "effect",
       "motion-blur",
@@ -3581,6 +3349,23 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/onboarding-stepper-flow.png"
   },
   {
+    "name": "orbit-card",
+    "type": "block",
+    "title": "Orbit Card",
+    "description": "A single feature card orbits a dot sphere on approved Blender camera motion.",
+    "tags": [
+      "3d-motion",
+      "cards",
+      "feature-reveal",
+      "dots",
+      "orbit",
+      "blender-motion",
+      "sphere"
+    ],
+    "href": "/catalog/blocks/orbit-card",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/orbit-card.png"
+  },
+  {
     "name": "ordered-dither-pass",
     "type": "component",
     "title": "Ordered Dither Pass",
@@ -3738,7 +3523,7 @@
     "name": "parallax-unzoom",
     "type": "component",
     "title": "Parallax Unzoom",
-    "description": "Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
+    "description": "Reveal transition \u2014 focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
     "tags": [
       "transition",
       "reveal",
@@ -3754,7 +3539,7 @@
     "name": "parallax-zoom",
     "type": "component",
     "title": "Parallax Zoom",
-    "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
+    "description": "Center card scales up to fill the frame while siblings parallax outward \u2014 inspired by the eBay Playbook hero transition",
     "tags": [
       "transition",
       "zoom",
@@ -4205,7 +3990,7 @@
     "name": "shimmer-sweep",
     "type": "component",
     "title": "Shimmer Sweep",
-    "description": "Animated light sweep across text or elements using a CSS gradient mask — ideal for AI accents and premium reveals",
+    "description": "Animated light sweep across text or elements using a CSS gradient mask \u2014 ideal for AI accents and premium reveals",
     "tags": [
       "text",
       "shimmer",
@@ -4219,7 +4004,7 @@
     "name": "shutter-slam",
     "type": "component",
     "title": "Shutter Slam",
-    "description": "One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to",
+    "description": "One word thrown through six single-property beats under integrated shutter blur \u2014 two translate slams, a scale punch, then a full turn about each axis \u2014 on the measured easing of the After Effects export the shutter model was fitted to",
     "tags": [
       "effect",
       "motion-blur",
@@ -4367,7 +4152,7 @@
     "name": "spain-map",
     "type": "block",
     "title": "Spain Map",
-    "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection",
+    "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend \u2014 D3 conic conformal projection",
     "tags": [
       "data",
       "map",
@@ -4807,6 +4592,22 @@
     ],
     "href": "/catalog/components/testimonial-proof-card",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/testimonial-proof-card.png"
+  },
+  {
+    "name": "text-match-cut",
+    "type": "component",
+    "title": "Text Match Cut",
+    "description": "One line of text becomes another mid-move: both ride a single 85 % easy-ease curve and hard-swap at the speed peak, as scale, tracking, or a same-direction slide.",
+    "tags": [
+      "motion-primitive",
+      "transition",
+      "typography",
+      "match-cut",
+      "hard-cut",
+      "continuity"
+    ],
+    "href": "/catalog/components/text-match-cut",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-match-cut.png"
   },
   {
     "name": "text-shimmer",
@@ -5318,7 +5119,7 @@
     "name": "us-map",
     "type": "block",
     "title": "US Map",
-    "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
+    "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend \u2014 pure inline SVG with GSAP",
     "tags": [
       "data",
       "map",
@@ -5333,7 +5134,7 @@
     "name": "us-map-bubble",
     "type": "block",
     "title": "US Bubble Map",
-    "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map",
+    "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines \u2014 composable with us-map",
     "tags": [
       "data",
       "map",
@@ -5349,7 +5150,7 @@
     "name": "us-map-flow",
     "type": "block",
     "title": "US Flow Map",
-    "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
+    "description": "Animated connection arcs between US cities over a base map \u2014 composable origin-destination flow visualization",
     "tags": [
       "data",
       "map",
@@ -5366,7 +5167,7 @@
     "name": "us-map-hex",
     "type": "block",
     "title": "US Hex Grid Map",
-    "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
+    "description": "Animated hexagonal tile grid map \u2014 each state as an equal-weight hex with data fill and abbreviation label",
     "tags": [
       "data",
       "map",
@@ -5462,7 +5263,7 @@
     "name": "vfx-iphone-device",
     "type": "block",
     "title": "iPhone & MacBook 3D Showcase",
-    "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.",
+    "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360\u00b0 turntable.",
     "tags": [
       "html-in-canvas",
       "3d",
@@ -5556,7 +5357,7 @@
     "name": "vignette",
     "type": "component",
     "title": "Vignette",
-    "description": "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center",
+    "description": "Cinematic radial vignette overlay using a pure-CSS gradient \u2014 darkens the edges to pull focus toward the center",
     "tags": [
       "vignette",
       "overlay",
@@ -5594,6 +5395,20 @@
     ],
     "href": "/catalog/blocks/vpn-youtube-spot",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
+  },
+  {
+    "name": "week-in-merges",
+    "type": "block",
+    "title": "Week in Merges",
+    "description": "Each author's avatar bounces across their row at a speed set by how many pull requests they merged",
+    "tags": [
+      "data",
+      "chart",
+      "ranking",
+      "leaderboard"
+    ],
+    "href": "/catalog/blocks/week-in-merges",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/week-in-merges.png"
   },
   {
     "name": "weight-wave",
@@ -5657,6 +5472,24 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/whiteboard-ink.png"
   },
   {
+    "name": "wireframe-portal-title",
+    "type": "block",
+    "title": "Wireframe Portal Title",
+    "description": "A wireframe portal bursts open, the title comes through, then its letters swap into a second phrase.",
+    "tags": [
+      "3d-motion",
+      "title-card",
+      "wireframe",
+      "portal",
+      "burst",
+      "typography",
+      "post-processing",
+      "phrase-swap"
+    ],
+    "href": "/catalog/blocks/wireframe-portal-title",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/wireframe-portal-title.png"
+  },
+  {
     "name": "wordmark-tiles",
     "type": "component",
     "title": "Wordmark Tiles",
@@ -5675,7 +5508,7 @@
     "name": "world-map",
     "type": "block",
     "title": "World Map",
-    "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
+    "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset \u2014 D3 Natural Earth projection",
     "tags": [
       "data",
       "map",

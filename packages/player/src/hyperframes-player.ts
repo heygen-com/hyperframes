@@ -21,8 +21,9 @@ import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import {
+  FIRST_FRAME_READINESS_SCOPE,
   scanPendingCompositionAssets,
-  settleCompositionReadiness,
+  settleFirstFrameCompositionReadiness,
 } from "@hyperframes/core/composition-readiness";
 
 // Playback-rate bounds mirror the runtime clamp in
@@ -109,6 +110,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private _ready = false;
   private _assetsReady = false;
+  private _painted = false;
   private _pendingPlay = false;
   private _assetsGeneration = 0;
   private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
@@ -530,6 +532,12 @@ class HyperframesPlayer extends HTMLElement {
    *  cross-origin compositions, which the player has no DOM access to wait on. */
   get assetsReady() {
     return this._assetsReady;
+  }
+
+  /** True once assets are ready and the loading panel has finished fading out,
+   *  so the document is what is on screen. Mirrors `painted`; resets per load. */
+  get painted() {
+    return this._painted;
   }
 
   get playbackRate() {
@@ -1032,6 +1040,7 @@ class HyperframesPlayer extends HTMLElement {
   private _waitForAssetsReady(doc: Document | null, runtimeAssetsReady?: boolean): void {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
+    this._painted = false;
     // Invalidates any earlier wait still in flight (a composition swap, or
     // disconnect, mid-wait) — its eventual settle checks this and no-ops
     // rather than resolving a since-superseded generation.
@@ -1048,7 +1057,7 @@ class HyperframesPlayer extends HTMLElement {
       }
       return;
     }
-    settleCompositionReadiness(
+    settleFirstFrameCompositionReadiness(
       doc,
       ({ timedOut }) => {
         if (generation !== this._assetsGeneration) return;
@@ -1074,7 +1083,9 @@ class HyperframesPlayer extends HTMLElement {
    *  document can starve paint-and-idle of frames for the full 8s — that's
    *  reported directly rather than inferred, since it can't be bounded. */
   private _warnStuckAssets(doc: Document): void {
-    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc);
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
+      scope: FIRST_FRAME_READINESS_SCOPE,
+    });
     const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
     console.warn(
       `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms — playing anyway`,
@@ -1099,6 +1110,11 @@ class HyperframesPlayer extends HTMLElement {
     this.removeAttribute(ASSETS_LOADING_ATTR);
     this.shaderLoader.hide();
     this.dispatchEvent(new Event("assetsready"));
+    this.shaderLoader.whenHidden(() => {
+      if (generation !== this._assetsGeneration) return;
+      this._painted = true;
+      this.dispatchEvent(new Event("painted"));
+    });
     if (this._pendingPlay) this.play();
   }
 
@@ -1107,6 +1123,7 @@ class HyperframesPlayer extends HTMLElement {
   private _invalidateAssetsWait(): void {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
+    this._painted = false;
     this._pendingPlay = false;
     this._assetsGeneration++;
     this.removeAttribute(ASSETS_LOADING_ATTR);

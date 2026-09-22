@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
+import React, { act, type ComponentProps } from "react";
+import type { DockviewApi } from "dockview-react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as dockLayout from "./dockLayout";
 import { Dock } from "./Dock";
 import { parseDockLayout } from "./dockLayoutSchema";
 import { useDockLayoutStore } from "./dockLayoutStore";
@@ -11,16 +13,51 @@ import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+let dockApi: DockviewApi | null = null;
+vi.mock("dockview-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("dockview-react")>();
+  return {
+    ...actual,
+    DockviewReact: (props: ComponentProps<typeof actual.DockviewReact>) =>
+      React.createElement(actual.DockviewReact, {
+        ...props,
+        onReady: (event) => {
+          dockApi = event.api;
+          props.onReady(event);
+        },
+      }),
+  };
+});
+
+const liveObservers = new Set<{ callback: () => void; target?: Element }>();
 class ResizeObserverStub {
-  observe() {}
+  private readonly entry: { callback: () => void; target?: Element };
+  constructor(callback: () => void) {
+    this.entry = { callback };
+  }
+  observe(target: Element) {
+    this.entry.target = target;
+    liveObservers.add(this.entry);
+  }
   unobserve() {}
-  disconnect() {}
+  disconnect() {
+    liveObservers.delete(this.entry);
+  }
 }
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 
+vi.mock("./dockLayout", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./dockLayout")>();
+  return { ...actual, applySideMinimums: vi.fn(actual.applySideMinimums) };
+});
+const applySideMinimums = vi.mocked(dockLayout.applySideMinimums);
+
 let root: Root | null = null;
 
-function mount(projectId: string | null) {
+function mount(
+  projectId: string | null,
+  titles: Partial<Record<(typeof PANEL_IDS)[number], string>> = {},
+) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -28,7 +65,7 @@ function mount(projectId: string | null) {
     root?.render(
       <Dock.Root projectId={projectId}>
         {PANEL_IDS.map((id) => (
-          <Dock.Panel key={id} id={id}>
+          <Dock.Panel key={id} id={id} title={titles[id]}>
             <div data-testid={`content-${id}`}>{id}</div>
           </Dock.Panel>
         ))}
@@ -36,6 +73,16 @@ function mount(projectId: string | null) {
     );
   });
   return host;
+}
+
+/** The persisted views of the group holding `id`, after the debounced write lands. */
+function persistedGroupOf(id: string): string | undefined {
+  act(() => {
+    vi.advanceTimersByTime(1000);
+  });
+  const grid = JSON.stringify(readStudioUiPreferences(undefined, "p1").dockLayout?.grid);
+  const groups = [...grid.matchAll(/"views":\[([^\]]*)\]/g)].map((m) => m[1]);
+  return groups.find((views) => views.includes(`"${id}"`));
 }
 
 beforeEach(() => {
@@ -98,17 +145,22 @@ describe("Dock on React 19", () => {
     expect(host.querySelector('[data-testid="content-renders"]')).not.toBeNull();
   });
 
+  it("keeps a panel's custom title when it is closed and reopened", async () => {
+    const host = mount("p1", { renders: "Renders (2)" });
+    expect(host.textContent).toContain("Renders (2)");
+    act(() => useDockLayoutStore.getState().closePanel("renders"));
+    await act(async () => {
+      useDockLayoutStore.getState().togglePanel("renders");
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain("Renders (2)");
+  });
+
   it("reopens a closed panel as a tab of its zone's group, not a new group", () => {
     mount("p1");
     act(() => useDockLayoutStore.getState().closePanel("compositions"));
     act(() => useDockLayoutStore.getState().togglePanel("compositions"));
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    const grid = JSON.stringify(readStudioUiPreferences(undefined, "p1").dockLayout?.grid);
-    const groups = [...grid.matchAll(/"views":\[([^\]]*)\]/g)].map((m) => m[1]);
-    const home = groups.find((views) => views.includes('"compositions"'));
-    expect(home).toContain('"assets"');
+    expect(persistedGroupOf("compositions")).toContain('"assets"');
   });
 
   it("reopens a side panel next to the preview when its whole column was closed", () => {
@@ -125,12 +177,7 @@ describe("Dock on React 19", () => {
     mount("p1");
     act(() => useDockLayoutStore.getState().closePanel("timeline"));
     act(() => useDockLayoutStore.getState().togglePanel("timeline"));
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    const grid = JSON.stringify(readStudioUiPreferences(undefined, "p1").dockLayout?.grid);
-    const groups = [...grid.matchAll(/"views":\[([^\]]*)\]/g)].map((m) => m[1]);
-    expect(groups.find((views) => views.includes('"timeline"'))).not.toContain('"preview"');
+    expect(persistedGroupOf("timeline")).not.toContain('"preview"');
   });
 
   it("restores the stored layout on the next mount instead of rebuilding the default", () => {
@@ -154,6 +201,41 @@ describe("Dock on React 19", () => {
     );
     const host = mount("p1");
     expect(host.querySelector('[data-testid="content-preview"]')).not.toBeNull();
+  });
+});
+
+describe("Dock wiring", () => {
+  it("re-applies the side minimums when a panel is dragged to another group", () => {
+    mount(null);
+    applySideMinimums.mockClear();
+    const preview = dockApi?.getPanel("preview");
+    const design = dockApi?.getPanel("design");
+    if (!preview || !design) throw new Error("default layout is missing panels");
+    act(() => design.api.moveTo({ group: preview.group }));
+    expect(applySideMinimums).toHaveBeenCalled();
+  });
+
+  it("makes the sashes keyboard-focusable separators", () => {
+    const host = mount(null);
+    const sashes = host.querySelectorAll<HTMLElement>('.dv-sash[role="separator"]');
+    expect(sashes.length).toBeGreaterThan(0);
+    for (const sash of sashes) expect(sash.tabIndex).toBe(0);
+  });
+
+  it("re-fits the side columns to the window width when it resizes", () => {
+    mount(null);
+    const innerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { value: 560, configurable: true });
+    try {
+      applySideMinimums.mockClear();
+      const dockObservers = [...liveObservers].filter(({ target }) =>
+        target?.classList.contains("hf-dock"),
+      );
+      act(() => dockObservers.forEach(({ callback }) => callback()));
+      expect(applySideMinimums).toHaveBeenCalledWith(expect.anything(), 560);
+    } finally {
+      Object.defineProperty(window, "innerWidth", { value: innerWidth, configurable: true });
+    }
   });
 });
 

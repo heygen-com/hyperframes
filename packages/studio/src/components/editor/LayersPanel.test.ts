@@ -1,11 +1,54 @@
 // @vitest-environment happy-dom
 
+import { createElement, act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { Window } from "happy-dom";
+import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import type { DomEditLayerItem } from "./domEditingTypes";
-import { createRafThrottle, sortLayersByZIndex } from "./LayersPanel";
+import { createRafThrottle, LayersPanel, sortLayersByZIndex } from "./LayersPanel";
 import { isLayerDraggable } from "./useLayerDrag";
 import { liveTime } from "../../player";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const mocks = vi.hoisted(() => ({
+  previewIframeRef: { current: null } as { current: unknown },
+  collect: vi.fn(),
+  setActiveGroupElement: vi.fn(),
+  showToast: vi.fn(),
+}));
+
+vi.mock("../../contexts/StudioContext", () => ({
+  useStudioShellContext: () => ({
+    previewIframeRef: mocks.previewIframeRef,
+    activeCompPath: "index.html",
+    showToast: mocks.showToast,
+  }),
+  useStudioPlaybackContext: () => ({
+    refreshKey: 0,
+    compositionLoading: true,
+    timelineElements: [],
+    isPlaying: false,
+  }),
+}));
+vi.mock("../../contexts/DomEditContext", () => ({
+  useDomEditContext: () => ({
+    domEditSelection: null,
+    activeGroupElement: null,
+    applyDomSelection: vi.fn(),
+    updateDomEditHoverSelection: vi.fn(),
+    handleDomZIndexReorderCommit: vi.fn(),
+    setActiveGroupElement: mocks.setActiveGroupElement,
+  }),
+}));
+vi.mock("../nle/useCanvasZOrderTimelineMirror", () => ({
+  useLayerReorderTimelineMirror: () => vi.fn(),
+}));
+vi.mock("./domEditing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./domEditing")>()),
+  collectDomEditLayerItems: mocks.collect,
+}));
 
 function makeLayer(
   overrides: Partial<DomEditLayerItem> & { zIndex?: string; locked?: boolean },
@@ -195,5 +238,58 @@ describe("liveTime subscribe / unsubscribe (LayersPanel scrub contract)", () => 
     expect(refresh).toHaveBeenCalledTimes(1);
 
     unsubscribe();
+  });
+});
+
+describe("LayersPanel preview promotion", () => {
+  let root: Root;
+  let host: HTMLDivElement;
+
+  function makeIframe(compId: string): HTMLIFrameElement {
+    const iframe = document.createElement("iframe");
+    const doc = new Window().document;
+    doc.body.innerHTML = `<div data-composition-id="${compId}"></div>`;
+    Object.defineProperty(iframe, "contentDocument", { value: doc });
+    return iframe;
+  }
+
+  const collectedRootIds = () =>
+    mocks.collect.mock.calls.map((call) => (call[0] as HTMLElement).dataset.compositionId);
+
+  beforeEach(() => {
+    mocks.collect.mockReset().mockReturnValue([]);
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    usePreviewIframeStore.setState({ iframe: null });
+  });
+
+  it("recollects layers from the promoted document's load, not the replaced one", () => {
+    const a = makeIframe("a");
+    const b = makeIframe("b");
+    mocks.previewIframeRef.current = a;
+    usePreviewIframeStore.setState({ iframe: a });
+    act(() => root.render(createElement(LayersPanel)));
+
+    act(() => {
+      mocks.previewIframeRef.current = b;
+      usePreviewIframeStore.getState().setIframe(b);
+    });
+    mocks.collect.mockClear();
+
+    act(() => {
+      a.dispatchEvent(new Event("load"));
+    });
+    expect(mocks.collect).not.toHaveBeenCalled();
+
+    act(() => {
+      b.dispatchEvent(new Event("load"));
+    });
+    expect(collectedRootIds()).toEqual(["b"]);
   });
 });

@@ -11,6 +11,7 @@ import { execSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { chromeMajorCeiling, exceedsChromeCeiling } from "./chromeHostCeiling.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
 import {
@@ -162,8 +163,10 @@ function findCachedHeadlessShell(baseDir: string): string | undefined {
   const executable = cachedHeadlessShellExecutable();
   if (!executable) return undefined;
   try {
+    const ceiling = chromeMajorCeiling();
     const versions = readdirSync(baseDir).sort(compareBrowserVersionsDescending);
     for (const version of versions) {
+      if (exceedsChromeCeiling(version, ceiling)) continue;
       const binary = join(baseDir, version, ...executable);
       if (existsSync(binary)) return binary;
     }

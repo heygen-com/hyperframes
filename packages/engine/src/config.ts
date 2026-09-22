@@ -7,6 +7,7 @@
  */
 
 import { tmpdir } from "node:os";
+import { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 import { join } from "node:path";
 import {
   getSystemTotalMb,
@@ -745,9 +746,12 @@ export function resolveDefaultDrawElement(args: {
   platform: NodeJS.Platform;
   browserGpuMode: EngineConfig["browserGpuMode"];
   workerEncode: boolean;
+  /** Set on hosts that cannot run Chrome 151+; Chrome <=150 damages video and stacked fades. */
+  chromeCeiling?: number;
 }): boolean {
   if (!args.useDrawElement) return false;
   if (args.explicitOptIn) return true;
+  if (args.chromeCeiling !== undefined) return false;
   if (!isDrawElementPlatform(args.platform) || args.browserGpuMode === "software") return false;
   return args.workerEncode;
 }
@@ -777,9 +781,11 @@ export function explainDrawElementDisabled(args: {
   platform: NodeJS.Platform;
   browserGpuMode: EngineConfig["browserGpuMode"];
   workerEncode: boolean;
-}): "unsupported_platform" | "software_gpu" | "worker_encode_off" | "disabled" {
+  chromeCeiling?: number;
+}): "unsupported_platform" | "old_chrome" | "software_gpu" | "worker_encode_off" | "disabled" {
   // Platform first: on an unsupported host the GPU mode is beside the point.
   if (!isDrawElementPlatform(args.platform)) return "unsupported_platform";
+  if (args.chromeCeiling !== undefined) return "old_chrome";
   if (args.browserGpuMode === "software") return "software_gpu";
   if (!args.workerEncode) return "worker_encode_off";
   return "disabled";
@@ -970,6 +976,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     platform: process.platform,
     browserGpuMode: merged.browserGpuMode,
     workerEncode: merged.enableDrawElementWorkerEncode,
+    chromeCeiling: chromeMajorCeiling(),
   });
 
   // Software GPU implies screenshot capture.

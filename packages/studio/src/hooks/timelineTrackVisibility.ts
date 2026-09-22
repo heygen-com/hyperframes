@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { reseekPreviewAtTime } from "../player/hooks/timelineSyncHydration";
-import { useTimelineRowElements } from "../player/hooks/useTimelineRowElements";
 import { applySoftReloadFinalization } from "../utils/gsapSoftReload";
 import {
   timelineTrackOrder,
@@ -295,7 +294,7 @@ export function useTimelineTrackVisibilityEditing({
   // virtual sub-comp children carry their own (display.track + idx) track numbers,
   // so filtering the raw store list by a virtual track number would hide the wrong
   // outer-scene sibling sharing that index.
-  const expandedElements = useTimelineRowElements();
+  const timelineElements = usePlayerStore((state) => state.elements);
   return useCallback(
     async (track: number, hidden: boolean, displayNumber?: number | null) => {
       if (isRecordingRef?.current) {
@@ -308,7 +307,7 @@ export function useTimelineTrackVisibilityEditing({
         await toggleTimelineTrackHidden({
           projectId: pid,
           activeCompPath,
-          timelineElements: expandedElements,
+          timelineElements,
           track,
           hidden,
           displayNumber,
@@ -327,7 +326,7 @@ export function useTimelineTrackVisibilityEditing({
     },
     [
       activeCompPath,
-      expandedElements,
+      timelineElements,
       previewIframeRef,
       writeProjectFile,
       recordEdit,
@@ -354,7 +353,7 @@ export function useTimelineElementVisibilityEditing({
   elementKey: string | readonly string[],
   hidden: boolean,
 ) => Promise<void> {
-  const expandedElements = useTimelineRowElements();
+  const timelineElements = usePlayerStore((state) => state.elements);
   return useCallback(
     async (elementKey: string | readonly string[], hidden: boolean) => {
       if (isRecordingRef?.current) {
@@ -364,7 +363,7 @@ export function useTimelineElementVisibilityEditing({
       const pid = projectIdRef.current;
       if (!pid) return;
       const keys = typeof elementKey === "string" ? [elementKey] : elementKey;
-      if (!expandedElements.some((item) => keys.includes(item.key ?? item.id))) {
+      if (!timelineElements.some((item) => keys.includes(item.key ?? item.id))) {
         showToast("This element is inside a sub-composition and has no timeline row to hide.");
         return;
       }
@@ -372,7 +371,7 @@ export function useTimelineElementVisibilityEditing({
         await toggleTimelineElementHidden({
           projectId: pid,
           activeCompPath,
-          timelineElements: expandedElements,
+          timelineElements,
           elementKey,
           hidden,
           previewIframe: previewIframeRef.current,
@@ -390,7 +389,7 @@ export function useTimelineElementVisibilityEditing({
     },
     [
       activeCompPath,
-      expandedElements,
+      timelineElements,
       previewIframeRef,
       writeProjectFile,
       recordEdit,

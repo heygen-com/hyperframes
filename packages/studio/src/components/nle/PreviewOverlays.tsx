@@ -1,17 +1,18 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { useCaptionStore } from "../../captions/store";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { TopologyLens } from "../editor/TopologyLens";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
 import { SnapToolbar } from "../editor/SnapToolbar";
+import { GridOverlay } from "../editor/GridOverlay";
+import { usePreviewReadOnly } from "../editor/previewReadOnlyContext";
 import { useCompositionDimensions } from "../../hooks/useCompositionDimensions";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import {
   useDomEditActionsContext,
   useDomEditSelectionContext,
 } from "../../contexts/DomEditContext";
-import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { readHfId, type DomEditSelection } from "../editor/domEditing";
 import { buildStableSelector } from "../editor/domEditingDom";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
@@ -140,6 +141,8 @@ export function PreviewOverlays({
   const { activeCompPath, previewIframeRef } = useStudioShellContext();
   const { captionEditMode, compositionLoading, isPlaying } = useStudioPlaybackContext();
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
+  const readOnly = usePreviewReadOnly();
+  const previewCaptionEditMode = captionEditMode && !readOnly;
 
   // Caption edit mode is entered automatically when captions are detected;
   // these give the author an explicit way OUT (and back in). Without them the
@@ -179,17 +182,6 @@ export function PreviewOverlays({
   } = useDomEditActionsContext();
   const mirrorZOrderToTimeline = useCanvasZOrderTimelineMirror();
 
-  // fallow-ignore-next-line complexity
-  const [snapPrefs, setSnapPrefs] = useState(() => {
-    const p = readStudioUiPreferences();
-    return {
-      snapEnabled: p.snapEnabled ?? true,
-      gridVisible: p.gridVisible ?? false,
-      gridSpacing: p.gridSpacing ?? 50,
-      snapToGrid: p.snapToGrid ?? false,
-    };
-  });
-
   if (blockPreview) {
     return (
       <>
@@ -216,7 +208,7 @@ export function PreviewOverlays({
     );
   }
 
-  if (captionEditMode) {
+  if (previewCaptionEditMode) {
     return (
       <>
         <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
@@ -263,11 +255,14 @@ export function PreviewOverlays({
   return (
     <>
       <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
+      <GridOverlay />
       <DomEditOverlay
         iframeRef={previewIframeRef}
         activeCompositionPath={activeCompPath}
         hoverSelection={
-          !captionEditMode && !compositionLoading && !isPlaying ? domEditHoverSelection : null
+          !previewCaptionEditMode && !compositionLoading && !isPlaying
+            ? domEditHoverSelection
+            : null
         }
         selection={shouldShowSelectedDomBounds ? domEditSelection : null}
         groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
@@ -320,19 +315,19 @@ export function PreviewOverlays({
               }),
           }).catch(() => undefined);
         }}
-        gridVisible={snapPrefs.gridVisible}
-        gridSpacing={snapPrefs.gridSpacing}
         recordingState={recordingState}
         onToggleRecording={onToggleRecording}
         onMarqueeSelect={applyMarqueeSelection}
       />
-      <SnapToolbar onSnapChange={setSnapPrefs} />
-      <MotionPathOverlay
-        iframeRef={previewIframeRef}
-        selection={shouldShowMotionPath ? domEditSelection : null}
-        compositionSize={compositionDimensions}
-        isPlaying={isPlaying}
-      />
+      <SnapToolbar />
+      {!readOnly && (
+        <MotionPathOverlay
+          iframeRef={previewIframeRef}
+          selection={shouldShowMotionPath ? domEditSelection : null}
+          compositionSize={compositionDimensions}
+          isPlaying={isPlaying}
+        />
+      )}
       {gestureOverlay}
       {captionModelPresent && captionDismissed && (
         <button

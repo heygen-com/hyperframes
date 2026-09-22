@@ -525,6 +525,44 @@ describe("resolveBrowserGpuMode", () => {
   });
 });
 
+// CodeQL js/bad-code-sanitization: values must never be woven into the eval
+// string itself. This script is a fixed constant; every variable (module
+// URL, faked platform/arch, faked os.release) crosses as an env var instead.
+const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
+  if (process.env.HF_TEST_PLATFORM) {
+    Object.defineProperty(process, "platform", { value: process.env.HF_TEST_PLATFORM });
+  }
+  if (process.env.HF_TEST_ARCH) {
+    Object.defineProperty(process, "arch", { value: process.env.HF_TEST_ARCH });
+  }
+  if (process.env.HF_TEST_OS_RELEASE) {
+    const os = require("node:os");
+    os.release = () => process.env.HF_TEST_OS_RELEASE;
+    require("node:module").syncBuiltinESMExports();
+  }
+  import(process.env.HF_TEST_MODULE_URL).then(({ resolveHeadlessShellPath }) => {
+    process.stdout.write(resolveHeadlessShellPath({}) ?? "");
+  });
+`;
+
+/** Runs resolveHeadlessShellPath in a subprocess with a faked platform/arch/os.release. */
+function resolveHeadlessShellInSubprocess(
+  env: NodeJS.ProcessEnv,
+  fakes: { platform?: string; arch?: string; osRelease?: string } = {},
+): string {
+  const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+  return execFileSync("bun", ["--eval", RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT], {
+    encoding: "utf8",
+    env: {
+      ...env,
+      HF_TEST_MODULE_URL: moduleUrl,
+      ...(fakes.platform ? { HF_TEST_PLATFORM: fakes.platform } : {}),
+      ...(fakes.arch ? { HF_TEST_ARCH: fakes.arch } : {}),
+      ...(fakes.osRelease ? { HF_TEST_OS_RELEASE: fakes.osRelease } : {}),
+    },
+  });
+}
+
 describe("resolveHeadlessShellPath", () => {
   const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
   const originalHyperframesBrowserPath = process.env.HYPERFRAMES_BROWSER_PATH;
@@ -618,18 +656,11 @@ describe("resolveHeadlessShellPath", () => {
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
-        const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
-        const label = `execFileSync(bun --eval) ${hostPlatform}/${hostArch} [compatible]`;
-        console.time(label);
-        const stdout = execFileSync(
-          "bun",
-          [
-            "--eval",
-            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
-          ],
-          { encoding: "utf8", env },
-        );
-        console.timeEnd(label);
+        const stdout = resolveHeadlessShellInSubprocess(env, {
+          platform: hostPlatform,
+          arch: hostArch,
+          osRelease: "24.0.0",
+        });
 
         expect(stdout).toBe(expectedBinary);
       } finally {
@@ -665,18 +696,11 @@ describe("resolveHeadlessShellPath", () => {
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
-        const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
-        const label = `execFileSync(bun --eval) ${hostPlatform}/${hostArch} [unsupported]`;
-        console.time(label);
-        const stdout = execFileSync(
-          "bun",
-          [
-            "--eval",
-            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
-          ],
-          { encoding: "utf8", env },
-        );
-        console.timeEnd(label);
+        const stdout = resolveHeadlessShellInSubprocess(env, {
+          platform: hostPlatform,
+          arch: hostArch,
+          osRelease: "24.0.0",
+        });
 
         expect(stdout).toBe("");
       } finally {
@@ -708,19 +732,42 @@ describe("resolveHeadlessShellPath", () => {
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
-      const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
-      console.time("execFileSync(bun --eval) reuse-cache");
-      const stdout = execFileSync(
-        "bun",
-        [
-          "--eval",
-          `Object.defineProperty(process, "platform", { value: "linux" }); Object.defineProperty(process, "arch", { value: "x64" }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
-        ],
-        { encoding: "utf8", env },
-      );
-      console.timeEnd("execFileSync(bun --eval) reuse-cache");
+      const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
       expect(stdout).toBe(binary);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("skips managed-cache builds newer than Chrome 150 on macOS 12", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-macos12-"));
+    try {
+      const shell = (version: string) =>
+        join(
+          home,
+          ".cache",
+          "hyperframes",
+          "chrome",
+          "chrome-headless-shell",
+          `mac-${version}`,
+          "chrome-headless-shell-mac-x64",
+          "chrome-headless-shell",
+        );
+      for (const version of ["152.0.7977.30", "150.0.7871.124"]) {
+        mkdirSync(join(shell(version), ".."), { recursive: true });
+        writeFileSync(shell(version), "");
+      }
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const stdout = resolveHeadlessShellInSubprocess(env, {
+        platform: "darwin",
+        arch: "x64",
+        osRelease: "21.6.0",
+      });
+
+      expect(stdout).toBe(shell("150.0.7871.124"));
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

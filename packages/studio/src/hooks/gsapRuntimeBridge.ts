@@ -156,7 +156,13 @@ async function preflightGsapDragIntercept(
   const hasLivePosition = hasNonHoldTweenForElement(iframe, selector, undefined, POSITION_CHANNELS);
 
   if (hasLivePosition && !posAnim) {
-    return { status: "blocked", reason: "source-uneditable" };
+    // GSAP is visibly moving this element but the parser found no position
+    // tween for it — a source-match gap, not necessarily computed source.
+    return {
+      status: "blocked",
+      reason: "source-uneditable",
+      detail: "live-position-no-source-tween",
+    };
   }
   if (!posAnim && !writeTargetSelector(selection)) {
     return { status: "blocked", reason: "no-selector" };
@@ -268,7 +274,7 @@ export async function tryGsapDragIntercept(
   }
 
   if (!posAnim) {
-    return { status: "blocked", reason: "source-uneditable" };
+    return { status: "blocked", reason: "source-uneditable", detail: "no-position-tween" };
   }
 
   // Verify the anim ID is still valid in the current file. The React-state
@@ -353,7 +359,12 @@ export async function tryGsapRotationIntercept(
     ? hasNonHoldTweenForElement(iframe, liveSelector, undefined, ROTATION_CHANNELS)
     : false;
   if (!anim && hasLiveRotationTween) {
-    return { status: "blocked", reason: "source-uneditable" };
+    // Rotation twin of the position case above: live tween, no source match.
+    return {
+      status: "blocked",
+      reason: "source-uneditable",
+      detail: "live-rotation-no-source-tween",
+    };
   }
 
   // `angle` is the ABSOLUTE target rotation resolved by the gesture (gsap base +

@@ -98,7 +98,11 @@ COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 COPY packages/studio-server/package.json packages/studio-server/package.json
 COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
-RUN bun install --frozen-lockfile
+# A corrupt tarball extraction can print an error and then hang instead of
+# exiting (seen in Dockerfile.test, run 35468046055). Bound each attempt and
+# retry once, so a prod deploy build fails fast instead of hanging.
+RUN timeout 300 bun install --frozen-lockfile \
+    || timeout 300 bun install --frozen-lockfile
 
 # Fail the image build closed if the packaged executable cannot perform the
 # same BeginFrame operation the distributed renderer relies on. Generate the

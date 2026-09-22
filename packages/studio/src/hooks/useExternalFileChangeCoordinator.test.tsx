@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -374,6 +375,61 @@ describe("external file change coordinator", () => {
       await act(async () => handler?.(new MessageEvent("file-change", { data: "not json" })));
 
       expect(reloadPreview).not.toHaveBeenCalled();
+    });
+  });
+
+  // `/api/events` is one connection per SERVER (CLI host), not per project — a
+  // tab left open from a `preview` run whose port was later reused by a
+  // different project's `preview` shares this stream with it. Both projects
+  // commonly use the same default composition path, so without the filter a
+  // stale tab reloads its preview and re-reads its own composition on every
+  // save the OTHER project makes.
+  describe("cross-project deliveries on a shared connection", () => {
+    it("ignores a delivery whose projectId does not match this tab's", async () => {
+      const drainPendingChanges = vi.fn(async () => ({ status: "clean" as const }));
+      const reloadPreview = vi.fn();
+      const reloadSdkSession = vi.fn();
+      await mountCoordinator({ drainPendingChanges, reloadPreview, reloadSdkSession });
+
+      await act(async () =>
+        handler?.({
+          path: "index.html",
+          content: "other project",
+          version: "v9",
+          projectId: "project-b",
+        }),
+      );
+
+      expect(drainPendingChanges).not.toHaveBeenCalled();
+      expect(reloadPreview).not.toHaveBeenCalled();
+      expect(reloadSdkSession).not.toHaveBeenCalled();
+    });
+
+    it("still reloads for a delivery whose projectId matches this tab's", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () =>
+        handler?.({
+          path: "index.html",
+          content: "same project",
+          version: "v9",
+          projectId: "project-a",
+        }),
+      );
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("still reloads when projectId is absent (older server, one release of skew)", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () =>
+        handler?.({ path: "index.html", content: "no project id", version: "v9" }),
+      );
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
     });
   });
 });

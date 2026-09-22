@@ -6,7 +6,8 @@
  */
 
 import sharp, { type OverlayOptions } from "sharp";
-import { readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync, existsSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join, extname, basename, dirname } from "node:path";
 
 interface ContactSheetOptions {
@@ -326,7 +327,7 @@ export async function createSvgContactSheet(
         .flatten({ background: { r: 245, g: 245, b: 245 } })
         .png()
         .toBuffer();
-      writeFileSync(tmpPath, thumb);
+      writeCaptureFileSync(tmpPath, thumb);
       tmpPaths.push(tmpPath);
       labels.push(svgFileNames[i]!.replace(".svg", ""));
     } catch {

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
+import { describeBrowserInstall, type BrowserInstallFacts } from "./installFacts.js";
 import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, getFFmpegInstallHint } from "./ffmpeg.js";
 import {
   chromeDepsInstallCommand,
@@ -31,6 +32,7 @@ export interface EnvironmentCheckResult {
   ffmpegPath?: string;
   ffprobePath?: string;
   browser?: BrowserResult;
+  browserInstall?: BrowserInstallFacts;
   ffmpegVersionMajor?: number;
   browserVersionMajor?: number;
 }
@@ -341,6 +343,18 @@ async function checkChrome(
   };
 }
 
+/** Resolves the render browser the way `hyperframes render` does; a refusal carries the check's own message. */
+export async function resolveRenderBrowser(signal?: AbortSignal): Promise<BrowserResult> {
+  const { outcomes, browser } = await runEnvironmentChecks({ includeBrowser: true, signal });
+  if (browser) return browser;
+  const chrome = outcomes.find((outcome) => outcome.name === "Chrome");
+  const headline = [chrome?.title, chrome?.detail].filter(Boolean).join(": ");
+  throw new Error(
+    [headline, chrome?.hint].filter(Boolean).join(" ") ||
+      "Chrome Headless Shell could not be resolved for rendering.",
+  );
+}
+
 export function checkDisk(
   path = ".",
   freeDiskMb: (path: string) => number | null = getFreeDiskMb,
@@ -415,7 +429,7 @@ export async function runEnvironmentChecks(
     outcomes,
     ...(ffmpeg.ok && ffmpeg.path ? { ffmpegPath: ffmpeg.path } : {}),
     ...(ffprobe.path ? { ffprobePath: ffprobe.path } : {}),
-    ...(browser ? { browser } : {}),
+    ...(browser ? { browser, browserInstall: describeBrowserInstall(browser.executablePath) } : {}),
     ...(ffmpeg.versionMajor != null ? { ffmpegVersionMajor: ffmpeg.versionMajor } : {}),
     ...(browserVersionMajor != null ? { browserVersionMajor } : {}),
   };

@@ -69,7 +69,8 @@ export const TimelineRuler = memo(function TimelineRuler({
                 y1={0}
                 x2={x}
                 y2={totalH}
-                stroke={`rgba(34, 197, 94, ${opacity.toFixed(3)})`}
+                stroke="var(--timeline-beat)"
+                strokeOpacity={opacity}
                 strokeWidth="1"
               />
             );
@@ -99,7 +100,7 @@ export const TimelineRuler = memo(function TimelineRuler({
           style={{
             height: RULER_H,
             width: trackContentWidth,
-            // Ruler background = panel surface (#0A0A0B) — no bottom border,
+            // Ruler background = the panel surface token — no bottom border,
             // no tick lines (CapCut-style clean ruler, labels only).
             background: theme.shellBackground,
           }}

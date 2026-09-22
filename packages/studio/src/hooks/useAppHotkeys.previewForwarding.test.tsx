@@ -4,7 +4,6 @@ import React, { act, useRef } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
@@ -46,7 +45,6 @@ function Harness() {
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
     waitForPendingDomEditSaves: vi.fn(async () => undefined),
-    leftSidebarRef: useRef<LeftSidebarHandle | null>(null),
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(() => false),
     handleCut: vi.fn(() => false),

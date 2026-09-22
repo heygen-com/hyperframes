@@ -1,0 +1,139 @@
+import { strict as assert } from "node:assert";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import {
+  BUNDLED_SFX_RECOVERY_COMMAND,
+  BundledSfxAssetsError,
+  bundledSfxProvider,
+  extensionForBundledSfxFile,
+  inspectBundledSfxAssets,
+} from "./bundled-sfx-provider.mjs";
+import { rankMediaRows } from "./media-search.mjs";
+
+test("derives bundled SFX extension from the manifest filename", () => {
+  assert.equal(extensionForBundledSfxFile("impact.wav"), ".wav");
+  assert.equal(extensionForBundledSfxFile("whoosh.ogg"), ".ogg");
+  assert.equal(extensionForBundledSfxFile("extensionless"), ".mp3");
+});
+
+test("reports an agent-friendly recovery when the bundled SFX manifest is absent", () => {
+  const libraryDir = mkdtempSync(join(tmpdir(), "media-use-sfx-missing-"));
+  try {
+    const health = inspectBundledSfxAssets(libraryDir);
+    assert.equal(health.ok, false);
+    assert.equal(health.code, "bundled_sfx_assets_missing");
+    assert.match(health.detail, /manifest\.json/);
+    assert.match(health.fix, /hyperframes skills update media-use/);
+    assert.equal(health.fix, BUNDLED_SFX_RECOVERY_COMMAND);
+  } finally {
+    rmSync(libraryDir, { recursive: true, force: true });
+  }
+});
+
+test("reports the exact missing file from an incomplete bundled SFX install", () => {
+  const libraryDir = mkdtempSync(join(tmpdir(), "media-use-sfx-incomplete-"));
+  try {
+    writeFileSync(
+      join(libraryDir, "manifest.json"),
+      JSON.stringify({ whoosh: { file: "whoosh.mp3", description: "transition" } }),
+    );
+    const health = inspectBundledSfxAssets(libraryDir);
+    assert.equal(health.ok, false);
+    assert.equal(health.code, "bundled_sfx_assets_missing");
+    assert.match(health.detail, /whoosh\.mp3/);
+  } finally {
+    rmSync(libraryDir, { recursive: true, force: true });
+  }
+});
+
+test("bundled provider raises a typed install error instead of a generic catalog miss", async () => {
+  const libraryDir = mkdtempSync(join(tmpdir(), "media-use-sfx-provider-"));
+  try {
+    await assert.rejects(
+      () => bundledSfxProvider.search("whoosh", { libraryDir }),
+      (error) => {
+        assert.ok(error instanceof BundledSfxAssetsError);
+        assert.equal(error.code, "bundled_sfx_assets_missing");
+        assert.match(error.message, /hyperframes skills update media-use/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(libraryDir, { recursive: true, force: true });
+  }
+});
+
+test("accepts a complete bundled SFX library", () => {
+  const libraryDir = mkdtempSync(join(tmpdir(), "media-use-sfx-complete-"));
+  try {
+    mkdirSync(libraryDir, { recursive: true });
+    writeFileSync(
+      join(libraryDir, "manifest.json"),
+      JSON.stringify({ whoosh: { file: "whoosh.mp3", description: "transition" } }),
+    );
+    writeFileSync(join(libraryDir, "whoosh.mp3"), "audio");
+    assert.deepEqual(inspectBundledSfxAssets(libraryDir), {
+      ok: true,
+      count: 1,
+      detail: "1 bundled SFX asset available",
+      fix: "",
+    });
+  } finally {
+    rmSync(libraryDir, { recursive: true, force: true });
+  }
+});
+
+test("prefers an exact key over a longer key with the same words", async () => {
+  const libraryDir = mkdtempSync(join(tmpdir(), "media-use-sfx-exact-key-"));
+  try {
+    writeFileSync(
+      join(libraryDir, "manifest.json"),
+      JSON.stringify({
+        "whoosh-cinematic": { file: "whoosh-cinematic.mp3", description: "long whoosh" },
+        whoosh: { file: "whoosh.mp3", description: "short whoosh" },
+      }),
+    );
+    writeFileSync(join(libraryDir, "whoosh-cinematic.mp3"), "cinematic audio");
+    writeFileSync(join(libraryDir, "whoosh.mp3"), "exact audio");
+
+    const result = await bundledSfxProvider.search("whoosh", { libraryDir });
+    assert.equal(result?.localPath, join(libraryDir, "whoosh.mp3"));
+    assert.equal(result?.metadata.provenance.library_key, "whoosh");
+
+    const stemmed = await bundledSfxProvider.search("whooshes", { libraryDir });
+    assert.equal(stemmed?.localPath, join(libraryDir, "whoosh.mp3"));
+    assert.equal(stemmed?.metadata.provenance.library_key, "whoosh");
+  } finally {
+    rmSync(libraryDir, { recursive: true, force: true });
+  }
+});
+
+test("literal ids outrank distinct ids with the same stem", () => {
+  const rows = [
+    {
+      id: "cats",
+      title: "Cats Fighting",
+      description: "fighting cats",
+      tags: ["yowl", "fight"],
+      kind: "sfx",
+    },
+    {
+      id: "cat",
+      title: "Cat",
+      description: "single cat",
+      tags: ["meow"],
+      kind: "sfx",
+    },
+  ];
+
+  assert.deepEqual(
+    rankMediaRows("cat", rows).map((row) => row.id),
+    ["cat", "cats"],
+  );
+  assert.deepEqual(
+    rankMediaRows("cats", rows).map((row) => row.id),
+    ["cats", "cat"],
+  );
+});

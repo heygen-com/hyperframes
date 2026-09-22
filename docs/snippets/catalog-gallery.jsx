@@ -10,6 +10,15 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     const MAX_DOM_PLAYERS = 6;
     const MAX_WEBGL_PLAYERS = 1;
     const READY_TIMEOUT_MS = 6000;
+    // BEGIN revealWhenPainted: calls reveal one frame after the player's assets have settled (the player fires assetsready within 8 s).
+    const revealWhenPainted = (player, reveal) => {
+        const paint = () => requestAnimationFrame(reveal);
+        if (player.assetsReady)
+            paint();
+        else
+            player.addEventListener('assetsready', paint, { once: true });
+    };
+    // END revealWhenPainted
     async function ensurePlayerDefined() {
         if (customElements.get('hyperframes-player'))
             return;
@@ -219,11 +228,15 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     // blow the page's GPU memory budget.
     const capsRef = useRef({ dom: 0, webgl: 0 });
     const mountsRef = useRef(new Map());
+    const hoveredRef = useRef(null);
+    const promoteRef = useRef(() => { });
     useEffect(() => {
         if (reduced)
             return;
         const tierFor = (item) => item.preview.heavy ? 'webgl' : 'dom';
         const capFor = (tier) => tier === 'webgl' ? MAX_WEBGL_PLAYERS : MAX_DOM_PLAYERS;
+        // Hosts in view that were refused for want of a slot; they take the next one freed.
+        let waiting = new Map();
         // The one place a slot is given back. It only acts while the map still holds this exact
         // state, so a late error, a timeout after unmount, or the catch below cannot release twice.
         const release = (item, state) => {
@@ -233,10 +246,15 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             state.player?.remove();
             capsRef.current[state.tier] -= 1;
             mountsRef.current.delete(item.href);
+            const entries = [...waiting];
+            const queued = [...entries.filter(([h]) => h === hoveredRef.current), ...entries.filter(([h]) => h !== hoveredRef.current)];
+            waiting.clear();
+            queued.forEach(([href, host]) => mount(host, catalog.items.find((i) => i.href === href)));
         };
         const unmount = (host, item) => {
             // Keyed by item.href, same as mount() below -- setHover() only ever has the
             // item, never the host node, so the map has to be addressable by href.
+            waiting.delete(item.href);
             const state = mountsRef.current.get(item.href);
             if (!state)
                 return;
@@ -252,10 +270,12 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             let state;
             try {
                 const tier = tierFor(item);
-                if (capsRef.current[tier] >= capFor(tier))
-                    return; // over budget for this tier; stays on the neutral tile until a slot frees
+                if (capsRef.current[tier] >= capFor(tier)) {
+                    waiting.set(item.href, host); // over budget for this tier; mounts when a slot frees
+                    return;
+                }
                 capsRef.current[tier] += 1;
-                state = { player: null, tier, hover: false, readyTimer: 0 };
+                state = { player: null, host, tier, hover: hoveredRef.current === item.href, readyTimer: 0 };
                 mountsRef.current.set(item.href, state);
                 await ensurePlayerDefined();
                 const response = await fetch(item.preview.source);
@@ -289,9 +309,14 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 player.addEventListener('ready', () => {
                     clearTimeout(readyTimer);
                     player.seek(REST_SECONDS);
-                    host.dataset.ready = 'true';
-                    if (state.hover)
-                        player.play();
+                    // The poster stays visible until the composition has painted, not merely until its runtime is ready.
+                    revealWhenPainted(player, () => {
+                        if (mountsRef.current.get(item.href) !== state)
+                            return;
+                        host.dataset.ready = 'true';
+                        if (state.hover)
+                            player.play();
+                    });
                 }, { once: true });
                 player.setAttribute('srcdoc', html);
                 state.player = player;
@@ -306,6 +331,20 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 if (state)
                     release(item, state);
             }
+        };
+        // A hovered tile that is still waiting takes the slot of a mounted tile the pointer is not on.
+        promoteRef.current = (item) => {
+            const host = waiting.get(item.href);
+            if (!host)
+                return;
+            const tier = tierFor(item);
+            const victim = [...mountsRef.current].find(([, st]) => st.tier === tier && !st.hover);
+            if (!victim)
+                return;
+            waiting = new Map([[item.href, host], ...waiting]);
+            waiting.set(victim[0], victim[1].host);
+            release(catalog.items.find((i) => i.href === victim[0]), victim[1]);
+            delete victim[1].host.dataset.ready;
         };
         const hosts = resultsRef.current?.querySelectorAll('a[data-preview-mode="player"] [data-preview-host]') ?? [];
         const observer = new IntersectionObserver((entries) => {
@@ -330,15 +369,20 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             });
             mounts.clear();
             capsRef.current = { dom: 0, webgl: 0 };
+            hoveredRef.current = null;
         };
     }, [filters, limit, expandedGroups, reduced, catalog]);
     const setHover = (item, hovering) => {
         if (reduced)
             return;
         if (item.preview?.mode === 'player') {
+            hoveredRef.current = hovering ? item.href : null;
             const state = mountsRef.current.get(item.href);
-            if (!state)
+            if (!state) {
+                if (hovering)
+                    promoteRef.current(item);
                 return;
+            }
             state.hover = hovering;
             if (state.player) {
                 if (hovering)
@@ -377,7 +421,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     }));
     const caret = React.createElement("svg", { className: "hfc-caret", width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
         React.createElement("path", { d: "m6 9 6 6 6-6" }));
-    const card = (item) => (React.createElement("a", { className: "hfc-card", href: item.href, key: item.href, "data-preview-mode": item.preview?.mode || "still", onMouseEnter: () => setHover(item, true), onMouseLeave: () => setHover(item, false), onFocus: () => setHover(item, true), onBlur: () => setHover(item, false) },
+    // eager: the posters above the fold (the pinned group) start immediately instead of queueing behind the page's prefetches.
+    const card = (item, eager = false) => (React.createElement("a", { className: "hfc-card", href: item.href, key: item.href, "data-preview-mode": item.preview?.mode || "still", onMouseEnter: () => setHover(item, true), onMouseLeave: () => setHover(item, false), onFocus: () => setHover(item, true), onBlur: () => setHover(item, false) },
         React.createElement("div", { className: "hfc-media" },
             item.preview?.mode === "unsupported"
                 ? React.createElement("div", { className: "hfc-fallback hfc-unsupported", "aria-hidden": "true" },
@@ -386,7 +431,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 : React.createElement("div", { className: "hfc-fallback", "aria-hidden": "true", style: { display: item.poster ? "none" : undefined } },
                     React.createElement("span", null, item.section),
                     React.createElement("strong", null, item.title)),
-            item.poster && React.createElement("img", { src: item.poster, alt: `${item.title} preview`, loading: "lazy", decoding: "async", width: "640", height: "360", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.previousElementSibling.style.display = "flex"; } }),
+            item.poster && React.createElement("img", { src: item.poster, alt: `${item.title} preview`, loading: eager ? "eager" : "lazy", fetchPriority: eager ? "high" : undefined, decoding: "async", width: "640", height: "360", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.previousElementSibling.style.display = "flex"; } }),
             item.preview?.mode !== "still" && item.preview?.mode !== "unsupported" && React.createElement("div", { className: "hfc-preview-host", "data-preview-host": item.href, "aria-hidden": "true" })),
         React.createElement("div", { className: "hfc-card-body" },
             React.createElement("div", { className: "hfc-card-title" },
@@ -400,7 +445,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 " ready to install."),
             React.createElement("p", null, initialGroup ? `${matches.length} items. Preview a piece and open it to explore its controls, code, and installation.` : "Find the scene, caption, or finishing touch for your next video. Preview the motion, pick a favorite, and make it your own.")),
         React.createElement("section", { className: "hfc-browser", "aria-label": "Browse catalog", ref: resultsRef }, searching ? React.createElement(React.Fragment, null,
-            matches.length ? React.createElement("div", { className: "hfc-grid" }, matches.slice(0, limit).map(card)) : React.createElement("div", { className: "hfc-empty" },
+            matches.length ? React.createElement("div", { className: "hfc-grid" }, matches.slice(0, limit).map((item) => card(item))) : React.createElement("div", { className: "hfc-empty" },
                 React.createElement("h3", null, "No matches yet."),
                 React.createElement("p", null, "Try a different search, or clear the filters to explore everything."),
                 React.createElement("button", { type: "button", onClick: reset }, "Explore all items")),
@@ -416,5 +461,5 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                     expandedGroups[group.id] ? "Show Less" : `Show All ${group.count}`,
                     " ",
                     caret)),
-            React.createElement("div", { className: "hfc-grid", id: `gallery-${group.id}` }, ordered(items.filter((item) => item.group === group.id)).slice(0, expandedGroups[group.id] ? undefined : group.pinned ? 6 : 3).map(card))))))));
+            React.createElement("div", { className: "hfc-grid", id: `gallery-${group.id}` }, ordered(items.filter((item) => item.group === group.id)).slice(0, expandedGroups[group.id] ? undefined : group.pinned ? 6 : 3).map((item) => card(item, group.pinned === true)))))))));
 };

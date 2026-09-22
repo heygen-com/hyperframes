@@ -11,6 +11,7 @@ import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
 import { clampAudioGain } from "@hyperframes/core/audio-gain";
+import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
 import {
   downloadToTemp,
   isHttpUrl,
@@ -349,6 +350,37 @@ function buildVolumeExpression(track: AudioTrack, ignoreKeyframes = false): stri
   return `volume=${escapeExpressionCommas(expression)}:eval=frame`;
 }
 
+/** afade stages after the volume filter (leading comma), or "" when none. Stream time 0 is the clip start. */
+export function buildFadeFilters(
+  track: Pick<AudioTrack, "start" | "end" | "fadeIn" | "fadeOut">,
+): string {
+  const duration = track.end - track.start;
+  const { fadeIn, fadeOut } = clampFadesToDuration(
+    { fadeIn: track.fadeIn ?? 0, fadeOut: track.fadeOut ?? 0 },
+    duration,
+  );
+  const stages: string[] = [];
+  if (fadeIn > 0) stages.push(`afade=t=in:st=0:d=${formatFilterNumber(fadeIn)}`);
+  if (fadeOut > 0 && duration > 0) {
+    stages.push(
+      `afade=t=out:st=${formatFilterNumber(Math.max(0, duration - fadeOut))}:d=${formatFilterNumber(fadeOut)}`,
+    );
+  }
+  return stages.length ? `,${stages.join(",")}` : "";
+}
+
+/** One track: trim, volume, afade, delay/pad. asetpts after apad so FFmpeg 5-8 delayed branches do not land at t=0. */
+export function buildTrackInputFilter(
+  track: Pick<AudioTrack, "start" | "end" | "fadeIn" | "fadeOut" | "tailSeconds">,
+  index: number,
+  volumeFilter: string,
+  totalDuration: number,
+): string {
+  const delayMs = Math.round(track.start * 1000);
+  const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
+  return `[${index}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter}${buildFadeFilters(track)},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${index}]`;
+}
+
 interface ExtractResult {
   success: boolean;
   outputPath: string;
@@ -585,6 +617,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   ): AudioElement => {
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
+    const fades = readElementFades(el);
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
     const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
     // Audio only in v1 (matches resolveAudioGroups, which only scans
@@ -600,6 +633,8 @@ export function parseAudioElements(html: string): AudioElement[] {
       playbackRate: readElementRateSpec(el),
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
+      ...(fades.fadeIn > 0 ? { fadeIn: fades.fadeIn } : {}),
+      ...(fades.fadeOut > 0 ? { fadeOut: fades.fadeOut } : {}),
       ...(fxChain ? { fxChain } : {}),
       ...(automation ? { automation } : {}),
       ...(group
@@ -835,27 +870,8 @@ async function mixAudioTracks(
   const buildFilterComplex = (ignoreAutomation: boolean): string => {
     const filterParts: string[] = [];
     tracks.forEach((track, i) => {
-      const delayMs = Math.round(track.start * 1000);
-      // A clip's own audio ends at `end`, but an FX tail is still decaying past
-      // it. Trimming at the boundary is what cut every reverb short; the final
-      // atrim below still holds the mix to the composition's length, so a tail
-      // can run over what follows but never past the end of the video.
-      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
-      // `apad` then `atrim` is the portable pad-to-length shape: PR #2769 moved
-      // off `apad=whole_dur=` because some FFmpeg builds reject that option
-      // outright ("Error applying option 'whole_dur': Option not found").
-      // But on FFmpeg 5.x through 8.0.x the samples `apad` appends carry
-      // timestamps the following `atrim` misreads, so a delayed branch lands at
-      // t=0 and, once four or more branches are mixed, the last one disappears
-      // entirely. `asetpts=N/SR/TB` renumbers the padded stream from the sample
-      // count before the trim reads it, which fixes the misplacement while
-      // keeping the filter set every build supports. Verified correct on 4.2.7,
-      // 7.0.2, an 8.x nightly and 8.1.1; the un-reset form is wrong on the
-      // middle two.
-      filterParts.push(
-        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
-      );
+      filterParts.push(buildTrackInputFilter(track, i, volumeFilter, totalDuration));
     });
 
     const mixInputs = tracks.map((_, i) => `[a${i}]`).join("");
@@ -1023,14 +1039,8 @@ async function mixGroupMembers(
 
   const buildInputFilters = (ignoreKeyframes: boolean) =>
     memberTracks.map((track, i) => {
-      const delayMs = Math.round(track.start * 1000);
-      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreKeyframes);
-      // Same `asetpts=N/SR/TB` as the master mix above, for the same reason and
-      // on the same builds: these are delayed branches padded to length and then
-      // amix'd, so without the renumbering a delayed member lands at t=0 and a
-      // group of four or more loses its last one.
-      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
+      return buildTrackInputFilter(track, i, volumeFilter, totalDuration);
     });
   const mixInputs = memberTracks.map((_, i) => `[a${i}]`).join("");
 
@@ -1391,6 +1401,8 @@ export async function processCompositionAudio(
           // Gain is already in the samples when baked, so mix at unity.
           volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
           volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
+          ...(element.fadeIn ? { fadeIn: element.fadeIn } : {}),
+          ...(element.fadeOut ? { fadeOut: element.fadeOut } : {}),
           ...(tailSeconds > 0 ? { tailSeconds } : {}),
         };
 

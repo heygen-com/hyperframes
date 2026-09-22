@@ -135,6 +135,26 @@ function renderBasicTimeline() {
   return { host, root };
 }
 
+function renderSharedAutomationTimeline(selectedElementId?: string) {
+  const host = createSizedTimelineHost(720);
+  const automation = JSON.stringify({
+    version: 1,
+    lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
+  });
+  usePlayerStore.setState({
+    duration: 8,
+    timelineReady: true,
+    ...(selectedElementId ? { selectedElementId } : {}),
+    elements: [
+      { id: "narration-1", tag: "audio", start: 0, duration: 4, track: 0, automation },
+      { id: "narration-2", tag: "audio", start: 4, duration: 4, track: 0, automation },
+    ],
+  });
+  const root = createRoot(host);
+  act(() => root.render(React.createElement(Timeline)));
+  return { host, root };
+}
+
 describe("Timeline provider boundary", () => {
   it("keeps all-collapsed horizontal positions at the gutter plus the pre-t=0 pad", () => {
     usePlayerStore.setState({
@@ -621,21 +641,7 @@ describe("Timeline provider boundary", () => {
   // clip left the row's state depending on the selection, and a collapse that
   // only dropped the active clip left the row stuck open.
   it("expands and collapses every clip on a shared track together", () => {
-    const host = createSizedTimelineHost(720);
-    const automation = JSON.stringify({
-      version: 1,
-      lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
-    });
-    usePlayerStore.setState({
-      duration: 8,
-      timelineReady: true,
-      elements: [
-        { id: "narration-1", tag: "audio", start: 0, duration: 4, track: 0, automation },
-        { id: "narration-2", tag: "audio", start: 4, duration: 4, track: 0, automation },
-      ],
-    });
-    const root = createRoot(host);
-    act(() => root.render(React.createElement(Timeline)));
+    const { host, root } = renderSharedAutomationTimeline();
 
     const row = host.querySelector<HTMLElement>('[data-el-id="narration-1"]')?.parentElement
       ?.parentElement;
@@ -668,22 +674,7 @@ describe("Timeline provider boundary", () => {
   // a lane to select its clip therefore made the handles vanish under the
   // pointer, which is the one gesture the read-only lane exists to support.
   it("keeps the automation lanes mounted when the selection moves along the row", () => {
-    const host = createSizedTimelineHost(720);
-    const automation = JSON.stringify({
-      version: 1,
-      lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
-    });
-    usePlayerStore.setState({
-      duration: 8,
-      timelineReady: true,
-      selectedElementId: "narration-2",
-      elements: [
-        { id: "narration-1", tag: "audio", start: 0, duration: 4, track: 0, automation },
-        { id: "narration-2", tag: "audio", start: 4, duration: 4, track: 0, automation },
-      ],
-    });
-    const root = createRoot(host);
-    act(() => root.render(React.createElement(Timeline)));
+    const { host, root } = renderSharedAutomationTimeline("narration-2");
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label$=" lanes"]')?.click());
 
     const before = [...host.querySelectorAll(".hf-automation-lane")];

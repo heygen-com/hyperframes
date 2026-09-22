@@ -1,3 +1,4 @@
+import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
 import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
@@ -238,12 +239,17 @@ function renderOutputShapeEventProperties(props: RenderOutputShapeTelemetryPaylo
 export interface RenderEnvironmentTelemetryPayload {
   ffmpegVersionMajor?: number;
   browserVersionMajor?: number;
+  browserInstall?: BrowserInstallFacts;
 }
 
 function renderEnvironmentEventProperties(props: RenderEnvironmentTelemetryPayload) {
   return {
     ffmpeg_version_major: props.ffmpegVersionMajor,
     browser_version_major: props.browserVersionMajor,
+    browser_build: props.browserInstall?.build,
+    browser_path_ascii: props.browserInstall?.pathAscii,
+    browser_path_length: props.browserInstall?.pathLength,
+    browser_path_drive: props.browserInstall?.drive,
   };
 }
 

@@ -2,16 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const studioCss = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
+const themeCss = readFileSync(new URL("../../styles/theme.css", import.meta.url), "utf8");
+const timelineOverlaySources = [
+  "TimelineShortcutHint.tsx",
+  "LayerDisclosureRow.tsx",
+  "ImageThumbnail.tsx",
+  "AudioWaveform.tsx",
+  "VideoThumbnail.tsx",
+].map((fileName) => readFileSync(new URL(`./${fileName}`, import.meta.url), "utf8"));
 const timelineClipSource = readFileSync(new URL("./TimelineClip.tsx", import.meta.url), "utf8");
 const playheadSource = readFileSync(new URL("./PlayheadIndicator.tsx", import.meta.url), "utf8");
-
-const allowedTimelineTransitionProperties = [
-  "background-color",
-  "border-color",
-  "box-shadow",
-  "color",
-  "opacity",
-];
 
 function expectRule(css: string, selector: string): string {
   const selectorStart = css.indexOf(`${selector} {`);
@@ -31,28 +31,26 @@ function expectDeclaration(ruleBody: string, property: string): string {
   return declarationMatch?.[1].trim() ?? "";
 }
 
-function transitionProperties(transitionDeclaration: string): string[] {
-  const items: string[] = [];
-  let depth = 0;
-  let item = "";
-
-  for (const char of transitionDeclaration) {
-    if (char === "(") depth += 1;
-    if (char === ")") depth -= 1;
-    if (char === "," && depth === 0) {
-      items.push(item.trim());
-      item = "";
-      continue;
-    }
-    item += char;
-  }
-
-  if (item.trim().length > 0) items.push(item.trim());
-
-  return items.map((transition) => transition.split(/\s+/)[0]);
+function themeTokenValue(token: string): string {
+  const match = new RegExp(`${token}:\\s*([^;]+);`).exec(themeCss);
+  expect(match?.[1]).toBeDefined();
+  return match?.[1].trim() ?? "";
 }
 
 describe("timeline motion styles", () => {
+  it.each([
+    ["--timeline-track-label", "rgba(255, 255, 255, 0.5)"],
+    ["--timeline-tick-text", "rgba(255, 255, 255, 0.34)"],
+    ["--timeline-border-strong", "rgba(255, 255, 255, 0.2)"],
+    ["--timeline-group-member-tint", "rgba(255, 255, 255, 0.035)"],
+    ["--timeline-overlay-text", "rgba(255, 255, 255, 0.8)"],
+    ["--timeline-clip-shadow-dragging", "rgba(0, 0, 0, 0.4)"],
+    ["--timeline-playhead-glow", "rgba(60, 230, 172, 0.14)"],
+    ["--timeline-playhead-shadow", "rgba(0, 0, 0, 0.55)"],
+  ])("keeps the migrated default for %s", (token, expected) => {
+    expect(themeTokenValue(token)).toBe(expected);
+  });
+
   it("keeps clip motion reduced-motion gated and layout safe", () => {
     const mediaStart = studioCss.indexOf("@media (prefers-reduced-motion: no-preference)");
     expect(mediaStart).toBeGreaterThanOrEqual(0);
@@ -63,26 +61,94 @@ describe("timeline motion styles", () => {
 
     const motionMediaCss = studioCss.slice(mediaStart);
     const timelineClipMotionRule = expectRule(motionMediaCss, ".timeline-clip");
-    const clipTransition = expectDeclaration(timelineClipMotionRule, "transition");
 
-    expect(transitionProperties(clipTransition)).toEqual(allowedTimelineTransitionProperties);
-    expect(clipTransition).not.toMatch(/\b(?:all|left|width|top|bottom|transform)\b/);
+    expect(expectDeclaration(timelineClipMotionRule, "transition")).toBe(
+      "background-color 120ms ease-out",
+    );
   });
 
   it("layers the active mint bloom through opacity instead of a gradient background swap", () => {
     const baseTimelineClipRule = expectRule(studioCss, ".timeline-clip");
+    const timelineClipLabelRule = expectRule(studioCss, ".timeline-clip__label");
+    const timelineClipTimecodeRule = expectRule(studioCss, ".timeline-clip__timecode");
+    const audioClipRule = expectRule(studioCss, ".timeline-clip.is-audio");
+    const audioClipHoverRule = expectRule(studioCss, ".timeline-clip.is-audio.is-hovered");
+    const audioClipDraggingRule = expectRule(studioCss, ".timeline-clip.is-audio.is-dragging");
     const activeTimelineClipRule = expectRule(studioCss, ".timeline-clip[data-active]");
+    const selectedTimelineClipRule = expectRule(studioCss, ".timeline-clip.is-selected");
+    const activeSelectedTimelineClipRule = expectRule(
+      studioCss,
+      ".timeline-clip[data-active].is-selected",
+    );
     const bloomOverlayRule = expectRule(studioCss, ".timeline-clip::before");
     const activeBloomOverlayRule = expectRule(studioCss, ".timeline-clip[data-active]::before");
 
-    expect(baseTimelineClipRule).toContain("background-color: rgba(255, 255, 255, 0.055)");
+    expect(baseTimelineClipRule).toContain("background-color: var(--clip-bg)");
+    expect(baseTimelineClipRule).toContain("border: 1px solid var(--clip-border)");
+    expect(baseTimelineClipRule).toContain("box-shadow:");
+    expect(baseTimelineClipRule).toContain("inset 0 1px 0 var(--timeline-clip-highlight)");
+    expect(baseTimelineClipRule).toContain("var(--timeline-clip-shadow)");
+    expect(timelineClipLabelRule).toContain("background: var(--timeline-clip-chip-bg)");
+    expect(timelineClipLabelRule).toContain("color: var(--timeline-clip-chip-text)");
+    expect(timelineClipLabelRule).toContain("text-overflow: ellipsis");
+    expect(timelineClipLabelRule).toContain("max-width: calc(100% - 22px)");
+    expect(timelineClipTimecodeRule).toContain("color: var(--timeline-tick-text)");
+    expect(themeCss).toContain("--timeline-clip-bg: rgba(255, 255, 255, 0.12)");
+    expect(themeCss).toContain("--timeline-clip-border: rgba(255, 255, 255, 0.22)");
+    expect(themeCss).toContain("--timeline-track-label: rgba(255, 255, 255, 0.5)");
+    expect(themeCss).toContain("--timeline-tick-text: rgba(255, 255, 255, 0.34)");
+    expect(themeCss).toContain("--timeline-clip-label-active: rgba(232, 255, 247, 0.95)");
+    expect(themeCss).toContain("--timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85)");
+    expect(themeCss).toContain("--timeline-clip-selection: rgba(255, 255, 255, 0.85)");
+    expect(themeCss).toContain("--timeline-clip-selection-highlight: rgb(255 255 255 / 0.55)");
+    expect(themeCss).toContain("--timeline-clip-radius: 8px");
+    expect(themeCss).toContain("--timeline-clip-audio-radius: 21px");
+    expect(themeCss).toContain("--timeline-clip-highlight: rgb(255 255 255 / 0.08)");
+    expect(themeCss).toContain("--timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.3)");
+    expect(themeCss).toContain("--timeline-clip-chip-bg: rgba(15, 22, 18, 0.73)");
+    expect(themeCss).toContain("--timeline-clip-chip-audio-bg: rgba(25, 16, 38, 0.7)");
+    expect(themeCss).toContain("--timeline-clip-chip-text: #ffffff");
+    expect(themeCss).toContain("--timeline-row-bg: #edf0ed");
+    expect(themeCss).toContain("--timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.12)");
+    expect(themeCss).toContain("--timeline-clip-selection: #0f766e");
+    expect(themeCss).toContain("--timeline-clip-audio-bg: rgba(167, 139, 250, 0.16)");
+    expect(themeCss).toContain("--timeline-clip-audio-border: rgba(167, 139, 250, 0.4)");
+    expect(themeCss).toContain("--timeline-clip-audio-bg-hover: rgba(167, 139, 250, 0.24)");
+    expect(themeCss).toContain("--timeline-clip-audio-bg-dragging: rgba(60, 52, 84, 0.96)");
+    expect(audioClipRule).toContain("background-color: var(--timeline-clip-audio-bg)");
+    expect(audioClipRule).toContain("border-color: var(--timeline-clip-audio-border)");
+    expect(audioClipHoverRule).toContain("background-color: var(--timeline-clip-audio-bg-hover)");
+    expect(audioClipDraggingRule).toContain("var(--timeline-clip-audio-bg-dragging)");
+    expect(themeCss).toContain("--timeline-clip-selection: rgba(255, 255, 255, 0.85)");
+    expect(selectedTimelineClipRule).toContain(
+      "outline: 1.5px solid var(--timeline-clip-selection)",
+    );
+    expect(selectedTimelineClipRule).toContain("outline-offset: -1.5px");
+    expect(activeSelectedTimelineClipRule).toContain(
+      "outline: 1.5px solid var(--timeline-clip-selection)",
+    );
+    expect(activeSelectedTimelineClipRule).toContain("outline-offset: -1.5px");
     expect(activeTimelineClipRule).not.toContain("background: linear-gradient");
-    expect(activeTimelineClipRule).toContain("border-color: rgba(60, 230, 172, 0.55)");
+    expect(activeTimelineClipRule).toContain("border-color: var(--clip-border-active)");
     expect(activeTimelineClipRule).not.toContain("box-shadow");
-    expect(bloomOverlayRule).toContain("background: rgba(60, 230, 172, 0.2)");
+    expect(bloomOverlayRule).toContain("background: var(--clip-bg-active)");
     expect(bloomOverlayRule).not.toContain("linear-gradient");
     expect(bloomOverlayRule).toContain("opacity: 0");
     expect(activeBloomOverlayRule).toContain("opacity: 1");
+  });
+
+  it("routes timeline overlay colours through theme tokens", () => {
+    const overlaySource = timelineOverlaySources.join("\n");
+
+    expect(overlaySource).toContain("var(--timeline-shortcut-bg)");
+    expect(overlaySource).toContain("var(--timeline-thumbnail-shimmer)");
+    expect(overlaySource).toContain("var(--timeline-thumbnail-label-gradient)");
+    expect(overlaySource).toContain("var(--timeline-thumbnail-label-shadow)");
+    expect(overlaySource).toContain('"--timeline-waveform-bar-rgb"');
+    expect(overlaySource).toContain("var(--timeline-waveform-error)");
+    expect(overlaySource).toContain("var(--timeline-waveform-label-shadow)");
+    expect(overlaySource).toContain("var(--timeline-text-solid)");
+    expect(overlaySource).toContain("var(--timeline-accent)");
   });
 
   it("targets trim handle bars without changing drag geometry", () => {

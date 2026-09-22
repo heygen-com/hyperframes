@@ -18,14 +18,38 @@ import {
   LOCAL_MODEL_ID,
   LOCAL_MODEL_REVISION,
 } from "../../packages/cli/src/registry/localModel.js";
-import { catalogFromRegistry, localVectorRevision } from "./catalog-artifact.js";
+import {
+  catalogFromRegistry,
+  localVectorRevision,
+  mediaMetadataRevision,
+  sha256Hex,
+} from "./catalog-artifact.js";
 
 type RegistryItem = { name: string; type?: string };
 type Registry = { items: RegistryItem[]; catalogArtifact?: { revision?: string } };
 type Artifact = { model?: string; dimensions?: number; revision?: string; names?: string[] };
+type MediaArtifact = {
+  model?: string;
+  modelRevision?: string;
+  dimensions?: number;
+  revision?: string;
+  metadataRevision?: string;
+  credits?: { file?: string; sha256?: string };
+  names?: string[];
+  rows?: Array<{
+    id?: string;
+    file?: string;
+    title?: string;
+    description?: string;
+    tags?: string[];
+    kind?: string;
+  }>;
+};
 
 const REGISTRY = "registry/registry.json";
 const ARTIFACT = "registry/catalog-artifact/local-vectors.json";
+const MEDIA_MANIFEST = "skills/media-use/audio/assets/sfx/manifest.json";
+const MEDIA_ARTIFACT = "registry/catalog-artifact/media-vectors.json";
 
 function read<T>(path: string): T {
   try {
@@ -67,6 +91,70 @@ const expectedRevision = localVectorRevision(
 );
 const artifactRevisionMatches = artifact.revision === expectedRevision;
 const registryRevisionMatches = registry.catalogArtifact?.revision === expectedRevision;
+const mediaSource =
+  read<Record<string, { file?: string; description?: string; duration?: number }>>(MEDIA_MANIFEST);
+const mediaArtifact = read<MediaArtifact>(MEDIA_ARTIFACT);
+const mediaRowsFromSource = Object.entries(mediaSource)
+  .sort(([left], [right]) => left.localeCompare(right))
+  .map(([id, source]) => ({
+    id,
+    kind: "sfx",
+    title: id,
+    description: source.description ?? "",
+    tags: ["sfx"],
+    file: `skills/media-use/audio/assets/sfx/${source.file ?? ""}`,
+    ...(source.duration === undefined ? {} : { duration: source.duration }),
+  }));
+const mediaEntries = new Map(
+  mediaRowsFromSource.map((row) => [
+    row.id,
+    `${row.title}\n${row.description}\n${row.tags.join(" ")}\n${row.kind}`,
+  ]),
+);
+const expectedMediaRevision = localVectorRevision(
+  LOCAL_MODEL_ID,
+  LOCAL_MODEL_REVISION,
+  LOCAL_MODEL_DIMENSIONS,
+  mediaEntries,
+);
+const expectedMediaMetadataRevision = mediaMetadataRevision(mediaRowsFromSource);
+const expectedCredits = {
+  file: "skills/media-use/audio/assets/sfx/CREDITS.md",
+  sha256: sha256Hex(readFileSync("skills/media-use/audio/assets/sfx/CREDITS.md", "utf8")),
+};
+const mediaBin = readFileSync(MEDIA_ARTIFACT.replace(/\.json$/, ".bin"));
+const mediaRows = new Map(
+  (mediaArtifact.rows ?? [])
+    .filter(
+      (row): row is { id: string; file: string } =>
+        typeof row.id === "string" && typeof row.file === "string",
+    )
+    .map((row) => [row.id, row.file]),
+);
+const missingMediaRows = Object.entries(mediaSource)
+  .filter(
+    ([id, source]) =>
+      mediaRows.get(id) !== `skills/media-use/audio/assets/sfx/${source.file ?? ""}`,
+  )
+  .map(([id]) => id)
+  .sort();
+const mediaNames = mediaArtifact.names ?? [];
+const mediaRowsMatchNames =
+  (mediaArtifact.rows ?? []).length === mediaNames.length &&
+  (mediaArtifact.rows ?? []).every((row, index) => row.id === mediaNames[index]);
+const mediaRowsMatchSource =
+  JSON.stringify(mediaArtifact.rows ?? []) === JSON.stringify(mediaRowsFromSource);
+const mediaArtifactValid =
+  mediaArtifact.model === LOCAL_MODEL_ID &&
+  mediaArtifact.modelRevision === LOCAL_MODEL_REVISION &&
+  mediaArtifact.dimensions === LOCAL_MODEL_DIMENSIONS &&
+  mediaArtifact.revision === expectedMediaRevision &&
+  mediaArtifact.metadataRevision === expectedMediaMetadataRevision &&
+  mediaArtifact.credits?.file === expectedCredits.file &&
+  mediaArtifact.credits.sha256 === expectedCredits.sha256 &&
+  mediaRowsMatchSource &&
+  mediaRowsMatchNames &&
+  mediaBin.byteLength === mediaNames.length * LOCAL_MODEL_DIMENSIONS * 4;
 
 const show = (names: string[]) =>
   names
@@ -76,6 +164,17 @@ const show = (names: string[]) =>
 
 console.log(`registry: ${registryNames.size} searchable items (blocks + components)`);
 console.log(`artifact: ${artifactNames.size} vectors (${artifact.model ?? "unknown model"})`);
+console.log(
+  `media: ${mediaRows.size} rows for ${Object.keys(mediaSource).length} bundled SFX files`,
+);
+
+if (missingMediaRows.length > 0) {
+  console.error(`\n${missingMediaRows.length} bundled SFX file(s) have no matching media row:`);
+  console.error(show(missingMediaRows));
+}
+if (!mediaArtifactValid) {
+  console.error("\nThe published media vector metadata or binary does not match the SFX manifest.");
+}
 
 if (dropped.length > 0) {
   // Not fatal: the CLI filters these before a user ever sees them.
@@ -96,7 +195,13 @@ if (!artifactRevisionMatches || !registryRevisionMatches) {
   console.error(`  registry: ${registry.catalogArtifact?.revision ?? "missing"}`);
 }
 
-if (unindexed.length > 0 || !artifactRevisionMatches || !registryRevisionMatches) {
+if (
+  unindexed.length > 0 ||
+  !artifactRevisionMatches ||
+  !registryRevisionMatches ||
+  missingMediaRows.length > 0 ||
+  !mediaArtifactValid
+) {
   console.error(
     "\nMeaning search is stale. Word search still uses the live registry.\n\n" +
       "If you have the embedding model, regenerate and commit the artifact:\n" +
