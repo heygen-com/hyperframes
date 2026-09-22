@@ -94,6 +94,7 @@ jobs:
               - "package.json"
               - ".github/workflows/ci.yml"
             code:
+              - "registry/**"
               - "packages/**"
               - "scripts/**"
               - "package.json"
@@ -368,6 +369,10 @@ jobs:
       # After the builds: the preview scripts drive the producer, which imports
       # @hyperframes/core from dist, so running these first fails on a missing
       # module rather than on anything the test is actually checking.
+      - name: Install Chrome for catalog preview tests
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
+        with:
+          chrome-version: stable
       - run: bun run test:scripts
       - run: bun run --filter '!@hyperframes/producer' test
 
@@ -429,7 +434,7 @@ jobs:
             echo "::error::No skills/**/*.test.mjs files found. Did the layout change?"
             exit 1
           fi
-          SKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs)
+          SKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)
           printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
           node --test "${SKILLS_TESTS[@]}"

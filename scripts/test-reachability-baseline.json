@@ -1,12 +1,1 @@
-{
-  "total": 7,
-  "files": {
-    "packages/producer/tests/distributed/_smoke/webm-concat-copy.test.ts": 1,
-    "packages/producer/tests/playback-rate-av-parity/playback-rate-av-parity.test.ts": 1,
-    "registry/components/pan-stations/pan-stations.test.mjs": 1,
-    "scripts/creator-editing-capabilities.test.mjs": 1,
-    "scripts/generate-catalog-payloads.test.ts": 1,
-    "scripts/generate-catalog-previews.test.ts": 1,
-    "scripts/registry-primitive-payloads.test.ts": 1
-  }
-}
+{ "total": 0, "files": {} }
