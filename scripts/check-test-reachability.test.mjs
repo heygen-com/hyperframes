@@ -231,7 +231,7 @@ test("a missing pinned package gives the runner mapping diagnostic", () => {
   );
 });
 
-test("report CLI rejects a restored baseline and a planted orphan", (t) => {
+test("report CLI prints diagnostics without applying the gate verdict", (t) => {
   const cwd = mkdtempSync(join(tmpdir(), "reachability-"));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const tree = fixture("node --test scripts/parity.test.mjs", '"**"');
@@ -249,12 +249,12 @@ test("report CLI rejects a restored baseline and a planted orphan", (t) => {
   const baseline = join(cwd, "scripts/test-reachability-baseline.json");
   writeFileSync(baseline, '{"total":0,"files":{}}');
   const restored = run();
-  assert.equal(restored.status, 1);
-  assert.match(restored.stderr, /baseline is forbidden/);
+  assert.equal(restored.status, 0, restored.stderr);
+  assert.deepEqual(JSON.parse(restored.stdout), {});
   rmSync(baseline);
   writeFileSync(join(cwd, "scripts/orphan.test.mjs"), "");
   execFileSync("git", ["add", "."], { cwd });
   const orphan = run();
-  assert.equal(orphan.status, 1);
-  assert.match(orphan.stderr, /orphan.test.mjs: no CI runner selects this test/);
+  assert.equal(orphan.status, 0, orphan.stderr);
+  assert.match(orphan.stdout, /orphan.test.mjs/);
 });

@@ -415,6 +415,7 @@ function main() {
   const issues = audit(files, read, JSON.parse(read(MANIFEST)));
   if (process.argv.includes("--report")) {
     console.log(JSON.stringify(issues, null, 2));
+    return;
   }
   const errors = verdict(issues, existsSync(resolve(root, BASELINE)));
   if (errors.length) {
