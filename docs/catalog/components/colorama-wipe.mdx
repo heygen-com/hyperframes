@@ -1,0 +1,413 @@
+---
+title: "Colorama Wipe"
+description: "Headline reveal through a feathered, leaning wipe front that is blurred and colour-mapped as it passes, then settles to clean type and wipes off again — the After Effects masked-text + Compound Blur + Colorama 'shiny wipe' as a deterministic canvas effect on any text element"
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  compositionId="colorama-wipe"
+  compositionSrc="compositions/components/colorama-wipe.html"
+  title="Colorama Wipe"
+  description="Headline reveal through a feathered, leaning wipe front that is blurred and colour-mapped as it passes, then settles to clean type and wipes off again — the After Effects masked-text + Compound Blur + Colorama 'shiny wipe' as a deterministic canvas effect on any text element"
+  variables={[]}
+  meta={{"category":"Typography & Text","badge":"Stable","codeLines":352}}
+  attribution={{"path":"registry/components/colorama-wipe","tags":["text","reveal","wipe","colorama","gradient","blur","headline","saas"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/colorama-wipe.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/colorama-wipe.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/colorama-wipe/colorama-wipe.html"
+>
+
+<CatalogSlot slot="code">
+
+```html colorama-wipe.html
+<!--
+  Colorama Wipe — a headline reveals through a feathered, leaning wipe front that is blurred and colour-mapped
+  as it passes, then settles to clean type (the After Effects "shiny wipe": masked text + Compound Blur +
+  Colorama over a moving gradient, with a crisp duplicate fading on top).
+
+  Usage: paste this snippet into your composition AFTER GSAP, then in your script, once fonts are loaded and
+  all other tweens are defined, call:
+
+    attachColoramaWipe("#cw-headline", tl, { at: 0.3, in: 0.75, hold: 2.0, out: 0.55 });
+    window.__timelines["your-comp"] = tl;
+
+  The target is any element that holds one line of text. The component measures it, hides it
+  (visibility: hidden — layout is untouched) and paints the effect on two canvases over its box for the
+  window [at, at + in + hold + out]. Outside that window nothing is drawn, so the element is invisible: the
+  wipe owns the element's on-screen life. Call it once per element; a second call on the same element is ignored.
+
+  Requirements:
+  - Call after `document.fonts.ready` (the text is rasterised once at attach; a late font swap is not seen).
+  - The composition root (nearest ancestor with data-composition-id) must be the positioning context; the
+    canvases are placed by the element's offset inside it.
+  - One line of text. Multi-line targets: attach one wipe per line element.
+  - GSAP must be loaded before this snippet.
+
+  Options (all optional):
+    at        seconds on the host timeline the wipe enters (default 0)
+    in        entry wipe duration, s (0.75)      hold   fully revealed, s (2.0)      out   exit wipe, s (0.55)
+    cycle     Colorama output cycle, [[pos 0..1, [r,g,b]], ...] intensity -> colour (default: black -> navy ->
+              blue -> azure -> cyan -> violet -> lavender -> white)
+    feather   front softness as a multiple of the text height (2.4)
+    tilt      lean of the front in degrees; the bottom of a glyph lags the top (40)
+    blur      compound-blur maximum as a multiple of the text height (0.15)
+    trail     fraction of the text width behind the front still blurred (0.55)
+    noise     intensity jitter 0..1 (0.03)
+    crisp     fade a sharp copy on top once the front has cleared the text (true)
+    scale     effect canvas resolution as a fraction of the box (0.5); 1 for hero type over ~600 px
+
+  Deterministic: no Math.random, no clocks; every frame is a pure function of the timeline time.
+-->
+
+<style>
+  .cw-src {
+    visibility: hidden; /* layout stays; the canvases paint in its place */
+  }
+  .cw-stage {
+    position: absolute;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .cw-stage canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+</style>
+
+<script>
+  (function () {
+    var DEFAULTS = {
+      at: 0,
+      in: 0.75,
+      hold: 2.0,
+      out: 0.55,
+      cycle: [
+        [0.0, [0, 0, 0]],
+        [0.18, [0, 0, 0]],
+        [0.28, [0, 2, 127]],
+        [0.4, [8, 20, 240]],
+        [0.5, [26, 122, 224]],
+        [0.58, [80, 225, 240]],
+        [0.66, [20, 24, 220]],
+        [0.76, [50, 50, 240]],
+        [0.87, [128, 128, 242]],
+        [0.95, [200, 198, 240]],
+        [1.0, [242, 238, 252]],
+      ],
+      feather: 2.4,
+      tilt: 40,
+      blur: 0.15,
+      trail: 0.55,
+      noise: 0.03,
+      crisp: true,
+      scale: 0.5,
+    };
+    var LEVELS = [0.04, 0.14, 0.3, 0.55, 1.0]; // blur radii as fractions of the maximum
+    var ease = gsap.parseEase("power2.inOut");
+
+    function lut(cycle) {
+      var out = new Uint8ClampedArray(256 * 3);
+      for (var i = 0; i < 256; i++) {
+        var v = i / 255,
+          k = 0;
+        while (k < cycle.length - 2 && cycle[k + 1][0] < v) k++;
+        var a = cycle[k][0],
+          ca = cycle[k][1],
+          b = cycle[k + 1][0],
+          cb = cycle[k + 1][1];
+        var u = Math.min(1, Math.max(0, (v - a) / (b - a)));
+        for (var c = 0; c < 3; c++) out[i * 3 + c] = ca[c] + (cb[c] - ca[c]) * u;
+      }
+      return out;
+    }
+    function hash(x, y, f) {
+      var h = (x * 374761393 + y * 668265263 + f * 2147483647) | 0;
+      h = (h ^ (h >>> 13)) * 1274126177;
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    }
+    function mk(w, h) {
+      var c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      return c;
+    }
+
+    window.attachColoramaWipe = function (target, tl, opts) {
+      var el = typeof target === "string" ? document.querySelector(target) : target;
+      if (!el) {
+        console.warn("[colorama-wipe] no element for", target);
+        return null;
+      }
+      if (el.__cw) return el.__cw;
+      var o = Object.assign({}, DEFAULTS, opts || {});
+      var root = el.closest("[data-composition-id]") || el.parentElement;
+      var cs = getComputedStyle(el);
+      var text = el.textContent.trim();
+      var font = cs.fontStyle + " " + cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+      var size = parseFloat(cs.fontSize);
+
+      // geometry in composition px: the element's box, padded for feather + blur bleed
+      var rr = root.getBoundingClientRect(),
+        er = el.getBoundingClientRect();
+      var k = root.offsetWidth / rr.width || 1; // undo any preview scaling
+      var ex = (er.left - rr.left) * k,
+        ey = (er.top - rr.top) * k,
+        ew = er.width * k,
+        eh = er.height * k;
+      var F = o.feather * size,
+        MAXB = o.blur * size,
+        TILT = (o.tilt * Math.PI) / 180;
+      var padX = Math.ceil(F * 0.6 + MAXB * 3),
+        padY = Math.ceil(MAXB * 3 + eh * 0.25);
+      var BX = ex - padX,
+        BY = ey - padY,
+        BW = ew + padX * 2,
+        BH = eh + padY * 2;
+
+      // stage over the element
+      var stage = document.createElement("div");
+      stage.className = "cw-stage";
+      stage.style.left = BX + "px";
+      stage.style.top = BY + "px";
+      stage.style.width = BW + "px";
+      stage.style.height = BH + "px";
+      var S = o.scale,
+        FW = Math.max(2, Math.round(BW * S)),
+        FH = Math.max(2, Math.round(BH * S));
+      var fx = mk(FW, FH),
+        fctx = fx.getContext("2d", { willReadFrequently: true });
+      var crisp = mk(Math.round(BW), Math.round(BH)),
+        cctx = crisp.getContext("2d");
+      stage.appendChild(fx);
+      stage.appendChild(crisp);
+      el.classList.add("cw-src");
+      el.parentElement.insertBefore(stage, el.nextSibling);
+      // the stage must position against the composition root like the element does
+      if (getComputedStyle(el.parentElement).position === "static" && el.parentElement !== root)
+        root.appendChild(stage);
+
+      // text geometry inside the box, comp px
+      var tx0 = padX,
+        tw = ew,
+        ty = padY + eh / 2,
+        baseline = 0.04 * size;
+      cctx.font = font;
+      cctx.textBaseline = "middle";
+      cctx.textAlign = "center";
+      var measured = cctx.measureText(text).width;
+      if (measured > 0) {
+        tx0 = padX + (ew - measured) / 2;
+        tw = measured;
+      }
+      var x0 = tx0,
+        x1 = tx0 + tw,
+        cx = tx0 + tw / 2;
+
+      // offscreen buffers (effect res)
+      var textC = mk(FW, FH),
+        tctx = textC.getContext("2d");
+      var maskedC = mk(FW, FH),
+        mctx = maskedC.getContext("2d");
+      var blurC = LEVELS.map(function () {
+        return mk(FW, FH);
+      });
+      var bctx = blurC.map(function (c) {
+        return c.getContext("2d", { willReadFrequently: true });
+      });
+      var mapC = mk(FW, FH),
+        mapctx = mapC.getContext("2d", { willReadFrequently: true });
+      var LUT = lut(o.cycle);
+      var dxT = Math.cos(TILT),
+        dyT = Math.sin(TILT);
+
+      // rasterise the text once (half res) — alpha = glyph coverage = Colorama intensity
+      tctx.clearRect(0, 0, FW, FH);
+      tctx.fillStyle = "#fff";
+      tctx.font = font.replace(cs.fontSize, size * S + "px");
+      tctx.textBaseline = "middle";
+      tctx.textAlign = "center";
+      tctx.fillText(text, cx * S, (ty + baseline) * S);
+
+      function tilted(ctx, fxp, len, c0, c1) {
+        var gx = fxp * S,
+          gy = ty * S;
+        var g = ctx.createLinearGradient(gx, gy, gx + dxT * len * S, gy + dyT * len * S);
+        g.addColorStop(0, c0);
+        g.addColorStop(1, c1);
+        return g;
+      }
+
+      var total = o.in + o.hold + o.out;
+      function draw(lt) {
+        // lt = seconds since `at`
+        if (lt < 0 || lt > total) {
+          fctx.clearRect(0, 0, FW, FH);
+          cctx.clearRect(0, 0, crisp.width, crisp.height);
+          return;
+        }
+        var pIn = Math.min(1, Math.max(0, lt / o.in));
+        var pOut = Math.min(1, Math.max(0, (lt - o.in - o.hold) / o.out));
+        var front = x0 - F * 0.4 + (tw + F * 1.7) * ease(pIn);
+        var back = x0 - F * 0.7 + (tw + F * 1.5) * ease(pOut);
+
+        // 1. feathered mask around the front (and the closing edge on exit)
+        mctx.clearRect(0, 0, FW, FH);
+        mctx.globalCompositeOperation = "source-over";
+        mctx.drawImage(textC, 0, 0);
+        mctx.globalCompositeOperation = "destination-in";
+        mctx.fillStyle = tilted(mctx, front - F, F, "rgba(0,0,0,1)", "rgba(0,0,0,0)");
+        mctx.fillRect(0, 0, FW, FH);
+        if (pOut > 0) {
+          mctx.fillStyle = tilted(mctx, back, F, "rgba(0,0,0,0)", "rgba(0,0,0,1)");
+          mctx.fillRect(0, 0, FW, FH);
+        }
+        mctx.globalCompositeOperation = "source-over";
+
+        // 2. compound blur: blur levels mixed per pixel by a front-following map
+        for (var i = 0; i < LEVELS.length; i++) {
+          var c = bctx[i];
+          c.clearRect(0, 0, FW, FH);
+          c.filter = "blur(" + MAXB * LEVELS[i] * S + "px)";
+          c.drawImage(maskedC, 0, 0);
+          c.filter = "none";
+        }
+        var trail = tw * o.trail;
+        mapctx.fillStyle = tilted(mapctx, front - trail - F, trail + F * 0.8, "#000", "#fff");
+        mapctx.fillRect(0, 0, FW, FH);
+        if (pOut > 0) {
+          mapctx.globalCompositeOperation = "lighter";
+          mapctx.fillStyle = tilted(mapctx, back - F * 0.2, trail + F * 0.2, "#fff", "#000");
+          mapctx.fillRect(0, 0, FW, FH);
+          mapctx.globalCompositeOperation = "source-over";
+        }
+        var map = mapctx.getImageData(0, 0, FW, FH).data;
+        var lv = bctx.map(function (c) {
+          return c.getImageData(0, 0, FW, FH).data;
+        });
+
+        // 3. Colorama with per-pixel whitening: tint only in the transition zone, clean type behind the front,
+        //    tint returning ahead of the closing edge
+        var out = fctx.createImageData(FW, FH),
+          od = out.data,
+          n = LEVELS.length - 1,
+          frame = Math.round(lt * 30);
+        var FS = F * S,
+          frontS = front * S,
+          backS = back * S,
+          tyS = ty * S;
+        for (var p = 0, y = 0; y < FH; y++) {
+          var lean = (y / FH - 0.5) * 0.5,
+            yT = (y - tyS) * dyT;
+          for (var x = 0; x < FW; x++, p += 4) {
+            var sF = (x - frontS) * dxT + yT;
+            var white = (-sF - FS * 0.6) / (FS * 0.5);
+            white = white < 0 ? 0 : white > 1 ? 1 : white;
+            if (pOut > 0) {
+              var sB = (x - backS) * dxT + yT;
+              var keep = (sB - FS * 0.7) / (FS * 0.6);
+              keep = keep < 0 ? 0 : keep > 1 ? 1 : keep;
+              white *= keep;
+            }
+            var m = map[p] / 255 + lean;
+            m = m < 0 ? 0 : m > 1 ? 1 : m;
+            var f = m * n,
+              li = Math.min(n - 1, Math.floor(f)),
+              u = f - li;
+            var cov = (lv[li][p + 3] * (1 - u) + lv[li + 1][p + 3] * u) / 255; // glyph coverage after blur
+            if (cov < 0.002) {
+              od[p + 3] = 0;
+              continue;
+            } // no ink: stay transparent
+            var lum = cov + (hash(x, y, frame) - 0.5) * o.noise;
+            var idx = lum <= 0 ? 0 : lum >= 1 ? 255 : (lum * 255) | 0;
+            var g = white >= 1 ? 255 : idx; // clean type is solid white; alpha carries the edge
+            od[p] = LUT[idx * 3] + (g - LUT[idx * 3]) * white;
+            od[p + 1] = LUT[idx * 3 + 1] + (g - LUT[idx * 3 + 1]) * white;
+            od[p + 2] = LUT[idx * 3 + 2] + (g - LUT[idx * 3 + 2]) * white;
+            od[p + 3] = white >= 1 ? Math.min(255, cov * 255) : Math.min(255, cov * 255 * 4); // soft edge where tinted, coverage alpha when clean
+          }
+        }
+        fctx.putImageData(out, 0, 0);
+
+        // 4. crisp duplicate on top, fading up as the front clears the text, dropping on exit
+        cctx.clearRect(0, 0, crisp.width, crisp.height);
+        if (o.crisp) {
+          var opIn = Math.min(1, Math.max(0, (lt - o.in * 0.95) / 0.35)),
+            opOut = 1 - Math.min(1, Math.max(0, pOut / 0.35));
+          cctx.globalAlpha = opIn * opOut;
+          if (cctx.globalAlpha > 0) {
+            cctx.fillStyle = "#fff";
+            cctx.font = font;
+            cctx.textBaseline = "middle";
+            cctx.textAlign = "center";
+            cctx.fillText(text, cx, ty + baseline);
+          }
+          cctx.globalAlpha = 1;
+        }
+      }
+
+      // one linear clock tween at `at`; at progress 0 the mask shows nothing, at progress 1 the exit has closed,
+      // so a seek anywhere outside the window still paints an empty stage
+      var clock = { t: 0 };
+      draw(0);
+      tl.fromTo(
+        clock,
+        { t: 0 },
+        {
+          t: total,
+          duration: total,
+          ease: "none",
+          onUpdate: function () {
+            draw(clock.t);
+          },
+        },
+        o.at,
+      );
+
+      el.__cw = { stage: stage, draw: draw, total: total, options: o };
+      return el.__cw;
+    };
+  })();
+</script>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add colorama-wipe" item="colorama-wipe" />
+
+That writes one file: `compositions/components/colorama-wipe.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/colorama-wipe.html` and copy what is inside into your own composition.
+The file opens with a comment header that walks you through it.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+{/* hf:generated-footer */}
+
+Tagged `text` `reveal` `wipe` `colorama` `gradient` `blur` `headline` `saas`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
