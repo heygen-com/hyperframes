@@ -36,6 +36,7 @@ import {
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
+  revalidatedResponse,
   assetContentType,
 } from "../utils/compositionServer.js";
 import {
@@ -139,20 +140,22 @@ export default defineCommand({
     const app = new Hono();
 
     // Serve the player JS
-    app.get("/player.js", (ctx) => {
-      return ctx.body(readFileSync(playerPath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      });
-    });
+    app.get("/player.js", (ctx) =>
+      revalidatedResponse(
+        readFileSync(playerPath, "utf-8"),
+        "application/javascript",
+        ctx.req.header("If-None-Match"),
+      ),
+    );
 
     // Serve the runtime JS
-    app.get("/runtime.js", (ctx) => {
-      return ctx.body(readFileSync(runtimePath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      });
-    });
+    app.get("/runtime.js", (ctx) =>
+      revalidatedResponse(
+        readFileSync(runtimePath, "utf-8"),
+        "application/javascript",
+        ctx.req.header("If-None-Match"),
+      ),
+    );
 
     const autoProxy = resolveAutoProxy(project.dir, args.proxy as boolean | undefined);
     await registerCompositionRoute(app, project, autoProxy);
@@ -229,7 +232,7 @@ export async function registerCompositionRoute(
       if (autoProxy) {
         html = await injectMediaCodecMap(html, project.dir, [{ html, compSrcPath: reqPath }]);
       }
-      return ctx.html(html);
+      return revalidatedResponse(html, "text/html; charset=UTF-8", ctx.req.header("If-None-Match"));
     }
 
     const contentType = assetContentType(filePath);
@@ -255,6 +258,7 @@ export async function registerCompositionRoute(
           proxyPath,
           PROXY_VARIANT_CONFIG[proxyVariant].contentType,
           ctx.req.header("Range"),
+          ctx.req.header("If-None-Match"),
         );
       } catch (err) {
         if (err instanceof ProxyCapacityError) {
@@ -269,7 +273,12 @@ export async function registerCompositionRoute(
       }
     }
 
-    return buildRangeResponse(filePath, contentType, ctx.req.header("Range"));
+    return buildRangeResponse(
+      filePath,
+      contentType,
+      ctx.req.header("Range"),
+      ctx.req.header("If-None-Match"),
+    );
   });
 }
 
