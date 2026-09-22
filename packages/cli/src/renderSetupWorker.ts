@@ -19,7 +19,11 @@ let result: unknown;
 if (mode === "browser") {
   result = await ensureBrowser(input);
 } else if (mode === "lint") {
-  result = await lintProject(input.projectDir, input.entryFile);
+  result = await lintProject(
+    input.projectDir,
+    input.entryFile,
+    input.host ? { host: input.host } : undefined,
+  );
 } else if (mode === "orphan-cleanup") {
   const killed = killOrphanedProcesses();
   result = killed;

@@ -796,6 +796,12 @@ export interface BundleOptions {
    * inline a LUT that this option has already excluded.
    */
   inlineAssets?: boolean;
+  /**
+   * Lint the compiled HTML and warn when it breaks the HyperFrames contract. Default: true.
+   * A caller that lints the project on its own path (Studio preview) sets false: on a large
+   * composition this lint costs seconds per bundle.
+   */
+  staticGuard?: boolean;
 }
 
 /**
@@ -924,11 +930,13 @@ export async function bundleToSingleHtml(
   const rawHtml = readFileSync(indexPath, "utf-8");
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
-  const staticGuard = await validateHyperframeHtmlContract(compiled);
-  if (!staticGuard.isValid) {
-    console.warn(
-      `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
-    );
+  if (options?.staticGuard !== false) {
+    const staticGuard = await validateHyperframeHtmlContract(compiled);
+    if (!staticGuard.isValid) {
+      console.warn(
+        `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+      );
+    }
   }
 
   const withInterceptor = injectInterceptor(compiled, options?.runtime ?? "inline");
