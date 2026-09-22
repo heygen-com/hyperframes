@@ -37,6 +37,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - name: Report base reachability
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/reachability-base" "$BASE_SHA"
+          (cd "$RUNNER_TEMP/reachability-base" && node scripts/check-test-reachability.mjs --report)
+          git worktree remove "$RUNNER_TEMP/reachability-base"
+      - name: Report head reachability
+        run: node scripts/check-test-reachability.mjs --report
       - run: node --test scripts/check-test-reachability.test.mjs
       - run: node scripts/check-test-reachability.mjs --base origin/main
 
@@ -97,6 +107,8 @@ jobs:
               - "bun.lock"
               - ".github/workflows/ci.yml"
             skills:
+              - "packages/cli/src/media-use/**"
+              - "scripts/check-media-use-copy-parity.test.mjs"
               - "skills/**"
               - ".claude/skills/**"
               - ".agents/skills/**"
