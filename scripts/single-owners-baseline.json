@@ -1,0 +1,14 @@
+{
+  "total": 14,
+  "files": {
+    "gain-to-db:packages/cli/src/commands/normalize-audio.ts": 1,
+    "gain-to-db:packages/core/src/audio/audioFxWorklets.ts": 3,
+    "gain-to-db:packages/core/src/audioCarve.ts": 1,
+    "gain-to-db:packages/core/src/audioLeveller.ts": 1,
+    "gain-to-db:packages/lint/src/rules/media.ts": 1,
+    "db-to-gain:packages/cli/src/commands/normalize-audio.ts": 1,
+    "ffmpeg-fade:skills/faceless-explainer/scripts/assemble-index.mjs": 2,
+    "ffmpeg-fade:skills/pr-to-video/scripts/assemble-index.mjs": 2,
+    "ffmpeg-fade:skills/product-launch-video/scripts/assemble-index.mjs": 2
+  }
+}

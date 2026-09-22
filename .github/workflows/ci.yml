@@ -26,6 +26,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  single-owners:
+    name: Single owners
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/check-single-owners.test.mjs
+      - run: node scripts/check-single-owners.mjs origin/main
+
   changes:
     name: Detect changes
     runs-on: ubuntu-latest

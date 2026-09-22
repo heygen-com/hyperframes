@@ -1,0 +1,65 @@
+{
+  "rules": [
+    {
+      "id": "gain-to-db",
+      "pattern": "20\\s*\\*\\s*Math\\.log10",
+      "owner": "packages/core/src/audioGain.ts",
+      "allowlist": [
+        {
+          "file": "packages/engine/src/services/audioFxRender.test.ts",
+          "reason": "Independent expected values in regression tests"
+        },
+        {
+          "file": "scripts/check-single-owners.test.mjs",
+          "reason": "Planted duplicate-owner fixtures prove the gate rejects copies"
+        },
+        {
+          "file": "skills/media-use/audio/scripts/lib/bgm.test.mjs",
+          "reason": "Independent expected decibel calculation for the audio fixture"
+        }
+      ]
+    },
+    {
+      "id": "db-to-gain",
+      "pattern": "10\\s*\\*\\*\\s*\\([^;]*?/\\s*20\\s*\\)",
+      "owner": "packages/core/src/audioGain.ts",
+      "allowlist": [
+        {
+          "file": "packages/core/src/audioGain.test.ts",
+          "reason": "Independent expected values in regression tests"
+        },
+        {
+          "file": "packages/studio/src/components/editor/audioInspectorInput.test.ts",
+          "reason": "Independent expected values in regression tests"
+        },
+        {
+          "file": "packages/studio/src/components/editor/propertyPanelFlatMediaSection.test.tsx",
+          "reason": "Independent expected values in regression tests"
+        }
+      ]
+    },
+    {
+      "id": "metadata-url",
+      "pattern": "/media/metadata\\?path=\\$\\{",
+      "owner": "packages/studio/src/utils/studioHelpers.ts",
+      "allowlist": []
+    },
+    {
+      "id": "ffmpeg-fade",
+      "pattern": "afade=",
+      "owner": "packages/engine/src/services/audioMixer.ts",
+      "allowlist": [
+        {
+          "file": "packages/engine/src/services/audioMixer.fades.test.ts",
+          "reason": "Independent expected values in regression tests"
+        }
+      ]
+    },
+    {
+      "id": "fade-curve",
+      "pattern": "\\belapsed\\s*/\\s*fadeIn\\b|\\(\\s*duration\\s*-\\s*elapsed\\s*\\)\\s*/\\s*fadeOut\\b",
+      "owner": "packages/core/src/audioFade.ts",
+      "allowlist": []
+    }
+  ]
+}
