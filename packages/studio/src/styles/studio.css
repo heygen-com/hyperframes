@@ -202,7 +202,8 @@ body {
 .timeline-clip {
   background-color: var(--clip-bg);
   border: 1px solid var(--clip-border);
-  border-radius: 8px;
+  border-radius: var(--timeline-clip-radius);
+  box-shadow: inset 0 1px 0 var(--timeline-clip-highlight), var(--timeline-clip-shadow);
 }
 
 .timeline-clip::before {
@@ -229,6 +230,7 @@ body {
 .timeline-clip.is-audio {
   background-color: var(--timeline-clip-audio-bg);
   border-color: var(--timeline-clip-audio-border);
+  border-radius: var(--timeline-clip-audio-radius);
 }
 
 .timeline-clip.is-audio.is-hovered {
@@ -236,7 +238,9 @@ body {
 }
 
 .timeline-clip.is-audio.is-dragging {
-  background-color: var(--timeline-clip-audio-bg-dragging);
+  box-shadow:
+    inset 0 0 0 999px var(--timeline-clip-audio-bg-dragging),
+    0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
 .timeline-clip.is-hovered {
@@ -252,37 +256,52 @@ body {
   outline-offset: -1.5px;
 }
 
+.timeline-clip.is-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--timeline-clip-selection-highlight);
+  pointer-events: none;
+}
+
 .timeline-clip[data-active].is-selected {
   outline: 1.5px solid var(--timeline-clip-selection);
   outline-offset: -1.5px;
 }
 
 .timeline-clip.is-dragging {
-  /* Solid background so the picked-up clip reads clearly while dragging — audio
-     clips (waveform drawn on a separate layer) would otherwise look transparent. */
-  background-color: var(--clip-bg-dragging);
-  box-shadow: 0 8px 24px var(--timeline-clip-shadow-dragging);
+  /* Veil is a shadow, not background-color, so drop does not fade the hover fill. */
+  box-shadow:
+    inset 0 0 0 999px var(--clip-bg-dragging),
+    0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
 .timeline-clip__label {
   position: absolute;
-  top: 6px;
-  left: 12px;
-  right: 10px;
+  top: 5px;
+  left: 6px;
   z-index: 6;
+  width: fit-content;
+  max-width: calc(100% - 22px);
   overflow: hidden;
-  color: var(--timeline-track-label);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--timeline-clip-chip-bg);
+  color: var(--timeline-clip-chip-text);
   font-size: 10px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 16px;
   pointer-events: none;
-  text-shadow: var(--timeline-clip-label-shadow);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.timeline-clip[data-active] .timeline-clip__label {
-  color: var(--timeline-clip-label-active);
+.timeline-clip.is-audio .timeline-clip__label {
+  top: 11px;
+  left: 9px;
+  background: var(--timeline-clip-chip-audio-bg);
 }
 
 .timeline-clip__timecode {
@@ -301,24 +320,7 @@ body {
 
 @media (prefers-reduced-motion: no-preference) {
   .timeline-clip {
-    transition:
-      background-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1),
-      color 200ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .timeline-clip::before {
-    transition: opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .timeline-clip__label {
-    transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .timeline-clip__handle-bar {
-    transition: opacity 120ms ease-out;
+    transition: background-color 120ms ease-out;
   }
 }
 

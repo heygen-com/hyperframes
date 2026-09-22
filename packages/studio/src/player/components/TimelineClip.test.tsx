@@ -69,7 +69,7 @@ function renderClip({
 describe("TimelineClip", () => {
   it("renders the clip label above custom content without showing default timecode", () => {
     const { host, root } = renderClip({
-      element: { id: "hero", label: "Hero", tag: "div", start: 1, duration: 0.5, track: 0 },
+      element: { id: "hero", label: "Hero", tag: "div", start: 1, duration: 1, track: 0 },
     });
 
     expect(host.querySelector(".timeline-clip__label")?.textContent).toBe("Hero");
@@ -78,15 +78,52 @@ describe("TimelineClip", () => {
     act(() => root.unmount());
   });
 
-  it("keeps selected narrow clips labeled even when they render custom content", () => {
+  it("drops the label chip under 60px even when the clip is selected", () => {
     const { host, root } = renderClip({
-      element: { id: "fx", label: "FX", tag: "div", start: 0, duration: 0.1, track: 0 },
+      element: { id: "fx", label: "FX", tag: "div", start: 0, duration: 1, track: 0 },
+      pps: 59,
       isSelected: true,
     });
 
-    expect(host.querySelector(".timeline-clip__label")?.textContent).toBe("FX");
+    expect(host.querySelector(".timeline-clip__label")).toBeNull();
     expect(host.querySelector(".timeline-clip__timecode")).toBeNull();
+    expect(host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe("picture");
 
+    act(() => root.unmount());
+  });
+
+  it("keeps the label at 60px and fills one frame under 24px", () => {
+    const labeled = renderClip({
+      element: { id: "wide", label: "City", tag: "video", start: 0, duration: 1, track: 0 },
+      pps: 200,
+    });
+    expect(labeled.host.querySelector(".timeline-clip__label")?.textContent).toBe("City");
+    expect(labeled.host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe(
+      "labeled",
+    );
+    expect(labeled.host.querySelector<HTMLElement>(".timeline-clip")?.style.borderRadius).toBe(
+      "var(--timeline-clip-radius)",
+    );
+    act(() => labeled.root.unmount());
+
+    const frame = renderClip({
+      element: { id: "sliver", label: "City", tag: "img", start: 0, duration: 1, track: 0 },
+      pps: 23,
+      isSelected: true,
+    });
+    expect(frame.host.querySelector(".timeline-clip__label")).toBeNull();
+    expect(frame.host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe("frame");
+    act(() => frame.root.unmount());
+  });
+
+  it("gives audio clips the pill radius", () => {
+    const { host, root } = renderClip({
+      element: { id: "vo", label: "Voice", tag: "audio", start: 0, duration: 2, track: 1 },
+      pps: 100,
+    });
+    expect(host.querySelector<HTMLElement>(".timeline-clip")?.style.borderRadius).toBe(
+      "var(--timeline-clip-audio-radius)",
+    );
     act(() => root.unmount());
   });
 

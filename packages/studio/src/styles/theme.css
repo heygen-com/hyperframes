@@ -69,6 +69,14 @@
   --timeline-clip-audio-bg-hover: rgba(167, 139, 250, 0.24);
   --timeline-clip-audio-bg-dragging: rgba(60, 52, 84, 0.96);
   --timeline-clip-selection: rgba(255, 255, 255, 0.85);
+  --timeline-clip-selection-highlight: rgb(255 255 255 / 0.55);
+  --timeline-clip-radius: 8px;
+  --timeline-clip-audio-radius: 21px;
+  --timeline-clip-highlight: rgb(255 255 255 / 0.08);
+  --timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
+  --timeline-clip-chip-bg: rgba(15, 22, 18, 0.73);
+  --timeline-clip-chip-audio-bg: rgba(25, 16, 38, 0.7);
+  --timeline-clip-chip-text: #ffffff;
   --timeline-shortcut-bg: rgba(17, 23, 35, 0.84);
   --timeline-thumbnail-shimmer: linear-gradient(
     90deg,
@@ -324,6 +332,33 @@
   --color-violet-400: oklch(70.2% 0.183 293.541);
   --color-violet-500: oklch(60.6% 0.25 292.717);
   --color-white: #fff;
+}
+
+/* One paper block. A host sets data-theme="paper" on the document element. */
+:root[data-theme="paper"] {
+  --timeline-shell-bg: #f4f6f3;
+  --timeline-row-bg: #edf0ed;
+  --timeline-clip-bg: #c9d1cb;
+  --timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+  --timeline-clip-highlight: rgb(255 255 255 / 0.08);
+  --timeline-clip-selection: #0f766e;
+  --timeline-clip-selection-highlight: rgb(255 255 255 / 0.55);
+  --timeline-clip-chip-bg: rgba(15, 22, 18, 0.73);
+  --timeline-clip-chip-audio-bg: rgba(25, 16, 38, 0.7);
+  --timeline-clip-chip-text: #ffffff;
+  --timeline-clip-audio-bg: rgb(150, 128, 180);
+  --timeline-clip-audio-bg-hover: rgb(135, 109, 170);
+  --timeline-clip-audio-bg-dragging: rgb(232, 224, 242);
+  --timeline-clip-audio-border: rgba(113, 80, 155, 0.45);
+  --timeline-clip-audio-muted-bg: rgb(156, 161, 157);
+  --timeline-audio-link: #626d66;
+  --timeline-waveform-bar-rgb: 20, 12, 32;
+  --timeline-waveform-muted-rgb: 24, 28, 26;
+  --timeline-waveform-error: repeating-linear-gradient(
+    90deg,
+    rgba(20, 12, 32, 0.35) 0 2px,
+    transparent 2px 5px
+  );
 }
 
 /* Motion durations as utilities, since Tailwind has no `--duration-*`
