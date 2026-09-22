@@ -68,6 +68,8 @@
   --timeline-clip-audio-border: rgba(167, 139, 250, 0.4);
   --timeline-clip-audio-bg-hover: rgba(167, 139, 250, 0.24);
   --timeline-clip-audio-bg-dragging: rgba(60, 52, 84, 0.96);
+  --timeline-clip-audio-muted-bg: rgb(72, 74, 78);
+  --timeline-audio-link: #a0aaa4;
   --timeline-clip-selection: rgba(255, 255, 255, 0.85);
   --timeline-clip-selection-highlight: rgb(255 255 255 / 0.55);
   --timeline-clip-radius: 8px;
@@ -92,6 +94,8 @@
   );
   --timeline-thumbnail-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   --timeline-waveform-bar-rgb: 75, 163, 210;
+  --timeline-waveform-muted-rgb: 236, 238, 242;
+  --timeline-waveform-baseline-rgb: 226, 216, 238;
   --timeline-waveform-error: repeating-linear-gradient(
     90deg,
     rgba(75, 163, 210, 0.35) 0 2px,
@@ -361,6 +365,7 @@
   --timeline-audio-link: #626d66;
   --timeline-waveform-bar-rgb: 20, 12, 32;
   --timeline-waveform-muted-rgb: 24, 28, 26;
+  --timeline-waveform-baseline-rgb: 76, 62, 88;
   --timeline-waveform-error: repeating-linear-gradient(
     90deg,
     rgba(20, 12, 32, 0.35) 0 2px,

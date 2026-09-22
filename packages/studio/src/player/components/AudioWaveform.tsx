@@ -141,14 +141,19 @@ export const AudioWaveform = memo(function AudioWaveform({
     const bars = decimatePeaks(peaks, trimStartFraction ?? 0, trimEndFraction ?? 1, barCount);
     const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
     const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
+    const waveformBaselineRgb = getComputedStyle(canvas).getPropertyValue(
+      "--timeline-waveform-baseline-rgb",
+    );
     for (let index = 0; index < bars.length; index++) {
       const amplitude = bars[index] ?? 0;
       const barHeight = Math.max(2, amplitude * height);
-      context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
       // Map each decimated bar to the full canvas interval. Fixed pixel
       // offsets leave a visible tail gap when the clip width is fractional.
       const x = (index * width) / bars.length;
       const barWidth = Math.max(1, width / bars.length);
+      context.fillStyle = `rgb(${waveformBaselineRgb})`;
+      context.fillRect(x, height - 1, barWidth, 1);
+      context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
       context.fillRect(x, height - barHeight, barWidth, barHeight);
     }
   }, [muted, peaks, trimEndFraction, trimStartFraction]);
