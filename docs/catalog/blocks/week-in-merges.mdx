@@ -13,8 +13,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/week-in-merges.html"
   title="Week in Merges"
   description="Each author's avatar bounces across their row at a speed set by how many pull requests they merged"
-  variables={[{"id":"eyebrow","type":"string","label":"Eyebrow","default":"ACME / WEEK IN MERGES"},{"id":"title","type":"string","label":"Title","default":"Pull requests merged this week"},{"id":"period","type":"string","label":"Period","default":"1 September - 7 September 2026 · America/Los_Angeles"},{"id":"total","type":"string","label":"Total","default":"12 PRs"},{"id":"footer","type":"string","label":"Footer","default":"Speed proportional to merges · By PR author"},{"id":"source","type":"string","label":"Source line","default":"Example org · 1 repo · Bots · 0"},{"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"}]}
-  meta={{"duration":16,"width":1080,"height":1350,"category":"Data","badge":"Stable","codeLines":436}}
+  variables={[{"id":"eyebrow","type":"string","label":"Eyebrow","default":"ACME / WEEK IN MERGES"},{"id":"title","type":"string","label":"Title","default":"Pull requests merged this week"},{"id":"period","type":"string","label":"Period","default":"1 September - 7 September 2026 · America/Los_Angeles"},{"id":"total","type":"string","label":"Total","default":"12 PRs"},{"id":"footer","type":"string","label":"Footer","default":"Speed proportional to merges · By PR author"},{"id":"source","type":"string","label":"Source line","default":"Example org · 1 repo · Bots · 0"},{"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"},{"id":"rows_max","type":"number","label":"Maximum rows","default":12,"min":1,"max":12,"step":1,"description":"Authors drawn, highest merge count first."},{"id":"overflow","type":"string","label":"Overflow line","default":"","description":"Line for everyone past the cap. Empty writes it from the rows left out."}]}
+  meta={{"duration":16,"width":1080,"height":1350,"category":"Data","badge":"Stable","codeLines":471}}
   attribution={{"path":"registry/blocks/week-in-merges","tags":["data","chart","ranking","leaderboard"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/week-in-merges/week-in-merges.html"
@@ -62,7 +62,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         {"id":"total","type":"string","label":"Total","default":"12 PRs"},
         {"id":"footer","type":"string","label":"Footer","default":"Speed proportional to merges · By PR author"},
         {"id":"source","type":"string","label":"Source line","default":"Example org · 1 repo · Bots · 0"},
-        {"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"}
+        {"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"},
+        {"id":"rows_max","type":"number","label":"Maximum rows","default":12,"min":1,"max":12,"step":1,"description":"Authors drawn, highest merge count first."},
+        {"id":"overflow","type":"string","label":"Overflow line","default":"","description":"Line for everyone past the cap. Empty writes it from the rows left out."}
       ]'
     >
       <div id="wim-stage" class="clip" data-start="0" data-duration="16" data-track-index="0">
@@ -73,6 +75,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           <p id="wim-total"></p>
         </div>
         <div id="wim-rows"></div>
+        <p id="wim-overflow"></p>
         <div id="wim-rule"></div>
         <p id="wim-footer"></p>
         <p id="wim-source"></p>
@@ -227,6 +230,14 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           background: rgba(20, 20, 20, 0.14);
         }
 
+        #wim-overflow {
+          display: none;
+          margin-top: 8px;
+          font-size: 18px;
+          line-height: 1.3;
+          color: rgba(20, 20, 20, 0.55);
+        }
+
         #wim-footer,
         #wim-source {
           font-size: 16px;
@@ -310,6 +321,20 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             return merges + (merges === 1 ? " merge" : " merges");
           }
 
+          function overflowLine(hidden) {
+            if (hidden.length === 0) return "";
+            var n = hidden.length;
+            var lo = hidden[0].merges;
+            var hi = lo;
+            for (var i = 1; i < hidden.length; i++) {
+              if (hidden[i].merges < lo) lo = hidden[i].merges;
+              if (hidden[i].merges > hi) hi = hidden[i].merges;
+            }
+            var who = n === 1 ? "1 more person" : n + " more people";
+            var span = lo === hi ? mergeLabel(lo) : lo + "-" + hi + " merges";
+            return "and " + who + " with " + span;
+          }
+
           function initials(name) {
             var parts = name.trim().split(/\s+/);
             if (parts.length >= 2) {
@@ -337,7 +362,13 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           var root = document.getElementById("wim-root");
           var V = readVars();
           var DURATION = num(root.getAttribute("data-duration"), 16, 0.1, 600);
-          var rows = parseRows(V.rows) || FALLBACK_ROWS;
+          var parsed = parseRows(V.rows) || FALLBACK_ROWS;
+          var rowsMax = Math.round(num(V.rows_max, 12, 1, 12));
+          var ranked = parsed.slice().sort(function (a, b) {
+            return b.merges - a.merges;
+          });
+          var rows = ranked.slice(0, rowsMax);
+          var hidden = ranked.slice(rowsMax);
           var minM = rows[0].merges;
           var maxM = rows[0].merges;
           for (var i = 1; i < rows.length; i++) {
@@ -360,6 +391,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             "Speed proportional to merges · By PR author",
           );
           document.getElementById("wim-source").textContent = str(V.source, "");
+          var overflowEl = document.getElementById("wim-overflow");
+          var overflowText = str(V.overflow, "") || overflowLine(hidden);
+          overflowEl.textContent = overflowText;
+          overflowEl.style.display = overflowText ? "block" : "none";
 
           var mount = document.getElementById("wim-rows");
           var avatars = [];
@@ -503,6 +538,8 @@ Set these CSS variables on the block:
 - `footer` — Footer. Defaults to `Speed proportional to merges · By PR author`.
 - `source` — Source line. Defaults to `Example org · 1 repo · Bots · 0`.
 - `rows` — Rows (JSON array of name, merges, avatar). Defaults to `[{"name":"Ada","merges":12,"avatar":""},{"name":"Bao","merges":7,"avatar":""},{"name":"Cam","merges":4,"avatar":""},{"name":"Dee","merges":2,"avatar":""},{"name":"Eli","merges":1,"avatar":""}]`.
+- `rows_max` — Maximum rows. Defaults to `12`.
+- `overflow` — Overflow line. Defaults to ``.
 
 ## Variables
 
@@ -518,6 +555,8 @@ want to change on the element:
 | `footer` | `Speed proportional to merges · By PR author` | string |  |
 | `source` | `Example org · 1 repo · Bots · 0` | string |  |
 | `rows` | `[{"name":"Ada","merges":12,"avatar":""},{"name":"Bao","merges":7,"avatar":""},{"name":"Cam","merges":4,"avatar":""},{"name":"Dee","merges":2,"avatar":""},{"name":"Eli","merges":1,"avatar":""}]` | string |  |
+| `rows_max` | `12` | 1 to 12, step 1 | Authors drawn, highest merge count first. |
+| `overflow` | `` | string | Line for everyone past the cap. Empty writes it from the rows left out. |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
 defaults, so this behaves exactly like the preview above until you change one:
@@ -526,7 +565,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   data-composition-id="week-in-merges"
   data-composition-src="compositions/week-in-merges.html"
-  data-variable-values='{"eyebrow":"ACME / WEEK IN MERGES","title":"Pull requests merged this week","period":"1 September - 7 September 2026 · America/Los_Angeles","total":"12 PRs","footer":"Speed proportional to merges · By PR author","source":"Example org · 1 repo · Bots · 0","rows":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"}'
+  data-variable-values='{"eyebrow":"ACME / WEEK IN MERGES","title":"Pull requests merged this week","period":"1 September - 7 September 2026 · America/Los_Angeles","total":"12 PRs","footer":"Speed proportional to merges · By PR author","source":"Example org · 1 repo · Bots · 0","rows":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]","rows_max":12,"overflow":""}'
 ></div>
 ```
 

@@ -52,6 +52,23 @@
       "type": "string",
       "label": "Rows (JSON array of name, merges, avatar)",
       "default": "[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"
+    },
+    {
+      "id": "rows_max",
+      "type": "number",
+      "label": "Maximum rows",
+      "default": 12,
+      "min": 1,
+      "max": 12,
+      "step": 1,
+      "description": "Authors drawn, highest merge count first."
+    },
+    {
+      "id": "overflow",
+      "type": "string",
+      "label": "Overflow line",
+      "default": "",
+      "description": "Line for everyone past the cap. Empty writes it from the rows left out."
     }
   ],
   "files": [
@@ -103,6 +120,21 @@
       "label": "Rows (JSON array of name, merges, avatar)",
       "type": "text",
       "default": "[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"
+    },
+    {
+      "key": "rows_max",
+      "label": "Maximum rows",
+      "type": "number",
+      "default": "12",
+      "min": 1,
+      "max": 12,
+      "step": 1
+    },
+    {
+      "key": "overflow",
+      "label": "Overflow line",
+      "type": "text",
+      "default": ""
     }
   ]
 }
