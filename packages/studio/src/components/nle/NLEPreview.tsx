@@ -19,6 +19,7 @@ import {
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
+import { PreviewPoster, previewPosterUrl } from "./PreviewPoster";
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -150,6 +151,21 @@ export const NLEPreview = memo(function NLEPreview({
   const liveGenRef = useRef<number | null>(null);
   const reportPreviewFirstFrame = usePreviewFirstFrameTelemetry(previewSlots);
   const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
+  // The poster covers the live slot until its first frame is ready to show; a missing poster is
+  // rendered after that, off the open path, for the next open.
+  const [posterDoneFor, setPosterDoneFor] = useState<string | null>(null);
+  const posterMissingRef = useRef(false);
+  const showPoster = !directUrl && posterDoneFor !== activeKey;
+  const onLiveReadyToShowChange = useCallback(
+    (ready: boolean) => {
+      if (!ready) return;
+      setPosterDoneFor(activeKey);
+      if (!posterMissingRef.current || directUrl) return;
+      posterMissingRef.current = false;
+      void fetch(previewPosterUrl(projectId, false)).catch(() => {});
+    },
+    [activeKey, directUrl, projectId],
+  );
   const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
@@ -507,6 +523,8 @@ export const NLEPreview = memo(function NLEPreview({
                     applyInitialZoom();
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
+                  onReadyToShowChange={onLiveReadyToShowChange}
+                  onPreviewError={() => setPosterDoneFor(activeKey)}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
@@ -531,6 +549,17 @@ export const NLEPreview = memo(function NLEPreview({
                   style={SHADOW_IFRAME_STYLE}
                 />
               ),
+            )}
+            {showPoster && (
+              <PreviewPoster
+                key={activeKey}
+                projectId={projectId}
+                onSize={(size) => setCompositionSize((prev) => prev ?? size)}
+                onMissing={() => {
+                  posterMissingRef.current = true;
+                  setPosterDoneFor(activeKey);
+                }}
+              />
             )}
           </div>
         </div>

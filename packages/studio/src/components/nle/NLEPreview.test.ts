@@ -10,6 +10,7 @@ import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTe
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const playerMounts: string[] = [];
+let livePlayerProps: { onReadyToShowChange?: (ready: boolean) => void } = {};
 
 vi.mock("../../player", async () => {
   const React = await import("react");
@@ -18,11 +19,13 @@ vi.mock("../../player", async () => {
     Player: React.forwardRef(function MockPlayer(
       props: {
         onLoad?: () => void;
+        onReadyToShowChange?: (ready: boolean) => void;
         suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
+      if (!props.suppressLoadingOverlay) livePlayerProps = props;
       React.useEffect(() => {
         props.onLoad?.();
       }, [props]);
@@ -262,6 +265,22 @@ describe("NLEPreview", () => {
     expect(players[1].style.clipPath).toBe("inset(100%)");
     expect(players[1].style.visibility).toBe("hidden");
     expect(players[1].style.pointerEvents).toBe("none");
+    view.cleanup();
+  });
+
+  it("covers the live preview with the cached frame-0 poster until it is ready to show", () => {
+    const view = renderPreview();
+    const poster = () =>
+      view.stage.querySelector<HTMLImageElement>('[data-testid="preview-poster"]');
+    expect(poster()?.getAttribute("src")).toBe(
+      "/api/projects/timeline-edit-playground/thumbnail/index.html?t=0&output=source&cached=1",
+    );
+    expect(poster()?.style.zIndex).toBe("2");
+
+    act(() => livePlayerProps.onReadyToShowChange?.(false));
+    expect(poster()).not.toBeNull();
+    act(() => livePlayerProps.onReadyToShowChange?.(true));
+    expect(poster()).toBeNull();
     view.cleanup();
   });
 
