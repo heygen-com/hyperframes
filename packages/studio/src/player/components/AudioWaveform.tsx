@@ -197,7 +197,7 @@ export const AudioWaveform = memo(function AudioWaveform({
         <canvas
           ref={setCanvasRef}
           className="absolute inset-x-0 bottom-0 w-full"
-          style={{ top: 16 }}
+          style={{ top: 16, height: "calc(100% - 16px)" }}
         />
         {snapshot.status === "loading" && (
           <div
