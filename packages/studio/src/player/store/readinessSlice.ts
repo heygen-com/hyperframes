@@ -12,6 +12,8 @@ export interface PlaybackReadinessSlice {
    *  must not compete with boot (card thumbnails) waits for it once. */
   previewBooted: boolean;
   setTimelineReady: (ready: boolean) => void;
+  /** A live preview that failed to load has still finished booting. */
+  markPreviewBooted: () => void;
   /** Sets timelineReady once doc's readiness inputs settle, or immediately
    *  if doc is null. A wait a later call supersedes never wins the race. */
   requestTimelineReady: (doc: Document | null) => void;
@@ -35,6 +37,7 @@ export function createPlaybackReadinessSlice(
   return {
     timelineReady: false,
     previewBooted: false,
+    markPreviewBooted: () => set({ previewBooted: true }),
     setTimelineReady: (ready) => {
       timelineReadyGeneration++;
       set(ready ? { timelineReady: true, previewBooted: true } : { timelineReady: false });
