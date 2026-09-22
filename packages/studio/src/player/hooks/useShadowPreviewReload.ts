@@ -16,7 +16,12 @@ import type { PlaybackAdapter } from "../lib/playbackTypes";
 
 // The single wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
 // leaves about 6.5s for the document load and runtime boot. Nothing shorter may fail the swap.
+// It only runs while the tab is visible: readiness is frame-driven, and a hidden tab renders none.
 export const SHADOW_READY_TIMEOUT_MS = 15_000;
+
+function isDocumentHidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
 
 type UseShadowPreviewReloadParams = Omit<
   UseTimelineSyncCallbacksParams,
@@ -55,11 +60,14 @@ export function useShadowPreviewReload({
   const onReloadFailedRef = useRef(onReloadFailed);
   onReloadFailedRef.current = onReloadFailed;
   const readyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The shadow still owed a wait budget, so a hidden tab can resume it when it becomes visible.
+  const budgetGenRef = useRef<number | null>(null);
   const cancelPendingLoadRef = useRef<() => void>(() => {});
   const [previewSlots, setPreviewSlots] = useState<PreviewIframeSlot[]>([{ gen: 0, role: "live" }]);
 
   const stopPendingShadow = useCallback(() => {
     clearTimeout(readyTimerRef.current);
+    budgetGenRef.current = null;
     cancelPendingLoadRef.current();
     pendingCommitRef.current = null;
     visuallyReadyGenRef.current = null;
@@ -145,18 +153,30 @@ export function useShadowPreviewReload({
     shadowIframeRef.current = node;
   }, []);
 
+  const armReadyTimer = useCallback(
+    (gen: number) => {
+      clearTimeout(readyTimerRef.current);
+      if (isDocumentHidden()) return;
+      readyTimerRef.current = setTimeout(
+        () => failShadow(gen, "it took too long to load"),
+        SHADOW_READY_TIMEOUT_MS,
+      );
+    },
+    [failShadow],
+  );
+  const armReadyTimerRef = useRef(armReadyTimer);
+  armReadyTimerRef.current = armReadyTimer;
+
   const beginShadowReload = useCallback(
     (url: string) => {
       shadowGenRef.current += 1;
       const gen = shadowGenRef.current;
       stopPendingShadow();
-      readyTimerRef.current = setTimeout(
-        () => failShadow(gen, "it took too long to load"),
-        SHADOW_READY_TIMEOUT_MS,
-      );
+      budgetGenRef.current = gen;
+      armReadyTimer(gen);
       setPreviewSlots((prev) => planShadowReload(prev, gen, url));
     },
-    [stopPendingShadow, failShadow],
+    [stopPendingShadow, armReadyTimer],
   );
 
   // Composition switch (not an edit reload): drop any in-flight shadow.
@@ -169,7 +189,22 @@ export function useShadowPreviewReload({
     setPreviewSlots(planShadowDiscard);
   }, [stopPendingShadow, isRefreshingRef, pendingSeekRef]);
 
-  useMountEffect(() => stopPendingShadow);
+  // Hiding the tab pauses the budget; showing it again restarts the full budget for a pending shadow.
+  useMountEffect(() => {
+    const onVisibilityChange = () => {
+      if (isDocumentHidden()) {
+        clearTimeout(readyTimerRef.current);
+        return;
+      }
+      const gen = budgetGenRef.current;
+      if (gen != null && gen === shadowGenRef.current) armReadyTimerRef.current(gen);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopPendingShadow();
+    };
+  });
 
   return {
     previewSlots,

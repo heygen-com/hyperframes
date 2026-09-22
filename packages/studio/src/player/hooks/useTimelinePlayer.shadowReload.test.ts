@@ -289,6 +289,50 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  it("does not spend the budget while the tab is hidden, and promotes once it is visible", () => {
+    vi.useFakeTimers();
+    const onPreviewReloadFailed = vi.fn();
+    const setVisibility = stubVisibility("hidden");
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+    });
+
+    // A hidden tab renders no frames, so readiness cannot arrive; the wall clock must not fail it.
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS * 3));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    expect(getApi().previewSlots).toHaveLength(2);
+
+    act(() => setVisibility("visible"));
+    act(() => getApi().onShadowReadyChange(gen, true));
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    unmount(root);
+  });
+
+  it("restarts the full budget when a hidden tab becomes visible, then fails a shadow that stays silent", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const setVisibility = stubVisibility("visible");
+    const { getApi, live, root } = beginReload({ onPreviewReloadFailed });
+
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS - 1000));
+    act(() => setVisibility("hidden"));
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    act(() => setVisibility("visible"));
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS - 1));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    expect(getApi().iframeRef.current).toBe(live);
+    unmount(root);
+  });
+
   it("drops a shadow whose document reports an error and reports the cause", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();
@@ -454,4 +498,13 @@ function unmount(root: ReturnType<typeof createRoot>) {
   act(() => {
     root.unmount();
   });
+}
+
+function stubVisibility(initial: DocumentVisibilityState) {
+  let state = initial;
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(() => state);
+  return (next: DocumentVisibilityState) => {
+    state = next;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
 }
