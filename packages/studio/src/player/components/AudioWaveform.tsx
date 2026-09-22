@@ -146,7 +146,7 @@ export const AudioWaveform = memo(function AudioWaveform({
     );
     for (let index = 0; index < bars.length; index++) {
       const amplitude = bars[index] ?? 0;
-      const barHeight = Math.max(2, amplitude * height);
+      const barHeight = Math.max(3, amplitude * height);
       // Map each decimated bar to the full canvas interval. Fixed pixel
       // offsets leave a visible tail gap when the clip width is fractional.
       const x = (index * width) / bars.length;
