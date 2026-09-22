@@ -360,10 +360,9 @@ describe("open motion", () => {
 
   // AE4.
   it("names a motion token that zeroes itself under reduced motion", async () => {
-    // The zero-duration case lives in the `duration-open` utility itself
-    // (theme.css), not in a `motion-reduce:` class beside it, so a caller
-    // cannot use the token and forget the reduced-motion half. The menu's job
-    // is to name the token; the stylesheet's job is the media query.
+    // Reduced motion lives in the `duration-open` utility itself (theme.css),
+    // not in a `motion-reduce:` class beside it, so a caller cannot use the
+    // token and forget that half. The menu's job is to name the token.
     await openActionMenu();
 
     expect([...popup()!.classList]).toContain("duration-open");
