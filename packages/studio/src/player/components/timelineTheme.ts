@@ -32,6 +32,9 @@ export interface TimelineTheme {
   panelResizeActive: string;
   clipRadius: string;
   audioClipRadius: string;
+  transitionZone: string;
+  transitionBadge: string;
+  transitionBadgeInk: string;
 }
 
 const TRACK_STYLE: TimelineTrackStyle = {
@@ -69,6 +72,9 @@ export const defaultTimelineTheme: TimelineTheme = {
   panelResizeActive: "var(--timeline-resize-active)",
   clipRadius: "var(--timeline-clip-radius)",
   audioClipRadius: "var(--timeline-clip-audio-radius)",
+  transitionZone: "var(--timeline-transition-zone)",
+  transitionBadge: "var(--timeline-transition-badge)",
+  transitionBadgeInk: "var(--timeline-transition-badge-ink)",
 };
 
 export type ClipWidthLadder = "labeled" | "picture" | "frame";

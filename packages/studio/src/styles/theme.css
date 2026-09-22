@@ -148,6 +148,9 @@
   --timeline-clip-shadow-dragging: rgba(0, 0, 0, 0.4);
   --timeline-playhead-glow: rgba(60, 230, 172, 0.14);
   --timeline-playhead-shadow: rgba(0, 0, 0, 0.55);
+  --timeline-transition-zone: rgba(255, 255, 255, 0.2);
+  --timeline-transition-badge: rgba(237, 244, 239, 0.98);
+  --timeline-transition-badge-ink: rgba(36, 56, 45, 0.96);
 
   /* -------------------------------------------------------------- geometry */
 

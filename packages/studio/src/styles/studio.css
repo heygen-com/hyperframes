@@ -208,6 +208,43 @@ body {
     var(--timeline-clip-shadow);
 }
 
+.timeline-transition {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.timeline-transition__zone {
+  position: absolute;
+  left: calc(var(--timeline-transition-zone-width) / -2);
+  top: 3px;
+  width: var(--timeline-transition-zone-width);
+  height: 42px;
+  border-radius: 8px;
+  background: var(--timeline-transition-zone);
+  filter: blur(3px);
+  opacity: 0.75;
+}
+
+.timeline-transition__badge {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--timeline-transition-badge-ink) 22%, transparent);
+  border-radius: 999px;
+  background: var(--timeline-transition-badge);
+  box-shadow: 0 2px 5px var(--timeline-playhead-shadow);
+}
+
+.timeline-transition__badge svg { width: 17px; height: 17px; }
+.timeline-transition__frame { fill: none; stroke: var(--timeline-transition-badge-ink); stroke-width: 1.5; }
+.timeline-transition__intersection { fill: var(--timeline-transition-badge-ink); opacity: 0.7; }
+
 .timeline-clip::before {
   content: "";
   position: absolute;

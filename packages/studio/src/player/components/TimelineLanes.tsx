@@ -32,6 +32,8 @@ import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
+import { deriveTimelineTransitionSeams } from "./timelineTransitionSeams";
+import { TimelineTransitionBadge } from "./TimelineTransitionBadge";
 
 export function TimelineLanes({
   pps,
@@ -104,6 +106,10 @@ export function TimelineLanes({
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
+  const allTransitionElements = useMemo(
+    () => tracks.flatMap(([, elements]) => elements.map(getPreviewElement)),
+    [getPreviewElement, tracks],
+  );
   // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
   // synthetic lane element spans the whole composition rather than a clip.
   const compositionDuration = usePlayerStore((s) => s.duration);
@@ -226,6 +232,9 @@ export function TimelineLanes({
           // The clips whose envelopes this row draws, at their dragged positions.
           // Once per row, not once per clip in the map below.
           const automationElements = els.map(getPreviewElement);
+          const transitionSeams = deriveTimelineTransitionSeams(allTransitionElements).filter(
+            (seam) => seam.incoming.track === trackNum,
+          );
           // Minted here because this is the only place that sees BOTH ends of
           // the disclosure: the caret in the sticky header and the diamond lanes
           // on the canvas. Keyed by display row, not by `trackNum`, which is a
@@ -553,6 +562,14 @@ export function TimelineLanes({
                     );
                   })
                 }
+                {transitionSeams.map((seam) => (
+                  <TimelineTransitionBadge
+                    key={`${getTimelineElementIdentity(seam.outgoing)}-${getTimelineElementIdentity(seam.incoming)}`}
+                    centerPx={seam.centerTime * pps}
+                    top={CLIP_Y + (clipBarHeight ?? (rowHeight - 2 * CLIP_Y)) / 2}
+                    widthPx={Math.min(Math.max(seam.duration * pps, 24), 32)}
+                  />
+                ))}
                 {/* The automation lanes belong to the ROW, so they are mounted
                     here rather than under the active clip's property lanes.
                     Hanging off that clip meant selecting a sibling moved the
