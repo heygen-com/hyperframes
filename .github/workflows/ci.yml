@@ -372,10 +372,13 @@ jobs:
       # @hyperframes/core from dist, so running these first fails on a missing
       # module rather than on anything the test is actually checking.
       - name: Install Chrome for catalog preview tests
+        id: catalog-chrome
         uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
         with:
           chrome-version: stable
       - run: bun run test:scripts
+        env:
+          HYPERFRAMES_BROWSER_PATH: ${{ steps.catalog-chrome.outputs.chrome-path }}
       - run: bun run --filter '!@hyperframes/producer' test
 
   producer-source-tests:
