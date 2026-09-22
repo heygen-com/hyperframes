@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { audit, digest, pinnedSource, ratchet } from "./check-test-reachability.mjs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { audit, digest, pinnedSource, verdict } from "./check-test-reachability.mjs";
 
 function fixture(command = "bun run test:scripts", filter = '"scripts/**"') {
   return {
@@ -28,11 +33,10 @@ jobs:
 }
 const check = (tree, manifest = { guards: {}, runners: [] }) =>
   audit(Object.keys(tree), (path) => tree[path], manifest);
-const empty = { total: 0, files: {} };
 
 test("planted guard-filter hole fails and adding its directory passes", () => {
   const tree = fixture();
-  assert.match(ratchet(check(tree), empty)[0], /CI filters exclude skills\/lib/);
+  assert.match(verdict(check(tree))[0], /CI filters exclude skills\/lib/);
   tree[".github/workflows/ci.yml"] = tree[".github/workflows/ci.yml"].replace(
     '"scripts/**"',
     '"scripts/**"\n              - "skills/**"',
@@ -115,13 +119,13 @@ test("custom runner mappings require matching commands and unchanged producer so
   assert.throws(() => check(tree, manifest), /mapping needs review/);
 });
 
-test("baselines accept existing debt, reject new debt and cannot be raised", () => {
-  const issues = { "a.test.ts": ["orphan"] };
-  const baseline = { total: 1, files: { "a.test.ts": 1 } };
-  assert.deepEqual(ratchet(issues, baseline), []);
-  assert.match(ratchet({ ...issues, "new.test.ts": ["orphan"] }, baseline)[0], /new.test.ts/);
-  assert.match(ratchet(issues, baseline, empty)[0], /only shrink/);
-  assert.match(ratchet({}, baseline)[0], /lower baseline/);
+test("zero orphans passes and any orphan fails", () => {
+  assert.deepEqual(verdict({}), []);
+  assert.deepEqual(verdict({ "a.test.ts": ["orphan"] }), ["a.test.ts: orphan"]);
+});
+
+test("a baseline file is forbidden even with zero orphans", () => {
+  assert.match(verdict({}, true)[0], /baseline is forbidden/);
 });
 
 test("conditions in the first step key are never credited", () => {
@@ -225,4 +229,32 @@ test("a missing pinned package gives the runner mapping diagnostic", () => {
     () => pinnedSource("missing/package.json#script#test", () => undefined),
     /Runner mapping needs review: missing\/package.json#script#test/,
   );
+});
+
+test("report CLI rejects a restored baseline and a planted orphan", (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), "reachability-"));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const tree = fixture("node --test scripts/parity.test.mjs", '"**"');
+  tree["scripts/test-reachability.json"] = JSON.stringify({ guards: {}, runners: [] });
+  for (const [path, text] of Object.entries(tree)) {
+    mkdirSync(dirname(join(cwd, path)), { recursive: true });
+    writeFileSync(join(cwd, path), text);
+  }
+  execFileSync("git", ["init", "--quiet"], { cwd });
+  execFileSync("git", ["add", "."], { cwd });
+  const script = fileURLToPath(new URL("./check-test-reachability.mjs", import.meta.url));
+  const run = () => spawnSync(process.execPath, [script, "--report"], { cwd, encoding: "utf8" });
+  const clean = run();
+  assert.equal(clean.status, 0, clean.stderr);
+  const baseline = join(cwd, "scripts/test-reachability-baseline.json");
+  writeFileSync(baseline, '{"total":0,"files":{}}');
+  const restored = run();
+  assert.equal(restored.status, 1);
+  assert.match(restored.stderr, /baseline is forbidden/);
+  rmSync(baseline);
+  writeFileSync(join(cwd, "scripts/orphan.test.mjs"), "");
+  execFileSync("git", ["add", "."], { cwd });
+  const orphan = run();
+  assert.equal(orphan.status, 1);
+  assert.match(orphan.stderr, /orphan.test.mjs: no CI runner selects this test/);
 });

@@ -48,7 +48,7 @@ jobs:
       - name: Report head reachability
         run: node scripts/check-test-reachability.mjs --report
       - run: node --test scripts/check-test-reachability.test.mjs
-      - run: node scripts/check-test-reachability.mjs --base origin/main
+      - run: node scripts/check-test-reachability.mjs
 
   changes:
     name: Detect changes

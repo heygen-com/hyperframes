@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { posix, resolve } from "node:path";
@@ -399,46 +398,13 @@ export function audit(files, read, manifest) {
   return issues;
 }
 
-function baselineIssues(file, count, current, previous) {
-  const errors = [];
-  if (![Number.isInteger(count), count > 0, count <= previous].every(Boolean))
-    errors.push(`${file}: baseline may only shrink`);
-  if (current < count) errors.push(`${file}: lower baseline to ${current}`);
-  return errors;
-}
-
-export function ratchet(issues, baseline, previous = baseline) {
-  const errors = Object.entries(issues).flatMap(([file, failures]) => {
-    return failures.length > (baseline.files[file] ?? 0) ? [`${file}: ${failures.join("; ")}`] : [];
-  });
-  const budgetErrors = Object.entries(baseline.files).flatMap(([file, count]) =>
-    baselineIssues(file, count, issues[file]?.length ?? 0, previous.files[file] ?? 0),
+export function verdict(issues, baselinePresent = false) {
+  const errors = Object.entries(issues).map(
+    ([file, failures]) => `${file}: ${failures.join("; ")}`,
   );
-  if (baseline.total !== Object.values(baseline.files).reduce((sum, n) => sum + n, 0))
-    errors.push("Incorrect baseline total");
-  return [...errors, ...budgetErrors];
-}
-
-function baseArgument(index) {
-  const base = process.argv[index + 1];
-  if (!base || base.startsWith("-")) throw new Error("--base needs a Git ref");
-  return base;
-}
-
-function previousBaseline(baseline) {
-  const index = process.argv.indexOf("--base");
-  let previous = baseline;
-  if (index !== -1) {
-    const base = baseArgument(index);
-    const paths = execFileSync("git", ["ls-tree", "--name-only", base, "--", BASELINE], {
-      encoding: "utf8",
-    });
-    if (paths.trim())
-      previous = JSON.parse(
-        execFileSync("git", ["show", `${base}:${BASELINE}`], { encoding: "utf8" }),
-      );
-  }
-  return previous;
+  if (baselinePresent)
+    errors.push("Test reachability baseline is forbidden; every test must be reachable.");
+  return errors;
 }
 
 function main() {
@@ -449,15 +415,11 @@ function main() {
   const issues = audit(files, read, JSON.parse(read(MANIFEST)));
   if (process.argv.includes("--report")) {
     console.log(JSON.stringify(issues, null, 2));
-    return;
   }
-  const baseline = JSON.parse(read(BASELINE));
-  const previous = previousBaseline(baseline);
-  const errors = ratchet(issues, baseline, previous);
+  const errors = verdict(issues, existsSync(resolve(root, BASELINE)));
   if (errors.length) {
     console.error(errors.join("\n"));
     process.exitCode = 1;
-  } else
-    console.log(`Test reachability verified: ${Object.keys(issues).length} baselined test files.`);
+  } else console.log("Test reachability verified: zero orphan tests.");
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
