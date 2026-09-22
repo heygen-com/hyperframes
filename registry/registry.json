@@ -612,10 +612,6 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "week-in-merges",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "weight-wave",
       "type": "hyperframes:block"
     },
@@ -829,6 +825,10 @@
     },
     {
       "name": "code-terminal-run",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "colorama-wipe",
       "type": "hyperframes:component"
     },
     {

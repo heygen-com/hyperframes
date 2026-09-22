@@ -34,7 +34,7 @@
     "check:tracked-artifacts": "node scripts/check-tracked-artifacts.mjs",
     "check:docs-snippet-motion": "node scripts/check-docs-snippet-motion.mjs",
     "check:docs-catalog": "node scripts/check-docs-catalog.mjs",
-    "check:catalog-drift": "tsx scripts/catalog-drift.ts",
+    "check:catalog-drift": "node scripts/check-registry-set-delta.mjs origin/main && tsx scripts/catalog-drift.ts",
     "verify:catalog-payloads": "tsx scripts/verify-catalog-payloads.ts",
     "check:workspace-contracts": "node scripts/check-workspace-contracts.mjs",
     "check:package-cycles": "node scripts/check-package-cycles.mjs",
