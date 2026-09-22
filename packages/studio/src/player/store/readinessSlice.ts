@@ -8,6 +8,9 @@ import { settleCompositionReadiness } from "@hyperframes/core/composition-readin
 
 export interface PlaybackReadinessSlice {
   timelineReady: boolean;
+  /** Latched by the project's first ready preview and kept through edit reloads, so work that
+   *  must not compete with boot (card thumbnails) waits for it once. */
+  previewBooted: boolean;
   setTimelineReady: (ready: boolean) => void;
   /** Sets timelineReady once doc's readiness inputs settle, or immediately
    *  if doc is null. A wait a later call supersedes never wins the race. */
@@ -18,9 +21,12 @@ let timelineReadyGeneration = 0;
 
 /** For a full timeline reset: bumps the generation so any requestTimelineReady
  * wait in flight can never resolve into what replaced it. */
-export function resetPlaybackReadinessState(): Pick<PlaybackReadinessSlice, "timelineReady"> {
+export function resetPlaybackReadinessState(): Pick<
+  PlaybackReadinessSlice,
+  "timelineReady" | "previewBooted"
+> {
   timelineReadyGeneration++;
-  return { timelineReady: false };
+  return { timelineReady: false, previewBooted: false };
 }
 
 export function createPlaybackReadinessSlice(
@@ -28,15 +34,18 @@ export function createPlaybackReadinessSlice(
 ): PlaybackReadinessSlice {
   return {
     timelineReady: false,
+    previewBooted: false,
     setTimelineReady: (ready) => {
       timelineReadyGeneration++;
-      set({ timelineReady: ready });
+      set(ready ? { timelineReady: true, previewBooted: true } : { timelineReady: false });
     },
     requestTimelineReady: (doc) => {
       const generation = ++timelineReadyGeneration;
-      if (!doc) return set({ timelineReady: true });
+      if (!doc) return set({ timelineReady: true, previewBooted: true });
       settleCompositionReadiness(doc, () => {
-        if (generation === timelineReadyGeneration) set({ timelineReady: true });
+        if (generation === timelineReadyGeneration) {
+          set({ timelineReady: true, previewBooted: true });
+        }
       });
     },
   };
