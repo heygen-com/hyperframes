@@ -113,7 +113,9 @@ function channel(value: string, divisor: number): number {
     throw new Error(`Invalid color channel ${value}`);
   return numeric;
 }
-function rgbColor(parts: string[]): Color {
+function rgbColor(value: string): Color {
+  const parts = value.trim().split(/[\s,/]+/);
+  if (![3, 4].includes(parts.length)) throw new Error(`Invalid RGB color: ${value}`);
   return [
     channel(parts[0], 255),
     channel(parts[1], 255),
@@ -126,9 +128,7 @@ export function parseColor(value: string): Color {
   if (hex) return hexColor(hex[1]);
   const rgb = value.match(/^rgba?\(([^)]+)\)$/);
   if (!rgb) throw new Error(`Unsupported sRGB color: ${value}`);
-  const parts = rgb[1].trim().split(/[\s,/]+/);
-  if (![3, 4].includes(parts.length)) throw new Error(`Invalid RGB color: ${value}`);
-  return rgbColor(parts);
+  return rgbColor(rgb[1]);
 }
 export function composite(foreground: Color, background: Color): Color {
   if (background[3] !== 1) throw new Error("Compositing requires an opaque backing");
@@ -180,7 +180,7 @@ function measurePair(
   const canvas = parseColor(tokenValue(theme.canvas, tokens));
   if (canvas[3] !== 1) throw new Error("Theme canvas must be opaque");
   const value = tokenValue(pair.foreground, tokens);
-  const fg = parseColor(pair.format === "rgb-channels" ? `rgb(${value})` : value);
+  const fg = pair.format === "rgb-channels" ? rgbColor(value) : parseColor(value);
   const paint: Color = [fg[0], fg[1], fg[2], fg[3] * pair.opacity];
   const backing = surface(pair.paintBacking, canvas, tokens);
   const background = surface(pair.background, canvas, tokens);

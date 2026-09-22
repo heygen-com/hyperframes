@@ -46,6 +46,11 @@ describe("WCAG contrast calculation", () => {
     expect(parseColor("rgb(100% 0% 0% / 20%)")).toEqual([1, 0, 0, 0.2]);
     expect(parseColor("rgba(255, 0, 0, 0.101)")[3]).toBe(0.101);
   });
+  it("parses channel tokens directly and rejects incomplete triplets", () => {
+    const config = themes([{ ...pair, format: "rgb-channels" }]);
+    expect(measure(css("255, 255, 255"), config)[0].ratio).toBe(21);
+    expect(() => measure(css("255, 255"), config)).toThrow("Invalid RGB");
+  });
   it("composites a translucent foreground after all backdrop layers", () => {
     expect(composite(parseColor("rgba(255,255,255,0.5)"), parseColor("#000"))).toEqual([
       0.5, 0.5, 0.5, 1,
