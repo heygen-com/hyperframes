@@ -1,5 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { isTransitionPair } from "./timelineTransitionSeams";
 
 /**
  * Free-form vertical zones, top → bottom: visual, audio. Canvas layering is
@@ -28,10 +29,6 @@ const EPS = 1e-6;
 /** Two clips overlap when their half-open [start, end) intervals intersect. */
 function overlaps(a: TimelineElement, b: TimelineElement): boolean {
   return a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
-}
-
-function isTransitionPair(a: TimelineElement, b: TimelineElement): boolean {
-  return Boolean(a.transitionLabel && a.transitionLabel === b.transitionLabel);
 }
 
 /** Deterministic order on the stable clip id (never the mutated lane/track). */

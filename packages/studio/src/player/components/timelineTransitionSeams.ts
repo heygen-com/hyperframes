@@ -7,6 +7,10 @@ export interface TimelineTransitionSeam {
   duration: number;
 }
 
+export function isTransitionPair(a: TimelineElement, b: TimelineElement): boolean {
+  return Boolean(a.transitionLabel && a.transitionLabel === b.transitionLabel);
+}
+
 export function deriveTimelineTransitionSeams(
   elements: readonly TimelineElement[],
 ): TimelineTransitionSeam[] {
@@ -15,6 +19,7 @@ export function deriveTimelineTransitionSeams(
   for (let index = 0; index < sorted.length - 1; index += 1) {
     const outgoing = sorted[index]!;
     const incoming = sorted[index + 1]!;
+    if (outgoing.track !== incoming.track || !isTransitionPair(outgoing, incoming)) continue;
     const outgoingEnd = outgoing.start + outgoing.duration;
     const overlapStart = Math.max(outgoing.start, incoming.start);
     const overlapEnd = Math.min(outgoingEnd, incoming.start + incoming.duration);
