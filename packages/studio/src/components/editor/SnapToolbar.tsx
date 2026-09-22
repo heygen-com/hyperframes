@@ -1,59 +1,26 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { usePreviewGuidesStore } from "./previewGuidesStore";
-
-const SNAP_DEFAULTS = {
-  snapEnabled: true,
-  gridVisible: false,
-  gridSpacing: 50,
-  snapToGrid: false,
-};
+import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
 
 // fallow-ignore-next-line complexity
-function readSnapPrefs() {
-  const prefs = readStudioUiPreferences();
-  return {
-    snapEnabled: prefs.snapEnabled ?? SNAP_DEFAULTS.snapEnabled,
-    gridVisible: prefs.gridVisible ?? SNAP_DEFAULTS.gridVisible,
-    gridSpacing: prefs.gridSpacing ?? SNAP_DEFAULTS.gridSpacing,
-    snapToGrid: prefs.snapToGrid ?? SNAP_DEFAULTS.snapToGrid,
-  };
-}
-
-interface SnapToolbarProps {
-  onSnapChange?: (prefs: {
-    snapEnabled: boolean;
-    gridVisible: boolean;
-    gridSpacing: number;
-    snapToGrid: boolean;
-  }) => void;
-}
-
-// fallow-ignore-next-line complexity
-export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolbarProps) {
-  const [prefs, setPrefs] = useState(readSnapPrefs);
+export const SnapToolbar = memo(function SnapToolbar() {
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
+  const { state, actions } = usePreviewOverlayContext();
+  const { snapPrefs: prefs, rulerVisible, safeMarginsVisible } = state;
   // Motion-path "set destination" toggle — shown only when the selected element
   // can take a path; arms a single canvas click to place it (MotionPathOverlay).
   const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
   const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
   const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
-  const guides = usePreviewGuidesStore();
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridButtonRef = useRef<HTMLButtonElement>(null);
 
   const updatePrefs = useCallback(
     (patch: Partial<typeof prefs>) => {
-      setPrefs((prev) => {
-        const next = { ...prev, ...patch };
-        writeStudioUiPreferences(patch);
-        onSnapChange?.(next);
-        return next;
-      });
+      actions.setSnapPrefs(patch);
     },
-    [onSnapChange],
+    [actions],
   );
 
   const toggleSnap = useCallback(() => {
@@ -74,16 +41,16 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
       if (t instanceof HTMLIFrameElement) return;
       if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        updatePrefs({ snapEnabled: !readSnapPrefs().snapEnabled });
+        updatePrefs({ snapEnabled: !prefs.snapEnabled });
       }
       if (e.key === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        updatePrefs({ gridVisible: !readSnapPrefs().gridVisible });
+        updatePrefs({ gridVisible: !prefs.gridVisible });
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [updatePrefs]);
+  }, [prefs.gridVisible, prefs.snapEnabled, updatePrefs]);
 
   useEffect(() => {
     if (!gridPopoverOpen) return;
@@ -123,23 +90,27 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           ["rulerVisible", "Ruler", Ruler],
           ["safeMarginsVisible", "Safe margins", FrameCorners],
         ] as const
-      ).map(([key, label, Icon]) => (
-        <button
-          key={key}
-          type="button"
-          className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
-            guides[key]
-              ? "bg-studio-accent/20 text-studio-accent"
-              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-          }`}
-          onClick={() => guides.toggle(key)}
-          title={`${label} ${guides[key] ? "on" : "off"}`}
-          aria-label={`Toggle ${label.toLowerCase()}`}
-          aria-pressed={guides[key]}
-        >
-          <Icon size={16} weight={guides[key] ? "fill" : "regular"} />
-        </button>
-      ))}
+      ).map(([key, label, Icon]) => {
+        const visible = key === "rulerVisible" ? rulerVisible : safeMarginsVisible;
+        const toggle = key === "rulerVisible" ? actions.toggleRulers : actions.toggleSafeMargins;
+        return (
+          <button
+            key={key}
+            type="button"
+            className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
+              visible
+                ? "bg-studio-accent/20 text-studio-accent"
+                : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
+            }`}
+            onClick={toggle}
+            title={`${label} ${visible ? "on" : "off"}`}
+            aria-label={`Toggle ${label.toLowerCase()}`}
+            aria-pressed={visible}
+          >
+            <Icon size={16} weight={visible ? "fill" : "regular"} />
+          </button>
+        );
+      })}
       <button
         type="button"
         className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${

@@ -103,7 +103,7 @@ async function collectRun(page, injectedLongTaskMs = 0) {
     }
 
     function findTimelineScroller() {
-      const root = document.querySelector('[aria-label="Timeline"]');
+      const root = document.querySelector('[aria-label="Timeline track view"]');
       if (!(root instanceof HTMLElement)) throw new Error("Timeline root not mounted");
       const scroller = root.querySelector("[data-timeline-scroll-viewport]");
       if (!(scroller instanceof HTMLElement)) throw new Error("Timeline scroller not mounted");
@@ -172,7 +172,7 @@ async function assertLongTaskCapture(browser, longTaskLimitMs, scrollSamplesPerR
   const injectedDurationMs = longTaskLimitMs + 25;
   try {
     await page.setContent(`
-      <div aria-label="Timeline">
+      <div aria-label="Timeline track view">
         <div data-timeline-scroll-viewport style="width:100px;height:100px;overflow:auto">
           <div style="width:1000px;height:1000px"></div>
         </div>
@@ -334,7 +334,9 @@ try {
   }
 
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
-  await page.waitForFunction(() => document.querySelector('[aria-label="Timeline"]') === null);
+  await page.waitForFunction(
+    () => document.querySelector('[aria-label="Timeline track view"]') === null,
+  );
   await waitForStudioTestHookSettle(page);
   await loadFixtureAndWait(page, 1_000, PROFILE);
   await client.send("HeapProfiler.collectGarbage");
@@ -418,7 +420,7 @@ async function waitForFixtureRender(page, elementCount) {
       modelCount: window.__playerStore?.getState().elements.length ?? null,
       renderedCount:
         document
-          .querySelector('[aria-label="Timeline"]')
+          .querySelector('[aria-label="Timeline track view"]')
           ?.getAttribute("data-timeline-element-count") ?? null,
     }));
     if (observed.renderedCount === String(elementCount)) {

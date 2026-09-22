@@ -26,15 +26,13 @@ import { useMemo } from "react";
 
 /** Accent rail + inset marking a row as a group MEMBER, matching the level-2
  *  nesting its `aria-level` already reports. */
-const GROUP_MEMBER_RAIL = "#3CE6AC59";
+const GROUP_MEMBER_RAIL = "var(--timeline-accent-rail)";
 const GROUP_MEMBER_INDENT = 14;
-/** A hair lighter than `gutterBackground`, so a member row reads as sitting
- *  INSIDE its group rather than beside it. Overlaid rather than hard-coded so
- *  it tracks whatever the theme's gutter is. */
-const GROUP_MEMBER_TINT = "rgba(255,255,255,0.035)";
+/** A neutral wash keeps group membership visible without changing the row's hue. */
+const GROUP_MEMBER_TINT = "var(--timeline-group-member-tint)";
 
 /** The gutter fill for a row, tinted when it belongs to a group. */
-function gutterFill(base: string, isGroupMember: boolean): string {
+export function gutterFill(base: string, isGroupMember: boolean): string {
   return isGroupMember
     ? `linear-gradient(${GROUP_MEMBER_TINT}, ${GROUP_MEMBER_TINT}), ${base}`
     : base;
@@ -288,7 +286,7 @@ export function TimelineTrackHeader({
           <div
             className={
               showTrackLabel
-                ? "flex flex-col justify-center gap-0.5 px-1.5 text-white/55"
+                ? "flex flex-col justify-center gap-0.5 px-1.5 text-[var(--timeline-handle)]"
                 : "flex flex-col items-center justify-center gap-0.5"
             }
             style={{ height: TRACK_H }}

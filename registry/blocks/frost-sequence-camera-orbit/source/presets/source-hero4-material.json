@@ -1,0 +1,176 @@
+{
+  "ice": {
+    "ior": 1.445,
+    "dispersion": 0.155,
+    "thicknessScale": 2.41,
+    "attenuationDistance": 4.47,
+    "attenuationColor": "#524c4c",
+    "baseRoughness": 0.5,
+    "frost": {
+      "scale": 0.2,
+      "threshold": 1,
+      "softness": 0.36,
+      "roughness": 0,
+      "diffuse": 0.56,
+      "crystalBump": 0.37,
+      "crystalScale": 67
+    },
+    "cracks": {
+      "largeScale": 8,
+      "warp": 0,
+      "warpScale": 2.2,
+      "coverage": 0.01,
+      "regionScale": 1.35,
+      "regionCoverage": 0,
+      "veinScale": 20,
+      "veinContrast": 0.57,
+      "width": 0.0175,
+      "brightness": 0.25,
+      "darkness": 1,
+      "refraction": 0.008,
+      "surfaceStrength": 0,
+      "steps": 21,
+      "fineCracks": true,
+      "fineScale": 10.4,
+      "fineAmount": 0,
+      "fineCoverage": 0.45,
+      "fineNearLarge": 1
+    },
+    "smudges": {
+      "amount": 0,
+      "coverage": 0.29,
+      "maskScale": 3.1,
+      "anisotropy": 5.5,
+      "roughness": 0.02,
+      "whiteness": 0.035,
+      "scale": 0.5
+    },
+    "bumps": {
+      "microBump": 0.32,
+      "microScale": 121,
+      "microCoverage": 0.76,
+      "rippleBump": 0.45,
+      "rippleScale": 2.5,
+      "maskScale": 3.6
+    },
+    "crumbleGlow": 0.16,
+    "edgeWhiteness": 0.09,
+    "clearcoat": 0,
+    "clearcoatRoughness": 0.085,
+    "envIntensity": 0.28,
+    "specularIntensity": 0.65,
+    "interiorScatter": 0.05
+  },
+  "performance": {
+    "adaptiveResolution": true,
+    "targetFps": 60,
+    "minPixelRatio": 0.75,
+    "sceneResolutionScale": 1,
+    "dynamicSceneResolution": true,
+    "minSceneResolutionScale": 0.35,
+    "upscaler": "taau",
+    "upscaleSharpness": 0.2,
+    "nativePostEffects": true,
+    "idleSkip": true,
+    "adaptiveSteps": true,
+    "voronoiCells": "27",
+    "hazeResolution": "quarter",
+    "turbulence": "fast",
+    "gpuTimers": true
+  },
+  "lighting": {
+    "key": {
+      "color": "#ffffff",
+      "intensity": 12,
+      "elevation": 62,
+      "azimuth": -10.5,
+      "size": 3,
+      "hoverBoost": 0.3
+    },
+    "fill": 1.5,
+    "fillColor": "#ffffff",
+    "fillGroundColor": "#07a4a6",
+    "rim": 5,
+    "rimColor": "#0b82ea",
+    "rimElevation": 9.5,
+    "shadow": {
+      "intensity": 0,
+      "softness": 6,
+      "samples": 1,
+      "mapSize": "1024",
+      "bias": -0.0006
+    },
+    "sway": {
+      "amplitude": 0.118,
+      "period": 35
+    },
+    "backdrop": {
+      "top": "#212121",
+      "mid": "#171717",
+      "bottom": "#030303",
+      "centerX": 0.19,
+      "centerY": 1.5,
+      "radius": 0.78,
+      "falloff": 4,
+      "noise": 0
+    },
+    "envSoftbox": 1.22,
+    "envRim": 2.43,
+    "envFill": 1,
+    "rimAzimuth": -180,
+    "rimAngle": 81,
+    "rimSize": 2.05,
+    "fillReflectionStrength": 2,
+    "accentCool": {
+      "intensity": 4,
+      "reflection": 3,
+      "elevation": 25,
+      "azimuth": -65,
+      "size": 2.85,
+      "color": "#c7ddff"
+    },
+    "accentWarm": {
+      "intensity": 3.64,
+      "reflection": 3,
+      "elevation": 34,
+      "azimuth": 127,
+      "size": 3,
+      "color": "#ff0000"
+    }
+  },
+  "post": {
+    "dof": {
+      "enabled": false,
+      "focusBias": -0.43,
+      "aperture": 4,
+      "range": 12
+    },
+    "bloom": {
+      "threshold": 0.28,
+      "intensity": 0,
+      "radius": 0.11
+    },
+    "monochrome": 0,
+    "tonemap": "aces",
+    "exposure": 1.3,
+    "contrast": 1.15,
+    "blackLift": 0,
+    "vignette": {
+      "strength": 0.325,
+      "softness": 1.175,
+      "radius": 1.11
+    },
+    "grain": {
+      "strength": 0,
+      "size": 1,
+      "speed": 0,
+      "shadowWeight": 0.28,
+      "backgroundStrength": 0.035,
+      "backgroundSize": 2,
+      "backgroundSpeed": 0
+    },
+    "dither": true,
+    "aaMode": "traa",
+    "pixelRatioCap": 2
+  }
+}

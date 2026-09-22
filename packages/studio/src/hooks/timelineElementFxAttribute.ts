@@ -7,7 +7,7 @@
  * shared core `setAudioGroupAttribute` also uses.
  */
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import {
   buildPatchTarget,
@@ -30,6 +30,14 @@ function patchLiveElementAttribute(
   if (!target) return;
   if (value === null) target.removeAttribute(attr);
   else target.setAttribute(attr, value);
+}
+
+function elementAttributeLiveKey(
+  element: TimelineElement,
+  activeCompPath: string | null,
+  attr: string,
+): string {
+  return `${element.sourceFile || activeCompPath || "index.html"}\0${element.key ?? element.domId ?? element.id}\0${attr}`;
 }
 
 interface SetElementAttributeInput {
@@ -92,10 +100,32 @@ export function useSetElementAttribute({
     value: string | null,
     label: string,
   ) => Promise<void>;
+  revertLive: (element: TimelineElement, attr: string) => void;
 } {
+  const liveBeforeRef = useRef(new Map<string, string | null>());
   const setLive = useCallback(
     (element: TimelineElement, attr: string, value: string | null) => {
+      const key = elementAttributeLiveKey(element, activeCompPath, attr);
+      const target = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
+      if (!liveBeforeRef.current.has(key)) {
+        liveBeforeRef.current.set(key, target?.getAttribute(attr) ?? null);
+      }
       patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
+    },
+    [previewIframeRef, activeCompPath],
+  );
+  const revertLive = useCallback(
+    (element: TimelineElement, attr: string) => {
+      const key = elementAttributeLiveKey(element, activeCompPath, attr);
+      if (!liveBeforeRef.current.has(key)) return;
+      patchLiveElementAttribute(
+        previewIframeRef.current,
+        element,
+        attr,
+        liveBeforeRef.current.get(key) ?? null,
+        activeCompPath,
+      );
+      liveBeforeRef.current.delete(key);
     },
     [previewIframeRef, activeCompPath],
   );
@@ -120,10 +150,12 @@ export function useSetElementAttribute({
           recordEdit,
           pendingTimelineEditPathRef,
         });
+        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update effect";
         showToast(message);
+        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
       }
     },
     [
@@ -137,5 +169,5 @@ export function useSetElementAttribute({
       projectIdRef,
     ],
   );
-  return { setLive, setQuiet };
+  return { setLive, setQuiet, revertLive };
 }

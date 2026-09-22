@@ -14,6 +14,12 @@ import {
   seekCompositionTimeline,
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
+import {
+  readElementRateSpec,
+  sourceTimeAt,
+  timeAtSourceTime,
+  type RateSpec,
+} from "@hyperframes/core";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -110,16 +116,22 @@ export function resolveSnapshotVideoClipStart(input: {
   return input.runtimeResolvedStart ?? input.authoredStart;
 }
 
-/** Match runtime/render timing: authored data-playback-rate wins over the
- * browser default, then the effective rate is clamped to the supported range. */
-export function resolveSnapshotVideoPlaybackRate(input: {
+/** Match runtime/render timing: a `rate` lane in data-automation wins, then the authored
+ * data-playback-rate, then the browser default, all through the runtime's own reader. */
+export function resolveSnapshotVideoRateSpec(input: {
   authoredRate: string | undefined;
+  authoredAutomation?: string | undefined;
   defaultRate: number;
-}): number {
+}): RateSpec {
   const authoredRate = Number.parseFloat(input.authoredRate ?? "");
-  const rawRate =
-    Number.isFinite(authoredRate) && authoredRate > 0 ? authoredRate : input.defaultRate;
-  return Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+  const attrs: Record<string, string | undefined> = {
+    "data-playback-rate":
+      Number.isFinite(authoredRate) && authoredRate > 0
+        ? input.authoredRate
+        : String(input.defaultRate),
+    "data-automation": input.authoredAutomation,
+  };
+  return readElementRateSpec({ getAttribute: (name) => attrs[name] ?? null });
 }
 
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
@@ -454,6 +466,7 @@ async function captureSnapshots(
                 src: v.currentSrc || v.src,
                 authoredStart,
                 authoredRate: v.dataset.playbackRate,
+                authoredAutomation: v.dataset.automation,
                 defaultRate: v.defaultPlaybackRate,
                 runtimeResolvedStart:
                   runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
@@ -469,13 +482,16 @@ async function captureSnapshots(
           });
           const active = candidates.flatMap((candidate) => {
             const start = resolveSnapshotVideoClipStart(candidate);
-            const playbackRate = resolveSnapshotVideoPlaybackRate(candidate);
+            const playbackRate = resolveSnapshotVideoRateSpec(candidate);
             const duration =
               candidate.authoredDuration ??
               (candidate.srcDuration > 0
-                ? Math.max(0, (candidate.srcDuration - candidate.mediaStart) / playbackRate)
+                ? Math.max(
+                    0,
+                    timeAtSourceTime(playbackRate, candidate.srcDuration - candidate.mediaStart),
+                  )
                 : Number.POSITIVE_INFINITY);
-            let relTime = (time - start) * playbackRate + candidate.mediaStart;
+            let relTime = sourceTimeAt(playbackRate, time - start) + candidate.mediaStart;
             if (
               candidate.loop &&
               candidate.srcDuration > candidate.mediaStart &&

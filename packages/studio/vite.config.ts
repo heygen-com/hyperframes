@@ -1,8 +1,15 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+  copyFileSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  lstatSync,
+  realpathSync,
+} from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
@@ -26,6 +33,30 @@ async function loadRuntimeSourceForDev(
 }
 
 const studioPkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"));
+
+/**
+ * Copies the build's one CSS asset, unhashed, to `dist/styles.css` for the
+ * `./styles.css` export. Throws if the build ever emits more than one.
+ */
+export function stableStylesCssPlugin(): Plugin {
+  return {
+    name: "studio-stable-styles-css",
+    writeBundle(options, bundle) {
+      const cssAssets = Object.values(bundle).filter(
+        (item) => item.type === "asset" && item.fileName.endsWith(".css"),
+      );
+      if (cssAssets.length !== 1) {
+        throw new Error(
+          `stableStylesCssPlugin: expected exactly one CSS asset for the ./styles.css ` +
+            `export, found ${cssAssets.length} (${cssAssets.map((a) => a.fileName).join(", ") || "none"}). ` +
+            `Scope this plugin to the entry stylesheet instead of assuming a single emit.`,
+        );
+      }
+      const outDir = options.dir ?? "dist";
+      copyFileSync(join(outDir, cssAssets[0]!.fileName), join(outDir, "styles.css"));
+    },
+  };
+}
 
 // ── Bridge Hono fetch → Node http response ───────────────────────────────────
 
@@ -227,10 +258,17 @@ function devProjectApi(): Plugin {
         }
         const receipt =
           version && studioServer ? studioServer.identifyFileWrite(filePath, version) : null;
+        // First path segment under `dataDir` is the project id (`data/projects/<id>/...`).
+        // Mirrors the CLI host's `project.id` field on the same event — see its
+        // doc comment for why a stale tab needs this to ignore another
+        // project's saves on a shared connection. This host is multi-project
+        // (any dir under `dataDir` resolves), so unlike the CLI host it can't
+        // assume one fixed id.
+        const projectId = relative(dataDir, filePath).split(sep)[0];
         server.ws.send({
           type: "custom",
           event: "hf:file-change",
-          data: { path: filePath, version, ...receipt },
+          data: { path: filePath, version, projectId, ...receipt },
         });
       });
       server.httpServer?.on("close", () => void projectWatcher.close());
@@ -262,6 +300,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      // /assets/* caches by filename alone, immutably, for a year
+      // (studioServer.ts). Keep every hash; copy one CSS file, unhashed,
+      // to the dist ROOT instead for the ./styles.css export.
+      plugins: [stableStylesCssPlugin()],
+    },
   },
   optimizeDeps: {
     include: ["bpm-detective"],

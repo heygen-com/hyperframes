@@ -10,11 +10,7 @@ export interface StoredPreviewZoomState {
 export type TimelineTimeDisplayMode = "time" | "frame";
 
 export interface StudioUiPreferences {
-  leftCollapsed?: boolean;
-  leftWidth?: number;
-  rightWidth?: number;
   timelineVisible?: boolean;
-  timelineHeight?: number;
   playbackRate?: number;
   audioMuted?: boolean;
   audioVolume?: number;
@@ -29,6 +25,8 @@ export interface StudioUiPreferences {
   snapToGrid?: boolean;
   /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
   timelineSnapEnabled?: boolean;
+  /** Audio level meters at the timeline's right edge; hidden unless enabled here. */
+  audioMetersVisible?: boolean;
   /** Keeps the main track gapless: deleting a clip closes the gap. Distinct
    *  from `timelineSnapEnabled` ("Magnet", drag/trim snapping). */
   rippleEditEnabled?: boolean;
@@ -83,20 +81,8 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     if (!isRecord(parsed)) return {};
 
     const preferences: StudioUiPreferences = {};
-    if (typeof parsed.leftCollapsed === "boolean") {
-      preferences.leftCollapsed = parsed.leftCollapsed;
-    }
-    if (typeof parsed.leftWidth === "number" && Number.isFinite(parsed.leftWidth)) {
-      preferences.leftWidth = parsed.leftWidth;
-    }
-    if (typeof parsed.rightWidth === "number" && Number.isFinite(parsed.rightWidth)) {
-      preferences.rightWidth = parsed.rightWidth;
-    }
     if (typeof parsed.timelineVisible === "boolean") {
       preferences.timelineVisible = parsed.timelineVisible;
-    }
-    if (typeof parsed.timelineHeight === "number" && Number.isFinite(parsed.timelineHeight)) {
-      preferences.timelineHeight = parsed.timelineHeight;
     }
     if (typeof parsed.playbackRate === "number" && Number.isFinite(parsed.playbackRate)) {
       preferences.playbackRate = parsed.playbackRate;
@@ -155,6 +141,9 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     }
     if (typeof parsed.timelineSnapEnabled === "boolean") {
       preferences.timelineSnapEnabled = parsed.timelineSnapEnabled;
+    }
+    if (typeof parsed.audioMetersVisible === "boolean") {
+      preferences.audioMetersVisible = parsed.audioMetersVisible;
     }
     if (typeof parsed.rippleEditEnabled === "boolean") {
       preferences.rippleEditEnabled = parsed.rippleEditEnabled;

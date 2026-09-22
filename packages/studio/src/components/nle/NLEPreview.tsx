@@ -1,5 +1,10 @@
+import {
+  readPreviewCompositionSize,
+  type PreviewCompositionSize,
+} from "../../utils/previewCompositionSize";
 import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Player } from "../../player";
+import type { PreviewIframeSlot } from "../../player/hooks/useTimelineSyncCallbacks";
 import {
   DEFAULT_PREVIEW_ZOOM,
   canStartPreviewPan,
@@ -13,10 +18,17 @@ import {
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   onIframeLoad: () => void;
+  previewSlots: PreviewIframeSlot[];
+  onShadowIframeLoad: (gen: number) => void;
+  onShadowReadyChange: (gen: number, ready: boolean) => void;
+  onShadowError: (gen: number, message: string) => void;
+  setShadowIframeNode: (node: HTMLIFrameElement | null) => void;
+  resetPreviewSlots: () => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   directUrl?: string;
@@ -40,10 +52,15 @@ const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
 const PREVIEW_STAGE_INSET_PX = 16;
 
-interface PreviewCompositionSize {
-  width: number;
-  height: number;
-}
+// clip-path as well as visibility: the player's loading overlay sets its own
+// visibility:visible and would otherwise paint over the live frame.
+const SHADOW_IFRAME_STYLE: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  visibility: "hidden",
+  clipPath: "inset(100%)",
+  pointerEvents: "none",
+};
 
 function isPreviewAtFit(state: PreviewZoomState): boolean {
   return (
@@ -62,27 +79,6 @@ function loadInitialZoom(): PreviewZoomState {
         panY: stored.panY,
       }
     : DEFAULT_PREVIEW_ZOOM;
-}
-
-// fallow-ignore-next-line complexity
-function readPreviewCompositionSize(
-  iframe: HTMLIFrameElement | null,
-): PreviewCompositionSize | null {
-  try {
-    const doc = iframe?.contentDocument;
-    const root =
-      doc?.querySelector("[data-composition-id][data-width][data-height]") ??
-      doc?.querySelector("[data-width][data-height]");
-    if (!root) return null;
-    const width = Number.parseInt(root.getAttribute("data-width") ?? "", 10);
-    const height = Number.parseInt(root.getAttribute("data-height") ?? "", 10);
-    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-      return null;
-    }
-    return { width, height };
-  } catch {
-    return null;
-  }
 }
 
 export function resolvePreviewStageSize(
@@ -122,6 +118,12 @@ export const NLEPreview = memo(function NLEPreview({
   projectId,
   iframeRef,
   onIframeLoad,
+  previewSlots,
+  onShadowIframeLoad,
+  onShadowReadyChange,
+  onShadowError,
+  setShadowIframeNode,
+  resetPreviewSlots,
   onCompositionLoadingChange,
   portrait,
   directUrl,
@@ -136,6 +138,17 @@ export const NLEPreview = memo(function NLEPreview({
   useEffect(() => {
     onStageRef?.(stageRef);
   }, [onStageRef]);
+
+  // Composition switch: drop any in-flight shadow reload (skipped on first mount).
+  const previousActiveKeyRef = useRef(activeKey);
+  useEffect(() => {
+    if (previousActiveKeyRef.current === activeKey) return;
+    previousActiveKeyRef.current = activeKey;
+    resetPreviewSlots();
+  }, [activeKey, resetPreviewSlots]);
+
+  const liveGenRef = useRef<number | null>(null);
+  const reportPreviewFirstFrame = usePreviewFirstFrameTelemetry(previewSlots);
   const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
   const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
@@ -299,6 +312,18 @@ export const NLEPreview = memo(function NLEPreview({
     }
   }, [writeTransform]);
 
+  // A promotion does not re-fire Player.onLoad: re-sync the local iframe ref, size and zoom.
+  useEffect(() => {
+    const live = previewSlots.find((slot) => slot.role === "live");
+    if (!live || live.gen === liveGenRef.current) return;
+    const isPromotion = liveGenRef.current !== null;
+    liveGenRef.current = live.gen;
+    if (!isPromotion) return;
+    previewIframeRef.current = iframeRef.current;
+    updateCompositionSizeFromPreview();
+    applyInitialZoom();
+  }, [previewSlots, iframeRef, updateCompositionSizeFromPreview, applyInitialZoom]);
+
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -442,7 +467,7 @@ export const NLEPreview = memo(function NLEPreview({
     <div className="flex flex-col h-full min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-neutral-950"
+        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-[var(--studio-preview-bg,var(--color-neutral-950))]"
         tabIndex={0}
         aria-label="Composition preview"
       >
@@ -469,25 +494,44 @@ export const NLEPreview = memo(function NLEPreview({
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
-            <Player
-              key={activeKey}
-              ref={setPreviewIframeRef}
-              projectId={directUrl ? undefined : projectId}
-              directUrl={directUrl}
-              onLoad={() => {
-                updateCompositionSizeFromPreview();
-                onIframeLoad();
-                applyInitialZoom();
-              }}
-              onCompositionLoadingChange={onCompositionLoadingChange}
-              portrait={portrait}
-              suppressLoadingOverlay={suppressLoadingOverlay}
-              style={
-                directUrl?.includes("/components/")
-                  ? { position: "absolute", inset: 0, zIndex: 1 }
-                  : undefined
-              }
-            />
+            {previewSlots.map((slot) =>
+              slot.role === "live" ? (
+                <Player
+                  key={`${activeKey}-${slot.gen}`}
+                  ref={setPreviewIframeRef}
+                  projectId={directUrl ? undefined : projectId}
+                  directUrl={directUrl}
+                  onLoad={() => {
+                    updateCompositionSizeFromPreview();
+                    onIframeLoad();
+                    applyInitialZoom();
+                  }}
+                  onCompositionLoadingChange={onCompositionLoadingChange}
+                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
+                  portrait={portrait}
+                  suppressLoadingOverlay={suppressLoadingOverlay}
+                  style={
+                    directUrl?.includes("/components/")
+                      ? { position: "absolute", inset: 0, zIndex: 1 }
+                      : undefined
+                  }
+                />
+              ) : (
+                // Loads hidden behind the live slot until promoted.
+                <Player
+                  key={`${activeKey}-${slot.gen}`}
+                  ref={setShadowIframeNode}
+                  directUrl={slot.url}
+                  onLoad={() => onShadowIframeLoad(slot.gen)}
+                  onReadyToShowChange={(ready) => onShadowReadyChange(slot.gen, ready)}
+                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
+                  onPreviewError={(message) => onShadowError(slot.gen, message)}
+                  portrait={portrait}
+                  suppressLoadingOverlay
+                  style={SHADOW_IFRAME_STYLE}
+                />
+              ),
+            )}
           </div>
         </div>
         <div

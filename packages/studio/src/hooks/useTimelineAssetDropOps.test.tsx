@@ -16,19 +16,29 @@ afterEach(() => {
 });
 
 type DropFn = ReturnType<typeof useTimelineAssetDropOps>["handleTimelineAssetDrop"];
+type FileDropFn = ReturnType<typeof useTimelineAssetDropOps>["handleTimelineFileDrop"];
+type CompositionDropFn = ReturnType<
+  typeof useTimelineAssetDropOps
+>["handleTimelineCompositionDrop"];
 
 function renderDropHook(
   sourceContent: string,
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
   timelineElements: TimelineElement[] = [],
+  checkEditable?: (targets: readonly TimelineElement[]) => boolean,
+  uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]> = vi
+    .fn()
+    .mockResolvedValue([]),
 ) {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: sourceContent }) }),
   );
   let drop: DropFn | null = null;
+  let fileDrop: FileDropFn | null = null;
+  let compositionDrop: CompositionDropFn | null = null;
   function Harness() {
-    const { handleTimelineAssetDrop } = useTimelineAssetDropOps({
+    const handlers = useTimelineAssetDropOps({
       projectIdRef: { current: "project" },
       activeCompPath: "index.html",
       timelineElements,
@@ -36,13 +46,19 @@ function renderDropHook(
       writeProjectFile,
       recordEdit: vi.fn().mockResolvedValue(undefined),
       reloadPreview: vi.fn(),
-      uploadProjectFiles: vi.fn().mockResolvedValue([]),
+      uploadProjectFiles,
+      checkEditable,
     });
-    drop = handleTimelineAssetDrop;
+    drop = handlers.handleTimelineAssetDrop;
+    fileDrop = handlers.handleTimelineFileDrop;
+    compositionDrop = handlers.handleTimelineCompositionDrop;
     return null;
   }
   mountReactHarness(<Harness />);
-  return () => drop!;
+  return Object.assign(() => drop!, {
+    file: () => fileDrop!,
+    composition: () => compositionDrop!,
+  });
 }
 
 describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
@@ -87,7 +103,7 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     expect(usePlayerStore.getState().selectedElementId).toBe("index.html#clip");
   });
 
-  it("measures the insert row against the visible rows, not clips the timeline hides", async () => {
+  it("measures the insert row against every manifest timeline row", async () => {
     const clip = (id: string, track: number): TimelineElement => ({
       id,
       key: id,
@@ -107,7 +123,6 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       }),
       "</main>",
     ].join("\n");
-    usePlayerStore.getState().setTopLevelIds(new Set(["a", "b"]));
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const getDrop = renderDropHook(source, writeProjectFile, [
       clip("a", 0),
@@ -120,8 +135,50 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     });
 
     const [, written] = writeProjectFile.mock.calls[0] as [string, string];
-    expect(written).toContain('id="b" data-start="0" data-track-index="2"');
-    expect(written).toContain('id="hidden" data-start="0" data-track-index="1"');
+    expect(written).toContain('id="b" data-start="0" data-track-index="3"');
+    expect(written).toContain('id="hidden" data-start="0" data-track-index="2"');
     expect(written).toMatch(/<video id="clip"[^>]*data-track-index="1"/);
+  });
+
+  it("refuses an asset drop before reading or writing when editing is blocked", async () => {
+    const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const checkEditable = vi.fn(() => false);
+    const getDrop = renderDropHook(
+      '<main data-composition-id="scene" data-duration="10"></main>',
+      writeProjectFile,
+      [],
+      checkEditable,
+    );
+
+    await act(async () => {
+      await getDrop()("clip.mp4", { start: 1, track: 0 }, 2);
+    });
+
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    expect(checkEditable).toHaveBeenCalledWith([
+      expect.objectContaining({ sourceFile: "index.html", start: 1, track: 0 }),
+    ]);
+  });
+
+  it("refuses file and composition drops before their writes when editing is blocked", async () => {
+    const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const uploadProjectFiles = vi.fn().mockResolvedValue(["clip.mp4"]);
+    const getDrop = renderDropHook(
+      '<main data-composition-id="scene" data-duration="10"></main>',
+      writeProjectFile,
+      [],
+      () => false,
+      uploadProjectFiles,
+    );
+    const fetchMock = vi.mocked(globalThis.fetch);
+
+    await act(async () => {
+      await getDrop.file()([new File(["clip"], "clip.mp4")], { start: 1, track: 0 });
+      await getDrop.composition()("scene.html", { start: 1, track: 0 });
+    });
+
+    expect(uploadProjectFiles).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writeProjectFile).not.toHaveBeenCalled();
   });
 });

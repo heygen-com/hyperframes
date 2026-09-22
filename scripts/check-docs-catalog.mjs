@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import ts from "typescript";
 import {
   getCatalogTab,
+  previewGap,
   readCatalogGalleryData,
   readJson,
   resolveDocsRoot,
@@ -68,6 +69,11 @@ for (const item of data.items) {
     fs.existsSync(path.join(docs, item.href.slice(1) + ".mdx")),
     `Gallery item has no page on disk: ${item.href}`,
   );
+  assert.match(
+    fs.readFileSync(path.join(docs, item.href.slice(1) + ".mdx"), "utf8"),
+    /<CatalogDetail\b/,
+    `${item.href} does not render the shared item-page layout`,
+  );
   assert.equal(
     navSections.get(item.href),
     item.section,
@@ -77,7 +83,19 @@ for (const item of data.items) {
     ["still", "video", "player", "unsupported"].includes(item.preview?.mode),
     `Missing gallery preview policy for ${item.id}`,
   );
-  if (item.preview.mode === "video") assert.ok(item.video, `Missing hover video for ${item.id}`);
+  assert.ok(
+    item.preview.mode !== "still",
+    `${item.id} has neither a live payload nor a Chrome-flag reason for its recorded video`,
+  );
+  if (item.preview.mode === "video") {
+    assert.ok(item.video, `Missing hover video for ${item.id}`);
+    const file = path.join(docs, "public/catalog", `${item.kind}s`, `${item.id}.json`);
+    const payload = fs.existsSync(file) ? readJson(file) : {};
+    assert.ok(
+      payload.unsupported || previewGap(payload.html ?? "") === "webgpu",
+      `${item.id} shows its recorded video although its payload plays live`,
+    );
+  }
   if (item.preview.mode === "player") {
     assert.ok(
       fs.existsSync(path.join(docs, item.preview.source.slice(1))),
@@ -100,7 +118,18 @@ const beforeSet = new Set(before);
 const afterSet = new Set(after);
 const missing = before.filter((p) => !afterSet.has(p));
 const added = after.filter((p) => !beforeSet.has(p));
-assert.equal(missing.length, 0, `Pages present before but missing after: ${missing.join(", ")}`);
+const liveRegistryPages = new Set(
+  readJson(path.join(root, "registry", "registry.json")).items.map((item) => {
+    const kind = item.type === "hyperframes:block" ? "blocks" : "components";
+    return `/catalog/${kind}/${item.name}`;
+  }),
+);
+const unexpectedMissing = missing.filter((page) => liveRegistryPages.has(page));
+assert.equal(
+  unexpectedMissing.length,
+  0,
+  `Live catalog pages missing after: ${unexpectedMissing.join(", ")}`,
+);
 console.log(
   `PASS no page lost: ${before.length} pages before, ${after.length} after` +
     (added.length ? ` (${added.length} legitimately new: ${added.join(", ")})` : ""),

@@ -1,7 +1,9 @@
 // fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
+import { usePlayerStore } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
+import { selectSplittableElements } from "../utils/timelineElementSplit";
 import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
 import {
   applyTimelineStackingReorder,
@@ -23,6 +25,7 @@ import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
 import { useSetElementAttribute } from "./timelineElementFxAttribute";
 import { useTimelineDeleteOps } from "./useTimelineDeleteOps";
+import { useTrackPendingTimelineEdit } from "./useTrackPendingTimelineEdit";
 import { useAudioGroupCarveAssignment } from "./timelineAudioGroupCreate";
 import {
   useTimelineElementVisibilityEditing,
@@ -30,10 +33,21 @@ import {
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
+import { useTimelineEditGate } from "./timelineEditPermission";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+
+type GuardedTimelineHandler = (...args: never[]) => Promise<void>;
+type GuardedTimelineResolver = (...args: never[]) => readonly TimelineElement[];
+type GuardedTimelineRefusal = (...args: never[]) => void;
+
+interface GuardedTimelineEntry {
+  resolveTargets: GuardedTimelineResolver;
+  onRefused?: GuardedTimelineRefusal;
+  wrapped: GuardedTimelineHandler;
+}
 
 export function useTimelineEditing({
   projectId,
@@ -53,10 +67,47 @@ export function useTimelineEditing({
   forceReloadSdkSession,
   invalidateGsapCache,
   handleDomZIndexReorderCommitRef,
+  canEdit,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const editQueueRef = useRef(Promise.resolve());
+  const track = useTrackPendingTimelineEdit();
+  const checkEditable = useTimelineEditGate(canEdit, showToast);
+  const checkEditableRef = useRef(checkEditable);
+  checkEditableRef.current = checkEditable;
+  const guardedRef = useRef(new WeakMap<GuardedTimelineHandler, GuardedTimelineEntry>());
+  // Refuses (no call, no write, no history entry) when any target is
+  // blocked; otherwise runs fn as before. Cached by fn identity — like
+  // track() — so a fresh closure here doesn't defeat track's own cache.
+  const guard = useCallback(
+    <H extends (...args: never[]) => Promise<void>>(
+      resolveTargets: (...args: Parameters<H>) => readonly TimelineElement[],
+      fn: H,
+      onRefused?: (...args: Parameters<H>) => void,
+    ): H => {
+      const key = fn as unknown as GuardedTimelineHandler;
+      const cached = guardedRef.current.get(key);
+      if (cached) {
+        cached.resolveTargets = resolveTargets as unknown as GuardedTimelineResolver;
+        cached.onRefused = onRefused as unknown as GuardedTimelineRefusal | undefined;
+        return cached.wrapped as H;
+      }
+      const entry = {} as GuardedTimelineEntry;
+      entry.resolveTargets = resolveTargets as unknown as GuardedTimelineResolver;
+      entry.onRefused = onRefused as unknown as GuardedTimelineRefusal | undefined;
+      entry.wrapped = ((...args: Parameters<H>) => {
+        if (!checkEditableRef.current(entry.resolveTargets(...(args as never[])))) {
+          entry.onRefused?.(...(args as never[]));
+          return Promise.resolve();
+        }
+        return fn(...args);
+      }) as H as unknown as GuardedTimelineHandler;
+      guardedRef.current.set(key, entry);
+      return entry.wrapped as H;
+    },
+    [],
+  );
 
   const enqueueEdit = useCallback(
     (
@@ -378,9 +429,10 @@ export function useTimelineEditing({
     previewIframeRef,
     pendingTimelineEditPathRef,
     isRecordingRef,
+    checkEditable,
   });
 
-  const setElementFxAttribute = useSetElementAttribute({
+  const { revertLive: revertElementFxLive, ...setElementFxAttribute } = useSetElementAttribute({
     projectIdRef,
     activeCompPath,
     showToast,
@@ -391,16 +443,18 @@ export function useTimelineEditing({
     isRecordingRef,
   });
 
-  const setAudioGroupAttribute = useSetAudioGroupAttribute({
-    projectIdRef,
-    activeCompPath,
-    showToast,
-    writeProjectFile,
-    recordEdit,
-    previewIframeRef,
-    pendingTimelineEditPathRef,
-    isRecordingRef,
-  });
+  const { revertLive: revertAudioGroupLive, ...setAudioGroupAttribute } = useSetAudioGroupAttribute(
+    {
+      projectIdRef,
+      activeCompPath,
+      showToast,
+      writeProjectFile,
+      recordEdit,
+      previewIframeRef,
+      pendingTimelineEditPathRef,
+      isRecordingRef,
+    },
+  );
 
   const { handleTimelineElementsDelete, handleTimelineElementDelete } = useTimelineDeleteOps({
     projectIdRef,
@@ -429,6 +483,7 @@ export function useTimelineEditing({
       isRecordingRef,
       forceReloadSdkSession,
       observeProjectFileVersion,
+      checkEditable,
     });
 
   const handleBlockedTimelineEdit = useBlockedTimelineEditToast(showToast);
@@ -445,23 +500,87 @@ export function useTimelineEditing({
     forceReloadSdkSession,
   });
 
+  // Every write-handler is tracked here, the one place all hand edits
+  // converge, so undo never races a write; canEdit gates the same point.
+  // Coverage boundary: see the PR body, not every kind resolves an element.
+  const trackedRazorSplit = track(guard((element) => [element], handleRazorSplit));
   return {
-    handleTimelineElementMove,
-    handleTimelineElementResize,
-    handleToggleTrackHidden,
-    handleToggleElementHidden,
-    handleAutoGroupCarveSources,
-    setAudioGroupAttribute,
-    setElementFxAttribute,
-    handleTimelineElementDelete,
-    handleTimelineElementsDelete,
-    handleTimelineElementSplit: handleRazorSplit,
-    handleRazorSplit,
-    handleRazorSplitAll,
-    handleTimelineAssetDrop,
-    handleTimelineFileDrop,
-    handleTimelineCompositionDrop,
+    handleTimelineElementMove: track(guard((element) => [element], handleTimelineElementMove)),
+    handleTimelineElementResize: track(guard((element) => [element], handleTimelineElementResize)),
+    handleToggleTrackHidden: track(
+      guard(
+        (trackIndex) => timelineElements.filter((el) => el.track === trackIndex),
+        handleToggleTrackHidden,
+      ),
+    ),
+    handleToggleElementHidden: track(
+      guard((elementKey) => {
+        const keys = new Set(Array.isArray(elementKey) ? elementKey : [elementKey]);
+        return timelineElements.filter((el) => keys.has(el.key ?? el.id));
+      }, handleToggleElementHidden),
+    ),
+    handleAutoGroupCarveSources: track(handleAutoGroupCarveSources),
+    setAudioGroupAttribute: {
+      ...setAudioGroupAttribute,
+      // Same two-array member lookup syncStoredGroupAttribute mirrors into
+      // (timelineAudioGroupVolume.ts): a sub-composition's group members have
+      // no flat twin, only a domClipChildren entry, so both are checked.
+      setQuiet: track(
+        guard(
+          (groupId) => {
+            const state = usePlayerStore.getState();
+            const flatMembers = state.elements.filter((el) => el.audioGroup === groupId);
+            const domMembers = state.domClipChildren
+              .filter((child) => child.audioGroup === groupId)
+              .map(
+                (child): TimelineElement => ({
+                  id: child.id,
+                  domId: child.id,
+                  tag: "div",
+                  start: 0,
+                  duration: 0,
+                  track: -1,
+                }),
+              );
+            return [...flatMembers, ...domMembers];
+          },
+          setAudioGroupAttribute.setQuiet,
+          (groupId, attr) => revertAudioGroupLive(groupId, attr),
+        ),
+      ),
+    },
+    setElementFxAttribute: {
+      ...setElementFxAttribute,
+      setQuiet: track(
+        guard(
+          (element) => [element],
+          setElementFxAttribute.setQuiet,
+          (element, attr) => revertElementFxLive(element, attr),
+        ),
+      ),
+    },
+    handleTimelineElementDelete: track(guard((element) => [element], handleTimelineElementDelete)),
+    handleTimelineElementsDelete: track(
+      guard((elements) => elements, handleTimelineElementsDelete),
+    ),
+    handleTimelineElementSplit: trackedRazorSplit,
+    handleRazorSplit: trackedRazorSplit,
+    // Same selection the handler itself splits (useRazorSplit.ts).
+    handleRazorSplitAll: track(
+      guard(
+        (splitTime) => selectSplittableElements(usePlayerStore.getState().elements, splitTime),
+        handleRazorSplitAll,
+      ),
+    ),
+    handleTimelineAssetDrop: track(handleTimelineAssetDrop),
+    handleTimelineFileDrop: track(handleTimelineFileDrop),
+    handleTimelineCompositionDrop: track(handleTimelineCompositionDrop),
     handleBlockedTimelineEdit,
-    ...groupEditing,
+    handleTimelineGroupMove: track(
+      guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupMove),
+    ),
+    handleTimelineGroupResize: track(
+      guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
+    ),
   };
 }

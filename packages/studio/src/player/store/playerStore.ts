@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { attachPlayerStoreDevHandle } from "./playerStoreDevHandle";
 import { nextSelectionSet, revealTargetsSelection } from "./playerStoreSelection";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { BeatEditState } from "../../utils/beatEditing";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import {
@@ -11,7 +10,7 @@ import {
   type TimelineTimeDisplayMode,
 } from "../../utils/studioUiPreferences";
 import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
-import { createKeyframeSlice, type KeyframeCacheEntry, type KeyframeSlice } from "./keyframeSlice";
+import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
 import {
   createAutomationSelectionSlice,
   type AutomationSelectionSlice,
@@ -19,10 +18,12 @@ import {
 import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
-import { createPlaybackReadinessSlice, resetPlaybackReadinessState } from "./readinessSlice";
-
+import { createPlaybackReadinessSlice } from "./readinessSlice";
+import { createRangeSelectionSlice, type RangeSelectionSlice } from "./rangeSelectionSlice";
+import { createTimelineResetState } from "./timelineResetState";
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
+export { createTimelineResetState };
 
 import type {
   TimelineElement,
@@ -59,7 +60,8 @@ type PlayerStoreSlices = KeyframeSlice &
   AutomationSelectionSlice &
   ThumbnailSlice &
   EditingModeSlice &
-  ReturnType<typeof createPlaybackReadinessSlice>;
+  ReturnType<typeof createPlaybackReadinessSlice> &
+  RangeSelectionSlice;
 interface PlayerState extends PlayerStoreSlices {
   isPlaying: boolean;
   currentTime: number;
@@ -200,8 +202,6 @@ interface PlayerState extends PlayerStoreSlices {
   clipManifest: ClipManifestClip[] | null;
   setClipManifest: (clips: ClipManifestClip[] | null) => void;
   clipParentMap: Map<string, string>;
-  topLevelIds: ReadonlySet<string> | null;
-  setTopLevelIds: (ids: ReadonlySet<string> | null) => void;
   setClipParentMap: (map: Map<string, string>) => void;
   /**
    * Sub-composition DOM descendants (groups + their children) that have no
@@ -250,52 +250,6 @@ interface BeatHistoryEntry {
   label: string;
 }
 
-export function createTimelineResetState() {
-  return {
-    isPlaying: false,
-    currentTime: 0,
-    duration: 0,
-    ...resetPlaybackReadinessState(),
-    beatDragging: false,
-    elements: [],
-    selectedElementId: null,
-    zEditVersion: 0,
-    inPoint: null,
-    outPoint: null,
-    activeTool: "select" as const,
-    activeKeyframePct: null,
-    motionPathArmed: false,
-    motionPathCreateAvailable: false,
-    selectedKeyframes: new Set<string>(),
-    // Ephemeral like every other selection here. A range surviving a project
-    // switch can match a same-keyed clip in the new project and redirect a
-    // paste through `sel.elementKey === paste.elementKey` to a stale t0.
-    automationSelection: null,
-    expandedClipIds: new Set<string>(),
-    // Per-composition: ids from comp A match nothing in B, silencing all of it.
-    collapsedGroupIds: new Set<string>(),
-    expandedLaneOwnerIds: new Set<string>(),
-    focusedEaseSegment: null,
-    revealedAudioFxTarget: null,
-    selectedElementIds: new Set<string>(),
-    requestedSeekTime: null,
-    lintFindingsByElement: new Map<string, { count: number; messages: string[] }>(),
-    timelineFocus: null,
-    keyframeCache: new Map<string, KeyframeCacheEntry>(),
-    gsapAnimations: new Map<string, GsapAnimation[]>(),
-    beatAnalysis: null,
-    beatEdits: null,
-    beatUndo: [],
-    beatRedo: [],
-    beatPersist: null,
-    clipManifest: null,
-    clipParentMap: new Map<string, string>(),
-    topLevelIds: null,
-    domClipChildren: [],
-    subCompositionHostState: new Map<string, SubCompositionHostState>(),
-  };
-}
-
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
@@ -328,6 +282,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   ...createAutomationSelectionSlice(set),
   ...createEditingModeSlice(set),
+  ...createRangeSelectionSlice(),
   ...createPlaybackReadinessSlice(set),
 
   activeKeyframePct: null,
@@ -437,8 +392,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setClipManifest: (clips) => set({ clipManifest: clips }),
   clipParentMap: new Map(),
   setClipParentMap: (map) => set({ clipParentMap: map }),
-  topLevelIds: null,
-  setTopLevelIds: (ids) => set({ topLevelIds: ids }),
   domClipChildren: [],
   setDomClipChildren: (children) => set({ domClipChildren: children }),
   subCompositionHostState: new Map(),

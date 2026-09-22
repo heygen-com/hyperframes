@@ -1,47 +1,28 @@
 ---
 title: "Comment Cards"
 description: "Social comments typing on over footage: avatar pop, username and time, per-character typewriter, likes row; image avatars or initials chips"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/yt-comment-card.json"
+  compositionId="yt-comment-card"
+  compositionSrc="compositions/yt-comment-card.html"
+  title="Comment Cards"
+  description="Social comments typing on over footage: avatar pop, username and time, per-character typewriter, likes row; image avatars or initials chips"
+  variables={[]}
+  meta={{"duration":8,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":318}}
+  attribution={{"path":"registry/blocks/yt-comment-card","tags":["social","comments","creator","overlay"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/yt-comment-card/yt-comment-card.html"
+>
 
-<InstallCommand command="npx hyperframes add yt-comment-card" item="yt-comment-card" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/yt-comment-card.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="yt-comment-card preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/yt-comment-card.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-comment-card.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 8 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="yt-comment-card"
-  data-composition-src="compositions/yt-comment-card.html"
-  data-start="0"
-  data-duration="8"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="yt-comment-card.html">
-
-```html
+```html yt-comment-card.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -362,7 +343,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add yt-comment-card" item="yt-comment-card" />
+
+That writes one file: `compositions/yt-comment-card.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 8 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="yt-comment-card"
+  data-composition-src="compositions/yt-comment-card.html"
+  data-start="0"
+  data-duration="8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -373,3 +383,7 @@ Tagged `social` `comments` `creator` `overlay`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

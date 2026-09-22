@@ -99,6 +99,7 @@ function createSessionParams(
     reloadPreview: vi.fn(),
     setRefreshKey: vi.fn(),
     handleTimelineElementsDelete: vi.fn(),
+    readOnlyPreview: false,
     ...overrides,
   };
 }

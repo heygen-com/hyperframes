@@ -1,5 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { isTransitionPair } from "./timelineTransitionSeams";
 
 /**
  * Free-form vertical zones, top → bottom: visual, audio. Canvas layering is
@@ -66,7 +67,9 @@ function packTrackLanes(
   const ordered = [...clips].sort(byStableId);
   const lanes: TimelineElement[][] = [];
   for (const el of ordered) {
-    let sub = lanes.findIndex((occ) => occ.every((o) => !overlaps(o, el)));
+    let sub = lanes.findIndex((occ) =>
+      occ.every((o) => !overlaps(o, el) || isTransitionPair(o, el)),
+    );
     if (sub === -1) {
       sub = lanes.length;
       lanes.push([]);

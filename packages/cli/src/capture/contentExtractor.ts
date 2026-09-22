@@ -463,7 +463,7 @@ export async function captionImagesWithGemini(
       const results = await Promise.allSettled(
         batch.map(async (file: string) => {
           const filePath = join(outputDir, "assets", file);
-          const fd = openSync(filePath, "r");
+          const fd = openSync(filePath, "r", 0o600);
           let buffer: Buffer;
           try {
             const stat = fstatSync(fd);

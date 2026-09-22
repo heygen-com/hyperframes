@@ -229,7 +229,7 @@ Timeline math: the still owns its hold duration. Source math: final-source frame
 ></video>
 ```
 
-Timeline math: duration is authored timeline time. Source math: consumed source = timeline duration × rate; natural timeline duration = remaining source / rate. Audio follows: matching separate audio track uses the same constant rate. Owner: `/hyperframes-core`. Limit: normalized 0.1..5 constant only; no speed ramp envelope.
+Timeline math: duration is authored timeline time. Source math: consumed source = timeline duration × rate; natural timeline duration = remaining source / rate. Audio follows: matching separate audio track uses the same constant rate. Owner: `/hyperframes-core`. Limit: normalized 0.1..10. For a speed ramp put a `rate` lane in `data-automation`, e.g. `{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":4}]}]}`; it wins over the constant.
 
 ## Zoom / punch
 
@@ -488,4 +488,4 @@ Timeline math: change only `src`. Source math: reset `data-media-start` to the o
 
 ## Split a section and change its speed
 
-Timeline math: a section that is a sub-composition or a group of clips has no `data-playback-rate` of its own to set; split it by giving each half its own host or clips and shift everything after the cut by the length change. New length of a part = old length / rate. Every later `data-start` (clips, audio, root-timeline tweens) moves by the same delta. Source math: `<video>` and `<audio>` parts use `data-playback-rate` (0.1 to 5, constant) per the constant-speed recipe above, with matching audio. Limit: a speed ramp (a rate that changes within one clip) is not in the format; approximate with several constant-rate parts or preprocess a derived asset through `/media-use`. Say which you did, and do not invent a rate attribute.
+Timeline math: a section that is a sub-composition or a group of clips has no `data-playback-rate` of its own to set; split it by giving each half its own host or clips and shift everything after the cut by the length change. New length of a part = old length / rate. Every later `data-start` (clips, audio, root-timeline tweens) moves by the same delta. Source math: `<video>` and `<audio>` parts use `data-playback-rate` (0.1 to 10, constant) per the constant-speed recipe above, with matching audio. A speed ramp (a rate that changes within one clip) is a `rate` lane in `data-automation` on the `<video>`/`<audio>`; see `docs/reference/speed-ramps`. Say which you did.

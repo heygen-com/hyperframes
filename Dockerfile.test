@@ -88,7 +88,11 @@ COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
-RUN bun install --frozen-lockfile
+# A corrupt tarball extraction (e.g. run 35468046055: "Fail extracting tarball
+# for aws-cdk-lib") can print an error and then hang instead of exiting, once
+# eating a full 60-minute job timeout. Bound each attempt and retry once.
+RUN timeout 300 bun install --frozen-lockfile \
+    || timeout 300 bun install --frozen-lockfile
 
 # Copy source in dependency order, running each build as soon as its own
 # inputs are present.

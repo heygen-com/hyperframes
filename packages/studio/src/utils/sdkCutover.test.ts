@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   shouldUseSdkCutover,
   sdkCutoverPersist,
@@ -14,6 +14,7 @@ import {
 import { openComposition } from "@hyperframes/sdk";
 import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
 import type { PatchOperation } from "./sourcePatcher";
+import { StudioSaveNetworkError } from "./studioSaveDiagnostics";
 
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: true,
@@ -1402,5 +1403,105 @@ gsap.timeline().to('[data-hf-id="hf-layer"]', { duration: 1, x: 100 });
     expect(written).toContain("data-hf-gsap");
     expect(written).toContain('data-position-mode="relative"');
     expect(written).toContain("gsap.timeline()");
+  });
+});
+
+describe("sdk_cutover_failed classification (error_kind)", () => {
+  const makeDeps = (overrides: Partial<Parameters<typeof sdkCutoverPersist>[5]> = {}) => ({
+    editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+    writeProjectFile: vi.fn().mockResolvedValue(undefined),
+    reloadPreview: vi.fn(),
+    ...candidateTestDeps(),
+    ...overrides,
+  });
+
+  const makeSession = () =>
+    ({
+      getElement: vi.fn().mockReturnValue({ inlineStyles: {} }),
+      dispatch: vi.fn(),
+      serialize: vi
+        .fn()
+        .mockReturnValueOnce("<html>before</html>")
+        .mockReturnValue("<html></html>"),
+      batch: vi.fn((fn: () => void) => fn()),
+    }) as unknown as Parameters<typeof sdkCutoverPersist>[4];
+
+  beforeEach(() => {
+    vi.mocked(trackStudioEvent).mockClear();
+  });
+
+  // The production gate event this fix exists for: a bare `TypeError` from an
+  // UNWRAPPED raw fetch (`readProjectFile`'s implementation in
+  // useProjectFileWriter.ts, or writeProjectFile's own preflight — neither
+  // wraps as StudioSaveNetworkError). Without the message-based fallback in
+  // `cutoverErrorKind`, this files as `error_kind: "sdk"` and trips the
+  // cutover-failure rollback gate on a network blip the SDK never owned.
+  it("classifies a bare fetch TypeError from readProjectFile as network", async () => {
+    const deps = makeDeps({
+      readProjectFile: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    });
+    const session = makeSession();
+    const sel = { hfId: "hf-abc" } as never;
+
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "sdk_cutover_failed",
+      expect.objectContaining({ family: "dom", error_kind: "network" }),
+    );
+  });
+
+  it("classifies StudioSaveNetworkError from writeProjectFile as network", async () => {
+    const deps = makeDeps({
+      writeProjectFile: vi.fn().mockRejectedValue(new StudioSaveNetworkError("Failed to save")),
+    });
+    const session = makeSession();
+    const sel = { hfId: "hf-abc" } as never;
+
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "sdk_cutover_failed",
+      expect.objectContaining({ family: "dom", error_kind: "network" }),
+    );
+  });
+
+  it("classifies a plain error as an sdk defect, not network", async () => {
+    const deps = makeDeps({
+      writeProjectFile: vi.fn().mockRejectedValue(new Error("disk full")),
+    });
+    const session = makeSession();
+    const sel = { hfId: "hf-abc" } as never;
+
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "sdk_cutover_failed",
+      expect.objectContaining({ family: "dom", error_kind: "sdk" }),
+    );
   });
 });

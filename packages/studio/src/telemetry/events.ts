@@ -11,6 +11,16 @@ export function trackStudioSessionStart(props: { has_project: boolean }): void {
   });
 }
 
+export function trackPreviewFirstFrame(props: {
+  duration_ms: number;
+  composition_seconds: number;
+  clip_count: number;
+  media_clip_count: number;
+  studio_version: string;
+}): void {
+  trackEvent("preview_first_frame", props);
+}
+
 export function trackStudioRenderStart(props: {
   fps: number;
   quality: string;

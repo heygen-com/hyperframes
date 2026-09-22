@@ -1,7 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 // Composition drill-down stack management for NLEContext/EditorShell
 import { useState, useCallback, useRef, useEffect } from "react";
-import { usePlayerStore } from "../../player";
+import { usePlayerStore } from "../../player/store/playerStore";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 

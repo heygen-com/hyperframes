@@ -41,6 +41,121 @@
   --color-media: #00e3ff;
   --color-container: #f5a623;
 
+  /* The two stops of the HeyGen brand gradient, worn by the header logo. Fixed brand values
+   * rather than roles, so they are not reachable as a background or text colour by mistake. */
+  --color-brand-gradient-from: #06e3fa;
+  --color-brand-gradient-to: #4fdb5e;
+
+  /* The timeline's own surfaces: darker and bluer than the shared scale, so they
+   * get their own names instead of snapping to the nearest --color-bg/-surface
+   * step (a host themes the timeline by overriding these). */
+  --timeline-shell-bg: #0a0a0b;
+  --timeline-shell-border: rgba(255, 255, 255, 0.05);
+  --timeline-ruler-border: rgba(255, 255, 255, 0.16);
+  --timeline-row-bg: #101014;
+  --timeline-row-border: rgba(255, 255, 255, 0.06);
+  --timeline-gutter-bg: #0e0f12;
+  --timeline-gutter-border: rgba(255, 255, 255, 0.1);
+  --timeline-text-primary: rgba(255, 255, 255, 0.92);
+  --timeline-text-secondary: rgba(255, 255, 255, 0.62);
+  --timeline-tick-text: rgba(255, 255, 255, 0.34);
+  --timeline-tick-major: rgba(255, 255, 255, 0.1);
+  --timeline-tick-minor: rgba(255, 255, 255, 0.06);
+  --timeline-clip-bg: rgba(255, 255, 255, 0.12);
+  --timeline-clip-label-active: rgba(232, 255, 247, 0.95);
+  --timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  --timeline-clip-audio-bg: rgba(167, 139, 250, 0.16);
+  --timeline-clip-audio-border: rgba(167, 139, 250, 0.4);
+  --timeline-clip-audio-bg-hover: rgba(167, 139, 250, 0.24);
+  --timeline-clip-audio-bg-dragging: rgba(60, 52, 84, 0.96);
+  --timeline-clip-audio-muted-bg: rgb(72, 74, 78);
+  --timeline-audio-link: #a0aaa4;
+  --timeline-clip-selection: rgba(255, 255, 255, 0.85);
+  --timeline-clip-selection-highlight: rgb(255 255 255 / 0.55);
+  --timeline-clip-radius: 8px;
+  --timeline-clip-audio-radius: 21px;
+  --timeline-clip-highlight: rgb(255 255 255 / 0.08);
+  --timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
+  --timeline-clip-chip-bg: rgba(15, 22, 18, 0.73);
+  --timeline-clip-chip-audio-bg: rgba(25, 16, 38, 0.7);
+  --timeline-clip-chip-text: #ffffff;
+  --timeline-shortcut-bg: rgba(17, 23, 35, 0.84);
+  --timeline-thumbnail-shimmer: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  --timeline-thumbnail-label-gradient: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.4) 60%,
+    transparent 100%
+  );
+  --timeline-thumbnail-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  --timeline-waveform-bar-rgb: 245, 237, 255;
+  --timeline-waveform-muted-rgb: 236, 238, 242;
+  --timeline-waveform-baseline-rgb: 226, 216, 238;
+  --timeline-waveform-error: repeating-linear-gradient(
+    90deg,
+    rgba(245, 237, 255, 0.35) 0 2px,
+    transparent 2px 5px
+  );
+  --timeline-waveform-label-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  --timeline-clip-bg-active: rgba(60, 230, 172, 0.2);
+  --timeline-clip-bg-hover: rgba(255, 255, 255, 0.16);
+  --timeline-clip-bg-dragging: rgba(38, 42, 52, 0.96);
+  --timeline-clip-border: rgba(255, 255, 255, 0.22);
+  --timeline-clip-border-hover: rgba(60, 230, 172, 0.75);
+  --timeline-clip-border-active: rgba(60, 230, 172, 0.55);
+  --timeline-handle: rgba(255, 255, 255, 0.55);
+  /* Audio clip fades: the shaded wedge over the faded gain, and the corner dots. */
+  --timeline-fade-shade: rgba(0, 0, 0, 0.38);
+  --timeline-fade-dot-active: rgba(255, 255, 255, 1);
+  --timeline-fade-dot-ring: rgba(0, 0, 0, 0.55);
+  --timeline-resize-seam: rgba(255, 255, 255, 0.12);
+  --timeline-resize-active: rgba(255, 255, 255, 0.24);
+  --timeline-track-clip-fill: rgba(255, 255, 255, 0.055);
+  --timeline-track-clip-active: rgba(60, 230, 172, 0.16);
+  --timeline-track-label: rgba(255, 255, 255, 0.5);
+  --timeline-border-strong: rgba(255, 255, 255, 0.2);
+  --timeline-group-member-tint: rgba(255, 255, 255, 0.035);
+  --timeline-overlay-text: rgba(255, 255, 255, 0.8);
+  --timeline-accent: #3ce6ac;
+  --timeline-accent-soft: rgba(60, 230, 172, 0.18);
+  --timeline-accent-faint: rgba(60, 230, 172, 0.055);
+  --timeline-accent-fill: rgba(60, 230, 172, 0.1);
+  --timeline-accent-glow: rgba(60, 230, 172, 0.5);
+  --timeline-accent-border: rgba(60, 230, 172, 0.7);
+  --timeline-accent-rail: rgba(60, 230, 172, 0.35);
+  --timeline-accent-hover: rgba(60, 230, 172, 0.25);
+  --timeline-accent-button-bg: rgba(60, 230, 172, 0.15);
+  --timeline-danger: rgba(239, 68, 68, 0.7);
+  --timeline-info-bg: rgba(59, 130, 246, 0.12);
+  --timeline-info-border: rgba(59, 130, 246, 0.4);
+  --timeline-dialog-bg: #1b1b1f;
+  --timeline-diamond-bg: #171717;
+  --timeline-diamond-border: rgba(255, 255, 255, 0.14);
+  --timeline-text-solid: #ffffff;
+  --timeline-text-faint: rgba(255, 255, 255, 0.35);
+  --timeline-text-dim: rgba(255, 255, 255, 0.4);
+  --timeline-text-soft: rgba(255, 255, 255, 0.75);
+  --timeline-text-bright: rgba(255, 255, 255, 0.7);
+  --timeline-snap-guide: rgba(255, 255, 255, 0.6);
+  --timeline-overlay-bg: rgba(0, 0, 0, 0.8);
+  --timeline-overlay-bg-strong: rgba(0, 0, 0, 0.85);
+  --timeline-input-bg: rgba(0, 0, 0, 0.3);
+  --timeline-automation-rail: rgba(255, 255, 255, 0.08);
+  --timeline-automation-point-muted: rgba(0, 0, 0, 0.5);
+  --timeline-diamond-muted: #a3a3a3;
+  --timeline-beat: rgb(34, 197, 94);
+  --timeline-clip-shadow-dragging: rgba(0, 0, 0, 0.4);
+  --timeline-playhead-glow: rgba(60, 230, 172, 0.14);
+  --timeline-playhead-shadow: rgba(0, 0, 0, 0.55);
+  --timeline-transition-zone: rgba(255, 255, 255, 0.2);
+  --timeline-transition-badge: rgba(237, 244, 239, 0.98);
+  --timeline-transition-badge-ink: rgba(36, 56, 45, 0.96);
+
   /* -------------------------------------------------------------- geometry */
 
   --radius-sm: 0.25rem;
@@ -108,7 +223,14 @@
   --duration-press: 120ms;
   --duration-hover: 150ms;
   --duration-expand: 160ms;
-  --duration-open: 180ms;
+  /* Menus, popovers, and dropdowns. Open is ease-out; close is shorter and ease-in. */
+  --duration-open: 120ms;
+  --duration-close: 90ms;
+  /* Tooltips use the same enter shape on a shorter open. */
+  --duration-tooltip: 100ms;
+  /* Visible on the first frame. Never enter from scale 0 or opacity 0. */
+  --popup-enter-opacity: 0.8;
+  --popup-enter-scale: 0.97;
 
   /* ------------------------------------------------------------------ icon */
 
@@ -224,6 +346,34 @@
   --color-violet-400: oklch(70.2% 0.183 293.541);
   --color-violet-500: oklch(60.6% 0.25 292.717);
   --color-white: #fff;
+}
+
+/* One paper block. A host sets data-theme="paper" on the document element. */
+:root[data-theme="paper"] {
+  --timeline-shell-bg: #f4f6f3;
+  --timeline-row-bg: #edf0ed;
+  --timeline-clip-bg: #c9d1cb;
+  --timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+  --timeline-clip-highlight: rgb(255 255 255 / 0.08);
+  --timeline-clip-selection: #0f766e;
+  --timeline-clip-selection-highlight: rgb(255 255 255 / 0.55);
+  --timeline-clip-chip-bg: rgba(15, 22, 18, 0.73);
+  --timeline-clip-chip-audio-bg: rgba(25, 16, 38, 0.7);
+  --timeline-clip-chip-text: #ffffff;
+  --timeline-clip-audio-bg: rgb(150, 128, 180);
+  --timeline-clip-audio-bg-hover: rgb(135, 109, 170);
+  --timeline-clip-audio-bg-dragging: rgb(232, 224, 242);
+  --timeline-clip-audio-border: rgba(113, 80, 155, 0.45);
+  --timeline-clip-audio-muted-bg: rgb(156, 161, 157);
+  --timeline-audio-link: #626d66;
+  --timeline-waveform-bar-rgb: 20, 12, 32;
+  --timeline-waveform-muted-rgb: 24, 28, 26;
+  --timeline-waveform-baseline-rgb: 76, 62, 88;
+  --timeline-waveform-error: repeating-linear-gradient(
+    90deg,
+    rgba(20, 12, 32, 0.35) 0 2px,
+    transparent 2px 5px
+  );
 }
 
 /* Motion durations as utilities, since Tailwind has no `--duration-*`

@@ -1,35 +1,28 @@
 ---
 title: "Hairline Arc Gauge"
 description: "Thin circular gauge that draws on while its percentage counts up; one helper call drives both"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/mk-usage-arc.json"
+  compositionId="mk-usage-arc"
+  compositionSrc="compositions/components/mk-usage-arc.html"
+  title="Hairline Arc Gauge"
+  description="Thin circular gauge that draws on while its percentage counts up; one helper call drives both"
+  variables={[]}
+  meta={{"category":"Effects","badge":"Stable","codeLines":159}}
+  attribution={{"path":"registry/components/mk-usage-arc","tags":["data-viz","gauge","minimal"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/mk-usage-arc/mk-usage-arc.html"
+>
 
-<InstallCommand command="npx hyperframes add mk-usage-arc" item="mk-usage-arc" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/mk-usage-arc.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="mk-usage-arc preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/mk-usage-arc.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mk-usage-arc.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Paste it into your composition
-
-Open `compositions/components/mk-usage-arc.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Source
-
-<Accordion title="mk-usage-arc.html">
-
-```html
+```html mk-usage-arc.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -191,7 +184,24 @@ you paste it into.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add mk-usage-arc" item="mk-usage-arc" />
+
+That writes one file: `compositions/components/mk-usage-arc.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/mk-usage-arc.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
@@ -202,3 +212,7 @@ Tagged `data-viz` `gauge` `minimal`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

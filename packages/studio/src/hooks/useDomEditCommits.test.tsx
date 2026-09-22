@@ -230,6 +230,7 @@ function renderDomEditCommits(
       refreshDomEditSelectionFromPreview: vi.fn(),
       buildDomSelectionFromTarget: vi.fn(async () => null),
       onTrySdkPersist: options.onTrySdkPersist,
+      readOnlyPreview: false,
     });
     return null;
   }

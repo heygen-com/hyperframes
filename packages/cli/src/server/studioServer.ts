@@ -821,8 +821,20 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // identity for an unlabelled change, and without it every duplicate
         // delivery of one watcher event drains and reloads again.
         const receipt = version ? identifyFileWrite(absPath, version) : null;
+        // `projectId` so a stale tab — one still pointed at a project this
+        // server no longer serves, because `hyperframes preview` reused this
+        // port for a different folder (see ProjectUnreachableBanner's doc
+        // comment) — can tell "my project changed" from "some OTHER project,
+        // now served on this same connection, changed". Every subscriber on
+        // this port shares one `/api/events` stream regardless of which
+        // project their tab was opened for; without this field a stale tab
+        // reloads its preview and re-reads its composition on every save the
+        // CURRENT project makes, 404ing each time.
         stream
-          .writeSSE({ event: "file-change", data: JSON.stringify({ path, version, ...receipt }) })
+          .writeSSE({
+            event: "file-change",
+            data: JSON.stringify({ path, version, projectId: project.id, ...receipt }),
+          })
           .catch(() => {});
       };
       // Re-applied here because the watcher now also emits the signature

@@ -22,7 +22,7 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     outputs:
       preview: ${{ steps.filter.outputs.preview }}
     steps:

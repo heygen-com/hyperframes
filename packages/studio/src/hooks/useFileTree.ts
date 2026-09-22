@@ -39,7 +39,14 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     let cancelled = false;
     setFetched({ projectId, loaded: false, fileTree: [], compositionPaths: [], projectDir: null });
     fetch(buildProjectApiPath(projectId))
-      .then((r) => r.json())
+      // An unresolvable project answers 404 with a JSON body, so without this
+      // the error path parsed cleanly and the success branch below recorded an
+      // empty tree — and an empty provenance snapshot — for a project that was
+      // never read. Throwing hands it to the catch instead.
+      .then((r) => {
+        if (!r.ok) throw new Error(`tree fetch failed: ${r.status}`);
+        return r.json();
+      })
       .then((data: { files?: string[]; dir?: string; compositions?: string[] }) => {
         if (cancelled) return;
         setFetched({

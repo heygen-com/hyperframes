@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
-import { TimelineTrackHeader } from "./TimelineTrackHeader";
+import { TimelineTrackHeader, gutterFill } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -793,11 +793,7 @@ describe("TimelineTrackHeader", () => {
         isGroupMember: true,
       });
       expect(header()?.style.paddingLeft).toBe("14px");
-      expect(header()?.style.borderLeft).toContain("2px");
-      // And a lighter gutter, so the row reads as sitting INSIDE its group
-      // rather than beside it. Overlaid on the theme's own fill rather than a
-      // hard-coded colour, so it follows whatever the gutter is.
-      expect(header()?.style.background).toContain("linear-gradient");
+      expect(header()?.style.borderLeft).toContain("var(--timeline-accent-rail)");
       act(() => view.root.unmount());
     });
 
@@ -910,5 +906,30 @@ describe("TimelineTrackHeader", () => {
       expect(line?.querySelector('[aria-label="2 clips"]')).not.toBeNull();
       act(() => view.root.unmount());
     });
+  });
+});
+
+// A host themes the timeline by overriding --timeline-* on theme.css, so the
+// rendered gutter must carry the CSS variable, not a baked-in colour.
+describe("theming", () => {
+  it("reads the gutter background and border from timeline theme tokens", () => {
+    const view = renderHeader({});
+    const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
+    expect(header?.style.background).toBe(defaultTimelineTheme.gutterBackground);
+    expect(header?.style.background).toContain("var(--timeline-gutter-bg)");
+    expect(header?.style.borderRight).toContain(defaultTimelineTheme.gutterBorder);
+    act(() => view.root.unmount());
+  });
+
+  // happy-dom's `background` shorthand garbles a `var()` layer next to
+  // `linear-gradient(...)` (verified), so this checks the same value through
+  // the pure function instead of the broken CSSOM roundtrip.
+  it("overlays the group-member tint on the themed gutter, not a hard-coded colour", () => {
+    const filled = gutterFill(defaultTimelineTheme.gutterBackground, true);
+    expect(filled).toContain("linear-gradient");
+    expect(filled.endsWith(defaultTimelineTheme.gutterBackground)).toBe(true);
+    expect(gutterFill(defaultTimelineTheme.gutterBackground, false)).toBe(
+      defaultTimelineTheme.gutterBackground,
+    );
   });
 });

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
+import type { TimelineTimeRange } from "../store/rangeSelectionSlice";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditOverrides } from "./useResolvedTimelineEditCallbacks";
@@ -23,6 +24,8 @@ export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverri
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
   onSelectElement?: (element: TimelineElement | null) => void;
+  /** Notification only; null when cleared. The value lives in usePlayerStore.rangeSelection. */
+  onRangeSelect?: (range: TimelineTimeRange | null) => void;
   onCopyClip?: () => boolean;
   onPasteClip?: () => Promise<void>;
   onDuplicateClip?: () => Promise<boolean>;

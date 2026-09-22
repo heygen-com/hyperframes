@@ -246,7 +246,7 @@ const EMPTY_STATE = (
   </p>
 );
 
-// Panel orchestrator — JSX conditionals per section, same shape as StudioRightPanel.
+// Panel orchestrator — JSX conditionals per section, same shape as StudioRightPanels.
 // fallow-ignore-next-line complexity
 export const VariablesPanel = memo(function VariablesPanel({
   sdkSession,

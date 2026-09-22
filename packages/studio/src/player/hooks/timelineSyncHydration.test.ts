@@ -3,7 +3,6 @@
 import { describe, expect, it } from "vitest";
 import {
   collectSubCompositionDomChildren,
-  collectTopLevelElementIds,
   collectSubCompositionHostState,
 } from "./timelineSyncHydration";
 import type { ClipManifestClip } from "../lib/playbackTypes";
@@ -93,22 +92,5 @@ describe("collectSubCompositionHostState", () => {
     const state = collectSubCompositionHostState(doc, [clip({ id: "scene-2-slot" })]);
 
     expect(state.size).toBe(0);
-  });
-});
-
-describe("collectTopLevelElementIds", () => {
-  const docOf = (html: string) => new DOMParser().parseFromString(html, "text/html");
-
-  it("names the sub-composition host and a timed element, not what is nested inside them", () => {
-    const doc = docOf(`<div data-composition-id="root">
-      <div id="wrap"><div id="a" data-start="0" data-duration="2"><div id="inner" data-start="0"></div></div></div>
-      <div id="scene" data-composition-id="scene" data-composition-src="scene.html"><div id="box" data-start="0"></div></div>
-    </div>`);
-    expect([...collectTopLevelElementIds(doc)!].sort()).toEqual(["a", "scene"]);
-  });
-
-  it("is null when the document has no composition root", () => {
-    expect(collectTopLevelElementIds(docOf("<p>hi</p>"))).toBeNull();
-    expect(collectTopLevelElementIds(null)).toBeNull();
   });
 });

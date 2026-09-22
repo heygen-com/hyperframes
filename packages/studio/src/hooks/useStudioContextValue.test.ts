@@ -4,14 +4,12 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { RightInspectorPanes } from "../utils/studioHelpers";
+import type { PanelId } from "../components/dock/panelRegistry";
 import { makeSelection } from "./domSelectionTestHarness";
 import { useInspectorState, type InspectorState } from "./useStudioContextValue";
 
 interface HarnessProps {
-  rightPanelTab: string;
-  rightInspectorPanes: RightInspectorPanes;
-  rightCollapsed: boolean;
+  rightPanel: PanelId | null;
   isPlaying: boolean;
   isGestureRecording: boolean;
   domEditSelection: DomEditSelection | null;
@@ -22,9 +20,7 @@ function renderInspectorState(props: HarnessProps): InspectorState {
 
   function Harness() {
     state = useInspectorState(
-      props.rightPanelTab,
-      props.rightInspectorPanes,
-      props.rightCollapsed,
+      props.rightPanel,
       props.isPlaying,
       props.domEditSelection,
       props.isGestureRecording,
@@ -42,9 +38,7 @@ function selectedProps(
 ): HarnessProps & { domEditSelection: DomEditSelection } {
   const element = document.createElement("div");
   return {
-    rightPanelTab: "renders",
-    rightInspectorPanes: { layers: false, design: false },
-    rightCollapsed: true,
+    rightPanel: "renders",
     isPlaying: false,
     isGestureRecording: false,
     domEditSelection: makeSelection("Selected", element),
@@ -78,16 +72,10 @@ describe("useInspectorState", () => {
   it("keeps selected DOM bounds coupled to the inspector or variables panel", () => {
     expect(renderInspectorState(selectedProps()).shouldShowSelectedDomBounds).toBe(false);
     expect(
-      renderInspectorState(
-        selectedProps({
-          rightPanelTab: "design",
-          rightInspectorPanes: { layers: false, design: true },
-        }),
-      ).shouldShowSelectedDomBounds,
+      renderInspectorState(selectedProps({ rightPanel: "design" })).shouldShowSelectedDomBounds,
     ).toBe(true);
     expect(
-      renderInspectorState(selectedProps({ rightPanelTab: "variables" }))
-        .shouldShowSelectedDomBounds,
+      renderInspectorState(selectedProps({ rightPanel: "variables" })).shouldShowSelectedDomBounds,
     ).toBe(true);
   });
 });

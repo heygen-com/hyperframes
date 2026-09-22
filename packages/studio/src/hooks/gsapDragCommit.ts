@@ -135,7 +135,7 @@ export async function materializeIfDynamic(
   void iframe;
   void commitMutation;
   void selection;
-  throw new GsapEditBlockedError("source-uneditable");
+  throw new GsapEditBlockedError("source-uneditable", "geometry-unresolved-source");
 }
 
 // ── Drag → GSAP position math ──────────────────────────────────────────────

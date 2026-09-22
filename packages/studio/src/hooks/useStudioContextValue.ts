@@ -1,7 +1,7 @@
 import { useCallback, useMemo, type DragEvent } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { StudioContextValue } from "../contexts/StudioContext";
-import type { RightInspectorPanes } from "../utils/studioHelpers";
+import type { PanelId } from "../components/dock/panelRegistry";
 import type { TimelineFileDropHandler } from "./useTimelineEditingTypes";
 import { usePlayerStore } from "../player";
 
@@ -66,33 +66,21 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
 }
 
 export interface InspectorState {
-  layersPanelActive: boolean;
-  designPanelActive: boolean;
   inspectorPanelActive: boolean;
-  inspectorButtonActive: boolean;
   shouldShowMotionPath: boolean;
   shouldShowSelectedDomBounds: boolean;
 }
 
 export function useInspectorState(
-  rightPanelTab: string,
-  rightInspectorPanes: RightInspectorPanes,
-  rightCollapsed: boolean,
+  rightPanel: PanelId | null,
   isPlaying: boolean,
   domEditSelection: DomEditSelection | null,
   isGestureRecording?: boolean,
 ): InspectorState {
-  // fallow-ignore-next-line complexity
   return useMemo(() => {
-    const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
-    const layersPanelActive = inspectorTabActive && rightInspectorPanes.layers;
-    const designPanelActive = inspectorTabActive && rightInspectorPanes.design;
-    const inspectorPanelActive = layersPanelActive || designPanelActive;
+    const inspectorPanelActive = rightPanel === "layers" || rightPanel === "design";
     return {
-      layersPanelActive,
-      designPanelActive,
       inspectorPanelActive,
-      inspectorButtonActive: !rightCollapsed && inspectorPanelActive,
       // Deliberately wider than shouldShowSelectedDomBounds: the on-canvas path
       // handles ARE the arc-drag affordance, so gating them on an open Inspector
       // would make keyframe path editing reachable only from a side panel.
@@ -102,18 +90,9 @@ export function useInspectorState(
       // The Variables tab also works against the canvas selection (bind card),
       // so the selection outline stays visible there too.
       shouldShowSelectedDomBounds:
-        (inspectorPanelActive || rightPanelTab === "variables") &&
-        !isPlaying &&
-        !isGestureRecording,
+        (inspectorPanelActive || rightPanel === "variables") && !isPlaying && !isGestureRecording,
     };
-  }, [
-    rightPanelTab,
-    rightInspectorPanes,
-    rightCollapsed,
-    isPlaying,
-    isGestureRecording,
-    domEditSelection,
-  ]);
+  }, [rightPanel, isPlaying, isGestureRecording, domEditSelection]);
 }
 
 /** Lets an OS file drop reach `onDrop` anywhere in the shell; the timeline shows its own landing preview. */

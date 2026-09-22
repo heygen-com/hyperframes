@@ -483,7 +483,7 @@ describe("TimelineAutomationLane", () => {
     // Bigger than the points around them, and ringed rather than recoloured — the
     // fill is the parameter's own colour and stays that way.
     expect(Math.min(...radii)).toBeGreaterThan(Math.max(...plain));
-    expect(marked[0]?.getAttribute("stroke")).toBe("#fff");
+    expect(marked[0]?.getAttribute("stroke")).toBe("var(--timeline-text-solid)");
   });
 
   it("marks nothing when there is no range", () => {

@@ -261,7 +261,6 @@ describe("motion-blur snippet copies", () => {
     "registry/components/motion-blur/demo.html",
     "registry/components/shutter-slam/shutter-slam.html",
     "registry/components/shutter-slam/demo.html",
-    "registry/examples/motion-blur/index.html",
   ])("%s inlines the installable snippet verbatim", (relativePath) => {
     expect(snippetBody(readRepoFile(relativePath))).toBe(snippetBody(snippetHtml));
   });

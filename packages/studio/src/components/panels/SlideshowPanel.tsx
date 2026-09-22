@@ -156,7 +156,7 @@ export function makeSlideshowNotesController(): NotesController {
 // ── Component ─────────────────────────────────────────────────────────────
 
 export interface SlideshowPanelProps {
-  /** Scenes from the live clip manifest (passed from StudioRightPanel). */
+  /** Scenes from the live clip manifest (passed from StudioRightPanels). */
   scenes: import("./slideshowPanelHelpers").SceneInfo[];
   /**
    * Called with the updated manifest after every discrete edit (toggle, add,

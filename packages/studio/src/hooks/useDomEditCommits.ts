@@ -89,6 +89,7 @@ export interface UseDomEditCommitsParams {
   ) => Promise<CutoverResult>;
   /** Resolver-shadow tripwire for z-index reorder targets (telemetry-only, decoupled from cutover). */
   onReorderShadow?: (targets: string[]) => void;
+  readOnlyPreview: boolean;
 }
 
 export function useDomEditCommits({
@@ -112,6 +113,7 @@ export function useDomEditCommits({
   onTrySdkPersist,
   onTrySdkDelete,
   onReorderShadow,
+  readOnlyPreview,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -452,6 +454,7 @@ export function useDomEditCommits({
     previewIframeRef,
     showToast,
     commitPositionPatchToHtml,
+    readOnlyPreview,
   });
 
   // ── Element lifecycle (delete, z-index reorder) ──
