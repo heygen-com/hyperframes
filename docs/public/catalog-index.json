@@ -2045,6 +2045,25 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.png"
   },
   {
+    "name": "extended-keyframe",
+    "type": "component",
+    "title": "Extended Keyframe",
+    "description": "The never-fully-lands arrival: an element covers most of its move in the first fifth of the duration and creeps the rest to the last frame, exits along its arrival vector, and carries shutter motion blur — from any side or by scale, one call per element, plus the ease on its own for any tween",
+    "tags": [
+      "motion",
+      "ease",
+      "arrival",
+      "kinetic-type",
+      "text",
+      "motion-blur",
+      "after-effects",
+      "slide-in",
+      "scale-in"
+    ],
+    "href": "/catalog/components/extended-keyframe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/extended-keyframe.png"
+  },
+  {
     "name": "facet-morph",
     "type": "component",
     "title": "Facet Morph",

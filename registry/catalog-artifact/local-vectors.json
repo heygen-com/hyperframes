@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "fc655a7cbb3bd455b9c6cb55df3fdf6b35da2cbcb25474068ec796fddd3c8b55",
+  "revision": "38f15c5feb953f191f72df368cf25a80f2640284afa3a4c85fe28f36fbaf3755",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -140,6 +140,7 @@
     "dynamic-grid",
     "echo-trail",
     "editorial-flash-overlay",
+    "extended-keyframe",
     "facet-morph",
     "fade-through",
     "flash-through-white",
