@@ -19,11 +19,13 @@ function findTimedElement(doc: Document, markerId: string): Element | null {
     const byId = doc.getElementById(candidate);
     if (byId?.hasAttribute("data-start")) return byId;
   }
-  return Array.from(doc.querySelectorAll("[data-start]")).find(
-    (element) =>
-      element.getAttribute("data-hf-id") === markerId ||
-      element.getAttribute("data-composition-id") === markerId,
-  ) ?? null;
+  return (
+    Array.from(doc.querySelectorAll("[data-start]")).find(
+      (element) =>
+        element.getAttribute("data-hf-id") === markerId ||
+        element.getAttribute("data-composition-id") === markerId,
+    ) ?? null
+  );
 }
 
 export function transitionLabelsForDocument(

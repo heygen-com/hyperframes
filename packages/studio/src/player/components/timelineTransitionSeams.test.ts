@@ -37,10 +37,7 @@ describe("deriveTimelineTransitionSeams", () => {
   it("does not badge a cross-track overlap", () => {
     const label = "hf:transition:out:in:crossfade";
     expect(
-      deriveTimelineTransitionSeams([
-        clip("out", 0, 2, 0, label),
-        clip("in", 1.8, 2, 1, label),
-      ]),
+      deriveTimelineTransitionSeams([clip("out", 0, 2, 0, label), clip("in", 1.8, 2, 1, label)]),
     ).toEqual([]);
   });
 

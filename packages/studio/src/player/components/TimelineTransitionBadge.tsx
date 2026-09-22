@@ -39,9 +39,19 @@ export function TimelineTransitionBadge({
               <feGaussianBlur stdDeviation="0.55" />
             </filter>
           </defs>
-          <path className="timeline-transition__frame timeline-transition__frame--out" d="M3 5h8v10H3z" />
-          <path className="timeline-transition__frame timeline-transition__frame--in" d="M9 5h8v10H9z" />
-          <path className="timeline-transition__intersection" d="M9 5h2v10H9z" filter="url(#timeline-transition-glyph-blur)" />
+          <path
+            className="timeline-transition__frame timeline-transition__frame--out"
+            d="M3 5h8v10H3z"
+          />
+          <path
+            className="timeline-transition__frame timeline-transition__frame--in"
+            d="M9 5h8v10H9z"
+          />
+          <path
+            className="timeline-transition__intersection"
+            d="M9 5h2v10H9z"
+            filter="url(#timeline-transition-glyph-blur)"
+          />
         </svg>
       </div>
     </div>

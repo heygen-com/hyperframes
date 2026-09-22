@@ -258,9 +258,19 @@ body {
   box-shadow: 0 2px 5px var(--timeline-playhead-shadow);
 }
 
-.timeline-transition__badge svg { width: 17px; height: 17px; }
-.timeline-transition__frame { fill: none; stroke: var(--timeline-transition-badge-ink); stroke-width: 1.5; }
-.timeline-transition__intersection { fill: var(--timeline-transition-badge-ink); opacity: 0.7; }
+.timeline-transition__badge svg {
+  width: 17px;
+  height: 17px;
+}
+.timeline-transition__frame {
+  fill: none;
+  stroke: var(--timeline-transition-badge-ink);
+  stroke-width: 1.5;
+}
+.timeline-transition__intersection {
+  fill: var(--timeline-transition-badge-ink);
+  opacity: 0.7;
+}
 
 .timeline-clip::before {
   content: "";
