@@ -45,6 +45,7 @@ function systemChromePaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): s
 function findPuppeteerCacheChrome(
   env: NodeJS.ProcessEnv,
   pathExists: (path: string) => boolean,
+  platform: NodeJS.Platform,
   readDirectories: (path: string) => string[] = readdirSync,
 ): string | undefined {
   const chromeRoot = join(
@@ -62,12 +63,14 @@ function findPuppeteerCacheChrome(
       .split(".")
       .map((part) => Number.parseInt(part, 10) || 0)
       .reduce((order, part) => order * 100000 + part, 0);
-  const relativeCandidates = [
-    "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-    "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-    "chrome-linux64/chrome",
-    "chrome-win64/chrome.exe",
-  ];
+  const relativeCandidates =
+    platform === "win32"
+      ? ["chrome-win64/chrome.exe"]
+      : [
+          "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+          "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+          "chrome-linux64/chrome",
+        ];
   for (const directory of versionDirs.sort((left, right) => buildOrder(right) - buildOrder(left))) {
     for (const relativePath of relativeCandidates) {
       const executable = join(chromeRoot, directory, relativePath);
@@ -115,7 +118,7 @@ export function findSystemChrome(
   ].find((candidate): candidate is string => Boolean(candidate) && pathExists(candidate));
   return (
     override ??
-    findPuppeteerCacheChrome(env, pathExists, readDirectories) ??
+    findPuppeteerCacheChrome(env, pathExists, platform, readDirectories) ??
     supportedSystemChrome(systemChromePaths(env, platform).filter(pathExists), versionOf)
   );
 }

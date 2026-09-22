@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
 
 const browserMocks = vi.hoisted(() => {
   const page = {
@@ -131,7 +132,13 @@ describe("findSystemChrome", () => {
   });
 
   it("prefers the newest Puppeteer cache entry over a compatible system Chrome", () => {
-    const cachePath = "/tmp/puppeteer/chrome/chrome-152.0.1/chrome-linux64/chrome";
+    const cachePath = join(
+      "/tmp/puppeteer",
+      "chrome",
+      "chrome-152.0.1",
+      "chrome-linux64",
+      "chrome",
+    );
     const systemPath = "/usr/bin/google-chrome";
     const pathExists = vi.fn((path: string) => path === cachePath || path === systemPath);
 
@@ -140,6 +147,27 @@ describe("findSystemChrome", () => {
         { PUPPETEER_CACHE_DIR: "/tmp/puppeteer" },
         pathExists,
         "linux",
+        () => "Chrome/113.0.1",
+        () => ["chrome-152.0.1"],
+      ),
+    ).toBe(cachePath);
+  });
+
+  it("uses Puppeteer's Windows cache executable layout", () => {
+    const cachePath = join(
+      "C:\\puppeteer",
+      "chrome",
+      "chrome-152.0.1",
+      "chrome-win64",
+      "chrome.exe",
+    );
+    const pathExists = vi.fn((path: string) => path === cachePath);
+
+    expect(
+      findSystemChrome(
+        { PUPPETEER_CACHE_DIR: "C:\\puppeteer" },
+        pathExists,
+        "win32",
         () => "Chrome/113.0.1",
         () => ["chrome-152.0.1"],
       ),
