@@ -14,8 +14,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Oversized Cursor"
   description="A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits"
   variables={[{"id":"cursor_variant","type":"enum","role":"style","label":"Cursor fill","default":"light","options":[{"value":"light","label":"Light (white body)"},{"value":"dark","label":"Dark (near-black body)"}]},{"id":"target_x","type":"number","role":"layout","label":"Target X","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Target Y","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"click_label","type":"string","role":"content","label":"Click label","default":"Generate"},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional whole-stage departure. Default none: the ignited target stays until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
-  meta={{"category":"Motion Scenes","badge":"Stable","codeLines":422}}
-  attribution={{"path":"registry/components/oversized-cursor","tags":["motion-primitive","actor","cursor","pointer","interaction"]}}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":422}}
+  attribution={{"path":"registry/components/oversized-cursor","tags":["cursor","motion-primitive","actor","pointer","interaction"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/oversized-cursor/oversized-cursor.html"
 >
@@ -492,7 +492,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `actor` `cursor` `pointer` `interaction`.
+Tagged `cursor` `motion-primitive` `actor` `pointer` `interaction`.
 
 ## Related topics
 

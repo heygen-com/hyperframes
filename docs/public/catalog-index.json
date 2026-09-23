@@ -1574,10 +1574,10 @@
     "title": "Cursor Glyph Trail",
     "description": "An actor travels an authored path depositing small dithered glyphs at its past positions, each popping in and decaying in place, stamp rate scaling with the actor's velocity.",
     "tags": [
+      "cursor",
       "motion-primitive",
       "demonstrate",
       "trail",
-      "cursor",
       "glyphs",
       "deterministic"
     ],
@@ -1599,6 +1599,22 @@
     ],
     "href": "/catalog/components/cut-the-curve",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cut-the-curve.png"
+  },
+  {
+    "name": "dart-cursor",
+    "type": "component",
+    "title": "Dart Cursor",
+    "description": "A bold outlined arrowhead that dives in from camera depth, flies nose-first with motion blur along its path, squashes on two clicks, and whips out of frame.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "pointer",
+      "click",
+      "motion-blur",
+      "depth"
+    ],
+    "href": "/catalog/components/dart-cursor",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dart-cursor.png"
   },
   {
     "name": "data-chart",
@@ -3433,9 +3449,9 @@
     "title": "Oversized Cursor",
     "description": "A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits",
     "tags": [
+      "cursor",
       "motion-primitive",
       "actor",
-      "cursor",
       "pointer",
       "interaction"
     ],
@@ -3643,9 +3659,9 @@
     "title": "Press Ripple",
     "description": "A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, then exits off-stage while the pressed state holds.",
     "tags": [
+      "cursor",
       "motion-primitive",
       "product-demo",
-      "cursor",
       "press",
       "ripple",
       "payoff"
@@ -4035,9 +4051,9 @@
     "title": "Simulated Cursor",
     "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
     "tags": [
+      "cursor",
       "video-primitive",
       "motion-primitive",
-      "cursor",
       "ui",
       "walkthrough"
     ],
@@ -4818,6 +4834,7 @@
     "title": "Touch Indicator",
     "description": "A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass, causes a same-frame response, and lifts. Tap or swipe, picked by variable.",
     "tags": [
+      "cursor",
       "motion-primitive",
       "mobile",
       "gesture",

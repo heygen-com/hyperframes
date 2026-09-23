@@ -904,6 +904,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "dart-cursor",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "decline-chart",
       "type": "hyperframes:component"
     },
@@ -1585,6 +1589,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
+    "revision": "538272efc300f5e3d45e833e4242f7db9a78bc264ccd0423833418a7550a312f"
   }
 }

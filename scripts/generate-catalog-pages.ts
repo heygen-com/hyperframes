@@ -796,8 +796,11 @@ function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[
 
 /** The catalog shelf an item sits on, one function for the nav and the page's category. */
 // fallow-ignore-next-line complexity
-function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
+export function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
   const tags = entry.tags;
+  // `cursor` as the first tag declares the Cursors shelf. It is checked before
+  // `video-primitive` so a pointer that is also a primitive shelves with the cursors.
+  if (tags[0] === "cursor") return "Cursors";
   // Declared membership beats every inferred rule below: `video-primitive` is
   // the tag a human puts on an item to put it on the primitives shelf, and it
   // must not be overridden by whatever else the item happens to be tagged.
@@ -1223,6 +1226,7 @@ function main(): void {
     "Motion Scenes": 11,
     "Typography & Text": 10,
     "Camera & 3D": 12,
+    Cursors: 12.5,
     "Product Demo": 13,
     Texture: 14,
     Effects: 15,
@@ -1255,6 +1259,7 @@ function main(): void {
       section: "Scenes & demos",
       groups: ["Showcases", "Product Demo", "Social Overlays", "Motion Scenes"],
     },
+    { section: "Cursors", groups: ["Cursors"] },
     // Its own section rather than a shelf inside Scenes & demos. At 25 items it
     // is larger than Data & charts (17) and Blocks (13), which are both
     // sections on their own, and pulling it out takes the largest section in

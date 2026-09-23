@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
 import {
+  groupForItem,
   mdxStringAttribute,
   stageProps,
   variableBootstrap,
@@ -359,5 +360,22 @@ describe("tile poster priority", () => {
     );
     assert.match(source, /card\(item, group\.pinned === true\)/);
     assert.doesNotMatch(source, /\.map\(card\)/);
+  });
+});
+
+describe("Cursors shelf", () => {
+  const component = (tags: string[]) => groupForItem({ name: "x", type: "component", tags });
+
+  it("shelves an item whose first tag is cursor, even when it is also a video primitive", () => {
+    assert.equal(component(["cursor", "video-primitive", "motion-primitive"]), "Cursors");
+    assert.equal(component(["cursor", "motion-primitive", "product-demo"]), "Cursors");
+  });
+
+  it("leaves an item that only mentions cursor later in its tags on its own shelf", () => {
+    assert.equal(
+      groupForItem({ name: "x", type: "block", tags: ["html-in-canvas", "text", "cursor"] }),
+      "HTML-in-Canvas",
+    );
+    assert.equal(component(["video-primitive", "cursor"]), "Motion Primitives");
   });
 });

@@ -1,0 +1,271 @@
+<!doctype html>
+<!--
+  Dart Cursor, standalone demo: an export dialog the cursor works through. It mounts
+  dart-cursor.html full-frame over the dialog; the dialog's reactions are keyed to the
+  cursor's two click beats (0.95s and 2.2s).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Dart Cursor, Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(1200px 700px at 20% 10%, #3b4c8f 0%, transparent 60%),
+          radial-gradient(1000px 800px at 90% 100%, #7a3f8f 0%, transparent 55%), #141726;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .dialog {
+        position: absolute;
+        left: 460px;
+        top: 250px;
+        width: 1000px;
+        height: 580px;
+        border-radius: 28px;
+        background: #ffffff;
+        box-shadow:
+          0 40px 120px rgba(4, 6, 20, 0.55),
+          0 0 0 1px rgba(255, 255, 255, 0.4);
+      }
+      .title {
+        position: absolute;
+        left: 48px;
+        top: 40px;
+        font-size: 34px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #111320;
+      }
+      .thumb {
+        position: absolute;
+        left: 48px;
+        top: 110px;
+        width: 420px;
+        height: 236px;
+        border-radius: 16px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #ffb36b, #ff5f8f 45%, #6c5bff);
+      }
+      .thumb::before {
+        content: "";
+        position: absolute;
+        left: 40px;
+        bottom: -60px;
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.28);
+      }
+      .thumb-time {
+        position: absolute;
+        right: 14px;
+        bottom: 12px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: rgba(10, 12, 24, 0.6);
+        color: #ffffff;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .file {
+        position: absolute;
+        left: 48px;
+        top: 368px;
+        font-size: 22px;
+        font-weight: 600;
+        color: #111320;
+      }
+      .file-meta {
+        position: absolute;
+        left: 48px;
+        top: 402px;
+        font-size: 18px;
+        color: #6b6f85;
+      }
+      .label {
+        position: absolute;
+        left: 520px;
+        font-size: 18px;
+        font-weight: 600;
+        color: #6b6f85;
+      }
+      .seg {
+        position: absolute;
+        left: 520px;
+        width: 432px;
+        height: 60px;
+        border-radius: 16px;
+        background: #eef0f6;
+      }
+      .seg-thumb {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        width: 136px;
+        height: 52px;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 2px 8px rgba(17, 19, 32, 0.14);
+      }
+      .seg-opt {
+        position: absolute;
+        top: 0;
+        width: 144px;
+        height: 60px;
+        line-height: 60px;
+        text-align: center;
+        font-size: 21px;
+        font-weight: 600;
+        color: #6b6f85;
+      }
+      .seg-opt.on {
+        color: #111320;
+      }
+      .button {
+        position: absolute;
+        left: 712px;
+        top: 496px;
+        width: 240px;
+        height: 60px;
+        border-radius: 16px;
+        background: #4f5bff;
+        color: #ffffff;
+        font-size: 21px;
+        font-weight: 700;
+        overflow: hidden;
+      }
+      .button span {
+        position: absolute;
+        inset: 0;
+        line-height: 60px;
+        text-align: center;
+      }
+      .progress {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        height: 5px;
+        background: rgba(255, 255, 255, 0.85);
+        transform: scaleX(0);
+        transform-origin: 0 50%;
+      }
+      .cancel {
+        position: absolute;
+        left: 520px;
+        top: 496px;
+        width: 172px;
+        height: 60px;
+        line-height: 60px;
+        text-align: center;
+        border-radius: 16px;
+        font-size: 21px;
+        font-weight: 600;
+        color: #111320;
+        background: #eef0f6;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="dart-cursor-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.4"
+    >
+      <div
+        class="dialog clip"
+        id="dialog"
+        data-start="0"
+        data-duration="4.4"
+        data-track-index="0"
+      >
+        <div class="title">Export</div>
+        <div class="thumb"><div class="thumb-time">0:42</div></div>
+        <div class="file">product-tour.mp4</div>
+        <div class="file-meta">42 seconds, 30 fps, stereo audio</div>
+
+        <div class="label" style="top: 110px">Resolution</div>
+        <div class="seg" style="top: 142px">
+          <div class="seg-thumb" id="res-thumb" style="left: 148px"></div>
+          <div class="seg-opt" style="left: 0">720p</div>
+          <div class="seg-opt on" id="res-1080" style="left: 144px">1080p</div>
+          <div class="seg-opt" id="res-4k" style="left: 288px">4K</div>
+        </div>
+
+        <div class="label" style="top: 236px">Format</div>
+        <div class="seg" style="top: 268px">
+          <div class="seg-thumb"></div>
+          <div class="seg-opt on" style="left: 0">MP4</div>
+          <div class="seg-opt" style="left: 144px">MOV</div>
+          <div class="seg-opt" style="left: 288px">GIF</div>
+        </div>
+
+        <div class="cancel">Cancel</div>
+        <div class="button" id="export">
+          <span id="export-idle">Export video</span>
+          <span id="export-busy" style="opacity: 0">Exporting…</span>
+          <div class="progress" id="progress"></div>
+        </div>
+      </div>
+
+      <div
+        class="clip"
+        id="dart-cursor"
+        data-composition-id="dart-cursor"
+        data-composition-src="./dart-cursor.html"
+        data-variable-values='{"tone":"dark","target_x":70.4,"target_y":38.7,"target2_x":67.6,"target2_y":73.3,"enter_from":"right","exit_to":"right"}'
+        data-start="0"
+        data-duration="4.4"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+        style="position: absolute; inset: 0; width: 1920px; height: 1080px"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      // First click (0.95s): the resolution thumb slides onto 4K.
+      tl.to("#res-thumb", { x: 144, duration: 0.34, ease: "power3.out" }, 1.03);
+      tl.to("#res-1080", { color: "#6b6f85", duration: 0.2 }, 1.03);
+      tl.to("#res-4k", { color: "#111320", duration: 0.2 }, 1.03);
+
+      // Second click (2.2s): the button presses, relabels and starts filling.
+      tl.to("#export", { scale: 0.96, duration: 0.08, ease: "power2.in" }, 2.2);
+      tl.to("#export", { scale: 1, duration: 0.22, ease: "power2.out" }, 2.28);
+      tl.to("#export-idle", { opacity: 0, y: -14, duration: 0.2, ease: "power2.in" }, 2.28);
+      tl.fromTo(
+        "#export-busy",
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.26, ease: "power3.out" },
+        2.36,
+      );
+      tl.to("#progress", { scaleX: 0.74, duration: 2.0, ease: "power1.inOut" }, 2.4);
+
+      window.__timelines["dart-cursor-demo"] = tl;
+    </script>
+  </body>
+</html>

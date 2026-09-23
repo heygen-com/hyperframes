@@ -522,7 +522,7 @@
               },
               {
                 "group": "Scenes & demos",
-                "tag": "95",
+                "tag": "91",
                 "expanded": false,
                 "pages": [
                   {
@@ -556,19 +556,17 @@
                   },
                   {
                     "group": "Product Demo",
-                    "tag": "22",
+                    "tag": "20",
                     "expanded": false,
                     "pages": [
                       "catalog/components/browser-device-stage",
                       "catalog/components/code-terminal-run",
-                      "catalog/components/cursor-glyph-trail",
                       "catalog/components/echo-trail",
                       "catalog/components/focus-swap",
                       "catalog/components/icon-morph-beat",
                       "catalog/components/native-notification-pop",
                       "catalog/components/notification-stack",
                       "catalog/components/offset-path-traveler",
-                      "catalog/components/press-ripple",
                       "catalog/components/pull-to-refresh",
                       "catalog/components/screen-flow-carousel",
                       "catalog/components/segmentation-flood",
@@ -603,7 +601,7 @@
                   },
                   {
                     "group": "Motion Scenes",
-                    "tag": "40",
+                    "tag": "38",
                     "expanded": false,
                     "pages": [
                       "catalog/components/aurora-drift",
@@ -627,7 +625,6 @@
                       "catalog/components/multi-device-splay",
                       "catalog/components/notes-typing",
                       "catalog/components/outline-draw",
-                      "catalog/components/oversized-cursor",
                       "catalog/components/particle-image-reveal",
                       "catalog/components/physical-exit",
                       "catalog/components/radial-surround",
@@ -641,7 +638,6 @@
                       "catalog/components/svg-stroke-trace",
                       "catalog/components/swipe-rail",
                       "catalog/components/testimonial-proof-card",
-                      "catalog/components/touch-indicator",
                       "catalog/components/trust-strip",
                       "catalog/components/variable-font-flex",
                       "catalog/components/velocity-throw-snap",
@@ -651,13 +647,27 @@
                 ]
               },
               {
+                "group": "Cursors",
+                "tag": "7",
+                "expanded": false,
+                "pages": [
+                  "catalog/components/cursor-glyph-trail",
+                  "catalog/components/dart-cursor",
+                  "catalog/components/multiplayer-cursors",
+                  "catalog/components/oversized-cursor",
+                  "catalog/components/press-ripple",
+                  "catalog/components/simulated-cursor",
+                  "catalog/components/touch-indicator"
+                ]
+              },
+              {
                 "group": "Motion & effects",
-                "tag": "95",
+                "tag": "93",
                 "expanded": false,
                 "pages": [
                   {
                     "group": "Motion Primitives",
-                    "tag": "30",
+                    "tag": "29",
                     "expanded": false,
                     "pages": [
                       "catalog/components/arc-motion-path",
@@ -676,7 +686,6 @@
                       "catalog/components/page-slide",
                       "catalog/components/separator",
                       "catalog/components/sheet-spring-up",
-                      "catalog/components/simulated-cursor",
                       "catalog/components/skeleton-reveal",
                       "catalog/components/slot-machine-roll",
                       "catalog/components/staggered-fade-up",
@@ -694,7 +703,7 @@
                   },
                   {
                     "group": "Effects",
-                    "tag": "54",
+                    "tag": "53",
                     "expanded": false,
                     "pages": [
                       "catalog/components/avatar-cloud",
@@ -723,7 +732,6 @@
                       "catalog/components/mk-usage-arc",
                       "catalog/components/morph-swap",
                       "catalog/components/motion-blur",
-                      "catalog/components/multiplayer-cursors",
                       "catalog/components/notification-pileup",
                       "catalog/components/onboarding-stepper-flow",
                       "catalog/components/ordered-dither-pass",
