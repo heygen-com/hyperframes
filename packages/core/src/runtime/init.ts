@@ -292,11 +292,8 @@ export function initSandboxRuntimeModular(): void {
   const webAudio = new WebAudioTransport();
   let webAudioReady = false;
   let webAudioInitPromise: Promise<boolean> | null = null;
-  // `new AudioContext()` inside `init()` costs ~230ms of synchronous CPU;
-  // starting it here used to block every image/video request behind it.
-  // Deferred to first play instead: transport.play() below reschedules once
-  // this resolves, so the native fallback it already has for a losing race
-  // only covers the gap until then, not the whole first play session.
+  // Built on first play, not here: `new AudioContext()` is synchronous and held up
+  // every media request of the first open. Native playback covers the gap.
   const ensureWebAudioInit = (): Promise<boolean> => {
     if (!webAudioInitPromise) {
       webAudioInitPromise = webAudio.init().then((ok) => {
@@ -3122,10 +3119,8 @@ export function initSandboxRuntimeModular(): void {
       state.isPlaying = true;
       state.mediaForceSyncNextTick = true;
       hardSyncAllMedia(clock.now());
-      // Schedule audio through WebAudio for sample-accurate timing. The
-      // context is created lazily, on this first play; a losing race falls
-      // back to HTMLMediaElement playback (syncRuntimeMedia, below) until it
-      // resolves, then reschedules onto WebAudio for the rest of this play.
+      // Schedule audio through WebAudio for sample-accurate timing. Until the
+      // context exists, HTMLMediaElement playback (syncRuntimeMedia) carries it.
       if (!state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
         if (webAudioReady) {
           scheduleWebAudioForActiveClips();
