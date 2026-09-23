@@ -53,6 +53,8 @@ describe("createProjectWatcher", () => {
   beforeEach(() => {
     mockWatcher.removeAllListeners();
     vi.clearAllMocks();
+    fakeDirs.children = [];
+    fakeDirs.unwatchable = "";
     vi.useRealTimers();
   });
 
@@ -85,6 +87,15 @@ describe("createProjectWatcher", () => {
       expect(mockWatcher.close).toHaveBeenCalled();
     },
   );
+
+  it("degrades to no live reload when the project root cannot be watched", () => {
+    fakeDirs.unwatchable = "/fake/project/dir";
+    let projectWatcher: ReturnType<typeof createProjectWatcher> | null = null;
+    expect(() => {
+      projectWatcher = createProjectWatcher("/fake/project/dir");
+    }).not.toThrow();
+    expect(() => projectWatcher?.close()).not.toThrow();
+  });
 
   // Regression: fs.watch can fail asynchronously (e.g. EMFILE from exhausted
   // OS watch handles) via an 'error' event, not a thrown exception. An
