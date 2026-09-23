@@ -84,6 +84,7 @@ function api(endpoint, method = "GET", body, jq) {
     input: body === undefined ? undefined : JSON.stringify(body),
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
+    timeout: 60_000,
   }).trim();
 }
 
@@ -132,7 +133,7 @@ function signedCommit(repository, branch, head, fileChanges) {
   return commitOid(result);
 }
 
-function openPublishPr(repository, base) {
+function openPublishPrNumber(repository) {
   const owner = repository.split("/")[0];
   const endpoint = `repos/${repository}/pulls`;
   const numbers = api(
@@ -144,13 +145,20 @@ function openPublishPr(repository, base) {
     .split("\n")
     .filter(Boolean);
   if (numbers.length > 1) throw new Error("More than one catalog publish PR is open.");
+  const number = numbers[0];
+  if (number !== undefined && !/^\d+$/.test(number))
+    throw new Error("GitHub returned an invalid PR number.");
+  return number;
+}
+
+function openPublishPr(repository, base) {
+  const endpoint = `repos/${repository}/pulls`;
+  const number = openPublishPrNumber(repository);
   const body =
     `Generated catalog snapshot from ${base}.\n\n` +
     "Item sources are reviewed in their own PRs. This PR publishes the registry index, search vectors, docs pages, payloads and navigation together.\n\n" +
     "Approve any GitHub Actions runs awaiting approval, then review and merge this PR after checks pass. Publication uses GITHUB_TOKEN and GitHub-signed API commits; branch protection remains in effect.";
-  const number = numbers[0];
   if (number !== undefined) {
-    if (!/^\d+$/.test(number)) throw new Error("GitHub returned an invalid PR number.");
     if (api(`${endpoint}/${number}`, "GET", undefined, ".body") !== body)
       api(`${endpoint}/${number}`, "PATCH", { title: TITLE, body });
   } else {
@@ -158,14 +166,14 @@ function openPublishPr(repository, base) {
   }
 }
 
-function publish(root) {
+export function publish(root) {
   const base = commitOid(git(root, ["rev-parse", "HEAD"]));
   const changes = catalogChanges(root, base);
   const batches = commitBatches(changes);
   console.log(
     `Catalog publication: ${changes.length} files, ${batches.length} signed commit batches.`,
   );
-  if (process.argv.includes("--dry-run") || batches.length === 0) return;
+  if (process.argv.includes("--dry-run")) return;
   const repository = process.env.GITHUB_REPOSITORY;
   const run = process.env.GITHUB_RUN_ID;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? "") || !/^\d+$/.test(run ?? ""))
@@ -179,6 +187,16 @@ function publish(root) {
     "\n",
   );
   const exists = refs.includes(`refs/heads/${BRANCH}`);
+  if (batches.length === 0) {
+    const number = openPublishPrNumber(repository);
+    if (currentMain() !== base)
+      throw new Error("Main advanced before publication; leaving the standing PR unchanged.");
+    if (number !== undefined)
+      api(`repos/${repository}/pulls/${number}`, "PATCH", { state: "closed" });
+    if (exists) api(`${endpoint}/refs/heads/${BRANCH}`, "PATCH", { sha: base, force: true });
+    console.log("No unpublished catalog changes; obsolete publication cleared.");
+    return;
+  }
   if (exists) {
     const previous = commitOid(
       api(`${endpoint}/ref/heads/${BRANCH}`, "GET", undefined, ".object.sha"),
@@ -192,6 +210,7 @@ function publish(root) {
   }
   const staging = `${BRANCH}-build-${run}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
   api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${staging}`, sha: base });
+  let publicationError;
   try {
     let head = base;
     for (const batch of batches) head = signedCommit(repository, staging, head, batch);
@@ -200,8 +219,20 @@ function publish(root) {
     if (exists) api(`${endpoint}/refs/heads/${BRANCH}`, "PATCH", { sha: head, force: true });
     else api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${BRANCH}`, sha: head });
     openPublishPr(repository, base);
+  } catch (error) {
+    publicationError = error;
+    throw error;
   } finally {
-    api(`${endpoint}/refs/heads/${staging}`, "DELETE");
+    try {
+      api(`${endpoint}/refs/heads/${staging}`, "DELETE");
+    } catch (cleanupError) {
+      if (publicationError !== undefined)
+        throw new AggregateError(
+          [publicationError, cleanupError],
+          "Publication and staging cleanup failed.",
+        );
+      throw cleanupError;
+    }
   }
 }
 
