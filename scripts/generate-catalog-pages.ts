@@ -166,6 +166,7 @@ const GENERATED_HEADINGS = new Set([
   "ask an agent for it",
   "make the texture move",
   "every texture",
+  "texture masks",
   // headings earlier revisions emitted — dropped on purpose, never carried.
   // `usage` is deliberately NOT listed: the current template never emits it, and
   // it is a heading a human might reasonably write, so ownership stays explicit

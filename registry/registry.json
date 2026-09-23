@@ -1344,10 +1344,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "simulated-cursor",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "skeleton-reveal",
       "type": "hyperframes:component"
     },
@@ -1617,6 +1613,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "ca38235b18d5dc2f8981720c028a0f9d1dc094c26cf90c99bf8b66ce9172fd82"
+    "revision": "0a6a87998ac43a731bffd51c97807d9ebb1b7b29f42e15f52e99a9604afe0bbe"
   }
 }
