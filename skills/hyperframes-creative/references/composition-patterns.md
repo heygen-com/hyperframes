@@ -132,12 +132,30 @@ tl.to("#title-card", { opacity: 0, duration: 0.5 }, 4);
 
 ## Slide Show with Section Headers
 
-Use separate elements on the same track, each with its own time range. Slides auto-mount/unmount based on `data-start`/`data-duration`.
+Each slide is its own sub-composition file, hosted on the same track with its own time range. Slides auto-mount/unmount based on `data-start`/`data-duration`.
 
 ```html
-<div class="slide" data-start="0" data-duration="30" data-track-index="3">...</div>
-<div class="slide" data-start="30" data-duration="25" data-track-index="3">...</div>
-<div class="slide" data-start="55" data-duration="20" data-track-index="3">...</div>
+<div
+  data-composition-id="slide-1"
+  data-composition-src="compositions/slide-1.html"
+  data-start="0"
+  data-duration="30"
+  data-track-index="3"
+></div>
+<div
+  data-composition-id="slide-2"
+  data-composition-src="compositions/slide-2.html"
+  data-start="30"
+  data-duration="25"
+  data-track-index="3"
+></div>
+<div
+  data-composition-id="slide-3"
+  data-composition-src="compositions/slide-3.html"
+  data-start="55"
+  data-duration="20"
+  data-track-index="3"
+></div>
 ```
 
 ## Top-Level Composition Example
@@ -179,6 +197,7 @@ Use separate elements on the same track, each with its own time range. Slides au
     data-composition-id="intro-anim"
     data-composition-src="compositions/intro-anim.html"
     data-start="0"
+    data-duration="5"
     data-track-index="3"
   ></div>
 
@@ -187,6 +206,7 @@ Use separate elements on the same track, each with its own time range. Slides au
     data-composition-id="captions"
     data-composition-src="compositions/caption-overlay.html"
     data-start="0"
+    data-duration="60"
     data-track-index="4"
   ></div>
 

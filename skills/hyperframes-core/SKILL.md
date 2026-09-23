@@ -42,6 +42,7 @@ For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperf
 
 > ⚠ Transport rule: for a **templated** sub-composition the assembler drops the file's own `<head>` `<style>`/`<script>` (`packages/core/src/compiler/compositionAssembly.ts`, the `hasTemplate` gate), so put `<style>`/`<script>` **inside** the template. `<link>` is hoisted either way.
 > ⚠ Host-id convention: give the host slot, the inner template, and the `window.__timelines["<id>"]` key the **same** id. A different local id is supported (the assembler falls back to the first root in the file) but the mismatch is silent, so match them unless you have a reason not to.
+> ⚠ Scene ownership: a film's root declares each scene as a host (`data-composition-src`, `data-start`, `data-duration`) and each scene file animates only its own elements, in its own timeline, at scene-local time. The root and sibling scenes may tween the host (transitions), never what is inside it: scene files load on their own, so a selector into another scene can run before that scene is mounted.
 
 File shape, host wiring, and the pre-render checklist → `references/sub-compositions.md`.
 

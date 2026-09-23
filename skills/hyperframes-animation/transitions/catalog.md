@@ -14,11 +14,11 @@ Hard rules, scene template, and routing to implementation code. Read the referen
 
 These cause real bugs if violated.
 
-**Scene visibility:** Scene 1 visible by default (no `opacity: 0`). Scenes 2+ have `opacity: 0` on the CONTAINER div. GSAP reveals them. No visibility shim (`timedEls`).
+**Scene visibility:** Scene 1 visible by default (no `opacity: 0`). Scenes 2+ have `opacity: 0` on the HOST div. GSAP reveals them. No visibility shim (`timedEls`).
 
 **Fonts:** Just write the `font-family` you want — the compiler embeds supported fonts automatically via `@font-face` with inline data URIs. No need for `<link>` tags or `@import`. Works in all contexts including sandboxed iframes.
 
-**Element structure:** No `class="clip"` on scene divs in standalone compositions. Only the root div gets `data-composition-id`/`data-start`/`data-duration`.
+**Element structure:** Each scene is its own file under `compositions/`, hosted in the root by a div with `data-composition-id`, `data-composition-src`, `data-start`, `data-duration` and `data-track-index` (no `class="clip"`). Transitions tween the hosts; a scene's own elements animate only in its own file (`/hyperframes-core` → scene ownership). The outgoing host's `data-duration` runs through the transition so it holds its last frame; the incoming host starts at `T` on a higher track.
 
 **Overlay elements:** Staggered blocks = full-screen 1920x1080, NOT thin strips. Glitch RGB overlays = normal blending at 35% opacity, NOT `mix-blend-mode: multiply` (invisible on dark backgrounds). Light leak overlays = larger than the frame (2400px+), never a visible shape. Overexposure = use `filter: brightness()` on the scene, not just a white overlay.
 
@@ -67,11 +67,9 @@ Shader setup, WebGL init, capture, and fragment shaders are handled by `@hyperfr
       }
       #scene1 {
         z-index: 1;
-        background: #color;
       }
       #scene2 {
         z-index: 2;
-        background: #color;
         opacity: 0;
       }
     </style>
@@ -85,17 +83,56 @@ Shader setup, WebGL init, capture, and fragment shaders are handled by `@hyperfr
       data-start="0"
       data-duration="TOTAL"
     >
-      <div id="scene1" class="scene"><!-- visible --></div>
-      <div id="scene2" class="scene"><!-- hidden --></div>
+      <!-- scene1 cuts at T; its host runs to T + D (the transition length) so it holds its last frame -->
+      <div
+        id="scene1"
+        class="scene"
+        data-composition-id="scene1"
+        data-composition-src="compositions/scene1.html"
+        data-start="0"
+        data-duration="T + D"
+        data-track-index="0"
+      ></div>
+      <div
+        id="scene2"
+        class="scene"
+        data-composition-id="scene2"
+        data-composition-src="compositions/scene2.html"
+        data-start="T"
+        data-duration="SCENE2"
+        data-track-index="1"
+      ></div>
     </div>
     <script>
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
-      // Transition code here
+      // Transition code here: tweens on #scene1 and #scene2 at T
       window.__timelines["main"] = tl;
     </script>
   </body>
 </html>
+```
+
+Each scene file (`compositions/scene1.html`) carries its own background, markup and entrances:
+
+```html
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: #color;
+    }
+  </style>
+  <div id="root" data-composition-id="scene1" data-width="1920" data-height="1080">
+    <!-- scene content -->
+  </div>
+  <script>
+    var tl = gsap.timeline({ paused: true });
+    // Entrances here, in scene time (0 = this scene's start)
+    window.__timelines["scene1"] = tl;
+  </script>
+</template>
 ```
 
 Every transition follows: position new scene → animate outgoing → swap → animate incoming → clean up overlays.
