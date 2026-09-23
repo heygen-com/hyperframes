@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +46,21 @@ describe("createProjectWatcher on a real directory", () => {
       await expectReported(seen, path);
     }
   });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "keeps watching the project when one subdirectory cannot be watched",
+    async () => {
+      dir = mkdtempSync(join(tmpdir(), "hf-watch-"));
+      mkdirSync(join(dir, "locked"));
+      chmodSync(join(dir, "locked"), 0);
+      writeFileSync(join(dir, "index.html"), "v0");
+      const seen = await watchProject();
+      chmodSync(join(dir, "locked"), 0o700);
+
+      writeFileSync(join(dir, "index.html"), "v1");
+      await expectReported(seen, "index.html");
+    },
+  );
 
   it("reports files in a directory created after it started", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-watch-"));

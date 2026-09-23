@@ -68,14 +68,21 @@ function watchProjectTree(
   };
   const watchDirectory = (dir: string) => {
     if (directories.has(dir)) return;
-    const watcher = watch(dir, { persistent: true }, (event, name) => {
-      if (!name) return;
-      const path = join(dir, name.toString());
-      onChange(relative(projectDir, path));
-      if (event !== "rename") return;
-      if (isDirectory(path)) descend(path);
-      else unwatch(path);
-    });
+    let watcher: FSWatcher;
+    try {
+      watcher = watch(dir, { persistent: true }, (event, name) => {
+        if (!name) return;
+        const path = join(dir, name.toString());
+        onChange(relative(projectDir, path));
+        if (event !== "rename") return;
+        if (isDirectory(path)) descend(path);
+        else unwatch(path);
+      });
+    } catch (error) {
+      // One unwatchable subdirectory (EACCES, inotify limit) must not cost the rest of the tree.
+      if (dir === projectDir) throw error;
+      return;
+    }
     watcher.on("error", () => unwatch(dir));
     directories.set(dir, watcher);
     let entries: string[] = [];
