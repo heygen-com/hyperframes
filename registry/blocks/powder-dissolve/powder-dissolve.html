@@ -54,9 +54,6 @@
         line-height: 1.3;
         font-variant-numeric: tabular-nums;
       }
-      #pd-maths[hidden] {
-        display: none;
-      }
       #pd-maths .pd-clock {
         font-family: Inter, sans-serif;
         font-size: 19px;
@@ -408,6 +405,7 @@
         // Phase curves, all pure functions of t. Landing takes under a second whatever the
         // dissolve length; everything after it is a fraction of the dissolve.
         var LAND = Math.min(0.9, DISSOLVE * 0.12);
+        var LAND_TXT = String(+LAND.toFixed(2)); // exact value the curves use, no trailing zeros
         var BATCH_AT = [0.08, 0.3, 0.55]; // release start of each batch, fraction of the dissolve
         var mass = new Float32Array(3);
         var spread = new Float32Array(3);
@@ -424,7 +422,7 @@
           {
             label: "Landing",
             from: 0,
-            tex: "<i>L</i>(<i>t</i>) = 1 − (1 − <i>t</i> / " + LAND.toFixed(1) + ")<sup>3</sup>",
+            tex: "<i>L</i>(<i>t</i>) = 1 − (1 − <i>t</i> / " + LAND_TXT + ")<sup>3</sup>",
             val: function (ph) {
               return ph.land.toFixed(2);
             },
@@ -447,7 +445,7 @@
           {
             label: "Crust cracks",
             from: atS(0.13), // W(s) reaches 0.15 here
-            tex: "crack ⇔ <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06  (Worley cells of 10<i>x</i>, once <i>W</i> &gt; 0.15)",
+            tex: "crack ⇔ <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06  (Worley cells of 10<i>x</i> + 1.5 fbm(8<i>x</i>), once <i>W</i> &gt; 0.15)",
           },
           {
             label: "Diffusion (exact Gaussian spread)",
@@ -504,11 +502,11 @@
             "t = " +
             ph.t.toFixed(2) +
             " s  ·  s = (t − " +
-            LAND.toFixed(1) +
+            LAND_TXT +
             ") / (" +
             DISSOLVE +
             " − " +
-            LAND.toFixed(1) +
+            LAND_TXT +
             ") = " +
             ph.s.toFixed(2);
           EQS.forEach(function (eq, i) {
