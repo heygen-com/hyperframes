@@ -27,6 +27,7 @@ import {
   type TransitionRange,
   blitHdrImageLayer,
   blitHdrVideoLayer,
+  isHdrLayerBlittable,
   selectDomLayerShowIds,
 } from "../../hdrCompositor.js";
 import { cleanupHdrVideoFrameSource } from "./captureHdrResources.js";
@@ -204,7 +205,7 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
     "domLayerInjectMs",
   );
   for (const el of stackingInfo) {
-    if (!el.isHdr || !sceneIds.has(el.id)) continue;
+    if (!el.isHdr || !sceneIds.has(el.id) || !isHdrLayerBlittable(el)) continue;
     if (nativeHdrImageIds.has(el.id)) {
       blitHdrImageLayer(
         sceneBuf,
