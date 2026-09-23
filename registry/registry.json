@@ -1578,9 +1578,13 @@
     {
       "name": "warm-grain",
       "type": "hyperframes:example"
+    },
+    {
+      "name": "paper-collage-reveal",
+      "type": "hyperframes:component"
     }
   ],
   "catalogArtifact": {
-    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
+    "revision": "0889faee3de93d04832417f2862bb14c35109e2f15cceda255a5db77902707b3"
   }
 }

@@ -3551,6 +3551,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.png"
   },
   {
+    "name": "paper-collage-reveal",
+    "type": "component",
+    "title": "Paper Collage Reveal",
+    "description": "A scrapbook patchwork of torn paper scraps, each with its own texture and tilt, flutters away in a staggered scatter to reveal the content underneath.",
+    "tags": [
+      "collage",
+      "scrapbook",
+      "torn paper",
+      "reveal",
+      "transition",
+      "motion-primitive"
+    ],
+    "href": "/catalog/components/paper-collage-reveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/paper-collage-reveal.png"
+  },
+  {
     "name": "particle-image-reveal",
     "type": "component",
     "title": "Particle Image Reveal",
