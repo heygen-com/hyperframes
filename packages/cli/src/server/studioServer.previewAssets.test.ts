@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { tmpdir } from "node:os";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { cleanupStudioServerRoot, makeStudioServerRoot } from "./studioServerTestFixture.js";
 
 const COMPOSITION = `<!doctype html>
 <html><head><style>@font-face{font-family:Brand;src:url(assets/brand.ttf)}</style></head>
@@ -24,24 +24,24 @@ const PIC = Buffer.alloc(4096, 7);
 const PIC_2X = Buffer.alloc(8192, 9);
 
 let root: string;
+let projectDir: string;
 let server: StudioServer;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(tmpdir(), "hf-preview-assets-"));
-  fs.mkdirSync(path.join(root, "assets"));
-  fs.mkdirSync(path.join(root, "compositions"));
-  fs.writeFileSync(path.join(root, "index.html"), COMPOSITION);
-  fs.writeFileSync(path.join(root, "compositions", "scene.html"), SCENE);
-  fs.writeFileSync(path.join(root, "assets", "pic.png"), PIC);
-  fs.writeFileSync(path.join(root, "assets", "pic@2x.png"), PIC_2X);
-  fs.writeFileSync(path.join(root, "assets", "brand.ttf"), Buffer.alloc(1024, 3));
-  fs.writeFileSync(path.join(root, "assets", "clip.mp4"), Buffer.alloc(1024, 5));
-  server = createStudioServer({ projectDir: root, projectName: "film" });
+  ({ root, projectDir } = makeStudioServerRoot("hf-preview-assets-"));
+  fs.mkdirSync(path.join(projectDir, "assets"));
+  fs.mkdirSync(path.join(projectDir, "compositions"));
+  fs.writeFileSync(path.join(projectDir, "index.html"), COMPOSITION);
+  fs.writeFileSync(path.join(projectDir, "compositions", "scene.html"), SCENE);
+  fs.writeFileSync(path.join(projectDir, "assets", "pic.png"), PIC);
+  fs.writeFileSync(path.join(projectDir, "assets", "pic@2x.png"), PIC_2X);
+  fs.writeFileSync(path.join(projectDir, "assets", "brand.ttf"), Buffer.alloc(1024, 3));
+  fs.writeFileSync(path.join(projectDir, "assets", "clip.mp4"), Buffer.alloc(1024, 5));
+  server = createStudioServer({ projectDir, projectName: "film" });
 });
 
 afterEach(() => {
-  server.watcher.close();
-  fs.rmSync(root, { recursive: true, force: true });
+  cleanupStudioServerRoot(server, root);
 });
 
 async function fetchAsset(url: string): Promise<Buffer> {
@@ -69,5 +69,17 @@ describe("studio preview document", () => {
     const nested = html.match(/<img [^>]*id="nested" src="([^"]+)"/)?.[1];
     expect(nested).toBe("assets/pic@2x.png");
     expect(await fetchAsset(nested ?? "")).toEqual(PIC_2X);
+  });
+
+  it("tags no asset a copy tool just rewrote with its old mtime", async () => {
+    const clip = path.join(projectDir, "assets", "clip.mp4");
+    fs.writeFileSync(clip, Buffer.alloc(1024, 6));
+    const copied = new Date("2026-01-01T00:00:00Z");
+    fs.utimesSync(clip, copied, copied);
+
+    const response = await server.app.request("/api/projects/film/preview/assets/clip.mp4");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("ETag")).toBeNull();
   });
 });
