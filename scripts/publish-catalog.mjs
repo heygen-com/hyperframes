@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -48,11 +56,19 @@ export function catalogChanges(root, base) {
     .sort()
     .map((path) => {
       if (removed.has(path)) return { path, kind: "delete" };
-      const absolute = resolve(root, path);
-      if (!lstatSync(absolute).isFile())
-        throw new Error(`Generated artifact must be a regular file: ${path}`);
-      return { path, kind: "write", contents: readFileSync(absolute).toString("base64") };
+      return { path, kind: "write", contents: artifactContents(resolve(root, path)) };
     });
+}
+
+function artifactContents(path) {
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    if (!fstatSync(descriptor).isFile())
+      throw new Error(`Generated artifact must be a regular file: ${path}`);
+    return readFileSync(descriptor).toString("base64");
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function batchEntry(change) {
