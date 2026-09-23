@@ -462,3 +462,27 @@ describe("TimelineLanes clip thumbnails", () => {
     act(() => view.root.unmount());
   });
 });
+
+describe("TimelineLanes clip joins", () => {
+  const at = (id: string, start: number, duration: number): TimelineElement => ({
+    ...element(id, TRACK_A),
+    start,
+    duration,
+  });
+
+  it("draws one row-coloured hairline where clips touch, and leaves the clips where they are", () => {
+    const view = renderLanes({
+      elements: [at("clip-a", 0, 2), at("clip-b", 2, 1.5), at("clip-c", 4, 1)],
+    });
+
+    const joins = view.host.querySelectorAll<HTMLElement>("[data-timeline-clip-join]");
+    expect(joins).toHaveLength(1);
+    expect(joins[0]?.style.left).toBe("200px");
+    expect(joins[0]?.style.width).toBe("1px");
+    expect(joins[0]?.style.background).toBe(defaultTimelineTheme.rowBackground);
+    const clipB = view.host.querySelector<HTMLElement>('[data-el-id="clip-b"]');
+    expect(clipB?.style.left).toBe("200px");
+    expect(clipB?.style.width).toBe("150px");
+    act(() => view.root.unmount());
+  });
+});

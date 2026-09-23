@@ -32,7 +32,6 @@ import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
-import { deriveTimelineTransitionSeams } from "./timelineTransitionSeams";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
 
 export function TimelineLanes({
@@ -224,9 +223,6 @@ export function TimelineLanes({
           // right only while it is collapsed and the row is nothing but bar.
           const clipBarHeight = rowExpanded ? TRACK_H - 2 * CLIP_Y : undefined;
           const automationElements = els.map(getPreviewElement);
-          const transitionSeams = deriveTimelineTransitionSeams(allTransitionElements).filter(
-            (seam) => seam.incoming.track === trackNum,
-          );
           // Minted here because this is the only place that sees BOTH ends of
           // the disclosure: the caret in the sticky header and the diamond lanes
           // on the canvas. Keyed by display row, not by `trackNum`, which is a
@@ -555,7 +551,10 @@ export function TimelineLanes({
                   })
                 }
                 <TimelineTransitionOverlays
-                  seams={transitionSeams}
+                  transitionElements={allTransitionElements}
+                  track={trackNum}
+                  rowElements={automationElements}
+                  rowBackground={rowBackground}
                   pixelsPerSecond={pps}
                   rowHeight={rowHeight}
                   clipBarHeight={clipBarHeight}
