@@ -5,8 +5,11 @@ import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { readIconTokens } from "./styles/iconTokens";
 import { trackStudioEvent } from "./utils/studioTelemetry";
+import { prefetchPreviewForHash } from "./utils/previewPrefetch";
 import "./styles/studio.css";
 
+prefetchPreviewForHash(window.location.hash);
+window.addEventListener("hashchange", () => prefetchPreviewForHash(window.location.hash));
 trackStudioEvent("session_start");
 
 function errorProps(value: unknown): {
