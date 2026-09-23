@@ -133,6 +133,22 @@ describe("lottie adapter", () => {
       expect(player.seek.mock.calls).toEqual([[50], [0], [100]]);
     });
 
+    it("wraps a looping lottie-web animation into its own cycle", () => {
+      const cycle = { ...createLottieWebAnim({ totalFrames: 120, frameRate: 30 }), loop: true };
+      const once = createLottieWebAnim({ totalFrames: 120, frameRate: 30 });
+      lottieWindow.__hfLottie = [cycle, once];
+      createLottieAdapter().seek({ time: 5 });
+      expect(cycle.goToAndStop).toHaveBeenCalledWith(1000, false);
+      expect(once.goToAndStop).toHaveBeenCalledWith(5000, false);
+    });
+
+    it("wraps a looping dotlottie player into its own cycle", () => {
+      const player = { ...createDotLottiePlayer({ totalFrames: 60, frameRate: 30 }), loop: true };
+      lottieWindow.__hfLottie = [player];
+      createLottieAdapter().seek({ time: 3 });
+      expect(player.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
+    });
+
     it("does nothing with no instances", () => {
       const adapter = createLottieAdapter();
       expect(() => adapter.seek({ time: 1 })).not.toThrow();

@@ -78,12 +78,13 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
     },
 
     seek: (ctx) => {
-      const time = Math.max(0, Number(ctx.time) || 0);
+      const seekTime = Math.max(0, Number(ctx.time) || 0);
       const instances = (window as LottieWindow).__hfLottie;
       if (!instances || instances.length === 0) return;
 
       for (const anim of instances) {
         try {
+          const time = loopedTime(anim, seekTime);
           if (isLottieWebAnimation(anim)) {
             // lottie-web: AnimationItem
             // goToAndStop(value, isFrame) — isFrame=true means frame number, false means time in ms
@@ -184,6 +185,13 @@ function finiteFramesToSeconds(
   return totalFrames / frameRate;
 }
 
+/** Composition time mapped into a `loop: true` animation's own cycle; other animations clamp at their end. */
+function loopedTime(anim: LottieWebAnimation | DotLottiePlayer, time: number): number {
+  if (anim.loop !== true) return time;
+  const seconds = inferAnimationDurationSeconds(anim);
+  return seconds ? time % seconds : time;
+}
+
 /** The inferred duration in seconds for one registered lottie-web/dotLottie instance, or null. */
 function inferAnimationDurationSeconds(anim: LottieWebAnimation | DotLottiePlayer): number | null {
   if (isLottieWebAnimation(anim)) {
@@ -225,6 +233,7 @@ interface LottieWebAnimation {
   goToAndPlay: (value: number, isFrame: boolean) => void;
   totalFrames: number;
   frameRate: number;
+  loop?: boolean | number;
 }
 
 interface LottieWebGlobal {
@@ -240,6 +249,7 @@ interface DotLottiePlayer {
   totalFrames?: number;
   frameRate?: number;
   duration?: number;
+  loop?: boolean;
 }
 
 interface LottieWindow extends Window {
