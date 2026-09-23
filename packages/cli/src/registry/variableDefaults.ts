@@ -73,15 +73,8 @@ function rejectNumber(decl: CompositionVariable, value: unknown): string | null 
   return null;
 }
 
-/**
- * Reject a value the declaration cannot represent, rather than writing it.
- *
- * A wrong-typed value falls back to the default at runtime and only warns, so
- * writing one would produce a file that renders as if the value had been
- * ignored -- the exact failure this module exists to remove. Numbers keep their
- * own check because a URL or form hands them over as strings and they carry a
- * range; every other type is judged by the runtime's own validator.
- */
+// Refuse what the runtime would ignore. Numbers keep their own check (string input, min/max);
+// every other type goes through the runtime's validator.
 function reject(decl: CompositionVariable, value: unknown): string | null {
   if (decl.type === "number") return rejectNumber(decl, value);
   const [issue] = validateVariables({ [decl.id]: value }, [decl]);
