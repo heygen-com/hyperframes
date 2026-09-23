@@ -130,10 +130,12 @@
     width 140ms ease-out;
 }
 
+/* Fills dockview's tab part, so the label and icon centre in the tab's full height. */
 .hf-dock-tab {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 100%;
 }
 
 .hf-dock .dv-inactive-tab .hf-dock-tab-icon,

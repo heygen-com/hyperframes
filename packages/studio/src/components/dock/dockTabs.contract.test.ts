@@ -68,6 +68,12 @@ describe("dock panel strip contract", () => {
     expect(reduced).toContain(".hf-dock-tab-icon { animation: none; }");
   });
 
+  it("centres the tab's icon and label in the tab's full height", () => {
+    const tab = bodyOf(".hf-dock-tab");
+    expect(tab).toContain("height: 100%");
+    expect(tab).toContain("align-items: center");
+  });
+
   it("takes every colour from a token", () => {
     expect(dockCss).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(/i);
   });
