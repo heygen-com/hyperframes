@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e",
+  "revision": "2c3b540afc2d8269393bf89f99386e2478305c35e21dcd6d497d9ba6dec257ea",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -109,6 +109,7 @@
     "cta-lockup",
     "cuboid-carousel",
     "cursor-glyph-trail",
+    "curtain-reveal",
     "cut-the-curve",
     "data-chart",
     "decline-chart",

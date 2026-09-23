@@ -1,0 +1,400 @@
+---
+title: "Curtain Reveal"
+description: "Two pleated stage curtains gather outward from center, the way real velvet bunches at the tieback, revealing the stage underneath. A static pelmet frames the top; a soft spotlight can bloom in as they part."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/components/curtain-reveal.json"
+  compositionId="curtain-reveal"
+  compositionSrc="compositions/components/curtain-reveal.html"
+  title="Curtain Reveal"
+  description="Two pleated stage curtains gather outward from center, the way real velvet bunches at the tieback, revealing the stage underneath. A static pelmet frames the top; a soft spotlight can bloom in as they part."
+  variables={[{"id":"tone","type":"enum","role":"style","label":"Curtain tone","description":"Curtain color.","default":"red","options":[{"value":"red","label":"Red"},{"value":"burgundy","label":"Burgundy"},{"value":"navy","label":"Navy"},{"value":"forest","label":"Forest"}]},{"id":"pelmet","type":"enum","role":"style","label":"Pelmet","description":"Static valance framing the top of the stage.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"spotlight","type":"enum","role":"style","label":"Spotlight","description":"Soft glow blooming over the stage as the curtains part.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]}]}
+  meta={{"category":"Effects","badge":"Stable","codeLines":319}}
+  attribution={{"path":"registry/components/curtain-reveal","tags":["curtain","stage reveal","transition","motion-primitive"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/curtain-reveal/curtain-reveal.html"
+>
+
+<CatalogSlot slot="code">
+
+```html curtain-reveal.html
+<!doctype html>
+<!--
+  curtain-reveal: HyperFrames video primitive (transitions / stage reveal).
+
+  Two pleated stage curtains meet at center, covering the frame. On cue they
+  gather outward -- sliding apart while narrowing slightly, the way real
+  velvet bunches at the tieback -- revealing the stage underneath. An
+  optional pelmet frames the top edge and never moves; an optional soft
+  spotlight blooms in as the curtains part.
+
+  The stage is a SLOT. Callers supply it by placing an inert template
+  anywhere in the HOST page (templates never render, and the runtime wipes
+  the host clip's own children on mount, so the slot lives at document level):
+
+    <template data-slot="curtain-reveal-stage"> ... </template>
+
+  Slot content may be an <img>, a muted <video>, or arbitrary HTML; direct
+  img/video children are stretched to cover the stage (packages/producer
+  drives a slotted <video>'s own data-start/data-duration exactly like any
+  other clip -- this primitive never reads or sets currentTime itself). With
+  no slot, the stage renders a token spotlight card so the reveal reads on
+  its own.
+
+  Variables (declared in data-composition-variables below):
+    - tone ("red" | "burgundy" | "navy" | "forest", default "red"): curtain
+      color.
+    - pelmet ("on" | "off", default "on"): static valance framing the top.
+    - spotlight ("on" | "off", default "on"): soft glow blooming over the
+      stage as the curtains part.
+
+  Envelope, fixed IN with elastic HOLD only (never timeScale):
+    IN_BASE = 1.1s  the curtains gather and part
+    HOLD    = max(0, D - IN); the stage stands revealed, still
+    If D < IN_BASE, IN compresses to D (no hold).
+
+  Determinism: no randomness anywhere in this primitive. The pleat texture
+  is a static repeating-gradient, the scalloped hem and pelmet trim are a
+  closed-form sine wave sampled at a fixed point count, and both curtains
+  move on one authored GSAP tween each with explicit fromTo endpoints. Any
+  seek order lands identical frames.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box (no data-width/data-height, container-type: size, cqmin units),
+  is styled via #root only, and registers one paused timeline under the
+  LITERAL "curtain-reveal" key.
+-->
+<html
+  lang="en"
+  data-composition-id="curtain-reveal"
+  data-composition-duration="2.4"
+  data-composition-variables='[
+    { "id": "tone", "type": "enum", "role": "style", "label": "Curtain tone", "description": "Curtain color.", "default": "red", "options": [{ "value": "red", "label": "Red" }, { "value": "burgundy", "label": "Burgundy" }, { "value": "navy", "label": "Navy" }, { "value": "forest", "label": "Forest" }] },
+    { "id": "pelmet", "type": "enum", "role": "style", "label": "Pelmet", "description": "Static valance framing the top of the stage.", "default": "on", "options": [{ "value": "on", "label": "On" }, { "value": "off", "label": "Off" }] },
+    { "id": "spotlight", "type": "enum", "role": "style", "label": "Spotlight", "description": "Soft glow blooming over the stage as the curtains part.", "default": "on", "options": [{ "value": "on", "label": "On" }, { "value": "off", "label": "Off" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Curtain Reveal</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="curtain-reveal" data-duration="2.4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #1d1b16);
+            font-family: var(--font-display, "Inter", system-ui, sans-serif);
+            background: #060607;
+          }
+
+          .cvr-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .cvr-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .cvr-stage > img,
+          .cvr-stage > video {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          .cvr-stage-default {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: radial-gradient(60% 60% at 50% 42%, #2a2a2e 0%, #0c0c0d 78%);
+          }
+
+          .cvr-stage-default-mark {
+            font-size: 4.5cqmin;
+            font-weight: 700;
+            letter-spacing: 0.32em;
+            text-transform: uppercase;
+            color: #fff;
+            opacity: 0.4;
+          }
+
+          .cvr-spotlight {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(
+              38% 55% at 50% 30%,
+              rgba(255, 244, 214, 0.32) 0%,
+              rgba(255, 244, 214, 0) 70%
+            );
+            mix-blend-mode: screen;
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          .cvr-curtain {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 54%;
+            transform-origin: 50% 50%;
+          }
+          .cvr-curtain-left {
+            left: 0;
+            clip-path: var(--cvr-hem-left);
+          }
+          .cvr-curtain-right {
+            right: 0;
+            clip-path: var(--cvr-hem-right);
+          }
+
+          .cvr-curtain-fabric {
+            position: absolute;
+            inset: 0;
+            background:
+              linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, transparent 10%, transparent 90%, rgba(
+                    0,
+                    0,
+                    0,
+                    0.5
+                  ) 100%),
+              repeating-linear-gradient(
+                90deg,
+                var(--cvr-fold-dark) 0cqw,
+                var(--cvr-fold-mid) 1.1cqw,
+                var(--cvr-fold-light) 2.1cqw,
+                var(--cvr-fold-mid) 3cqw,
+                var(--cvr-fold-dark) 4.1cqw
+              );
+            box-shadow: inset 0 0 6cqmin rgba(0, 0, 0, 0.45);
+          }
+
+          .cvr-pelmet {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 11%;
+            background: var(--cvr-pelmet-color, #4a0e1f);
+            box-shadow: 0 0.6cqmin 1.4cqmin rgba(0, 0, 0, 0.55);
+            clip-path: var(--cvr-pelmet-hem);
+          }
+        </style>
+
+        <div
+          id="curtain-reveal-clip"
+          class="cvr-clip clip"
+          data-start="0"
+          data-duration="2.4"
+          data-track-index="0"
+        >
+          <div class="cvr-stage" id="cvr-stage">
+            <div class="cvr-stage-default">
+              <span class="cvr-stage-default-mark" aria-hidden="true">Stage</span>
+            </div>
+          </div>
+          <div class="cvr-spotlight" id="cvr-spotlight"></div>
+
+          <div class="cvr-curtain cvr-curtain-left" id="cvr-curtain-left">
+            <div class="cvr-curtain-fabric"></div>
+          </div>
+          <div class="cvr-curtain cvr-curtain-right" id="cvr-curtain-right">
+            <div class="cvr-curtain-fabric"></div>
+          </div>
+
+          <div class="cvr-pelmet" id="cvr-pelmet"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = document.getElementById("cvr-stage");
+            var spotlight = document.getElementById("cvr-spotlight");
+            var curtainLeft = document.getElementById("cvr-curtain-left");
+            var curtainRight = document.getElementById("cvr-curtain-right");
+            var pelmet = document.getElementById("cvr-pelmet");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var toneTable = {
+              red: { fold: ["#3d0810", "#8a1a26", "#b23345"], pelmet: "#4a0e1a" },
+              burgundy: { fold: ["#2b0912", "#5c1a2c", "#7d2c42"], pelmet: "#3a0f1e" },
+              navy: { fold: ["#070d1f", "#152a5c", "#274a8f"], pelmet: "#0c1836" },
+              forest: { fold: ["#0c1f13", "#1f4a2b", "#356b3f"], pelmet: "#12291a" },
+            };
+            var tone = Object.prototype.hasOwnProperty.call(toneTable, vars.tone)
+              ? vars.tone
+              : "red";
+            var palette = toneTable[tone];
+            root.style.setProperty("--cvr-fold-dark", palette.fold[0]);
+            root.style.setProperty("--cvr-fold-mid", palette.fold[1]);
+            root.style.setProperty("--cvr-fold-light", palette.fold[2]);
+            root.style.setProperty("--cvr-pelmet-color", palette.pelmet);
+
+            var pelmetOn = vars.pelmet !== "off";
+            var spotlightOn = vars.spotlight !== "off";
+            pelmet.style.display = pelmetOn ? "" : "none";
+
+            // Slot. Caller templates live at the host document level (the
+            // mount wipes host-clip children, and templates never render).
+            var hostDoc = root.ownerDocument;
+            var slotTemplate = null;
+            try {
+              slotTemplate = hostDoc.querySelector('template[data-slot="curtain-reveal-stage"]');
+            } catch (error) {
+              slotTemplate = null;
+            }
+            if (slotTemplate) {
+              var defaultMark = stage.querySelector(".cvr-stage-default");
+              if (defaultMark) defaultMark.remove();
+              stage.appendChild(hostDoc.importNode(slotTemplate.content, true));
+            }
+
+            // Closed-form scalloped hem: a fixed point count sampled from a
+            // sine wave, never randomised, so the trim is identical on every
+            // render of every instance.
+            function hemPolygon(scallops, ampPct, baseY) {
+              var STEPS = 24;
+              var pts = ["0% 0%", "100% 0%"];
+              for (var i = 0; i <= STEPS; i += 1) {
+                var t = i / STEPS;
+                var y = baseY + Math.sin(t * Math.PI * scallops) * ampPct;
+                pts.push((100 - t * 100).toFixed(2) + "% " + y.toFixed(2) + "%");
+              }
+              return "polygon(" + pts.join(", ") + ")";
+            }
+
+            var curtainHem = hemPolygon(3.4, 2.6, 97);
+            root.style.setProperty("--cvr-hem-left", curtainHem);
+            root.style.setProperty("--cvr-hem-right", curtainHem);
+            root.style.setProperty("--cvr-pelmet-hem", hemPolygon(5, 14, 78));
+
+            // Envelope: fixed IN, elastic HOLD, never time-scaled.
+            var IN_BASE = 1.1;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "2.4"));
+            var IN = Math.min(IN_BASE, duration);
+
+            gsap.set(spotlight, { opacity: 0 });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              curtainLeft,
+              { xPercent: 0, scaleX: 1 },
+              { xPercent: -128, scaleX: 0.82, duration: IN, ease: "power2.inOut" },
+              0,
+            );
+            tl.fromTo(
+              curtainRight,
+              { xPercent: 0, scaleX: 1 },
+              { xPercent: 128, scaleX: 0.82, duration: IN, ease: "power2.inOut" },
+              0,
+            );
+            if (spotlightOn) {
+              // Clamped to end by IN: uncapped, start (IN * 0.25) + duration
+              // (IN * 0.85) lands at IN * 1.10 -- fine while the hold covers
+              // it, but a short composition that compresses the hold away
+              // would push GSAP's auto-extended timeline past data-duration.
+              var spotlightStart = IN * 0.25;
+              var spotlightDuration = Math.min(IN * 0.85, IN - spotlightStart);
+              tl.fromTo(
+                spotlight,
+                { opacity: 0 },
+                { opacity: 0.65, duration: spotlightDuration, ease: "power1.out" },
+                spotlightStart,
+              );
+            }
+            tl.set({}, {}, duration);
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["curtain-reveal"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add curtain-reveal" item="curtain-reveal" />
+
+That writes one file: `compositions/components/curtain-reveal.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/curtain-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `tone` | `red` | `red`, `burgundy`, `navy`, `forest` | Curtain color. |
+| `pelmet` | `on` | `on`, `off` | Static valance framing the top of the stage. |
+| `spotlight` | `on` | `on`, `off` | Soft glow blooming over the stage as the curtains part. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="curtain-reveal"
+  data-composition-src="compositions/components/curtain-reveal.html"
+  data-variable-values='{"tone":"red","pelmet":"on","spotlight":"on"}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `curtain` `stage reveal` `transition` `motion-primitive`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
