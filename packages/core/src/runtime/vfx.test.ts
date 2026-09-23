@@ -223,7 +223,7 @@ describe("vfx runtime", () => {
     gl!.calls.length = 0;
     paintVfx(1.25);
 
-    expect(gl!.calls).toEqual(["fbo", "useProgram", "draw:1", "screen", "useProgram", "draw:2"]);
+    expect(gl!.calls).toEqual(["useProgram", "fbo", "draw:1", "useProgram", "screen", "draw:2"]);
   });
 
   it("passes the seek time, the composition fps and the device-pixel size as uniforms", () => {
@@ -387,7 +387,7 @@ describe("vfx runtime — self capture", () => {
       [320, 180],
       [320, 180],
     ]);
-    expect(gl!.calls).toEqual(["screen", "useProgram", "draw:1"]);
+    expect(gl!.calls).toEqual(["useProgram", "screen", "draw:1"]);
     expect(compositeWindow().__hf_page_composite_pending).toBe(false);
   });
 

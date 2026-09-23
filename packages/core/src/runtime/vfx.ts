@@ -405,9 +405,11 @@ function paintEntry(entry: VfxEntry, t: number): void {
   const last = passes.length - 1;
   for (let i = 0; i <= last; i++) {
     const pass = passes[i]!;
+    // useProgram FIRST: bindPass sets the `u_src` sampler, and uniforms land on
+    // whichever program is current at the time of the call.
+    gl.useProgram(pass.program);
     bindPass(entry, i, last, ping);
     gl.viewport(0, 0, size.width, size.height);
-    gl.useProgram(pass.program);
     setPassUniforms(entry, pass, style, t, size.width, size.height);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

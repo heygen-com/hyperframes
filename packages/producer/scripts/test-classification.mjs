@@ -14,6 +14,7 @@ const INTEGRATION_TEST_FILES = new Set([
   "src/regression-harness-psnr.test.ts",
   "src/services/coreRuntimeBrowser.test.ts",
   "src/services/deterministicFonts-systemCapture.test.ts",
+  "src/services/vfxDeterminism.test.ts",
   "src/services/distributed/assemble.test.ts",
   "src/services/distributed/chunkBoundary.test.ts",
   "src/services/distributed/crossWorkerIdempotency.test.ts",

@@ -9,6 +9,7 @@
  */
 
 import { FRACTAL_NOISE_FRAG } from "./vfx/fractalNoise.frag";
+import { WAVE_WARP_FRAG } from "./vfx/waveWarp.frag";
 
 export const HF_VFX_ATTR = "data-vfx-chain";
 
@@ -85,9 +86,9 @@ export interface HfVfxDef {
 }
 
 /**
- * `fractal-noise` params, from the fractal-noise deep dive and retro-wave's
- * observed values. Basic (type 1) is the only fractal type implemented in v1;
- * see `vfx/fractalNoise.frag.ts` for the kernel's scope decision.
+ * The def registry. Params come from the AE deep dives and retro-wave's
+ * observed values; each kernel's own `frag` module states the v1 scope
+ * decision — which of the effect's modes it actually implements and why.
  *
  * Exported as the whole registry for the exporter and Studio's effect picker;
  * inside the runtime, defs are reached through `getVfxDef`.
@@ -212,6 +213,84 @@ export const HF_VFX: readonly HfVfxDef[] = [
         max: 100,
         step: 1,
         default: 100,
+        animatable: true,
+      },
+    ],
+  },
+  {
+    id: "wave-warp",
+    label: "Wave Warp",
+    ae: "ADBE Wave Warp",
+    capture: "self",
+    frag: WAVE_WARP_FRAG,
+    params: [
+      {
+        kind: "enum",
+        key: "waveType",
+        label: "Wave Type",
+        options: [{ value: 1, label: "Sine" }],
+        default: 1,
+        hint: "Only Sine is implemented in v1; the exporter marks the others cosmetic.",
+      },
+      {
+        kind: "number",
+        key: "height",
+        label: "Wave Height",
+        unit: "px",
+        min: -1000,
+        max: 1000,
+        step: 1,
+        default: 10,
+        animatable: true,
+      },
+      {
+        kind: "number",
+        key: "width",
+        label: "Wave Width",
+        unit: "px",
+        min: 1,
+        max: 10000,
+        step: 1,
+        default: 40,
+        animatable: true,
+      },
+      {
+        kind: "number",
+        key: "direction",
+        label: "Direction",
+        unit: "deg",
+        min: -360,
+        max: 360,
+        step: 1,
+        default: 90,
+      },
+      {
+        kind: "number",
+        key: "speed",
+        label: "Wave Speed",
+        unit: "waves/s",
+        min: -100,
+        max: 100,
+        step: 0.1,
+        default: 1,
+      },
+      {
+        kind: "enum",
+        key: "pinning",
+        label: "Pinning",
+        options: [{ value: 1, label: "None" }],
+        default: 1,
+        hint: "Only None is implemented in v1; the exporter marks the others cosmetic.",
+      },
+      {
+        kind: "number",
+        key: "phase",
+        label: "Phase",
+        unit: "deg",
+        min: -360,
+        max: 360,
+        step: 1,
+        default: 0,
         animatable: true,
       },
     ],
