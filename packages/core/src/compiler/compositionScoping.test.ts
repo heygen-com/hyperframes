@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import {
   buildVariablesByCompScript,
+  dedupeFontFaceRules,
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
@@ -1125,5 +1126,23 @@ describe("wrapInlineScriptWithErrorBoundary — <script> breakout", () => {
 .broken { transform: xPercent: -10; }`;
     const result = scopeCssToComposition(malformedCss, "scene-bad");
     expect(result).toBe("");
+  });
+});
+
+describe("dedupeFontFaceRules", () => {
+  const face = (display: string) =>
+    `@font-face { font-family: "Brand"; src: url(data:font/woff2;base64,AA); font-display: ${display}; }`;
+
+  it("keeps the last copy, so a different rule declared in between never takes over", () => {
+    const [first, middle, last] = dedupeFontFaceRules([face("swap"), face("block"), face("swap")]);
+    expect(first).not.toContain("@font-face");
+    expect(middle).toContain("font-display: block");
+    expect(last).toContain("font-display: swap");
+  });
+
+  it("keeps two rules whose repeated src lines come in a different order", () => {
+    const a = `@font-face { font-family: "Brand"; src: url(a.woff); src: url(b.woff2); }`;
+    const b = `@font-face { font-family: "Brand"; src: url(b.woff2); src: url(a.woff); }`;
+    expect(dedupeFontFaceRules([a, b])).toEqual([a, b]);
   });
 });
