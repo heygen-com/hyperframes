@@ -14,6 +14,12 @@ import type { ShaderLoaderElements } from "./shader-loader-element.js";
 
 const HIDE_TRANSITION_MS = 420;
 
+/** A progress row shows only while it has a value, so no bare label is left on the card. */
+function setRowValue(row: HTMLElement, value: HTMLElement, text: string): void {
+  value.textContent = text;
+  row.style.visibility = text ? "visible" : "hidden";
+}
+
 export class ShaderLoaderState {
   private readonly _el: ShaderLoaderElements;
   private _hideTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -65,9 +71,8 @@ export class ShaderLoaderState {
     this._el.root.classList.remove("hfp-visible", "hfp-hiding");
     this._flushHidden();
     this._el.fill.style.transform = "scaleX(0)";
-    this._el.transitionValue.textContent = "";
-    this._el.frameValue.textContent = "";
-    this._el.frameRow.style.visibility = "hidden";
+    setRowValue(this._el.transitionRow, this._el.transitionValue, "");
+    setRowValue(this._el.frameRow, this._el.frameValue, "");
   }
 
   // fallow-ignore-next-line unused-class-member, complexity
@@ -107,7 +112,7 @@ export class ShaderLoaderState {
     this._el.fill.style.transform = `scaleX(${ratio})`;
 
     // fallow-ignore-next-line code-duplication
-    this._el.transitionValue.textContent =
+    const transitionValue =
       status.currentTransition !== undefined && status.transitionTotal !== undefined
         ? `${status.currentTransition}/${status.transitionTotal}`
         : total > 0
@@ -126,8 +131,8 @@ export class ShaderLoaderState {
           ? "finalizing transition frames"
           : "rendering transition frames";
 
-    this._el.frameValue.textContent = frameValue;
-    this._el.frameRow.style.visibility = frameValue ? "visible" : "hidden";
+    setRowValue(this._el.transitionRow, this._el.transitionValue, transitionValue);
+    setRowValue(this._el.frameRow, this._el.frameValue, frameValue);
     this._el.root.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
     this.show();
   }
