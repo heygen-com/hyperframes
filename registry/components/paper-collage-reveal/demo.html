@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  paper-collage-reveal demo. This standalone composition mounts the
+  primitive FULL-BLEED through data-composition-src, 7 scraps and scatter
+  spread to prove the non-default variable path, and slots a procedural
+  scene so the reveal uncovers a real photo rather than the bare token card
+  the primitive falls back to.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Paper Collage Reveal Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #14161c;
+      }
+      #root {
+        --bg: #14161c;
+        --fg: #f2ede2;
+        --surface: #fffdf8;
+        --accent: #2f6fed;
+        --accent-2: #b98a4e;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      .mount-bleed {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+      .demo-scene {
+        position: absolute;
+        inset: 0;
+      }
+      .demo-scene img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .demo-caption {
+        position: absolute;
+        left: 64px;
+        bottom: 64px;
+        padding: 14px 22px;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-weight: 700;
+        font-size: 30px;
+        letter-spacing: 0.04em;
+        color: #fff;
+        background: rgba(10, 10, 12, 0.35);
+        border-radius: 8px;
+        backdrop-filter: blur(6px);
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="paper-collage-reveal-content">
+      <div class="demo-scene">
+        <img alt="" src="" id="demo-scene-img" />
+        <div class="demo-caption">Field notes, spring</div>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="paper-collage-reveal-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="2.6"
+      data-fps="30"
+    >
+      <div
+        id="paper-collage-reveal-mount"
+        class="mount-bleed clip"
+        data-composition-id="paper-collage-reveal"
+        data-composition-src="./paper-collage-reveal.html"
+        data-variable-values='{"panels":7,"tone":"mixed","spread":"scatter"}'
+        data-start="0"
+        data-duration="2.6"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        // A procedural SVG scene, so the demo is deterministic and ships
+        // nothing licensed (same approach as grade-split-reveal).
+        function fieldScene() {
+          return (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">' +
+            '<defs><linearGradient id="fs-sky" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0" stop-color="#9fd0e8"/><stop offset="0.6" stop-color="#d9e9c9"/>' +
+            '<stop offset="1" stop-color="#b7cf7c"/></linearGradient></defs>' +
+            '<rect width="1600" height="900" fill="url(#fs-sky)"/>' +
+            '<circle cx="1220" cy="200" r="80" fill="#fff8de"/>' +
+            '<path d="M0 560 L260 500 L520 560 L800 480 L1080 560 L1360 500 L1600 550 L1600 900 L0 900 Z" fill="#7fa15a"/>' +
+            '<path d="M0 620 L300 580 L620 630 L900 560 L1200 620 L1600 590 L1600 900 L0 900 Z" fill="#5c8442"/>' +
+            '<g fill="#3f6330" opacity="0.8">' +
+            '<circle cx="220" cy="700" r="18"/><circle cx="420" cy="740" r="14"/>' +
+            '<circle cx="960" cy="700" r="20"/><circle cx="1310" cy="730" r="16"/></g>' +
+            "</svg>"
+          );
+        }
+        // Elements inside an inert <template> are not in the live document,
+        // so they must be reached through the template's own content
+        // fragment, never document.getElementById.
+        document
+          .querySelector('template[data-slot="paper-collage-reveal-content"]')
+          .content.getElementById("demo-scene-img").src =
+          "data:image/svg+xml;charset=utf-8," + encodeURIComponent(fieldScene());
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["paper-collage-reveal-demo"] = gsap.timeline({ paused: true });
+      })();
+    </script>
+  </body>
+</html>
