@@ -30,9 +30,19 @@ import {
   type HfVfxNode,
   type HfVfxParam,
   type HfVfxParamValues,
+  type HfVfxRefParam,
 } from "../vfx";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isCanvasElement, isHtmlElement } from "./domRealm";
+
+/**
+ * Marks a `ref` wrapper whose element ALSO paints on its own — v1.1 assumed a
+ * matte source is invisible in After Effects and that is not always true
+ * (retro-wave `Logo Anim` layer 5 is layer 4's displacement map AND an enabled,
+ * fully opaque layer). Without it the runtime would clear the wrapper's bitmap
+ * after reading it and the layer would vanish from the page.
+ */
+const VFX_REF_VISIBLE_ATTR = "data-vfx-ref-visible";
 
 /** The prefix `frameCapture.ts` matches to fail a render fast. */
 const VFX_ERROR_LABEL = "[HyperFrames] composition script error:";
@@ -100,6 +110,12 @@ interface VfxCaptureSource {
    * than a hole (see `capturePassThrough`).
    */
   backdrop: boolean;
+  /**
+   * The wrapper carries `data-vfx-ref-visible`: its bitmap is a layer the page
+   * shows, not only a texture, so the capture keeps it and draws it at the
+   * REF's own box rather than the host's.
+   */
+  visible: boolean;
   /** `.hf-vfx-in` measured 0×0 and that has already been reported once. */
   emptyBoxReported: boolean;
 }
@@ -121,6 +137,8 @@ interface PassLocations {
   src: WebGLUniformLocation | null;
   /** Bound only for a def with a `ref` param (v1.1's second source). */
   src2: WebGLUniformLocation | null;
+  /** 1 when this pass's optional ref actually resolved, 0 when it did not. */
+  hasSrc2: WebGLUniformLocation | null;
   /** Keyed by the def's param key, without the `u_` prefix. */
   params: Record<string, WebGLUniformLocation | null>;
 }
@@ -273,6 +291,7 @@ function resolveUniformLocations(
     fps: gl.getUniformLocation(program, "u_fps"),
     src: gl.getUniformLocation(program, "u_src"),
     src2: gl.getUniformLocation(program, "u_src2"),
+    hasSrc2: gl.getUniformLocation(program, "u_hasSrc2"),
     params,
   };
 }
@@ -298,10 +317,13 @@ function resolveRefSource(
   gl: WebGL2RenderingContext,
   cache: Map<HTMLElement, VfxCaptureSource>,
 ): VfxCaptureSource | null | undefined {
-  const param = def.params.find((p) => p.kind === "ref");
+  const param = def.params.find((p): p is HfVfxRefParam => p.kind === "ref");
   if (!param) return undefined;
   const id = params[param.key];
   if (typeof id !== "string" || id === "") {
+    // An optional ref left empty is the def's own fallback (displacement-map
+    // reads `u_src` as its map), not a broken chain.
+    if (param.optional) return undefined;
     reportVfxError(
       `${describeHost(host)}: node "${node.id}" (${def.id}) needs a "${param.key}" ` +
         `param naming the id of the element to read as its second source.`,
@@ -316,11 +338,18 @@ function resolveRefSource(
     );
     return null;
   }
+  // A ref naming its own host is the self-referential form — `u_src` already
+  // holds those pixels. Binding it would cost a second `drawElementImage` per
+  // frame for the same image, and on a `backdrop` host it would resolve the
+  // `data-vfx-for` sibling and read the layers BELOW as the map.
+  if (target === host) return undefined;
   const cached = cache.get(target);
   if (cached) return cached;
   const source = resolveCaptureSource(target, gl, `${describeHost(host)}: "${param.key}" source`);
-  if (source) cache.set(target, source);
-  return source ?? null;
+  if (!source) return null;
+  source.visible = source.canvas.hasAttribute(VFX_REF_VISIBLE_ATTR);
+  cache.set(target, source);
+  return source;
 }
 
 function buildPasses(
@@ -441,6 +470,8 @@ function resolveCaptureSource(
     ctx,
     texture: createCaptureTexture(gl),
     backdrop: backdrop !== null,
+    // Only a `ref` source may be visible; `resolveRefSource` sets it.
+    visible: false,
     emptyBoxReported: false,
   };
 }
@@ -674,6 +705,10 @@ function setPassUniforms(
   gl.uniform2f(locations.size, width, height);
   gl.uniform1f(locations.t, t);
   gl.uniform1f(locations.fps, registryFps);
+  // A def whose ref is optional needs to know which sampler holds its second
+  // input; on a shader without the uniform the location is null and this is a
+  // defined no-op.
+  gl.uniform1f(locations.hasSrc2, pass.ref ? 1 : 0);
   for (const param of pass.def.params) {
     const value = paramUniformValue(param, pass, style);
     if (value === null) continue;
@@ -773,6 +808,29 @@ function uploadCaptureTexture(gl: WebGL2RenderingContext, src: VfxCaptureSource)
  * scaled into the host's box rather than placed in composition space — v1's
  * semantic, recorded because After Effects places it in comp space.
  */
+/**
+ * What a capture does with what it drew. Three combinations exist, and each
+ * one is a different kind of source:
+ *
+ * - texture only — an invisible source read as `u_src`/`u_src2`. The bitmap is
+ *   cleared after the upload because a `layoutsubtree` canvas's BITMAP is
+ *   painted by the page compositor even though its children are not, and
+ *   leaving the raw capture there would show through `.hf-vfx-out`.
+ * - bitmap only — a `backdrop` wrapper whose host is not painting this frame.
+ *   The bitmap IS the frame: it carries the layers below an adjustment layer
+ *   that is currently off.
+ * - both — a `ref` source the exporter marked visible. Its layer paints on its
+ *   own AND feeds a kernel, so the capture is uploaded and left on screen.
+ */
+interface CaptureMode {
+  upload: boolean;
+  keepBitmap: boolean;
+}
+
+const CAPTURE_TO_TEXTURE: CaptureMode = { upload: true, keepBitmap: false };
+const CAPTURE_PASS_THROUGH: CaptureMode = { upload: false, keepBitmap: true };
+const CAPTURE_VISIBLE_SOURCE: CaptureMode = { upload: true, keepBitmap: true };
+
 /** Assigning `width`/`height` clears the bitmap, so only a real change does. */
 function resizeCaptureCanvas(src: VfxCaptureSource, size: { width: number; height: number }): void {
   if (src.canvas.width !== size.width) src.canvas.width = size.width;
@@ -784,7 +842,7 @@ function captureSource(
   src: VfxCaptureSource,
   size: { width: number; height: number },
   quiet: boolean,
-  keepBitmap: boolean,
+  mode: CaptureMode,
 ): boolean {
   // A hidden source is an EMPTY capture, not a failure. The clip runtime hides
   // a matte layer outside its own window (`visibility: hidden`, inherited by
@@ -797,7 +855,7 @@ function captureSource(
   if (!isPaintableHost(src.inner)) {
     resizeCaptureCanvas(src, size);
     src.ctx.clearRect(0, 0, size.width, size.height);
-    if (!keepBitmap) uploadCaptureTexture(entry.gl, src);
+    if (mode.upload) uploadCaptureTexture(entry.gl, src);
     return true;
   }
   // The one capture failure Chrome does NOT report: inside a `layoutsubtree`
@@ -835,10 +893,26 @@ function captureSource(
     }
     return false;
   }
-  if (keepBitmap) return true;
-  uploadCaptureTexture(entry.gl, src);
-  src.ctx.clearRect(0, 0, size.width, size.height);
+  if (mode.upload) uploadCaptureTexture(entry.gl, src);
+  if (!mode.keepBitmap) src.ctx.clearRect(0, 0, size.width, size.height);
   return true;
+}
+
+/**
+ * The box one source is drawn at. The host's, so `u_src`, `u_src2` and
+ * `.hf-vfx-out` share a pixel grid — except for a VISIBLE ref, which is a
+ * layer on the page and must paint at its own size and resolution. Sampling is
+ * unaffected either way: `drawElementImage(el, 0, 0, w, h)` scales the element
+ * into the whole canvas, so normalized `v_uv` addresses the same point in the
+ * element's box whatever the bitmap's pixel size — which is the v1 rule, a
+ * ref scaled into the host's box rather than placed in composition space.
+ */
+function captureBox(
+  src: VfxCaptureSource,
+  hostSize: { width: number; height: number },
+): { width: number; height: number } {
+  if (!src.visible) return hostSize;
+  return deviceSize(src.inner) ?? hostSize;
 }
 
 /**
@@ -853,7 +927,10 @@ function captureEntry(entry: VfxEntry, quiet = false): boolean {
   if (!size || sources.length === 0) return false;
   let captured = true;
   for (const source of sources) {
-    if (!captureSource(entry, source, size, quiet, false)) captured = false;
+    const mode = source.visible ? CAPTURE_VISIBLE_SOURCE : CAPTURE_TO_TEXTURE;
+    if (!captureSource(entry, source, captureBox(source, size), quiet, mode)) {
+      captured = false;
+    }
   }
   return captured;
 }
@@ -877,7 +954,7 @@ function capturePassThrough(entry: VfxEntry, quiet = false): boolean {
   if (!src) return false;
   const size = deviceSize(entry.host) ?? deviceSize(src.inner);
   if (!size) return false;
-  return captureSource(entry, src, size, quiet, true);
+  return captureSource(entry, src, size, quiet, CAPTURE_PASS_THROUGH);
 }
 
 /** Phase 2 of the page-composite protocol: the paint records are valid now. */

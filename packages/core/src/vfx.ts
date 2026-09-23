@@ -69,6 +69,14 @@ export interface HfVfxRefParam {
   kind: "ref";
   key: string;
   label: string;
+  /**
+   * The kernel works without it. `displacement-map` reads its own pixels as
+   * the map when `map` is empty (every corpus instance is self-referential),
+   * while `luma-matte` without a matte has nothing to do, so a missing id
+   * there is a loud failure. Spec amendment to v1.1, which had no optional
+   * refs because its only ref was required.
+   */
+  optional?: boolean;
 }
 
 export type HfVfxParam = HfVfxNumberParam | HfVfxEnumParam | HfVfxBoolParam | HfVfxRefParam;
@@ -325,6 +333,14 @@ export const HF_VFX: readonly HfVfxDef[] = [
     capture: "self",
     frag: DISPLACEMENT_MAP_FRAG,
     params: [
+      {
+        kind: "ref",
+        key: "map",
+        label: "Displacement Map Layer",
+        // Optional: empty means the AE default the corpus uses, a map layer
+        // pointing at the layer itself, which `u_src` already holds.
+        optional: true,
+      },
       {
         kind: "enum",
         key: "useH",

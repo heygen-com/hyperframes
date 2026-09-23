@@ -426,6 +426,69 @@ function lumaMatteFixture(chain: string, matteStrips: string): string {
 </div>`;
 }
 
+/**
+ * `displacement-map` with an EXTERNAL map: the host holds the same red block
+ * as `fixture`, and `#map` — a second element with its own `.hf-vfx-src`
+ * capture — supplies `u_src2`. The map is a solid opaque BLACK panel, not a
+ * gradient: a CSS gradient's interpolation is implementation-defined, while a
+ * flat panel gives an exact texel and therefore an exact displacement.
+ */
+function displacementRefFixture(chain: string, mapVisible = false, mapW = HOST_W): string {
+  const visible = mapVisible ? " data-vfx-ref-visible" : "";
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #0000ff; }
+  #host { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #map { position: absolute; left: 0; top: 200px; width: ${mapW}px; height: ${HOST_H}px; }
+  #map > canvas { width: ${mapW}px; height: ${HOST_H}px; }
+  #map .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${mapW}px; height: ${HOST_H}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4" data-width="${HOST_W}" data-height="320">
+  <div id="host" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in"><div style="position:absolute;left:0;top:0;width:${SQUARE_W}px;height:${HOST_H}px;background:#ff0000"></div></div></canvas>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+  <div id="map">
+    <canvas layoutsubtree class="hf-vfx-src"${visible}><div class="hf-vfx-in"><div style="position:absolute;left:0;top:0;width:${mapW}px;height:${HOST_H}px;background:#000000"></div></div></canvas>
+  </div>
+</div>`;
+}
+
+/**
+ * `luma-matte` with a VISIBLE matte whose box is twice the host's. Two claims
+ * at once: the wrapper's bitmap survives the capture (the layer still paints),
+ * and the kernel still reads it scaled into the host's box.
+ */
+function visibleMatteFixture(chain: string, matteW: number): string {
+  const strips = [0, 85 / 255, 170 / 255, 1]
+    .map(
+      (a, i) =>
+        `<div style="position:absolute;left:${(i * matteW) / 4}px;top:0;width:${matteW / 4}px;height:${HOST_H}px;background:rgba(0,0,0,${a})"></div>`,
+    )
+    .join("");
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #000; }
+  #host { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #matte { position: absolute; left: 0; top: 200px; width: ${matteW}px; height: ${HOST_H}px; }
+  #matte > canvas { width: ${matteW}px; height: ${HOST_H}px; }
+  #matte .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${matteW}px; height: ${HOST_H}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4" data-width="${matteW}" data-height="320">
+  <div id="host" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in"><div style="position:absolute;left:0;top:0;width:${HOST_W}px;height:${HOST_H}px;background:#ffffff"></div></div></canvas>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+  <div id="matte">
+    <canvas layoutsubtree class="hf-vfx-src" data-vfx-ref-visible><div class="hf-vfx-in">${strips}</div></canvas>
+  </div>
+</div>`;
+}
+
 /** Four strips of constant luma (black) with alpha 0, 1/3, 2/3, 1 — isolates the Alpha/Alpha Inverted modes from Luma. */
 function alphaMatteStrips(): string {
   return [0, 85 / 255, 170 / 255, 1]
@@ -1172,6 +1235,121 @@ describe("data-vfx-chain in the browser", () => {
           (document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement).toDataURL(),
         );
         expect(b).not.toBe(a);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+  });
+
+  /**
+   * The `map` ref (plan Backlog, "one-line def change after Task 2.6"). The
+   * discriminator is that a SELF map gives a visibly different picture: a
+   * black external map displaces every pixel by the same −maxH, translating
+   * the block right as one run, while the layer's own pixels displace the red
+   * half one way and the transparent half the other, splitting it in two.
+   */
+  describe("displacement-map with an external map (Task 2.6 backlog)", () => {
+    const MAX_H = 20;
+    const mapParams = { useH: 1, maxH: MAX_H, useV: 11, maxV: 0, behavior: 1, edge: 0 };
+    const BLACK = { r: 0, g: 0, b: 0, a: 1 };
+
+    it("reads a named map element as u_src2", async () => {
+      const chain = chainOf("displacement-map", { ...mapParams, map: "map" });
+      const page = await open(displacementRefFixture(chain), { width: HOST_W, height: 320 });
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+        // Through the CPU reference, with the constant sampler the fixture
+        // paints: an opaque black map reads 0 on Red, so d = (0 − 0.5)·2·maxH.
+        const probe = { x: 40, y: 60 };
+        const shift = probe.x - displacementMapSampleRef(probe, 0, mapParams, () => BLACK).x;
+        expect(shift).toBe(MAX_H);
+
+        const s = await sample(page, [60]);
+        expect(s.rows).toEqual([[[shift, SQUARE_W + shift]]]);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+
+    it("displaces by the layer's own pixels when no map is named", async () => {
+      const chain = chainOf("displacement-map", mapParams);
+      const page = await open(displacementRefFixture(chain), { width: HOST_W, height: 320 });
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+        const s = await sample(page, [60]);
+        // Two runs, not one: the self-referential form is a different picture,
+        // which is what makes the case above a real check of the binding.
+        expect(s.rows[0]!.length).toBe(2);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+  });
+
+  /**
+   * A ref source that also paints (retro-wave `Logo Anim` layer 5 is layer 4's
+   * displacement map AND an enabled, opaque layer). Both halves of the rule in
+   * one page: the wrapper keeps its bitmap, and the kernel still reads it
+   * scaled into the host's box even though the two boxes differ.
+   */
+  describe("a visible ref source (data-vfx-ref-visible)", () => {
+    const MATTE_W = HOST_W * 2;
+
+    it("keeps the matte on screen and still mattes the host with it", async () => {
+      const chain = chainOf("luma-matte", { matte: "matte", mode: 1 });
+      const page = await open(visibleMatteFixture(chain, MATTE_W), {
+        width: MATTE_W,
+        height: 320,
+      });
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+
+        // 1. The wrapper's own bitmap still holds the strips — an invisible
+        //    ref would have been cleared to nothing after its upload.
+        const bitmap = await page.evaluate((w: number) => {
+          const canvas = document.querySelector("#matte canvas.hf-vfx-src") as HTMLCanvasElement;
+          const ctx = canvas.getContext("2d")!;
+          const at = (x: number): number => ctx.getImageData(x, 60, 1, 1).data[3]!;
+          return { width: canvas.width, alphas: [at(w / 8), at((w * 7) / 8)] };
+        }, MATTE_W);
+        expect(bitmap.width).toBe(MATTE_W);
+        expect(bitmap.alphas[0]).toBe(0);
+        expect(bitmap.alphas[1]).toBe(255);
+
+        // 2. And the kernel read it across the host's box, not 1:1 — the four
+        //    strips of a 320px matte land as four 40px bands in a 160px host.
+        const samples = await sampleOutPoints(page, [
+          [20, 60],
+          [60, 60],
+          [100, 60],
+          [140, 60],
+        ]);
+        [0, 85, 170, 255].forEach((expected, i) => {
+          expect(Math.abs(samples[i]![3]! - expected)).toBeLessThanOrEqual(4);
+        });
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+
+    it("clears an ordinary ref's bitmap, so an invisible matte stays invisible", async () => {
+      const chain = chainOf("luma-matte", { matte: "matte", mode: 1 });
+      const page = await open(lumaMatteFixture(chain, alphaMatteStrips()), {
+        width: HOST_W,
+        height: 320,
+      });
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+        const alphas = await page.evaluate(() => {
+          const canvas = document.querySelector("#matte canvas.hf-vfx-src") as HTMLCanvasElement;
+          const ctx = canvas.getContext("2d")!;
+          return [40, 140].map((x) => ctx.getImageData(x, 60, 1, 1).data[3]!);
+        });
+        expect(alphas).toEqual([0, 0]);
         expect(pageErrors.get(page)).toEqual([]);
       } finally {
         await page.close();

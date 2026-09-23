@@ -962,6 +962,51 @@ describe("vfx runtime — ref (second source) params", () => {
     expect(errors).toEqual([]);
   });
 
+  it("keeps a visible ref's bitmap and draws it at the ref's own box", async () => {
+    // retro-wave `Logo Anim` layer 5 is layer 4's displacement map AND a layer
+    // that paints: clearing its bitmap after the upload would delete it from
+    // the frame, and drawing it at the host's box would resample it.
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    matte.querySelector("canvas.hf-vfx-src")!.setAttribute("data-vfx-ref-visible", "");
+    sizeHost(matte.querySelector(".hf-vfx-in") as HTMLElement, 640, 360);
+    makeCaptureHost(ctx, "cap", REF_NODE);
+
+    initVfx(document.body, 30);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect(matteCtx.drawn).toEqual([{ el: matte.querySelector(".hf-vfx-in"), w: 640, h: 360 }]);
+    // Cleared once, before the draw: the bitmap that is left is the layer.
+    expect(matteCtx.cleared).toEqual([[640, 360]]);
+    // The host's own capture is unchanged — host box, cleared after upload.
+    expect(ctx.drawn.map((d) => [d.w, d.h])).toEqual([[320, 180]]);
+    expect(ctx.cleared).toEqual([
+      [320, 180],
+      [320, 180],
+    ]);
+    expect(errors).toEqual([]);
+  });
+
+  it("clears an ordinary ref's bitmap and draws it at the host's box", () => {
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    sizeHost(matte.querySelector(".hf-vfx-in") as HTMLElement, 640, 360);
+    makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
+
+    initVfx(document.body, 30);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    // Host box, so `u_src`, `u_src2` and `.hf-vfx-out` share a pixel grid.
+    expect(matteCtx.drawn.map((d) => [d.w, d.h])).toEqual([[320, 180]]);
+    expect(matteCtx.cleared).toEqual([
+      [320, 180],
+      [320, 180],
+    ]);
+  });
+
   it("holds the preview barrier until the ref's canvas has painted too", async () => {
     vi.stubGlobal("requestAnimationFrame", () => 1);
     const ctx = createMockCtx2d();
@@ -988,5 +1033,83 @@ describe("vfx runtime — ref (second source) params", () => {
       resolved: true,
       matte: 1,
     });
+  });
+});
+
+/**
+ * `displacement-map`'s `map` ref (plan Backlog, "one-line def change after
+ * Task 2.6"). Optional, so the self-referential form every corpus instance
+ * uses keeps working untouched.
+ */
+describe("vfx runtime — an optional ref (displacement-map's map)", () => {
+  const mapChain = (params: Record<string, unknown>): string =>
+    JSON.stringify({
+      version: 1,
+      nodes: [{ type: "displacement-map", id: "n1", params }],
+    });
+
+  function makeMapTarget(ctx: unknown, id = "map-1"): HTMLElement {
+    const el = document.createElement("div");
+    el.id = id;
+    sizeHost(el);
+    el.appendChild(makeCaptureWrapper(ctx));
+    document.body.appendChild(el);
+    return el;
+  }
+
+  beforeEach(() => installVfxHarness(null));
+  afterEach(releaseVfxHarness);
+
+  it("binds a named map element as u_src2 and tells the kernel it is there", () => {
+    const ctx = createMockCtx2d();
+    const mapCtx = createMockCtx2d();
+    const map = makeMapTarget(mapCtx);
+    makeCaptureHost(ctx, "cap", mapChain({ useH: 1, maxH: 20, map: "map-1" }));
+
+    expect(initVfx(document.body, 30)).toHaveLength(1);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect(mapCtx.drawn[0]!.el).toBe(map.querySelector(".hf-vfx-in"));
+    expect(gl!.uniforms["u_src2"]).toBe(1);
+    expect(gl!.uniforms["u_hasSrc2"]).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  it("falls back to the layer's own pixels when the map is empty", () => {
+    const ctx = createMockCtx2d();
+    makeCaptureHost(ctx, "cap", mapChain({ useH: 1, maxH: 20 }));
+
+    expect(initVfx(document.body, 30)).toHaveLength(1);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    // One capture, not two, and the kernel is told to read `u_src` as its map.
+    expect(ctx.drawn).toHaveLength(1);
+    expect(gl!.uniforms["u_hasSrc2"]).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  it("treats a map naming the host itself as the self-referential form", () => {
+    const ctx = createMockCtx2d();
+    makeCaptureHost(ctx, "cap", mapChain({ useH: 1, maxH: 20, map: "cap" }));
+
+    expect(initVfx(document.body, 30)).toHaveLength(1);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect(ctx.drawn).toHaveLength(1);
+    expect(gl!.uniforms["u_hasSrc2"]).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  it("still refuses a map that names an element with no capture wrapper", () => {
+    const orphan = document.createElement("div");
+    orphan.id = "map-1";
+    document.body.appendChild(orphan);
+    makeCaptureHost(createMockCtx2d(), "cap", mapChain({ map: "map-1" }));
+
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]![1])).toMatch(/"map" source/);
   });
 });
