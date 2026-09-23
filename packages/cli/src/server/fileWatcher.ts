@@ -62,7 +62,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
 
       pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);
-      const inBurst = Date.now() - lastFlushAt < BURST_MS;
+      const delay = Date.now() - lastFlushAt < BURST_MS ? BURST_MS : QUIET_MS;
       debounceTimer = setTimeout(() => {
         const changedPaths = [...pendingPaths];
         pendingPaths.clear();
@@ -73,7 +73,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
             fn(changedPath);
           }
         }
-      }, inBurst ? BURST_MS : QUIET_MS);
+      }, delay);
     });
     // fs.watch can fail asynchronously too (e.g. EMFILE from exhausted OS watch
     // handles) — that surfaces as an 'error' event, not a thrown exception. An
