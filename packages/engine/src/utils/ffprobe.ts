@@ -816,9 +816,8 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
 }
 
 /**
- * Normalized span of a video stream (not of its container), plus the cache key
- * that identifies it. Both live here so the consumers below cannot normalize —
- * or key their caches — differently.
+ * Normalized span of a video stream (not its container), plus its cache key.
+ * Computed here so callers cannot normalize or key differently.
  */
 function resolveStreamWindow(
   filePath: string,
@@ -1036,19 +1035,8 @@ const keyframeCache = new Map<string, Promise<KeyframeAnalysis>>();
 const PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS = 2;
 
 /**
- * Check keyframe intervals in a video file. Intervals over the threshold
- * above cause seeking issues in the headless renderer and audio/video
- * desync. Videos from yt-dlp --download-sections or screen recordings often
- * have sparse keyframes.
- *
- * Pass the `videoStreamDurationSeconds`/`videoStreamStartSeconds` pair from
- * `extractMediaMetadata`'s `VideoMetadata`, not a container duration: a
- * container whose audio outlasts its video would overstate the GOP span of
- * a single-keyframe file below. `videoStreamStartSeconds` matters for the
- * same reason `extractFinalVideoFrameTimestamp` normalizes by it: ffprobe's
- * `pts_time` is an absolute presentation timestamp, not relative to stream
- * start, so a nonzero start (a re-muxed or trimmed clip) must be subtracted
- * back out before comparing it against a duration.
+ * Checks keyframe intervals in a video stream; intervals over the threshold below flag `isProblematic`.
+ * Pass the stream's own duration/start (not the container's), which can overstate a single-keyframe GOP.
  */
 export async function analyzeKeyframeIntervals(
   filePath: string,
@@ -1106,13 +1094,9 @@ async function analyzeKeyframeIntervalsUncached(
   }
 
   if (timestamps.length === 1) {
-    // One keyframe for the whole stream is the worst case this check exists to
-    // catch, not the healthy one — every seek past it decodes the entire file.
-    // The rest of the stream is a single uninterrupted GOP, so measure that
-    // instead of reporting "healthy" for lack of a second data point.
-    // `timestamps[0]` is an absolute pts, so compare it against the stream's
-    // absolute end (start + duration), not against duration alone — see the
-    // docstring above.
+    // A single keyframe means the whole stream is one GOP — the worst case, not the healthy one.
+    // `timestamps[0]` is an absolute pts, so compare it against the absolute stream end
+    // (start + duration), not against duration alone.
     const streamEnd = videoStreamStartSeconds + videoStreamDurationSeconds;
     // The fallback is unreachable (length === 1); it only satisfies
     // noUncheckedIndexedAccess.

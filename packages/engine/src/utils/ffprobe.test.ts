@@ -835,11 +835,9 @@ describe("ffprobe missing-binary fallback", () => {
   });
 
   it("analyzeKeyframeIntervals flags a single-keyframe video as problematic, not healthy", async () => {
-    // A single-GOP file (one keyframe at t=0) is the worst case this check
-    // exists to catch: every seek past 0 spans the whole file. Regression for
-    // #3460, where fewer than 2 keyframes short-circuited to isProblematic:false.
-    // Real `csv=p=0` output carries a trailing comma per row, so parseFloat
-    // tolerating it is load-bearing for this parser.
+    // A single-GOP file (one keyframe at t=0) is the worst case this check exists to catch.
+    // Regression for #3460, where fewer than 2 keyframes short-circuited to isProblematic:false.
+    // Real `csv=p=0` output has a trailing comma per row; parseFloat must tolerate it.
     const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000,\n" }]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -881,12 +879,9 @@ describe("ffprobe missing-binary fallback", () => {
   });
 
   it("analyzeKeyframeIntervals normalizes an absolute keyframe pts against a nonzero stream start", async () => {
-    // ffprobe's pts_time is an absolute presentation timestamp, not relative
-    // to stream start (see extractFinalVideoFrameTimestamp's own comment on
-    // the same quirk). A re-muxed/trimmed clip with start_time=5 and a lone
-    // keyframe sitting right at that start (absolute pts 5.0) is still a
-    // full single-GOP file end-to-end and must be flagged, not silently
-    // cleared by subtracting duration from an un-normalized absolute pts.
+    // ffprobe's pts_time is absolute, not relative to stream start. A clip with
+    // start_time=5 and a keyframe at absolute pts 5.0 is still single-GOP end-to-end,
+    // so it must stay flagged, not cleared by subtracting duration from the raw pts.
     const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "5.000000\n" }]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
