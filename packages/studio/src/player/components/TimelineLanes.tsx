@@ -553,7 +553,7 @@ export function TimelineLanes({
                 <TimelineTransitionOverlays
                   transitionElements={allTransitionElements}
                   track={trackNum}
-                  rowElements={draggedClip?.started || multiDragPreview ? [] : automationElements}
+                  rowElements={draggedClip?.started ? [] : automationElements}
                   rowBackground={rowBackground}
                   pixelsPerSecond={pps}
                   rowHeight={rowHeight}
