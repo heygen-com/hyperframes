@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -173,6 +173,25 @@ describe("registerCompositionRoute", () => {
       headers: { "If-None-Match": etags["/composition/clip.mp4"] ?? "" },
     });
     expect(edited.status).toBe(200);
+  });
+
+  it("serves an edited stylesheet even when its size and mtime did not change", async () => {
+    const project = tmpProject();
+    const css = join(project.dir, "style.css");
+    const pinned = new Date("2026-01-01T00:00:00Z");
+    writeFileSync(css, "a{color:red}");
+    utimesSync(css, pinned, pinned);
+    const app = await buildApp(project, false);
+    const etag = (await app.request("/composition/style.css")).headers.get("ETag") ?? "";
+
+    writeFileSync(css, "a{color:tan}");
+    utimesSync(css, pinned, pinned);
+    const edited = await app.request("/composition/style.css", {
+      headers: { "If-None-Match": etag },
+    });
+
+    expect(edited.status).toBe(200);
+    expect(await edited.text()).toBe("a{color:tan}");
   });
 
   it("answers a Range request on a plain asset with 206 + the requested byte slice", async () => {
