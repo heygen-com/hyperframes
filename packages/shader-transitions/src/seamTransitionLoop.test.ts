@@ -97,14 +97,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** A loop already past its first frame, for tests that only care about `stop()`. */
-function startRunningLoop() {
+/** A loop not yet flushed, for tests that control frame timing themselves. */
+function startLoop(options?: Parameters<typeof playSeamTransitionLoop>[4]) {
   const raf = stubRaf();
   const gl = createMockGl();
   const canvas = createMockCanvas(gl);
-  const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
-  raf.flush(0);
+  const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", options);
   return { raf, gl, canvas, handle };
+}
+
+/** A loop already past its first frame, for tests that only care about `stop()`. */
+function startRunningLoop() {
+  const loop = startLoop();
+  loop.raf.flush(0);
+  return loop;
 }
 
 describe("playSeamTransitionLoop", () => {
@@ -202,12 +208,7 @@ describe("playSeamTransitionLoop", () => {
   });
 
   it("starts progress at 0 relative to its own first frame, not the raw rAF timestamp", () => {
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", {
-      loopMs: 1000,
-    });
+    const { raf, gl, handle } = startLoop({ loopMs: 1000 });
 
     // A page that has been open a while hands rAF an arbitrary large timestamp
     // on the very first call, deliberately NOT a multiple of loopMs; that must
@@ -223,12 +224,7 @@ describe("playSeamTransitionLoop", () => {
   });
 
   it("comes back down in the second half of the loop instead of climbing past 1", () => {
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", {
-      loopMs: 1000,
-    });
+    const { raf, gl, handle } = startLoop({ loopMs: 1000 });
 
     raf.flush(0); // elapsed 0 -> progress 0
     raf.flush(500); // elapsed 500 -> the peak, progress 1
