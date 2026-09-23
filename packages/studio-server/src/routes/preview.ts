@@ -9,7 +9,7 @@ import {
   type BundleOptions,
 } from "@hyperframes/core/compiler";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
-import type { StudioApiAdapter } from "../types.js";
+import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml } from "../helpers/subComposition.js";
@@ -341,33 +341,15 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     if (builtPreviews.size > 4) builtPreviews.delete(builtPreviews.keys().next().value!);
   };
 
-  // Bundled composition preview
+  // Concurrent requests for one document (an early prefetch and the player's own load) share a build.
+  const previewBuilds = new Map<string, Promise<string | null>>();
+
   // fallow-ignore-next-line complexity
-  api.get("/projects/:id/preview", async (c) => {
-    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
-    if (!resolved) return c.json({ error: "not found" }, 404);
-    const { project, signature } = resolved;
-
-    // fallow-ignore-next-line code-duplication
-    const vars = previewVariablesFromRequest(c.req.query("variables"));
-    if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
-    const previewVariables = vars.values;
-
-    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
-    const builtKey = `${project.id}\n${etag}`;
-    const built = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
-    if (built) {
-      rememberPreview(builtKey, built);
-      return c.html(built, 200, previewCacheHeaders(etag));
-    }
-
+  async function buildPreview(
+    project: ResolvedProject,
+    previewVariables: Record<string, unknown> | null,
+    builtKey: string,
+  ): Promise<string | null> {
     // Normalize + persist data-hf-id to disk before bundle reads it. Idempotent.
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
     const normalizedDisk = diskMain
@@ -378,7 +360,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       let bundled = await adapter.bundle(project.dir);
       let mainCompositionPath = "index.html";
       if (!bundled) {
-        if (!diskMain) return c.text("not found", 404);
+        if (!diskMain) return null;
         // Disk HTML may carry a baked inline runtime from a prior export; strip
         // it so the preview runtime injected below isn't double-loaded (the
         // bundled path already strips via htmlBundler). Idempotent if absent.
@@ -424,7 +406,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       );
       rememberPreview(builtKey, bundled);
       adapter.previewDocuments?.write(builtKey, bundled);
-      return c.html(bundled, 200, previewCacheHeaders(etag));
+      return bundled;
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
@@ -450,10 +432,48 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           fallback.compositionPath,
           mediaCodecProbeCache,
         );
-        return c.html(fallbackAugmented, 200, previewCacheHeaders(etag));
+        return fallbackAugmented;
       }
-      return c.text("not found", 404);
+      return null;
     }
+  }
+
+  // Bundled composition preview
+  // fallow-ignore-next-line complexity
+  api.get("/projects/:id/preview", async (c) => {
+    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
+    if (!resolved) return c.json({ error: "not found" }, 404);
+    const { project, signature } = resolved;
+
+    // fallow-ignore-next-line code-duplication
+    const vars = previewVariablesFromRequest(c.req.query("variables"));
+    if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
+    const previewVariables = vars.values;
+
+    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
+    const ifNoneMatch = c.req.header("If-None-Match");
+    if (ifNoneMatch === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: previewCacheHeaders(etag),
+      });
+    }
+    const builtKey = `${project.id}\n${etag}`;
+    const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
+    if (cached) {
+      rememberPreview(builtKey, cached);
+      return c.html(cached, 200, previewCacheHeaders(etag));
+    }
+    let pending = previewBuilds.get(builtKey);
+    if (!pending) {
+      pending = buildPreview(project, previewVariables, builtKey).finally(() =>
+        previewBuilds.delete(builtKey),
+      );
+      previewBuilds.set(builtKey, pending);
+    }
+    const html = await pending;
+    if (!html) return c.text("not found", 404);
+    return c.html(html, 200, previewCacheHeaders(etag));
   });
 
   /**

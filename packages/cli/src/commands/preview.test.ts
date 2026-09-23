@@ -7,6 +7,7 @@ import { runCommand } from "citty";
 import {
   default as previewCommand,
   foregroundPreviewReadyPayload,
+  prebuildPreview,
   handlePreviewKillAll,
   handlePreviewList,
   previewLaunchMode,
@@ -372,6 +373,28 @@ describe("preview lifecycle JSON failures", () => {
       error: { code: "preview-start-failed" },
     });
     expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("prebuildPreview", () => {
+  it("asks the server for the opening film's preview document", async () => {
+    const fetchApp = vi.fn(async (_request: Request) => new Response(""));
+
+    await prebuildPreview(fetchApp, "http://localhost:3002", "Launch #1");
+
+    expect(fetchApp.mock.calls[0]![0].url).toBe(
+      "http://localhost:3002/api/projects/Launch%20%231/preview",
+    );
+  });
+
+  it("does not fail the start when the build throws", async () => {
+    const fetchApp = vi.fn(() => {
+      throw new Error("bundle failed");
+    });
+
+    await expect(prebuildPreview(fetchApp, "http://localhost:3002", "demo")).resolves.toBe(
+      undefined,
+    );
   });
 });
 
