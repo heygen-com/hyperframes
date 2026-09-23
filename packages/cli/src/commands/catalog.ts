@@ -7,7 +7,7 @@ export const examples: Example[] = [
   ["Filter by tag", "hyperframes catalog --type block --tag social"],
   ["Machine-readable JSON", "hyperframes catalog --json"],
   ["Interactive picker (install on select)", "hyperframes catalog --human-friendly"],
-  ["Search (positional, same as --query)", 'hyperframes catalog "smoke"'],
+  ["Search (positional, same as --query)", 'hyperframes catalog "crossfade"'],
 ];
 
 import * as clack from "@clack/prompts";
@@ -137,7 +137,7 @@ export default defineCommand({
   args: {
     words: {
       type: "positional",
-      description: "Search words, same as --query (e.g. `catalog smoke`)",
+      description: "Search words, same as --query (e.g. `catalog crossfade`)",
       required: false,
     },
     type: {
@@ -160,7 +160,7 @@ export default defineCommand({
       type: "string",
       description:
         "Search by meaning when the on-device model is on, otherwise by name, title, description and tags. " +
-        "A bare positional word works the same way (e.g. `catalog smoke`).",
+        "A bare positional word works the same way (e.g. `catalog crossfade`).",
     },
     yes: {
       type: "boolean",
@@ -214,8 +214,8 @@ export default defineCommand({
       ? items.filter((item) => item.tags?.some((t) => t.toLowerCase() === tagFilter))
       : items;
 
-    // A stray positional (`catalog "smoke"`) means the same thing as `--query
-    // smoke`, matching how every other command with free text (add's item
+    // A stray positional (`catalog "crossfade"`) means the same thing as `--query
+    // crossfade`, matching how every other command with free text (add's item
     // name, docs' topic) treats a bare word: as the thing being asked for,
     // never as noise to drop.
     const query =
