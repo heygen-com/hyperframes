@@ -26,8 +26,10 @@ const WATCHER_EXCLUDED_DIRS = new Set([
   "outputs",
   "renders",
 ]);
-// Every edit waits this long before the preview hears of it; bursts still coalesce (webpack uses 20 ms).
-const DEBOUNCE_MS = 30;
+// A lone save reaches the preview after QUIET_MS; writes that keep coming after a flush
+// (a checkout, a multi-file tool) coalesce over BURST_MS so each doesn't start a rebuild.
+const QUIET_MS = 30;
+const BURST_MS = 300;
 
 export function shouldWatchProjectFile(filename: string): boolean {
   if (!filename) return false;
@@ -39,6 +41,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
   const listeners = new Set<FileChangeListener>();
   const pendingPaths = new Set<string>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFlushAt = Number.NEGATIVE_INFINITY;
   let watcher: FSWatcher | null = null;
 
   try {
@@ -59,16 +62,18 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
 
       pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);
+      const inBurst = Date.now() - lastFlushAt < BURST_MS;
       debounceTimer = setTimeout(() => {
         const changedPaths = [...pendingPaths];
         pendingPaths.clear();
         debounceTimer = null;
+        lastFlushAt = Date.now();
         for (const changedPath of changedPaths) {
           for (const fn of listeners) {
             fn(changedPath);
           }
         }
-      }, DEBOUNCE_MS);
+      }, inBurst ? BURST_MS : QUIET_MS);
     });
     // fs.watch can fail asynchronously too (e.g. EMFILE from exhausted OS watch
     // handles) — that surfaces as an 'error' event, not a thrown exception. An
