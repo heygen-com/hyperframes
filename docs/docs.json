@@ -648,7 +648,7 @@
               },
               {
                 "group": "Cursors",
-                "tag": "15",
+                "tag": "14",
                 "expanded": false,
                 "pages": [
                   "catalog/components/agent-cursor",
@@ -664,7 +664,6 @@
                   "catalog/components/multiplayer-cursors",
                   "catalog/components/oversized-cursor",
                   "catalog/components/press-ripple",
-                  "catalog/components/simulated-cursor",
                   "catalog/components/touch-indicator"
                 ]
               },

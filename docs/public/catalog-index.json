@@ -4174,21 +4174,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/signup-flow.png"
   },
   {
-    "name": "simulated-cursor",
-    "type": "component",
-    "title": "Simulated Cursor",
-    "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
-    "tags": [
-      "cursor",
-      "video-primitive",
-      "motion-primitive",
-      "ui",
-      "walkthrough"
-    ],
-    "href": "/catalog/components/simulated-cursor",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/simulated-cursor.png"
-  },
-  {
     "name": "skeleton-reveal",
     "type": "component",
     "title": "Skeleton Reveal",
