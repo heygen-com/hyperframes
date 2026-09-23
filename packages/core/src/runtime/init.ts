@@ -45,6 +45,7 @@ import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
+import { initVfx, paintVfx } from "./vfx";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import {
@@ -3057,6 +3058,8 @@ export function initSandboxRuntimeModular(): void {
     colorGrading.destroy();
     colorGradingRuntime = null;
   });
+  // Per-pixel effect chains: compile once here, repaint on every seek below.
+  initVfx(document.body, state.canonicalFps);
 
   const applyPlaybackRate = (nextRate: number) => {
     const parsed = Number(nextRate);
@@ -3153,6 +3156,7 @@ export function initSandboxRuntimeModular(): void {
       }
       syncMediaForCurrentState();
       colorGrading.redraw();
+      paintVfx(state.currentTime);
       postState(true);
     },
     renderSeek: (timeSeconds, options) => {
@@ -3176,6 +3180,7 @@ export function initSandboxRuntimeModular(): void {
       runAdapters("pause");
       syncMediaForCurrentState();
       colorGrading.redraw();
+      paintVfx(state.currentTime, { engineMode: true });
       postState(true);
     },
     getTime: () => clock.now(),

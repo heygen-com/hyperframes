@@ -10,7 +10,12 @@
 
 export const HF_VFX_ATTR = "data-vfx-chain";
 
-/** Chain files are versioned; a reader must refuse a version it doesn't know. */
+/**
+ * Chain files are versioned; a reader must refuse a version it doesn't know.
+ * Exported for the exporter (hyperframes-ae-mcp), which stamps the version it
+ * emits; inside this repo only parse/serialize below read it.
+ */
+// fallow-ignore-next-line unused-export
 export const HF_VFX_CHAIN_VERSION = 1;
 
 /**
@@ -81,7 +86,11 @@ export interface HfVfxDef {
  * `fractal-noise` params, from the fractal-noise deep dive and retro-wave's
  * observed values. Basic (type 1) is the only fractal type implemented in v1;
  * see `vfx/fractalNoise.ts` (Task 1.3) for the kernel scope decision.
+ *
+ * Exported as the whole registry for the exporter and Studio's effect picker;
+ * inside the runtime, defs are reached through `getVfxDef`.
  */
+// fallow-ignore-next-line unused-export
 export const HF_VFX: readonly HfVfxDef[] = [
   {
     id: "fractal-noise",

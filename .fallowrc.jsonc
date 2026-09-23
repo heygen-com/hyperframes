@@ -3,10 +3,6 @@
   "entry": [
     // IconButton, Tabs and cn are exported before their first consumer exists.
     "packages/studio/src/components/ui/index.ts",
-    // HF_VFX_CHAIN_VERSION, HF_VFX, VfxChainError and enabledVfxNodes are
-    // exported before packages/core/src/runtime/vfx.ts (vfx-chain-runtime
-    // plan, Task 1.2) consumes them.
-    "packages/core/src/vfx.ts",
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
     "packages/gcp-cloud-run/src/**/*.test.ts",
