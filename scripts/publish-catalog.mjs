@@ -210,7 +210,7 @@ export function publish(root) {
   }
   const staging = `${BRANCH}-build-${run}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
   api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${staging}`, sha: base });
-  let publicationError;
+  const errors = [];
   try {
     let head = base;
     for (const batch of batches) head = signedCommit(repository, staging, head, batch);
@@ -220,20 +220,16 @@ export function publish(root) {
     else api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${BRANCH}`, sha: head });
     openPublishPr(repository, base);
   } catch (error) {
-    publicationError = error;
-    throw error;
-  } finally {
-    try {
-      api(`${endpoint}/refs/heads/${staging}`, "DELETE");
-    } catch (cleanupError) {
-      if (publicationError !== undefined)
-        throw new AggregateError(
-          [publicationError, cleanupError],
-          "Publication and staging cleanup failed.",
-        );
-      throw cleanupError;
-    }
+    errors.push(error);
   }
+  try {
+    api(`${endpoint}/refs/heads/${staging}`, "DELETE");
+  } catch (error) {
+    errors.push(error);
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1)
+    throw new AggregateError(errors, "Publication and staging cleanup failed.");
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
