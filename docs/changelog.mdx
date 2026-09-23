@@ -9,6 +9,20 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.64"
+  description="Released - 2026-09-23"
+  tags={["Release", "Runtime"]}
+>
+HyperFrames adds `data-vfx-chain`, a per-pixel effect element that paints GPU shader chains such as fractal noise, wave warp and displacement map. Every frame is computed from the seek time alone, so renders and previews match exactly. Chains that read their own content rely on Chrome's HTML-in-Canvas capture, and the runtime reports when that is unavailable instead of painting a blank.
+
+## Features
+
+- **Runtime:** Add `data-vfx-chain`, a seek-deterministic per-pixel effect element ([b32b9a7da](https://github.com/heygen-com/hyperframes/commit/b32b9a7dabf71e97049d1fa91a818817191414fc), [#4306](https://github.com/heygen-com/hyperframes/pull/4306)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.63...v0.8.64).
+</Update>
+
+<Update
   label="HyperFrames v0.8.63"
   description="Released - 2026-09-23"
   tags={["Release", "Studio", "Engine", "CLI"]}
