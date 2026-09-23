@@ -26,7 +26,8 @@ const WATCHER_EXCLUDED_DIRS = new Set([
   "outputs",
   "renders",
 ]);
-const DEBOUNCE_MS = 300;
+// Every edit waits this long before the preview hears of it; bursts still coalesce (webpack uses 20 ms).
+const DEBOUNCE_MS = 30;
 
 export function shouldWatchProjectFile(filename: string): boolean {
   if (!filename) return false;
