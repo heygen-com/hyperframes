@@ -49,9 +49,9 @@
         border-radius: 18px;
         background: rgba(250, 247, 241, 0.92);
         color: #2a1a10;
-        font-family: "STIX Two Text", Georgia, serif;
-        font-size: 28px;
-        line-height: 1.2;
+        font-family: "EB Garamond", serif;
+        font-size: 30px;
+        line-height: 1.15;
         font-variant-numeric: tabular-nums;
       }
       #pd-maths .pd-clock {
@@ -480,9 +480,9 @@
             tex: "crack where <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06, once <i>W</i> &gt; 0.15<br /><i>F</i><sub>1,2</sub>: nearest Worley distances of 10<i>x</i> + 1.5 fbm(8<i>x</i>)",
           },
           {
-            label: "Fingers",
+            label: "Fingers (dir: unit vector from each clump)",
             from: atS(0.16),
-            tex: "<i>c</i> += 0.8 <i>P</i>(<i>s</i>) Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> smoothstep(0.6, 0.74, fbm(4.5 <i>x̂</i> + …))",
+            tex: "<i>c</i> += 0.8 <i>P</i>(<i>s</i>) Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> smoothstep(0.6, 0.74, fbm(4.5 dir + …))",
             val: function (ph) {
               return "P = " + ph.plume.toFixed(2);
             },
