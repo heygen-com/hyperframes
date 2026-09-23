@@ -1,0 +1,132 @@
+<!doctype html>
+<!--
+  curtain-reveal demo. This standalone composition mounts the primitive
+  FULL-BLEED through data-composition-src, navy tone with the pelmet off to
+  prove the non-default variable path, and slots a procedural scene so the
+  curtains part onto a real stage rather than the bare token card the
+  primitive falls back to.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Curtain Reveal Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #060607;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #060607;
+      }
+      .mount-bleed {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+      .demo-scene {
+        position: absolute;
+        inset: 0;
+      }
+      .demo-scene img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .demo-caption {
+        position: absolute;
+        left: 64px;
+        bottom: 64px;
+        padding: 14px 22px;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-weight: 700;
+        font-size: 30px;
+        letter-spacing: 0.04em;
+        color: #fff;
+        background: rgba(10, 10, 12, 0.35);
+        border-radius: 8px;
+        backdrop-filter: blur(6px);
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="curtain-reveal-stage">
+      <div class="demo-scene">
+        <img alt="" src="" id="demo-scene-img" />
+        <div class="demo-caption">Now announcing</div>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="curtain-reveal-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="2.4"
+      data-fps="30"
+    >
+      <div
+        id="curtain-reveal-mount"
+        class="mount-bleed clip"
+        data-composition-id="curtain-reveal"
+        data-composition-src="./curtain-reveal.html"
+        data-variable-values='{"tone":"navy","pelmet":"off","spotlight":"on"}'
+        data-start="0"
+        data-duration="2.4"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        // A procedural SVG scene, so the demo is deterministic and ships
+        // nothing licensed (same approach as grade-split-reveal).
+        function stageScene() {
+          return (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">' +
+            '<defs><radialGradient id="ss-pool" cx="0.5" cy="0.6" r="0.34">' +
+            '<stop offset="0" stop-color="#4a3a22"/><stop offset="1" stop-color="#0c0810"/></radialGradient></defs>' +
+            '<rect width="1600" height="900" fill="#0a0710"/>' +
+            '<ellipse cx="800" cy="760" rx="420" ry="90" fill="url(#ss-pool)"/>' +
+            '<rect y="640" width="1600" height="260" fill="#150c1e"/>' +
+            '<g fill="#050308">' +
+            '<rect x="80" y="560" width="70" height="340"/><rect x="230" y="560" width="70" height="340"/>' +
+            '<rect x="1300" y="560" width="70" height="340"/><rect x="1450" y="560" width="70" height="340"/>' +
+            "</g>" +
+            '<ellipse cx="800" cy="470" rx="46" ry="52" fill="#e9c9a0"/>' +
+            '<path d="M740 520 Q800 500 860 520 L850 760 L750 760 Z" fill="#7a1220"/>' +
+            "</svg>"
+          );
+        }
+        // Elements inside an inert <template> are not in the live document,
+        // so they must be reached through the template's own content
+        // fragment, never document.getElementById.
+        document
+          .querySelector('template[data-slot="curtain-reveal-stage"]')
+          .content.getElementById("demo-scene-img").src =
+          "data:image/svg+xml;charset=utf-8," + encodeURIComponent(stageScene());
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["curtain-reveal-demo"] = gsap.timeline({ paused: true });
+      })();
+    </script>
+  </body>
+</html>
