@@ -1629,78 +1629,10 @@
     return contentOverlapIssues(root, time);
   };
 
-  // Frozen-sweep guard (#U10, checkPipeline.ts): a compact per-sample
-  // fingerprint of every visible element's box + opacity, in DOM order. Node
-  // calls this once per seeked grid point and compares the strings across the
-  // whole run — if every sample produces the identical string, the seek never
-  // actually moved anything and the whole audit run is unreliable. Deliberately
-  // a single opaque string (not a structured array) since Node only ever needs
-  // equality, not per-element diffing.
-  // Pixel-only media motion (a 2D/WebGL canvas repainting or a playing video
-  // without any element moving) is invisible to a geometry+opacity fingerprint
-  // and false-positives sweep_static. Downsample each visible canvas/video to
-  // 8x8 and fold its pixels into the fingerprint. Tainted, zero-sized, or
-  // unreadable media hashes to a constant — no worse than geometry-only
-  // detection and never a new false negative for DOM-motion compositions.
-  // Media inside iframes is intentionally outside this fingerprint: it lives
-  // in a separate document, and cross-origin frames are inaccessible under SOP.
-  function mediaPixelHash(element) {
-    try {
-      const rect = element.getBoundingClientRect();
-      const sourceWidth = element.videoWidth || element.width || rect.width;
-      const sourceHeight = element.videoHeight || element.height || rect.height;
-      if (!sourceWidth || !sourceHeight) return "x";
-      const off = document.createElement("canvas");
-      off.width = 8;
-      off.height = 8;
-      const ctx = off.getContext("2d");
-      if (!ctx) return "x";
-      ctx.drawImage(element, 0, 0, 8, 8);
-      const data = ctx.getImageData(0, 0, 8, 8).data;
-      let hash = 0;
-      for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) >>> 0;
-      return String(hash);
-    } catch {
-      return "x";
-    }
-  }
-
-  window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
-    const root =
-      document.querySelector("[data-composition-id][data-width][data-height]") ||
-      document.querySelector("[data-composition-id]") ||
-      document.body;
-    const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
-      isVisibleElement(element),
-    );
-    const parts = elements.map((element) => {
-      const rect = toRect(element.getBoundingClientRect());
-      const opacity = round(opacityChain(element));
-      // Variable-font axis animation (font-variation-settings) is a real,
-      // visible motion channel that moves no geometry and no opacity, so a
-      // box+opacity fingerprint reads it as a frozen timeline. Worse in a
-      // DUPLEXED face (Recursive holds an identical advance width at every
-      // weight by design), where not even the line width shifts — the whole
-      // run then false-positives sweep_static. Fold the computed axis string
-      // in; it is "normal" for every element that does not use it, so this
-      // adds nothing to the fingerprint of an ordinary composition.
-      const axes = getComputedStyle(element).fontVariationSettings;
-      return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity},${
-        axes && axes !== "normal" ? axes : ""
-      }`;
-    });
-    // img shares the same pixel-only-motion blind spot as canvas/video: an
-    // equal-size, equal-position opaque src/visibility swap moves no
-    // geometry and no opacity. mediaPixelHash already handles it generically
-    // (drawImage accepts any CanvasImageSource; width/height fall back to
-    // rect.width/height same as canvas/video), so only the element selector
-    // needed widening.
-    for (const media of root.querySelectorAll("canvas, video, img")) {
-      if (!isVisibleElement(media)) continue;
-      parts.push(`p:${mediaPixelHash(media)}`);
-    }
-    return parts.join("|");
-  };
+  // The frozen-sweep fingerprint (window.__hyperframesLayoutGeometry, #U10 in
+  // checkPipeline.ts) lives in motion-signature.browser.js, the single owner
+  // of "what counts as motion" shared with motion-sample.browser.js's
+  // liveness signature.
 
   // Rotation-pivot sampling (rotation_pivot_drift). Per sample, report every
   // rotatable candidate's bbox center, size, and current rotation angle. Node

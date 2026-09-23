@@ -395,6 +395,7 @@ async function runMotionPass(
     width: window.innerWidth,
     height: window.innerHeight,
   }));
+  await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   const frames = await collectMotionFrames(page, times, selectors, livenessScopes);
   return { issues: evaluateMotion(frames, spec.assertions, canvas), sampleCount: frames.length };

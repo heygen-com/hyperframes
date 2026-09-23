@@ -434,6 +434,8 @@ async function hasNoTimelineDeclaration(page: Page): Promise<boolean> {
 }
 
 async function injectAuditScripts(page: Page, contrast: boolean): Promise<void> {
+  // The shared motion classifier must land before both samplers that consume it.
+  await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("layout-audit.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   if (contrast) {
