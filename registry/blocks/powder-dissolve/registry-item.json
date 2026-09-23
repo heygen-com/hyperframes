@@ -1,0 +1,68 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "powder-dissolve",
+  "type": "hyperframes:block",
+  "title": "Powder Dissolve",
+  "description": "A spoonful of cocoa powder lands on milk seen from above, floats dry, wets through from the edges and along cracks, then blooms out in fingered, marbled clouds until the milk is one even chocolate tint. Calm and slow, easing to stillness. Turn on maths to show the equations behind each phase with live values. Every frame is solved from time alone, so any frame renders on its own.",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "tags": [
+    "powder",
+    "dissolve",
+    "milk",
+    "cocoa",
+    "diffusion",
+    "ink",
+    "liquid",
+    "relaxing",
+    "asmr",
+    "webgl",
+    "background"
+  ],
+  "variables": [
+    {
+      "id": "powder",
+      "type": "color",
+      "label": "Powder colour",
+      "default": "#7a4a2e"
+    },
+    {
+      "id": "milk",
+      "type": "color",
+      "label": "Milk colour",
+      "default": "#f4efe6"
+    },
+    {
+      "id": "dissolve",
+      "type": "number",
+      "label": "Dissolve duration",
+      "default": 8,
+      "min": 3,
+      "max": 30,
+      "step": 0.5,
+      "unit": "s"
+    },
+    {
+      "id": "maths",
+      "type": "boolean",
+      "label": "Show the maths",
+      "description": "A whiteboard panel of the equations driving each phase, with live values.",
+      "default": false
+    }
+  ],
+  "files": [
+    {
+      "path": "powder-dissolve.html",
+      "target": "compositions/powder-dissolve.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/powder-dissolve.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/powder-dissolve.png"
+  }
+}

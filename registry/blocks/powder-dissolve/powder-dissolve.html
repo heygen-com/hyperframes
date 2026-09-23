@@ -1,0 +1,578 @@
+<!doctype html>
+<!--
+  powder-dissolve: HyperFrames block (relaxing liquid background)
+
+  Concept: a spoonful of cocoa-like powder lands on a milk surface seen from above. The raft
+  floats dry and pale, wets through from its edges and along cracks (dark, glossy), then its
+  colour blooms out into the milk with a fingered, marbled front until the whole frame is one
+  even tint. Motion eases out, so the last seconds are almost still.
+
+  Variables: powder (colour), milk (colour), dissolve (seconds from landing to even tint),
+  maths (off by default: a whiteboard panel of the equations this shader evaluates, each with
+  its live value, appearing as its phase starts).
+  The host clip may run longer than `dissolve`; the tail holds the evenly tinted milk.
+
+  Determinism: every frame is a pure function of time. Clump layout comes from a fixed seed,
+  grain and noise from position hashes, and tint spread from the closed-form solution of
+  diffusion (a Gaussian convolved with a Gaussian), so frame N never reads frame N-1.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=STIX+Two+Text:ital,wght@0,400;0,500;1,400&display=block"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #f3eee4;
+      }
+      #pd-root,
+      #pd-gl {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      #pd-maths {
+        position: absolute;
+        left: 64px;
+        top: 72px;
+        width: 700px;
+        padding: 28px 34px 30px;
+        border-radius: 18px;
+        background: rgba(250, 247, 241, 0.78);
+        color: #2a1a10;
+        font-family: "STIX Two Text", Georgia, serif;
+        font-size: 25px;
+        line-height: 1.3;
+        font-variant-numeric: tabular-nums;
+      }
+      #pd-maths[hidden] {
+        display: none;
+      }
+      #pd-maths .pd-clock {
+        font-family: Inter, sans-serif;
+        font-size: 19px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin-bottom: 14px;
+      }
+      #pd-maths .pd-eq {
+        margin-top: 13px;
+      }
+      #pd-maths .pd-label {
+        font-family: Inter, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a5a3a;
+      }
+      #pd-maths .pd-val {
+        color: #a0461e;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="pd-root"
+      data-composition-id="powder-dissolve"
+      data-composition-variables='[
+        {"id":"powder","type":"color","label":"Powder colour","default":"#7a4a2e"},
+        {"id":"milk","type":"color","label":"Milk colour","default":"#f4efe6"},
+        {"id":"dissolve","type":"number","label":"Dissolve duration","default":8,"min":3,"max":30,"step":0.5,"unit":"s"},
+        {"id":"maths","type":"boolean","label":"Show the maths","description":"A whiteboard panel of the equations driving each phase, with live values.","default":false}
+      ]'
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <canvas id="pd-gl" width="1920" height="1080"></canvas>
+      <div id="pd-maths" hidden></div>
+
+      <!-- Driver clip: gives the block a timed element for the host timeline. -->
+      <div
+        id="pd-drv"
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+
+    <script>
+      (function () {
+        var COMP_ID = "powder-dissolve";
+        var DURATION = 10;
+        var W = 1920,
+          H = 1080;
+        var SEED = 7202611; // fixes the clump layout
+
+        // Read once at init; variables never change mid-render. Ids are single lowercase
+        // words so the runtime's `--<id>` and the compiler's slug agree.
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+        function clampNum(value, lo, hi, fallback) {
+          var n = Number(value);
+          if (!isFinite(n)) n = fallback;
+          return Math.min(hi, Math.max(lo, n));
+        }
+        function hexRgb(value, fallback) {
+          var m = /^#?([0-9a-f]{6})$/i.exec(typeof value === "string" ? value.trim() : "");
+          var n = parseInt(m ? m[1] : fallback.slice(1), 16);
+          return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+        }
+        var POWDER = hexRgb(vars.powder, "#7a4a2e");
+        var MILK = hexRgb(vars.milk, "#f4efe6");
+        var DISSOLVE = clampNum(vars.dissolve, 3, 30, 8);
+        var MATHS = vars.maths === true || vars.maths === "true";
+        var OFFSET_X = MATHS ? 0.3 : 0; // clear the left of the frame for the panel
+
+        function mulberry32(seed) {
+          return function () {
+            seed |= 0;
+            seed = (seed + 0x6d2b79f5) | 0;
+            var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        // One main heap plus satellites, in frame units (height = 1). xy centre, z sigma, w mass.
+        var CLUMPS = 6;
+        var rng = mulberry32(SEED);
+        var clumps = new Float32Array(CLUMPS * 4);
+        clumps.set([0.03, -0.02, 0.15, 1.0], 0);
+        for (var i = 1; i < CLUMPS; i++) {
+          var ang = rng() * Math.PI * 2;
+          var rad = 0.12 + rng() * 0.2;
+          clumps.set(
+            [
+              clumps[0] + Math.cos(ang) * rad * 1.3,
+              clumps[1] + Math.sin(ang) * rad,
+              0.028 + rng() * 0.05,
+              0.55 + rng() * 0.45,
+            ],
+            i * 4,
+          );
+        }
+
+        var VERT = "attribute vec2 aPos; void main() { gl_Position = vec4(aPos, 0.0, 1.0); }";
+        var FRAG = [
+          "precision highp float;",
+          "uniform vec2 uRes;",
+          "uniform vec3 uPowder;",
+          "uniform vec3 uMilk;",
+          "uniform vec4 uClumps[" + CLUMPS + "];",
+          "uniform float uLand;", // 0..1 powder arrived
+          "uniform float uWet;", // 0..1 wetting front
+          "uniform float uErode;", // 0..1 raft dissolved away
+          "uniform vec3 uBatchMass;", // three release batches: mass let into the milk so far
+          "uniform vec3 uBatchSpread;", // ...and the diffusion variance each has gained
+          "uniform float uMix;", // 0..1 global evenness
+          "uniform vec2 uPlume;", // fingers reaching out of the wet edge: strength, reach
+          "uniform float uFlow;", // eased flow clock, frozen once dissolved
+          "uniform vec3 uDrift;", // raft drift xy, rotation z
+          "uniform float uTime;",
+
+          "float hash12(vec2 p) {",
+          "  vec3 p3 = fract(vec3(p.xyx) * 0.1031);",
+          "  p3 += dot(p3, p3.yzx + 33.33);",
+          "  return fract((p3.x + p3.y) * p3.z);",
+          "}",
+          "vec2 hash22(vec2 p) {",
+          "  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));",
+          "  p3 += dot(p3, p3.yzx + 33.33);",
+          "  return fract((p3.xx + p3.yz) * p3.zy);",
+          "}",
+          "float noise(vec2 p) {",
+          "  vec2 i = floor(p); vec2 f = fract(p);",
+          "  vec2 u = f * f * (3.0 - 2.0 * f);",
+          "  return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), u.x),",
+          "             mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), u.x), u.y);",
+          "}",
+          "float fbm(vec2 p) {",
+          "  float s = 0.0; float a = 0.5;",
+          "  for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }",
+          "  return s / 0.9375;",
+          "}",
+          // Distance to the nearest cell border: thin lines where the dry crust cracks.
+          "float crack(vec2 p) {",
+          "  vec2 i = floor(p); vec2 f = fract(p);",
+          "  float d1 = 8.0; float d2 = 8.0;",
+          "  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {",
+          "    vec2 g = vec2(float(x), float(y));",
+          "    vec2 r = g + hash22(i + g) - f;",
+          "    float d = dot(r, r);",
+          "    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }",
+          "  }",
+          "  return sqrt(d2) - sqrt(d1);",
+          "}",
+          // Powder density in the raft's own frame; the edge is broken up by noise.
+          "float heap(vec2 q) {",
+          "  float h = 0.0;",
+          "  for (int i = 0; i < " + CLUMPS + "; i++) {",
+          "    vec4 c = uClumps[i]; vec2 d = q - c.xy;",
+          "    h += c.w * exp(-dot(d, d) / (2.0 * c.z * c.z));",
+          "  }",
+          "  return h * (0.55 + 0.7 * fbm(q * 6.0 + 3.1));",
+          "}",
+          // Dissolved colour: each batch of released powder spread by exact diffusion
+          // (a Gaussian convolved with a Gaussian stays a Gaussian, mass conserved).
+          "float tint(vec2 q) {",
+          "  float c = 0.0;",
+          "  for (int i = 0; i < " + CLUMPS + "; i++) {",
+          "    vec4 k = uClumps[i]; vec2 d = q - k.xy; float r2 = dot(d, d); float s0 = k.z * k.z;",
+          "    for (int b = 0; b < 3; b++) {",
+          "      float s2 = s0 + uBatchSpread[b];",
+          "      c += uBatchMass[b] * k.w * (s0 / s2) * exp(-r2 / (2.0 * s2));",
+          "    }",
+          "  }",
+          "  return c;",
+          "}",
+
+          // Dark fingers leaving each clump's edge: thin radial ridges of noise that curl a
+          // little as they reach out and taper toward the tip.
+          "float plumes(vec2 q, float flowT) {",
+          "  float s = 0.0;",
+          "  for (int i = 0; i < " + CLUMPS + "; i++) {",
+          "    vec4 k = uClumps[i]; vec2 m = q - k.xy; float r = length(m);",
+          "    float along = r - k.z * 1.1;",
+          "    if (along > 0.0 && along < uPlume.y) {",
+          "      float bend = (noise(vec2(along * 4.0, float(i) * 7.3)) - 0.5) * 0.9;",
+          "      float a = atan(m.y, m.x) + bend;",
+          "      vec2 dir = vec2(cos(a), sin(a));",
+          "      float n = fbm(dir * 4.5 + k.xy * 13.0 + vec2(along * 1.2 - flowT * 0.4, 0.0));",
+          "      float ridge = smoothstep(0.6, 0.74, n);",
+          "      float taper = smoothstep(0.0, 0.015, along) * (1.0 - smoothstep(0.35, 1.0, along / uPlume.y));",
+          "      s += k.w * ridge * taper;",
+          "    }",
+          "  }",
+          "  return s;",
+          "}",
+
+          "void main() {",
+          "  vec2 frag = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);",
+          "  vec2 p = (frag - 0.5 * uRes) / uRes.y;",
+          "  float cs = cos(uDrift.z); float sn = sin(uDrift.z);",
+          "  vec2 q0 = p - uDrift.xy;",
+          "  vec2 q = vec2(cs * q0.x + sn * q0.y, -sn * q0.x + cs * q0.y);",
+
+          // ── milk and dissolved colour ──
+          "  vec2 flow = vec2(fbm(q * 2.1 + vec2(0.0, uFlow * 1.4)), fbm(q * 2.1 + vec2(5.2, -uFlow * 1.2))) - 0.5;",
+          "  vec2 qw = q + flow * (0.05 + 0.3 * uFlow);",
+          // Fingering: the front is pushed out and pulled back along the radius by noise that
+          // is stretched radially, so the edge grows tendrils instead of a smooth ring.
+          "  vec2 m = qw - uClumps[0].xy;",
+          "  float r = length(m); vec2 dir = m / max(r, 1e-4);",
+          "  float fn = fbm(dir * 3.2 + vec2(r * 3.0 - uFlow * 0.8, 1.3) + flow * 4.0);",
+          "  qw -= dir * (fn - 0.5) * 0.34 * smoothstep(0.03, 0.2, r) * uFlow;",
+          // 5.0: frame area over the heap's own mass, so the even tint is the whole spoonful.
+          "  float c = 5.0 * tint(qw) + 0.8 * uPlume.x * plumes(qw, uFlow);",
+          "  float marble = fbm(qw * vec2(3.5, 5.0) + 7.0 + uFlow * 0.6) - 0.5;",
+          "  c *= 1.0 + marble * 0.8 * (1.0 - uMix);",
+          "  c = mix(max(c, 0.0), 0.6, uMix);",
+          // Dissolved cocoa absorbs light: Beer-Lambert through the milk, so tints stay warm.
+          "  vec3 absorb = -log(max(uPowder, vec3(0.02)));",
+          "  vec3 col = uMilk * exp(-absorb * 0.55 * c);",
+
+          // Surface: soft key light and a faint drifting sheen.
+          "  float sheen = 0.035 * smoothstep(0.9, -0.2, p.y + 0.35 * p.x) + 0.03 * (fbm(p * 2.2 + vec2(uTime * 0.045, uTime * 0.03)) - 0.5);",
+          "  col *= 1.0 + sheen;",
+
+          // ── the powder raft ──
+          "  float h = heap(q) * uLand;",
+          "  float gone = uErode * 1.7 + (fbm(q * 13.0 + 11.0) - 0.5) * 0.5 * uErode;",
+          "  float d = h - gone;",
+          // Grains on a 3 px lattice: solid in the middle, dusty and sparse toward the edge.
+          "  vec2 gp = frag / 3.0;",
+          "  vec2 gc = floor(gp);",
+          "  float g1 = hash12(gc); float g2 = hash12(gc + 17.0); float g3 = hash12(gc + 41.0);",
+          "  float gd = length(fract(gp) - 0.25 - 0.5 * hash22(gc + 5.0));",
+          "  float solid = smoothstep(0.5, 0.62, d);",
+          "  float dust = (1.0 - step(d * 1.6, g1)) * smoothstep(0.6, 0.2, gd);",
+          // Loose specks thrown wide of the heap by the pour.
+          "  vec2 mq = q - uClumps[0].xy;",
+          "  float scatter = 0.035 * exp(-dot(mq, mq) / (2.0 * 0.28 * 0.28)) * uLand * (1.0 - smoothstep(0.2, 0.6, uErode));",
+          "  float speck = (1.0 - step(scatter, g2)) * smoothstep(0.55, 0.2, gd);",
+          "  float cover = max(max(solid, dust), speck);",
+
+          "  if (cover > 0.001) {",
+          // Low relief, lit from the top-left: the raft is a flat mat, not a mound.
+          "    float e = 2.0 / uRes.y;",
+          "    float hx = heap(q + vec2(e, 0.0)) - heap(q - vec2(e, 0.0));",
+          "    float hy = heap(q + vec2(0.0, e)) - heap(q - vec2(0.0, e));",
+          "    vec3 n = normalize(vec3(-hx, -hy, 2.0 * e * 40.0));",
+          "    vec3 L = normalize(vec3(-0.5, -0.6, 0.65));",
+          "    float diff = clamp(dot(n, L), 0.0, 1.0);",
+          "    float light = 0.7 + 0.4 * diff;",
+          // Wetting: milk wicks in from the edge, up cracks, and in blotches.
+          "    float wf = uWet * 1.2 - 0.12;",
+          "    float wet = smoothstep(0.0, 0.08, wf - (d - 0.45) * 1.1 + (fbm(q * 9.0 + 4.0) - 0.5) * 0.4);",
+          "    wet = max(wet, smoothstep(0.64, 0.72, fbm(q * 5.5 + 20.0) + uWet * 0.5 - 0.18));",
+          "    float cr = crack(q * 10.0 + fbm(q * 8.0) * 1.5);",
+          "    wet = max(wet, smoothstep(0.06, 0.015, cr) * smoothstep(0.15, 0.4, uWet));",
+          "    wet = max(wet, (1.0 - solid) * (1.0 - step(uWet * 2.5, g3)));",
+          // Dry cocoa is pale and matte; wet cocoa is dark, saturated, with small glints.
+          "    float clod = fbm(q * 34.0 + 2.0);",
+          "    float grain = (0.84 + 0.3 * g3) * (0.82 + 0.36 * clod);",
+          "    vec3 dry = pow(uPowder, vec3(0.6)) * grain * light;",
+          "    vec3 wetC = uPowder * 0.56 * (0.85 + 0.3 * g3) * (0.8 + 0.3 * diff) * (0.85 + 0.3 * clod);",
+          "    float spec = 0.25 * step(0.93, g2) * smoothstep(0.4, 1.0, diff);",
+          "    vec3 pc = mix(dry, wetC + spec, wet);",
+          "    col = mix(col, pc, cover);",
+          "  }",
+          // Meniscus: a thin bright lip where the milk climbs the raft edge.
+          "  float lipD = (d - 0.44) / 0.05;",
+          "  col += exp(-lipD * lipD) * (1.0 - cover) * (1.0 - uErode) * 0.05;",
+          "  float vig = smoothstep(1.25, 0.35, length(p * vec2(0.9, 1.1)));",
+          "  col *= 0.9 + 0.1 * vig;",
+          "  gl_FragColor = vec4(col, 1.0);",
+          "}",
+        ].join("\n");
+
+        var canvas = document.getElementById("pd-gl");
+        var gl = canvas.getContext("webgl", {
+          preserveDrawingBuffer: true, // survives seek-capture screenshots
+          antialias: false,
+        });
+        function compile(type, src) {
+          var s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+          return s;
+        }
+        var prog = gl.createProgram();
+        gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+        gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+          throw new Error(gl.getProgramInfoLog(prog));
+        gl.useProgram(prog);
+        var buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        var aPos = gl.getAttribLocation(prog, "aPos");
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+        var U = {};
+        [
+          "uRes",
+          "uPowder",
+          "uMilk",
+          "uClumps",
+          "uLand",
+          "uWet",
+          "uErode",
+          "uBatchMass",
+          "uBatchSpread",
+          "uMix",
+          "uPlume",
+          "uFlow",
+          "uDrift",
+          "uTime",
+        ].forEach(function (name) {
+          U[name] = gl.getUniformLocation(prog, name);
+        });
+        gl.viewport(0, 0, W, H);
+        gl.uniform2f(U.uRes, W, H);
+        gl.uniform3fv(U.uPowder, POWDER);
+        gl.uniform3fv(U.uMilk, MILK);
+        gl.uniform4fv(U.uClumps, clumps);
+
+        function clamp01(x) {
+          return x < 0 ? 0 : x > 1 ? 1 : x;
+        }
+        function smooth(a, b, x) {
+          var u = clamp01((x - a) / (b - a));
+          return u * u * (3 - 2 * u);
+        }
+        function easeOut(x) {
+          var u = 1 - clamp01(x);
+          return 1 - u * u * u;
+        }
+
+        // Phase curves, all pure functions of t. Landing takes under a second whatever the
+        // dissolve length; everything after it is a fraction of the dissolve.
+        var LAND = Math.min(0.9, DISSOLVE * 0.12);
+        var BATCH_AT = [0.08, 0.3, 0.55]; // release start of each batch, fraction of the dissolve
+        var mass = new Float32Array(3);
+        var spread = new Float32Array(3);
+        // ── Maths panel ────────────────────────────────────────────────────
+        // Every line is an expression the shader or draw() above evaluates, with its live
+        // value from the same phase curves. Each fades in as its phase starts (seconds).
+        function atS(sv) {
+          return LAND + sv * (DISSOLVE - LAND);
+        }
+        function pct(x) {
+          return Math.round(x * 100) + " %";
+        }
+        var EQS = [
+          {
+            label: "Landing",
+            from: 0,
+            tex: "<i>L</i>(<i>t</i>) = 1 − (1 − <i>t</i> / " + LAND.toFixed(1) + ")<sup>3</sup>",
+            val: function (ph) {
+              return ph.land.toFixed(2);
+            },
+          },
+          {
+            label: "Heap and noise field",
+            from: 0,
+            tex:
+              "<i>h</i>(<i>x</i>) = <i>L</i> Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> e<sup>−|<i>x</i>−<i>c<sub>i</sub></i>|² / 2<i>σ<sub>i</sub></i>²</sup> (0.55 + 0.7 fbm(6<i>x</i>))" +
+              "<br />fbm(<i>x</i>) = Σ<sub><i>k</i>=0..3</sub> 2<sup>−<i>k</i>−1</sup> <i>n</i>(<i>x<sub>k</sub></i>) / 0.9375,  <i>x</i><sub><i>k</i>+1</sub> = 2.03 <i>x<sub>k</sub></i> + (1.7, 9.2)",
+          },
+          {
+            label: "Wetting front",
+            from: atS(0),
+            tex: "<i>W</i>(<i>s</i>) = smoothstep(0, 0.55, <i>s</i>),  <i>d</i> = <i>h</i> − erosion<br />wet = smoothstep(0, 0.08, 1.2<i>W</i> − 0.12 − 1.1(<i>d</i> − 0.45) + 0.4(fbm(9<i>x</i>) − ½))",
+            val: function (ph) {
+              return "W = " + pct(ph.wet);
+            },
+          },
+          {
+            label: "Crust cracks",
+            from: atS(0.13), // W(s) reaches 0.15 here
+            tex: "crack ⇔ <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06  (Worley cells of 10<i>x</i>, once <i>W</i> &gt; 0.15)",
+          },
+          {
+            label: "Diffusion (exact Gaussian spread)",
+            from: atS(BATCH_AT[0]),
+            tex:
+              "<i>c</i>(<i>x</i>, <i>t</i>) = 5 Σ<sub><i>b</i></sub> <i>m<sub>b</sub></i> Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> <i>σ<sub>i</sub></i>² / (<i>σ<sub>i</sub></i>² + <i>v<sub>b</sub></i>) e<sup>−|<i>x</i>−<i>c<sub>i</sub></i>|² / 2(<i>σ<sub>i</sub></i>² + <i>v<sub>b</sub></i>)</sup>" +
+              "<br />front radius <i>r</i> = √(<i>σ</i>² + <i>v</i><sub>0</sub>)",
+            val: function (ph) {
+              return "r = " + Math.round(ph.radius * H) + " px";
+            },
+          },
+          {
+            label: "Fingers",
+            from: atS(0.16),
+            tex: "<i>c</i> += 0.8 <i>P</i>(<i>s</i>) Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> smoothstep(0.6, 0.74, fbm(4.5 <i>x̂</i> + …))",
+            val: function (ph) {
+              return "P = " + ph.plume.toFixed(2);
+            },
+          },
+          {
+            label: "Tint mix (Beer–Lambert)",
+            from: atS(0.4),
+            tex:
+              "<i>M</i> = smoothstep(0.4, 1, <i>s</i>)<sup>1.6</sup>,  <i>c</i> ← (1 − <i>M</i>)<i>c</i> + 0.6<i>M</i>" +
+              "<br />colour = milk · e<sup>−0.55 <i>c</i> (−ln powder)</sup>",
+            val: function (ph) {
+              return "M = " + pct(ph.mix);
+            },
+          },
+        ];
+        var mathsEl = document.getElementById("pd-maths");
+        var clockEl, rows;
+        if (MATHS) {
+          mathsEl.hidden = false;
+          clockEl = document.createElement("div");
+          clockEl.className = "pd-clock";
+          mathsEl.appendChild(clockEl);
+          rows = EQS.map(function (eq) {
+            var row = document.createElement("div");
+            row.className = "pd-eq";
+            row.innerHTML =
+              '<div class="pd-label">' +
+              eq.label +
+              (eq.val ? '  <span class="pd-val"></span>' : "") +
+              "</div><div>" +
+              eq.tex +
+              "</div>";
+            mathsEl.appendChild(row);
+            return { el: row, val: row.querySelector(".pd-val") };
+          });
+        }
+        function drawMaths(ph) {
+          clockEl.textContent =
+            "t = " +
+            ph.t.toFixed(2) +
+            " s  ·  s = (t − " +
+            LAND.toFixed(1) +
+            ") / (" +
+            DISSOLVE +
+            " − " +
+            LAND.toFixed(1) +
+            ") = " +
+            ph.s.toFixed(2);
+          EQS.forEach(function (eq, i) {
+            rows[i].el.style.opacity = (0.08 + 0.92 * smooth(eq.from, eq.from + 0.5, ph.t)).toFixed(
+              3,
+            );
+            if (eq.val) rows[i].val.textContent = eq.val(ph);
+          });
+        }
+
+        function draw(t) {
+          var s = clamp01((t - LAND) / (DISSOLVE - LAND));
+          var flow = easeOut(s);
+          for (var b = 0; b < 3; b++) {
+            var age = Math.max(0, s - BATCH_AT[b]);
+            mass[b] = smooth(0, 0.25, age) / 3;
+            spread[b] = 0.05 * (easeOut(age / (1 - BATCH_AT[b])) + 0.1 * age);
+          }
+          var ph = {
+            t: t,
+            s: s,
+            land: easeOut(t / LAND),
+            wet: smooth(0.0, 0.55, s),
+            plume: smooth(0.16, 0.3, s) * (1 - smooth(0.45, 0.8, s)),
+            mix: Math.pow(smooth(0.4, 1.0, s), 1.6),
+            radius: Math.sqrt(clumps[2] * clumps[2] + spread[0]),
+          };
+          var drift = easeOut(t / DISSOLVE);
+          gl.uniform1f(U.uLand, ph.land);
+          gl.uniform1f(U.uWet, ph.wet);
+          gl.uniform1f(U.uErode, smooth(0.2, 0.9, s));
+          gl.uniform3fv(U.uBatchMass, mass);
+          gl.uniform3fv(U.uBatchSpread, spread);
+          gl.uniform1f(U.uMix, ph.mix);
+          gl.uniform2f(U.uPlume, ph.plume, 0.04 + 0.4 * easeOut((s - 0.1) / 0.55));
+          gl.uniform1f(U.uFlow, flow);
+          gl.uniform3f(U.uDrift, OFFSET_X + 0.03 * drift, -0.012 * drift, 0.1 * drift);
+          gl.uniform1f(U.uTime, t);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          if (MATHS) drawMaths(ph);
+        }
+
+        // `tl.eventCallback("onUpdate", ...)` does not fire on tl.seek(), so the repaint hangs
+        // off a setter on the tweened driver, which runs on every render, seek included.
+        var driver = { _t: 0 };
+        Object.defineProperty(driver, "t", {
+          get: function () {
+            return this._t;
+          },
+          set: function (value) {
+            this._t = value;
+            draw(value);
+          },
+        });
+
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        // A dissolve longer than the default clip still plays out when the host clip is longer.
+        var SPAN = Math.max(DURATION, DISSOLVE + 2);
+        tl.to(driver, { t: SPAN, duration: SPAN, ease: "none", lazy: false }, 0);
+        window.__timelines[COMP_ID] = tl;
+
+        draw(0);
+      })();
+    </script>
+  </body>
+</html>
