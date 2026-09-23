@@ -108,3 +108,4 @@ export function isStylableElement(value: unknown): value is HTMLElement | SVGEle
       (value as NodeLike).namespaceURI === "http://www.w3.org/2000/svg")
   );
 }
+
