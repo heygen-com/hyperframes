@@ -335,6 +335,117 @@ function chainOrderFixture(chain: string): string {
 </div>`;
 }
 
+/**
+ * `backdrop` capture: two stacked (not side-by-side) colored blocks live in a
+ * `<canvas layoutsubtree class="hf-vfx-src" data-vfx-for="host">` SIBLING of
+ * the host, per interface v1.1 and `resolveCaptureSource`/`findBackdropWrapper`
+ * in `packages/core/src/runtime/vfx.ts`. `#control` renders the same two
+ * blocks as plain DOM at `PANEL.bx` so `panelPsnr` can compare the two.
+ */
+function backdropStackedFixture(chain: string): string {
+  const blocks = `
+    <div style="position:absolute;left:0;top:0;width:${PANEL.w}px;height:${PANEL.h / 2}px;background:#ff0000"></div>
+    <div style="position:absolute;left:0;top:${PANEL.h / 2}px;width:${PANEL.w}px;height:${PANEL.h / 2}px;background:#00ff00"></div>`;
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #0000ff; }
+  .panel { position: absolute; top: ${PANEL.y}px; width: ${PANEL.w}px; height: ${PANEL.h}px; }
+  #host { left: ${PANEL.ax}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${PANEL.w}px; height: ${PANEL.h}px; }
+  #wrap { position: absolute; left: ${PANEL.ax}px; top: ${PANEL.y}px; width: ${PANEL.w}px; height: ${PANEL.h}px; }
+  .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${PANEL.w}px; height: ${PANEL.h}px; }
+  #control { left: ${PANEL.bx}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4"
+     data-width="${PANEL.bx + PANEL.w + PANEL.ax}" data-height="${PANEL.y + PANEL.h + PANEL.y}">
+  <canvas id="wrap" layoutsubtree class="hf-vfx-src" data-vfx-for="host"><div class="hf-vfx-in">${blocks}</div></canvas>
+  <div id="host" class="panel clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+  <div id="control" class="panel">${blocks}</div>
+</div>`;
+}
+
+/**
+ * The same two stacked blocks, but the host reading them through `backdrop`
+ * is OUTSIDE its own `data-start`/`data-duration` window at the seek time
+ * under test — the real way a host goes invisible (the clip runtime owns
+ * `visibility` for `.clip` elements and forces it back to `visible` inside
+ * the window, which is what made a plain CSS `visibility:hidden` override on
+ * an in-window host a no-op when this fixture was first written).
+ * `capturePassThrough` keeps the captured bitmap ON the wrapper canvas itself
+ * rather than clearing it, because the wrapper's children never paint on
+ * their own — it is the only thing left that can still show the layers below
+ * a switched-off adjustment layer.
+ */
+function hiddenBackdropFixture(chain: string): string {
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #0000ff; }
+  #wrap { position: absolute; left: 20px; top: 30px; width: ${HOST_W}px; height: ${HOST_H}px; }
+  .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host { position: absolute; left: 20px; top: 30px; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="20" data-width="240" data-height="180">
+  <canvas id="wrap" layoutsubtree class="hf-vfx-src" data-vfx-for="host">
+    <div class="hf-vfx-in">
+      <div style="position:absolute;left:0;top:0;width:${HOST_W}px;height:${HOST_H / 2}px;background:#ff0000"></div>
+      <div style="position:absolute;left:0;top:${HOST_H / 2}px;width:${HOST_W}px;height:${HOST_H / 2}px;background:#00ff00"></div>
+    </div>
+  </canvas>
+  <div id="host" class="clip" data-start="10" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+</div>`;
+}
+
+/**
+ * `luma-matte`: the host's own content is an opaque white square (so the
+ * kernel's output is coverage alone), and a `matte` `ref` param names a
+ * second element — `#matte` — wrapped in its own `.hf-vfx-src` capture, per
+ * `resolveRefSource`. Four vertical strips give four coverage samples.
+ */
+function lumaMatteFixture(chain: string, matteStrips: string): string {
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #000; }
+  #host { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #matte { position: absolute; left: 0; top: 200px; width: ${HOST_W}px; height: ${HOST_H}px; }
+  .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4" data-width="${HOST_W}" data-height="320">
+  <div id="host" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in"><div style="position:absolute;left:0;top:0;width:${HOST_W}px;height:${HOST_H}px;background:#ffffff"></div></div></canvas>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+  <div id="matte">
+    <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">${matteStrips}</div></canvas>
+  </div>
+</div>`;
+}
+
+/** Four strips of constant luma (black) with alpha 0, 1/3, 2/3, 1 — isolates the Alpha/Alpha Inverted modes from Luma. */
+function alphaMatteStrips(): string {
+  return [0, 85 / 255, 170 / 255, 1]
+    .map(
+      (a, i) =>
+        `<div style="position:absolute;left:${i * 40}px;top:0;width:40px;height:${HOST_H}px;background:rgba(0,0,0,${a})"></div>`,
+    )
+    .join("");
+}
+
+/** Four strips of constant alpha (opaque) with luma 0, 1/3, 2/3, 1 — isolates the Luma/Luma Inverted modes from Alpha. */
+function lumaMatteStrips(): string {
+  return [0, 85, 170, 255]
+    .map(
+      (g, i) =>
+        `<div style="position:absolute;left:${i * 40}px;top:0;width:40px;height:${HOST_H}px;background:rgb(${g},${g},${g})"></div>`,
+    )
+    .join("");
+}
+
 interface OutSample {
   width: number;
   height: number;
@@ -858,4 +969,213 @@ describe("data-vfx-chain in the browser", () => {
       await page.close();
     }
   }, 60_000);
+
+  /**
+   * RGBA at arbitrary points of `canvas.hf-vfx-out`, via `readPixels`. Safe
+   * for content that varies only along x (a vertical readback flip cannot
+   * change what column a pixel is in) — `screenshotPixels` below is used
+   * instead wherever a fixture varies along y.
+   */
+  async function sampleOutPoints(page: Page, points: [number, number][]): Promise<number[][]> {
+    return page.evaluate((pts: [number, number][]) => {
+      const out = document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement;
+      const gl = out.getContext("webgl2")!;
+      const buf = new Uint8Array(out.width * out.height * 4);
+      gl.readPixels(0, 0, out.width, out.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      return pts.map(([x, y]) => {
+        const i = (y * out.width + x) * 4;
+        return [buf[i]!, buf[i + 1]!, buf[i + 2]!, buf[i + 3]!];
+      });
+    }, points);
+  }
+
+  /**
+   * RGBA at arbitrary points of the page's own screenshot, decoded back
+   * inside the page (same technique as `panelPsnr`). Used wherever a fixture
+   * varies along y, so the WebGL readback's vertical flip cannot bite —
+   * the browser's own compositor produced this pixel, top-down, the way the
+   * page actually looks.
+   */
+  async function screenshotPixels(page: Page, points: [number, number][]): Promise<number[][]> {
+    const shot = await page.screenshot({ encoding: "base64" });
+    return page.evaluate(
+      async (base64: string, pts: [number, number][]) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${base64}`;
+        await img.decode();
+        const scratch = document.createElement("canvas");
+        scratch.width = img.width;
+        scratch.height = img.height;
+        const ctx = scratch.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        return pts.map(([x, y]) => Array.from(ctx.getImageData(x, y, 1, 1).data));
+      },
+      shot,
+      points,
+    );
+  }
+
+  describe("backdrop capture (Task 2.6)", () => {
+    it("composites an identity backdrop kernel back over the two stacked blocks below it", async () => {
+      const chain = chainOf("noise", { amount: 0 });
+      const page = await open(backdropStackedFixture(chain), {
+        width: PANEL.bx + PANEL.w + PANEL.ax,
+        height: PANEL.y + PANEL.h + PANEL.y,
+      });
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+        const [top, bottom] = await screenshotPixels(page, [
+          [PANEL.ax + 80, PANEL.y + 30],
+          [PANEL.ax + 80, PANEL.y + 90],
+        ]);
+        expect(top!.slice(0, 3)).toEqual([255, 0, 0]);
+        expect(bottom!.slice(0, 3)).toEqual([0, 255, 0]);
+
+        const { psnr } = await panelPsnr(page);
+        expect(psnr).toBeGreaterThanOrEqual(40);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+
+    it("keeps a hidden backdrop host's captured layers on the wrapper canvas's own bitmap", async () => {
+      const page = await open(hiddenBackdropFixture(chainOf("noise", { amount: 0 })), {
+        width: 240,
+        height: 180,
+      });
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+        const pixels = await page.evaluate(() => {
+          const wrap = document.querySelector("canvas.hf-vfx-src") as HTMLCanvasElement;
+          const ctx = wrap.getContext("2d")!;
+          return {
+            top: Array.from(ctx.getImageData(40, 10, 1, 1).data),
+            bottom: Array.from(ctx.getImageData(40, 90, 1, 1).data),
+          };
+        });
+        expect(pixels.top).toEqual([255, 0, 0, 255]);
+        expect(pixels.bottom).toEqual([0, 255, 0, 255]);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+  });
+
+  describe("luma-matte (Task 2.7)", () => {
+    const points: [number, number][] = [
+      [20, 60],
+      [60, 60],
+      [100, 60],
+      [140, 60],
+    ];
+    const ALPHA_TOLERANCE = 4;
+
+    it.each([
+      [1, [0, 85, 170, 255]],
+      [2, [255, 170, 85, 0]],
+    ] as const)(
+      "mode %i (Alpha/Alpha Inverted) follows the matte's alpha",
+      async (mode, expected) => {
+        const chain = chainOf("luma-matte", { matte: "matte", mode });
+        const page = await open(lumaMatteFixture(chain, alphaMatteStrips()), {
+          width: HOST_W,
+          height: 320,
+        });
+        try {
+          expect(await seekAndResolve(page, 0)).toBe(true);
+          const samples = await sampleOutPoints(page, points);
+          samples.forEach((px, i) => {
+            expect(Math.abs(px[3]! - expected[i]!)).toBeLessThanOrEqual(ALPHA_TOLERANCE);
+          });
+          expect(pageErrors.get(page)).toEqual([]);
+        } finally {
+          await page.close();
+        }
+      },
+      60_000,
+    );
+
+    it.each([
+      [3, [0, 85, 170, 255]],
+      [4, [255, 170, 85, 0]],
+    ] as const)(
+      "mode %i (Luma/Luma Inverted) follows the matte's luma",
+      async (mode, expected) => {
+        const chain = chainOf("luma-matte", { matte: "matte", mode });
+        const page = await open(lumaMatteFixture(chain, lumaMatteStrips()), {
+          width: HOST_W,
+          height: 320,
+        });
+        try {
+          expect(await seekAndResolve(page, 0)).toBe(true);
+          const samples = await sampleOutPoints(page, points);
+          samples.forEach((px, i) => {
+            expect(Math.abs(px[3]! - expected[i]!)).toBeLessThanOrEqual(ALPHA_TOLERANCE);
+          });
+          expect(pageErrors.get(page)).toEqual([]);
+        } finally {
+          await page.close();
+        }
+      },
+      60_000,
+    );
+  });
+
+  describe("noise (Task 2.7)", () => {
+    it("leaves the source untouched when amount is 0", async () => {
+      const page = await open(fixture(chainOf("noise", { amount: 0 })));
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+        const s = await sample(page, [10, 60, 90]);
+        expect([s.width, s.height]).toEqual([HOST_W, HOST_H]);
+        expect(s.left).toEqual([255, 0, 0, 255]);
+        expect(s.right).toEqual([0, 0, 0, 0]);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+
+    it("paints byte-identical output for the same seek time (determinism)", async () => {
+      const page = await open(fixture(chainOf("noise", { amount: 50 })));
+      try {
+        expect(await seekAndResolve(page, 1.25)).toBe(true);
+        const first = await page.evaluate(() =>
+          (document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement).toDataURL(),
+        );
+
+        // Seek away, then back to the same time — no state may carry between paints.
+        expect(await seekAndResolve(page, 0.5)).toBe(true);
+        expect(await seekAndResolve(page, 1.25)).toBe(true);
+        const second = await page.evaluate(() =>
+          (document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement).toDataURL(),
+        );
+
+        expect(second).toBe(first);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+
+    it("changes the pattern when the seek time — its only seed — changes", async () => {
+      const page = await open(fixture(chainOf("noise", { amount: 50 })));
+      try {
+        expect(await seekAndResolve(page, 1.25)).toBe(true);
+        const a = await page.evaluate(() =>
+          (document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement).toDataURL(),
+        );
+        expect(await seekAndResolve(page, 2.0)).toBe(true);
+        const b = await page.evaluate(() =>
+          (document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement).toDataURL(),
+        );
+        expect(b).not.toBe(a);
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
+  });
 });
