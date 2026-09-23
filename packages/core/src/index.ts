@@ -379,3 +379,21 @@ export {
   overdueCanaries,
   type CanaryDefinition,
 } from "./canaryRegistry.js";
+
+// VFX chain (data-vfx-chain) — defs, chain parse/serialize/normalize
+export {
+  HF_VFX_ATTR,
+  HF_VFX_CHAIN_VERSION,
+  HF_VFX,
+  chainCapture,
+  getVfxDef,
+  parseVfxChain,
+  serializeVfxChain,
+  normalizeVfxParams,
+  type HfVfxCapture,
+  type HfVfxChain,
+  type HfVfxDef,
+  type HfVfxNode,
+  type HfVfxParam,
+  type HfVfxParamValues,
+} from "./vfx.js";

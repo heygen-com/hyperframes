@@ -588,6 +588,48 @@ describe("render telemetry events", () => {
     expect(props.has_lut).toBe(false);
   });
 
+  it("carries the vfx chain scan's node count, capture class, and def types", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      vfxNodeCount: 2,
+      vfxCapture: "self",
+      vfxTypes: "displacement-map,wave-warp",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.vfx_node_count).toBe(2);
+    expect(props.vfx_capture).toBe("self");
+    expect(props.vfx_types).toBe("displacement-map,wave-warp");
+  });
+
+  it("reports a zero node count and empty types rather than dropping the properties", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      vfxNodeCount: 0,
+      vfxTypes: "",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.vfx_node_count).toBe(0);
+    expect(props.vfx_types).toBe("");
+    // No vfx-chain host means chainCapture never ran — undefined, not "none".
+    expect(props.vfx_capture).toBeUndefined();
+  });
+
+  it("omits the vfx fields entirely when the caller never resolved them", () => {
+    trackRenderComplete({ durationMs: 1000, fps: 30, quality: "high", docker: false, gpu: false });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.vfx_node_count).toBeUndefined();
+    expect(props.vfx_capture).toBeUndefined();
+    expect(props.vfx_types).toBeUndefined();
+  });
+
   // emitStudioRenderComplete never resolves perfSummary.drawElement, only the
   // observability capture fields (captureAudioCount/captureRootBodyMismatch/etc),
   // so these must fall back to the capture value or a studio render reports none
