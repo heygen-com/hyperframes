@@ -181,12 +181,17 @@ export function semanticColors(colors, md) {
       byLum[byLum.length - 1] ?? colors[colors.length - 1],
     );
   const accents = colors
+    // A candidate must clear a neutral chroma floor to count as a real accent — otherwise a
+    // preset with only one genuine accent hands back a near-neutral leftover (e.g. a grey text
+    // tone at chroma ~8) as accent2, which then gets an exact-match repaint downstream. 16
+    // matches the neutral cutoff the remix itself already uses to keep a grey ladder grey.
     .filter(
       ([k, v]) =>
         v !== ink &&
         v !== canvas &&
         !UA_DEFAULT_COLORS.has(String(v).toUpperCase()) &&
-        !STATUS_ROLE_KEY.test(k), // a status red/green carries meaning by hue — never an accent
+        !STATUS_ROLE_KEY.test(k) && // a status red/green carries meaning by hue — never an accent
+        chroma(v) >= 16,
     )
     .sort((a, b) => chroma(b[1]) - chroma(a[1]))
     .map(([, v]) => v);

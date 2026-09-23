@@ -74,3 +74,11 @@ test("a light-ground preset (capsule) onto a light-mode brand is not inverted", 
   const { stdout } = runBuildFrame("capsule", LIGHT_BRAND_TOKENS);
   assert.doesNotMatch(stdout, /INVERTED/);
 });
+
+test("broadside's cream-muted stays a neutral grey, not the brand's saturated accent", () => {
+  const { frameMd } = runBuildFrame("broadside", DARK_BRAND_TOKENS);
+  const m = /cream-muted:\s*"(#[0-9A-Fa-f]{6})"/.exec(frameMd);
+  assert.ok(m, "cream-muted key missing from frame.md");
+  // #FFB800 is the brand's literal accent2 — forced in before the fix.
+  assert.notEqual(m[1].toUpperCase(), "#FFB800");
+});

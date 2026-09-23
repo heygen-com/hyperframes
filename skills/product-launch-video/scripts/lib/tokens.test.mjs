@@ -122,3 +122,18 @@ test("every shipped preset's detected ground polarity matches its declared regis
     );
   }
 });
+
+test("semanticColors keeps a near-neutral 'second accent' neutral instead of promoting it", () => {
+  // broadside's cream-muted (#888880, chroma 8) is a muted grey text tone, not a real second
+  // brand accent — it must not win accent2 over the neutral chroma floor.
+  const colors = [
+    ["ink-black", "#111111"],
+    ["fire-orange", "#E85D26"],
+    ["cream", "#F0ECE5"],
+    ["cream-muted", "#888880"],
+  ];
+  const roles = semanticColors(colors);
+  assert.equal(roles.accent, "#E85D26");
+  assert.notEqual(roles.accent2, "#888880");
+  assert.equal(roles.accent2, "#E85D26"); // no 2nd real accent — falls back to the primary
+});
