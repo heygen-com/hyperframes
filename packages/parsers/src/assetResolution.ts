@@ -2,6 +2,14 @@ import { existsSync } from "node:fs";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
 
+/** The subset of `node:path` that `isWithinProjectRoot` needs to run under
+ * an injected platform (tests pass `path.win32` / `path.posix`). */
+interface PathModuleLike {
+  resolve: (...segments: string[]) => string;
+  relative: (from: string, to: string) => string;
+  isAbsolute: (path: string) => boolean;
+}
+
 /**
  * Shared local-asset resolution helpers for every package that maps
  * composition asset URLs to files on disk (lint project rules, the HEVC
@@ -115,10 +123,22 @@ export function cleanAssetUrl(url: string): string {
   return url.trim().split(/[?#]/, 1)[0] ?? "";
 }
 
-export function isWithinProjectRoot(projectDir: string, candidate: string): boolean {
-  const projectRoot = resolve(projectDir);
-  const relativePath = relative(projectRoot, candidate);
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+/**
+ * `pathModule` defaults to the host's native `node:path`, so every existing
+ * caller gets its actual OS's separator and drive-letter rules unchanged.
+ * Tests inject `path.win32` / `path.posix` to exercise both platforms' rules
+ * from a single OS (same pattern as producer/fileServer.ts's `isPathInside`).
+ */
+export function isWithinProjectRoot(
+  projectDir: string,
+  candidate: string,
+  pathModule: PathModuleLike = { resolve, relative, isAbsolute },
+): boolean {
+  const projectRoot = pathModule.resolve(projectDir);
+  const relativePath = pathModule.relative(projectRoot, candidate);
+  return (
+    relativePath === "" || (!relativePath.startsWith("..") && !pathModule.isAbsolute(relativePath))
+  );
 }
 
 function addCandidate(candidates: string[], candidate: string): void {

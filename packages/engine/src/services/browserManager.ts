@@ -793,6 +793,11 @@ export async function drainBrowserPool(): Promise<void> {
   await browserLeasePool.drain();
 }
 
+/** Terminal shutdown: drains the pool and makes every later acquire() reject. */
+export async function closeBrowserPool(): Promise<void> {
+  await browserLeasePool.close();
+}
+
 /** Test-only: reset all pool state. */
 export function _resetBrowserPoolForTests(): void {
   browserLeasePool.reset();

@@ -9,6 +9,22 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.62"
+  description="Released - 2026-09-22"
+  tags={["Release", "Studio", "Registry"]}
+>
+Studio no longer drops an edit's preview while its tab is in the background, and the catalog gains a text match cut.
+
+## Fixes
+
+- **Studio:** Don't fail a shadow reload while the tab is hidden ([16959deea](https://github.com/heygen-com/hyperframes/commit/16959deeac55c65a730d18b3a4ef7c366b0e0223), [#4292](https://github.com/heygen-com/hyperframes/pull/4292)).
+
+## Catalog
+
+- **Registry:** Text-match-cut ([0945de83c](https://github.com/heygen-com/hyperframes/commit/0945de83c7f51ba0c20c7c0a56421f066a378ee8), [#4288](https://github.com/heygen-com/hyperframes/pull/4288)).
+</Update>
+
+<Update
   label="HyperFrames v0.8.61"
   description="Released - 2026-09-22"
   tags={["Release", "Studio", "Studio Server", "Registry"]}
