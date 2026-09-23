@@ -781,6 +781,11 @@ export interface BundleOptions {
    */
   runtime?: "inline" | "placeholder";
   /**
+   * `"external"` leaves `data-composition-src` hosts for the runtime to fetch, so a preview can play
+   * the first scenes while later ones load. Default `"inline"`: one self-contained document.
+   */
+  subCompositions?: "inline" | "external";
+  /**
    * Inline .cube LUTs referenced from data-color-grading. Default: true for
    * self-contained renders/exports. Studio preview disables this so the editor
    * keeps showing project asset paths instead of giant data URLs.
@@ -973,9 +978,10 @@ export async function bundleToSingleHtml(
   // Inline sub-compositions (via shared function)
   const trackedCompositionHosts = getBundledTrackedCompositionHosts(document);
   const hostIdentityByElement = assignBundledRuntimeCompositionIds(trackedCompositionHosts);
-  const subCompositionHosts = trackedCompositionHosts.filter((host) =>
-    host.hasAttribute("data-composition-src"),
-  );
+  const subCompositionHosts =
+    options?.subCompositions === "external"
+      ? []
+      : trackedCompositionHosts.filter((host) => host.hasAttribute("data-composition-src"));
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;

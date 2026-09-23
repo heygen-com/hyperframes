@@ -420,6 +420,32 @@ describe("bundleToSingleHtml", () => {
     expect(hostEl?.hasAttribute("data-composition-src")).toBe(false);
   });
 
+  it("leaves sub-composition hosts for the runtime to fetch with subCompositions: external", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div id="scene-host" data-composition-id="scene" data-composition-src="compositions/scene.html"
+      data-start="2" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080"><p id="scene-content">hi</p></div>
+</template>`,
+    });
+
+    const external = parseHTML(
+      await bundleToSingleHtml(dir, { subCompositions: "external" }),
+    ).document;
+    const host = external.getElementById("scene-host");
+    expect(host?.getAttribute("data-composition-src")).toBe("compositions/scene.html");
+    expect(host?.getAttribute("data-start")).toBe("2");
+    expect(external.getElementById("scene-content")).toBeNull();
+
+    const inlined = parseHTML(await bundleToSingleHtml(dir)).document;
+    expect(inlined.getElementById("scene-content")).not.toBeNull();
+  });
+
   it("inlines local scripts referenced by sub-compositions into the bundle", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
