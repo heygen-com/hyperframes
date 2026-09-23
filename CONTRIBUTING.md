@@ -9,6 +9,14 @@ Thanks for your interest in contributing to Hyperframes! This guide will help yo
 3. Install dependencies: `bun install`
 4. Create a branch: `git checkout -b my-feature`
 
+## Choosing work
+
+Start with [available newcomer issues](https://github.com/heygen-com/hyperframes/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee) or [help-wanted issues](https://github.com/heygen-com/hyperframes/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22+no%3Aassignee). Read the discussion and check existing PRs before starting; an unassigned issue may already have work in progress. Comment with your intended approach and coordinate a claim with a maintainer.
+
+`difficulty/easy`, `difficulty/medium`, and `difficulty/hard` describe the work. `triage/ready` means the scope is accepted; `help wanted` means it is available. A `good first issue` also has a testing path and a maintainer willing to help. See [TRIAGE.md](TRIAGE.md) for the full definitions and ways to discover useful issues yourself.
+
+Discuss substantial features, public API/runtime changes, and changes to defaults before implementing them. Existing accepted scope does not need another approval. Tiny self-contained corrections can go directly into a PR with the problem and verification explained.
+
 ## Development
 
 ```bash
