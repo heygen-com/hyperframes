@@ -66,8 +66,11 @@ describe("studio preview document", () => {
     // Kept URLs resolve against the preview's <base href> through the asset route.
     expect(html).toContain('<base href="/api/projects/film/preview/">');
     expect(await fetchAsset("assets/pic.png")).toEqual(PIC);
-    const nested = html.match(/<img [^>]*id="nested" src="([^"]+)"/)?.[1];
-    expect(nested).toBe("assets/pic@2x.png");
-    expect(await fetchAsset(nested ?? "")).toEqual(PIC_2X);
+    // Scenes stay separate files the runtime fetches, so the first scene can play before the rest.
+    expect(html).toContain('data-composition-src="compositions/scene.html"');
+    expect(html).not.toContain('id="nested"');
+    const scene = (await fetchAsset("compositions/scene.html")).toString("utf-8");
+    expect(scene.match(/<img [^>]*id="nested" src="([^"]+)"/)?.[1]).toBe("../assets/pic@2x.png");
+    expect(await fetchAsset("assets/pic@2x.png")).toEqual(PIC_2X);
   });
 });

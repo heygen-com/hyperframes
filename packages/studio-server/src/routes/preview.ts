@@ -318,6 +318,7 @@ export const PREVIEW_BUNDLE_OPTIONS = {
   runtime: "placeholder",
   inlineAssets: false,
   staticGuard: false,
+  subCompositions: "external",
 } as const satisfies BundleOptions;
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
