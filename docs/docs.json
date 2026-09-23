@@ -652,7 +652,7 @@
               },
               {
                 "group": "Motion & effects",
-                "tag": "94",
+                "tag": "95",
                 "expanded": false,
                 "pages": [
                   {
@@ -694,7 +694,7 @@
                   },
                   {
                     "group": "Effects",
-                    "tag": "53",
+                    "tag": "54",
                     "expanded": false,
                     "pages": [
                       "catalog/components/avatar-cloud",
@@ -729,6 +729,7 @@
                       "catalog/components/ordered-dither-pass",
                       "catalog/components/overwhelm-surround",
                       "catalog/components/panel-reveal",
+                      "catalog/components/paper-collage-reveal",
                       "catalog/components/parallax-device-dive",
                       "catalog/components/parallax-unzoom",
                       "catalog/components/parallax-zoom",

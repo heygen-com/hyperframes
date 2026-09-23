@@ -1,0 +1,53 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "paper-collage-reveal",
+  "type": "hyperframes:component",
+  "title": "Paper Collage Reveal",
+  "description": "A scrapbook patchwork of torn paper scraps, each with its own texture and tilt, flutters away in a staggered scatter to reveal the content underneath.",
+  "tags": ["collage", "scrapbook", "torn paper", "reveal", "transition", "motion-primitive"],
+  "files": [
+    {
+      "path": "paper-collage-reveal.html",
+      "target": "compositions/components/paper-collage-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "panels",
+      "type": "number",
+      "role": "content",
+      "label": "Panels",
+      "description": "How many torn paper scraps cover the frame.",
+      "default": 6,
+      "min": 4,
+      "max": 8,
+      "step": 1
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Paper tone",
+      "description": "Color per scrap. Mixed seeds a different tone per scrap for a real scrapbook mix.",
+      "default": "mixed",
+      "options": [
+        { "value": "cream", "label": "Cream" },
+        { "value": "kraft", "label": "Kraft" },
+        { "value": "mixed", "label": "Mixed" }
+      ]
+    },
+    {
+      "id": "spread",
+      "type": "enum",
+      "role": "motion",
+      "label": "Spread",
+      "description": "Outward sends each scrap away from the frame center. Scatter sends every scrap the same general direction with seeded variance.",
+      "default": "outward",
+      "options": [
+        { "value": "outward", "label": "Outward" },
+        { "value": "scatter", "label": "Scatter" }
+      ]
+    }
+  ]
+}
