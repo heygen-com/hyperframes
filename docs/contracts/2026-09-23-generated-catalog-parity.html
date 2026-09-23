@@ -1,0 +1,65 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Generated catalog parity contract</title><style>
+:root{color-scheme:light dark;
+ --bg:#fbfbfa;--card:#ffffff;--line:#e6e4df;--ink:#1c1c1a;--dim:#6b6b66;--faint:#9a9a94;
+ --go:#178a5a;--go-bg:#e8f6ee;--warn:#a6690a;--warn-bg:#fbf1dc;--bad:#c0392b;--bad-bg:#fbe7e4;--info:#2a5db0;--info-bg:#e8eefb;
+ --mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#111213;--card:#191b1d;--line:#2a2d31;--ink:#ecebe8;--dim:#a2a29c;--faint:#6f6f6a;
+ --go:#5fd39a;--go-bg:#12291f;--warn:#e6b35a;--warn-bg:#2b2311;--bad:#ff7b6b;--bad-bg:#2d1714;--info:#7fa9ff;--info-bg:#15203a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans)}
+.wrap{max-width:900px;margin:0 auto;padding:56px 24px 96px}
+header h1{font-size:30px;line-height:1.15;letter-spacing:-.4px;margin:0 0 10px}
+header .what{font-size:18px;color:var(--dim);margin:0 0 18px;max-width:70ch}
+.strip{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font:13px var(--mono);color:var(--faint)}
+.strip .sep{opacity:.5}
+.pill{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--mono);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.pill.go{color:var(--go);background:var(--go-bg)}.pill.warn{color:var(--warn);background:var(--warn-bg)}
+.pill.bad{color:var(--bad);background:var(--bad-bg)}.pill.info{color:var(--info);background:var(--info-bg)}
+.pill b{font-size:13px}
+section{margin-top:56px}
+h2{font-size:22px;letter-spacing:-.3px;margin:0 0 6px}
+.sub{color:var(--dim);margin:0 0 18px;font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:14px 0}
+.breath{border-left:4px solid var(--go);font-size:18px;line-height:1.5}
+.breath b{color:var(--go)}
+.plain{color:var(--dim);font-size:15px;margin:0 0 10px}
+.plain::before{content:"In plain words  ";font:600 11px var(--mono);letter-spacing:1px;color:var(--faint);text-transform:uppercase}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;font:13px/1.55 var(--mono);margin:10px 0}
+code{font:13px var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.cite{font:12px var(--mono);color:var(--faint);margin-top:8px;display:block}
+.states{display:flex;gap:8px;margin:12px 0 4px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14.5px}
+th{text-align:left;font:600 11px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.7px;color:var(--faint);border-bottom:1px solid var(--line);padding:8px 10px}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.k{font:13px var(--mono);white-space:nowrap}
+.decision{border-left:4px solid var(--info)}
+.decision h3{margin:0 0 8px;font-size:17px}
+.decision .ask{color:var(--info);font-weight:600}
+blockquote{margin:12px 0;padding:8px 0 8px 16px;border-left:2px solid var(--line);color:var(--dim);font-style:italic;font-size:14.5px}
+blockquote .src{display:block;font-style:normal;font:12px var(--mono);color:var(--faint);margin-top:6px}
+ul,ol{padding-left:22px}li{margin:6px 0}
+.mermaid{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0;overflow:auto}
+.mermaid svg{max-width:100%}
+footer{margin-top:72px;padding-top:16px;border-top:1px solid var(--line);font:12px/1.7 var(--mono);color:var(--faint)}
+</style></head><body><main class="wrap">
+<header><h1>Generated catalog parity</h1><p class="what">Committed registry and catalog files must match the complete generation pipeline.</p><div class="strip">hyperframes @ b73df3549eb52744fe54dac2728a2f9d0fb6a9c7 · 2026-09-23</div><p>Audited: 5 boundaries · Trusting: 0 · Not exercised: full generation and CI · Decisions: pipeline scope for review</p></header>
+<section><div class="card breath">The registry index feeds page discovery. Pages feed navigation, then gallery sync rewrites that navigation. Compare the final pipeline output, not an intermediate file.</div></section>
+<section><h2>Where the value travels</h2><div class="card"><p>Item manifests → registry.json → catalog pages + catalog-index.json + docs.json → gallery data + final docs.json → committed-tree comparison</p><p>All arrows are source-audited. Runtime equality is not yet exercised.</p></div></section>
+<section><h2>The contract, per boundary</h2>
+<div class="card"><h3>1. Registry index</h3><p class="plain">Existing item directories determine index membership. The full script also scaffolds example manifests, so the index write needs its own callable entry.</p><pre>items.push({ name, type });
+writeFileSync(registryManifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");</pre><span class="cite">Producer: scripts/generate-registry-items.ts:161-205. Consumer: scripts/generate-catalog-pages.ts:115-151.</span><p>Exists: yes. Reachable: full generator only. Written/read: both. Preserve catalogArtifact, which has a separate owner.</p></div>
+<div class="card"><h3>2. Pages and intermediate navigation</h3><p class="plain">The generator reads authored sections before replacing the generated page directories.</p><pre>const content = carriedSectionsFrom(
+  join(docsDir, "catalog", typeDir(kind), `${manifest.name}.mdx`),
+);
+writeFileSync(outPath, mdx, "utf-8");</pre><span class="cite">Producer: scripts/generate-catalog-pages.ts:1140-1194 and 1326. Consumers: scripts/sync-docs-catalog.mjs:17-18 and 125.</span><p>Exists: yes. Reachable: direct script. Written/read: pages, flat catalog index and docs navigation. Existing prose is an input, not disposable output.</p></div>
+<div class="card"><h3>3. Gallery and final navigation</h3><p class="plain">Gallery sync consumes navigation, emits gallery data, then rebuilds navigation from that data.</p><pre>buildNav(docs);
+tab.groups = [{ group: "Catalog", pages: ["catalog/index", ...groups] }];</pre><span class="cite">Producer/consumer: scripts/sync-docs-catalog.mjs:148-154; scripts/build-docs-gallery-nav.mjs:14-42.</span><p>Exists: yes. Reachable: sync script calls buildNav. Written/read: gallery data and final docs.json. The single-child navigation fix must precede regeneration.</p></div>
+<div class="card"><h3>4. Existing drift check</h3><p class="plain">The check compares generated payload bytes with Git's committed tree, so ignored local files cannot hide missing commits.</p><pre>export function treeDifferences(generatedRoot: string, committedRoot: string): string[]</pre><span class="cite">Producer: scripts/catalog-drift.ts:22-39; Git extraction: 51-63; consumer: 72-78.</span><p>Exists: yes. Reachable: check:catalog-drift. Written/read: payload tree only today. Proposed extension uses the same helper for registry index, pages, catalog index, gallery data and final navigation.</p></div>
+<div class="card"><h3>5. CI and the set guard</h3><p class="plain">The existing guard currently rejects restoring an index entry when its source file already existed on the base branch.</p><pre>node scripts/check-registry-set-delta.mjs origin/main &amp;&amp; tsx scripts/catalog-drift.ts</pre><span class="cite">Producer: package.json:37; consumer: .github/workflows/ci.yml:230. Membership rule: scripts/check-registry-set-delta.mjs:19-26 and 38-45.</span><p>Exists: yes. Reachable: Catalog payloads job. Written/read: base/head item sets. Permit restoration backed by tracked source; preserve rejection of invented entries and unbacked deletions. Add the registry generator to the job's path filter.</p></div>
+</section>
+<section><h2>How it says no</h2><table><tr><th>Signal</th><th>Meaning</th><th>Next action</th></tr><tr><td>not committed / stale / no longer generated</td><td>Committed bytes differ from generated bytes.</td><td>Run the complete generation command and commit its output.</td></tr><tr><td>unexpected in registry.json</td><td>Today this can mean either an invented entry or a legitimate repair.</td><td>Check tracked item sources before deciding.</td></tr></table></section>
+<section><h2>Scope for review</h2><p>The requested invariant is already decided. The implementation shape includes gallery sync because it is the current final writer of docs.json. Checking the page generator alone would reject the published navigation shape. No new grouping system or page template is proposed.</p><p>Before implementation: review this boundary map and obtain the navigation fix's exact ref. The repair must follow that fix.</p></section>
+<section><h2>Coverage, honestly</h2><p>Audited: all five producer/consumer boundaries above. Trusting: none of these conclusions depend on a mock. Not exercised: generators, new parity check, CI and rendered documentation.</p><p>Observed on disk: week-in-merges has a source manifest and a documentation page but is absent from registry.json. This is index drift, not a missing-page claim.</p></section>
+<section><h2>What would prove this page wrong</h2><ul><li>Run the full pipeline twice: the second output must be byte-identical.</li><li>Change one generated file in a disposable Git commit: the check must name that path and fail. Restore it and require success.</li><li>Restore an index entry backed by tracked source: the set guard must accept it. Invent an entry or remove one whose source remains: it must reject it.</li></ul></section>
+</main></body></html>
