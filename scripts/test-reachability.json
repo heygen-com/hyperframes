@@ -4,6 +4,7 @@
       "skills/media-use/scripts/lib/**",
       "packages/cli/src/media-use/lib/**"
     ],
+    "scripts/check-skills-self-contained.test.mjs": ["skills/**"],
     "scripts/check-test-reachability.test.mjs": [
       ".github/workflows/ci.yml",
       "**/package.json",
@@ -25,11 +26,12 @@
   "runners": [
     {
       "cwd": ".",
-      "command": "set -euo pipefail\nmapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name \"*.test.mjs\" | sort)\nif [ \"${#SKILLS_TESTS[@]}\" -eq 0 ]; then\necho \"::error::No skills/**/*.test.mjs files found. Did the layout change?\"\nexit 1\nfi\nSKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)\nprintf 'Running %d skills test file(s):\\n' \"${#SKILLS_TESTS[@]}\"\nprintf '  * %s\\n' \"${SKILLS_TESTS[@]}\"\nnode --test \"${SKILLS_TESTS[@]}\"",
+      "command": "set -euo pipefail\nmapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name \"*.test.mjs\" | sort)\nif [ \"${#SKILLS_TESTS[@]}\" -eq 0 ]; then\necho \"::error::No skills/**/*.test.mjs files found. Did the layout change?\"\nexit 1\nfi\nSKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/check-skills-self-contained.test.mjs scripts/creator-editing-capabilities.test.mjs)\nprintf 'Running %d skills test file(s):\\n' \"${#SKILLS_TESTS[@]}\"\nprintf '  * %s\\n' \"${SKILLS_TESTS[@]}\"\nnode --test \"${SKILLS_TESTS[@]}\"",
       "tests": [
         "skills/**/*.test.mjs",
         "packages/cli/src/media-use/**/*.test.mjs",
         "scripts/check-media-use-copy-parity.test.mjs",
+        "scripts/check-skills-self-contained.test.mjs",
         "scripts/creator-editing-capabilities.test.mjs"
       ],
       "sources": {},

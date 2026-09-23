@@ -110,6 +110,7 @@ jobs:
             skills:
               - "packages/cli/src/media-use/**"
               - "scripts/check-media-use-copy-parity.test.mjs"
+              - "scripts/check-skills-self-contained.test.mjs"
               - "skills/**"
               - ".claude/skills/**"
               - ".agents/skills/**"
@@ -495,7 +496,7 @@ jobs:
             echo "::error::No skills/**/*.test.mjs files found. Did the layout change?"
             exit 1
           fi
-          SKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)
+          SKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/check-skills-self-contained.test.mjs scripts/creator-editing-capabilities.test.mjs)
           printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
           node --test "${SKILLS_TESTS[@]}"

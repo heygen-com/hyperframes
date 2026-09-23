@@ -25,10 +25,6 @@ export const MEDIA_USE_COPY_NAMES = [
 
 export const INTENTIONAL_MEDIA_USE_DIVERGENCES = new Map([
   [
-    "media-fetch.mjs",
-    "the standalone skill uses a shim because it cannot import the CLI package tree",
-  ],
-  [
     "npx-sync.mjs",
     "the standalone skill stays self-contained while the CLI copy uses the shared audio helper",
   ],
