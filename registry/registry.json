@@ -1578,9 +1578,13 @@
     {
       "name": "warm-grain",
       "type": "hyperframes:example"
+    },
+    {
+      "name": "torn-paper-rip",
+      "type": "hyperframes:component"
     }
   ],
   "catalogArtifact": {
-    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
+    "revision": "e1c25bd6f6aafb635693ca27b41d66dad1b014d00aa90e7919159f73ca0a42d3"
   }
 }

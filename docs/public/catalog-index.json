@@ -4813,6 +4813,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/top-down-letters.png"
   },
   {
+    "name": "torn-paper-rip",
+    "type": "component",
+    "title": "Torn Paper Rip",
+    "description": "A jagged, fibrous paper tear travels across the frame, taking one scene with it and leaving the next standing. The exposed cross-section rides just behind the cut edge, on a token paper tone.",
+    "tags": [
+      "torn paper",
+      "paper rip",
+      "paper tear",
+      "transition",
+      "texture",
+      "motion-primitive"
+    ],
+    "href": "/catalog/components/torn-paper-rip",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/torn-paper-rip.png"
+  },
+  {
     "name": "touch-indicator",
     "type": "component",
     "title": "Touch Indicator",
