@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureLocalModel } from "../packages/cli/src/registry/localModel.ts";
 import { generateRegistryManifest } from "./generate-registry-items.ts";
@@ -13,7 +14,7 @@ export async function generateCatalog(): Promise<void> {
   const run = (script: string) => execFileSync("bun", [script], { cwd: root, stdio: "inherit" });
   run("scripts/catalog/build-local-vectors.ts");
   // Rebuild the entire payload tree so removed items and orphaned assets disappear.
-  rmSync(new URL("../docs/public/catalog", import.meta.url), { recursive: true, force: true });
+  rmSync(join(root, "docs/public/catalog"), { recursive: true, force: true });
   run("scripts/generate-catalog-payloads.ts");
   run("scripts/generate-catalog-pages.ts");
   run("scripts/sync-docs-catalog.mjs");

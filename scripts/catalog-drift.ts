@@ -1,5 +1,5 @@
 // Source PRs validate generated output; the publish PR also checks its committed snapshot.
-import { spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readdirSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, dirname } from "node:path";
@@ -41,27 +41,25 @@ async function main(): Promise<void> {
   for (const script of [
     "scripts/check-docs-catalog.mjs",
     "scripts/catalog/check-artifact-coverage.ts",
-  ]) {
-    const check = spawnSync("bun", [script], { cwd: repoRoot, stdio: "inherit" });
-    if (check.status !== 0) throw new Error(`${script} failed.`);
-  }
-  if (!process.argv.includes("--committed")) {
+  ])
+    execFileSync("bun", [script], { cwd: repoRoot, stdio: "inherit" });
+  if (process.argv.includes("--committed")) checkCommittedCatalog();
+  else
     console.log("Catalog sources generate successfully; derived files belong to the publish PR.");
-    return;
-  }
+}
+
+function checkCommittedCatalog(): void {
   const base = mkdtempSync(join(tmpdir(), "catalog-drift-"));
   try {
     const committed = join(base, "committed");
     const generated = join(base, "generated");
     mkdirSync(committed);
     mkdirSync(generated);
-    const archive = spawnSync("git", ["archive", "HEAD", ...GENERATED_CATALOG_PATHS], {
+    const archive = execFileSync("git", ["archive", "HEAD", ...GENERATED_CATALOG_PATHS], {
       cwd: repoRoot,
       maxBuffer: 2 ** 31 - 1,
     });
-    if (archive.status !== 0) throw new Error("Could not archive committed catalog.");
-    const untar = spawnSync("tar", ["-x", "-C", committed], { input: archive.stdout });
-    if (untar.status !== 0) throw new Error("Could not unpack committed catalog.");
+    execFileSync("tar", ["-x", "-C", committed], { input: archive });
     for (const path of GENERATED_CATALOG_PATHS) {
       mkdirSync(dirname(join(generated, path)), { recursive: true });
       cpSync(join(repoRoot, path), join(generated, path), { recursive: true });
