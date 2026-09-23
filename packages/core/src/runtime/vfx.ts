@@ -31,6 +31,7 @@ import {
   type HfVfxParam,
   type HfVfxParamValues,
 } from "../vfx";
+import { isCanvasElement, isHtmlElement } from "./domRealm";
 
 /** The prefix `frameCapture.ts` matches to fail a render fast. */
 const VFX_ERROR_LABEL = "[HyperFrames] composition script error:";
@@ -168,7 +169,7 @@ function linkVfxProgram(gl: WebGL2RenderingContext, frag: string): WebGLProgram 
 /** The output canvas the exporter may already have emitted, else a new one. */
 function findOrCreateOut(host: HTMLElement): HTMLCanvasElement {
   const existing = host.querySelector("canvas.hf-vfx-out");
-  if (existing instanceof HTMLCanvasElement) return existing;
+  if (isCanvasElement(existing)) return existing;
   const out = document.createElement("canvas");
   out.className = "hf-vfx-out";
   out.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
@@ -216,7 +217,7 @@ function resolveCaptureSource(
 ): VfxCaptureSource | undefined {
   const canvas = host.querySelector("canvas.hf-vfx-src");
   const inner = canvas?.querySelector(".hf-vfx-in");
-  if (!(canvas instanceof HTMLCanvasElement) || !(inner instanceof HTMLElement)) {
+  if (!isCanvasElement(canvas) || !isHtmlElement(inner)) {
     reportVfxError(
       `${describeHost(host)}: a capturing chain needs ` +
         `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in source.`,
@@ -304,7 +305,7 @@ export function initVfx(root: HTMLElement, fps: number): VfxRegistry {
   registryFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
   const hosts = root.querySelectorAll(`[${HF_VFX_ATTR}]`);
   for (const host of hosts) {
-    if (!(host instanceof HTMLElement)) continue;
+    if (!isHtmlElement(host)) continue;
     const entry = registerVfxHost(host);
     if (entry) registry.push(entry);
   }
