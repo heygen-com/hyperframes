@@ -793,11 +793,7 @@ export async function drainBrowserPool(): Promise<void> {
   await browserLeasePool.drain();
 }
 
-/**
- * Terminal shutdown: drains every entry, same as `drainBrowserPool`, and
- * makes every `acquire()` after this reject instead of launching a fresh
- * browser. For a process that is exiting, not one recycling the pool.
- */
+/** Terminal shutdown: drains the pool and makes every later acquire() reject. */
 export async function closeBrowserPool(): Promise<void> {
   await browserLeasePool.close();
 }
