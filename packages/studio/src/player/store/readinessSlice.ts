@@ -8,11 +8,10 @@ import { settleCompositionReadiness } from "@hyperframes/core/composition-readin
 
 export interface PlaybackReadinessSlice {
   timelineReady: boolean;
-  /** Latched by the project's first ready preview and kept through edit reloads, so work that
-   *  must not compete with boot (card thumbnails) waits for it once. */
+  /** Latched when the project's first preview shows and can play (or fails), kept through edit
+   *  reloads, so work that must not compete with the boot waits for it once. */
   previewBooted: boolean;
   setTimelineReady: (ready: boolean) => void;
-  /** A live preview that failed to load has still finished booting. */
   markPreviewBooted: () => void;
   /** Sets timelineReady once doc's readiness inputs settle, or immediately
    *  if doc is null. A wait a later call supersedes never wins the race. */
@@ -40,15 +39,13 @@ export function createPlaybackReadinessSlice(
     markPreviewBooted: () => set({ previewBooted: true }),
     setTimelineReady: (ready) => {
       timelineReadyGeneration++;
-      set(ready ? { timelineReady: true, previewBooted: true } : { timelineReady: false });
+      set({ timelineReady: ready });
     },
     requestTimelineReady: (doc) => {
       const generation = ++timelineReadyGeneration;
-      if (!doc) return set({ timelineReady: true, previewBooted: true });
+      if (!doc) return set({ timelineReady: true });
       settleCompositionReadiness(doc, () => {
-        if (generation === timelineReadyGeneration) {
-          set({ timelineReady: true, previewBooted: true });
-        }
+        if (generation === timelineReadyGeneration) set({ timelineReady: true });
       });
     },
   };
