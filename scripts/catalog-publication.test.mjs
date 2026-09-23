@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -160,6 +160,7 @@ catch (error) {
       },
     );
   return {
+    root,
     base,
     run,
     calls: () =>
@@ -201,4 +202,14 @@ test("a failed staging cleanup preserves the publication failure as well", (t) =
     fixture.calls().some((call) => call.method === "PATCH"),
     false,
   );
+});
+
+test("publication refuses symlinks instead of reading outside the generated artifact", (t) => {
+  const fixture = publicationFixture(t, false);
+  const artifact = join(fixture.root, "registry/registry.json");
+  const unrelated = join(fixture.root, "private.txt");
+  writeFileSync(unrelated, "must not be published");
+  rmSync(artifact);
+  symlinkSync(unrelated, artifact);
+  assert.throws(() => catalogChanges(fixture.root, "HEAD"), /ELOOP|symbolic link/);
 });
