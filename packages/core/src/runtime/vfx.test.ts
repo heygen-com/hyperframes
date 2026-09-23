@@ -9,7 +9,11 @@ import { initVfx, paintVfx } from "./vfx";
  * two functions the runtime asks. `null` leaves the real answers alone, so the
  * Task 1.2 cases in this file are untouched.
  */
-const override = vi.hoisted(() => ({ capture: null as HfVfxCapture | null }));
+const override = vi.hoisted(() => ({
+  capture: null as HfVfxCapture | null,
+  /** Appends a `ref` param with this key to every def, as `luma-matte` has. */
+  refKey: null as string | null,
+}));
 
 vi.mock("../vfx", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../vfx")>();
@@ -19,7 +23,22 @@ vi.mock("../vfx", async (importOriginal) => {
       override.capture ?? actual.chainCapture(chain),
     getVfxDef: (id: string) => {
       const def = actual.getVfxDef(id);
-      return def && override.capture ? { ...def, capture: override.capture } : def;
+      if (!def) return def;
+      if (!override.capture && !override.refKey) return def;
+      return {
+        ...def,
+        capture: override.capture ?? def.capture,
+        params: override.refKey
+          ? [...def.params, { kind: "ref", key: override.refKey, label: "Second source" }]
+          : def.params,
+      };
+    },
+    normalizeVfxParams: (id: string, values: import("../vfx").HfVfxParamValues | undefined) => {
+      const normalized = actual.normalizeVfxParams(id, values);
+      // The real `normalizeVfxParams` reads the real def, which has no ref
+      // param, so the injected one would be dropped before the runtime saw it.
+      if (override.refKey) normalized[override.refKey] = String(values?.[override.refKey] ?? "");
+      return normalized;
     },
   };
 });
@@ -59,6 +78,7 @@ function createMockGl(): WebGL2RenderingContext & MockGl {
     TRIANGLES: 0x0004,
     TEXTURE_2D: 0x0de1,
     TEXTURE0: 0x84c0,
+    TEXTURE1: 0x84c1,
     RGBA: 0x1908,
     UNSIGNED_BYTE: 0x1401,
     CLAMP_TO_EDGE: 0x812f,
@@ -156,27 +176,58 @@ const TWO_NODES =
   '{"version":1,"nodes":[{"type":"fractal-noise","id":"n1","params":{}},' +
   '{"type":"fractal-noise","id":"n2","params":{}}]}';
 
-describe("vfx runtime", () => {
-  beforeEach(() => {
-    document.body.innerHTML = "";
-    gl = createMockGl();
-    installCanvasMock(() => gl);
-    errors = [];
-    override.capture = null;
-    delete compositeWindow().__hf_page_composite_pending;
-    delete compositeWindow().__hf_page_composite_resolve;
-    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-      errors.push(args);
-    });
+/**
+ * One fixture for every describe in this file: a clean body, a recording mock
+ * GL behind `getContext`, a console spy, a page-composite slot nobody else
+ * owns, and the def overrides this test lifts its chains through.
+ */
+function installVfxHarness(capture: HfVfxCapture | null, refKey: string | null = null): void {
+  document.body.innerHTML = "";
+  gl = createMockGl();
+  installCanvasMock(() => gl);
+  errors = [];
+  override.capture = capture;
+  override.refKey = refKey;
+  // `paintVfx` registers its preview capture into the module-level
+  // seek-completion set; a leftover entry would stall the next test's barrier.
+  resetSeekDispatchState();
+  clearCompositeSlot();
+  vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+    errors.push(args);
   });
+}
 
-  afterEach(() => {
-    // Empty the registry BEFORE the canvas mock comes off, or jsdom's real
-    // (unimplemented) getContext runs and floods the console.
-    document.body.innerHTML = "";
-    initVfx(document.body, 30);
-    vi.restoreAllMocks();
-  });
+function releaseVfxHarness(): void {
+  // Empty the registry BEFORE the canvas mock comes off, or jsdom's real
+  // (unimplemented) getContext runs and floods the console.
+  document.body.innerHTML = "";
+  override.capture = null;
+  override.refKey = null;
+  initVfx(document.body, 30);
+  clearCompositeSlot();
+  resetSeekDispatchState();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+}
+
+/**
+ * One macrotask. The preview capture path awaits a `paint` event, a
+ * `Promise.all` over every source, and then the capture itself, so counting
+ * microtask ticks by hand is a test that breaks when a hop is added; a timer
+ * tick settles all of them.
+ */
+function flushTasks(): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+function clearCompositeSlot(): void {
+  delete compositeWindow().__hf_page_composite_pending;
+  delete compositeWindow().__hf_page_composite_resolve;
+}
+
+describe("vfx runtime", () => {
+  beforeEach(() => installVfxHarness(null));
+  afterEach(releaseVfxHarness);
 
   it("registers every [data-vfx-chain] host and creates a missing .hf-vfx-out", () => {
     const a = makeHost(ONE_NODE, "a");
@@ -388,49 +439,48 @@ function createMockCtx2d(onDraw?: () => void): MockCtx2d {
   }) as MockCtx2d;
 }
 
-/** A `self` host as the exporter emits it: src canvas wrapping `.hf-vfx-in`. */
-function makeCaptureHost(ctx: unknown, id = "cap"): HTMLElement {
-  const host = makeHost(ONE_NODE, id);
+/**
+ * A capture wrapper as the exporter emits it. `.hf-vfx-in` is given a real
+ * layout box because inside a `layoutsubtree` canvas an unsized wrapper
+ * measures 0×0 and captures nothing in silence — the runtime refuses it, so a
+ * fixture without a box would be testing that refusal and nothing else.
+ */
+function makeCaptureWrapper(ctx: unknown, forId?: string): HTMLCanvasElement {
   const src = document.createElement("canvas");
   src.className = "hf-vfx-src";
   src.setAttribute("layoutsubtree", "");
+  if (forId !== undefined) src.setAttribute("data-vfx-for", forId);
   if (ctx !== undefined) {
     src.getContext = ((kind: string) => (kind === "2d" ? ctx : null)) as never;
   }
   const inner = document.createElement("div");
   inner.className = "hf-vfx-in";
+  sizeHost(inner, 320, 180);
   src.appendChild(inner);
-  host.insertBefore(src, host.firstChild);
+  return src;
+}
+
+/** A `self` host as the exporter emits it: src canvas wrapping `.hf-vfx-in`. */
+function makeCaptureHost(ctx: unknown, id = "cap", chain = ONE_NODE): HTMLElement {
+  const host = makeHost(chain, id);
+  host.insertBefore(makeCaptureWrapper(ctx), host.firstChild);
+  return host;
+}
+
+/**
+ * A `backdrop` host as interface v1.1 shapes it: the wrapper holding every
+ * layer below the host is the host's PRECEDING SIBLING, named by
+ * `data-vfx-for`, not a child of the host.
+ */
+function makeBackdropHost(ctx: unknown, id = "adj"): HTMLElement {
+  const host = makeHost(ONE_NODE, id);
+  host.parentElement!.insertBefore(makeCaptureWrapper(ctx, id), host);
   return host;
 }
 
 describe("vfx runtime — self capture", () => {
-  beforeEach(() => {
-    document.body.innerHTML = "";
-    gl = createMockGl();
-    installCanvasMock(() => gl);
-    errors = [];
-    override.capture = "self";
-    // `paintVfx` now registers its preview capture into the module-level
-    // seek-completion set; a leftover entry would stall the next test's barrier.
-    resetSeekDispatchState();
-    delete compositeWindow().__hf_page_composite_pending;
-    delete compositeWindow().__hf_page_composite_resolve;
-    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-      errors.push(args);
-    });
-  });
-
-  afterEach(() => {
-    document.body.innerHTML = "";
-    override.capture = null;
-    initVfx(document.body, 30);
-    delete compositeWindow().__hf_page_composite_pending;
-    delete compositeWindow().__hf_page_composite_resolve;
-    resetSeekDispatchState();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
+  beforeEach(() => installVfxHarness("self"));
+  afterEach(releaseVfxHarness);
 
   it("refuses a capture host that has no .hf-vfx-src canvas", () => {
     makeHost(ONE_NODE);
@@ -556,8 +606,7 @@ describe("vfx runtime — self capture", () => {
     expect(ctx.drawn).toHaveLength(0);
 
     src.dispatchEvent(new Event("paint"));
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushTasks();
 
     expect(ctx.drawn).toHaveLength(1);
     expect(compositeWindow().__hf_page_composite_pending).toBeUndefined();
@@ -583,23 +632,22 @@ describe("vfx runtime — self capture", () => {
     const a = makeCaptureHost(ctxA, "cap-a");
     const b = makeCaptureHost(ctxB, "cap-b");
     initVfx(document.body, 30);
-    const flush = (): Promise<void> => new Promise<void>((r) => setTimeout(r, 0));
 
     paintVfx(0.5);
     let resolved = false;
     const barrier = waitForSeekCompletion().then(() => {
       resolved = true;
     });
-    await flush();
+    await flushTasks();
     const beforeAnyPaint = resolved;
 
     srcOf(a).dispatchEvent(new Event("paint"));
-    await flush();
+    await flushTasks();
     // Still held: one host of two is not a finished frame.
     const afterFirstPaint = resolved;
 
     srcOf(b).dispatchEvent(new Event("paint"));
-    await flush();
+    await flushTasks();
     await barrier;
 
     expect({
@@ -678,5 +726,267 @@ describe("vfx runtime — self capture", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * Interface v1.1's `backdrop` shape. The def side is unchanged — a kernel that
+ * reads `u_src` cannot tell whose pixels those are — so these cases are about
+ * the DOM: where the wrapper is, and what happens to the layers inside it when
+ * the host itself is not painting.
+ */
+describe("vfx runtime — backdrop capture", () => {
+  beforeEach(() => installVfxHarness("self"));
+  afterEach(releaseVfxHarness);
+
+  it("reads its source from the data-vfx-for sibling and records it as a backdrop", () => {
+    const ctx = createMockCtx2d();
+    const host = makeBackdropHost(ctx, "adj-1");
+
+    const registry = initVfx(document.body, 30);
+    paintVfx(1.25, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_resolve!()).toBe(true);
+    expect(registry).toHaveLength(1);
+    // Resolved, not declared: the chain's defs say `self`, the DOM says the
+    // pixels come from the wrapper beside the host.
+    expect(registry[0]!.capture).toBe("backdrop");
+    expect(host.querySelector(".hf-vfx-in")).toBeNull();
+    expect(ctx.drawn.map((d) => d.el)).toEqual([
+      document.querySelector('canvas[data-vfx-for="adj-1"] > .hf-vfx-in'),
+    ]);
+    expect(gl!.calls).toEqual(["useProgram", "screen", "draw:1"]);
+    expect(errors).toEqual([]);
+  });
+
+  it("prefers the data-vfx-for sibling over a wrapper inside the host", () => {
+    const below = createMockCtx2d();
+    const own = createMockCtx2d();
+    const host = makeBackdropHost(below, "adj-1");
+    host.appendChild(makeCaptureWrapper(own));
+
+    initVfx(document.body, 30);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect({ below: below.drawn.length, own: own.drawn.length }).toEqual({ below: 1, own: 0 });
+  });
+
+  it("keeps drawing the layers below while the backdrop host is hidden", () => {
+    const ctx = createMockCtx2d();
+    const host = makeBackdropHost(ctx, "adj-1");
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_pending).toBe(true);
+    expect(compositeWindow().__hf_page_composite_resolve!()).toBe(true);
+    expect({
+      // Captured: the wrapper's children are invisible to the page compositor,
+      // so an undrawn bitmap would delete every layer below the adjustment.
+      drawn: ctx.drawn.length,
+      // Cleared ONCE — before the draw. The second clear is what a painting
+      // frame does to stop the raw capture showing through `.hf-vfx-out`;
+      // here the bitmap IS the frame and must stay.
+      cleared: ctx.cleared,
+      // The kernel does not run: the adjustment layer is off.
+      calls: gl!.calls,
+    }).toEqual({ drawn: 1, cleared: [[320, 180]], calls: [] });
+    expect(errors).toEqual([]);
+  });
+
+  it("passes the layers below through on the preview path too", async () => {
+    const ctx = createMockCtx2d();
+    const host = makeBackdropHost(ctx, "adj-1");
+    const src = document.querySelector('canvas[data-vfx-for="adj-1"]')!;
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0.5);
+    src.dispatchEvent(new Event("paint"));
+    await flushTasks();
+
+    expect(ctx.drawn).toHaveLength(1);
+    expect(gl!.calls).toEqual([]);
+  });
+
+  it("still skips a hidden self host, whose source is inside it", () => {
+    const ctx = createMockCtx2d();
+    const host = makeCaptureHost(ctx, "cap");
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_pending).toBeUndefined();
+    expect(ctx.drawn).toHaveLength(0);
+  });
+
+  it("reports a .hf-vfx-in that measures 0×0 once, not once per frame", () => {
+    const ctx = createMockCtx2d();
+    const host = makeCaptureHost(ctx, "cap");
+    const inner = host.querySelector(".hf-vfx-in") as HTMLElement;
+    sizeHost(inner, 0, 0);
+    initVfx(document.body, 30);
+
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+    paintVfx(1, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect(ctx.drawn).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0]![1])).toMatch(/measures 0×0/);
+    expect(String(errors[0]![1])).toMatch(/explicit width and height in px/);
+  });
+
+  it("refuses a .hf-vfx-in that is not the capture canvas's immediate child", () => {
+    const ctx = createMockCtx2d();
+    const host = makeCaptureHost(ctx, "cap");
+    const inner = host.querySelector(".hf-vfx-in")!;
+    const between = document.createElement("div");
+    inner.parentElement!.appendChild(between);
+    between.appendChild(inner);
+
+    // Chrome: "Only immediate children of the <canvas> element can be passed
+    // to DrawElementImage" — a registration error, not a per-frame throw.
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]![1])).toMatch(/hf-vfx-in/);
+  });
+});
+
+/**
+ * Interface v1.1's second source: a `ref` param carrying the id of another
+ * element, captured into `u_src2`. `luma-matte` is the first def to use one.
+ */
+describe("vfx runtime — ref (second source) params", () => {
+  const REF_NODE =
+    '{"version":1,"nodes":[{"type":"fractal-noise","id":"n1","params":{"matte":"matte-1"}}]}';
+
+  /** The element a `ref` names, wrapped by the exporter like any other source. */
+  function makeRefTarget(ctx: unknown, id = "matte-1", wrapped = true): HTMLElement {
+    const el = document.createElement("div");
+    el.id = id;
+    sizeHost(el);
+    if (wrapped) el.appendChild(makeCaptureWrapper(ctx));
+    document.body.appendChild(el);
+    return el;
+  }
+
+  beforeEach(() => installVfxHarness("self", "matte"));
+  afterEach(releaseVfxHarness);
+
+  it("captures the ref's element into u_src2 alongside the host's own u_src", () => {
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    makeRefTarget(matteCtx);
+    makeCaptureHost(ctx, "cap", REF_NODE);
+
+    expect(initVfx(document.body, 30)).toHaveLength(1);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect({ src: ctx.drawn.length, matte: matteCtx.drawn.length }).toEqual({ src: 1, matte: 1 });
+    // Unit 0 is the chain's own texture, unit 1 the second source.
+    expect(gl!.uniforms["u_src"]).toBe(0);
+    expect(gl!.uniforms["u_src2"]).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  it("captures one texture for two nodes that name the same element", () => {
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    makeRefTarget(matteCtx);
+    makeCaptureHost(
+      ctx,
+      "cap",
+      '{"version":1,"nodes":[{"type":"fractal-noise","id":"n1","params":{"matte":"matte-1"}},' +
+        '{"type":"fractal-noise","id":"n2","params":{"matte":"matte-1"}}]}',
+    );
+
+    initVfx(document.body, 30);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect(matteCtx.drawn).toHaveLength(1);
+  });
+
+  it("refuses a ref whose element carries no capture wrapper", () => {
+    makeRefTarget(undefined, "matte-1", false);
+    makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
+
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]![1])).toMatch(/"matte" source/);
+    expect(String(errors[0]![1])).toMatch(/hf-vfx-src/);
+  });
+
+  it("refuses a ref naming an element that is not in the composition", () => {
+    makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
+
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]![1])).toMatch(/#matte-1/);
+    expect(String(errors[0]![1])).toMatch(/not in the composition/);
+  });
+
+  it("refuses a node that names no ref element at all", () => {
+    makeCaptureHost(createMockCtx2d(), "cap", ONE_NODE);
+
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]![1])).toMatch(/needs a "matte" param/);
+  });
+
+  it("captures a hidden matte as empty instead of failing the frame", async () => {
+    // The exporter wraps a matte layer's own element, and the clip runtime
+    // hides that element outside its window — so `.hf-vfx-in` is hidden too.
+    // Waiting for a paint that cannot come would burn the 2 s ceiling on every
+    // frame of a matte's out point, and drawing it would throw. Only the matte
+    // ELEMENT is hidden here: the wrapper inside it inherits it, which is the
+    // shape the exporter and the clip runtime actually produce.
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    const host = makeCaptureHost(ctx, "cap", REF_NODE);
+    initVfx(document.body, 30);
+    matte.style.visibility = "hidden";
+
+    paintVfx(0.5);
+    host.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+    await flushTasks();
+
+    expect({ src: ctx.drawn.length, matte: matteCtx.drawn.length }).toEqual({ src: 1, matte: 0 });
+    // An empty u_src2, not a skipped frame: the host still paints, and the
+    // kernel reads a matte that covers nothing.
+    expect(gl!.calls).toEqual(["useProgram", "screen", "draw:1"]);
+    expect(errors).toEqual([]);
+  });
+
+  it("holds the preview barrier until the ref's canvas has painted too", async () => {
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    const host = makeCaptureHost(ctx, "cap", REF_NODE);
+    initVfx(document.body, 30);
+
+    paintVfx(0.5);
+    let resolved = false;
+    const barrier = waitForSeekCompletion().then(() => {
+      resolved = true;
+    });
+    host.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+    await flushTasks();
+    const afterHostPaint = resolved;
+
+    matte.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+    await flushTasks();
+    await barrier;
+
+    expect({ afterHostPaint, resolved, matte: matteCtx.drawn.length }).toEqual({
+      afterHostPaint: false,
+      resolved: true,
+      matte: 1,
+    });
   });
 });
