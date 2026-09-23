@@ -3033,6 +3033,10 @@ export function initSandboxRuntimeModular(): void {
         // values) don't exist at the init-time binding pass — re-apply so
         // data-var-* / --{id} bindings inside them resolve. Idempotent.
         applyVariableBindings(document);
+        // A vfx host inside a sub-composition enters the DOM only now, so the
+        // init-time pass below never saw it. Re-scan before readiness is
+        // published: an unregistered chain paints nothing and logs nothing.
+        initVfx(document.body, state.canonicalFps);
         maybePublishRenderReady();
       });
   } else {

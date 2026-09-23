@@ -81,6 +81,77 @@ function fixture(chain: string, innerStyle = "", hostStyle = ""): string {
 </div>`;
 }
 
+/**
+ * The same `self` host, except `.hf-vfx-in` is a SUB-COMPOSITION MOUNT: it
+ * carries `data-composition-src`, so the runtime empties it and mounts
+ * `inner.html` into it after init. The real exporter emits exactly this shape
+ * for any AE layer that is a pre-comp — the mount attributes live on
+ * `.hf-vfx-in` rather than the host so `resetCompositionHost` cannot take the
+ * `.hf-vfx-src`/`.hf-vfx-out` canvases with it.
+ */
+function mountFixture(chain: string): string {
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #0000ff; }
+  #host { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4"
+     data-width="${HOST_W}" data-height="${HOST_H}">
+  <div id="host" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas layoutsubtree class="hf-vfx-src" width="${HOST_W}" height="${HOST_H}"><div class="hf-vfx-in" data-composition-id="inner" data-composition-src="inner.html" data-width="${HOST_W}" data-height="${HOST_H}" style="position:absolute;left:0;top:0;width:${HOST_W}px;height:${HOST_H}px;"><div id="pre-mount" style="position:absolute;left:0;top:0;width:${HOST_W}px;height:${HOST_H}px;background:rgb(0,255,0)"></div></div></canvas>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+</div>`;
+}
+
+/** The mounted sub-composition, in the exporter's `<template>` document shape. */
+const MOUNT_INNER = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Inner</title></head>
+<body>
+<template>
+<style>html,body{margin:0;padding:0;background:transparent}#root *{box-sizing:border-box}</style>
+<div id="root" data-composition-id="inner" data-width="${HOST_W}" data-height="${HOST_H}" data-duration="4" data-fps="30" style="position:relative;overflow:hidden;width:${HOST_W}px;height:${HOST_H}px;background:transparent">
+<div id="inner-square" class="clip" data-start="0" data-duration="4" style="position:absolute;left:0;top:0;width:${SQUARE_W}px;height:${HOST_H}px;background:rgb(255,0,0)"></div>
+</div>
+<script>
+(function () {
+  var tl = window.gsap ? gsap.timeline({ paused: true }) : { seek: function () {} };
+  window.__timelines["inner"] = tl;
+})();
+</script>
+</template>
+</body>
+</html>`;
+
+/** A page whose only content is a sub-composition mount. */
+const NESTED_HOST_MAIN = `<!doctype html>
+<style>html, body { margin: 0; background: #0000ff; }</style>
+<div data-composition-id="root" data-start="0" data-duration="4"
+     data-width="${HOST_W}" data-height="${HOST_H}">
+  <div id="outer" class="clip" data-start="0" data-duration="4" data-composition-id="inner"
+       data-composition-src="inner.html" data-width="${HOST_W}" data-height="${HOST_H}"
+       style="position:absolute;left:0;top:0;width:${HOST_W}px;height:${HOST_H}px"></div>
+</div>`;
+
+/** The whole vfx host lives in the sub-composition, so it enters the DOM on mount. */
+const NESTED_HOST_INNER = (chain: string): string => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"></head><body>
+<template>
+<style>
+  #host { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+</style>
+<div id="root" data-composition-id="inner" data-width="${HOST_W}" data-height="${HOST_H}" data-duration="4" data-fps="30" style="position:relative;overflow:hidden;width:${HOST_W}px;height:${HOST_H}px">
+  <div id="host" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas layoutsubtree class="hf-vfx-src" width="${HOST_W}" height="${HOST_H}"><div class="hf-vfx-in" style="position:absolute;left:0;top:0;width:${HOST_W}px;height:${HOST_H}px"><div style="position:absolute;left:0;top:0;width:${SQUARE_W}px;height:${HOST_H}px;background:rgb(255,0,0)"></div></div></canvas>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+</div>
+</template>
+</body></html>`;
+
 /** Where the two side-by-side panels sit in the chain-order fixture. */
 const PANEL = { ax: 20, bx: 220, y: 30, w: HOST_W, h: HOST_H };
 
@@ -233,8 +304,7 @@ describe("data-vfx-chain in the browser", () => {
    */
   const pageErrors = new Map<Page, string[]>();
 
-  async function open(html: string, viewport = { width: 320, height: 240 }): Promise<Page> {
-    const page = await browser.newPage();
+  function watchPage(page: Page): string[] {
     const errors: string[] = [];
     pageErrors.set(page, errors);
     page.on("console", (message) => {
@@ -242,8 +312,10 @@ describe("data-vfx-chain in the browser", () => {
       if (text.includes("[HyperFrames] composition script error:")) errors.push(text);
     });
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.setViewport({ ...viewport, deviceScaleFactor: 1 });
-    await page.setContent(html);
+    return errors;
+  }
+
+  async function bootRuntime(page: Page, errors: string[]): Promise<void> {
     await page.addScriptTag({ content: runtime });
     await page.waitForFunction(
       () =>
@@ -251,6 +323,38 @@ describe("data-vfx-chain in the browser", () => {
         (window as CompositeWindow).__renderReady === true,
     );
     expect(errors).toEqual([]);
+  }
+
+  async function open(html: string, viewport = { width: 320, height: 240 }): Promise<Page> {
+    const page = await browser.newPage();
+    const errors = watchPage(page);
+    await page.setViewport({ ...viewport, deviceScaleFactor: 1 });
+    await page.setContent(html);
+    await bootRuntime(page, errors);
+    return page;
+  }
+
+  /**
+   * `setContent` leaves the document on `about:blank`, where the loader's
+   * `fetch("<data-composition-src>")` cannot resolve — a mounted fixture needs
+   * a real origin, so both files are served from the interceptor.
+   */
+  async function openMounted(files: Record<string, string>): Promise<Page> {
+    const page = await browser.newPage();
+    const errors = watchPage(page);
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      const name = new URL(request.url()).pathname.slice(1);
+      const body = files[name];
+      if (body === undefined) {
+        void request.continue();
+        return;
+      }
+      void request.respond({ status: 200, contentType: "text/html", body });
+    });
+    await page.setViewport({ width: 320, height: 240, deviceScaleFactor: 1 });
+    await page.goto("http://vfx.test/main.html", { waitUntil: "domcontentloaded" });
+    await bootRuntime(page, errors);
     return page;
   }
 
@@ -319,6 +423,54 @@ describe("data-vfx-chain in the browser", () => {
       expect(s.left).toEqual([255, 0, 0, 255]);
       expect(s.right).toEqual([0, 0, 0, 0]);
       expect(s.rows).toEqual([[[0, SQUARE_W]], [[0, SQUARE_W]], [[0, SQUARE_W]]]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("captures a .hf-vfx-in that is a sub-composition mount", async () => {
+    const page = await openMounted({
+      "main.html": mountFixture(waveWarpChain({ height: 0, width: 93.4 })),
+      "inner.html": MOUNT_INNER,
+    });
+    try {
+      // The mount replaces .hf-vfx-in's children, so the exporter's
+      // preceding-effect content goes with them — and a silent 404 would leave
+      // the wrapper empty, which looks exactly like the defect under test.
+      expect(
+        await page.evaluate(() => {
+          const inner = document.querySelector(".hf-vfx-in")!;
+          return {
+            mounted: inner.querySelectorAll("#inner-square").length,
+            preMountContentKept: !!document.getElementById("pre-mount"),
+          };
+        }),
+      ).toEqual({ mounted: 1, preMountContentKept: false });
+
+      expect(await seekAndResolve(page, 0)).toBe(true);
+      const s = await sample(page, [10, 60, 90]);
+
+      expect([s.width, s.height]).toEqual([HOST_W, HOST_H]);
+      expect(s.left).toEqual([255, 0, 0, 255]);
+      expect(s.rows).toEqual([[[0, SQUARE_W]], [[0, SQUARE_W]], [[0, SQUARE_W]]]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("registers a vfx host that arrives inside a mounted sub-composition", async () => {
+    const page = await openMounted({
+      "main.html": NESTED_HOST_MAIN,
+      "inner.html": NESTED_HOST_INNER(waveWarpChain({ height: 0, width: 93.4 })),
+    });
+    try {
+      expect(await page.evaluate(() => document.querySelectorAll("[data-vfx-chain]").length)).toBe(
+        1,
+      );
+      expect(await seekAndResolve(page, 0)).toBe(true);
+      const s = await sample(page, [10, 60, 90]);
+      expect([s.width, s.height]).toEqual([HOST_W, HOST_H]);
+      expect(s.left).toEqual([255, 0, 0, 255]);
     } finally {
       await page.close();
     }

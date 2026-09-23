@@ -278,12 +278,28 @@ function describeHost(host: HTMLElement): string {
   return host.id ? `#${host.id}` : `<${host.tagName.toLowerCase()}>`;
 }
 
+/** Drop the GL objects the outgoing registry owns before replacing it. */
+function releaseRegistry(): void {
+  for (const entry of registry) {
+    const { gl } = entry;
+    for (const pass of entry.passes) gl.deleteProgram(pass.program);
+    if (entry.src) gl.deleteTexture(entry.src.texture);
+    if (!entry.ping) continue;
+    for (const texture of entry.ping.textures) gl.deleteTexture(texture);
+    for (const framebuffer of entry.ping.framebuffers) gl.deleteFramebuffer(framebuffer);
+  }
+}
+
 /**
  * Discover every chain host under `root`, compile its programs, and replace
- * the module registry. Called once where the runtime finishes mounting the
- * composition; re-initialising forgets the previous composition's hosts.
+ * the module registry. Called where the runtime finishes mounting the
+ * composition and AGAIN once sub-compositions have loaded — a host inside a
+ * `data-composition-src` mount is not in the DOM for the first pass, and an
+ * unregistered host paints nothing and reports nothing. Re-initialising
+ * forgets (and releases) the previous pass's hosts.
  */
 export function initVfx(root: HTMLElement, fps: number): VfxRegistry {
+  releaseRegistry();
   registry = [];
   registryFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
   const hosts = root.querySelectorAll(`[${HF_VFX_ATTR}]`);
