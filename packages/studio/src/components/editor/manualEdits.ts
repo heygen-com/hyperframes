@@ -9,7 +9,11 @@ export {
   type StudioPathOffsetSnapshot,
 } from "./manualEditsTypes";
 
-export { readFileChangeField, readStudioFileChangePath } from "./manualEditsParsing";
+export {
+  readFileChangeAffectedCompositions,
+  readFileChangeField,
+  readStudioFileChangePath,
+} from "./manualEditsParsing";
 
 export {
   beginStudioManualEditGesture,

@@ -39,6 +39,7 @@ import {
   fileContentVersion,
   getMimeType,
   affectsProjectSignature,
+  compositionsAffectedBy,
   type PreviewApiAdapter,
   thumbnailDeviceScaleFactor,
   type ResolvedProject,
@@ -834,7 +835,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         stream
           .writeSSE({
             event: "file-change",
-            data: JSON.stringify({ path, version, projectId: project.id, ...receipt }),
+            data: JSON.stringify({
+              path,
+              version,
+              projectId: project.id,
+              // Which thumbnails this write can change; null means all of them.
+              affectedCompositions: compositionsAffectedBy(projectDir, path),
+              ...receipt,
+            }),
           })
           .catch(() => {});
       };

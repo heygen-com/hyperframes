@@ -31,3 +31,14 @@ export function readStudioFileChangePath(payload: unknown): string | null {
   const path = readFileChangeField(payload, "path") ?? readFileChangeField(payload, "filePath");
   return path === null ? null : normalizeStudioFileChangePath(path);
 }
+
+/**
+ * The compositions whose thumbnails a change can alter, or `null` for all of them. Anything
+ * but a list of paths (an older server, the Vite dev host) reads as "all".
+ */
+export function readFileChangeAffectedCompositions(payload: unknown): readonly string[] | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>).affectedCompositions;
+  if (!Array.isArray(value) || !value.every((path) => typeof path === "string")) return null;
+  return value.map(normalizeStudioFileChangePath);
+}

@@ -197,16 +197,25 @@ export async function resolveProjectAndSignature(
 
 /**
  * Creates a stable preview cache-busting signature for project source plus Studio manifests.
+ * `excluding` (project-relative paths) leaves those files out, for a key that must not move
+ * when they change.
  */
-export function createProjectSignature(projectDir: string): string {
+export function createProjectSignature(
+  projectDir: string,
+  excluding: ReadonlySet<string> = new Set(),
+): string {
   const normalizedProjectDir = resolve(projectDir);
-  const files: ProjectSignatureFile[] = [];
-  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, files);
-  collectProjectSignatureManifestFiles(normalizedProjectDir, files);
+  const collected: ProjectSignatureFile[] = [];
+  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, collected);
+  collectProjectSignatureManifestFiles(normalizedProjectDir, collected);
+  const files = collected.filter(
+    (entry) => !excluding.has(relative(normalizedProjectDir, entry.file).split(sep).join("/")),
+  );
   files.sort((a, b) => a.file.localeCompare(b.file));
 
   const fingerprint = createProjectFingerprint(normalizedProjectDir, files);
-  const cached = projectSignatureCache.get(normalizedProjectDir);
+  const cacheKey = [normalizedProjectDir, ...[...excluding].sort()].join("\0");
+  const cached = projectSignatureCache.get(cacheKey);
   if (cached?.fingerprint === fingerprint) return cached.signature;
 
   const hash = createHash("sha256");
@@ -228,6 +237,6 @@ export function createProjectSignature(projectDir: string): string {
     hash.update("\0");
   }
   const signature = hash.digest("hex").slice(0, 24);
-  projectSignatureCache.set(normalizedProjectDir, { fingerprint, signature });
+  projectSignatureCache.set(cacheKey, { fingerprint, signature });
   return signature;
 }

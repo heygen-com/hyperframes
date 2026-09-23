@@ -66,6 +66,12 @@ export function buildCompositionThumbnailUrl({
   return thumbnailUrl.toString();
 }
 
+/** The composition a preview URL renders: `/preview/comp/<path>`, or the root for `/preview`. */
+export function compositionPathOfPreviewUrl(previewUrl: string): string {
+  const match = /\/preview\/comp\/([^?#]+)/.exec(previewUrl);
+  return match?.[1] ? decodeURIComponent(match[1]) : "index.html";
+}
+
 async function loadCompositionImage(url: string, signal: AbortSignal) {
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Composition thumbnail failed (${response.status})`);
