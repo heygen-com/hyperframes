@@ -10,7 +10,7 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, dirname } from "node:path";
+import { join, relative, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAsCommand } from "./entrypoint.ts";
 import { generateCatalog, GENERATED_CATALOG_PATHS } from "./generate-catalog.ts";
@@ -21,7 +21,7 @@ const MAX_LISTED = 40;
 function filesUnder(root: string): string[] {
   return readdirSync(root, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
-    .map((entry) => relative(root, join(entry.parentPath, entry.name)))
+    .map((entry) => relative(root, join(entry.parentPath, entry.name)).split(sep).join("/"))
     .sort();
 }
 

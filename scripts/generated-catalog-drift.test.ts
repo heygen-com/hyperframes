@@ -130,3 +130,13 @@ test("a registry scan failure leaves the index unchanged", (t) => {
   assert.throws(() => generateCatalog(root), { code: "ENOTDIR" });
   assert.equal(readFileSync(join(root, "registry/registry.json"), "utf8"), before);
 });
+
+test("an invalid item manifest fails before deleting authored pages", (t) => {
+  const root = fixture();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const page = "docs/catalog/blocks/chart.mdx";
+  const before = readFileSync(join(root, page), "utf8");
+  write(root, "registry/blocks/chart/registry-item.json", "{invalid json");
+  assert.throws(() => generateCatalog(root));
+  assert.equal(readFileSync(join(root, page), "utf8"), before);
+});

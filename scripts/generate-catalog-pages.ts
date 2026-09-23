@@ -127,18 +127,7 @@ function discoverItems(): { kind: ItemKind; manifest: RegistryItem }[] {
     if (!kind) continue;
 
     const manifestPath = join(registryDir, typeDir(kind), item.name, "registry-item.json");
-    if (!existsSync(manifestPath)) {
-      console.warn(`  ⚠ Skipping ${item.name}: missing ${manifestPath}`);
-      continue;
-    }
-
-    let manifest: RegistryItem;
-    try {
-      manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
-    } catch (err) {
-      console.warn(`  ⚠ Skipping ${manifestPath}: ${(err as Error).message}`);
-      continue;
-    }
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
     items.push({ kind, manifest });
   }
 
