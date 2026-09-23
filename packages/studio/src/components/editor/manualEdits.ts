@@ -160,7 +160,9 @@ function isTimelinePlaying(owner: Record<string, unknown> | undefined): boolean 
 }
 
 function isStudioManualEditPlaybackActive(win: StudioManualEditSeekWindow): boolean {
-  if (isTimelinePlaying(win.__player)) return true;
+  // The transport, when present, is the answer: scene timelines nested under a paused master
+  // read as unpaused with time left, which kept this loop running at idle forever.
+  if (typeof win.__player?.isPlaying === "function") return isTimelinePlaying(win.__player);
   if (isTimelinePlaying(win.__timeline)) return true;
   return Object.values(win.__timelines ?? {}).some(isTimelinePlaying);
 }

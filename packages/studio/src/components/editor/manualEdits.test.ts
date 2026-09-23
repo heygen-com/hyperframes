@@ -474,6 +474,48 @@ describe("studio manual edits", () => {
     expect(frames).toHaveLength(0);
   });
 
+  it("does not reapply every frame while the player is paused over unpaused scene timelines", () => {
+    const window = new Window();
+    const frames: FrameRequestCallback[] = [];
+    let playing = false;
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __player: Record<string, unknown>;
+      __timelines: Record<string, Record<string, unknown>>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    previewWindow.__player = {
+      play: () => {
+        playing = true;
+      },
+      isPlaying: () => playing,
+    };
+    // A GSAP child of a paused master: not paused itself, inactive, time left.
+    previewWindow.__timelines = {
+      scene0: {
+        play: () => {},
+        paused: () => false,
+        isActive: () => false,
+        time: () => 0,
+        duration: () => 5,
+      },
+    };
+
+    expect(installStudioManualEditSeekReapply(previewWindow, () => {})).toBe(true);
+    expect(frames).toHaveLength(0);
+
+    (previewWindow.__player.play as () => void)();
+    expect(frames).toHaveLength(1);
+    playing = false;
+    frames.shift()?.(16);
+    expect(frames).toHaveLength(0);
+  });
+
   it("stops playback reapply after an unpaused timeline has completed", () => {
     const window = new Window();
     const frames: FrameRequestCallback[] = [];
