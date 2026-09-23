@@ -9,6 +9,7 @@ import {
   readPreviewErrorMessage,
   shouldShowCompositionLoadingOverlay,
 } from "./Player";
+import { usePlayerStore } from "../store/playerStore";
 
 vi.mock("@hyperframes/player", () => ({}));
 
@@ -269,6 +270,21 @@ describe("ready to show", () => {
 
     act(() => void el.iframeElement.dispatchEvent(new Event("load")));
     expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("marks the preview booted when it can show and play, not at ready", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const { player } = await mountPlayer({});
+    const el = player as TestHyperframesPlayer;
+
+    loadAndReady(el);
+    act(() => void el.dispatchEvent(new Event("assetsready")));
+    await twoFrames();
+    expect(usePlayerStore.getState().previewBooted).toBe(false);
+
+    painted(el);
+    await twoFrames();
+    expect(usePlayerStore.getState().previewBooted).toBe(true);
   });
 
   it("reports the document start time with the painted iframe", async () => {
