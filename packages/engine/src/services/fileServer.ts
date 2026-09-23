@@ -85,6 +85,24 @@ function readRegularFile(filePath: string): Buffer<ArrayBuffer> | null {
   }
 }
 
+/**
+ * Resolves the request path against both roots and rejects the pair the
+ * moment either escapes -- lexically, so a symlinked asset directory still
+ * resolves (see the containment note at the call site).
+ */
+function resolveContainedPaths(
+  projectDir: string,
+  compiledDir: string | undefined,
+  relativePath: string,
+): { projectPath: string; compiledPath: string | null } | null {
+  const projectPath = join(projectDir, relativePath);
+  if (!isWithinProjectRoot(projectDir, projectPath)) return null;
+  if (!compiledDir) return { projectPath, compiledPath: null };
+  const compiledPath = join(compiledDir, relativePath);
+  if (!isWithinProjectRoot(compiledDir, compiledPath)) return null;
+  return { projectPath, compiledPath };
+}
+
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
   const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
 
@@ -99,22 +117,14 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
     // Remove leading slash
     const relativePath = requestPath.replace(/^\//, "");
-    const compiledDirRoot = compiledDir;
-    const compiledPath = compiledDirRoot ? join(compiledDirRoot, relativePath) : null;
-    const projectPath = join(projectDir, relativePath);
     // Percent escapes can decode into separators and dot segments before the
-    // join, so a hostile request can name files above both roots. Containment
-    // stays lexical on purpose: project assets are allowed to sit behind
-    // symlinked directories (same tradeoff as the preview asset route), but
-    // dot segments must never collapse outside the roots.
-    if (compiledDirRoot && compiledPath && !isWithinProjectRoot(compiledDirRoot, compiledPath)) {
-      return c.text("Not found", 404);
-    }
-    if (!isWithinProjectRoot(projectDir, projectPath)) {
-      return c.text("Not found", 404);
-    }
+    // join, so a hostile request can name files above either root -- see
+    // resolveContainedPaths for why the check stays lexical, not realpath.
+    const resolved = resolveContainedPaths(projectDir, compiledDir, relativePath);
+    if (!resolved) return c.text("Not found", 404);
     const content =
-      (compiledPath ? readRegularFile(compiledPath) : null) ?? readRegularFile(projectPath);
+      (resolved.compiledPath ? readRegularFile(resolved.compiledPath) : null) ??
+      readRegularFile(resolved.projectPath);
     if (content === null) return c.text("Not found", 404);
 
     const ext = extname(relativePath).toLowerCase();
