@@ -14,6 +14,16 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { DraggedClipState, BlockedClipState } from "./useTimelineClipDrag";
+import * as transitionSeams from "./timelineTransitionSeams";
+
+vi.mock("./timelineTransitionSeams", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./timelineTransitionSeams")>();
+  return {
+    ...actual,
+    deriveTimelineTransitionSeams: vi.fn(actual.deriveTimelineTransitionSeams),
+    deriveTimelineTransitionSeamsByTrack: vi.fn(actual.deriveTimelineTransitionSeamsByTrack),
+  };
+});
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -494,6 +504,24 @@ describe("TimelineLanes clip joins", () => {
     });
 
     expect(view.host.querySelectorAll("[data-timeline-clip-join]")).toHaveLength(0);
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes transition seams", () => {
+  it("derives transition seams once for every row, not once per row", () => {
+    const derivations = [
+      transitionSeams.deriveTimelineTransitionSeams,
+      transitionSeams.deriveTimelineTransitionSeamsByTrack,
+    ].map((derive) => vi.mocked(derive));
+    for (const derive of derivations) derive.mockClear();
+
+    const view = renderLanes({
+      elements: [element("clip-a", 0), element("clip-b", TRACK_A), element("clip-c", TRACK_B)],
+    });
+
+    expect(view.host.querySelectorAll("[data-timeline-row]").length).toBeGreaterThanOrEqual(3);
+    expect(derivations.reduce((calls, derive) => calls + derive.mock.calls.length, 0)).toBe(1);
     act(() => view.root.unmount());
   });
 });

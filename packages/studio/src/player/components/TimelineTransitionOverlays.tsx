@@ -1,13 +1,12 @@
 import { CLIP_Y } from "./timelineLayout";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import type { TimelineElement } from "../store/playerStore";
-import { deriveTimelineTransitionSeams } from "./timelineTransitionSeams";
+import type { TimelineTransitionSeam } from "./timelineTransitionSeams";
 import { TimelineTransitionBadge } from "./TimelineTransitionBadge";
 import { TimelineClipJoins } from "./TimelineClipJoins";
 
 interface TimelineTransitionOverlaysProps {
-  transitionElements: readonly TimelineElement[];
-  track: number;
+  seams: readonly TimelineTransitionSeam[];
   rowElements: readonly TimelineElement[];
   rowBackground: string;
   pixelsPerSecond: number;
@@ -17,8 +16,7 @@ interface TimelineTransitionOverlaysProps {
 
 /** What a row draws where its clips meet: a hairline at an exact join, a badge over a transition. */
 export function TimelineTransitionOverlays({
-  transitionElements,
-  track,
+  seams,
   rowElements,
   rowBackground,
   pixelsPerSecond,
@@ -26,9 +24,6 @@ export function TimelineTransitionOverlays({
   clipBarHeight,
 }: TimelineTransitionOverlaysProps) {
   const top = CLIP_Y + (clipBarHeight ?? rowHeight - 2 * CLIP_Y) / 2;
-  const seams = deriveTimelineTransitionSeams(transitionElements).filter(
-    (seam) => seam.incoming.track === track,
-  );
   return (
     <>
       <TimelineClipJoins

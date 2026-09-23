@@ -33,6 +33,7 @@ import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
+import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
 
 export function TimelineLanes({
   pps,
@@ -105,8 +106,9 @@ export function TimelineLanes({
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
-  const allTransitionElements = useMemo(
-    () => tracks.flatMap(([, elements]) => elements.map(getPreviewElement)),
+  const transitionSeamsByTrack = useMemo(
+    () =>
+      deriveTimelineTransitionSeamsByTrack(tracks.flatMap(([, els]) => els.map(getPreviewElement))),
     [getPreviewElement, tracks],
   );
   // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
@@ -551,8 +553,7 @@ export function TimelineLanes({
                   })
                 }
                 <TimelineTransitionOverlays
-                  transitionElements={allTransitionElements}
-                  track={trackNum}
+                  seams={transitionSeamsByTrack.get(trackNum) ?? []}
                   rowElements={draggedClip?.started ? [] : automationElements}
                   rowBackground={rowBackground}
                   pixelsPerSecond={pps}
