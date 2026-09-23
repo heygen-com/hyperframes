@@ -1,0 +1,346 @@
+---
+title: "Glass Hero"
+description: "A solid glass object rises in front of a giant headline and keeps turning, so the type bends and splits into colour through it."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/glass-hero.json"
+  compositionId="glass-hero"
+  compositionSrc="compositions/glass-hero.html"
+  title="Glass Hero"
+  description="A solid glass object rises in front of a giant headline and keeps turning, so the type bends and splits into colour through it."
+  variables={[{"id":"headline","type":"string","role":"content","label":"Headline behind the glass","default":"CLARITY","maxLength":12},{"id":"subline","type":"string","role":"content","label":"Subline","default":"See every detail, nothing in the way.","maxLength":48},{"id":"shape","type":"enum","role":"style","label":"Glass shape","default":"knot","options":[{"value":"knot","label":"Torus knot"},{"value":"ring","label":"Ring"},{"value":"lens","label":"Lens"}]},{"id":"glass_tint","type":"color","role":"style","label":"Glass tint","default":"#cfe9ff"},{"id":"type_color","type":"color","role":"style","label":"Headline color","default":"#f4efe4"},{"id":"background","type":"color","role":"style","label":"Backdrop","default":"#101a2c"}]}
+  meta={{"duration":5,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":275}}
+  attribution={{"path":"registry/blocks/glass-hero","tags":["3d-object","three-js","webgl","glass","refraction","hero","title-card"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/glass-hero/glass-hero.html"
+>
+
+<CatalogSlot slot="code">
+
+```html glass-hero.html
+<!doctype html>
+<!--
+  Glass Hero: a glass object rises in front of a giant headline and turns, bending the type.
+  The headline is drawn inside the scene because transmission only refracts what is rendered.
+  Seek-safe: every frame is render(t), driven by one linear GSAP clock.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "headline", "type": "string", "role": "content", "label": "Headline behind the glass", "default": "CLARITY", "maxLength": 12 },
+    { "id": "subline", "type": "string", "role": "content", "label": "Subline", "default": "See every detail, nothing in the way.", "maxLength": 48 },
+    { "id": "shape", "type": "enum", "role": "style", "label": "Glass shape", "default": "knot", "options": [ { "value": "knot", "label": "Torus knot" }, { "value": "ring", "label": "Ring" }, { "value": "lens", "label": "Lens" } ] },
+    { "id": "glass_tint", "type": "color", "role": "style", "label": "Glass tint", "default": "#cfe9ff" },
+    { "id": "type_color", "type": "color", "role": "style", "label": "Headline color", "default": "#f4efe4" },
+    { "id": "background", "type": "color", "role": "style", "label": "Backdrop", "default": "#101a2c" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Glass Hero</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "GH Caption";
+        font-weight: 500;
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2)
+          format("woff2");
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #101a2c;
+      }
+      #gh-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #101a2c;
+      }
+      #gh-canvas {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+      #gh-subline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 118px;
+        text-align: center;
+        font:
+          500 36px/1.2 "GH Caption",
+          system-ui,
+          sans-serif;
+        letter-spacing: 0.01em;
+        color: rgba(244, 239, 228, 0.78);
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="gh-root"
+      data-composition-id="glass-hero"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <canvas
+        id="gh-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="5"
+        data-track-index="1"
+      ></canvas>
+      <div id="gh-subline"></div>
+    </div>
+
+    <script>
+      (function () {
+        var html = document.documentElement;
+        var defaults = {};
+        try {
+          JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(function (v) {
+            defaults[v.id] = v.default;
+          });
+        } catch (error) {
+          /* malformed declaration: the scene module falls back to its own defaults */
+        }
+        var scoped =
+          (window.__hyperframes &&
+            window.__hyperframes.getVariables &&
+            window.__hyperframes.getVariables()) ||
+          {};
+        var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
+        var root = document.getElementById("gh-root");
+        var duration = Math.max(0.001, parseFloat(root.dataset.duration) || 5);
+        var bg = /^#[0-9a-f]{6}$/i.test(String(vars.background)) ? vars.background : "#101a2c";
+        root.style.background = bg;
+        var subline = document.getElementById("gh-subline");
+        subline.textContent = vars.subline || "";
+
+        var clock = { t: 0 };
+        var scene = { vars: vars, duration: duration, clock: clock, background: bg, render: null };
+        window.__glassHero = scene;
+        window.__hf = window.__hf || {};
+        window.__hf.buildReady = window.__hf.buildReady || {};
+        window.__hf.buildReady["glass-hero"] = new Promise(function (resolve) {
+          scene.ready = resolve;
+        });
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to(clock, {
+          t: duration,
+          duration: duration,
+          ease: "none",
+          onUpdate: function () {
+            if (scene.render) scene.render(clock.t);
+          },
+        });
+        tl.fromTo(
+          subline,
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" },
+          Math.min(1.5, duration * 0.3),
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["glass-hero"] = tl;
+      })();
+    </script>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.184.0/+esm";
+      import { RoomEnvironment } from "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/environments/RoomEnvironment.js/+esm";
+
+      const host = window.__glassHero;
+      const V = host.vars;
+      const hex = (v, fallback) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : fallback);
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById("gh-canvas"),
+        antialias: true,
+        preserveDrawingBuffer: true,
+      });
+      renderer.setPixelRatio(1);
+      renderer.setSize(1920, 1080, false);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(host.background);
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.03).texture;
+      scene.environmentIntensity = 1.1;
+
+      const camera = new THREE.PerspectiveCamera(30, 1920 / 1080, 0.1, 100);
+      camera.position.set(0, 0, 10);
+
+      async function headlineTexture() {
+        try {
+          const face = new FontFace(
+            "GH Inter",
+            "url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-900-normal.woff2)",
+            { weight: "900" },
+          );
+          document.fonts.add(await face.load());
+        } catch (error) {
+          console.error("[glass-hero] headline font failed to load, using system sans", error);
+        }
+        const c = document.createElement("canvas");
+        c.width = 3840;
+        c.height = 2160;
+        const g = c.getContext("2d");
+        g.fillStyle = host.background;
+        g.fillRect(0, 0, c.width, c.height);
+        // A lifted centre and a faint dot grid give the glass something to bend everywhere.
+        const glow = g.createRadialGradient(1920, 1000, 0, 1920, 1000, 2000);
+        glow.addColorStop(0, "rgba(255,255,255,0.14)");
+        glow.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = glow;
+        g.fillRect(0, 0, c.width, c.height);
+        g.fillStyle = "rgba(255,255,255,0.16)";
+        for (let y = 60; y < c.height; y += 120)
+          for (let x = 60; x < c.width; x += 120) g.fillRect(x - 4, y - 4, 8, 8);
+        const text = String(V.headline || "CLARITY").toUpperCase();
+        let size = 1000;
+        g.font = `900 ${size}px "GH Inter", system-ui, sans-serif`;
+        while (g.measureText(text).width > 3100 && size > 200) {
+          size -= 20;
+          g.font = `900 ${size}px "GH Inter", system-ui, sans-serif`;
+        }
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.fillStyle = hex(V.type_color, "#f4efe4");
+        g.fillText(text, c.width / 2, c.height * 0.47);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return tex;
+      }
+
+      // The backdrop plane fills the frustum at z = -2, so it reads as the page itself.
+      const planeHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 12;
+      const backdrop = new THREE.Mesh(
+        new THREE.PlaneGeometry(planeHeight * (1920 / 1080), planeHeight),
+        new THREE.MeshBasicMaterial({ map: await headlineTexture(), toneMapped: false }),
+      );
+      backdrop.position.z = -2;
+      scene.add(backdrop);
+
+      const geometries = {
+        knot: () => new THREE.TorusKnotGeometry(1.05, 0.36, 320, 48, 2, 3),
+        ring: () => new THREE.TorusGeometry(1.25, 0.46, 96, 200),
+        lens: () => {
+          const g = new THREE.SphereGeometry(1.6, 128, 64);
+          g.scale(1, 1, 0.42);
+          return g;
+        },
+      };
+      const glass = new THREE.Mesh(
+        (geometries[V.shape] || geometries.knot)(),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xffffff,
+          transmission: 1,
+          thickness: 1.4,
+          ior: 1.52,
+          roughness: 0.03,
+          metalness: 0,
+          dispersion: 4,
+          attenuationColor: new THREE.Color(hex(V.glass_tint, "#cfe9ff")),
+          attenuationDistance: 2.2,
+          specularIntensity: 1,
+          clearcoat: 1,
+          clearcoatRoughness: 0.04,
+        }),
+      );
+      scene.add(glass);
+
+      const key = new THREE.DirectionalLight(0xffffff, 2.4);
+      key.position.set(-4, 5, 6);
+      scene.add(key);
+
+      const easeOut = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+      const lens = V.shape === "lens";
+
+      host.render = (t) => {
+        // Rise and settle over the first 1.6 s, then keep turning; the turn never stops,
+        // so a held frame still shows the type moving through the glass.
+        const rise = easeOut(t / 1.8);
+        glass.position.set(
+          Math.sin(t * 0.55) * 0.35,
+          -3.2 * (1 - rise) + Math.sin(t * 0.9) * 0.06,
+          1.2,
+        );
+        glass.scale.setScalar(0.62 + 0.14 * rise);
+        glass.rotation.set(
+          lens ? Math.sin(t * 0.7) * 0.35 : 0.5 + t * 0.22,
+          lens ? Math.sin(t * 0.5) * 0.5 + 0.2 : t * 0.34,
+          lens ? 0 : 0.2 + t * 0.08,
+        );
+        renderer.render(scene, camera);
+      };
+      host.render(host.clock.t);
+      host.ready();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add glass-hero" item="glass-hero" />
+
+That writes one file: `compositions/glass-hero.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 5 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="glass-hero"
+  data-composition-src="compositions/glass-hero.html"
+  data-start="0"
+  data-duration="5"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `3d-object` `three-js` `webgl` `glass` `refraction` `hero` `title-card`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

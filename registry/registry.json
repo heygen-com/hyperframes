@@ -228,6 +228,14 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "exploded-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "extruded-logo",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "flash-through-white",
       "type": "hyperframes:block"
     },
@@ -249,6 +257,10 @@
     },
     {
       "name": "gallery-tunnel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "glass-hero",
       "type": "hyperframes:block"
     },
     {
@@ -441,6 +453,10 @@
     },
     {
       "name": "oscilloscope-trace",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "product-turntable",
       "type": "hyperframes:block"
     },
     {
@@ -1581,6 +1597,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
+    "revision": "aa347d4b52cebe2cf83dcd84b140ad5b028d964c37c40c9e115ca93eb3e029e4"
   }
 }

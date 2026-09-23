@@ -1,0 +1,408 @@
+---
+title: "Product Turntable"
+description: "A product turns a full revolution on a studio plinth in a seamless loop. Drop in a GLB or glTF model, or keep the built-in drink can with your own label."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/product-turntable.json"
+  compositionId="product-turntable"
+  compositionSrc="compositions/product-turntable.html"
+  title="Product Turntable"
+  description="A product turns a full revolution on a studio plinth in a seamless loop. Drop in a GLB or glTF model, or keep the built-in drink can with your own label."
+  variables={[{"id":"model_url","type":"string","role":"content","label":"Model URL (.glb or .gltf)","description":"Leave empty for the built-in drink can.","default":""},{"id":"product_name","type":"string","role":"content","label":"Label wordmark","default":"YUZU","maxLength":10},{"id":"flavor","type":"string","role":"content","label":"Label line","default":"Sparkling Citrus","maxLength":28},{"id":"caption","type":"string","role":"content","label":"Caption","default":"Sparkling Citrus · 355 ml","maxLength":40},{"id":"label_color","type":"color","role":"style","label":"Label color","default":"#f2c230"},{"id":"ink_color","type":"color","role":"style","label":"Label ink","default":"#1d2a24"},{"id":"background","type":"color","role":"style","label":"Backdrop","default":"#e8e4dc"},{"id":"turns","type":"number","role":"motion","label":"Turns per clip","default":1,"min":1,"max":4,"step":1}]}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":337}}
+  attribution={{"path":"registry/blocks/product-turntable","tags":["3d-object","three-js","webgl","product","turntable","glb","loop"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/product-turntable/product-turntable.html"
+>
+
+<CatalogSlot slot="code">
+
+```html product-turntable.html
+<!doctype html>
+<!--
+  Product Turntable: one product turns a full revolution on a studio plinth, a seamless loop.
+  model_url takes a .glb/.gltf; empty uses the built-in procedural drink can.
+  Seek-safe: every frame is render(t), driven by one linear GSAP clock.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "model_url", "type": "string", "role": "content", "label": "Model URL (.glb or .gltf)", "description": "Leave empty for the built-in drink can.", "default": "" },
+    { "id": "product_name", "type": "string", "role": "content", "label": "Label wordmark", "default": "YUZU", "maxLength": 10 },
+    { "id": "flavor", "type": "string", "role": "content", "label": "Label line", "default": "Sparkling Citrus", "maxLength": 28 },
+    { "id": "caption", "type": "string", "role": "content", "label": "Caption", "default": "Sparkling Citrus · 355 ml", "maxLength": 40 },
+    { "id": "label_color", "type": "color", "role": "style", "label": "Label color", "default": "#f2c230" },
+    { "id": "ink_color", "type": "color", "role": "style", "label": "Label ink", "default": "#1d2a24" },
+    { "id": "background", "type": "color", "role": "style", "label": "Backdrop", "default": "#e8e4dc" },
+    { "id": "turns", "type": "number", "role": "motion", "label": "Turns per clip", "default": 1, "min": 1, "max": 4, "step": 1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Product Turntable</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "PT Caption";
+        font-weight: 500;
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2)
+          format("woff2");
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #e8e4dc;
+      }
+      #pt-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(1100px 760px at 50% 38%, rgba(255, 255, 255, 0.72), transparent 70%),
+          var(--pt-bg, #e8e4dc);
+      }
+      #pt-canvas {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+      #pt-caption {
+        position: absolute;
+        left: 120px;
+        bottom: 104px;
+        font:
+          500 30px/1.2 "PT Caption",
+          system-ui,
+          sans-serif;
+        letter-spacing: 0.01em;
+        color: rgba(20, 22, 24, 0.62);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="pt-root"
+      data-composition-id="product-turntable"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <canvas
+        id="pt-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+      ></canvas>
+      <div id="pt-caption"></div>
+    </div>
+
+    <script>
+      (function () {
+        var html = document.documentElement;
+        var defaults = {};
+        try {
+          JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(function (v) {
+            defaults[v.id] = v.default;
+          });
+        } catch (error) {
+          /* malformed declaration: the scene module falls back to its own defaults */
+        }
+        var scoped =
+          (window.__hyperframes &&
+            window.__hyperframes.getVariables &&
+            window.__hyperframes.getVariables()) ||
+          {};
+        var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
+        var root = document.getElementById("pt-root");
+        var duration = Math.max(0.001, parseFloat(root.dataset.duration) || 6);
+        root.style.setProperty("--pt-bg", vars.background || "#e8e4dc");
+        document.getElementById("pt-caption").textContent = vars.caption || "";
+
+        var clock = { t: 0 };
+        var scene = { vars: vars, duration: duration, clock: clock, render: null };
+        window.__productTurntable = scene;
+        window.__hf = window.__hf || {};
+        window.__hf.buildReady = window.__hf.buildReady || {};
+        window.__hf.buildReady["product-turntable"] = new Promise(function (resolve) {
+          scene.ready = resolve;
+        });
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to(clock, {
+          t: duration,
+          duration: duration,
+          ease: "none",
+          onUpdate: function () {
+            if (scene.render) scene.render(clock.t);
+          },
+        });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["product-turntable"] = tl;
+      })();
+    </script>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.184.0/+esm";
+      import { RoomEnvironment } from "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/environments/RoomEnvironment.js/+esm";
+      import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/loaders/GLTFLoader.js/+esm";
+
+      const host = window.__productTurntable;
+      const V = host.vars;
+      const hex = (v, fallback) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : fallback);
+      const turns = Math.max(1, Math.min(4, Math.round(Number(V.turns) || 1)));
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById("pt-canvas"),
+        antialias: true,
+        alpha: true,
+        preserveDrawingBuffer: true,
+      });
+      renderer.setPixelRatio(1);
+      renderer.setSize(1920, 1080, false);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+
+      const scene = new THREE.Scene();
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+      // 50 mm feel, camera ~11 degrees above the product's middle.
+      const camera = new THREE.PerspectiveCamera(24, 1920 / 1080, 0.1, 100);
+      camera.position.set(0, 2.35, 8.1);
+      camera.lookAt(0, 1.0, 0);
+
+      const key = new THREE.DirectionalLight(0xffffff, 1.6);
+      key.position.set(-3.5, 5, 4);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0xfff1dc, 2.2);
+      rim.position.set(4, 3, -4);
+      scene.add(rim);
+
+      // Plinth with a soft baked contact shadow: no shadow maps, no per-frame cost.
+      const plinth = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.42, 1.46, 0.2, 96),
+        new THREE.MeshStandardMaterial({ color: 0xf4f1ec, roughness: 0.55, metalness: 0 }),
+      );
+      plinth.position.y = -0.1;
+      scene.add(plinth);
+
+      function radialTexture(inner, outer) {
+        const c = document.createElement("canvas");
+        c.width = c.height = 256;
+        const g = c.getContext("2d");
+        const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+        grad.addColorStop(0, inner);
+        grad.addColorStop(1, outer);
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 256, 256);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+      }
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.4, 2.4),
+        new THREE.MeshBasicMaterial({
+          map: radialTexture("rgba(0,0,0,0.55)", "rgba(0,0,0,0)"),
+          transparent: true,
+          depthWrite: false,
+        }),
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = 0.002;
+      scene.add(shadow);
+
+      const turntable = new THREE.Group();
+      scene.add(turntable);
+
+      async function labelTexture() {
+        try {
+          const face = new FontFace(
+            "PT Inter",
+            "url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-800-normal.woff2)",
+            { weight: "800" },
+          );
+          document.fonts.add(await face.load());
+        } catch (error) {
+          console.error("[product-turntable] label font failed to load, using system sans", error);
+        }
+        const c = document.createElement("canvas");
+        // 2.35:1 matches the label's circumference to height, so type is not stretched.
+        c.width = 2048;
+        c.height = 872;
+        const g = c.getContext("2d");
+        const label = hex(V.label_color, "#f2c230");
+        const ink = hex(V.ink_color, "#1d2a24");
+        g.fillStyle = label;
+        g.fillRect(0, 0, 2048, 872);
+        g.fillStyle = ink;
+        g.fillRect(0, 70, 2048, 12);
+        g.fillRect(0, 790, 2048, 12);
+        const name = String(V.product_name || "YUZU").toUpperCase();
+        const flavor = String(V.flavor || "").toUpperCase();
+        // Two faces, front and back, so the wordmark reads twice per revolution.
+        for (const cx of [512, 1536]) {
+          g.save();
+          g.textAlign = "center";
+          g.textBaseline = "middle";
+          let size = 280;
+          g.font = `800 ${size}px "PT Inter", system-ui, sans-serif`;
+          while (g.measureText(name).width > 600 && size > 80) {
+            size -= 10;
+            g.font = `800 ${size}px "PT Inter", system-ui, sans-serif`;
+          }
+          g.fillText(name, cx, 400);
+          g.font = `800 50px "PT Inter", system-ui, sans-serif`;
+          g.globalAlpha = 0.8;
+          g.fillText(flavor, cx, 590, 540);
+          g.restore();
+        }
+        g.save();
+        g.textAlign = "center";
+        g.font = `800 34px "PT Inter", system-ui, sans-serif`;
+        g.globalAlpha = 0.7;
+        for (const cx of [0, 1024, 2048]) g.fillText("355 ML", cx, 450);
+        g.restore();
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return tex;
+      }
+
+      async function builtInCan() {
+        const can = new THREE.Group();
+        const metal = new THREE.MeshStandardMaterial({
+          color: 0xd4d7dc,
+          metalness: 1,
+          roughness: 0.24,
+        });
+        // Lathe profile (radius, height): domed base, straight wall, necked shoulder, rolled lip.
+        const profile = [
+          [0.0, 0.1],
+          [0.46, 0.06],
+          [0.6, 0.0],
+          [0.66, 0.06],
+          [0.67, 0.16],
+          [0.67, 2.02],
+          [0.63, 2.14],
+          [0.56, 2.24],
+          [0.555, 2.29],
+          [0.575, 2.31],
+          [0.56, 2.33],
+          [0.5, 2.3],
+          [0.0, 2.27],
+        ].map(([x, y]) => new THREE.Vector2(x, y));
+        can.add(new THREE.Mesh(new THREE.LatheGeometry(profile, 128), metal));
+        const labelMat = new THREE.MeshPhysicalMaterial({
+          map: await labelTexture(),
+          metalness: 0.45,
+          roughness: 0.32,
+          clearcoat: 1,
+          clearcoatRoughness: 0.12,
+        });
+        const label = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.674, 0.674, 1.8, 128, 1, true),
+          labelMat,
+        );
+        label.position.y = 1.1;
+        can.add(label);
+        // Pull tab: a thin rounded plate on the lid.
+        const tab = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.22, 4, 12), metal);
+        tab.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+        tab.scale.set(1, 1, 0.25);
+        tab.position.set(0.1, 2.285, 0);
+        can.add(tab);
+        return can;
+      }
+
+      function fitModel(object) {
+        const box = new THREE.Box3().setFromObject(object);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const scale = Math.min(2.3 / size.y, 2.6 / Math.max(size.x, size.z));
+        object.scale.setScalar(scale);
+        object.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+        const wrapper = new THREE.Group();
+        wrapper.add(object);
+        return wrapper;
+      }
+
+      // A model_url that fails to load fails the render; it never swaps in a different product.
+      async function product() {
+        const url = String(V.model_url || "").trim();
+        if (!url) return builtInCan();
+        const gltf = await new GLTFLoader().loadAsync(url);
+        return fitModel(gltf.scene);
+      }
+
+      turntable.add(await product());
+
+      host.render = (t) => {
+        turntable.rotation.y = (t / host.duration) * turns * Math.PI * 2;
+        renderer.render(scene, camera);
+      };
+      host.render(host.clock.t);
+      host.ready();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add product-turntable" item="product-turntable" />
+
+That writes one file: `compositions/product-turntable.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="product-turntable"
+  data-composition-src="compositions/product-turntable.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `3d-object` `three-js` `webgl` `product` `turntable` `glb` `loop`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

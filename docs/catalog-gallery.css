@@ -52,7 +52,7 @@
 
 #navigation-items li[data-group-tag] { --catalog-desc:""; }
 #navigation-items li[data-group-tag]::after { content:var(--catalog-desc); display:block; padding:0 12px 8px 40px; font-size:11px; line-height:1.5; color:var(--hf-text-secondary); }
-#navigation-items li[data-title="3D motion"][data-group-tag] { --catalog-desc:"Three.js scenes: orbiting cards, particle fields, and depth-lit product shots."; }
+#navigation-items li[data-title="3D"][data-group-tag] { --catalog-desc:"Three.js scenes and objects: camera moves, product turntables, glass, exploded layers."; }
 #navigation-items li[data-title="Carousels"][data-group-tag] { --catalog-desc:"Image cards that circle, orbit, or sweep a path across the frame."; }
 #navigation-items li[data-title="Text & captions"][data-group-tag] { --catalog-desc:"Word-by-word caption reveals, highlights, and kinetic type."; }
 #navigation-items li[data-title="Code"][data-group-tag] { --catalog-desc:"Code snippets that type, diff, highlight, and morph on screen."; }

@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
 import {
+  groupForItem,
   mdxStringAttribute,
   stageProps,
   variableBootstrap,
@@ -359,5 +360,19 @@ describe("tile poster priority", () => {
     );
     assert.match(source, /card\(item, group\.pinned === true\)/);
     assert.doesNotMatch(source, /\.map\(card\)/);
+  });
+});
+
+describe("3D shelves", () => {
+  const block = (tags: string[]) => groupForItem({ name: "x", type: "block", tags });
+
+  it("shelves 3d-object and 3d-motion items apart, each on its first tag", () => {
+    assert.equal(block(["3d-object", "three-js", "glass", "title-card"]), "3D objects");
+    assert.equal(block(["3d-motion", "cards", "orbit"]), "3D motion");
+    assert.equal(block(["three-js", "3d-object"]), "Blocks");
+  });
+
+  it("names the camera-move shelf Camera, since 3D items live under 3D", () => {
+    assert.equal(block(["camera", "motion-primitive", "zoom"]), "Camera");
   });
 });

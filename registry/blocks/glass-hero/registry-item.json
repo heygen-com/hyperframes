@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "glass-hero",
+  "type": "hyperframes:block",
+  "title": "Glass Hero",
+  "description": "A solid glass object rises in front of a giant headline and keeps turning, so the type bends and splits into colour through it.",
+  "tags": ["3d-object", "three-js", "webgl", "glass", "refraction", "hero", "title-card"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "glass-hero.html",
+      "target": "compositions/glass-hero.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
