@@ -47,16 +47,28 @@ function closureOf(read: SourceReader, compPath: string): Set<string> {
   return closure;
 }
 
+const inputSignatures = new Map<string, { projectSignature: string; inputSignature: string }>();
+
 /**
  * The part of the project a thumbnail of `compPath` renders from: everything except the
  * compositions the root mounts that `compPath` itself does not. The root always counts,
- * since a sub-composition preview is built on index.html's head.
+ * since a sub-composition preview is built on index.html's head. Recomputed only when
+ * `projectSignature` (the whole project's) moves.
  */
-export function compositionInputSignature(projectDir: string, compPath: string): string {
+export function compositionInputSignature(
+  projectDir: string,
+  compPath: string,
+  projectSignature: string,
+): string {
+  const key = `${projectDir}\0${compPath}`;
+  const known = inputSignatures.get(key);
+  if (known?.projectSignature === projectSignature) return known.inputSignature;
   const read = projectReader(projectDir);
   const inputs = closureOf(read, compPath).add(ROOT_COMPOSITION);
   const siblings = [...closureOf(read, ROOT_COMPOSITION)].filter((path) => !inputs.has(path));
-  return createProjectSignature(projectDir, new Set(siblings));
+  const inputSignature = createProjectSignature(projectDir, new Set(siblings));
+  inputSignatures.set(key, { projectSignature, inputSignature });
+  return inputSignature;
 }
 
 /**

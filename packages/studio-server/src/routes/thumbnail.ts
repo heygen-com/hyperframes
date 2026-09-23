@@ -15,6 +15,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
 import { compositionInputSignature } from "../helpers/compositionInputs.js";
+import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 
@@ -78,15 +79,16 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (!adapter.generateThumbnail) {
       return c.json({ error: "Thumbnails not available" }, 501);
     }
-    const project = await adapter.resolveProject(c.req.param("id"));
-    if (!project) return c.json({ error: "not found" }, 404);
+    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
+    if (!resolved) return c.json({ error: "not found" }, 404);
+    const { project, signature: projectSignature } = resolved;
 
     let compPath = decodeURIComponent(
       c.req.path.replace(`/projects/${project.id}/thumbnail/`, "").split("?")[0] ?? "",
     );
     if (compPath && !compPath.includes(".")) compPath += ".html";
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
-    const inputSignature = compositionInputSignature(project.dir, compPath);
+    const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
 
     const url = new URL(c.req.url, `http://${c.req.header("host") || "localhost"}`);
     const rawSeekTime = url.searchParams.get("t");
@@ -202,10 +204,14 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             signal,
           });
           if (!generated) return null;
-          const afterGeneration = await adapter.resolveProject(project.id);
+          const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
+          const inputsUnchanged = (signature: string) =>
+            compositionInputSignature(project.dir, compPath, signature) === inputSignature;
+          // Both the adapter's signature and a fresh one: the adapter's can lag the watcher.
           if (
-            afterGeneration?.dir !== project.dir ||
-            compositionInputSignature(project.dir, compPath) !== inputSignature
+            afterGeneration?.project.dir !== project.dir ||
+            !inputsUnchanged(afterGeneration.signature) ||
+            !inputsUnchanged(createProjectSignature(project.dir))
           ) {
             // The browser may have rendered content written after this request
             // captured its cache identity. Return the pixels to this caller,

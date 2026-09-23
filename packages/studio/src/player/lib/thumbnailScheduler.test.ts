@@ -153,6 +153,36 @@ describe("ThumbnailScheduler", () => {
     expect(richLoad).toHaveBeenCalledTimes(1);
   });
 
+  it("holds composition renders while the preview reloads and re-runs the ones it preempted", async () => {
+    const scheduler = new ThumbnailScheduler();
+    const signals: AbortSignal[] = [];
+    const composition = vi.fn((signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<ThumbnailLoadedResult>((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        if (signals.length > 1) resolve(result("scene"));
+      });
+    });
+    const image = vi.fn(async () => result("still"));
+    const scene = request("scene", composition, "visible", { kind: "composition" });
+    const still = request("still", image);
+
+    scheduler.acquire(scene, vi.fn());
+    expect(composition).toHaveBeenCalledTimes(1);
+    scheduler.setPreviewReloading(true);
+    await flush();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(scheduler.getSnapshot(scene)).toEqual({ status: "queued" });
+    scheduler.acquire(still, vi.fn());
+    expect(image).toHaveBeenCalledTimes(1);
+    expect(composition).toHaveBeenCalledTimes(1);
+
+    scheduler.setPreviewReloading(false);
+    await flush();
+    expect(composition).toHaveBeenCalledTimes(2);
+    expect(scheduler.getSnapshot(scene)).toMatchObject({ status: "ready", value: { url: "scene" } });
+  });
+
   it("aborts queued and active jobs after the final release", async () => {
     const scheduler = new ThumbnailScheduler(
       resolveTimelineViewportBudgets({ concurrentVideoDecodes: 1 }),

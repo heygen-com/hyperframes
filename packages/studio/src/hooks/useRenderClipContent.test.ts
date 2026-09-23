@@ -275,7 +275,7 @@ describe("useRenderClipContent", () => {
     usePlayerStore.setState({
       thumbnailMode: "adaptive",
       timelineSessionEpoch: 7,
-      thumbnailContentRevision: 11,
+      thumbnailRevisions: { "*": 11, "compositions/nested.html": 2, "compositions/other.html": 5 },
     });
 
     const content = renderClipContent({
@@ -293,7 +293,8 @@ describe("useRenderClipContent", () => {
       expect(content.props).toMatchObject({
         projectId: "my-project",
         sessionEpoch: 7,
-        contentRevision: 11,
+        // its own composition's revision plus the all-compositions one, not a sibling's
+        contentRevision: 13,
       });
     }
   });
