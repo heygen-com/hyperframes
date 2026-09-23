@@ -54,7 +54,9 @@ describe("createProjectWatcher", () => {
     mockWatcher.emit("change", "change", "scene-a.html");
     mockWatcher.emit("change", "change", "scene-b.html");
     mockWatcher.emit("change", "change", "scene-a.html");
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(29);
+    expect(listener).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
 
     expect(listener.mock.calls).toEqual([["scene-a.html"], ["scene-b.html"]]);
     projectWatcher.close();
