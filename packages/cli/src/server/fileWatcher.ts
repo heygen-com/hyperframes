@@ -26,8 +26,8 @@ const WATCHER_EXCLUDED_DIRS = new Set([
   "outputs",
   "renders",
 ]);
-// A lone save reaches the preview after QUIET_MS; writes that keep coming after a flush
-// (a checkout, a multi-file tool) coalesce over BURST_MS so each doesn't start a rebuild.
+// A save reaches the preview QUIET_MS after the writes go quiet, but at most once per BURST_MS,
+// so a checkout or a multi-file tool doesn't start a rebuild for every file.
 const QUIET_MS = 30;
 const BURST_MS = 300;
 
@@ -134,7 +134,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
 
       pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);
-      const delay = Date.now() - lastFlushAt < BURST_MS ? BURST_MS : QUIET_MS;
+      const delay = Math.max(QUIET_MS, lastFlushAt + BURST_MS - Date.now());
       debounceTimer = setTimeout(() => {
         const changedPaths = [...pendingPaths];
         pendingPaths.clear();

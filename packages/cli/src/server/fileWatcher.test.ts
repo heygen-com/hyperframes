@@ -99,7 +99,7 @@ describe("createProjectWatcher", () => {
     expect(() => projectWatcher?.close()).not.toThrow();
   });
 
-  it("coalesces writes that keep arriving right after a flush", () => {
+  it("flushes at most once per 300 ms while writes keep coming", () => {
     vi.useFakeTimers();
     const projectWatcher = createProjectWatcher("/fake/project/dir");
     const listener = vi.fn();
@@ -112,12 +112,13 @@ describe("createProjectWatcher", () => {
     mockWatcher.emit("change", "change", "b.html");
     vi.advanceTimersByTime(100);
     mockWatcher.emit("change", "change", "c.html");
-    vi.advanceTimersByTime(299);
+    vi.advanceTimersByTime(199);
     expect(listener).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1);
     expect(listener.mock.calls.slice(1)).toEqual([["b.html"], ["c.html"]]);
 
-    vi.advanceTimersByTime(300);
+    // A save that lands late in the window waits only for quiet, not a whole window.
+    vi.advanceTimersByTime(290);
     mockWatcher.emit("change", "change", "d.html");
     vi.advanceTimersByTime(30);
     expect(listener).toHaveBeenLastCalledWith("d.html");
