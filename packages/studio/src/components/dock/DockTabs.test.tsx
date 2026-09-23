@@ -177,10 +177,25 @@ describe("dock tab fill", () => {
     const strip = stripOf("design");
     if (!strip) throw new Error("no design strip");
     await activate("variables");
-    // The four tabs fit, so the strip is unscrolled.
+    // The four tabs fit, so the strip is unscrolled; then it narrows to two and a half tabs.
     strip.scrollLeft = 0;
+    Object.defineProperty(strip, "clientWidth", { value: 1000, configurable: true });
+    act(() => resizeAll());
     Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
     act(() => resizeAll());
     expect(strip.scrollLeft).toBe(3 * TAB_STEP + TAB_WIDTH + 1 - 250);
+  });
+
+  it("leaves a strip the user scrolled alone when something else in the dock changes", async () => {
+    const strip = stripOf("design");
+    if (!strip) throw new Error("no design strip");
+    await activate("variables");
+    Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
+    act(() => resizeAll());
+    // Scrolled back by hand to look at the first tabs, then another group takes focus.
+    strip.scrollLeft = 0;
+    await activate("assets");
+    act(() => resizeAll());
+    expect(strip.scrollLeft).toBe(0);
   });
 });

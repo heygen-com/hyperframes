@@ -22,13 +22,16 @@ function revealedScroll(box: { left: number; width: number }, scrollLeft: number
   return Math.max(scrollLeft, box.left + box.width + 1 - width);
 }
 
-/** Reads where the shown tab sits; the write happens after every strip is read, so layout runs once. */
-function measureFill(list: HTMLElement): () => void {
+/**
+ * Reads where the shown tab sits; the write happens after every strip is read, so layout runs once.
+ * Only a strip that got narrower is scrolled, so a strip the user scrolled by hand stays put.
+ */
+function measureFill(list: HTMLElement, narrowed: boolean): () => void {
   const fill = fillOf(list);
   const tab = list.querySelector<HTMLElement>(":scope > .dv-active-tab");
   const box = tab ? { width: tab.offsetWidth, left: tab.offsetLeft } : null;
   const scrollLeft = list.scrollLeft;
-  const target = box ? revealedScroll(box, scrollLeft, list.clientWidth) : scrollLeft;
+  const target = box && narrowed ? revealedScroll(box, scrollLeft, list.clientWidth) : scrollLeft;
   return () => {
     fill.hidden = !box;
     if (!box) return;
@@ -70,9 +73,16 @@ export function installTabFill(api: DockviewApi, root: HTMLElement): () => void 
       observed.add(element);
     }
   }
+  const widths = new WeakMap<HTMLElement, number>();
+  function narrowed(list: HTMLElement) {
+    const width = list.clientWidth;
+    const before = widths.get(list) ?? width;
+    widths.set(list, width);
+    return width < before;
+  }
   function placeAll() {
     const strips = [...lists()];
-    const writes = strips.map(measureFill);
+    const writes = strips.map((list) => measureFill(list, narrowed(list)));
     for (const write of writes) write();
     for (const list of strips) markClippedEdges(list);
     observe(strips.flatMap((list) => [list, ...list.querySelectorAll(":scope > .dv-tab")]));

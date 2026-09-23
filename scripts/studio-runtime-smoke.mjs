@@ -101,9 +101,10 @@ export function studioSmokeApiResponse(method, requestUrl) {
 // about 10px narrower than macOS does; keep that much room so a strip that fits here fits on a Mac.
 const MAC_FONT_ALLOWANCE_PX = 10;
 
-/** Runs in the page: the strip's tabs, plus the allowance, must fit before its action slot. */
-function clippedStrip(index, allowance) {
-  const strip = document.querySelectorAll(".dv-tabs-container")[index];
+/** Runs in the page: the active group's tabs, plus the allowance, must fit before its actions. */
+function clippedStrip(allowance) {
+  const strip = document.querySelector(".dv-groupview.dv-active-group .dv-tabs-container");
+  if (!strip) return "no active dock strip";
   const actions = strip
     .closest(".dv-tabs-and-actions-container")
     ?.querySelector(".dv-right-actions-container");
@@ -125,13 +126,13 @@ async function dockStripErrors(page) {
     found.push(`${reservedSlots} inactive dock strips hold width for actions they do not draw`);
   }
   const shownTabs = await page.$$(".dv-tabs-container .dv-active-tab");
-  for (const [index, tab] of shownTabs.entries()) {
+  for (const tab of shownTabs) {
     // An active group draws its strip actions, so this is the least room its tabs get.
     await tab.click();
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
-    const clipped = await page.evaluate(clippedStrip, index, MAC_FONT_ALLOWANCE_PX);
+    const clipped = await page.evaluate(clippedStrip, MAC_FONT_ALLOWANCE_PX);
     if (clipped) {
       found.push(
         `Dock tab strip clips a label at the default layout (${MAC_FONT_ALLOWANCE_PX}px macOS allowance): ${clipped}`,
