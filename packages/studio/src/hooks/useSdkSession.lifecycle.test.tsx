@@ -440,7 +440,9 @@ describe("useSdkSession unavailable telemetry", () => {
   // so this is what "the composition genuinely is not there" looks like on the
   // wire — previously indistinguishable from a broken request. The shim and a
   // real 0-byte file are the same response, hence the name.
-  it("separates a file that is not on disk", async () => {
+  // An older server sends no `missing` field, so the combined label stays —
+  // rather than guessing one of the two and quietly corrupting the series.
+  it("keeps the combined label when the server does not say which empty this is", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => ({ content: "" }) }) as Response),
@@ -456,6 +458,81 @@ describe("useSdkSession unavailable telemetry", () => {
       reason: "absent_or_empty",
       path_in_tree: null,
     });
+    await act(async () => root.unmount());
+  });
+
+  // `missing: true` is the route's shim — nothing resolved at that path.
+  it("reports a file the server could not find as absent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => ({ ok: true, json: async () => ({ content: "", missing: true }) }) as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "absent",
+      path_in_tree: null,
+    });
+    await act(async () => root.unmount());
+  });
+
+  // `missing: false` with empty content is a real 0-byte file on disk — a
+  // placeholder somebody created and has not written yet, not a bad path.
+  it("reports a real zero-byte file separately from an absent one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => ({ ok: true, json: async () => ({ content: "", missing: false }) }) as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "empty_file",
+      path_in_tree: null,
+    });
+    await act(async () => root.unmount());
+  });
+
+  // A 200 carrying HTML is an SPA fallback or a proxy answering in the route's
+  // place. Before this, `res.json()` rejected outside any catch and the outer
+  // catch filed it as `stage: "open"` — blaming the user's composition for a
+  // response the composition had nothing to do with.
+  it("reports a non-JSON 200 as a read failure, not a composition parse failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            headers: { get: () => "text/html; charset=utf-8" },
+            json: async () => {
+              throw new SyntaxError(`Unexpected token '<', "<!-- /*!"... is not valid JSON`);
+            },
+          }) as unknown as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "invalid_json",
+      content_type: "text/html; charset=utf-8",
+    });
+    expect(trackMock).not.toHaveBeenCalledWith(
+      "sdk_session_unavailable",
+      expect.objectContaining({ stage: "open" }),
+    );
     await act(async () => root.unmount());
   });
 
