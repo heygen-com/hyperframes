@@ -530,7 +530,13 @@ describe("studio manual edits", () => {
     const loop: Record<string, unknown> = { paused: () => false };
     loop.parent = loop;
     previewWindow.__timelines = {
-      scene0: { parent: loop, play: () => {}, paused: () => false, time: () => 0, duration: () => 5 },
+      scene0: {
+        parent: loop,
+        play: () => {},
+        paused: () => false,
+        time: () => 0,
+        duration: () => 5,
+      },
     };
 
     expect(() => installStudioManualEditSeekReapply(previewWindow, () => {})).not.toThrow();
