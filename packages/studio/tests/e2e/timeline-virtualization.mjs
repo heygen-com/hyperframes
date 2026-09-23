@@ -75,6 +75,7 @@ async function collectHeapBytes(client) {
 async function collectRun(page, injectedLongTaskMs = 0) {
   return page.evaluate(async (longTaskProbeMs) => {
     const longTasks = [];
+    const longTaskDetails = [];
     const scroller = findTimelineScroller();
     const observer = observeLongTasks();
     let interactions;
@@ -91,6 +92,10 @@ async function collectRun(page, injectedLongTaskMs = 0) {
       frameIntervalP95Ms: percentileInPage(frameIntervals, 0.95),
       scrollSampleCount: interactions.length,
       longestTaskMs: Math.max(0, ...longTasks),
+      rawInteractions: interactions.map((v) => Math.round(v * 10) / 10),
+      rawFrameIntervals: frameIntervals.map((v) => Math.round(v * 10) / 10),
+      longTasks: longTaskDetails,
+      wallStart: Date.now(),
       scrollWidth: scroller.scrollWidth,
       scrollHeight: scroller.scrollHeight,
       diagnostics: window.__studioTest.readTimelinePerformanceDiagnostics(),
@@ -111,7 +116,19 @@ async function collectRun(page, injectedLongTaskMs = 0) {
     }
 
     function recordLongTasks(entries) {
-      for (const entry of entries) longTasks.push(entry.duration);
+      for (const entry of entries) {
+        longTasks.push(entry.duration);
+        longTaskDetails.push({
+          duration: Math.round(entry.duration),
+          startTime: Math.round(entry.startTime),
+          attribution: (entry.attribution ?? []).map((a) => ({
+            containerType: a.containerType,
+            containerSrc: (a.containerSrc ?? '').slice(-60),
+            containerName: a.containerName,
+            containerId: a.containerId,
+          })),
+        });
+      }
     }
 
     function observeLongTasks() {
@@ -258,6 +275,10 @@ try {
   if (TIER === "low-resource") {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   }
+  page.on('console', (m) => console.error('[diag console]', Date.now(), m.type(), m.text().slice(0, 240)));
+  page.on('pageerror', (e) => console.error('[diag pageerror]', Date.now(), String(e).slice(0, 240)));
+  page.on('framenavigated', (f) => { if (f !== page.mainFrame()) console.error('[diag frame-nav]', Date.now(), (f.url() || 'about:blank').slice(-80)); });
+  page.on('request', (r) => { if (/runtime\.js/.test(r.url())) console.error('[diag runtime.js]', Date.now()); });
   await page.goto(STUDIO_URL, { waitUntil: "networkidle0", timeout: 60_000 });
   await page.waitForFunction(
     () => typeof window.__studioTest?.loadTimelinePerformanceFixture === "function",
@@ -310,7 +331,9 @@ try {
   const frameIntervalLimitMs =
     TIER === "primary" ? budgets.frameIntervalP95Ms : budgets.constrainedFrameIntervalP95Ms;
   for (let index = 0; index < budgets.warmupRuns + budgets.measuredRuns; index += 1) {
+    console.error('[diag run-start]', index, Date.now());
     const run = await collectRun(page);
+    console.error('[diag run-end]', index, Date.now(), 'i95', run.interactionP95Ms.toFixed(1), 'f95', run.frameIntervalP95Ms.toFixed(1));
     if (index >= budgets.warmupRuns) runs.push(run);
   }
   // Latency, long tasks and memory are product promises and hold for both
