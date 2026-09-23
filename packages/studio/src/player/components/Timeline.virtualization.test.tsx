@@ -140,7 +140,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     usePlayerStore.getState().reset();
   });
 
-  it("defers rich clip content while scrolling without replacing the clip shell", async () => {
+  it("keeps a clip's picture on screen while the timeline scrolls", async () => {
     const [{ Timeline }, { usePlayerStore }] = await Promise.all([
       import("./Timeline"),
       import("../store/playerStore"),
@@ -167,17 +167,18 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
       expect(scroller).not.toBeNull();
       expect(clip).not.toBeNull();
       expect(clip?.title).toBe("Clip 0 • 0.0s – 10.0s");
-      expect(host.querySelector("[data-rich-content]")).not.toBeNull();
+      const picture = host.querySelector("[data-rich-content]");
+      expect(picture).not.toBeNull();
 
       if (scroller) await dispatchScroll(scroller);
       expect(host.querySelector('[data-el-id="clip-0"]')).toBe(clip);
-      expect(host.querySelector("[data-rich-content]")).toBeNull();
+      expect(host.querySelector("[data-rich-content]")).toBe(picture);
 
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 110));
       });
       expect(host.querySelector('[data-el-id="clip-0"]')).toBe(clip);
-      expect(host.querySelector("[data-rich-content]")).not.toBeNull();
+      expect(host.querySelector("[data-rich-content]")).toBe(picture);
     } finally {
       act(() => root.unmount());
       usePlayerStore.getState().reset();

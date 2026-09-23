@@ -11,7 +11,6 @@ import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvi
 import {
   buildTimelineMeta,
   resolveMultiDragPreview,
-  resolveRenderClipContent,
   resolveResizingElementIds,
   shouldIgnoreTimelinePointerDown,
 } from "./timelineProviderStateBuilders";
@@ -509,11 +508,6 @@ export function useTimelineProviderState({
     onRazorSplit: editContext.onRazorSplit,
     onRazorSplitAll: editContext.onRazorSplitAll,
   };
-  const timelineRenderClipContent = resolveRenderClipContent(
-    timelineFocus.rowVirtualizationActive,
-    viewport.isScrolling,
-    renderClipContent,
-  );
   const timelineMeta = buildTimelineMeta({
     emptyState: {
       isDragOver: assetDrop.isDragOver,
@@ -580,7 +574,7 @@ export function useTimelineProviderState({
       overlays,
     },
     actions: {
-      renderClipContent: timelineRenderClipContent,
+      renderClipContent,
       renderClipOverlay,
       setFocusedEaseSegment,
     },
