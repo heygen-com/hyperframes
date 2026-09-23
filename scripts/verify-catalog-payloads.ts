@@ -42,13 +42,21 @@ export function itemsFromDiff(diffOutput: string): Set<string> {
   return items;
 }
 
-function changedItems(ref: string): Set<string> {
+export function changedItems(ref: string, cwd = join(scriptDir, "..")): Set<string> {
   const out = execFileSync(
     "git",
-    ["diff", "--name-only", "--diff-filter=ACMR", `${ref}...HEAD`, "--", "docs/public/catalog"],
-    { encoding: "utf-8", cwd: join(scriptDir, "..") },
+    ["diff", "--name-only", "--diff-filter=ACMR", ref, "--", "docs/public/catalog"],
+    { encoding: "utf-8", cwd },
   );
-  return itemsFromDiff(out);
+  const added = execFileSync(
+    "git",
+    ["ls-files", "--others", "--exclude-standard", "--", "docs/public/catalog"],
+    {
+      encoding: "utf-8",
+      cwd,
+    },
+  );
+  return itemsFromDiff(out + "\n" + added);
 }
 
 function payloadFiles(

@@ -107,39 +107,33 @@ regeneration and then disappears; entries left behind for directories that no
 longer exist are worse, because `hyperframes add <name>` resolves the name and
 then fails on missing files.
 
-### What a maintainer finishes for you
+### Generated catalog files
 
-Two things need assets an outside contributor is not expected to install. Open
-the pull request without them and say so; neither blocks review.
+Catalog pull requests commit only the item's source files. Do not commit the
+registry index, search vectors, generated docs pages, preview payloads, gallery
+data, or Catalog navigation. CI builds and validates them from your sources.
 
-| Thing                                           | If you have it                                            | If you do not                                                           |
-| ----------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------- |
-| The search index (`registry/catalog-artifact/`) | The pre-commit hook rebuilds and stages it                | The hook skips, CI names the gap, a maintainer regenerates before merge |
-| The catalog preview image                       | Internal contributors run `scripts/upload-docs-images.sh` | Attach the preview MP4 to the PR instead                                |
-
-The search index needs a 32 MB embedding model, which is an opt-in for catalog
-search rather than a build dependency. Until it is regenerated your item is
-findable by word search and not by meaning, which is the same state as any item
-published since a user last refreshed their copy.
-
-### Auto-generated docs
-
-When you add a new block or component, its documentation page is generated automatically — you don't need to write MDX by hand.
-
-Run the codegen script after adding items:
+To generate the complete catalog locally after installing dependencies and
+building the workspace packages:
 
 ```bash
-npx tsx scripts/generate-catalog-pages.ts
+bun run generate:catalog
 ```
 
-This produces:
+This command downloads the pinned embedding model when needed. It updates the
+registry index, vectors, payloads, pages, gallery and navigation in dependency
+order. Restore those generated files before committing an item-source PR.
 
-- `docs/catalog/blocks/<name>.mdx` — per-block detail page
-- `docs/catalog/components/<name>.mdx` — per-component detail page
-- `docs/public/catalog-index.json` — flat manifest for the catalog grid page
-- Updates `docs/docs.json` navigation with the new pages
+After source changes merge, automation updates one standing publication PR on
+`bot/catalog-publish`, titled `chore(catalog): publish generated catalog`.
+A maintainer approves any waiting workflow runs, reviews it, and merges it after
+checks pass. Until that PR merges, the published catalog remains at its previous
+snapshot. Existing CLI and docs URLs remain unchanged.
 
-The script wipes `docs/catalog/` before regenerating, so deleted items are automatically cleaned up.
+Example manifests are authored source. To deliberately scaffold them, use
+`scripts/scaffold-example-manifests.ts`; indexing never rewrites them.
+Catalog preview images remain a separate workflow. Attach your preview MP4 to
+the item PR if you cannot upload its hosted image.
 
 ## Pull Requests
 

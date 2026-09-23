@@ -80,11 +80,12 @@ jobs:
           token: ""
           filters: |
             catalog_index:
-              - "registry/registry.json"
+              - "registry/**"
               - "registry/catalog-artifact/**"
               - "skills/media-use/audio/assets/sfx/**"
               - "scripts/catalog/check-artifact-coverage.ts"
             docs_catalog:
+              - "skills/media-use/audio/assets/sfx/**"
               - "docs/**"
               - "registry/**"
               - "scripts/*catalog*"
@@ -202,8 +203,8 @@ jobs:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun scripts/generate-registry-items.ts
       - run: bun run lint
-      - run: bun run check:docs-catalog
 
   # Loads every catalog payload a PR changes in headless Chrome. A static scan of the
   # markup cannot see an asset a script fetches, and the docs host serves only fonts,
@@ -226,8 +227,26 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
+      - name: Keep catalog source PRs source-only
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-catalog-source-pr.mjs origin/main
+      - name: Generate and validate catalog
+        env:
+          PUBLISH_PR: ${{ github.head_ref == 'bot/catalog-publish' }}
+        run: |
+          if [ "$PUBLISH_PR" = "true" ]; then
+            bun run check:catalog-drift --committed
+          else
+            bun run check:catalog-drift
+          fi
       - run: bun run verify:catalog-payloads --changed origin/main
-      - run: bun run check:catalog-drift
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: catalog-index
+          path: |
+            registry/registry.json
+            registry/catalog-artifact/local-vectors.json
+            registry/catalog-artifact/local-vectors.bin
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
   # the changed files. The default `--gate new-only` means existing legacy
@@ -411,6 +430,8 @@ jobs:
         uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
         with:
           chrome-version: stable
+      - run: bun run generate:catalog
+        if: needs.changes.outputs.docs_catalog == 'true'
       - run: bun run test:scripts
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.catalog-chrome.outputs.chrome-path }}
@@ -525,16 +546,17 @@ jobs:
   # drift. bun runs the TS script directly, no install needed.
   catalog-index-coverage:
     name: "Catalog: search index covers the registry"
-    needs: changes
+    needs: [changes, catalog-payloads]
     if: needs.changes.outputs.catalog_index == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      # Comparing two name lists needs neither the embedding model nor a
-      # network call, so this stays a seconds-long gate. Regenerating the
-      # vectors does need the model, which is why CI checks rather than fixes.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: catalog-index
+          path: registry
       - name: Verify every searchable registry item has a vector
         run: bun scripts/catalog/check-artifact-coverage.ts
 
