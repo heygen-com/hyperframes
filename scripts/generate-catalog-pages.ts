@@ -796,7 +796,7 @@ function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[
 
 /** The catalog shelf an item sits on, one function for the nav and the page's category. */
 // fallow-ignore-next-line complexity
-function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
+export function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
   const tags = entry.tags;
   // Declared membership beats every inferred rule below: `video-primitive` is
   // the tag a human puts on an item to put it on the primitives shelf, and it
@@ -805,6 +805,7 @@ function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): stri
   // Same precedence rule: `3d-motion` is a declared shelf, checked before any
   // inferred tag (e.g. `transition`, `carousel`) that a 3D-motion piece also carries.
   if (tags[0] === "3d-motion") return "3D motion";
+  if (tags[0] === "3d-object") return "3D objects";
   // Two-tag combos for specific grouping
   if (tags.includes("transition") && tags.includes("shader")) return "Shader Transitions";
   if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
@@ -830,7 +831,7 @@ function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): stri
   // first: an item tagged both `camera` and `motion-primitive` is a camera
   // move, which is the narrower and more useful shelf to find it on.
   if (tags.includes("texture")) return "Texture";
-  if (tags.includes("camera") || tags.includes("3d")) return "Camera & 3D";
+  if (tags.includes("camera")) return "Camera";
   if (tags.includes("product-demo") || tags.includes("demonstrate") || tags.includes("pointers")) {
     return "Product Demo";
   }
@@ -1208,6 +1209,7 @@ function main(): void {
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
     "3D motion": -1,
+    "3D objects": -0.5,
     "Code Animations": 0,
     Captions: 1,
     "HTML-in-Canvas": 2,
@@ -1222,7 +1224,7 @@ function main(): void {
     "Motion Primitives": 9,
     "Motion Scenes": 11,
     "Typography & Text": 10,
-    "Camera & 3D": 12,
+    Camera: 12,
     "Product Demo": 13,
     Texture: 14,
     Effects: 15,
@@ -1246,7 +1248,7 @@ function main(): void {
   // Collapsing them under what a reader came here to make turns it into eight
   // openable sections, and keeps every existing shelf name intact underneath.
   const SECTIONS: { section: string; groups: string[] }[] = [
-    { section: "3D motion", groups: ["3D motion"] },
+    { section: "3D", groups: ["3D motion", "3D objects"] },
     { section: "Text & captions", groups: ["Captions", "Typography & Text", "Lower Thirds"] },
     { section: "Code", groups: ["Code Animations", "Code Snippets"] },
     { section: "Transitions", groups: ["Shader Transitions", "CSS Transitions"] },
@@ -1260,7 +1262,7 @@ function main(): void {
     // sections on their own, and pulling it out takes the largest section in
     // the catalog from 120 items down to 95.
     { section: "Carousels", groups: ["Carousels"] },
-    { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera & 3D"] },
+    { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera"] },
     { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
     { section: "Blocks", groups: ["Blocks"] },
   ];

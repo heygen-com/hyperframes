@@ -1733,6 +1733,24 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.png"
   },
   {
+    "name": "exploded-stack",
+    "type": "block",
+    "title": "Exploded Stack",
+    "description": "Isometric layer plates explode apart with a label beside each layer, hold, then collapse back into one stack. Built for architecture and system diagrams.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "isometric",
+      "exploded-view",
+      "layers",
+      "diagram",
+      "architecture"
+    ],
+    "href": "/catalog/blocks/exploded-stack",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/exploded-stack.png"
+  },
+  {
     "name": "extended-keyframe",
     "type": "component",
     "title": "Extended Keyframe",
@@ -1750,6 +1768,23 @@
     ],
     "href": "/catalog/components/extended-keyframe",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/extended-keyframe.png"
+  },
+  {
+    "name": "extruded-logo",
+    "type": "block",
+    "title": "Extruded Logo",
+    "description": "Beveled 3D letters flip up one by one, the word swings so light runs across the bevels, then settles for a readable hold. Chrome, gold or matte.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "logo",
+      "text",
+      "extruded",
+      "title-card"
+    ],
+    "href": "/catalog/blocks/extruded-logo",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/extruded-logo.png"
   },
   {
     "name": "facet-morph",
@@ -1930,6 +1965,23 @@
     ],
     "href": "/catalog/components/gesture-tap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gesture-tap.png"
+  },
+  {
+    "name": "glass-hero",
+    "type": "block",
+    "title": "Glass Hero",
+    "description": "A solid glass object rises in front of a giant headline and keeps turning, so the type bends and splits into colour through it.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "glass",
+      "refraction",
+      "hero",
+      "title-card"
+    ],
+    "href": "/catalog/blocks/glass-hero",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glass-hero.png"
   },
   {
     "name": "glass-shard-title",
@@ -3652,6 +3704,23 @@
     ],
     "href": "/catalog/components/press-ripple",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/press-ripple.png"
+  },
+  {
+    "name": "product-turntable",
+    "type": "block",
+    "title": "Product Turntable",
+    "description": "A product turns a full revolution on a studio plinth in a seamless loop. Drop in a GLB or glTF model, or keep the built-in drink can with your own label.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "product",
+      "turntable",
+      "glb",
+      "loop"
+    ],
+    "href": "/catalog/blocks/product-turntable",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/product-turntable.png"
   },
   {
     "name": "pull-back-reveal",

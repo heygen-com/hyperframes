@@ -257,17 +257,35 @@
             "pages": [
               "catalog/index",
               {
-                "group": "3D motion",
-                "tag": "7",
+                "group": "3D",
+                "tag": "11",
                 "expanded": false,
                 "pages": [
-                  "catalog/blocks/canopy-part-title",
-                  "catalog/blocks/code-slice-hero",
-                  "catalog/blocks/cuboid-carousel",
-                  "catalog/blocks/frost-sequence-camera-orbit",
-                  "catalog/blocks/glass-shard-title",
-                  "catalog/blocks/orbit-card",
-                  "catalog/blocks/wireframe-portal-title"
+                  {
+                    "group": "3D motion",
+                    "tag": "7",
+                    "expanded": false,
+                    "pages": [
+                      "catalog/blocks/canopy-part-title",
+                      "catalog/blocks/code-slice-hero",
+                      "catalog/blocks/cuboid-carousel",
+                      "catalog/blocks/frost-sequence-camera-orbit",
+                      "catalog/blocks/glass-shard-title",
+                      "catalog/blocks/orbit-card",
+                      "catalog/blocks/wireframe-portal-title"
+                    ]
+                  },
+                  {
+                    "group": "3D objects",
+                    "tag": "4",
+                    "expanded": false,
+                    "pages": [
+                      "catalog/blocks/exploded-stack",
+                      "catalog/blocks/extruded-logo",
+                      "catalog/blocks/glass-hero",
+                      "catalog/blocks/product-turntable"
+                    ]
+                  }
                 ]
               },
               {
@@ -753,7 +771,7 @@
                     ]
                   },
                   {
-                    "group": "Camera & 3D",
+                    "group": "Camera",
                     "tag": "11",
                     "expanded": false,
                     "pages": [

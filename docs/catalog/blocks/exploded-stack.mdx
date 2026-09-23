@@ -1,0 +1,406 @@
+---
+title: "Exploded Stack"
+description: "Isometric layer plates explode apart with a label beside each layer, hold, then collapse back into one stack. Built for architecture and system diagrams."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/exploded-stack.json"
+  compositionId="exploded-stack"
+  compositionSrc="compositions/exploded-stack.html"
+  title="Exploded Stack"
+  description="Isometric layer plates explode apart with a label beside each layer, hold, then collapse back into one stack. Built for architecture and system diagrams."
+  variables={[{"id":"title","type":"string","role":"content","label":"Title","default":"How a request moves","maxLength":32},{"id":"layer_1","type":"string","role":"content","label":"Top layer","default":"Interface","maxLength":22},{"id":"layer_2","type":"string","role":"content","label":"Layer 2","default":"API gateway","maxLength":22},{"id":"layer_3","type":"string","role":"content","label":"Layer 3","default":"Services","maxLength":22},{"id":"layer_4","type":"string","role":"content","label":"Bottom layer","default":"Data","maxLength":22},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#4f5bff"},{"id":"background","type":"color","role":"style","label":"Backdrop","default":"#f3f4f7"}]}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":335}}
+  attribution={{"path":"registry/blocks/exploded-stack","tags":["3d-object","three-js","webgl","isometric","exploded-view","layers","diagram","architecture"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/exploded-stack/exploded-stack.html"
+>
+
+<CatalogSlot slot="code">
+
+```html exploded-stack.html
+<!doctype html>
+<!--
+  Exploded Stack: isometric layer plates sit as one stack, explode apart along the vertical
+  axis with labels drawing in beside each layer, hold, then collapse back, so the clip loops.
+  Seek-safe: every frame is render(t), driven by one linear GSAP clock.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "title", "type": "string", "role": "content", "label": "Title", "default": "How a request moves", "maxLength": 32 },
+    { "id": "layer_1", "type": "string", "role": "content", "label": "Top layer", "default": "Interface", "maxLength": 22 },
+    { "id": "layer_2", "type": "string", "role": "content", "label": "Layer 2", "default": "API gateway", "maxLength": 22 },
+    { "id": "layer_3", "type": "string", "role": "content", "label": "Layer 3", "default": "Services", "maxLength": 22 },
+    { "id": "layer_4", "type": "string", "role": "content", "label": "Bottom layer", "default": "Data", "maxLength": 22 },
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#4f5bff" },
+    { "id": "background", "type": "color", "role": "style", "label": "Backdrop", "default": "#f3f4f7" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Exploded Stack</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "ES Inter";
+        font-weight: 500;
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2) format("woff2");
+      }
+      @font-face {
+        font-family: "ES Inter";
+        font-weight: 700;
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-700-normal.woff2) format("woff2");
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f3f4f7;
+      }
+      #es-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--es-bg, #f3f4f7);
+        font-family: "ES Inter", system-ui, sans-serif;
+        --es-accent: #4f5bff;
+      }
+      #es-canvas,
+      #es-leaders {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+      #es-title {
+        position: absolute;
+        left: 120px;
+        top: 110px;
+        font-size: 60px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #14161c;
+      }
+      .es-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        font-size: 34px;
+        font-weight: 500;
+        color: #1b1e27;
+        white-space: nowrap;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+      .es-index {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--es-accent);
+        letter-spacing: 0.08em;
+      }
+      #es-leaders line {
+        stroke: rgba(27, 30, 39, 0.35);
+        stroke-width: 2;
+      }
+      #es-leaders circle {
+        fill: var(--es-accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="es-root"
+      data-composition-id="exploded-stack"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <canvas id="es-canvas" class="clip" data-start="0" data-duration="6" data-track-index="1"></canvas>
+      <svg id="es-leaders" viewBox="0 0 1920 1080" aria-hidden="true"></svg>
+      <div id="es-title"></div>
+      <div id="es-labels"></div>
+    </div>
+
+    <script>
+      (function () {
+        var html = document.documentElement;
+        var defaults = {};
+        try {
+          JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(function (v) {
+            defaults[v.id] = v.default;
+          });
+        } catch (error) {
+          /* malformed declaration: the scene module falls back to its own defaults */
+        }
+        var scoped = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
+        var hex = function (v, fallback) {
+          return /^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : fallback;
+        };
+        var root = document.getElementById("es-root");
+        var duration = Math.max(0.001, parseFloat(root.dataset.duration) || 6);
+        root.style.setProperty("--es-bg", hex(vars.background, "#f3f4f7"));
+        root.style.setProperty("--es-accent", hex(vars.accent, "#4f5bff"));
+        document.getElementById("es-title").textContent = vars.title || "";
+
+        var names = [vars.layer_1, vars.layer_2, vars.layer_3, vars.layer_4].map(function (n, i) {
+          return String(n || ["Interface", "API gateway", "Services", "Data"][i]);
+        });
+        var labels = document.getElementById("es-labels");
+        var leaders = document.getElementById("es-leaders");
+        var svg = "http://www.w3.org/2000/svg";
+        names.forEach(function (name, i) {
+          var el = document.createElement("div");
+          el.className = "es-label";
+          el.innerHTML = '<span class="es-index">0' + (i + 1) + "</span><span></span>";
+          el.lastChild.textContent = name;
+          labels.appendChild(el);
+          var line = document.createElementNS(svg, "line");
+          var dot = document.createElementNS(svg, "circle");
+          dot.setAttribute("r", "6");
+          leaders.appendChild(line);
+          leaders.appendChild(dot);
+        });
+
+        var clock = { t: 0 };
+        var scene = { vars: vars, names: names, duration: duration, clock: clock, render: null };
+        window.__explodedStack = scene;
+        window.__hf = window.__hf || {};
+        window.__hf.buildReady = window.__hf.buildReady || {};
+        window.__hf.buildReady["exploded-stack"] = new Promise(function (resolve) {
+          scene.ready = resolve;
+        });
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to(clock, {
+          t: duration,
+          duration: duration,
+          ease: "none",
+          onUpdate: function () {
+            if (scene.render) scene.render(clock.t);
+          },
+        });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["exploded-stack"] = tl;
+      })();
+    </script>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.184.0/+esm";
+      import { RoundedBoxGeometry } from "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/geometries/RoundedBoxGeometry.js/+esm";
+
+      const host = window.__explodedStack;
+      const V = host.vars;
+      const hex = (v, fallback) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : fallback);
+      const accent = new THREE.Color(hex(V.accent, "#4f5bff"));
+      const D = host.duration;
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById("es-canvas"),
+        antialias: true,
+        alpha: true,
+        preserveDrawingBuffer: true,
+      });
+      renderer.setPixelRatio(1);
+      renderer.setSize(1920, 1080, false);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      const scene = new THREE.Scene();
+      // True isometric: orthographic, 45 degrees around Y, arctan(1/sqrt 2) down.
+      const view = 5.9;
+      const camera = new THREE.OrthographicCamera((-view * 16) / 9, (view * 16) / 9, view, -view, 0.1, 100);
+      camera.position.set(10, 10.7, 10);
+      camera.lookAt(0, 0.7, 0);
+      // Slide along the camera's right axis so the stack sits left and labels get the right.
+      camera.position.add(new THREE.Vector3(1.9, 0, -1.9));
+      camera.updateMatrixWorld();
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d9e4, 2.2));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+      sun.position.set(-4, 10, 6);
+      scene.add(sun);
+
+      function faceTexture(i) {
+        const c = document.createElement("canvas");
+        c.width = c.height = 512;
+        const g = c.getContext("2d");
+        const tint = accent.clone().lerp(new THREE.Color(0xffffff), 0.82 - i * 0.12);
+        g.fillStyle = `#${tint.getHexString()}`;
+        g.fillRect(0, 0, 512, 512);
+        g.strokeStyle = `#${accent.getHexString()}`;
+        g.fillStyle = `#${accent.getHexString()}`;
+        g.lineWidth = 6;
+        g.globalAlpha = 0.55;
+        // Each layer gets its own motif, so the plates read as different systems.
+        if (i === 0) {
+          for (let k = 0; k < 3; k++) g.strokeRect(70 + k * 130, 150, 110, 212);
+        } else if (i === 1) {
+          for (let k = 0; k < 5; k++) {
+            g.beginPath();
+            g.moveTo(80, 110 + k * 72);
+            g.lineTo(432, 110 + k * 72);
+            g.stroke();
+          }
+        } else if (i === 2) {
+          for (let y = 0; y < 3; y++)
+            for (let x = 0; x < 3; x++) g.fillRect(96 + x * 120, 96 + y * 120, 80, 80);
+        } else {
+          for (let k = 0; k < 3; k++) {
+            g.beginPath();
+            g.ellipse(256, 150 + k * 100, 150, 40, 0, 0, Math.PI * 2);
+            g.stroke();
+          }
+        }
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return tex;
+      }
+
+      const LAYERS = 4;
+      const THICK = 0.22;
+      const GAP = 1.55;
+      const edge = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+      const shadowCanvas = document.createElement("canvas");
+      shadowCanvas.width = shadowCanvas.height = 256;
+      const sg = shadowCanvas.getContext("2d");
+      const sgrad = sg.createRadialGradient(128, 128, 40, 128, 128, 128);
+      sgrad.addColorStop(0, "rgba(20,24,40,0.22)");
+      sgrad.addColorStop(1, "rgba(20,24,40,0)");
+      sg.fillStyle = sgrad;
+      sg.fillRect(0, 0, 256, 256);
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(7, 7),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shadowCanvas), transparent: true, depthWrite: false }),
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = -2.4;
+      scene.add(shadow);
+      const plates = [];
+      for (let i = 0; i < LAYERS; i++) {
+        const top = new THREE.MeshStandardMaterial({ map: faceTexture(i), roughness: 0.7 });
+        // BoxGeometry face order: +x, -x, +y, -y, +z, -z; only +y carries the motif.
+        const plate = new THREE.Mesh(new RoundedBoxGeometry(4.2, THICK, 4.2, 4, 0.08), edge);
+        const face = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 4.0), top);
+        face.rotation.x = -Math.PI / 2;
+        face.position.y = THICK / 2 + 0.002;
+        plate.add(face);
+        scene.add(plate);
+        plates.push(plate);
+      }
+
+      // Timing, in fractions of the clip so any duration keeps the beats.
+      const clamp01 = (x) => Math.min(1, Math.max(0, x));
+      const ease = (x) => {
+        const u = clamp01(x);
+        return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+      };
+      const EXPLODE = [0.1, 0.38];
+      const COLLAPSE = [0.8, 0.96];
+      const stagger = 0.035;
+
+      const labelEls = [...document.querySelectorAll(".es-label")];
+      const lines = [...document.querySelectorAll("#es-leaders line")];
+      const dots = [...document.querySelectorAll("#es-leaders circle")];
+      const anchor = new THREE.Vector3();
+      const toScreen = (v) => {
+        const p = v.clone().project(camera);
+        return [(p.x * 0.5 + 0.5) * 1920, (-p.y * 0.5 + 0.5) * 1080];
+      };
+
+      host.render = (t) => {
+        const f = t / D;
+        for (let i = 0; i < LAYERS; i++) {
+          // Bottom plate stays put; the top plate travels furthest and leaves first.
+          const order = LAYERS - 1 - i;
+          const open =
+            ease((f - EXPLODE[0] - i * stagger) / (EXPLODE[1] - EXPLODE[0])) -
+            ease((f - COLLAPSE[0] - order * stagger) / (COLLAPSE[1] - COLLAPSE[0]));
+          const y = (LAYERS - 1 - i) * (THICK + 0.02 + open * GAP) - 2.2;
+          plates[i].position.y = y;
+
+          const shown =
+            clamp01((f - EXPLODE[1] + 0.04 - i * 0.05) / 0.08) *
+            (1 - clamp01((f - COLLAPSE[0] + 0.06) / 0.06));
+          // The plate's right-hand corner, where a label has open space beside it.
+          anchor.set(2.1, y, -2.1);
+          const [ax, ay] = toScreen(anchor);
+          const lx = ax + 90;
+          labelEls[i].style.opacity = shown.toFixed(3);
+          labelEls[i].style.transform = `translate(${lx + 24 + (1 - shown) * 16}px, ${ay - 22}px)`;
+          lines[i].setAttribute("x1", ax.toFixed(1));
+          lines[i].setAttribute("y1", ay.toFixed(1));
+          lines[i].setAttribute("x2", (ax + 90 * shown).toFixed(1));
+          lines[i].setAttribute("y2", ay.toFixed(1));
+          lines[i].style.opacity = shown > 0 ? 1 : 0;
+          dots[i].setAttribute("cx", ax.toFixed(1));
+          dots[i].setAttribute("cy", ay.toFixed(1));
+          dots[i].style.opacity = shown.toFixed(3);
+        }
+        renderer.render(scene, camera);
+      };
+      host.render(host.clock.t);
+      host.ready();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add exploded-stack" item="exploded-stack" />
+
+That writes one file: `compositions/exploded-stack.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="exploded-stack"
+  data-composition-src="compositions/exploded-stack.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `3d-object` `three-js` `webgl` `isometric` `exploded-view` `layers` `diagram` `architecture`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
