@@ -136,6 +136,11 @@
   gap: 6px;
 }
 
+.hf-dock .dv-inactive-tab .hf-dock-tab-icon,
+.hf-dock .dv-inactive-tab .hf-dock-tab-close {
+  display: none;
+}
+
 .hf-dock-tab-icon {
   flex: none;
   animation: hf-dock-tab-icon-in 80ms ease-out;

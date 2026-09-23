@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +42,13 @@ const original = {
   offsetWidth: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth"),
 };
 beforeAll(() => {
+  // The shown-tab-only rule lives in dock.css; apply it so computed display is what a user sees.
+  const style = document.createElement("style");
+  style.textContent = readFileSync(path.join(import.meta.dirname, "dock.css"), "utf8").replace(
+    /@import[^;]*;/,
+    "",
+  );
+  document.head.append(style);
   Object.defineProperties(HTMLElement.prototype, {
     offsetLeft: { ...layout.offsetLeft, configurable: true },
     offsetWidth: { ...layout.offsetWidth, configurable: true },
@@ -83,6 +92,10 @@ afterEach(() => {
 const tab = (id: PanelId) => host.querySelector<HTMLElement>(`[data-tab-panel-id="${id}"]`);
 const stripOf = (id: PanelId) => tab(id)?.closest<HTMLElement>(".dv-tabs-container");
 const groupOf = (id: PanelId) => tab(id)?.closest<HTMLElement>(".dv-groupview");
+const shows = (id: PanelId, part: "icon" | "close") => {
+  const element = tab(id)?.querySelector(`.hf-dock-tab-${part}`);
+  return element ? getComputedStyle(element).display !== "none" : false;
+};
 
 async function activate(id: PanelId) {
   // dockview settles the active panel on a microtask; `act(async)` waits for it.
@@ -92,21 +105,20 @@ async function activate(id: PanelId) {
 describe("dock tabs", () => {
   it("draw the type icon and close glyph on the shown tab only", () => {
     for (const id of ["design", "compositions"] as const) {
-      expect(tab(id)?.querySelector(".hf-dock-tab-icon")).not.toBeNull();
-      expect(tab(id)?.querySelector(".hf-dock-tab-close")).not.toBeNull();
+      expect(shows(id, "icon")).toBe(true);
+      expect(shows(id, "close")).toBe(true);
     }
     for (const id of ["layers", "renders", "variables", "assets", "code", "catalog"] as const) {
-      expect(tab(id)?.querySelector(".hf-dock-tab-icon")).toBeNull();
-      expect(tab(id)?.querySelector(".hf-dock-tab-close")).toBeNull();
-      expect(tab(id)?.textContent).toBe(tab(id)?.getAttribute("aria-label"));
+      expect(shows(id, "icon")).toBe(false);
+      expect(shows(id, "close")).toBe(false);
     }
   });
 
   it("move the icon to the newly shown tab and drop it from the old one", async () => {
     await activate("layers");
-    expect(tab("layers")?.querySelector(".hf-dock-tab-icon")).not.toBeNull();
-    expect(tab("design")?.querySelector(".hf-dock-tab-icon")).toBeNull();
-    expect(tab("design")?.querySelector(".hf-dock-tab-close")).toBeNull();
+    expect(shows("layers", "icon")).toBe(true);
+    expect(shows("design", "icon")).toBe(false);
+    expect(shows("design", "close")).toBe(false);
   });
 
   it("name the close control after the panel, and close only that panel", async () => {

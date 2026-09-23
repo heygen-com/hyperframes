@@ -44,7 +44,7 @@ function markClippedEdges(list: HTMLElement) {
  */
 export function installTabFill(api: DockviewApi, root: HTMLElement): () => void {
   const lists = () => root.querySelectorAll<HTMLElement>(".dv-tabs-container");
-  // Tab widths change when a tab gains or loses its icon, after React renders it.
+  // Tab widths also change with no dockview event: a renamed title, a late web font.
   const resizeObserver = new ResizeObserver(() => placeAll());
   const observed = new Set<Element>();
   function observe(elements: Iterable<Element>) {

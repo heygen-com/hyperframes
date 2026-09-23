@@ -31,40 +31,38 @@ const TAB_ICONS: Record<PanelId, Icon> = {
   slideshow: Presentation,
 };
 
-/** A dock tab. Only the shown tab carries its type icon and close glyph; the rest are labels. */
+/**
+ * A dock tab. dock.css shows the type icon and close glyph on the shown tab only, keyed on
+ * dockview's own tab class, so they swap in the frame the tab changes rather than a render later.
+ */
 export function DockTab({ api }: IDockviewPanelHeaderProps) {
   const subscribe = useCallback(
     (onChange: () => void) => {
-      const subscriptions = [api.onDidTitleChange(onChange), api.onDidVisibilityChange(onChange)];
-      return () => {
-        for (const subscription of subscriptions) subscription.dispose();
-      };
+      const subscription = api.onDidTitleChange(onChange);
+      return () => subscription.dispose();
     },
     [api],
   );
   const title = useSyncExternalStore(subscribe, () => api.title ?? "");
-  const shown = useSyncExternalStore(subscribe, () => api.isVisible);
-  const TypeIcon = shown && isPanelId(api.id) ? TAB_ICONS[api.id] : null;
+  const TypeIcon = isPanelId(api.id) ? TAB_ICONS[api.id] : null;
   return (
     <div className="hf-dock-tab">
       {TypeIcon ? <TypeIcon className="hf-dock-tab-icon" size={14} aria-hidden /> : null}
       <span className="hf-dock-tab-label">{title}</span>
-      {shown ? (
-        // Same shape as dockview's own close control: a tab cannot hold a focusable button.
-        <div
-          role="button"
-          tabIndex={-1}
-          aria-label={`Close ${title}`}
-          className="hf-dock-tab-close"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            api.close();
-          }}
-        >
-          <X size={12} aria-hidden />
-        </div>
-      ) : null}
+      {/* Same shape as dockview's own close control: a tab cannot hold a focusable button. */}
+      <div
+        role="button"
+        tabIndex={-1}
+        aria-label={`Close ${title}`}
+        className="hf-dock-tab-close"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          api.close();
+        }}
+      >
+        <X size={12} aria-hidden />
+      </div>
     </div>
   );
 }
