@@ -638,31 +638,105 @@ function armPageComposite(): void {
 }
 
 /**
+ * Ceiling on ONE host's `paint` wait before its capture is abandoned.
+ *
+ * A real paint is two animation frames — under 100 ms at any plausible frame
+ * rate — so 2 s is roughly a 20x margin, and it is short next to what a hung
+ * barrier would otherwise burn (Puppeteer's ~180 s CDP `protocolTimeout`). It
+ * is also the deadline this repo already uses for a BeginFrame-shaped wait
+ * (`BEGINFRAME_PROBE_TIMEOUT_MS`, `engine/src/services/browserManager.ts`).
+ *
+ * Deliberately longer than the comparable 250 ms `paint`-event fallback in
+ * `engine/src/services/drawElementService.ts`: that one falls back to DRAWING a
+ * frame-stale snapshot, so a false positive costs a frame of staleness, while
+ * this one skips the host's capture and reports loudly — so its false positives
+ * are expensive and it gets the wider margin.
+ */
+const CAPTURE_PAINT_TIMEOUT_MS = 2000;
+
+/**
  * Preview/Studio readiness: `drawElementImage` throws "No cached paint record
  * for element" unless the subtree has been painted since it last changed, and
  * a synchronous `requestPaint()` does not create one within the same task.
+ *
+ * BOUNDED, because this wait is part of the shared seek-completion barrier
+ * (see `paintVfx`) and neither thing that settles it is guaranteed to happen.
+ * Under BeginFrame control (Linux headless-shell, `drawelement` capture) the
+ * compositor advances only on an explicit `HeadlessExperimental.beginFrame`,
+ * and `frameCapture.ts` issues that inside its per-frame capture stage — AFTER
+ * `prepareFrameForCapture` has already drained this barrier. With no tick yet
+ * for the frame, no `paint` event fires, and the rAF fallback does not fire
+ * either: the engine's own notes say rAF is gated the same way
+ * (`frameCapture.ts` ~line 2445, "waitForFunction uses rAF polling internally,
+ * which won't fire in beginFrame mode"; ~line 4755, "headless only fires rAF
+ * when a frame is produced, and nothing produces one until a screenshot
+ * asks"). `setTimeout` is the one clock that is NOT compositor-gated there —
+ * `drawElementService.ts` (~line 341) describes its 250 ms paint-wait fallback
+ * as burning "on every frame" under BeginFrame control, which can only happen
+ * if the timer fires — so this ceiling is what keeps the barrier live.
  */
-function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<void> {
-  return new Promise<void>((resolve) => {
+function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<"painted" | "timeout"> {
+  return new Promise<"painted" | "timeout">((resolve) => {
     let settled = false;
-    const finish = (): void => {
+    const finish = (outcome: "painted" | "timeout"): void => {
       if (settled) return;
       settled = true;
-      canvas.removeEventListener("paint", finish);
-      resolve();
+      clearTimeout(timer);
+      canvas.removeEventListener("paint", onPaint);
+      resolve(outcome);
     };
-    canvas.addEventListener("paint", finish, { once: true });
+    const onPaint = (): void => finish("painted");
+    // Cleared by `finish`, so the common case adds no latency and leaves no
+    // timer behind; on a canvas that never paints it is the only way out.
+    const timer = setTimeout(() => finish("timeout"), CAPTURE_PAINT_TIMEOUT_MS);
+    canvas.addEventListener("paint", onPaint, { once: true });
     try {
       (canvas as RequestPaintCanvas).requestPaint?.();
     } catch {
       // Feature drift on this build — the rAF fallback below still fires.
     }
     if (typeof requestAnimationFrame !== "function") {
-      finish();
+      finish("painted");
       return;
     }
-    requestAnimationFrame(() => requestAnimationFrame(finish));
+    requestAnimationFrame(() => requestAnimationFrame(() => finish("painted")));
   });
+}
+
+/**
+ * Wait for one host's canvas to paint, then capture and paint that host.
+ *
+ * Per host, not per batch: a host whose compositor genuinely cannot paint this
+ * frame must not make every other host on the page wait out the ceiling too.
+ * A host that times out is skipped for this paint — no capture, no guess at
+ * pixels — and says so loudly. The report is NOT suppressed in engine mode
+ * even though a capture failure there is quiet (`speculative`): that quiet is
+ * for the engine's second attempt at the same frame, and in `drawelement` /
+ * `beginframe` capture mode there is no second attempt — `frameCapture.ts`
+ * (~line 2708) skips `__hf_page_composite_resolve` in exactly those modes, so
+ * this wait is the only capture path the frame has.
+ */
+async function capturePaintedHost(
+  entry: VfxEntry,
+  t: number,
+  seq: number,
+  speculative: boolean,
+): Promise<void> {
+  if ((await awaitCanvasPaint(entry.src!.canvas)) === "timeout") {
+    reportVfxError(
+      `${describeHost(entry.host)}: no paint arrived within ${CAPTURE_PAINT_TIMEOUT_MS}ms, so ` +
+        `this frame's capture was skipped (a BeginFrame-controlled compositor without a tick ` +
+        `for this frame is a known cause).`,
+    );
+    return;
+  }
+  // A newer seek, or the engine's own resolve, owns these pixels now.
+  if (seq !== paintSeq || resolvedSeq === seq) return;
+  // `initVfx` re-scans when a sub-composition mounts and releases the
+  // outgoing registry's programs and textures; painting a released entry is
+  // a silent GL error, not a frame.
+  if (!registry.includes(entry) || entry.contextLost) return;
+  if (captureEntry(entry, speculative)) paintEntry(entry, t);
 }
 
 async function capturePreviewThenPaint(
@@ -674,16 +748,7 @@ async function capturePreviewThenPaint(
   // In parallel, not in sequence: each wait costs up to two animation frames,
   // so N hosts awaited one after another cost 2N — more slack than the CLI's
   // post-barrier settle leaves, and the cost grows with the composition.
-  await Promise.all(entries.map((entry) => awaitCanvasPaint(entry.src!.canvas)));
-  // A newer seek, or the engine's own resolve, owns these pixels now.
-  if (seq !== paintSeq || resolvedSeq === seq) return;
-  for (const entry of entries) {
-    // `initVfx` re-scans when a sub-composition mounts and releases the
-    // outgoing registry's programs and textures; painting a released entry is
-    // a silent GL error, not a frame.
-    if (!registry.includes(entry) || entry.contextLost) continue;
-    if (captureEntry(entry, speculative)) paintEntry(entry, t);
-  }
+  await Promise.all(entries.map((entry) => capturePaintedHost(entry, t, seq, speculative)));
 }
 
 /**
@@ -702,9 +767,19 @@ async function capturePreviewThenPaint(
  * its settle race and screenshot, which covers `snapshot`, `check`, `compare`,
  * `validate` and `layout`. Racing it is the silent-blank-under-snapshot defect
  * this module has already shipped once (dcfbda9fd) — there the capture never
- * ran at all, here it ran too late, and both read as an unpainted layer. The
- * engine path is unaffected: `frameCapture.ts` drains the same barrier after
- * video injection and before its own composite resolve.
+ * ran at all, here it ran too late, and both read as an unpainted layer.
+ *
+ * Joining that barrier makes this module's wait able to STALL every caller of
+ * `__hfWaitForSeekCompletion`, the engine's render path included:
+ * `frameCapture.ts` drains the barrier inside `prepareFrameForCapture` (~line
+ * 2692), which on a BeginFrame-controlled host (Linux headless-shell,
+ * `drawelement` capture) runs BEFORE the per-frame
+ * `HeadlessExperimental.beginFrame` that the compositor needs to paint at all
+ * (~line 3797). Fire-and-forget, that could not hurt anyone; registered, it
+ * can. `awaitCanvasPaint` is therefore bounded at
+ * `CAPTURE_PAINT_TIMEOUT_MS`, which converts an indefinite hang into a loud,
+ * bounded, per-host failure — the other hosts on the page still paint on their
+ * own schedule, and the barrier always resolves.
  */
 export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   lastPaintTime = t;

@@ -615,4 +615,68 @@ describe("vfx runtime — self capture", () => {
     });
     expect(errors).toEqual([]);
   });
+
+  /**
+   * The worst case the ceiling exists for: a host whose canvas never fires
+   * `paint` AND whose rAF never calls back — what a BeginFrame-controlled
+   * compositor (Linux headless-shell, `drawelement` capture) looks like when
+   * `frameCapture.ts` drains this barrier before issuing the frame's
+   * `HeadlessExperimental.beginFrame`. Unbounded, that host holds the barrier
+   * every `__hfWaitForSeekCompletion` caller awaits forever.
+   *
+   * Fake timers so the 2 s ceiling costs no wall clock. The second host proves
+   * the bound is per host: it paints promptly and is captured then, not after
+   * the stalled host's ceiling.
+   */
+  it("bounds a never-painting host's wait, reports it loudly, and leaves its peers alone", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("requestAnimationFrame", () => 1);
+      const ctxStalled = createMockCtx2d();
+      const ctxPainting = createMockCtx2d();
+      const srcOf = (host: HTMLElement): HTMLCanvasElement =>
+        host.querySelector("canvas.hf-vfx-src") as HTMLCanvasElement;
+      makeCaptureHost(ctxStalled, "cap-stalled");
+      const painting = makeCaptureHost(ctxPainting, "cap-painting");
+      initVfx(document.body, 30);
+
+      paintVfx(0.5);
+      let resolved = false;
+      const barrier = waitForSeekCompletion().then(() => {
+        resolved = true;
+      });
+
+      // The healthy host paints immediately and is captured on its own
+      // schedule — before the stalled host's ceiling, not after it.
+      srcOf(painting).dispatchEvent(new Event("paint"));
+      await vi.advanceTimersByTimeAsync(0);
+      const paintingDrawnEarly = ctxPainting.drawn.length;
+      const heldBeforeCeiling = resolved;
+
+      await vi.advanceTimersByTimeAsync(2000);
+      await barrier;
+
+      expect({
+        paintingDrawnEarly,
+        heldBeforeCeiling,
+        resolved,
+        stalledDrawn: ctxStalled.drawn.length,
+        paintingDrawn: ctxPainting.drawn.length,
+      }).toEqual({
+        paintingDrawnEarly: 1,
+        heldBeforeCeiling: false,
+        resolved: true,
+        // The stalled host is skipped, not guessed at.
+        stalledDrawn: 0,
+        paintingDrawn: 1,
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]![0]).toBe(LABEL);
+      expect(String(errors[0]![1])).toMatch(/#cap-stalled/);
+      expect(String(errors[0]![1])).toMatch(/no paint arrived within 2000ms/);
+      expect(String(errors[0]![1])).toMatch(/BeginFrame/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
