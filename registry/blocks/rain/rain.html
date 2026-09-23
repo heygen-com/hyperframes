@@ -110,10 +110,14 @@
         var H = Number(host.getAttribute("data-height")) || 1080;
         var duration = Number(host.getAttribute("data-duration")) || 6;
 
+        var gust = vars.speed === "gust";
         var COUNT = vars.density === "dense" ? 140 : 65;
-        var fallSeconds = vars.speed === "gust" ? 0.6 : 1.0;
-        var WIND = vars.speed === "gust" ? 0.12 : 0.02;
-        var ANGLE_DEG = vars.speed === "gust" ? 12 : 4;
+        var fallSeconds = gust ? 0.6 : 1.0;
+        var WIND = gust ? 0.12 : 0.02;
+        // The lean tracks the streak's own drift vector (horizontal WIND*W over one vertical
+        // drop of H) instead of a second hand-picked constant, so it can't drift out of sync
+        // with the motion it's meant to depict.
+        var ANGLE_DEG = (Math.atan2(WIND * W, H) * 180) / Math.PI;
 
         // Even 2D coverage with no clumping and no seed to store (Weyl low-discrepancy
         // sequence): successive multiples of an irrational constant, taken mod 1.
@@ -151,7 +155,10 @@
         var streaks = [];
         var fragment = document.createDocumentFragment();
         for (var i = 0; i < COUNT; i++) {
-          var laneX = frac(i * PHI + 0.07);
+          // Leave WIND's worth of headroom so laneX + WIND*travelFrac never exceeds 1 —
+          // otherwise a lane near the right edge drifts past it mid-fall and gets clipped
+          // by #hf-rain's overflow:hidden well before WRAP_MARGIN's off-screen exit.
+          var laneX = frac(i * PHI + 0.07) * (1 - WIND);
           // One depth draw drives length, width and opacity continuously, and buckets the
           // streak into one of three fall-speed layers (far/mid/near). Layer cycle counts
           // are offsets from the shared base, not products of it, so they stay distinct on
@@ -178,6 +185,9 @@
         }
         field.appendChild(fragment);
 
+        var Y_SPAN = 1 + 2 * WRAP_MARGIN;
+        var TRANSFORM_SUFFIX = ") translate(-50%, -50%) rotate(" + ANGLE_DEG + "deg)";
+
         var state = { phase: 0 };
 
         function render() {
@@ -185,16 +195,10 @@
           for (var s = 0; s < streaks.length; s++) {
             var f = streaks[s];
             var travelFrac = frac(f.fallCycles * p + f.fallPhi);
-            var y = (-WRAP_MARGIN + travelFrac * (1 + 2 * WRAP_MARGIN)) * H;
+            var y = (-WRAP_MARGIN + travelFrac * Y_SPAN) * H;
             var x = (f.laneX + WIND * travelFrac) * W;
             f.el.style.transform =
-              "translate(" +
-              Math.round(x) +
-              "px, " +
-              Math.round(y) +
-              "px) translate(-50%, -50%) rotate(" +
-              ANGLE_DEG +
-              "deg)";
+              "translate(" + Math.round(x) + "px, " + Math.round(y) + "px" + TRANSFORM_SUFFIX;
           }
         }
 
