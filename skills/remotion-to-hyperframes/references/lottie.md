@@ -104,13 +104,11 @@ for the full supported feature list.
 
 ## Loop behavior
 
-Remotion's `loop={true}` plays the animation continuously. Translate to
-the player option only after checking the generated frames. The HF
-adapter seeks absolute composition time; it does not add modulo looping
-or playback-rate scaling on top of the player. For exact repeating
-cycles or non-default playback rates, bake the timing into the Lottie
-asset or author an explicit timeline around the Lottie layer and verify
-the rendered output.
+Remotion's `loop={true}` plays the animation continuously. Translate it
+to `loop: true` on the player: the HF adapter wraps composition time into
+the animation's own length, so the cycle repeats for the whole scene. It
+does not add playback-rate scaling; bake a non-default rate into the
+Lottie asset and verify the rendered output.
 
 ## Performance note
 

@@ -1,0 +1,137 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","type":"string","label":"Card title","default":"Meet your guide","maxLength":28},{"id":"body","type":"string","label":"Card text","default":"Walks in on planted feet, then points the way.","maxLength":90}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>lottie-character-walk</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie_light.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      #lcw-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #fcfcfd;
+        font-family: Inter, sans-serif;
+        color: #111827;
+      }
+      #lcw-ground {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 906px;
+        height: 1px;
+        background: rgba(17, 24, 39, 0.14);
+      }
+      #lcw-mascot {
+        position: absolute;
+        inset: 0;
+      }
+      #lcw-card {
+        position: absolute;
+        left: 1100px;
+        top: 300px;
+        width: 660px;
+        padding: 56px 60px 60px;
+        border-radius: 28px;
+        background: rgba(17, 24, 39, 0.08);
+        border: 1px solid rgba(17, 24, 39, 0.14);
+        opacity: 0;
+      }
+      #lcw-title {
+        font-size: 64px;
+        font-weight: 600;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+      }
+      #lcw-rule {
+        width: 120px;
+        height: 8px;
+        margin: 28px 0 30px;
+        border-radius: 4px;
+        background: #ff5a36;
+        transform-origin: left center;
+      }
+      #lcw-body {
+        font-size: 34px;
+        line-height: 1.35;
+        color: rgba(17, 24, 39, 0.72);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="lcw-root"
+      data-composition-id="lottie-character-walk"
+      data-start="0"
+      data-duration="7.5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="lcw-ground"></div>
+      <div id="lcw-card">
+        <div id="lcw-title">Meet your guide</div>
+        <div id="lcw-rule"></div>
+        <div id="lcw-body">Walks in on planted feet, then points the way.</div>
+      </div>
+      <div id="lcw-mascot"></div>
+    </div>
+    <script>
+      (function () {
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+        if (vars.title) document.getElementById("lcw-title").textContent = vars.title;
+        if (vars.body) document.getElementById("lcw-body").textContent = vars.body;
+
+        // The character's body acting (walk, stop, point, idle) lives in the Lottie file.
+        // The runtime seeks every player on window.__hfLottie to composition time.
+        var mascot = lottie.loadAnimation({
+          container: document.getElementById("lcw-mascot"),
+          renderer: "svg",
+          loop: false,
+          autoplay: false,
+          path: "assets/mascot.json",
+        });
+        window.__hfLottie = window.__hfLottie || [];
+        window.__hfLottie.push(mascot);
+
+        // The stage around the character is GSAP, timed to the Lottie's point at 5.2 s.
+        var tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          "#lcw-card",
+          { opacity: 0, x: 40, scale: 0.96 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.6, ease: "power3.out" },
+          5.2,
+        );
+        tl.fromTo(
+          ["#lcw-title", "#lcw-body"],
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out", stagger: 0.1 },
+          5.3,
+        );
+        tl.fromTo("#lcw-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "expo.out" }, 5.5);
+        tl.to({}, { duration: 0 }, 7.5);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["lottie-character-walk"] = tl;
+      })();
+    </script>
+  </body>
+</html>
