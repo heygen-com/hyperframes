@@ -5,6 +5,7 @@ import type {
   LintRule,
   LintTimings,
 } from "./types";
+import { createSourceLocator } from "./sourceLocations";
 import type { LintContext } from "./context";
 import { buildLintContext } from "./context";
 import { parseHtmlStructure, readAttr, truncateSnippet } from "./utils";
@@ -130,7 +131,19 @@ export async function lintHyperframeHtml(
 ): Promise<HyperframeLintResult> {
   const startedAt = performance.now();
   const ctx = buildLintContext(html, options);
-  const { findings, timings } = await runRules(ctx, options.filePath);
+  const { findings: rawFindings, timings } = await runRules(ctx, options.filePath);
+  const locate = createSourceLocator(html);
+  const findings = rawFindings.map((finding) => {
+    // External CSS has its own source coordinates; never attribute it to the HTML document.
+    if (
+      finding.snippet &&
+      options.externalStyles?.some((style) =>
+        style.content.replace(/\s+/g, " ").includes(finding.snippet!.replace(/\.\.\.$/, "")),
+      )
+    )
+      return finding;
+    return { ...finding, ...locate(finding) };
+  });
 
   const errorCount = findings.filter((f) => f.severity === "error").length;
   const warningCount = findings.filter((f) => f.severity === "warning").length;

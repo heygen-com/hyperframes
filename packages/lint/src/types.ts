@@ -5,6 +5,9 @@ export type HyperframeLintFinding = {
   severity: HyperframeLintSeverity;
   message: string;
   file?: string;
+  /** One-based coordinates in the original source; absent when no unique location exists. */
+  line?: number;
+  column?: number;
   selector?: string;
   elementId?: string;
   fixHint?: string;
