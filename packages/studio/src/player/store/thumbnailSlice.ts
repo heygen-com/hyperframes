@@ -7,7 +7,7 @@ const EVERY_COMPOSITION = "*";
 
 /** Mounts may be written `./scene.html`; the server reports `scene.html`. */
 function revisionKey(path: string): string {
-  return path.replace(/\\/g, "/").replace(/^\.?\//, "");
+  return (path.split(/[?#]/)[0] ?? "").replace(/\\/g, "/").replace(/^\.?\//, "");
 }
 
 export interface ThumbnailSlice {

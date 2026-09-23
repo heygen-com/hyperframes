@@ -214,7 +214,9 @@ export function createProjectSignature(
   files.sort((a, b) => a.file.localeCompare(b.file));
 
   const fingerprint = createProjectFingerprint(normalizedProjectDir, files);
-  const cacheKey = [normalizedProjectDir, ...[...excluding].sort()].join("\0");
+  const cacheKey = excluding.size
+    ? `${normalizedProjectDir}\0${createHash("sha256").update([...excluding].sort().join("\0")).digest("hex")}`
+    : normalizedProjectDir;
   const cached = projectSignatureCache.get(cacheKey);
   if (cached?.fingerprint === fingerprint) return cached.signature;
 

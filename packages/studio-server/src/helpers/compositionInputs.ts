@@ -47,8 +47,8 @@ function closureOf(read: SourceReader, compPath: string): Set<string> {
   return closure;
 }
 
-// ponytail: one small entry per (project, composition) ever thumbnailed, never evicted; LRU it if
-// a server ever holds thousands.
+// ponytail: this and projectSignature's per-exclusion cache keep one small entry per (project,
+// composition) ever thumbnailed, never evicted; LRU them if a server ever holds thousands.
 const inputSignatures = new Map<string, { projectSignature: string; inputSignature: string }>();
 
 /**
