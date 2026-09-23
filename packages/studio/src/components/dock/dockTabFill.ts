@@ -70,9 +70,7 @@ function markClippedEdges(list: HTMLElement) {
 }
 
 /**
- * Slides one fill per tab strip under its shown tab, keeps that tab in view, and keeps the
- * clipped-edge marks current.
- * Returns a disposer.
+ * Slides a fill under each strip's shown tab, keeps that tab in view and marks clipped edges.
  */
 export function installTabFill(api: DockviewApi, root: HTMLElement): () => void {
   const lists = () => root.querySelectorAll<HTMLElement>(".dv-tabs-container");
