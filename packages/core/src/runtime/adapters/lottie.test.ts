@@ -157,6 +157,22 @@ describe("lottie adapter", () => {
       expect(cycle.goToAndStop).toHaveBeenCalledWith(0, true);
     });
 
+    it.each([
+      [24, 23.976, 85],
+      [30, 25, 17],
+    ])(
+      "starts cycle %s-frame @ %s fps number %s on frame 0 despite float error",
+      (frames, fps, k) => {
+        const cycle = {
+          ...createLottieWebAnim({ totalFrames: frames, frameRate: fps }),
+          loop: true,
+        };
+        lottieWindow.__hfLottie = [cycle];
+        createLottieAdapter().seek({ time: (k * frames) / fps });
+        expect(cycle.goToAndStop).toHaveBeenCalledWith(0, true);
+      },
+    );
+
     it("holds a one-shot lottie-web animation on its last frame past its end", () => {
       const anim = createLottieWebAnim({ totalFrames: 30, frameRate: 30 });
       lottieWindow.__hfLottie = [anim];

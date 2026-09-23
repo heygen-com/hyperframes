@@ -92,7 +92,7 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
             // holds its last frame; both seek by whole-file frame number to avoid float drift.
             const frame = time * anim.frameRate;
             if (anim.totalFrames > 0 && loops) {
-              anim.goToAndStop(frame % anim.totalFrames, true);
+              anim.goToAndStop(wrapFrame(frame, anim.totalFrames), true);
             } else if (anim.totalFrames > 0 && frame >= anim.totalFrames) {
               anim.goToAndStop(anim.totalFrames - 1, true);
             } else {
@@ -106,7 +106,8 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
               // dotlottie-web v2+: direct frame setter
               const totalFrames = anim.totalFrames ?? 0;
               const fps = anim.frameRate ?? 30;
-              const frame = loops && totalFrames > 0 ? (time * fps) % totalFrames : time * fps;
+              const frame =
+                loops && totalFrames > 0 ? wrapFrame(time * fps, totalFrames) : time * fps;
               if (totalFrames > 0) {
                 anim.setCurrentRawFrameValue(Math.min(frame, totalFrames - 1));
               }
@@ -176,6 +177,12 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
       return sawAny ? maxSeconds : null;
     },
   };
+}
+
+/** `frame` wrapped into [0, total); a float hair under a whole cycle is the next cycle's first frame. */
+function wrapFrame(frame: number, total: number): number {
+  const wrapped = frame % total;
+  return total - wrapped < 1e-6 ? 0 : wrapped;
 }
 
 /** A finite, positive number in seconds derived from a frame count + rate, or null. */
