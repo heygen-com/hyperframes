@@ -1,26 +1,24 @@
-import { buildProjectApiPath } from "../../utils/projectRouting";
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
-// Importing "@hyperframes/player" registers a class extending HTMLElement at
-// module load, which throws under SSR, hence the dynamic import behind a
-// `typeof window` guard. Kicking it here rather than in the mount effect puts
-// the chunk request in flight before the shell's first layout. Clearing the memo
-// on rejection stops one failure poisoning every later mount; the browser's
-// module map still caches a failed fetch, so recovery is a page reload.
-let playerModule: Promise<unknown> | null = null;
+import {
+  adoptBootPreview,
+  listenPreviewPlayer,
+  type BootPreview,
+  type PreviewPlayerEventType,
+} from "../lib/bootPreview";
+import {
+  createPreviewPlayer,
+  loadPlayerModule,
+  previewSrc,
+  setPreviewPlayerOrientation,
+  type HyperframesPlayerElement,
+} from "../lib/previewPlayerElement";
 
-export function loadPlayerModule(): Promise<unknown> {
-  playerModule ??= import("@hyperframes/player").catch((err: unknown) => {
-    playerModule = null;
-    throw err;
-  });
-  return playerModule;
-}
-
+// Kicking the player chunk here rather than in the mount effect puts the request in
+// flight before the shell's first layout.
 if (typeof window !== "undefined") void loadPlayerModule().catch(() => {});
 
 interface PlayerProps {
@@ -35,10 +33,6 @@ interface PlayerProps {
   portrait?: boolean;
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
-}
-
-interface HyperframesPlayerElement extends HTMLElement {
-  iframeElement: HTMLIFrameElement;
 }
 
 const MEDIA_HAVE_FUTURE_DATA = 3;
@@ -71,6 +65,30 @@ export function readPreviewErrorMessage(event: Event): string {
   return typeof event.detail.message === "string" && event.detail.message.trim()
     ? event.detail.message
     : DEFAULT_PREVIEW_ERROR;
+}
+
+function assignIframeRef(ref: React.ForwardedRef<HTMLIFrameElement>, iframe: HTMLIFrameElement) {
+  if (typeof ref === "function") ref(iframe);
+  else if (ref) ref.current = iframe;
+}
+
+/** Starts the preview in `container` unless it is the adopted boot preview; returns its start time. */
+function connectPreviewPlayer(
+  container: HTMLElement,
+  player: HyperframesPlayerElement,
+  src: string,
+  booted: BootPreview | null,
+  portrait?: boolean,
+): number {
+  if (booted) {
+    // Already loading since the page's first script: keep its document.
+    setPreviewPlayerOrientation(player, portrait);
+    return booted.startedAt;
+  }
+  const startedAt = performance.now();
+  player.setAttribute("src", src);
+  container.appendChild(player);
+  return startedAt;
 }
 
 function enableInteractiveIframe(player: HyperframesPlayerElement): void {
@@ -195,9 +213,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       const container = containerRef.current;
       if (!container) return;
 
-      const previewSource =
-        directUrl || (projectId ? buildProjectApiPath(projectId, "/preview") : null);
-      if (!previewSource) return;
+      const src = previewSrc(projectId, directUrl);
+      if (!src) return;
 
       let canceled = false;
       let cleanup: (() => void) | undefined;
@@ -205,11 +222,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       void loadPlayerModule().then(() => {
         if (canceled) return;
 
-        // Create the web component imperatively to avoid JSX custom-element typing.
-        const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
-        const srcUrl = new URL(previewSource, window.location.origin);
-        applyPreviewVariablesToUrl(srcUrl);
-        const src = srcUrl.pathname + srcUrl.search;
+        const booted = adoptBootPreview(container, src);
+        const player = booted?.player ?? createPreviewPlayer(portrait);
         const retryPreview = () => {
           retryCountRef.current += 1;
           const retryUrl = new URL(src, window.location.origin);
@@ -302,32 +316,21 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         // Attach lifecycle listeners before assigning src or connecting the
         // custom element. A warm local iframe can otherwise finish before
         // Studio observes its load and never initialize the timeline.
-        iframe.addEventListener("load", handleLoad);
+        const handlers: Record<PreviewPlayerEventType, (event: Event) => void> = {
+          load: handleLoad,
+          ready: handleReady,
+          painted: handlePainted,
+          error: handleError,
+          shadertransitionstate: handleShaderTransitionState,
+        };
+        const stopListening = listenPreviewPlayer(player, (type, event) => handlers[type](event));
         player.addEventListener("click", preventToggle, { capture: true });
-        player.addEventListener("shadertransitionstate", handleShaderTransitionState);
-        player.addEventListener("ready", handleReady);
-        player.addEventListener("painted", handlePainted);
-        player.addEventListener("error", handleError);
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
-        if (typeof ref === "function") {
-          ref(iframe);
-        } else if (ref) {
-          (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
-        }
+        assignIframeRef(ref, iframe);
 
-        player.setAttribute("shader-capture-scale", "1");
-        player.setAttribute("shader-loading", "player");
-        player.setAttribute("width", String(portrait ? 1080 : 1920));
-        player.setAttribute("height", String(portrait ? 1920 : 1080));
-        player.style.width = "100%";
-        player.style.height = "100%";
-        player.style.display = "block";
-        player.style.background = "transparent";
-        loadStartedAtRef.current = performance.now();
         loadIdRef.current += 1;
-        player.setAttribute("src", src);
-        container.appendChild(player);
+        loadStartedAtRef.current = connectPreviewPlayer(container, player, src, booted, portrait);
 
         // Inject pasteboard shadow: let the shadow around the canvas bleed
         // into the surrounding pasteboard area (overflow: visible on the container)
@@ -343,13 +346,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         enableInteractiveIframe(player);
 
+        for (const event of booted?.events ?? [])
+          handlers[event.type as PreviewPlayerEventType](event);
+
         cleanup = () => {
-          iframe.removeEventListener("load", handleLoad);
+          stopListening();
           player.removeEventListener("click", preventToggle, { capture: true });
-          player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
-          player.removeEventListener("ready", handleReady);
-          player.removeEventListener("painted", handlePainted);
-          player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           // `remove()` rather than `container.removeChild(player)`: by the time

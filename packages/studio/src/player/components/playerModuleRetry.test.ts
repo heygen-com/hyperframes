@@ -12,7 +12,8 @@ vi.mock("@hyperframes/player", () => {
   return {};
 });
 
-import { loadPlayerModule } from "./Player";
+import { loadPlayerModule } from "../lib/previewPlayerElement";
+import "./Player";
 
 describe("loadPlayerModule", () => {
   it("kicks the import at module scope, before any mount", () => {

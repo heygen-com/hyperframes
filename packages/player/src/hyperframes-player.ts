@@ -216,6 +216,10 @@ class HyperframesPlayer extends HTMLElement {
     }
   }
 
+  // Element.moveBefore() calls this instead of disconnected + connected, so a host can
+  // move a loaded player without reloading its iframe.
+  connectedMoveCallback() {}
+
   disconnectedCallback() {
     this._sendControl("pause");
     this._stopIframeMedia();

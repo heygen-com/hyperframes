@@ -10,6 +10,7 @@ import {
   shouldShowCompositionLoadingOverlay,
 } from "./Player";
 import { usePlayerStore } from "../store/playerStore";
+import { dropBootPreview, startBootPreview } from "../lib/bootPreview";
 
 vi.mock("@hyperframes/player", () => ({}));
 
@@ -344,6 +345,63 @@ describe("ready to show", () => {
     });
     await twoFrames();
     expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
+  });
+});
+
+describe("boot preview", () => {
+  const moveBefore = function (this: Element, node: Node, child: Node | null) {
+    this.insertBefore(node, child);
+  };
+  const withMoveBefore = () =>
+    Object.defineProperty(Element.prototype, "moveBefore", {
+      value: moveBefore,
+      configurable: true,
+    });
+
+  afterEach(() => {
+    dropBootPreview();
+    Reflect.deleteProperty(Element.prototype, "moveBefore");
+  });
+
+  it("adopts the preview the page started without navigating it again, and catches up on its lifecycle", async () => {
+    withMoveBefore();
+    expect(startBootPreview("#project/demo")).toBe(true);
+    const booted = document.querySelector<TestHyperframesPlayer>("hyperframes-player")!;
+    booted.iframeElement.dispatchEvent(new Event("load"));
+    booted.dispatchEvent(new Event("ready"));
+    booted.dispatchEvent(new Event("painted"));
+    lifecycleLog = [];
+
+    const onLoad = vi.fn();
+    const onReadyToShowChange = vi.fn();
+    const { host, player } = await mountPlayer({ onLoad, onReadyToShowChange });
+    await twoFrames();
+
+    expect(player).toBe(booted);
+    expect(host.contains(booted)).toBe(true);
+    expect(document.querySelectorAll("hyperframes-player")).toHaveLength(1);
+    expect(lifecycleLog).not.toContain("src");
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    expect(onReadyToShowChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("leaves a boot preview of another document parked for the Player that loads it", async () => {
+    withMoveBefore();
+    startBootPreview("#project/other");
+    const booted = document.querySelector("hyperframes-player");
+
+    const { player } = await mountPlayer();
+
+    expect(player).not.toBe(booted);
+    expect(lifecycleLog).toContain("src");
+    expect(booted?.isConnected).toBe(true);
+    dropBootPreview();
+    expect(booted?.isConnected).toBe(false);
+  });
+
+  it("starts nothing when the browser cannot move a loaded iframe", () => {
+    expect(startBootPreview("#project/demo")).toBe(false);
+    expect(document.querySelector("hyperframes-player")).toBeNull();
   });
 });
 

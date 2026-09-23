@@ -19,4 +19,19 @@ describe("prefetchPreviewForHash", () => {
       "/api/projects/other/preview",
     ]);
   });
+
+  it("remembers a preview the page already requested and warms it again after another project", () => {
+    const fetchStub = vi.fn(() => Promise.resolve(new Response("")));
+    vi.stubGlobal("fetch", fetchStub);
+
+    prefetchPreviewForHash("#project/opening", true);
+    prefetchPreviewForHash("#project/opening?tab=design");
+    prefetchPreviewForHash("#project/second");
+    prefetchPreviewForHash("#project/opening");
+
+    expect(fetchStub.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+      "/api/projects/second/preview",
+      "/api/projects/opening/preview",
+    ]);
+  });
 });

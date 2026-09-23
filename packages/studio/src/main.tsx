@@ -5,12 +5,15 @@ import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { readIconTokens } from "./styles/iconTokens";
 import { trackStudioEvent } from "./utils/studioTelemetry";
-import { prefetchPreviewForHash } from "./utils/previewPrefetch";
+import { dropBootPreview } from "./player/lib/bootPreview";
+import { whenPreviewBooted } from "./player/store/playerStore";
+import { parseProjectIdFromHash } from "./utils/projectRouting";
 import "./styles/studio.css";
 
-prefetchPreviewForHash(window.location.hash);
-window.addEventListener("hashchange", () => prefetchPreviewForHash(window.location.hash));
 trackStudioEvent("session_start");
+// ponytail: a project that never mounts a Player (unreachable) keeps its parked 404 page.
+const openingProject = parseProjectIdFromHash(window.location.hash);
+if (openingProject) void whenPreviewBooted(openingProject).then(dropBootPreview);
 
 function errorProps(value: unknown): {
   error_message: string;
