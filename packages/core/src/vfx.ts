@@ -8,6 +8,8 @@
  * effect.
  */
 
+import { FRACTAL_NOISE_FRAG } from "./vfx/fractalNoise.frag";
+
 export const HF_VFX_ATTR = "data-vfx-chain";
 
 /**
@@ -85,7 +87,7 @@ export interface HfVfxDef {
 /**
  * `fractal-noise` params, from the fractal-noise deep dive and retro-wave's
  * observed values. Basic (type 1) is the only fractal type implemented in v1;
- * see `vfx/fractalNoise.ts` (Task 1.3) for the kernel scope decision.
+ * see `vfx/fractalNoise.frag.ts` for the kernel's scope decision.
  *
  * Exported as the whole registry for the exporter and Studio's effect picker;
  * inside the runtime, defs are reached through `getVfxDef`.
@@ -97,7 +99,7 @@ export const HF_VFX: readonly HfVfxDef[] = [
     label: "Fractal Noise",
     ae: "ADBE Fractal Noise",
     capture: "none",
-    frag: "void main(){}",
+    frag: FRACTAL_NOISE_FRAG,
     params: [
       {
         kind: "enum",
