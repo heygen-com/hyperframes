@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import { displacementMapSampleRef } from "../../../core/src/vfx/refs/displacementMap";
+import { fractalNoiseRef } from "../../../core/src/vfx/refs/fractalNoise";
 import { waveWarpSampleRef } from "../../../core/src/vfx/refs/waveWarp";
 
 /**
@@ -82,6 +83,60 @@ function fixture(chain: string, innerStyle = "", hostStyle = ""): string {
 
 /** Where the two side-by-side panels sit in the chain-order fixture. */
 const PANEL = { ax: 20, bx: 220, y: 30, w: HOST_W, h: HOST_H };
+
+/** Retro-wave's Fractal Noise parameter point, opacity raised to 100 so the readback isn't flattened by alpha. */
+const NOISE_PARAMS = {
+  fractalType: 1,
+  noiseType: 3,
+  invert: false,
+  contrast: 562,
+  brightness: 0,
+  scale: 411,
+  complexity: 6,
+  subInfluence: 70,
+  subScaling: 56,
+  evolution: 0,
+  randomSeed: 0,
+  opacity: 100,
+};
+
+/**
+ * `fractal-noise` has `capture: "none"` — no `.hf-vfx-src`/`.hf-vfx-in`
+ * wrapper, so the host is plain content with just the output canvas the
+ * runtime paints into inline on `renderSeek` (no page-composite round trip).
+ */
+function noiseFixture(chain: string): string {
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #000; }
+  #host { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4"
+     data-width="${HOST_W}" data-height="${HOST_H}">
+  <div id="host" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+</div>`;
+}
+
+async function readNoiseBuffer(
+  page: Page,
+): Promise<{ width: number; height: number; data: number[] }> {
+  return page.evaluate(() => {
+    const out = document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement;
+    const gl = out.getContext("webgl2")!;
+    const buf = new Uint8Array(out.width * out.height * 4);
+    gl.readPixels(0, 0, out.width, out.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    return { width: out.width, height: out.height, data: Array.from(buf) };
+  });
+}
+
+async function renderSeekOnly(page: Page, t: number): Promise<void> {
+  await page.evaluate((time: number) => {
+    (window as CompositeWindow).__player!.renderSeek(time);
+  }, t);
+}
 
 /**
  * Chain order is nesting order. The exporter puts effects that run BEFORE the
@@ -404,6 +459,73 @@ describe("data-vfx-chain in the browser", () => {
       expect(aCentre[1]).toBeGreaterThan(160);
       // ...and the host's blur runs OUTSIDE, on the canvas the kernel wrote.
       expect(psnr).toBeGreaterThanOrEqual(40);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("paints byte-identical fractal-noise output for the same seek time (determinism)", async () => {
+    const page = await open(noiseFixture(chainOf("fractal-noise", NOISE_PARAMS)));
+    try {
+      await renderSeekOnly(page, 1.25);
+      const first = await page.evaluate(() =>
+        (document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement).toDataURL(),
+      );
+
+      // Seek away, then back to the same time — the paint must not carry any
+      // state between calls (the determinism contract's "no state carried
+      // between paints" clause).
+      await renderSeekOnly(page, 0.5);
+      await renderSeekOnly(page, 1.25);
+      const second = await page.evaluate(() =>
+        (document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement).toDataURL(),
+      );
+
+      expect(second).toBe(first);
+      expect(pageErrors.get(page)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("matches the CPU reference within the cross-backend PSNR bar for fractal-noise", async () => {
+    const page = await open(noiseFixture(chainOf("fractal-noise", NOISE_PARAMS)));
+    try {
+      const frames = [0, 0.5, 1.25, 2.0];
+      // 8 points spread across the 160x120 canvas.
+      const samplePoints: [number, number][] = [
+        [10, 10],
+        [40, 30],
+        [80, 60],
+        [120, 90],
+        [20, 100],
+        [150, 5],
+        [60, 60],
+        [100, 20],
+      ];
+      let se = 0;
+      let n = 0;
+      for (const t of frames) {
+        await renderSeekOnly(page, t);
+        const buf = await readNoiseBuffer(page);
+        for (const [x, y] of samplePoints) {
+          // Device pixels, y measured from the bottom — readPixels' row order
+          // and the shader's v_uv y-up agree, and refs/fractalNoise.ts is
+          // documented against exactly that convention.
+          const i = (y * buf.width + x) * 4;
+          const measured = buf.data[i]!;
+          const expected = Math.round(
+            fractalNoiseRef({ x: x + 0.5, y: y + 0.5 }, t, NOISE_PARAMS) * 255,
+          );
+          const d = measured - expected;
+          se += d * d;
+          n += 1;
+        }
+      }
+      const mse = se / n;
+      const psnr = mse === 0 ? Number.POSITIVE_INFINITY : 10 * Math.log10((255 * 255) / mse);
+      expect(psnr).toBeGreaterThanOrEqual(32);
+      expect(pageErrors.get(page)).toEqual([]);
     } finally {
       await page.close();
     }
