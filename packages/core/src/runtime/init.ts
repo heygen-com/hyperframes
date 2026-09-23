@@ -3036,7 +3036,6 @@ export function initSandboxRuntimeModular(): void {
         // A vfx host inside a sub-composition enters the DOM only now, so the
         // init-time pass below never saw it. Re-scan before readiness is
         // published: an unregistered chain paints nothing and logs nothing.
-        initVfx(document.body, state.canonicalFps);
         maybePublishRenderReady();
       });
   } else {
@@ -3063,7 +3062,6 @@ export function initSandboxRuntimeModular(): void {
     colorGradingRuntime = null;
   });
   // Per-pixel effect chains: compile once here, repaint on every seek below.
-  initVfx(document.body, state.canonicalFps);
 
   const applyPlaybackRate = (nextRate: number) => {
     const parsed = Number(nextRate);
