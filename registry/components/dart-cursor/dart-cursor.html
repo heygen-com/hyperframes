@@ -1,0 +1,356 @@
+<!doctype html>
+<!--
+  Dart Cursor (actor primitive), mountable sub-composition
+
+  concept: a bold outlined arrowhead that dives in from camera depth, flies nose-first
+  like a dart (it turns to face where it travels and relaxes upright when it parks),
+  smears with motion blur along its path, squashes on each click, and whips out.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip (inset:0). See demo.html.
+
+  variables:
+    tone (dark|light)                   dark body with a white outline, or the reverse
+    target_x, target_y (% of host box)  where the tip lands for the first click
+    target2_x, target2_y (%)            where it lands for the second click
+    enter_from, exit_to (left|right|top|bottom)  the edge it arrives from and leaves by
+    blur (0 to 1.5)                     motion-blur strength, 0 turns it off
+
+  envelope (default 4.4s): entry 0-0.9s, click 0.95s, move 1.45-2.15s, click 2.2s,
+  elastic hold, exit in the last 0.55s. Shorter durations compress every beat evenly.
+-->
+<html
+  lang="en"
+  data-composition-id="dart-cursor"
+  data-composition-duration="4.4"
+  data-composition-variables='[
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "default": "dark", "options": [ { "value": "dark", "label": "Dark body, white outline" }, { "value": "light", "label": "Light body, dark outline" } ] },
+    { "id": "target_x", "type": "number", "role": "layout", "label": "First click X", "default": 34, "min": 5, "max": 95, "step": 1, "unit": "%" },
+    { "id": "target_y", "type": "number", "role": "layout", "label": "First click Y", "default": 58, "min": 5, "max": 95, "step": 1, "unit": "%" },
+    { "id": "target2_x", "type": "number", "role": "layout", "label": "Second click X", "default": 64, "min": 5, "max": 95, "step": 1, "unit": "%" },
+    { "id": "target2_y", "type": "number", "role": "layout", "label": "Second click Y", "default": 46, "min": 5, "max": 95, "step": 1, "unit": "%" },
+    { "id": "enter_from", "type": "enum", "role": "timing", "label": "Enter from", "default": "right", "options": [ { "value": "right", "label": "Right" }, { "value": "left", "label": "Left" }, { "value": "top", "label": "Top" }, { "value": "bottom", "label": "Bottom" } ] },
+    { "id": "exit_to", "type": "enum", "role": "timing", "label": "Exit to", "default": "right", "options": [ { "value": "right", "label": "Right" }, { "value": "left", "label": "Left" }, { "value": "top", "label": "Top" }, { "value": "bottom", "label": "Bottom" } ] },
+    { "id": "blur", "type": "number", "role": "style", "label": "Motion blur", "default": 1, "min": 0, "max": 1.5, "step": 0.1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dart Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          isolation: isolate;
+          pointer-events: none;
+        }
+
+        .dc-cursor {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 0;
+          height: 0;
+          will-change: transform, filter;
+        }
+
+        /* The tip sits at the svg origin, so the wrapper's translate places the tip. */
+        .dc-svg {
+          position: absolute;
+          left: -120px;
+          top: -120px;
+          width: 240px;
+          height: 240px;
+          overflow: visible;
+        }
+
+        .dc-outline {
+          stroke-width: 22;
+          stroke-linejoin: round;
+        }
+        .dc-body {
+          stroke-width: 3;
+          stroke-linejoin: round;
+        }
+        .dc-cursor[data-tone="dark"] .dc-outline {
+          fill: #ffffff;
+          stroke: #ffffff;
+        }
+        .dc-cursor[data-tone="dark"] .dc-body {
+          fill: #0b0b0c;
+          stroke: #0b0b0c;
+        }
+        .dc-cursor[data-tone="light"] .dc-outline {
+          fill: #111113;
+          stroke: #111113;
+        }
+        .dc-cursor[data-tone="light"] .dc-body {
+          fill: #ffffff;
+          stroke: #ffffff;
+        }
+      </style>
+
+      <div id="root" data-composition-id="dart-cursor" data-duration="4.4">
+        <div class="dc-cursor" id="dc-cursor" data-tone="dark" aria-hidden="true">
+          <svg class="dc-svg" viewBox="-120 -120 240 240" aria-hidden="true">
+            <defs>
+              <filter
+                id="dc-smear"
+                x="-100%"
+                y="-100%"
+                width="300%"
+                height="300%"
+                color-interpolation-filters="sRGB"
+              >
+                <feGaussianBlur id="dc-smear-fe" stdDeviation="0 0" />
+              </filter>
+            </defs>
+            <g id="dc-spin">
+              <g id="dc-heading" filter="url(#dc-smear)">
+                <g id="dc-unheading">
+                  <g id="dc-shape">
+                    <polygon
+                      class="dc-outline"
+                      points="-5,1 -14,82 -11,83 6,64 20,58 34,57 53,62 49,52 0,0"
+                    />
+                    <polygon
+                      class="dc-body"
+                      points="-5,1 -14,82 -11,83 6,64 20,58 34,57 53,62 49,52 0,0"
+                    />
+                  </g>
+                </g>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var cursor = document.getElementById("dc-cursor");
+          var svg = cursor.querySelector(".dc-svg");
+          var spin = document.getElementById("dc-spin");
+          var heading = document.getElementById("dc-heading");
+          var unheading = document.getElementById("dc-unheading");
+          var shape = document.getElementById("dc-shape");
+          var smear = document.getElementById("dc-smear-fe");
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          function num(value, fallback, lo, hi) {
+            var n = Number(value);
+            if (!isFinite(n)) n = fallback;
+            return Math.max(lo, Math.min(hi, n));
+          }
+          function side(value, fallback) {
+            return ["left", "right", "top", "bottom"].indexOf(value) >= 0 ? value : fallback;
+          }
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "dart-cursor";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "4.4",
+            ),
+          );
+          var tone = vars.tone === "light" ? "light" : "dark";
+          var blurAmount = num(vars.blur, 1, 0, 1.5);
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var unit = W / 1920;
+          var PX_PER_SVG_UNIT = 1.14 * unit;
+
+          function stagePoint(xPercent, yPercent) {
+            return { x: (xPercent / 100) * W, y: (yPercent / 100) * H };
+          }
+          var A = stagePoint(num(vars.target_x, 34, 0, 100), num(vars.target_y, 58, 0, 100));
+          var B = stagePoint(num(vars.target2_x, 64, 0, 100), num(vars.target2_y, 46, 0, 100));
+          function offStage(edge, near) {
+            if (edge === "left") return { x: -0.14 * W, y: near.y - 0.18 * H };
+            if (edge === "top") return { x: near.x + 0.16 * W, y: -0.2 * H };
+            if (edge === "bottom") return { x: near.x - 0.12 * W, y: 1.22 * H };
+            return { x: 1.14 * W, y: near.y - 0.22 * H };
+          }
+          var START = offStage(side(vars.enter_from, "right"), A);
+          var END = offStage(side(vars.exit_to, "right"), B);
+
+          // Beats at the default 4.4s; a shorter composition compresses them evenly.
+          var FIXED_TAIL = 0.55 + 0.35;
+          var squeeze = Math.min(1, duration / (2.2 + FIXED_TAIL));
+          var T_LAND1 = 0.9 * squeeze;
+          var T_CLICK1 = 0.95 * squeeze;
+          var T_MOVE = 1.45 * squeeze;
+          var T_LAND2 = 2.15 * squeeze;
+          var T_CLICK2 = 2.2 * squeeze;
+          var T_EXIT = Math.max(T_CLICK2 + 0.3 * squeeze, duration - 0.55 * squeeze);
+
+          function clamp01(u) {
+            return u < 0 ? 0 : u > 1 ? 1 : u;
+          }
+          function smooth(u) {
+            u = clamp01(u);
+            return u * u * (3 - 2 * u);
+          }
+          var easeOut = gsap.parseEase("power3.out");
+          var easeInOut = gsap.parseEase("power2.inOut");
+          var easeIn = gsap.parseEase("power3.in");
+
+          // A quadratic arc bent to one side of the chord.
+          function arc(p0, p1, bend, u) {
+            var cx = (p0.x + p1.x) / 2 - (p1.y - p0.y) * bend;
+            var cy = (p0.y + p1.y) / 2 + (p1.x - p0.x) * bend;
+            var v = 1 - u;
+            return {
+              x: v * v * p0.x + 2 * v * u * cx + u * u * p1.x,
+              y: v * v * p0.y + 2 * v * u * cy + u * u * p1.y,
+            };
+          }
+
+          function positionAt(t) {
+            if (t <= T_LAND1) return arc(START, A, 0.22, easeOut(clamp01(t / T_LAND1)));
+            if (t <= T_MOVE) return A;
+            if (t <= T_LAND2) {
+              return arc(A, B, -0.18, easeInOut(clamp01((t - T_MOVE) / (T_LAND2 - T_MOVE))));
+            }
+            if (t <= T_EXIT) return B;
+            return arc(B, END, 0.12, easeIn(clamp01((t - T_EXIT) / (duration - T_EXIT))));
+          }
+
+          function keyed(keys, u) {
+            if (u <= keys[0][0]) return keys[0][1];
+            for (var i = 1; i < keys.length; i++) {
+              if (u <= keys[i][0]) {
+                var a = keys[i - 1];
+                var b = keys[i];
+                return a[1] + (b[1] - a[1]) * smooth((u - a[0]) / (b[0] - a[0]));
+              }
+            }
+            return keys[keys.length - 1][1];
+          }
+          var DIVE = [
+            [0, 1.3],
+            [0.4, 1.8],
+            [0.78, 1.06],
+            [1, 1],
+          ];
+          function press(t, at) {
+            var down = 0.08 * squeeze;
+            var up = 0.2 * squeeze;
+            if (t < at) return 0;
+            if (t < at + down) return 0.2 * gsap.parseEase("power2.in")((t - at) / down);
+            return 0.2 - 0.1 * gsap.parseEase("power2.out")(clamp01((t - at - down) / up));
+          }
+
+          // Depth is scale: above 1 is lifted toward camera, below 1 is pressed into the screen.
+          function depthAt(t) {
+            if (t <= T_LAND1) return keyed(DIVE, t / T_LAND1);
+            if (t <= T_MOVE) return 1 - press(t, T_CLICK1);
+            if (t <= T_LAND2) {
+              var u = (t - T_MOVE) / (T_LAND2 - T_MOVE);
+              return 0.9 + 0.1 * smooth(u / 0.3) + 0.07 * Math.sin(Math.PI * u);
+            }
+            return 1 - press(t, T_CLICK2);
+          }
+
+          // Local-frame nose angle of the arrowhead (tip minus the shape's centroid).
+          var NOSE_DEG = -106;
+          var H_STEP = 1 / 120;
+          function wrap(deg) {
+            return ((((deg + 180) % 360) + 360) % 360) - 180;
+          }
+
+          function render(t) {
+            var p = positionAt(t);
+            var before = positionAt(Math.max(0, t - H_STEP));
+            var after = positionAt(Math.min(duration, t + H_STEP));
+            var vx = (after.x - before.x) / (2 * H_STEP);
+            var vy = (after.y - before.y) / (2 * H_STEP);
+            var speed = Math.hypot(vx, vy) / unit;
+            var travelDeg = (Math.atan2(vy, vx) * 180) / Math.PI;
+            var steer = smooth((speed - 150) / 950);
+            var rotation = steer * wrap(travelDeg - NOSE_DEG);
+            var depth = depthAt(t);
+            var exiting = t > T_EXIT;
+            var perFrame = speed / 60;
+            var smearUnits =
+              blurAmount * Math.min(exiting ? 36 : 12, (exiting ? 0.28 : 0.16) * perFrame);
+            var lift = Math.max(0, depth - 0.9);
+
+            cursor.style.transform = "translate(" + p.x.toFixed(2) + "px," + p.y.toFixed(2) + "px)";
+            svg.style.filter =
+              "drop-shadow(0 " +
+              (3 + 22 * lift).toFixed(1) +
+              "px " +
+              (4 + 26 * lift).toFixed(1) +
+              "px rgba(0,0,0," +
+              (0.34 - 0.12 * Math.min(1, lift)).toFixed(3) +
+              "))";
+            spin.setAttribute(
+              "transform",
+              "rotate(" +
+                rotation.toFixed(2) +
+                ") scale(" +
+                (depth * PX_PER_SVG_UNIT).toFixed(4) +
+                ")",
+            );
+            // The blur's x axis is turned onto the travel direction, then the shape turned back.
+            var local = wrap(travelDeg - rotation);
+            heading.setAttribute("transform", "rotate(" + local.toFixed(2) + ")");
+            unheading.setAttribute("transform", "rotate(" + (-local).toFixed(2) + ")");
+            smear.setAttribute("stdDeviation", smearUnits.toFixed(3) + " 0");
+            cursor.style.opacity = t >= duration ? "0" : "1";
+          }
+
+          cursor.setAttribute("data-tone", tone);
+          shape.setAttribute("transform", "scale(1.09 1)");
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

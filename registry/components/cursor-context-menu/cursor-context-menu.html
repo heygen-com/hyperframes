@@ -1,0 +1,496 @@
+<!doctype html>
+<!--
+  Context Menu Cursor (actor primitive), mountable sub-composition
+
+  concept: an arrow glides to a file in a folder window and right-clicks it; a context
+  menu blooms from the tip (flipping left or up when it would leave the frame), the
+  hover highlight follows the item under the tip as the cursor travels down, it clicks
+  the chosen item, the menu collapses back toward the tip and the action happens:
+  Duplicate adds a copy, Rename opens the name for editing, Move to Trash removes the
+  file, anything else confirms with a toast.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip (inset:0) and draws its own folder window.
+
+  variables:
+    items (string)  menu items, comma separated
+    pick (number)   index of the item the cursor chooses
+    tone (light|dark)
+
+  envelope (default 5.2s): glide 0-0.85s, right-click 0.95s, menu 1.02s, travel
+  1.45-2.1s, click 2.25s, action 2.55s, hold. Shorter durations compress every beat evenly.
+-->
+<html
+  lang="en"
+  data-composition-id="cursor-context-menu"
+  data-composition-duration="5.2"
+  data-composition-variables='[
+    { "id": "items", "type": "string", "role": "content", "label": "Menu items", "default": "Open,Rename,Duplicate,Share,Move to Trash" },
+    { "id": "pick", "type": "number", "role": "content", "label": "Chosen item (0 = first)", "default": 2, "min": 0, "max": 9, "step": 1 },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "default": "light", "options": [ { "value": "light", "label": "Light" }, { "value": "dark", "label": "Dark" } ] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Context Menu Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          container-type: size;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --cm-accent: #3b6cf6;
+          --cm-win: #ffffff;
+          --cm-card: #f4f5f9;
+          --cm-ink: #121522;
+          --cm-dim: #7a8093;
+          --cm-menu: rgba(255, 255, 255, 0.96);
+          --cm-line: rgba(18, 21, 34, 0.08);
+        }
+        #root[data-tone="dark"] {
+          --cm-win: #171a23;
+          --cm-card: #222632;
+          --cm-ink: #eef0f7;
+          --cm-dim: #8d93a6;
+          --cm-menu: rgba(38, 42, 55, 0.97);
+          --cm-line: rgba(255, 255, 255, 0.09);
+        }
+        .cm-stage {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .cm-window {
+          position: relative;
+          width: 64cqw;
+          border-radius: 1.4cqw;
+          background: var(--cm-win);
+          box-shadow:
+            0 2.4cqw 6cqw rgba(8, 12, 28, 0.35),
+            0 0 0 1px var(--cm-line);
+        }
+        .cm-bar {
+          display: flex;
+          align-items: center;
+          gap: 0.6cqw;
+          height: 4.4cqw;
+          padding: 0 1.8cqw;
+          border-bottom: 1px solid var(--cm-line);
+          font-size: 1.35cqw;
+          font-weight: 650;
+          color: var(--cm-ink);
+        }
+        .cm-dot {
+          width: 0.8cqw;
+          height: 0.8cqw;
+          border-radius: 50%;
+          background: var(--cm-line);
+        }
+        .cm-bar span {
+          margin-left: 1cqw;
+        }
+        .cm-grid {
+          position: relative;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 1.6cqw;
+          padding: 2cqw;
+        }
+        .cm-file {
+          position: relative;
+          padding: 0.8cqw;
+          border-radius: 1cqw;
+          background: var(--cm-card);
+          box-shadow: 0 0 0 0.16cqw transparent;
+        }
+        .cm-file.is-on {
+          box-shadow: 0 0 0 0.16cqw var(--cm-accent);
+        }
+        .cm-thumb {
+          height: 8.4cqw;
+          border-radius: 0.7cqw;
+        }
+        .cm-name {
+          margin-top: 0.8cqw;
+          font-size: 1.4cqw;
+          font-weight: 600;
+          color: var(--cm-ink);
+          white-space: nowrap;
+        }
+        .cm-name.is-edit {
+          box-shadow: 0 0 0 0.14cqw var(--cm-accent);
+          border-radius: 0.3cqw;
+        }
+        .cm-name.is-edit b {
+          font-weight: 600;
+          background: color-mix(in srgb, var(--cm-accent) 30%, transparent);
+        }
+        .cm-meta {
+          margin-top: 0.3cqw;
+          font-size: 1.1cqw;
+          color: var(--cm-dim);
+        }
+        .cm-menu {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 19cqw;
+          padding: 0.55cqw;
+          border-radius: 0.9cqw;
+          background: var(--cm-menu);
+          box-shadow:
+            0 1.2cqw 3cqw rgba(8, 12, 28, 0.3),
+            0 0 0 1px var(--cm-line);
+          opacity: 0;
+          will-change: transform, opacity;
+        }
+        .cm-item {
+          position: relative;
+          height: 3.3cqw;
+          padding: 0 1.1cqw;
+          line-height: 3.3cqw;
+          border-radius: 0.55cqw;
+          font-size: 1.5cqw;
+          color: var(--cm-ink);
+        }
+        .cm-item.is-hover {
+          background: var(--cm-accent);
+          color: #ffffff;
+        }
+        .cm-sep {
+          height: 1px;
+          margin: 0.4cqw 0.6cqw;
+          background: var(--cm-line);
+        }
+        .cm-toast {
+          position: absolute;
+          left: 50%;
+          bottom: 5cqh;
+          padding: 1cqw 1.8cqw;
+          border-radius: 99px;
+          background: #15182a;
+          color: #ffffff;
+          font-size: 1.3cqw;
+          font-weight: 600;
+          opacity: 0;
+          white-space: nowrap;
+        }
+        .cm-cursor {
+          position: absolute;
+          left: 0;
+          top: 0;
+          transform-origin: 0 0;
+          filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
+          will-change: transform;
+        }
+        .cm-cursor path {
+          fill: #ffffff;
+          stroke: #141414;
+          stroke-width: 1.4;
+          stroke-linejoin: round;
+        }
+      </style>
+
+      <div id="root" data-composition-id="cursor-context-menu" data-duration="5.2">
+        <div class="cm-stage">
+          <div class="cm-window">
+            <div class="cm-bar">
+              <i class="cm-dot"></i><i class="cm-dot"></i><i class="cm-dot"></i
+              ><span>Launch assets</span>
+            </div>
+            <div class="cm-grid" id="cm-grid"></div>
+          </div>
+        </div>
+        <div class="cm-menu" id="cm-menu"></div>
+        <div class="cm-toast" id="cm-toast"></div>
+        <svg class="cm-cursor" id="cm-cursor" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
+        </svg>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var grid = document.getElementById("cm-grid");
+          var menu = document.getElementById("cm-menu");
+          var toast = document.getElementById("cm-toast");
+          var cursor = document.getElementById("cm-cursor");
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "cursor-context-menu";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "5.2",
+            ),
+          );
+          root.setAttribute("data-tone", vars.tone === "dark" ? "dark" : "light");
+          var labels = String(vars.items || DEFAULTS.items || "Open")
+            .split(",")
+            .map(function (s) {
+              return s.trim();
+            })
+            .filter(Boolean);
+          if (!labels.length) labels = ["Open"];
+          var pick = Math.max(0, Math.min(labels.length - 1, Math.round(Number(vars.pick) || 0)));
+
+          var FILES = [
+            ["Q3 roadmap", "pdf", "1.2 MB &middot; PDF", "linear-gradient(135deg,#ff8a7a,#e8465b)"],
+            [
+              "Launch film v4",
+              "mp4",
+              "2.4 GB &middot; Video",
+              "linear-gradient(135deg,#8f7bff,#4b3bd6)",
+            ],
+            [
+              "Pricing notes",
+              "md",
+              "18 KB &middot; Text",
+              "linear-gradient(135deg,#6fc3ff,#2f7de1)",
+            ],
+            [
+              "Team offsite",
+              "jpg",
+              "4.8 MB &middot; Image",
+              "linear-gradient(135deg,#7fe0a6,#1f9d6b)",
+            ],
+            [
+              "Launch film v4 copy",
+              "mp4",
+              "2.4 GB &middot; Video",
+              "linear-gradient(135deg,#8f7bff,#4b3bd6)",
+            ],
+          ];
+          var TARGET = 1;
+          var cards = FILES.map(function (f) {
+            var card = document.createElement("div");
+            card.className = "cm-file";
+            card.innerHTML =
+              '<div class="cm-thumb" style="background:' +
+              f[3] +
+              '"></div>' +
+              '<div class="cm-name">' +
+              f[0] +
+              "." +
+              f[1] +
+              '</div><div class="cm-meta">' +
+              f[2] +
+              "</div>";
+            grid.appendChild(card);
+            return card;
+          });
+          var copy = cards[4];
+          var targetName = cards[TARGET].querySelector(".cm-name");
+          var rows = labels.map(function (label, i) {
+            if (i > 0 && i === labels.length - 1 && /trash|delete/i.test(label)) {
+              var sep = document.createElement("div");
+              sep.className = "cm-sep";
+              menu.appendChild(sep);
+            }
+            var row = document.createElement("div");
+            row.className = "cm-item";
+            row.textContent = label;
+            menu.appendChild(row);
+            return row;
+          });
+          var action = /duplicate/i.test(labels[pick])
+            ? "duplicate"
+            : /rename/i.test(labels[pick])
+              ? "rename"
+              : /trash|delete/i.test(labels[pick])
+                ? "trash"
+                : "toast";
+          toast.textContent = labels[pick] + " · " + FILES[TARGET][0] + "." + FILES[TARGET][1];
+
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var u = W / 1920;
+          var ARROW = 64 * u;
+          cursor.style.width = cursor.style.height = ARROW + "px";
+          cursor.style.left = (-5 / 24) * ARROW + "px";
+          cursor.style.top = (-3 / 24) * ARROW + "px";
+
+          // Layout-space offsets, which ignore any transform a host puts on the player.
+          function offsetIn(el) {
+            var x = 0;
+            var y = 0;
+            while (el && el !== root) {
+              x += el.offsetLeft;
+              y += el.offsetTop;
+              el = el.offsetParent;
+            }
+            return { x: x, y: y };
+          }
+
+          var squeeze = Math.min(1, duration / 5.2);
+          var T = {
+            glide: 0.85,
+            rclick: 0.95,
+            bloom: 1.02,
+            travel0: 1.45,
+            travel1: 2.1,
+            click: 2.25,
+            collapse: 2.43,
+            act: 2.55,
+            away0: 3.1,
+            away1: 3.7,
+          };
+          for (var key in T) T[key] *= squeeze;
+
+          var glide = gsap.parseEase("power2.out");
+          var bloomEase = gsap.parseEase("expo.out");
+          var easeInOut = gsap.parseEase("power2.inOut");
+          var easeOut = gsap.parseEase("power3.out");
+          var springBack = gsap.parseEase("back.out(2.5)");
+          function seg(t, a, b) {
+            return Math.max(0, Math.min(1, (t - a) / (b - a)));
+          }
+          function lerp(a, b, k) {
+            return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+          }
+          // Right-click: press, a short hold, then a release that overshoots a touch.
+          function press(t, at, depth) {
+            var d = 0.05 * squeeze;
+            if (t < at || t > at + d * 5) return 1;
+            if (t < at + d) return 1 - depth * seg(t, at, at + d);
+            if (t < at + d * 1.8) return 1 - depth;
+            return 1 - depth + depth * springBack(seg(t, at + d * 1.8, at + d * 5));
+          }
+
+          function render(t) {
+            var tc = offsetIn(cards[TARGET]);
+            var cw = cards[TARGET].offsetWidth;
+            var ch = cards[TARGET].offsetHeight;
+            var anchor = { x: tc.x + cw * 0.62, y: tc.y + ch * 0.42 };
+
+            // Open right and down from the tip, flipping on the side that would leave the frame.
+            var mw = menu.offsetWidth;
+            var mh = menu.offsetHeight;
+            var left = anchor.x + mw + 6 * u > W - 24 * u;
+            var up = anchor.y + mh + 6 * u > H - 24 * u;
+            var mx = left ? anchor.x - mw - 6 * u : anchor.x + 6 * u;
+            var my = up ? anchor.y - mh - 6 * u : anchor.y + 6 * u;
+            menu.style.transformOrigin = (left ? "100%" : "0") + " " + (up ? "100%" : "0");
+
+            var open = seg(t, T.bloom, T.bloom + 0.22 * squeeze);
+            var shut = seg(t, T.collapse, T.collapse + 0.14 * squeeze);
+            var menuScale = 0.95 + 0.05 * bloomEase(open) - 0.03 * shut;
+            menu.style.opacity = String(Math.min(1, open * 3) * (1 - shut));
+            menu.style.transform = "translate(" + mx + "px," + my + "px) scale(" + menuScale + ")";
+            rows.forEach(function (row, i) {
+              var k = easeOut(
+                seg(t, T.bloom + i * 0.025 * squeeze, T.bloom + (i * 0.025 + 0.16) * squeeze),
+              );
+              row.style.opacity = String(k);
+              row.style.transform = "translateY(" + (1 - k) * -4 * u + "px)";
+            });
+
+            var itemPoint = {
+              x: mx + mw * 0.34,
+              y: my + rows[pick].offsetTop + rows[pick].offsetHeight * 0.55,
+            };
+            var start = { x: -0.06 * W, y: 1.1 * H };
+            var aside = {
+              x: itemPoint.x + (left ? -1 : 1) * 160 * u,
+              y: Math.min(H - 60 * u, itemPoint.y + 180 * u),
+            };
+            var p;
+            if (t < T.glide) p = lerp(start, anchor, glide(seg(t, 0, T.glide)));
+            else if (t < T.travel0) p = anchor;
+            else if (t < T.travel1)
+              p = lerp(anchor, itemPoint, easeInOut(seg(t, T.travel0, T.travel1)));
+            else if (t < T.away0) p = itemPoint;
+            else p = lerp(itemPoint, aside, easeInOut(seg(t, T.away0, T.away1)));
+
+            // The highlight is whichever row sits under the tip; it blinks once on the click.
+            var live = open > 0.6 && shut === 0 && p.x > mx && p.x < mx + mw;
+            var blink = t > T.click + 0.06 * squeeze && t < T.click + 0.12 * squeeze;
+            rows.forEach(function (row) {
+              var top = my + row.offsetTop;
+              var hit = live && p.y >= top && p.y < top + row.offsetHeight;
+              row.classList.toggle("is-hover", hit && !blink);
+            });
+
+            var done = t >= T.act;
+            var k = easeOut(seg(t, T.act, T.act + 0.32 * squeeze));
+            cards[TARGET].classList.toggle(
+              "is-on",
+              t >= T.rclick && !(done && action === "duplicate"),
+            );
+            copy.classList.toggle("is-on", done && action === "duplicate");
+            var showCopy = action === "duplicate" ? k : 0;
+            copy.style.opacity = String(showCopy);
+            copy.style.transform =
+              "translateY(" +
+              (1 - showCopy) * 18 * u +
+              "px) scale(" +
+              (0.94 + 0.06 * showCopy) +
+              ")";
+            var gone = action === "trash" ? k : 0;
+            cards[TARGET].style.opacity = String(1 - gone);
+            cards[TARGET].style.transform = "scale(" + (1 - 0.08 * gone) + ")";
+            var editing = done && action === "rename";
+            targetName.classList.toggle("is-edit", editing);
+            targetName.innerHTML = editing
+              ? "<b>" + FILES[TARGET][0] + "</b>." + FILES[TARGET][1]
+              : FILES[TARGET][0] + "." + FILES[TARGET][1];
+            var showToast = action === "toast" ? k : 0;
+            toast.style.opacity = String(showToast);
+            toast.style.transform = "translate(-50%," + (1 - showToast) * 20 * u + "px)";
+
+            var s = press(t, T.rclick, 0.1) * press(t, T.click, 0.12);
+            cursor.style.transform = "translate(" + p.x + "px," + p.y + "px) scale(" + s + ")";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

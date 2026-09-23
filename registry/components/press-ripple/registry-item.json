@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Press Ripple",
   "description": "A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, then exits off-stage while the pressed state holds.",
-  "tags": ["motion-primitive", "product-demo", "cursor", "press", "ripple", "payoff"],
+  "tags": ["cursor", "motion-primitive", "product-demo", "press", "ripple", "payoff"],
   "jobs": ["demonstrate"],
   "family": "product-demo",
   "profile": "payoff",

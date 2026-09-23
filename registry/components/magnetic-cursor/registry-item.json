@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "magnetic-cursor",
+  "type": "hyperframes:component",
+  "title": "Magnetic Cursor",
+  "description": "A soft dot pointer glides across an editor toolbar, is pulled into each button and morphs into its rounded hover plate while the icon leans toward it, presses one, and leaves as a dot.",
+  "tags": ["cursor", "motion-primitive", "pointer", "hover", "morph", "toolbar"],
+  "files": [
+    {
+      "path": "magnetic-cursor.html",
+      "target": "compositions/components/magnetic-cursor.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "syncPoints": [{ "id": "press", "phase": "hold", "offset": 2.37 }],
+  "variables": [
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#3b82f6" },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "default": "light",
+      "options": [
+        { "value": "light", "label": "Light toolbar" },
+        { "value": "dark", "label": "Dark toolbar" }
+      ]
+    },
+    {
+      "id": "visits",
+      "type": "string",
+      "role": "content",
+      "label": "Buttons visited",
+      "description": "Comma-separated indexes 0-5: bold, italic, underline, link, list, image.",
+      "default": "0,3,5"
+    },
+    {
+      "id": "press",
+      "type": "number",
+      "role": "timing",
+      "label": "Pressed visit",
+      "default": 2,
+      "min": 1,
+      "max": 3,
+      "step": 1
+    }
+  ]
+}

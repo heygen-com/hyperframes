@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Oversized Cursor",
   "description": "A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits",
-  "tags": ["motion-primitive", "actor", "cursor", "pointer", "interaction"],
+  "tags": ["cursor", "motion-primitive", "actor", "pointer", "interaction"],
   "files": [
     {
       "path": "oversized-cursor.html",

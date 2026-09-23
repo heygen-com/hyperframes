@@ -1,0 +1,52 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cursor-context-menu",
+  "type": "hyperframes:component",
+  "title": "Context Menu Cursor",
+  "description": "A cursor right-clicks a file, a context menu blooms from its tip, the hover highlight tracks the item under it, and the chosen action plays out: duplicate, rename, move to trash, or a confirmation toast.",
+  "tags": ["cursor", "motion-primitive", "menu", "right-click", "desktop", "files"],
+  "files": [
+    {
+      "path": "cursor-context-menu.html",
+      "target": "compositions/components/cursor-context-menu.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "syncPoints": [
+    { "id": "right-click", "phase": "in", "offset": 0.95 },
+    { "id": "menu-pick", "phase": "in", "offset": 2.25 }
+  ],
+  "variables": [
+    {
+      "id": "items",
+      "type": "string",
+      "role": "content",
+      "label": "Menu items",
+      "default": "Open,Rename,Duplicate,Share,Move to Trash"
+    },
+    {
+      "id": "pick",
+      "type": "number",
+      "role": "content",
+      "label": "Chosen item (0 = first)",
+      "default": 2,
+      "min": 0,
+      "max": 9,
+      "step": 1
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "default": "light",
+      "options": [
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ]
+    }
+  ]
+}
