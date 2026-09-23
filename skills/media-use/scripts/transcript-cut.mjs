@@ -98,11 +98,7 @@ function run() {
       // with priming silence (~25-35ms for AAC), which concat then bakes in as a
       // gap at each cut -- a defect distinct from, and surviving, the fades
       // below. PCM has no priming, so audio is encoded exactly once, at concat.
-      const ext = args.copy
-        ? extname(outPath) || ".mp4"
-        : isAudioOnly(outPath)
-          ? ".wav"
-          : ".mkv";
+      const ext = args.copy ? extname(outPath) || ".mp4" : isAudioOnly(outPath) ? ".wav" : ".mkv";
       const out = join(tmpDir, `segment-${String(index).padStart(4, "0")}${ext}`);
       // --copy stays fade-free (stream copy cannot filter). A segment's true
       // start/end (index 0's start, the last segment's end) borders nothing
