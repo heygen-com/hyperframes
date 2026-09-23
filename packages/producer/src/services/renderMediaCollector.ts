@@ -42,14 +42,8 @@ import {
 const COMPOSITION_HOST_ATTR = "data-composition-file";
 
 /**
- * Where a composition host closes, in its parent's time, or null when it is
- * unbounded. Delegates to the runtime's own `resolveAuthoredTimingWindow`: a
- * positive `data-duration` closes the host at start + duration; `data-end`
- * applies only when `data-duration` is absent or non-positive, and only when
- * it lies past the start. This is the same window the runtime uses to hide
- * the host's descendants, so nested media stops with the scene instead of
- * running to the scene file's end — and a zero duration no longer collapses
- * the window to `hostStart` and drops every nested clip.
+ * Where a composition host closes in its parent's time, or null when unbounded.
+ * Delegates to `resolveAuthoredTimingWindow`, the same window the runtime uses to hide descendants.
  */
 function resolveHostEnd(host: Element, hostStart: number): number | null {
   return (
