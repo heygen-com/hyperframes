@@ -119,6 +119,8 @@ jobs:
             skills:
               - "packages/cli/src/media-use/**"
               - "scripts/check-media-use-copy-parity.test.mjs"
+              - "scripts/check-skill-import-boundaries.test.mjs"
+              - "scripts/generate-skill-module-copies.mjs"
               - "skills/**"
               - ".claude/skills/**"
               - ".agents/skills/**"
@@ -446,23 +448,28 @@ jobs:
 
   test:
     name: Test
-    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support]
+    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support, test-skills]
     # Keep the existing required `Test` context authoritative for producer
     # failures too. It also fails closed if any package shard fails or is cancelled.
-    if: always() && needs.changes.outputs.code == 'true'
+    if: always() && (needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - name: Require producer source tests
-        if: needs.producer-source-tests.result != 'success'
+        if: needs.changes.outputs.code == 'true' && needs.producer-source-tests.result != 'success'
         run: |
           echo "::error::Producer unit/integration tests did not succeed."
           exit 1
       - name: Require package test shards
-        if: needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success'
+        if: needs.changes.outputs.code == 'true' && (needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success')
         run: |
           echo "::error::A package test shard did not succeed."
           echo "studio=${{ needs.test-studio.result }} runtime=${{ needs.test-runtime.result }} support=${{ needs.test-support.result }}"
+          exit 1
+      - name: Require skills tests
+        if: needs.changes.outputs.skills == 'true' && needs.test-skills.result != 'success'
+        run: |
+          echo "::error::Skills tests did not succeed."
           exit 1
 
   producer-source-tests:
@@ -513,6 +520,9 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Verify standalone skill imports
+        run: bun test scripts/check-skill-import-boundaries.test.mjs
       - name: Discover and run skills tests
         # We expand the test list via bash so the job fails loudly when the
         # matcher comes back empty, rather than silently no-op'ing (which

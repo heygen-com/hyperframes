@@ -20,12 +20,8 @@ import { pythonInvocation } from "./python.mjs";
 const r3 = (x) => Number(x.toFixed(3));
 const lyriaKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 
-// Default BGM level. Under narration music is a bed that must stay under the
-// voice — 0.12 linear ≈ -18 dB. A silent film (no voice) has no voice to duck
-// beneath, so BGM sits forward at 0.9. Callers may override per composition.
-export const BGM_BED_VOLUME = 0.12;
-export const BGM_SILENT_VOLUME = 0.9;
-export const bgmDefaultVolume = (hasVoice) => (hasVoice ? BGM_BED_VOLUME : BGM_SILENT_VOLUME);
+import { bgmDefaultVolume } from "./bgm-volume.mjs";
+export { BGM_BED_VOLUME, BGM_SILENT_VOLUME, bgmDefaultVolume } from "./bgm-volume.mjs";
 
 const BGM_PY_DEPS = ["transformers", "torch", "soundfile", "numpy"];
 const BGM_PY_PROBE =
