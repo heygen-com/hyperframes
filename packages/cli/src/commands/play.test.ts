@@ -110,6 +110,7 @@ function tmpProject(): ProjectDir {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   mocks.resolveProxy.mockReset();
   mocks.resolveProxy.mockResolvedValue("/unused-prewarm-proxy-path");
   mocks.scanProjectMediaCodecMap.mockReset();
@@ -156,6 +157,9 @@ describe("registerCompositionRoute", () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
     writeFileSync(join(project.dir, "clip.mp4"), Buffer.from("0123456789", "utf-8"));
+    // Past the settle window; see settledFileTag.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 60_000);
     const app = await buildApp(project, false);
 
     const etags: Record<string, string> = {};
@@ -173,6 +177,26 @@ describe("registerCompositionRoute", () => {
       headers: { "If-None-Match": etags["/composition/clip.mp4"] ?? "" },
     });
     expect(edited.status).toBe(200);
+  });
+
+  it("tags no media file changed in the last moments, even when a copy tool set its mtime back", async () => {
+    const project = tmpProject();
+    const clip = join(project.dir, "clip.mp4");
+    writeFileSync(clip, Buffer.from("0123456789", "utf-8"));
+    const app = await buildApp(project, false);
+
+    expect((await app.request("/composition/clip.mp4")).headers.get("ETag")).toBeNull();
+    const copied = new Date("2026-01-01T00:00:00Z");
+    utimesSync(clip, copied, copied);
+    expect((await app.request("/composition/clip.mp4")).headers.get("ETag")).toBeNull();
+
+    // Past the settle window; see settledFileTag.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 60_000);
+    const tag = (await app.request("/composition/clip.mp4")).headers.get("ETag") ?? "";
+    expect(tag).not.toBe("");
+    const again = await app.request("/composition/clip.mp4", { headers: { "If-None-Match": tag } });
+    expect(again.status).toBe(304);
   });
 
   it("serves an edited stylesheet even when its size and mtime did not change", async () => {

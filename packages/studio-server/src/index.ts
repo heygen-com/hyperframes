@@ -36,6 +36,7 @@ export {
   consumeFileWriteReceipt,
   identifyFileWrite,
   fileContentVersion,
+  settledFileTag,
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";

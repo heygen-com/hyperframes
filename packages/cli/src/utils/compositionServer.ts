@@ -6,7 +6,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { getMimeType } from "@hyperframes/studio-server";
+import { getMimeType, settledFileTag } from "@hyperframes/studio-server";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 
 /**
@@ -107,14 +107,16 @@ export function buildRangeResponse(
   rangeHeader: string | undefined,
   ifNoneMatch?: string,
 ): Response {
-  const { size, mtimeMs } = statSync(filePath);
+  const stat = statSync(filePath);
+  const { size } = stat;
   const last = size - 1;
   // Always revalidated, so an edited asset is seen; unchanged bytes cost a 304, not a refetch.
-  const cache = {
+  const tag = settledFileTag(stat);
+  const cache: Record<string, string> = {
     "Cache-Control": "no-cache",
-    ETag: `"${mtimeMs.toString(36)}-${size.toString(36)}"`,
+    ...(tag && { ETag: `"${tag}"` }),
   };
-  if (ifNoneMatch === cache.ETag) return new Response(null, { status: 304, headers: cache });
+  if (tag && ifNoneMatch === `"${tag}"`) return new Response(null, { status: 304, headers: cache });
   const match = rangeHeader ? /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim()) : null;
 
   const body = (start: number, end: number): ReadableStream<Uint8Array> | null =>
