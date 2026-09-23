@@ -59,6 +59,7 @@
 #navigation-items li[data-title="Transitions"][data-group-tag] { --catalog-desc:"Cuts between shots: zooms, warps, glitches, light leaks."; }
 #navigation-items li[data-title="Data & charts"][data-group-tag] { --catalog-desc:"Bar, line, and progress charts that animate their own data in."; }
 #navigation-items li[data-title="Scenes & demos"][data-group-tag] { --catalog-desc:"Full scenes: app showcases, chat exchanges, product demos."; }
+#navigation-items li[data-title="Cursors"][data-group-tag] { --catalog-desc:"Pointers that glide, click, drag, select, and steer the eye across a UI."; }
 #navigation-items li[data-title="Motion & effects"][data-group-tag] { --catalog-desc:"General-purpose motion: hovers, pops, blurs, grids, paths."; }
 #navigation-items li[data-title="Surfaces"][data-group-tag] { --catalog-desc:"Background textures and screen treatments: grain, halftone, glass."; }
 #navigation-items li[data-title="Blocks"][data-group-tag] { --catalog-desc:"Flowcharts, sketched frames, speech bubbles, and outro cards."; }

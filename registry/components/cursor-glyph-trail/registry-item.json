@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Cursor Glyph Trail",
   "description": "An actor travels an authored path depositing small dithered glyphs at its past positions, each popping in and decaying in place, stamp rate scaling with the actor's velocity.",
-  "tags": ["motion-primitive", "demonstrate", "trail", "cursor", "glyphs", "deterministic"],
+  "tags": ["cursor", "motion-primitive", "demonstrate", "trail", "glyphs", "deterministic"],
   "jobs": ["demonstrate"],
   "family": "demonstrate",
   "profile": "stamp-decay",

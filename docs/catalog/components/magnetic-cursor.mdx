@@ -1,0 +1,502 @@
+---
+title: "Magnetic Cursor"
+description: "A soft dot pointer glides across an editor toolbar, is pulled into each button and morphs into its rounded hover plate while the icon leans toward it, presses one, and leaves as a dot."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/components/magnetic-cursor.json"
+  compositionId="magnetic-cursor"
+  compositionSrc="compositions/components/magnetic-cursor.html"
+  title="Magnetic Cursor"
+  description="A soft dot pointer glides across an editor toolbar, is pulled into each button and morphs into its rounded hover plate while the icon leans toward it, presses one, and leaves as a dot."
+  variables={[{"id":"accent","type":"color","role":"style","label":"Accent","default":"#3b82f6"},{"id":"tone","type":"enum","role":"style","label":"Tone","default":"light","options":[{"value":"light","label":"Light toolbar"},{"value":"dark","label":"Dark toolbar"}]},{"id":"visits","type":"string","role":"content","label":"Buttons visited","description":"Comma-separated indexes 0-5: bold, italic, underline, link, list, image.","default":"0,3,5"},{"id":"press","type":"number","role":"timing","label":"Pressed visit","default":2,"min":1,"max":3,"step":1}]}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":420}}
+  attribution={{"path":"registry/components/magnetic-cursor","tags":["cursor","motion-primitive","pointer","hover","morph","toolbar"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/magnetic-cursor/magnetic-cursor.html"
+>
+
+<CatalogSlot slot="code">
+
+```html magnetic-cursor.html
+<!doctype html>
+<!--
+  Magnetic Cursor (actor primitive), mountable sub-composition
+
+  concept: a tablet-style pointer. A soft translucent dot glides across an editor toolbar;
+  near a button it is pulled in and morphs into that button's rounded hover plate while the
+  icon leans toward the finger. It visits buttons in turn, presses one (the plate squashes,
+  the icon dips and turns accent), and leaves as a dot.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is cloned.
+  #root fills the host clip (inset:0) and centres its own toolbar. See demo.html.
+
+  variables:
+    accent (color)          icon colour of the pressed, now active, button
+    tone (light|dark)       toolbar and pointer pairing
+    visits (string)         comma-separated button indexes 0-5 the pointer visits, in order
+    press (number 1-3)      which visit presses its button
+
+  envelope (default 5s): enter 0-0.8s, then per visit a 0.55s glide, a morph, a hold
+  (longer on the pressed visit), a release; exit in the last 0.6s. Beats compress to fit.
+-->
+<html
+  lang="en"
+  data-composition-id="magnetic-cursor"
+  data-composition-duration="5"
+  data-composition-variables='[
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#3b82f6" },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "default": "light", "options": [ { "value": "light", "label": "Light toolbar" }, { "value": "dark", "label": "Dark toolbar" } ] },
+    { "id": "visits", "type": "string", "role": "content", "label": "Buttons visited", "description": "Comma-separated indexes 0-5: bold, italic, underline, link, list, image.", "default": "0,3,5" },
+    { "id": "press", "type": "number", "role": "timing", "label": "Pressed visit", "default": 2, "min": 1, "max": 3, "step": 1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Magnetic Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          isolation: isolate;
+          container-type: size;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --mc-bar: #ffffff;
+          --mc-ink: #2b2d33;
+          --mc-edge: rgba(15, 18, 30, 0.1);
+          --mc-pointer: 90, 94, 106;
+        }
+        #root[data-tone="dark"] {
+          --mc-bar: #1d1e22;
+          --mc-ink: #e9eaee;
+          --mc-edge: rgba(255, 255, 255, 0.1);
+          --mc-pointer: 235, 237, 242;
+        }
+
+        /* No transform here: it would make a stacking context and lift the plate over the icons. */
+        .mc-bar {
+          position: relative;
+          display: flex;
+          gap: 0.6cqw;
+          padding: 0.9cqw;
+          border-radius: 2.5cqw;
+          background: var(--mc-bar);
+          box-shadow:
+            0 0 0 1px var(--mc-edge),
+            0 1.6cqw 4cqw rgba(8, 10, 20, 0.28);
+        }
+        .mc-btn {
+          position: relative;
+          width: 6.2cqw;
+          height: 6.2cqw;
+          z-index: 2;
+        }
+        .mc-sep {
+          width: 1px;
+          margin: 1.2cqw 0.3cqw;
+          background: var(--mc-edge);
+        }
+        .mc-icon {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 2.8cqw;
+          height: 2.8cqw;
+          margin: -1.4cqw 0 0 -1.4cqw;
+          fill: none;
+          stroke: var(--mc-ink);
+          stroke-width: 2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          will-change: transform;
+        }
+        .mc-layer {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 1;
+          overflow: visible;
+        }
+      </style>
+
+      <div id="root" data-composition-id="magnetic-cursor" data-duration="5" data-tone="light">
+        <svg class="mc-layer" id="mc-layer" aria-hidden="true">
+          <rect id="mc-plate" x="0" y="0" width="0" height="0" rx="0" />
+        </svg>
+        <div class="mc-bar" id="mc-bar">
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
+            </svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24"><path d="M10 5h8M6 19h8M14 5l-4 14" /></svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path d="M7 4v7a5 5 0 0 0 10 0V4M5 20h14" />
+            </svg>
+          </div>
+          <div class="mc-sep"></div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path
+                d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"
+              />
+            </svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+            </svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+              <path d="M3.5 16l5-5 4 4 3-3 5 5M15 9h.01" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var plate = document.getElementById("mc-plate");
+          var layer = document.getElementById("mc-layer");
+          var buttons = Array.prototype.slice.call(root.querySelectorAll(".mc-btn"));
+          var icons = buttons.map(function (b) {
+            return b.querySelector(".mc-icon");
+          });
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "magnetic-cursor";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "5",
+            ),
+          );
+          var tone = vars.tone === "dark" ? "dark" : "light";
+          var accent = String(vars.accent || "#3b82f6");
+          root.setAttribute("data-tone", tone);
+
+          var visits = String(vars.visits || "0,3,5")
+            .split(",")
+            .map(function (s) {
+              return Math.round(Number(s));
+            })
+            .filter(function (n) {
+              return isFinite(n) && n >= 0 && n < buttons.length;
+            })
+            .slice(0, 3);
+          if (visits.length === 0) visits = [0, 3, 5];
+          var pressVisit =
+            Math.max(1, Math.min(visits.length, Math.round(Number(vars.press) || 2))) - 1;
+
+          // Geometry is read once at load: fixed viewport per render, no resize mid-render.
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          layer.setAttribute("viewBox", "0 0 " + W + " " + H);
+          // Offsets, not client rects: a host that scales the stage must not skew the targets.
+          var bar = document.getElementById("mc-bar");
+          var boxes = buttons.map(function (b) {
+            return {
+              x: bar.offsetLeft + b.offsetLeft + b.offsetWidth / 2,
+              y: bar.offsetTop + b.offsetTop + b.offsetHeight / 2,
+              w: b.offsetWidth,
+              h: b.offsetHeight,
+            };
+          });
+          var BW = boxes[0].w;
+          var DOT = BW * 0.5;
+          var PLATE_R = BW * 0.26;
+          var PULL_RADIUS = BW * 1.1;
+
+          // Beat plan at the default 5s; any other duration scales every beat evenly.
+          var ENTER = 0.8;
+          var GLIDE = 0.55;
+          var HOLD = 0.5;
+          var PRESS_HOLD = 0.35;
+          var RELEASE = 0.18;
+          var EXIT = 0.6;
+          var plan = [];
+          var t = ENTER;
+          visits.forEach(function (index, k) {
+            if (k > 0) t += GLIDE;
+            var hold = HOLD + (k === pressVisit ? PRESS_HOLD : 0);
+            plan.push({
+              index: index,
+              arrive: t,
+              leave: t + hold,
+              press: k === pressVisit ? t + 0.28 : -1,
+            });
+            t += hold + RELEASE;
+          });
+          var base = t + EXIT;
+          var k0 = duration / base;
+          plan.forEach(function (v) {
+            v.arrive *= k0;
+            v.leave *= k0;
+            if (v.press >= 0) v.press *= k0;
+          });
+          var releaseDur = RELEASE * k0;
+          var exitAt = duration - EXIT * k0;
+
+          function clamp01(u) {
+            return u < 0 ? 0 : u > 1 ? 1 : u;
+          }
+          function smooth(u) {
+            u = clamp01(u);
+            return u * u * (3 - 2 * u);
+          }
+          function mix(a, b, u) {
+            return a + (b - a) * u;
+          }
+          var easeOut = gsap.parseEase("power3.out");
+          var easeInOut = gsap.parseEase("power2.inOut");
+          var easeIn = gsap.parseEase("power2.in");
+          var snap = gsap.parseEase("back.out(1.15)");
+
+          // The finger lands a little off-centre and drifts across the button while it hovers.
+          function arrivePoint(v) {
+            var b = boxes[v.index];
+            return { x: b.x - b.w * 0.2, y: b.y + b.h * 0.22 };
+          }
+          function driftPoint(v) {
+            var b = boxes[v.index];
+            return { x: b.x + b.w * 0.18, y: b.y - b.h * 0.12 };
+          }
+          var START = { x: W * 0.58, y: H * 0.9 };
+          var END = { x: W * 1.06, y: H * 0.62 };
+
+          function glide(p0, p1, u, bend) {
+            var cx = (p0.x + p1.x) / 2 - (p1.y - p0.y) * bend;
+            var cy = (p0.y + p1.y) / 2 + (p1.x - p0.x) * bend;
+            var w = 1 - u;
+            return {
+              x: w * w * p0.x + 2 * w * u * cx + u * u * p1.x,
+              y: w * w * p0.y + 2 * w * u * cy + u * u * p1.y,
+            };
+          }
+
+          function fingerAt(time) {
+            var first = plan[0];
+            if (time <= first.arrive)
+              return glide(START, arrivePoint(first), easeOut(clamp01(time / first.arrive)), 0.15);
+            for (var k = 0; k < plan.length; k++) {
+              var v = plan[k];
+              var a = arrivePoint(v);
+              var d = driftPoint(v);
+              if (time <= v.leave)
+                return glide(a, d, easeInOut(clamp01((time - v.arrive) / (v.leave - v.arrive))), 0);
+              var next = plan[k + 1];
+              if (next && time <= next.arrive) {
+                return glide(
+                  d,
+                  arrivePoint(next),
+                  easeInOut(clamp01((time - v.leave) / (next.arrive - v.leave))),
+                  -0.12,
+                );
+              }
+            }
+            var last = driftPoint(plan[plan.length - 1]);
+            if (time <= exitAt) return last;
+            return glide(last, END, easeIn(clamp01((time - exitAt) / (duration - exitAt))), 0.1);
+          }
+
+          // How far the pointer has become the plate of visit v: 0 is a dot, 1 is the plate.
+          function morphOf(v, time) {
+            var inDur = 0.22 * k0;
+            if (time < v.arrive - inDur * 0.5) return 0;
+            if (time <= v.leave) return clamp01((time - (v.arrive - inDur * 0.5)) / inDur);
+            return 1 - clamp01((time - v.leave) / releaseDur);
+          }
+
+          function pressOf(v, time) {
+            if (v.press < 0 || time < v.press) return 0;
+            var u = (time - v.press) / (0.3 * k0);
+            if (u >= 1) return 0;
+            return u < 0.3 ? u / 0.3 : 1 - (u - 0.3) / 0.7;
+          }
+
+          function render(time) {
+            var finger = fingerAt(time);
+            var active = null;
+            var m = 0;
+            plan.forEach(function (v) {
+              var mv = morphOf(v, time);
+              if (mv > m) {
+                m = mv;
+                active = v;
+              }
+            });
+            var cx = finger.x;
+            var cy = finger.y;
+            var w = DOT;
+            var h = DOT;
+            var r = DOT / 2;
+            var squash = 0;
+            if (!active) {
+              // The magnet: within reach of a button the dot is already leaning toward its centre.
+              boxes.forEach(function (b) {
+                var pull =
+                  0.35 * smooth(1 - Math.hypot(b.x - finger.x, b.y - finger.y) / PULL_RADIUS);
+                cx = mix(cx, b.x, pull);
+                cy = mix(cy, b.y, pull);
+              });
+            } else {
+              var b = boxes[active.index];
+              var ms = snap(m);
+              squash = pressOf(active, time);
+              cx = mix(finger.x, b.x + (finger.x - b.x) * 0.05, smooth(m));
+              cy = mix(finger.y, b.y + (finger.y - b.y) * 0.05, smooth(m));
+              w = mix(DOT, b.w, ms) * (1 - 0.06 * squash);
+              h = mix(DOT, b.h, ms) * (1 - 0.1 * squash);
+              r = mix(DOT / 2, PLATE_R, smooth(m));
+            }
+            var alpha = mix(0.55, tone === "dark" ? 0.14 : 0.09, smooth(m)) + 0.08 * squash;
+            var visible = time < duration ? smooth(time / (0.2 * k0)) : 0;
+            plate.setAttribute("x", (cx - w / 2).toFixed(2));
+            plate.setAttribute("y", (cy - h / 2).toFixed(2));
+            plate.setAttribute("width", Math.max(0, w).toFixed(2));
+            plate.setAttribute("height", Math.max(0, h).toFixed(2));
+            plate.setAttribute("rx", Math.min(r, w / 2, h / 2).toFixed(2));
+            plate.style.fill = "rgba(var(--mc-pointer), " + (alpha * visible).toFixed(3) + ")";
+
+            icons.forEach(function (icon, i) {
+              var lean = active && active.index === i ? smooth(m) : 0;
+              var bx = boxes[i];
+              var dx = (finger.x - bx.x) * 0.12 * lean;
+              var dy = (finger.y - bx.y) * 0.12 * lean;
+              var dip = active && active.index === i ? squash : 0;
+              icon.style.transform =
+                "translate(" +
+                dx.toFixed(2) +
+                "px," +
+                dy.toFixed(2) +
+                "px) scale(" +
+                (1 - 0.12 * dip).toFixed(3) +
+                ")";
+              var pressed = plan.some(function (v) {
+                return v.index === i && v.press >= 0 && time >= v.press + 0.05 * k0;
+              });
+              icon.style.stroke = pressed ? accent : "";
+            });
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add magnetic-cursor" item="magnetic-cursor" />
+
+That writes one file: `compositions/components/magnetic-cursor.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/magnetic-cursor.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `#3b82f6` | color |  |
+| `tone` | `light` | `light`, `dark` |  |
+| `visits` | `0,3,5` | string | Comma-separated indexes 0-5: bold, italic, underline, link, list, image. |
+| `press` | `2` | 1 to 3, step 1 |  |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="magnetic-cursor"
+  data-composition-src="compositions/components/magnetic-cursor.html"
+  data-variable-values='{"accent":"#3b82f6","tone":"light","visits":"0,3,5","press":2}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `cursor` `motion-primitive` `pointer` `hover` `morph` `toolbar`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

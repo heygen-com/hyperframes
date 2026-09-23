@@ -795,10 +795,30 @@ function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[
   return file ? (declaredVariables(file.source) as ItemVariable[]) : [];
 }
 
+// One section's sidebar entry. A section wrapping exactly one identically-named
+// shelf (e.g. "3D motion") flattens to that shelf's own pages, or the accordion
+// header and its one child read the same word twice; a differently-named single
+// child (e.g. "Data & charts" wrapping "Data") keeps its nested shelf.
+export function sectionEntry(
+  section: string,
+  children: { group: string; pages: unknown[] }[],
+): { group: string; pages: unknown[] } {
+  if (children.length === 1 && children[0]!.group === section) {
+    return { group: section, pages: children[0]!.pages };
+  }
+  // A nested shelf is an entry in the parent's `pages`, beside the page
+  // strings. A sibling `groups` key parses without complaint and renders
+  // nothing, which took the whole catalog out of the sidebar.
+  return { group: section, pages: children };
+}
+
 /** The catalog shelf an item sits on, one function for the nav and the page's category. */
 // fallow-ignore-next-line complexity
-function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
+export function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
   const tags = entry.tags;
+  // `cursor` as the first tag declares the Cursors shelf. It is checked before
+  // `video-primitive` so a pointer that is also a primitive shelves with the cursors.
+  if (tags[0] === "cursor") return "Cursors";
   // Declared membership beats every inferred rule below: `video-primitive` is
   // the tag a human puts on an item to put it on the primitives shelf, and it
   // must not be overridden by whatever else the item happens to be tagged.
@@ -1224,6 +1244,7 @@ function main(): void {
     "Motion Scenes": 11,
     "Typography & Text": 10,
     "Camera & 3D": 12,
+    Cursors: 12.5,
     "Product Demo": 13,
     Texture: 14,
     Effects: 15,
@@ -1256,6 +1277,7 @@ function main(): void {
       section: "Scenes & demos",
       groups: ["Showcases", "Product Demo", "Social Overlays", "Motion Scenes"],
     },
+    { section: "Cursors", groups: ["Cursors"] },
     // Its own section rather than a shelf inside Scenes & demos. At 25 items it
     // is larger than Data & charts (17) and Blocks (13), which are both
     // sections on their own, and pulling it out takes the largest section in
@@ -1276,10 +1298,7 @@ function main(): void {
       .filter((g): g is { group: string; pages: string[] } => g !== undefined);
     if (children.length === 0) continue;
     for (const child of children) placed.add(child.group);
-    // A nested shelf is an entry in the parent's `pages`, beside the page
-    // strings. A sibling `groups` key parses without complaint and renders
-    // nothing, which took the whole catalog out of the sidebar.
-    catalogGroups.push({ group: section, pages: children });
+    catalogGroups.push(sectionEntry(section, children));
   }
 
   // A shelf nobody assigned a section still has to appear, or a new tag would

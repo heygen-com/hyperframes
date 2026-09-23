@@ -1,0 +1,49 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cursor-drag-drop",
+  "type": "hyperframes:component",
+  "title": "Drag and Drop Cursor",
+  "description": "A cursor grabs a task card, lifts and tilts it into its motion, carries it in lockstep to an empty column, drops it with a small settle, and the list closes the gap behind it.",
+  "tags": ["cursor", "motion-primitive", "drag", "drop", "kanban", "product-demo"],
+  "files": [
+    {
+      "path": "cursor-drag-drop.html",
+      "target": "compositions/components/cursor-drag-drop.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "syncPoints": [
+    { "id": "grab", "phase": "in", "offset": 1.05 },
+    { "id": "drop", "phase": "in", "offset": 2.4 }
+  ],
+  "variables": [
+    {
+      "id": "card_label",
+      "type": "string",
+      "role": "content",
+      "label": "Dragged card",
+      "default": "Fix checkout validation"
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "role": "style",
+      "label": "Accent",
+      "default": "#5b5bf6"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Board tone",
+      "default": "light",
+      "options": [
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ]
+    }
+  ]
+}

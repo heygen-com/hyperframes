@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+  Annotate Cursor, standalone demo: a signups chart whose launch-week spike gets
+  circled. It mounts cursor-annotate.html full-frame over the card.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Annotate Cursor, Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(160deg, #eef1f7 0%, #dde3ee 100%);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .card {
+        position: absolute;
+        left: 410px;
+        top: 200px;
+        width: 1100px;
+        height: 640px;
+        border-radius: 28px;
+        background: #ffffff;
+        box-shadow:
+          0 30px 90px rgba(24, 32, 56, 0.16),
+          0 0 0 1px rgba(24, 32, 56, 0.06);
+      }
+      .eyebrow {
+        position: absolute;
+        left: 56px;
+        top: 48px;
+        font-size: 20px;
+        font-weight: 600;
+        color: #6b7285;
+      }
+      .headline {
+        position: absolute;
+        left: 56px;
+        top: 80px;
+        font-size: 48px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+        color: #121629;
+      }
+      .delta {
+        position: absolute;
+        right: 56px;
+        top: 56px;
+        padding: 10px 18px;
+        border-radius: 999px;
+        background: #e8f7ee;
+        color: #16794a;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .grid {
+        position: absolute;
+        left: 56px;
+        right: 56px;
+        height: 1px;
+        background: #eceef3;
+      }
+      .bar {
+        position: absolute;
+        bottom: 80px;
+        width: 70px;
+        border-radius: 12px 12px 4px 4px;
+        background: #c9d1e3;
+        transform-origin: 50% 100%;
+      }
+      .bar.spike {
+        background: linear-gradient(180deg, #5b6cff, #3947d9);
+      }
+      .week {
+        position: absolute;
+        bottom: 36px;
+        width: 70px;
+        text-align: center;
+        font-size: 17px;
+        font-weight: 600;
+        color: #8a90a2;
+      }
+      .spike-label {
+        position: absolute;
+        left: 550px;
+        top: 108px;
+        width: 150px;
+        text-align: center;
+        font-size: 26px;
+        font-weight: 750;
+        color: #3947d9;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="cursor-annotate-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.2"
+    >
+      <div class="card clip" id="card" data-start="0" data-duration="4.2" data-track-index="0">
+        <div class="eyebrow">Weekly signups</div>
+        <div class="headline">12,480</div>
+        <div class="delta">+38% this quarter</div>
+        <div class="grid" style="top: 300px"></div>
+        <div class="grid" style="top: 420px"></div>
+        <div class="grid" style="top: 560px"></div>
+        <div class="bar" style="left: 80px; height: 150px"></div>
+        <div class="bar" style="left: 202px; height: 172px"></div>
+        <div class="bar" style="left: 324px; height: 160px"></div>
+        <div class="bar" style="left: 446px; height: 196px"></div>
+        <div class="bar spike" style="left: 590px; height: 400px"></div>
+        <div class="bar" style="left: 712px; height: 236px"></div>
+        <div class="bar" style="left: 834px; height: 214px"></div>
+        <div class="bar" style="left: 956px; height: 248px"></div>
+        <div class="spike-label">+184%</div>
+        <div class="week" style="left: 80px">W1</div>
+        <div class="week" style="left: 202px">W2</div>
+        <div class="week" style="left: 324px">W3</div>
+        <div class="week" style="left: 446px">W4</div>
+        <div class="week" style="left: 590px; color: #3947d9">Launch</div>
+        <div class="week" style="left: 712px">W6</div>
+        <div class="week" style="left: 834px">W7</div>
+        <div class="week" style="left: 956px">W8</div>
+      </div>
+
+      <div
+        class="clip"
+        id="cursor-annotate"
+        data-composition-id="cursor-annotate"
+        data-composition-src="./cursor-annotate.html"
+        data-variable-values='{"shape":"circle","color":"#f43f5e","target_x":50.2,"target_y":28.5,"target_w":7.8,"target_h":11.5}'
+        data-start="0"
+        data-duration="4.2"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+        style="position: absolute; inset: 0; width: 1920px; height: 1080px"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        ".bar",
+        { scaleY: 0.2 },
+        { scaleY: 1, duration: 0.6, ease: "power3.out", stagger: 0.04 },
+        0,
+      );
+      window.__timelines["cursor-annotate-demo"] = tl;
+    </script>
+  </body>
+</html>

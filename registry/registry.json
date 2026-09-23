@@ -4,6 +4,38 @@
   "homepage": "https://hyperframes.heygen.com",
   "items": [
     {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "ai-chat-reveal",
       "type": "hyperframes:block"
     },
@@ -656,6 +688,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "agent-cursor",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "animated-bar-chart",
       "type": "hyperframes:component"
     },
@@ -860,11 +896,39 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "cursor-annotate",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-context-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-drag-drop",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "cursor-glyph-trail",
       "type": "hyperframes:component"
     },
     {
+      "name": "cursor-marquee-select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-text-select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-zoom-follow",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "cut-the-curve",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dart-cursor",
       "type": "hyperframes:component"
     },
     {
@@ -1033,6 +1097,10 @@
     },
     {
       "name": "logo-wall",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "magnetic-cursor",
       "type": "hyperframes:component"
     },
     {
@@ -1546,41 +1614,9 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
-    },
-    {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
     }
   ],
   "catalogArtifact": {
-    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
+    "revision": "ca38235b18d5dc2f8981720c028a0f9d1dc094c26cf90c99bf8b66ce9172fd82"
   }
 }
