@@ -58,6 +58,8 @@ function getShaderTransitionLoading(event: Event): boolean | null {
 }
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
+/** A preview stuck without an error stops holding back editing, lint and thumbnails after this. */
+const PREVIEW_BOOT_DEADLINE_MS = 5000;
 const DEFAULT_PREVIEW_ERROR = "The composition preview did not become ready.";
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
@@ -456,6 +458,14 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     useEffect(() => {
       if (previewError) usePlayerStore.getState().markPreviewBooted();
     }, [previewError]);
+
+    useEffect(() => {
+      const timer = setTimeout(
+        () => usePlayerStore.getState().markPreviewBooted(),
+        PREVIEW_BOOT_DEADLINE_MS,
+      );
+      return () => clearTimeout(timer);
+    }, [projectId]);
 
     const showCompositionOverlay =
       !suppressLoadingOverlay &&

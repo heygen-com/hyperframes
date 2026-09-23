@@ -17,7 +17,7 @@ function Probe() {
 }
 
 beforeEach(() => {
-  usePlayerStore.setState({ previewBooted: true });
+  usePlayerStore.setState({ timelineProjectId: "demo", previewBooted: true });
 });
 
 afterEach(() => {

@@ -401,7 +401,7 @@ function stubFlatTweenConversion(id: string): {
 
 describe("useEnableKeyframes — flat tween transaction", () => {
   beforeEach(() => {
-    usePlayerStore.setState({ previewBooted: true });
+    usePlayerStore.setState({ timelineProjectId: "test-project", previewBooted: true });
   });
 
   it("skips the convert reload and coalesces an outside-range terminal soft reload", async () => {
@@ -473,7 +473,7 @@ describe("useEnableKeyframes — flat tween transaction", () => {
 
 describe("useEnableKeyframes — new tween on a class-only element", () => {
   beforeEach(() => {
-    usePlayerStore.setState({ previewBooted: true });
+    usePlayerStore.setState({ timelineProjectId: "test-project", previewBooted: true });
   });
 
   it("targets the selected sibling alone, not every element sharing its class", async () => {
