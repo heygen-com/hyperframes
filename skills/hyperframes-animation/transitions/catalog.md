@@ -92,6 +92,8 @@ Shader setup, WebGL init, capture, and fragment shaders are handled by `@hyperfr
         data-start="0"
         data-duration="T + D"
         data-track-index="0"
+        data-width="1920"
+        data-height="1080"
       ></div>
       <div
         id="scene2"
@@ -101,6 +103,8 @@ Shader setup, WebGL init, capture, and fragment shaders are handled by `@hyperfr
         data-start="T"
         data-duration="SCENE2"
         data-track-index="1"
+        data-width="1920"
+        data-height="1080"
       ></div>
     </div>
     <script>
