@@ -40,7 +40,7 @@ interface ExternalFileChangeCoordinatorOptions {
   drainPendingChanges: () => Promise<ExternalChangeDrainResult>;
   getPendingCandidate?: () => { path: string; content: string } | null;
   discardPendingChanges: () => void;
-  reloadPreview: () => void;
+  reloadPreview: (changedPaths?: readonly string[]) => void;
   reloadSdkSession: (path: string) => void;
   persistConflictSnapshot: (projectId: string, conflict: StudioFileConflictError) => Promise<void>;
   persistFailureSnapshot?: (
@@ -233,7 +233,7 @@ export function useExternalFileChangeCoordinator({
   const reloadAcceptedGeneration = useCallback(
     (path: string) => {
       logReload("reload", { path, by: "external-change coordinator" });
-      reloadPreview();
+      reloadPreview([path]);
       reloadSdkSession(path);
       // Fire-and-forget: a failed refresh leaves the tree as stale as it was,
       // which is the status quo this exists to improve on, not a new failure

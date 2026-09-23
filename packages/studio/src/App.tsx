@@ -1,4 +1,5 @@
 import { useOwnPreviewIframe, usePreviewIframeStore } from "./player/store/previewIframeStore";
+import { notePreviewReload } from "./player/sceneRemount";
 import { buildProjectApiPath } from "./utils/projectRouting";
 import { useState, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { useDismissingTabSetter, useRightPanelIntent } from "./hooks/useRightPanelIntents";
@@ -106,7 +107,10 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
-  const reloadPreview = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const reloadPreview = useCallback((changedPaths?: readonly string[]) => {
+    notePreviewReload(Array.isArray(changedPaths) ? changedPaths : undefined);
+    setRefreshKey((k) => k + 1);
+  }, []);
   const fileManager = useFileManager({
     projectId,
     showToast,

@@ -5,6 +5,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
+import { notePreviewReload } from "../sceneRemount";
 import { usePlayerStore } from "../store/playerStore";
 import { NLEProvider, useNLEContext, type NLEContextValue } from "../../components/nle/NLEContext";
 import {
@@ -508,3 +509,48 @@ function stubVisibility(initial: DocumentVisibilityState) {
     document.dispatchEvent(new Event("visibilitychange"));
   };
 }
+
+describe("useTimelinePlayer scene edit", () => {
+  function liveFilm(remount: (src: string) => Promise<void>) {
+    const { win } = makeAdapterWindow();
+    const iframe = makeFakeIframe({ ...win, __hfRemountComposition: remount });
+    iframe.src = "http://localhost/api/projects/demo/preview";
+    const doc = iframe.contentDocument!;
+    doc.head.innerHTML = '<base href="http://localhost/api/projects/demo/preview/">';
+    doc.body.innerHTML =
+      '<div data-composition-id="a" data-composition-src="compositions/a.html"></div>';
+    const harness = renderTimelinePlayerHarness();
+    act(() => {
+      harness.getApi().iframeRef.current = iframe;
+      harness.getApi().onIframeLoad();
+    });
+    return harness;
+  }
+
+  it("swaps an edited scene in the live preview without a full reload", async () => {
+    const remount = vi.fn(async () => {});
+    const { getApi } = liveFilm(remount);
+    notePreviewReload(["compositions/a.html"]);
+    await act(async () => getApi().refreshPlayer());
+    expect(remount).toHaveBeenCalledWith("compositions/a.html");
+    expect(getApi().previewSlots).toEqual([{ gen: 0, role: "live" }]);
+  });
+
+  it("reloads the whole film when the swap fails", async () => {
+    const { getApi } = liveFilm(async () => {
+      throw new Error("no scene host");
+    });
+    notePreviewReload(["compositions/a.html"]);
+    await act(async () => getApi().refreshPlayer());
+    expect(getApi().previewSlots.map((slot) => slot.role)).toEqual(["live", "shadow"]);
+  });
+
+  it("reloads the whole film for a file that is not a mounted scene", async () => {
+    const remount = vi.fn(async () => {});
+    const { getApi } = liveFilm(remount);
+    notePreviewReload(["index.html"]);
+    await act(async () => getApi().refreshPlayer());
+    expect(remount).not.toHaveBeenCalled();
+    expect(getApi().previewSlots.map((slot) => slot.role)).toEqual(["live", "shadow"]);
+  });
+});

@@ -38,6 +38,7 @@ import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
+import { sceneRemountFor, takePreviewReloadPaths } from "../sceneRemount";
 
 export interface UseTimelinePlayerOptions {
   /** Runs right after a reloaded preview becomes the live iframe. */
@@ -426,10 +427,9 @@ export function useTimelinePlayer({
     stopReverseLoop();
     setIsPlaying(false);
   }, [getAdapter, stopRAFLoop, setIsPlaying, stopReverseLoop]);
-  const refreshPlayer = useCallback(() => {
+  const reloadWholeFilm = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
     saveSeekPosition();
     // The old iframe is no longer navigated away, so stop its playback (and audio) here.
     getAdapter()?.pause();
@@ -440,6 +440,19 @@ export function useTimelinePlayer({
     applyPreviewVariablesToUrl(url);
     beginShadowReload(url.toString());
   }, [saveSeekPosition, getAdapter, beginShadowReload]);
+  const refreshPlayer = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
+    const paths = takePreviewReloadPaths();
+    const remount = paths && sceneRemountFor(iframe, paths);
+    if (!remount) return reloadWholeFilm();
+    // Only the edited scenes change: swap them in the live preview, reload the film if that fails.
+    remount().catch((error: unknown) => {
+      logReload("scene-remount-failed", { paths, error: String(error) });
+      reloadWholeFilm();
+    });
+  }, [reloadWholeFilm]);
   const getAdapterRef = useRef(getAdapter);
   getAdapterRef.current = getAdapter;
 
