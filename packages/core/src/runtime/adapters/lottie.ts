@@ -89,7 +89,12 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
             // lottie-web: AnimationItem
             // goToAndStop(value, isFrame) — isFrame=true means frame number, false means time in ms
             // We use isFrame=false and pass time in ms for precision.
-            anim.goToAndStop(time * 1000, false);
+            // lottie-web draws nothing past the file's end, so a finished one-shot holds its last frame.
+            if (anim.totalFrames > 0 && time * anim.frameRate >= anim.totalFrames) {
+              anim.goToAndStop(anim.totalFrames - 1, true);
+            } else {
+              anim.goToAndStop(time * 1000, false);
+            }
           } else if (isDotLottiePlayer(anim)) {
             // @lottiefiles/dotlottie-web: DotLottie
             // .seek(frame) — frame is 0-100 percentage OR frame number depending on version
@@ -185,16 +190,11 @@ function finiteFramesToSeconds(
   return totalFrames / frameRate;
 }
 
-/**
- * Composition time on the animation's own clock: a `loop: true` animation wraps into its cycle, and
- * a lottie-web one-shot holds its last frame, since lottie-web draws nothing past the file's end.
- */
+/** Composition time mapped into a `loop: true` animation's own cycle; other animations get it unchanged. */
 function animationTime(anim: LottieWebAnimation | DotLottiePlayer, time: number): number {
+  if (anim.loop !== true) return time;
   const seconds = inferAnimationDurationSeconds(anim);
-  if (!seconds) return time;
-  if (anim.loop === true) return time % seconds;
-  if (!isLottieWebAnimation(anim)) return time;
-  return Math.min(time, (anim.totalFrames - 1) / anim.frameRate);
+  return seconds ? time % seconds : time;
 }
 
 /** The inferred duration in seconds for one registered lottie-web/dotLottie instance, or null. */

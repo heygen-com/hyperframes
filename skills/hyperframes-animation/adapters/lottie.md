@@ -11,7 +11,7 @@ HyperFrames can seek both `lottie-web` and dotLottie players through its `lottie
 
 - Load assets from local project files, usually under `assets/`.
 - Set `autoplay: false`.
-- Use `loop: false` for a one-shot and `loop: true` for a cycle (walk, idle, spinner). A looping animation is seeked to composition time modulo its own length, so it keeps cycling for the whole scene; a one-shot holds its last frame. Always set `loop`: lottie-web treats a missing `loop` as `true`.
+- Use `loop: false` for a one-shot and `loop: true` for a cycle (walk, idle, spinner). A looping animation is seeked to composition time modulo its own length, so it keeps cycling for the whole scene; a one-shot holds its last frame. Always set `loop`: lottie-web treats a missing `loop` as `true`. A numeric `loop` count does not repeat under seeking; bake the repeats into the file.
 - Register every returned animation or player on `window.__hfLottie`.
 - Keep the Lottie container dimensions stable with CSS.
 
