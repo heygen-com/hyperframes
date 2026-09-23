@@ -56,7 +56,9 @@ function createMockGl() {
     drawArrays: vi.fn(),
     getUniformLocation: vi.fn(() => ({})),
     getAttribLocation: vi.fn(() => 0),
-    getExtension: vi.fn(() => ({ loseContext: vi.fn() })),
+    deleteTexture: vi.fn(),
+    deleteProgram: vi.fn(),
+    deleteBuffer: vi.fn(),
   };
 }
 
@@ -152,11 +154,9 @@ describe("playSeamTransitionLoop", () => {
     handle.stop();
   });
 
-  it("stop() releases the GL context and is idempotent", () => {
+  it("stop() deletes its own program, textures and buffer, and is idempotent", () => {
     const raf = stubRaf();
     const gl = createMockGl();
-    const loseContext = vi.fn();
-    gl.getExtension = vi.fn(() => ({ loseContext }));
     const canvas = createMockCanvas(gl);
     const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
     raf.flush(0);
@@ -164,9 +164,35 @@ describe("playSeamTransitionLoop", () => {
     handle.stop();
     handle.stop();
 
-    expect(gl.getExtension).toHaveBeenCalledWith("WEBGL_lose_context");
-    expect(loseContext).toHaveBeenCalledTimes(1);
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
+    expect(gl.deleteProgram).toHaveBeenCalledTimes(1);
+    expect(gl.deleteBuffer).toHaveBeenCalledTimes(1);
     expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not lose the WebGL context on stop(), so the canvas is reusable", () => {
+    // The mock gl has no getExtension at all: a lost context can never be
+    // reacquired via canvas.getContext(), so stop() must never reach for
+    // WEBGL_lose_context. Calling it here would throw "not a function".
+    const raf = stubRaf();
+    const gl = createMockGl();
+    const canvas = createMockCanvas(gl);
+    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
+    raf.flush(0);
+
+    expect(() => handle.stop()).not.toThrow();
+  });
+
+  it("resolves ready even if stop() runs before any frame is drawn", async () => {
+    stubRaf();
+    const gl = createMockGl();
+    const canvas = createMockCanvas(gl);
+    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
+
+    handle.stop();
+
+    await handle.ready;
+    expect(gl.drawArrays).not.toHaveBeenCalled();
   });
 
   it("starts progress at 0 relative to its own first frame, not the raw rAF timestamp", () => {

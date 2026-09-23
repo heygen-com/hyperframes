@@ -19,7 +19,10 @@ import {
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
 
-/** The subset of CanvasImageSource that WebGL's texImage2D actually accepts. */
+/** The subset of CanvasImageSource that WebGL's texImage2D actually accepts.
+ * Pass a frame at or near the render canvas's own size — LINEAR filtering
+ * samples it down to that size regardless, so a much larger source only
+ * costs an upload, not extra quality. */
 export type SeamTransitionFrameSource = HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 
 /**
@@ -48,9 +51,14 @@ export interface SeamTransitionLoopOptions {
 }
 
 export interface SeamTransitionLoopHandle {
-  /** Stops the loop and releases the WebGL context. Idempotent. */
+  /** Stops the loop and deletes the program, textures and buffer this call
+   * created, leaving the canvas's WebGL context itself alive so a caller
+   * that reuses the canvas across hovers doesn't force a lost-context path
+   * on the next `playSeamTransitionLoop` call. Idempotent. */
   stop: () => void;
-  /** Resolves once the first frame has been drawn to `canvas`. */
+  /** Resolves once the first frame has been drawn to `canvas`, or once
+   * `stop()` runs, whichever comes first — a hover that ends before the
+   * first frame never leaves an awaiting caller hanging. */
   ready: Promise<void>;
 }
 
@@ -96,11 +104,15 @@ export function playSeamTransitionLoop(
 
   function frame(nowMs: number): void {
     if (stopped) return;
-    if (startMs === null) startMs = nowMs;
+    let isFirstFrame = false;
+    if (startMs === null) {
+      startMs = nowMs;
+      isFirstFrame = true;
+    }
     const phase = ((nowMs - startMs) % loopMs) / loopMs;
     const progress = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
     renderShader(glContext, quadBuf, prog, texFrom, texTo, progress, undefined, width, height);
-    resolveReady();
+    if (isFirstFrame) resolveReady();
     rafId = requestAnimationFrame(frame);
   }
   rafId = requestAnimationFrame(frame);
@@ -111,7 +123,11 @@ export function playSeamTransitionLoop(
       if (stopped) return;
       stopped = true;
       cancelAnimationFrame(rafId);
-      glContext.getExtension("WEBGL_lose_context")?.loseContext();
+      resolveReady();
+      glContext.deleteTexture(texFrom);
+      glContext.deleteTexture(texTo);
+      glContext.deleteProgram(prog);
+      glContext.deleteBuffer(quadBuf);
     },
   };
 }
