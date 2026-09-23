@@ -1,0 +1,511 @@
+---
+title: "Agent Cursor"
+description: "An AI agent operating a UI: a glowing cursor with a name tag that types out each step, shimmers while it thinks, clicks each target with a sparkle, and ends on a check."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  compositionId="agent-cursor"
+  compositionSrc="compositions/components/agent-cursor.html"
+  title="Agent Cursor"
+  description="An AI agent operating a UI: a glowing cursor with a name tag that types out each step, shimmers while it thinks, clicks each target with a sparkle, and ends on a check."
+  variables={[]}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":428}}
+  attribution={{"path":"registry/components/agent-cursor","tags":["cursor","motion-primitive","agent","ai","status","click"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/agent-cursor.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/agent-cursor.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/agent-cursor/agent-cursor.html"
+>
+
+<CatalogSlot slot="code">
+
+```html agent-cursor.html
+<!doctype html>
+<!--
+  Agent Cursor (actor primitive), mountable sub-composition
+
+  concept: an AI agent operating a UI. A glowing cursor carries a name tag that types
+  out what the agent is doing; the text shimmers while it thinks, then the cursor moves
+  deliberately to each target and clicks with a small sparkle. The last step shows a check.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip (inset:0). See demo.html.
+
+  variables:
+    agent_name (string)   the name on the tag
+    steps (string)        comma-separated: a reading line, one line per target, a done line
+    targets (string)      semicolon-separated "x,y" click points in % of the host box
+    accent (color)        glow, dot and sparkle color
+
+  envelope (default 6s, two targets): enter and read 0-1.5s, then per target 1.6s
+  (type, think 0.55s, move 0.7s, click), done line, exit in the last 0.5s.
+-->
+<html
+  lang="en"
+  data-composition-id="agent-cursor"
+  data-composition-duration="6"
+  data-composition-variables='[
+    { "id": "agent_name", "type": "string", "role": "content", "label": "Agent name", "default": "Agent" },
+    { "id": "steps", "type": "string", "role": "content", "label": "Status steps", "description": "Comma-separated: a reading line, one line per target, then a done line.", "default": "Reading the page,Opening Settings,Turning on backups,Done" },
+    { "id": "targets", "type": "string", "role": "layout", "label": "Click targets", "description": "Semicolon-separated x,y points in percent of the frame.", "default": "25,47;76,30" },
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#8b5cf6" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Agent Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          isolation: isolate;
+          pointer-events: none;
+          container-type: size;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --ag-accent: #8b5cf6;
+        }
+        .ag-actor,
+        .ag-tag-anchor,
+        .ag-burst {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 0;
+          height: 0;
+          will-change: transform;
+        }
+        .ag-glow {
+          position: absolute;
+          left: -4.2cqw;
+          top: -3.6cqw;
+          width: 9cqw;
+          height: 9cqw;
+          border-radius: 50%;
+          background: conic-gradient(var(--ag-accent), #38bdf8, #f472b6, var(--ag-accent));
+          filter: blur(1.6cqw);
+        }
+        .ag-arrow {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 3.4cqw;
+          height: 3.4cqw;
+          overflow: visible;
+          filter: drop-shadow(0 0.25cqw 0.4cqw rgba(0, 0, 0, 0.35));
+        }
+        .ag-tag {
+          position: absolute;
+          left: 1.9cqw;
+          top: 2.5cqw;
+          display: flex;
+          align-items: center;
+          gap: 0.55cqw;
+          padding: 0.5cqw 0.9cqw 0.5cqw 0.7cqw;
+          border-radius: 999px;
+          background: rgba(16, 16, 24, 0.92);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          box-shadow: 0 0.6cqw 1.6cqw rgba(0, 0, 0, 0.28);
+          font-size: 1.15cqw;
+          line-height: 1.2;
+          white-space: nowrap;
+          transform-origin: 0 0;
+        }
+        .ag-mark {
+          position: relative;
+          width: 1cqw;
+          height: 1cqw;
+          flex: none;
+        }
+        .ag-dot,
+        .ag-check {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+        }
+        .ag-dot {
+          background: var(--ag-accent);
+          box-shadow: 0 0 0.6cqw var(--ag-accent);
+        }
+        .ag-check {
+          background: #22c55e;
+          opacity: 0;
+        }
+        .ag-check svg {
+          position: absolute;
+          inset: 18%;
+          fill: none;
+          stroke: #fff;
+          stroke-width: 3.2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .ag-name {
+          font-weight: 700;
+          color: #fff;
+        }
+        .ag-sep {
+          color: rgba(255, 255, 255, 0.35);
+        }
+        .ag-status {
+          color: rgba(255, 255, 255, 0.9);
+          background: linear-gradient(90deg, rgba(255, 255, 255, 0.45) 35%, #fff 50%, rgba(255, 255, 255, 0.45) 65%);
+          background-size: 300% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+        }
+        .ag-status[data-thinking="true"] {
+          -webkit-text-fill-color: transparent;
+        }
+        .ag-spark {
+          position: absolute;
+          left: -0.45cqw;
+          top: -0.45cqw;
+          width: 0.9cqw;
+          height: 0.9cqw;
+          opacity: 0;
+        }
+      </style>
+
+      <div id="root" data-composition-id="agent-cursor" data-duration="6">
+        <div class="ag-tag-anchor" id="ag-tag-anchor">
+          <div class="ag-tag" id="ag-tag">
+            <span class="ag-mark">
+              <span class="ag-dot" id="ag-dot"></span>
+              <span class="ag-check" id="ag-check">
+                <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+              </span>
+            </span>
+            <span class="ag-name" id="ag-name"></span>
+            <span class="ag-sep">·</span>
+            <span class="ag-status" id="ag-status"></span>
+          </div>
+        </div>
+        <div class="ag-actor" id="ag-actor">
+          <div class="ag-glow" id="ag-glow"></div>
+          <svg class="ag-arrow" id="ag-arrow" viewBox="5 3 24 24" aria-hidden="true">
+            <path
+              d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z"
+              fill="#111118"
+              stroke="#ffffff"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var actor = document.getElementById("ag-actor");
+          var arrow = document.getElementById("ag-arrow");
+          var glow = document.getElementById("ag-glow");
+          var tagAnchor = document.getElementById("ag-tag-anchor");
+          var tag = document.getElementById("ag-tag");
+          var statusEl = document.getElementById("ag-status");
+          var dot = document.getElementById("ag-dot");
+          var check = document.getElementById("ag-check");
+          var SVG_NS = "http://www.w3.org/2000/svg";
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "agent-cursor";
+          var duration = Math.max(
+            0.001,
+            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "6"),
+          );
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var accent = /^#[0-9a-f]{3,8}$/i.test(String(vars.accent)) ? vars.accent : "#8b5cf6";
+          root.style.setProperty("--ag-accent", accent);
+          document.getElementById("ag-name").textContent = String(vars.agent_name || "Agent");
+
+          var steps = String(vars.steps || "")
+            .split(",")
+            .map(function (s) {
+              return s.trim();
+            })
+            .filter(Boolean);
+          var targets = String(vars.targets || "")
+            .split(";")
+            .map(function (pair) {
+              var xy = pair.split(",").map(Number);
+              return { x: (xy[0] / 100) * W, y: (xy[1] / 100) * H };
+            })
+            .filter(function (p) {
+              return isFinite(p.x) && isFinite(p.y);
+            });
+          if (!targets.length) targets = [{ x: 0.5 * W, y: 0.5 * H }];
+          if (!steps.length) steps = ["Working"];
+          function stepText(i) {
+            return steps[Math.min(i, steps.length - 1)];
+          }
+
+          // Beats at the default duration; a shorter composition compresses them evenly.
+          var BEAT = 1.6;
+          var needed = 1.5 + targets.length * BEAT + 0.6 + 0.5;
+          var k = Math.min(1, duration / needed);
+          var T_ENTER = 0.9 * k;
+          var T_READ_END = 1.5 * k;
+          var beats = targets.map(function (p, i) {
+            var type = T_READ_END + i * BEAT * k;
+            var move = type + 0.55 * k;
+            return { type: type, move: move, land: move + 0.7 * k, click: move + 0.74 * k, to: p };
+          });
+          var T_DONE = T_READ_END + targets.length * BEAT * k;
+          var T_EXIT = Math.max(T_DONE + 0.4 * k, duration - 0.5 * k);
+
+          var first = targets[0];
+          var READ_A = { x: (0.5 * W + first.x) / 2 - 0.03 * W, y: (0.5 * H + first.y) / 2 };
+          var READ_B = { x: READ_A.x + 0.06 * W, y: READ_A.y + 0.01 * H };
+          var START = { x: 1.08 * W, y: 1.15 * H };
+          var END = { x: 1.1 * W, y: 1.2 * H };
+
+          function clamp01(u) {
+            return u < 0 ? 0 : u > 1 ? 1 : u;
+          }
+          var enter = gsap.parseEase("power3.out");
+          var travel = gsap.parseEase("power2.inOut");
+          var reading = gsap.parseEase("sine.inOut");
+          var leave = gsap.parseEase("power2.in");
+          var pop = gsap.parseEase("back.out(2.4)");
+          function lerp(a, b, u) {
+            return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+          }
+          function bent(a, b, u) {
+            var p = lerp(a, b, u);
+            var lift = Math.sin(Math.PI * u) * 0.12;
+            return { x: p.x + (b.y - a.y) * lift, y: p.y - (b.x - a.x) * lift };
+          }
+
+          function positionAt(t) {
+            if (t <= T_ENTER) return lerp(START, READ_A, enter(clamp01(t / T_ENTER)));
+            if (t <= T_READ_END) return lerp(READ_A, READ_B, reading(clamp01((t - T_ENTER) / (T_READ_END - T_ENTER))));
+            var from = READ_B;
+            for (var i = 0; i < beats.length; i++) {
+              var b = beats[i];
+              if (t <= b.move) return from;
+              if (t <= b.land) return bent(from, b.to, travel((t - b.move) / (b.land - b.move)));
+              from = b.to;
+            }
+            if (t <= T_EXIT) return from;
+            return lerp(from, END, leave(clamp01((t - T_EXIT) / (duration - T_EXIT))));
+          }
+
+          // The tag trails the tip by averaging recent positions: a lag that stays seek-safe.
+          function tagAt(t) {
+            var x = 0;
+            var y = 0;
+            for (var i = 0; i < 6; i++) {
+              var p = positionAt(Math.max(0, t - i * 0.03));
+              x += p.x;
+              y += p.y;
+            }
+            return { x: x / 6, y: y / 6 };
+          }
+
+          function statusAt(t) {
+            var index = 0;
+            var since = t;
+            var thinking = t > 0.3 * k && t < T_READ_END;
+            beats.forEach(function (b, i) {
+              if (t >= b.type) {
+                index = i + 1;
+                since = t - b.type;
+                thinking = t < b.move;
+              }
+            });
+            if (t >= T_DONE) {
+              index = beats.length + 1;
+              since = t - T_DONE;
+              thinking = false;
+            }
+            var text = stepText(index);
+            var typeDur = Math.min(0.4, text.length * 0.026) * k;
+            var shown = Math.floor(clamp01(since / typeDur) * text.length);
+            return { text: text.slice(0, Math.max(index === 0 ? 0 : 1, shown)), thinking: thinking };
+          }
+
+          var bursts = beats.map(function (b) {
+            var wrap = document.createElement("div");
+            wrap.className = "ag-burst";
+            wrap.style.transform = "translate(" + b.to.x + "px," + b.to.y + "px)";
+            var sparks = [];
+            for (var j = 0; j < 8; j++) {
+              var s = document.createElementNS(SVG_NS, "svg");
+              s.setAttribute("viewBox", "-10 -10 20 20");
+              s.setAttribute("class", "ag-spark");
+              var star = document.createElementNS(SVG_NS, "path");
+              star.setAttribute("d", "M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z");
+              star.setAttribute("fill", j % 2 ? "#ffffff" : accent);
+              s.appendChild(star);
+              wrap.appendChild(s);
+              sparks.push({ el: s, angle: (j * 45 + (j % 2 ? 14 : -6)) * (Math.PI / 180), reach: [1, 0.72, 0.88][j % 3] });
+            }
+            root.appendChild(wrap);
+            return { at: b.click, sparks: sparks };
+          });
+
+          function press(t) {
+            var depth = 0;
+            beats.forEach(function (b) {
+              var d = t - b.click;
+              if (d >= 0 && d < 0.08 * k) depth = d / (0.08 * k);
+              else if (d >= 0.08 * k && d < 0.26 * k) depth = 1 - (d - 0.08 * k) / (0.18 * k);
+            });
+            return 1 - 0.14 * depth;
+          }
+
+          function render(t) {
+            var p = positionAt(t);
+            var tp = tagAt(t);
+            var gone = t >= duration;
+            actor.style.transform = "translate(" + p.x.toFixed(2) + "px," + p.y.toFixed(2) + "px)";
+            arrow.style.transform = "scale(" + press(t).toFixed(3) + ")";
+            arrow.style.transformOrigin = "0 0";
+            glow.style.transform = "rotate(" + (t * 140).toFixed(1) + "deg) scale(" + (1 + 0.08 * Math.sin(t * 4.2)).toFixed(3) + ")";
+            glow.style.opacity = (0.5 + 0.12 * Math.sin(t * 3.1)).toFixed(3);
+            tagAnchor.style.transform = "translate(" + tp.x.toFixed(2) + "px," + tp.y.toFixed(2) + "px)";
+            tag.style.transform = "scale(" + (0.9 + 0.1 * enter(clamp01((t - 0.15 * k) / (0.35 * k)))).toFixed(3) + ")";
+            var leaving = clamp01((t - T_EXIT) / (0.25 * k));
+            tag.style.opacity = (clamp01((t - 0.15 * k) / (0.2 * k)) * (1 - leaving)).toFixed(3);
+
+            var status = statusAt(t);
+            statusEl.textContent = status.text;
+            statusEl.setAttribute("data-thinking", status.thinking ? "true" : "false");
+            statusEl.style.backgroundPosition = (100 - ((t * 0.9) % 1) * 150).toFixed(1) + "% 0";
+
+            var done = clamp01((t - T_DONE) / (0.3 * k));
+            check.style.opacity = done.toFixed(3);
+            check.style.transform = "scale(" + (0.5 + 0.5 * pop(done)).toFixed(3) + ")";
+            dot.style.opacity = (1 - done).toFixed(3);
+            dot.style.transform = "scale(" + (status.thinking ? 0.8 + 0.2 * Math.sin(t * 12) : 1).toFixed(3) + ")";
+
+            bursts.forEach(function (burst) {
+              var u = (t - burst.at) / (0.5 * k);
+              burst.sparks.forEach(function (s) {
+                if (u < 0 || u > 1) {
+                  s.el.style.opacity = "0";
+                  return;
+                }
+                var r = (0.2 + 2.4 * enter(u)) * s.reach;
+                s.el.style.opacity = (1 - u * u).toFixed(3);
+                s.el.style.transform =
+                  "translate(" + (Math.cos(s.angle) * r).toFixed(3) + "cqw," + (Math.sin(s.angle) * r).toFixed(3) +
+                  "cqw) scale(" + (1 - 0.7 * u).toFixed(3) + ") rotate(" + (u * 90).toFixed(1) + "deg)";
+              });
+            });
+            actor.style.opacity = gone ? "0" : "1";
+            tagAnchor.style.opacity = gone ? "0" : "1";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add agent-cursor" item="agent-cursor" />
+
+That writes one file: `compositions/components/agent-cursor.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/agent-cursor.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `agent_name` | `Agent` | string |  |
+| `steps` | `Reading the page,Opening Settings,Turning on backups,Done` | string | Comma-separated: a reading line, one line per target, then a done line. |
+| `targets` | `25,47;76,30` | string | Semicolon-separated x,y points in percent of the frame. |
+| `accent` | `#8b5cf6` | color |  |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="agent-cursor"
+  data-composition-src="compositions/components/agent-cursor.html"
+  data-variable-values='{"agent_name":"Agent","steps":"Reading the page,Opening Settings,Turning on backups,Done","targets":"25,47;76,30","accent":"#8b5cf6"}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `cursor` `motion-primitive` `agent` `ai` `status` `click`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

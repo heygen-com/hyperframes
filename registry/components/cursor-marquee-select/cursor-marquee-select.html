@@ -1,0 +1,460 @@
+<!doctype html>
+<!--
+  Marquee Select Cursor (actor primitive), mountable sub-composition
+
+  concept: a photo library grid. The cursor presses on empty space and drags a
+  translucent selection rectangle; each tile selects (ring, inset, check badge pop) on
+  the exact frame the rectangle first touches it, and a pill counts the selection up.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip and letterboxes a 1920x1080 library inside it.
+
+  variables:
+    accent (color)                              rectangle, rings, badges and pill
+    start_x, start_y, end_x, end_y (% of board) where the drag presses and releases
+    pill_label (string)                         the word after the count
+
+  envelope (default 4.6s): arrive 0-0.8s, press 0.9s, drag 1.0-2.3s, release 2.35s,
+  hold, exit in the last 0.6s. Shorter durations compress every beat evenly.
+-->
+<html
+  lang="en"
+  data-composition-id="cursor-marquee-select"
+  data-composition-duration="4.6"
+  data-composition-variables='[
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#2f7bf6" },
+    { "id": "start_x", "type": "number", "role": "layout", "label": "Drag start X", "default": 20.5, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "start_y", "type": "number", "role": "layout", "label": "Drag start Y", "default": 25.5, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "end_x", "type": "number", "role": "layout", "label": "Drag end X", "default": 57, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "end_y", "type": "number", "role": "layout", "label": "Drag end Y", "default": 52, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "pill_label", "type": "string", "role": "content", "label": "Pill label", "default": "selected" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Marquee Select Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          isolation: isolate;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --ms-accent: #2f7bf6;
+        }
+        .ms-stage {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 1920px;
+          height: 1080px;
+          transform-origin: 0 0;
+        }
+        .ms-panel {
+          position: absolute;
+          left: 360px;
+          top: 150px;
+          width: 1200px;
+          height: 740px;
+          border-radius: 32px;
+          background: #ffffff;
+          box-shadow:
+            0 40px 120px rgba(8, 10, 30, 0.35),
+            0 0 0 1px rgba(15, 18, 40, 0.06);
+        }
+        .ms-title {
+          position: absolute;
+          left: 56px;
+          top: 44px;
+          font-size: 34px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: #12141f;
+        }
+        .ms-sub {
+          position: absolute;
+          left: 56px;
+          top: 90px;
+          font-size: 19px;
+          color: #6b7085;
+        }
+        .ms-pill {
+          position: absolute;
+          right: 56px;
+          top: 48px;
+          padding: 10px 20px;
+          border-radius: 999px;
+          font-size: 20px;
+          font-weight: 650;
+          color: #ffffff;
+          background: var(--ms-accent);
+          opacity: 0;
+          transform-origin: 100% 50%;
+          font-variant-numeric: tabular-nums;
+        }
+        .ms-tile {
+          position: absolute;
+          width: 250px;
+          height: 160px;
+          border-radius: 16px;
+          will-change: transform;
+        }
+        .ms-photo {
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          overflow: hidden;
+          background: linear-gradient(160deg, var(--a), var(--b));
+        }
+        .ms-photo::before {
+          content: "";
+          position: absolute;
+          right: 22%;
+          top: 18%;
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.7);
+        }
+        .ms-photo::after {
+          content: "";
+          position: absolute;
+          left: -10%;
+          right: -10%;
+          bottom: -38%;
+          height: 80%;
+          border-radius: 50%;
+          background: var(--c);
+        }
+        .ms-name {
+          position: absolute;
+          left: 0;
+          top: 168px;
+          font-size: 15px;
+          color: #6b7085;
+        }
+        .ms-ring {
+          position: absolute;
+          inset: -7px;
+          border-radius: 22px;
+          border: 4px solid var(--ms-accent);
+          opacity: 0;
+        }
+        .ms-check {
+          position: absolute;
+          left: 12px;
+          top: 12px;
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          background: var(--ms-accent);
+          box-shadow: 0 0 0 3px #ffffff;
+          opacity: 0;
+        }
+        .ms-check svg {
+          width: 100%;
+          height: 100%;
+          fill: none;
+          stroke: #ffffff;
+          stroke-width: 2.6;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .ms-rect {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          z-index: 15;
+        }
+        /* Fill scales both ways; each edge scales along its length only, so it stays 1px. */
+        .ms-rect > div {
+          position: absolute;
+          left: 0;
+          top: 0;
+          transform-origin: 0 0;
+          background: var(--ms-accent);
+        }
+        .ms-rect .ms-fill {
+          width: 100px;
+          height: 100px;
+          background: color-mix(in srgb, var(--ms-accent) 16%, transparent);
+        }
+        .ms-rect .ms-h {
+          width: 100px;
+          height: 1.5px;
+        }
+        .ms-rect .ms-v {
+          width: 1.5px;
+          height: 100px;
+        }
+        .ms-cursor {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 134px;
+          height: 134px;
+          filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+          will-change: transform;
+          z-index: 20;
+        }
+      </style>
+
+      <div id="root" data-composition-id="cursor-marquee-select" data-duration="4.6">
+        <div class="ms-stage" id="ms-stage">
+          <div class="ms-panel">
+            <div class="ms-title">Summer shoot</div>
+            <div class="ms-sub">12 photos, edited yesterday</div>
+            <div class="ms-pill" id="ms-pill"></div>
+          </div>
+          <div id="ms-grid"></div>
+          <div class="ms-rect" id="ms-rect">
+            <div class="ms-fill"></div>
+            <div class="ms-h"></div>
+            <div class="ms-h"></div>
+            <div class="ms-v"></div>
+            <div class="ms-v"></div>
+          </div>
+          <div class="ms-cursor" id="ms-cursor" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="100%" height="100%">
+              <path
+                d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z"
+                fill="#ffffff"
+                stroke="#141414"
+                stroke-width="1.4"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var $ = function (id) {
+            return document.getElementById(id);
+          };
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          function num(value, fallback) {
+            var n = Number(value);
+            return Math.max(0, Math.min(100, isFinite(n) ? n : fallback));
+          }
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "cursor-marquee-select";
+          var duration = Math.max(
+            0.001,
+            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "4.6"),
+          );
+          if (vars.accent) root.style.setProperty("--ms-accent", String(vars.accent));
+          var pillLabel = String(vars.pill_label || "selected");
+
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var fit = Math.min(W / 1920, H / 1080);
+          $("ms-stage").style.transform =
+            "translate(" + (W - 1920 * fit) / 2 + "px," + (H - 1080 * fit) / 2 + "px) scale(" + fit + ")";
+
+          var PHOTOS = [
+            ["#ffb86b", "#ff6f91", "#c2416b", "beach-sunset.jpg"],
+            ["#7fd3ff", "#3a86ff", "#1d4ed8", "harbor-morning.jpg"],
+            ["#b8f2c9", "#3fbf7f", "#1f7a4d", "trail-ridge.jpg"],
+            ["#ffe29a", "#ffb347", "#c2701e", "market-stall.jpg"],
+            ["#d9c2ff", "#8b5cf6", "#5b21b6", "rooftop-dusk.jpg"],
+            ["#9ff0e6", "#22b8a6", "#0f766e", "lagoon-swim.jpg"],
+            ["#ffc9c9", "#f76b8a", "#b83280", "flower-field.jpg"],
+            ["#c3dafe", "#6c8cff", "#3b4fd8", "city-rain.jpg"],
+            ["#fde68a", "#f59e0b", "#b45309", "desert-road.jpg"],
+            ["#bbf7d0", "#34d399", "#047857", "forest-cabin.jpg"],
+            ["#fecaca", "#fb7185", "#be123c", "night-market.jpg"],
+            ["#e0e7ff", "#818cf8", "#4338ca", "snow-peak.jpg"],
+          ];
+          var TILE_W = 250;
+          var TILE_H = 160;
+          var GAP_X = 30;
+          var GAP_Y = 48;
+          var LEFT = 415;
+          var TOP = 280;
+          var grid = $("ms-grid");
+          var CHECK = '<svg viewBox="0 0 24 24"><path d="M6.5 12.5l3.6 3.6L17.5 8.5"/></svg>';
+          var tiles = PHOTOS.map(function (p, i) {
+            var box = {
+              x: LEFT + (i % 4) * (TILE_W + GAP_X),
+              y: TOP + Math.floor(i / 4) * (TILE_H + GAP_Y),
+            };
+            var el = document.createElement("div");
+            el.className = "ms-tile";
+            el.style.cssText = "left:" + box.x + "px;top:" + box.y + "px";
+            el.innerHTML =
+              '<div class="ms-ring"></div><div class="ms-photo" style="--a:' + p[0] + ";--b:" + p[1] +
+              ";--c:" + p[2] + '"></div><div class="ms-check">' + CHECK + '</div><div class="ms-name">' +
+              p[3] + "</div>";
+            grid.appendChild(el);
+            return {
+              box: box,
+              el: el,
+              photo: el.querySelector(".ms-photo"),
+              ring: el.querySelector(".ms-ring"),
+              check: el.querySelector(".ms-check"),
+            };
+          });
+
+          var s = Math.min(1, duration / 4.6);
+          var T_ARRIVE = 0.8 * s;
+          var T_PRESS = 0.9 * s;
+          var T_DRAG = 1.0 * s;
+          var T_RELEASE = 2.3 * s;
+          var T_DRIFT = 2.6 * s;
+          var T_EXIT = duration - 0.6 * s;
+
+          var easeArrive = gsap.parseEase("power4.out");
+          var easeDrag = gsap.parseEase("power2.inOut");
+          var easeExit = gsap.parseEase("power3.in");
+          var easePop = gsap.parseEase("back.out(2.4)");
+          function clamp01(u) {
+            return u < 0 ? 0 : u > 1 ? 1 : u;
+          }
+          function arc(p0, p1, bend, u) {
+            var cx = (p0.x + p1.x) / 2 - (p1.y - p0.y) * bend;
+            var cy = (p0.y + p1.y) / 2 + (p1.x - p0.x) * bend;
+            var v = 1 - u;
+            return {
+              x: v * v * p0.x + 2 * v * u * cx + u * u * p1.x,
+              y: v * v * p0.y + 2 * v * u * cy + u * u * p1.y,
+            };
+          }
+
+          var A = { x: (num(vars.start_x, 20.5) / 100) * 1920, y: (num(vars.start_y, 25.5) / 100) * 1080 };
+          var B = { x: (num(vars.end_x, 57) / 100) * 1920, y: (num(vars.end_y, 52) / 100) * 1080 };
+          var START = { x: 2060, y: 1220 };
+          var ASIDE = { x: B.x + 120, y: B.y + 110 };
+          var TIP = { x: (5 / 24) * 134, y: (3 / 24) * 134 };
+
+          function pointerAt(t) {
+            if (t <= T_ARRIVE) return arc(START, A, 0.16, easeArrive(clamp01(t / T_ARRIVE)));
+            if (t <= T_DRAG) return A;
+            if (t <= T_RELEASE) return arc(A, B, 0.06, easeDrag((t - T_DRAG) / (T_RELEASE - T_DRAG)));
+            if (t <= T_DRIFT) return B;
+            if (t <= T_EXIT) return arc(B, ASIDE, 0.1, easeArrive(clamp01((t - T_DRIFT) / (0.5 * s))));
+            return arc(ASIDE, START, -0.1, easeExit(clamp01((t - T_EXIT) / (duration - T_EXIT))));
+          }
+          function rectAt(t) {
+            var p = pointerAt(Math.min(t, T_RELEASE));
+            return {
+              x0: Math.min(A.x, p.x),
+              y0: Math.min(A.y, p.y),
+              x1: Math.max(A.x, p.x),
+              y1: Math.max(A.y, p.y),
+            };
+          }
+          function touches(r, b) {
+            return r.x1 >= b.x && r.x0 <= b.x + TILE_W && r.y1 >= b.y && r.y0 <= b.y + TILE_H;
+          }
+
+          // The first frame the rectangle touches each tile, found by walking the drag path.
+          var FPS = 240;
+          tiles.forEach(function (tile) {
+            tile.at = Infinity;
+            for (var f = Math.ceil(T_DRAG * FPS); f <= Math.ceil(T_RELEASE * FPS); f++) {
+              if (touches(rectAt(f / FPS), tile.box)) {
+                tile.at = f / FPS;
+                break;
+              }
+            }
+          });
+
+          var rect = $("ms-rect");
+          var rectParts = rect.children;
+          var cursor = $("ms-cursor");
+          var pill = $("ms-pill");
+
+          function render(t) {
+            var r = rectAt(t);
+            var dragging = t >= T_DRAG && t < T_RELEASE;
+            var rectAlpha = t < T_DRAG ? 0 : dragging ? clamp01((t - T_DRAG) / 0.06) : 1 - clamp01((t - T_RELEASE) / (0.18 * s));
+            rect.style.opacity = rectAlpha.toFixed(3);
+            var sx = Math.max(0.001, (r.x1 - r.x0) / 100).toFixed(4);
+            var sy = Math.max(0.001, (r.y1 - r.y0) / 100).toFixed(4);
+            var at = function (x, y) {
+              return "translate(" + x.toFixed(2) + "px," + y.toFixed(2) + "px) ";
+            };
+            rectParts[0].style.transform = at(r.x0, r.y0) + "scale(" + sx + "," + sy + ")";
+            rectParts[1].style.transform = at(r.x0, r.y0) + "scaleX(" + sx + ")";
+            rectParts[2].style.transform = at(r.x0, r.y1 - 1.5) + "scaleX(" + sx + ")";
+            rectParts[3].style.transform = at(r.x0, r.y0) + "scaleY(" + sy + ")";
+            rectParts[4].style.transform = at(r.x1 - 1.5, r.y0) + "scaleY(" + sy + ")";
+
+            var count = 0;
+            var firstAt = Infinity;
+            tiles.forEach(function (tile) {
+              var on = t >= tile.at && touches(r, tile.box);
+              var u = on ? clamp01((t - tile.at) / 0.24) : 0;
+              if (on) count++;
+              if (on) firstAt = Math.min(firstAt, tile.at);
+              tile.ring.style.opacity = clamp01(u * 2).toFixed(3);
+              tile.photo.style.transform = "scale(" + (1 - 0.06 * clamp01(u * 1.6)).toFixed(4) + ")";
+              tile.check.style.opacity = clamp01(u * 3).toFixed(3);
+              tile.check.style.transform = "scale(" + (0.5 + 0.5 * easePop(u)).toFixed(4) + ")";
+            });
+
+            var pillU = count > 0 ? clamp01((t - firstAt) / 0.22) : 0;
+            pill.textContent = count + " " + pillLabel;
+            pill.style.opacity = pillU.toFixed(3);
+            pill.style.transform = "scale(" + (0.94 + 0.06 * easePop(pillU)).toFixed(4) + ")";
+
+            var p = pointerAt(t);
+            var press = t >= T_PRESS && t < T_PRESS + 0.2 * s ? 1 - 0.1 * Math.sin(Math.PI * clamp01((t - T_PRESS) / (0.2 * s))) : 1;
+            cursor.style.transformOrigin = TIP.x + "px " + TIP.y + "px";
+            cursor.style.transform =
+              "translate(" + (p.x - TIP.x).toFixed(2) + "px," + (p.y - TIP.y).toFixed(2) + "px) scale(" + press.toFixed(4) + ")";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

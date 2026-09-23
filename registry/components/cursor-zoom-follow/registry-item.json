@@ -1,0 +1,128 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cursor-zoom-follow",
+  "type": "hyperframes:component",
+  "title": "Zoom Follow Cursor",
+  "description": "Screen-recording auto-zoom: the camera pushes in toward each upcoming click, trails the cursor on a smooth spring, ripples every click, then eases back out to the full screen as the cursor leaves.",
+  "tags": ["cursor", "camera", "zoom", "screen-recording", "click", "product-demo"],
+  "files": [
+    {
+      "path": "cursor-zoom-follow.html",
+      "target": "compositions/components/cursor-zoom-follow.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "camera",
+  "syncPoints": [
+    {
+      "id": "click-1",
+      "phase": "hold",
+      "offset": 1.3
+    },
+    {
+      "id": "click-2",
+      "phase": "hold",
+      "offset": 2.7
+    },
+    {
+      "id": "click-3",
+      "phase": "hold",
+      "offset": 4.1
+    }
+  ],
+  "variables": [
+    {
+      "id": "image",
+      "type": "image",
+      "role": "content",
+      "label": "Screenshot",
+      "description": "Your own screen capture. Leave empty for the built-in dashboard.",
+      "default": ""
+    },
+    {
+      "id": "zoom",
+      "type": "number",
+      "role": "style",
+      "label": "Zoom",
+      "default": 1.8,
+      "min": 1.2,
+      "max": 2.6,
+      "step": 0.1
+    },
+    {
+      "id": "click1_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Click 1 X",
+      "default": 68.5,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "click1_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Click 1 Y",
+      "default": 7.5,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "click2_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Click 2 X",
+      "default": 50,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "click2_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Click 2 Y",
+      "default": 48.5,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "click3_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Click 3 X",
+      "default": 90.5,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "click3_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Click 3 Y",
+      "default": 7.5,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "role": "style",
+      "label": "Ripple",
+      "default": "#4f5bff"
+    }
+  ]
+}

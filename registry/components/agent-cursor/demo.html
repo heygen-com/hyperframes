@@ -1,0 +1,248 @@
+<!doctype html>
+<!--
+  Agent Cursor, standalone demo: an agent opens Settings and turns on backups. It mounts
+  agent-cursor.html full-frame over the app window; the window reacts on the cursor's
+  click beats (2.79s and 4.39s).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Agent Cursor, Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(1400px 900px at 70% 0%, #2b2f55 0%, #111324 70%);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .window {
+        position: absolute;
+        left: 360px;
+        top: 170px;
+        width: 1200px;
+        height: 740px;
+        border-radius: 24px;
+        overflow: hidden;
+        background: #ffffff;
+        box-shadow: 0 40px 120px rgba(0, 0, 0, 0.5);
+      }
+      .side {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        background: #f5f6fa;
+        border-right: 1px solid #e6e8ef;
+      }
+      .brand {
+        position: absolute;
+        left: 28px;
+        top: 36px;
+        font-size: 22px;
+        font-weight: 750;
+        color: #151827;
+      }
+      .nav {
+        position: absolute;
+        left: 16px;
+        width: 248px;
+        height: 52px;
+        line-height: 52px;
+        padding-left: 18px;
+        border-radius: 12px;
+        font-size: 20px;
+        font-weight: 600;
+        color: #5b6173;
+      }
+      .nav-sel {
+        position: absolute;
+        left: 16px;
+        width: 248px;
+        height: 52px;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 2px 8px rgba(21, 24, 39, 0.08);
+      }
+      .view {
+        position: absolute;
+        left: 280px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        padding: 40px 48px;
+      }
+      .view h2 {
+        margin: 0 0 28px;
+        font-size: 34px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+        color: #151827;
+      }
+      .row {
+        position: relative;
+        height: 88px;
+        border-bottom: 1px solid #eceef4;
+      }
+      .row-title {
+        position: absolute;
+        left: 0;
+        top: 18px;
+        font-size: 21px;
+        font-weight: 650;
+        color: #151827;
+      }
+      .row-sub {
+        position: absolute;
+        left: 0;
+        top: 50px;
+        font-size: 17px;
+        color: #7a8094;
+      }
+      .toggle {
+        position: absolute;
+        right: 12px;
+        top: 28px;
+        width: 60px;
+        height: 34px;
+        border-radius: 999px;
+        background: #d6d9e3;
+      }
+      .toggle.on {
+        background: #8b5cf6;
+      }
+      .knob {
+        position: absolute;
+        left: 3px;
+        top: 3px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      }
+      .toggle.on .knob {
+        transform: translateX(26px);
+      }
+      .pill {
+        position: absolute;
+        right: 12px;
+        top: 26px;
+        padding: 8px 14px;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 650;
+        color: #5b6173;
+        background: #eef0f5;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="agent-cursor-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <div class="window clip" id="window" data-start="0" data-duration="6" data-track-index="0">
+        <div class="side">
+          <div class="brand">Workspace</div>
+          <div class="nav-sel" id="nav-sel" style="top: 184px"></div>
+          <div class="nav" style="top: 120px">Home</div>
+          <div class="nav" id="nav-projects" style="top: 184px; color: #151827">Projects</div>
+          <div class="nav" style="top: 248px">Team</div>
+          <div class="nav" id="nav-settings" style="top: 312px">Settings</div>
+        </div>
+
+        <div class="view" id="projects">
+          <h2>Projects</h2>
+          <div class="row">
+            <div class="row-title">Spring campaign</div>
+            <div class="row-sub">Edited 2 hours ago by Priya</div>
+            <div class="pill">In review</div>
+          </div>
+          <div class="row">
+            <div class="row-title">Onboarding emails</div>
+            <div class="row-sub">Edited yesterday by Marco</div>
+            <div class="pill">Draft</div>
+          </div>
+          <div class="row">
+            <div class="row-title">Pricing page refresh</div>
+            <div class="row-sub">Edited Monday by Lena</div>
+            <div class="pill">Shipped</div>
+          </div>
+        </div>
+
+        <div class="view" id="settings" style="opacity: 0">
+          <h2>Settings</h2>
+          <div class="row">
+            <div class="row-title">Automatic backups</div>
+            <div class="row-sub" id="backup-sub">Off. Your workspace is not backed up.</div>
+            <div class="toggle" id="backup-toggle"><div class="knob" id="backup-knob"></div></div>
+          </div>
+          <div class="row">
+            <div class="row-title">Version history</div>
+            <div class="row-sub">Keep every change for 30 days</div>
+            <div class="toggle on"><div class="knob"></div></div>
+          </div>
+          <div class="row">
+            <div class="row-title">Export workspace</div>
+            <div class="row-sub">Download everything as a zip</div>
+            <div class="pill">Export</div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="clip"
+        id="agent-cursor"
+        data-composition-id="agent-cursor"
+        data-composition-src="./agent-cursor.html"
+        data-variable-values='{"agent_name":"Agent","steps":"Reading the page,Opening Settings,Turning on backups,Done","targets":"24.8,47.6;76.1,30.2","accent":"#8b5cf6"}'
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+        style="position: absolute; inset: 0; width: 1920px; height: 1080px"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      // First click (2.79s): Settings opens.
+      tl.to("#nav-sel", { y: 128, duration: 0.3, ease: "power3.out" }, 2.83);
+      tl.to("#projects", { opacity: 0, x: -12, duration: 0.18, ease: "power2.in" }, 2.83);
+      tl.to("#nav-projects", { color: "#5b6173", duration: 0.2 }, 2.83);
+      tl.to("#nav-settings", { color: "#151827", duration: 0.2 }, 2.83);
+      tl.fromTo("#settings", { opacity: 0, x: 16 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" }, 2.95);
+
+      // Second click (4.39s): backups turn on.
+      tl.to("#backup-toggle", { backgroundColor: "#8b5cf6", duration: 0.2 }, 4.43);
+      tl.to("#backup-knob", { x: 26, duration: 0.26, ease: "back.out(1.8)" }, 4.43);
+      tl.set("#backup-sub", { textContent: "On. Next backup tonight at 2:00." }, 4.5);
+
+      window.__timelines["agent-cursor-demo"] = tl;
+    </script>
+  </body>
+</html>

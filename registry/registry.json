@@ -692,6 +692,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "agent-cursor",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "animated-bar-chart",
       "type": "hyperframes:component"
     },
@@ -896,7 +900,31 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "cursor-annotate",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-context-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-drag-drop",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "cursor-glyph-trail",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-marquee-select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-text-select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-zoom-follow",
       "type": "hyperframes:component"
     },
     {
@@ -1073,6 +1101,10 @@
     },
     {
       "name": "logo-wall",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "magnetic-cursor",
       "type": "hyperframes:component"
     },
     {
@@ -1589,6 +1621,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "538272efc300f5e3d45e833e4242f7db9a78bc264ccd0423833418a7550a312f"
+    "revision": "ca38235b18d5dc2f8981720c028a0f9d1dc094c26cf90c99bf8b66ce9172fd82"
   }
 }

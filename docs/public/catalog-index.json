@@ -1,5 +1,21 @@
 [
   {
+    "name": "agent-cursor",
+    "type": "component",
+    "title": "Agent Cursor",
+    "description": "An AI agent operating a UI: a glowing cursor with a name tag that types out each step, shimmers while it thinks, clicks each target with a sparkle, and ends on a check.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "agent",
+      "ai",
+      "status",
+      "click"
+    ],
+    "href": "/catalog/components/agent-cursor",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/agent-cursor.png"
+  },
+  {
     "name": "ai-chat-reveal",
     "type": "block",
     "title": "AI Chat Reveal",
@@ -1569,6 +1585,54 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cuboid-carousel.png"
   },
   {
+    "name": "cursor-annotate",
+    "type": "component",
+    "title": "Annotate Cursor",
+    "description": "A marker pen glides onto the frame and hand-draws a loose loop, an underline, or an arrow around a region, the ink laid exactly under its nib, then lifts and leaves.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "pen",
+      "annotation",
+      "draw-on",
+      "highlight"
+    ],
+    "href": "/catalog/components/cursor-annotate",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-annotate.png"
+  },
+  {
+    "name": "cursor-context-menu",
+    "type": "component",
+    "title": "Context Menu Cursor",
+    "description": "A cursor right-clicks a file, a context menu blooms from its tip, the hover highlight tracks the item under it, and the chosen action plays out: duplicate, rename, move to trash, or a confirmation toast.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "menu",
+      "right-click",
+      "desktop",
+      "files"
+    ],
+    "href": "/catalog/components/cursor-context-menu",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-context-menu.png"
+  },
+  {
+    "name": "cursor-drag-drop",
+    "type": "component",
+    "title": "Drag and Drop Cursor",
+    "description": "A cursor grabs a task card, lifts and tilts it into its motion, carries it in lockstep to an empty column, drops it with a small settle, and the list closes the gap behind it.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "drag",
+      "drop",
+      "kanban",
+      "product-demo"
+    ],
+    "href": "/catalog/components/cursor-drag-drop",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-drag-drop.png"
+  },
+  {
     "name": "cursor-glyph-trail",
     "type": "component",
     "title": "Cursor Glyph Trail",
@@ -1583,6 +1647,54 @@
     ],
     "href": "/catalog/components/cursor-glyph-trail",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-glyph-trail.png"
+  },
+  {
+    "name": "cursor-marquee-select",
+    "type": "component",
+    "title": "Marquee Select Cursor",
+    "description": "A cursor drags a selection rectangle across a photo grid; each tile rings and pops a check the frame the rectangle touches it, while a pill counts the selection up.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "select",
+      "marquee",
+      "grid",
+      "product-demo"
+    ],
+    "href": "/catalog/components/cursor-marquee-select",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-marquee-select.png"
+  },
+  {
+    "name": "cursor-text-select",
+    "type": "component",
+    "title": "Text Select Cursor",
+    "description": "An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "text",
+      "selection",
+      "editor",
+      "toolbar"
+    ],
+    "href": "/catalog/components/cursor-text-select",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-text-select.png"
+  },
+  {
+    "name": "cursor-zoom-follow",
+    "type": "component",
+    "title": "Zoom Follow Cursor",
+    "description": "Screen-recording auto-zoom: the camera pushes in toward each upcoming click, trails the cursor on a smooth spring, ripples every click, then eases back out to the full screen as the cursor leaves.",
+    "tags": [
+      "cursor",
+      "camera",
+      "zoom",
+      "screen-recording",
+      "click",
+      "product-demo"
+    ],
+    "href": "/catalog/components/cursor-zoom-follow",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-zoom-follow.png"
   },
   {
     "name": "cut-the-curve",
@@ -2832,6 +2944,22 @@
     ],
     "href": "/catalog/blocks/macos-tahoe-liquid-glass",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
+  },
+  {
+    "name": "magnetic-cursor",
+    "type": "component",
+    "title": "Magnetic Cursor",
+    "description": "A soft dot pointer glides across an editor toolbar, is pulled into each button and morphs into its rounded hover plate while the icon leans toward it, presses one, and leaves as a dot.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "pointer",
+      "hover",
+      "morph",
+      "toolbar"
+    ],
+    "href": "/catalog/components/magnetic-cursor",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/magnetic-cursor.png"
   },
   {
     "name": "marker-checklist-card",
