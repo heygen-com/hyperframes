@@ -652,7 +652,7 @@
               },
               {
                 "group": "Motion & effects",
-                "tag": "94",
+                "tag": "95",
                 "expanded": false,
                 "pages": [
                   {
@@ -694,7 +694,7 @@
                   },
                   {
                     "group": "Effects",
-                    "tag": "53",
+                    "tag": "54",
                     "expanded": false,
                     "pages": [
                       "catalog/components/avatar-cloud",
@@ -743,6 +743,7 @@
                       "catalog/components/svg-mask-reveal",
                       "catalog/components/tabs-slide-indicator",
                       "catalog/components/testimonial-card",
+                      "catalog/components/torn-paper-rip",
                       "catalog/components/type-match-cut",
                       "catalog/components/vignette",
                       "catalog/components/whip-pan-cut",
