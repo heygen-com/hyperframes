@@ -28,6 +28,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 const { shouldWatchProjectFile, createProjectWatcher } = await import("./fileWatcher.js");
+const { watch } = await import("node:fs");
 
 describe("shouldWatchProjectFile", () => {
   it("watches files that can affect the project signature", () => {
@@ -71,22 +72,17 @@ describe("createProjectWatcher", () => {
   });
 
   it.runIf(process.platform === "linux")(
-    "keeps the project watched when one subdirectory cannot be",
+    "keeps watching the rest of the tree when one subdirectory cannot be watched",
     () => {
-      vi.useFakeTimers();
-      fakeDirs.children = ["compositions", "full"];
+      fakeDirs.children = ["full", "compositions"];
       fakeDirs.unwatchable = "full";
       const projectWatcher = createProjectWatcher("/fake/project/dir");
-      const listener = vi.fn();
-      projectWatcher.addListener(listener);
 
-      mockWatcher.emit("change", "change", "index.html");
-      vi.advanceTimersByTime(300);
-
-      expect(listener).toHaveBeenCalledWith("index.html");
-      fakeDirs.children = [];
-      fakeDirs.unwatchable = "";
+      expect(vi.mocked(watch).mock.calls.map(([path]) => path)).toContain(
+        "/fake/project/dir/compositions",
+      );
       projectWatcher.close();
+      expect(mockWatcher.close).toHaveBeenCalled();
     },
   );
 
