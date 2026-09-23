@@ -247,10 +247,34 @@ test("publication dispatches every required workflow after updating its branch a
 test("publication leaves existing successful workflows at the same head alone", (t) => {
   const fixture = publicationFixture(t, true, {
     PUBLISH_SUCCESS: "1",
-    WORKFLOW_RUNS: JSON.stringify([{ status: "completed", conclusion: "success" }]),
+    WORKFLOW_RUNS: JSON.stringify([
+      { status: "completed", conclusion: "success", display_title: "Ordinary dispatch" },
+      {
+        status: "completed",
+        conclusion: "success",
+        display_title: "Checks (catalog_publish=true)",
+      },
+    ]),
   });
   fixture.run();
   assert.equal(fixture.calls().filter((call) => call.endpoint.endsWith("/dispatches")).length, 0);
+});
+
+test("ordinary dispatch success cannot suppress full publication checks", (t) => {
+  const fixture = publicationFixture(t, true, {
+    PUBLISH_SUCCESS: "1",
+    WORKFLOW_RUNS: JSON.stringify([
+      { status: "completed", conclusion: "success", display_title: "Ordinary dispatch" },
+    ]),
+  });
+  fixture.run();
+  assert.deepEqual(
+    fixture
+      .calls()
+      .filter((call) => call.endpoint.endsWith("/dispatches"))
+      .map((call) => call.endpoint.split("/").at(-2)),
+    ["ci.yml", "regression.yml"],
+  );
 });
 
 test("dispatch rejection fails publication and still cleans up the staging branch", (t) => {

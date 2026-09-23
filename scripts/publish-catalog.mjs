@@ -209,11 +209,15 @@ function dispatchPublishChecks(repository) {
     "codeql.yml",
   ]) {
     const endpoint = `repos/${repository}/actions/workflows/${workflow}`;
+    const request = publishCheckRequest(workflow);
     const runs = JSON.parse(
-      api(`${endpoint}/runs?event=workflow_dispatch&head_sha=${head}&per_page=1`),
+      api(`${endpoint}/runs?event=workflow_dispatch&head_sha=${head}&per_page=100`),
     );
-    if (checkAlreadyScheduled(runs.workflow_runs[0])) continue;
-    api(`${endpoint}/dispatches`, "POST", publishCheckRequest(workflow));
+    const latest = runs.workflow_runs.find(
+      (run) => !request.inputs || run.display_title === "Checks (catalog_publish=true)",
+    );
+    if (checkAlreadyScheduled(latest)) continue;
+    api(`${endpoint}/dispatches`, "POST", request);
   }
 }
 
