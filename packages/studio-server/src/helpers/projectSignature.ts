@@ -215,7 +215,9 @@ export function createProjectSignature(
 
   const fingerprint = createProjectFingerprint(normalizedProjectDir, files);
   const cacheKey = excluding.size
-    ? `${normalizedProjectDir}\0${createHash("sha256").update([...excluding].sort().join("\0")).digest("hex")}`
+    ? `${normalizedProjectDir}\0${createHash("sha256")
+        .update([...excluding].sort().join("\0"))
+        .digest("hex")}`
     : normalizedProjectDir;
   const cached = projectSignatureCache.get(cacheKey);
   if (cached?.fingerprint === fingerprint) return cached.signature;

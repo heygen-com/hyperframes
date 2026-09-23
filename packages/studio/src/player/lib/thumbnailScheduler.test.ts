@@ -180,7 +180,10 @@ describe("ThumbnailScheduler", () => {
     scheduler.setPreviewReloading(false);
     await flush();
     expect(composition).toHaveBeenCalledTimes(2);
-    expect(scheduler.getSnapshot(scene)).toMatchObject({ status: "ready", value: { url: "scene" } });
+    expect(scheduler.getSnapshot(scene)).toMatchObject({
+      status: "ready",
+      value: { url: "scene" },
+    });
   });
 
   it("aborts queued and active jobs after the final release", async () => {

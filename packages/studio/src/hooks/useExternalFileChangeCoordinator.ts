@@ -60,7 +60,10 @@ interface ExternalFileChangeCoordinatorOptions {
   readProjectFile: (path: string) => Promise<string>;
   onUseExternalFile?: (path: string, content: string) => void;
   resetSaveQueues?: () => void;
-  onAcceptedPersistedFileChange: (path: string, affectedCompositions: readonly string[] | null) => void;
+  onAcceptedPersistedFileChange: (
+    path: string,
+    affectedCompositions: readonly string[] | null,
+  ) => void;
 }
 
 export interface ExternalFileChangeCoordinatorHandle {
