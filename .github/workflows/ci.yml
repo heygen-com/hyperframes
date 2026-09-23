@@ -39,9 +39,10 @@ jobs:
           node-version: 22
       - name: Report base reachability
         if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # HEAD is the PR merge ref; its first parent is the current base tip,
+        # which stays correct even when pull_request.base.sha is stale.
         run: |
+          BASE_SHA="$(git rev-parse HEAD^1)"
           git worktree add --detach "$RUNNER_TEMP/reachability-base" "$BASE_SHA"
           (cd "$RUNNER_TEMP/reachability-base" && node scripts/check-test-reachability.mjs --report)
           git worktree remove "$RUNNER_TEMP/reachability-base"
