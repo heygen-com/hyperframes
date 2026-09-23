@@ -198,4 +198,31 @@ describe("dock tab fill", () => {
     act(() => resizeAll());
     expect(strip.scrollLeft).toBe(0);
   });
+
+  it("reveals the shown tab again when its strip comes back from hidden", async () => {
+    const strip = stripOf("design");
+    if (!strip) throw new Error("no design strip");
+    await activate("variables");
+    Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
+    act(() => resizeAll());
+    // Another group is maximised, hiding this strip; the browser drops a hidden strip's scroll.
+    Object.defineProperty(strip, "clientWidth", { value: 0, configurable: true });
+    act(() => resizeAll());
+    strip.scrollLeft = 0;
+    Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
+    act(() => resizeAll());
+    expect(strip.scrollLeft).toBe(3 * TAB_STEP + TAB_WIDTH + 1 - 250);
+  });
+
+  it("reveals the shown tab when a panel beside it closes and it moves", async () => {
+    const strip = stripOf("design");
+    if (!strip) throw new Error("no design strip");
+    await activate("variables");
+    Object.defineProperty(strip, "clientWidth", { value: 150, configurable: true });
+    act(() => resizeAll());
+    strip.scrollLeft = 0;
+    await act(async () => useDockLayoutStore.getState().togglePanel("design"));
+    // Variables moved from the fourth place to the third; its right edge is at 290.
+    expect(strip.scrollLeft).toBe(2 * TAB_STEP + TAB_WIDTH + 1 - 150);
+  });
 });

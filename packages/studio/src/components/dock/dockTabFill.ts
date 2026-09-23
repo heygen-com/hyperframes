@@ -15,28 +15,45 @@ function fillOf(list: HTMLElement): HTMLElement {
   return fill;
 }
 
-/** The scroll that shows the whole shown tab, e.g. after the strip narrows because its actions appeared. */
-function revealedScroll(box: { left: number; width: number }, scrollLeft: number, width: number) {
-  if (box.left < scrollLeft) return box.left;
-  // Offset sizes are rounded while the tab's edge is fractional; a pixel over is clamped at the end.
-  return Math.max(scrollLeft, box.left + box.width + 1 - width);
-}
+/** A strip's width and where its shown tab sits, as of the last pass. */
+type StripShape = { width: number; tab: HTMLElement | null; left: number; size: number };
 
 /**
- * Reads where the shown tab sits; the write happens after every strip is read, so layout runs once.
- * Only a strip that got narrower is scrolled, so a strip the user scrolled by hand stays put.
+ * True when the strip narrowed, came back from hidden, or its shown tab moved or resized. dockview
+ * reveals a tab only when it is activated, and the user's own scrolling changes none of these.
  */
-function measureFill(list: HTMLElement, narrowed: boolean): () => void {
+function reshaped(before: StripShape | undefined, now: StripShape) {
+  if (!before || now.width === 0) return false;
+  if (now.width < before.width || before.width === 0) return true;
+  return now.tab !== before.tab || now.left !== before.left || now.size !== before.size;
+}
+
+/** The scroll that shows the whole shown tab, e.g. after the strip narrows because its actions appeared. */
+function revealedScroll(shape: StripShape, scrollLeft: number) {
+  if (shape.left < scrollLeft) return shape.left;
+  // Offset sizes are rounded while the tab's edge is fractional; a pixel over is clamped at the end.
+  return Math.max(scrollLeft, shape.left + shape.size + 1 - shape.width);
+}
+
+/** Reads where the shown tab sits; the write happens after every strip is read, so layout runs once. */
+function measureFill(list: HTMLElement, shapes: WeakMap<HTMLElement, StripShape>): () => void {
   const fill = fillOf(list);
   const tab = list.querySelector<HTMLElement>(":scope > .dv-active-tab");
-  const box = tab ? { width: tab.offsetWidth, left: tab.offsetLeft } : null;
+  const shape = {
+    width: list.clientWidth,
+    tab,
+    left: tab?.offsetLeft ?? 0,
+    size: tab?.offsetWidth ?? 0,
+  };
+  const reveal = tab !== null && reshaped(shapes.get(list), shape);
+  shapes.set(list, shape);
   const scrollLeft = list.scrollLeft;
-  const target = box && narrowed ? revealedScroll(box, scrollLeft, list.clientWidth) : scrollLeft;
+  const target = reveal ? revealedScroll(shape, scrollLeft) : scrollLeft;
   return () => {
-    fill.hidden = !box;
-    if (!box) return;
-    fill.style.width = `${box.width}px`;
-    fill.style.transform = `translateX(${box.left}px)`;
+    fill.hidden = !tab;
+    if (!tab) return;
+    fill.style.width = `${shape.size}px`;
+    fill.style.transform = `translateX(${shape.left}px)`;
     if (target !== scrollLeft) list.scrollLeft = target;
   };
 }
@@ -73,16 +90,10 @@ export function installTabFill(api: DockviewApi, root: HTMLElement): () => void 
       observed.add(element);
     }
   }
-  const widths = new WeakMap<HTMLElement, number>();
-  function narrowed(list: HTMLElement) {
-    const width = list.clientWidth;
-    const before = widths.get(list) ?? width;
-    widths.set(list, width);
-    return width < before;
-  }
+  const shapes = new WeakMap<HTMLElement, StripShape>();
   function placeAll() {
     const strips = [...lists()];
-    const writes = strips.map((list) => measureFill(list, narrowed(list)));
+    const writes = strips.map((list) => measureFill(list, shapes));
     for (const write of writes) write();
     for (const list of strips) markClippedEdges(list);
     observe(strips.flatMap((list) => [list, ...list.querySelectorAll(":scope > .dv-tab")]));
