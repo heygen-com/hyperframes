@@ -133,7 +133,8 @@
           vars[key] = overrides[key] !== undefined ? overrides[key] : DEFAULTS[key];
         }
         function clampNum(value, lo, hi, fallback) {
-          var n = Number(value);
+          // parseFloat, not Number: null, "" and booleans must fall back, not read as 0 or 1.
+          var n = typeof value === "number" ? value : parseFloat(value);
           if (!isFinite(n)) n = fallback;
           return Math.min(hi, Math.max(lo, n));
         }
