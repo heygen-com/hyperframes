@@ -1026,4 +1026,35 @@ describe("collectRuntimeTimelinePayload", () => {
     const result = collectRuntimeTimelinePayload(defaultParams);
     expect(result.clips.find((c) => c.id === "my-script")).toBeUndefined();
   });
+
+  describe("root duration with no data-duration and a GSAP timeline past the voiceover", () => {
+    function appendVoicedRoot(timelineSeconds: number) {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      document.body.appendChild(root);
+      const voiceover = document.createElement("audio");
+      voiceover.id = "voiceover";
+      voiceover.setAttribute("data-start", "0");
+      voiceover.setAttribute("data-duration", "154.8");
+      root.appendChild(voiceover);
+      (window as TimelineTestWindow).__timelines = { main: { duration: () => timelineSeconds } };
+    }
+
+    it("reports the timeline when its animations simply end after the voiceover", () => {
+      appendVoicedRoot(156);
+
+      const result = collectRuntimeTimelinePayload(defaultParams);
+
+      expect(result.durationSeconds).toBe(156);
+      expect(result.durationInFrames).toBe(156 * 30);
+    });
+
+    it("still reports an endless loop (GSAP repeat: -1) as unbounded", () => {
+      appendVoicedRoot(1e10);
+
+      expect(collectRuntimeTimelinePayload(defaultParams).durationSeconds).toBe(
+        Number.POSITIVE_INFINITY,
+      );
+    });
+  });
 });
