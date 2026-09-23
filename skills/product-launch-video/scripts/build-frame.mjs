@@ -310,6 +310,10 @@ if (brandColors.length && presetColors.length) {
 }
 
 // ── font remix ────────────────────────────────────────────────────────────────
+// bDisplay/bBody are the single source of truth for "what brand font did we actually set" —
+// the brand-adaptation note below must describe these, not recompute its own guess.
+let bDisplay = null;
+let bBody = null;
 if (brandFonts.length) {
   const pf = parseFonts(md);
   const strip = (q) => (q ? q.replace(/^"|"$/g, "") : null);
@@ -328,8 +332,8 @@ if (brandFonts.length) {
     );
   const nonMono = brandFonts.filter((f) => !isMonoFont(f));
   const monoFonts = brandFonts.filter(isMonoFont);
-  const bDisplay = nonMono[0] ?? brandFonts[0];
-  const bBody = nonMono[0] ?? brandFonts[0];
+  bDisplay = nonMono[0] ?? brandFonts[0];
+  bBody = nonMono[0] ?? brandFonts[0];
   const bMono = monoFonts[0] ?? null;
   const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Replace the preset family as a WHOLE WORD/PHRASE everywhere — frontmatter values,
@@ -403,15 +407,13 @@ if (brandFonts.length && brandFontWeights.length) {
 // reader (or frame worker) interprets any lingering preset prose THROUGH the brand values —
 // instead of fragile per-sentence prose surgery.
 if (brandFonts.length || (brandColors.length && presetColors.length)) {
-  const bD = brandFonts[0];
-  const bB = brandFonts[1] ?? brandFonts[0];
   const note =
     `## Brand adaptation (READ FIRST — the frontmatter is the source of truth)\n\n` +
     `This is the **${presetName}** preset remixed onto the captured brand. The YAML frontmatter above ` +
     `(colors · typography · components) is **normative and already correct — use it verbatim.** The prose ` +
     `below is the ORIGINAL preset's intent; read it THROUGH the frontmatter:\n\n` +
     (brandFonts.length
-      ? `- **Fonts** — already set to **${bD}** (display) / **${bB}** (body); ignore any preset font name lingering in prose.\n`
+      ? `- **Fonts** — already set to **${bDisplay}** (display) / **${bBody}** (body); ignore any preset font name lingering in prose.\n`
       : "") +
     (brandFontWeights.length
       ? `- **Weights** — the brand font ships \`{${brandFontWeights.join(", ")}}\` only; every weight is clamped to these — ignore higher preset weights (e.g. 600/700) in prose.\n`

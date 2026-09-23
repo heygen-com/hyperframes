@@ -75,6 +75,18 @@ test("a light-ground preset (capsule) onto a light-mode brand is not inverted", 
   assert.doesNotMatch(stdout, /INVERTED/);
 });
 
+test("broadside's brand-adaptation note matches the fonts it actually set", () => {
+  const { frameMd } = runBuildFrame("broadside", DARK_BRAND_TOKENS);
+  // Regression: the note claimed "Inter (display) / Sora (body)" while the typography block
+  // put Inter on every role and Sora nowhere — the note must describe what the frontmatter
+  // actually carries.
+  assert.match(
+    frameMd,
+    /\*\*Fonts\*\* — already set to \*\*Inter\*\* \(display\) \/ \*\*Inter\*\* \(body\)/,
+  );
+  assert.doesNotMatch(frameMd, /\bSora\b/);
+});
+
 test("broadside's cream-muted stays a neutral grey, not the brand's saturated accent", () => {
   const { frameMd } = runBuildFrame("broadside", DARK_BRAND_TOKENS);
   const m = /cream-muted:\s*"(#[0-9A-Fa-f]{6})"/.exec(frameMd);
