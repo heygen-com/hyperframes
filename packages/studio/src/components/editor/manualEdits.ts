@@ -144,6 +144,15 @@ function isTimelinePlaying(owner: Record<string, unknown> | undefined): boolean 
       }
     }
 
+    // A GSAP child of a paused timeline reads unpaused with time left; only its ancestors know.
+    const parent = owner.parent;
+    if (
+      parent &&
+      typeof parent === "object" &&
+      !isTimelinePlaying(parent as Record<string, unknown>)
+    ) {
+      return false;
+    }
     return hasRemainingTimelineTime(owner);
   }
 
@@ -160,9 +169,7 @@ function isTimelinePlaying(owner: Record<string, unknown> | undefined): boolean 
 }
 
 function isStudioManualEditPlaybackActive(win: StudioManualEditSeekWindow): boolean {
-  // The transport, when present, is the answer: scene timelines nested under a paused master
-  // read as unpaused with time left, which kept this loop running at idle forever.
-  if (typeof win.__player?.isPlaying === "function") return isTimelinePlaying(win.__player);
+  if (isTimelinePlaying(win.__player)) return true;
   if (isTimelinePlaying(win.__timeline)) return true;
   return Object.values(win.__timelines ?? {}).some(isTimelinePlaying);
 }

@@ -496,8 +496,10 @@ describe("studio manual edits", () => {
       isPlaying: () => playing,
     };
     // A GSAP child of a paused master: not paused itself, inactive, time left.
+    const master = { paused: () => true };
     previewWindow.__timelines = {
       scene0: {
+        parent: master,
         play: () => {},
         paused: () => false,
         isActive: () => false,
@@ -514,6 +516,38 @@ describe("studio manual edits", () => {
     playing = false;
     frames.shift()?.(16);
     expect(frames).toHaveLength(0);
+  });
+
+  it("keeps reapplying while Studio drives a timeline directly and the player reads idle", () => {
+    const window = new Window();
+    const frames: FrameRequestCallback[] = [];
+    let paused = true;
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __player: Record<string, unknown>;
+      __timeline: Record<string, unknown>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    previewWindow.__player = { play: () => {}, isPlaying: () => false };
+    previewWindow.__timeline = {
+      play: () => {
+        paused = false;
+      },
+      paused: () => paused,
+      isActive: () => !paused,
+      time: () => 1,
+      duration: () => 5,
+    };
+
+    expect(installStudioManualEditSeekReapply(previewWindow, () => {})).toBe(true);
+    (previewWindow.__timeline.play as () => void)();
+    frames.shift()?.(16);
+    expect(frames).toHaveLength(1);
   });
 
   it("stops playback reapply after an unpaused timeline has completed", () => {
