@@ -99,19 +99,21 @@ before merge, listed at the end.
 2. For components: include a `demo.html`
 3. Run `npx hyperframes lint` and `npx hyperframes validate` on your HTML
 4. Test the install flow: `hyperframes add <name> --dir /tmp/test-project`
-5. Regenerate the manifest: `npx tsx scripts/generate-registry-items.ts`
-
-`registry/registry.json` is generated from the item directories, so edit it with
-that script rather than by hand. An entry added by hand survives until the next
-regeneration and then disappears; entries left behind for directories that no
-longer exist are worse, because `hyperframes add <name>` resolves the name and
-then fails on missing files.
+5. Generate and validate the catalog: `bun run check:catalog-drift`
 
 ### Generated catalog files
 
-Catalog pull requests commit only the item's source files. Do not commit the
-registry index, search vectors, generated docs pages, preview payloads, gallery
-data, or Catalog navigation. CI builds and validates them from your sources.
+Catalog additions and edits commit only the item's source files. Do not commit
+search vectors, generated docs pages, preview payloads, gallery data, or Catalog
+navigation. CI builds and validates them from your sources.
+
+Deleting or renaming an item has one exception: remove its old entry from
+`registry/registry.json` in the same PR that deletes the complete item directory.
+The CLI reads item files directly from main, so leaving that entry would offer an
+item whose files no longer exist. Keep every other index entry and all metadata
+unchanged. Do not add the new entry for a rename or an add-plus-delete PR;
+automation publishes additions. CI rejects missing removals, added entries,
+metadata edits, and removals whose item directories still exist.
 
 To generate the complete catalog locally after installing dependencies and
 building the workspace packages:
@@ -122,13 +124,15 @@ bun run generate:catalog
 
 This command downloads the pinned embedding model when needed. It updates the
 registry index, vectors, payloads, pages, gallery and navigation in dependency
-order. Restore those generated files before committing an item-source PR.
+order. Restore generated files before committing, preserving only the required
+index-entry removals when you delete item directories.
 
 After source changes merge, automation updates one standing publication PR on
 `bot/catalog-publish`, titled `chore(catalog): publish generated catalog`.
 A maintainer approves any waiting workflow runs, reviews it, and merges it after
-checks pass. Until that PR merges, the published catalog remains at its previous
-snapshot. Existing CLI and docs URLs remain unchanged.
+checks pass. New items become discoverable after publication; edits to existing
+CLI item sources take effect on main immediately. Generated docs and search
+artifacts update when the publication PR merges. Existing URLs remain unchanged.
 
 Example manifests are authored source. To deliberately scaffold them, use
 `scripts/scaffold-example-manifests.ts`; indexing never rewrites them.
