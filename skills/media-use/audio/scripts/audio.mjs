@@ -15,7 +15,7 @@
 //
 // ── audio_request.json (input) ────────────────────────────────────────────────
 //   {
-//     "provider": "auto",          // auto|heygen|elevenlabs|kokoro (override: --provider)
+//     "provider": "auto",          // auto|heygen|elevenlabs|kokoro|gemini (override: --provider)
 //     "lang": "en", "speed": 1.0,
 //     "lines": [                   // one TTS unit each; id joins back to the caller's model
 //       { "id": "01", "text": "...", "sfx": ["whoosh", "ui click"] }
@@ -153,6 +153,8 @@ if (only.has("tts") && lines.length) {
       voiceId,
       lang,
       speed,
+      model: flag("tts-model", request.tts_model),
+      style: flag("style", line.style ?? request.style),
       wavAbs: abs,
       hyperframesDir,
     });

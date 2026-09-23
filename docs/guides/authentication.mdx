@@ -74,9 +74,20 @@ Run `npx hyperframes doctor` to check which local dependencies are installed.
 The media workflows run `hyperframes auth status` before generation and tell
 you which path they will use.
 
+For Gemini narration, explicitly ask your agent to use Gemini 3.8 TTS and set
+`GEMINI_API_KEY` (or `GOOGLE_API_KEY`) in your environment or project `.env`.
+The shared audio workflow supports `gemini-3.8-flash-tts` and
+`gemini-3.8-flash-lite-tts`. Setting a Google key alone does not change the
+automatic voice-provider order above. See [Gemini voiceover](/prompting/media-and-audio#gemini-voiceover).
+
+This adapter uses API-key authentication with the Gemini Developer API.
+That API also supports appropriately scoped OAuth credentials, but this helper
+does not yet accept OAuth tokens. Do not put service-account JSON in the API-key
+variable. Cloud Text-to-Speech and Vertex AI have separate model availability.
+
 <Note>
   `npx hyperframes tts` itself is the local Kokoro CLI. Hosted HeyGen and
-  ElevenLabs voices are selected by the bundled media workflow helpers, not by
+  ElevenLabs and Gemini voices are selected by the bundled media workflow helpers, not by
   that command.
 </Note>
 
@@ -112,7 +123,7 @@ to a shared space with `--space`.
 | `HEYGEN_API_URL` | API base URL (default `https://api.heygen.com`). |
 | `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. |
-| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Lyria music generation (and capture descriptions). |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Explicit Gemini TTS selection and Lyria music generation; capture descriptions use `GEMINI_API_KEY`. |
 | `OPENROUTER_API_KEY` | Capture descriptions; takes priority over Gemini for that step. |
 
 ## Related topics

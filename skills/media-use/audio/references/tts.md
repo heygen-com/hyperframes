@@ -36,6 +36,10 @@ Use another voice only for a documented reason, and write the reason down.
 
 ## Available routes
 
+Gemini is an explicit alternative to the automatic provider order below. A
+request to use Gemini already chooses the provider; do not redirect that user
+to HeyGen sign-in. Read the Gemini section for its credential requirement.
+
 | Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                           | Audio format         |
 | ----- | ----------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------- | -------------------- |
 | 1     | HeyGen (Starfish) | `$HEYGEN_API_KEY` / `~/.heygen/credentials` | UUIDs from `GET /v3/voices?engine=starfish` | **Yes** (`word_timestamps[]` in response) | mp3 → wav via ffmpeg |
@@ -83,12 +87,71 @@ node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish vo
 
 ## When to use which provider
 
-| Goal                                                      | Use                                                 |
-| --------------------------------------------------------- | --------------------------------------------------- |
-| Best voice quality + word timestamps in one call          | **HeyGen**                                          |
-| Drop-in cloud TTS, big voice catalog                      | **ElevenLabs**                                      |
-| Offline, no API key, fast iteration                       | **Kokoro**                                          |
-| Non-English multilingual with deterministic phonemization | **Kokoro** (`ef_dora`, `jf_alpha`, `zf_xiaobei`, …) |
+| Goal                                                      | Use                                                       |
+| --------------------------------------------------------- | --------------------------------------------------------- |
+| Best voice quality + word timestamps in one call          | **HeyGen**                                                |
+| Drop-in cloud TTS, big voice catalog                      | **ElevenLabs**                                            |
+| Offline, no API key, fast iteration                       | **Kokoro**                                                |
+| Directed delivery with Gemini prebuilt or custom voices   | **Gemini** (explicit selection; transcription for timing) |
+| Non-English multilingual with deterministic phonemization | **Kokoro** (`ef_dora`, `jf_alpha`, `zf_xiaobei`, …)       |
+
+## Gemini 3.8 narration
+
+Use the shared audio engine, not `hyperframes tts`. Set `GEMINI_API_KEY` or
+`GOOGLE_API_KEY` in the environment or project `.env` (Gemini key wins when
+both are set). Never put the key in a request file or composition.
+
+This helper calls the Gemini Developer API using API-key authentication. The API
+also supports appropriately scoped OAuth credentials, but this helper does not
+yet accept OAuth tokens. Do not put service-account JSON in an API-key variable.
+Cloud Text-to-Speech and Vertex AI have separate model availability.
+
+Save this as `audio_request.json` in the project:
+
+```json
+{
+  "provider": "gemini",
+  "tts_model": "gemini-3.8-flash-tts",
+  "voice": "Kore",
+  "lang": "en",
+  "style": "Warm, clear, conversational. Leave a short pause between sentences.",
+  "lines": [
+    { "id": "intro", "text": "Every word has a moment. Let the picture follow the voice." }
+  ],
+  "bgm": { "mode": "none" }
+}
+```
+
+```bash
+node <SKILL_DIR>/audio/scripts/audio.mjs \
+  --request ./audio_request.json --hyperframes . --out ./audio_meta.json --only tts
+```
+
+The engine saves `assets/voice/intro.wav`, measures its duration, and transcribes
+it into `voices[].words` in `audio_meta.json`. Check that every requested line
+has audio and nonempty word timings before building a captioned video. Review
+the timings against the actual audio; transcription is estimated alignment,
+not native TTS timestamps. Do not distribute words evenly across a clip.
+
+- **Models:** `gemini-3.8-flash-tts` (default), or `gemini-3.8-flash-lite-tts`.
+- **Voice:** `Kore` by default; pass another prebuilt voice or an existing custom
+  voice ID. Creating or replicating voices is outside this helper.
+- **Delivery:** Put directions in `style`, not in spoken `text`. Each line can
+  override `style`. Use style for pacing; numeric `speed` must be omitted or 1.
+- **Audio:** The unary API returns a complete WAV, saved locally. No generation
+  calls run during playback or rendering.
+- **Timing:** This adapter requests no native word timestamps. It uses the
+  existing transcription pass. `lang` selects transcription language; Gemini
+  infers speech language from the text.
+- **Workflow adapters:** Product-launch, faceless-explainer, and PR-video audio
+  scripts accept `--provider gemini --voice Kore --tts-model gemini-3.8-flash-tts
+--style "Warm and clear"`.
+
+An API error is reported as a failed line; an explicitly chosen Gemini voice
+never silently falls back to another provider. Check the engine's anomalies
+and output metadata, not only its exit code.
+
+API contract: [Google's speech generation guide](https://ai.google.dev/gemini-api/docs/speech-generation).
 
 ## ffmpeg requirement
 

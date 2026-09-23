@@ -173,6 +173,8 @@ function runGenerate(argv) {
       : { mode: "retrieve", query, blob: g.message || "", arc: g.arc || "" },
   };
   if (userVoice) request.voice = userVoice;
+  if (flag(argv, "tts-model", null)) request.tts_model = flag(argv, "tts-model", null);
+  if (flag(argv, "style", null)) request.style = flag(argv, "style", null);
 
   const neutral = neutralPath(outPath);
   runEngine({ request, hyperframesDir, neutral, only: "tts,bgm" }, die);
