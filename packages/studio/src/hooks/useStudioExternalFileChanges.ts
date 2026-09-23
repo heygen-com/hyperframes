@@ -20,6 +20,7 @@ type FileManager = Pick<
   | "overwriteExternalConflict"
   | "readProjectFile"
   | "updateEditingFileContent"
+  | "refreshFileTree"
 >;
 
 type PreviewPersistence = Pick<
@@ -85,5 +86,6 @@ export function useStudioExternalFileChanges({
     onUseExternalFile: fileManager.updateEditingFileContent,
     resetSaveQueues: resetDomEditSaveQueueBreaker,
     onAcceptedPersistedFileChange,
+    refreshFileTree: fileManager.refreshFileTree,
   });
 }
