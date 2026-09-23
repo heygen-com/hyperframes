@@ -16,6 +16,7 @@ import {
   createTexture,
   uploadTextureSource,
   renderShader,
+  DEFAULT_ACCENT_COLORS,
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
 
@@ -74,12 +75,21 @@ export function playSeamTransitionLoop(
   shaderName: string,
   options: SeamTransitionLoopOptions = {},
 ): SeamTransitionLoopHandle {
-  const registryName = (CATALOG_SHADER_ALIASES[shaderName] ?? shaderName) as ShaderName;
+  const registryName = (
+    Object.hasOwn(CATALOG_SHADER_ALIASES, shaderName)
+      ? CATALOG_SHADER_ALIASES[shaderName]
+      : shaderName
+  ) as ShaderName;
   const fragSrc = getFragSource(registryName);
 
   const width = options.width ?? canvas.width;
   const height = options.height ?? canvas.height;
   const loopMs = options.loopMs ?? 1000;
+  if (!Number.isFinite(loopMs) || loopMs <= 0) {
+    throw new Error(
+      `[playSeamTransitionLoop] loopMs must be a finite number above 0, got ${loopMs}`,
+    );
+  }
 
   const gl = createContext(canvas, width, height);
   if (!gl) {
@@ -111,7 +121,17 @@ export function playSeamTransitionLoop(
     }
     const phase = ((nowMs - startMs) % loopMs) / loopMs;
     const progress = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-    renderShader(glContext, quadBuf, prog, texFrom, texTo, progress, undefined, width, height);
+    renderShader(
+      glContext,
+      quadBuf,
+      prog,
+      texFrom,
+      texTo,
+      progress,
+      DEFAULT_ACCENT_COLORS,
+      width,
+      height,
+    );
     if (isFirstFrame) resolveReady();
     rafId = requestAnimationFrame(frame);
   }

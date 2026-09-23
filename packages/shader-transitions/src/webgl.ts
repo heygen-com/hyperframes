@@ -41,9 +41,16 @@ function linkProgram(
 ): WebGLProgram {
   const p = gl.createProgram();
   if (!p) throw new Error("[HyperShader] Failed to create program");
+  const fragmentShader = compileShader(gl, fragSrc, gl.FRAGMENT_SHADER);
   gl.attachShader(p, vertexShader);
-  gl.attachShader(p, compileShader(gl, fragSrc, gl.FRAGMENT_SHADER));
+  gl.attachShader(p, fragmentShader);
   gl.linkProgram(p);
+  // Attached and linked, so deleting the shader objects here doesn't affect
+  // the program — they'd otherwise leak for its whole lifetime (WebGL never
+  // frees them on its own). Delete before the link-status check too: a
+  // failed link still attached both.
+  gl.deleteShader(vertexShader);
+  gl.deleteShader(fragmentShader);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
     throw new Error(`[HyperShader] Program link: ${gl.getProgramInfoLog(p) || "unknown"}`);
   }
@@ -67,6 +74,13 @@ export interface AccentColors {
   dark: [number, number, number];
   bright: [number, number, number];
 }
+
+/** hyper-shader.ts's own fallback when a composition sets no accentColor. */
+export const DEFAULT_ACCENT_COLORS: AccentColors = {
+  accent: [1, 0.6, 0.2],
+  dark: [0.4, 0.15, 0],
+  bright: [1, 0.85, 0.5],
+};
 
 interface ProgramLocations {
   from: WebGLUniformLocation | null;

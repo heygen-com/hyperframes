@@ -23,6 +23,7 @@ function createMockContext() {
     }),
     linkProgram: vi.fn(),
     getProgramParameter: vi.fn(() => true),
+    deleteShader: vi.fn(),
   };
   return gl;
 }
@@ -40,5 +41,16 @@ describe("createProgram", () => {
 
     expect(first.linkProgram).toHaveBeenCalledTimes(2);
     expect(second.linkProgram).toHaveBeenCalledTimes(2);
+  });
+
+  it("deletes both shader objects once they're linked into the program", () => {
+    const gl = createMockContext();
+    const fragment = "precision mediump float;void main(){gl_FragColor=vec4(1.0);}";
+
+    createProgram(gl as unknown as WebGLRenderingContext, fragment);
+
+    // One vertex shader (createProgramWithVertex's compileShader) + one
+    // fragment shader (linkProgram's own compileShader) per call.
+    expect(gl.deleteShader).toHaveBeenCalledTimes(2);
   });
 });

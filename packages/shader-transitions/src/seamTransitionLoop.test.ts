@@ -56,6 +56,7 @@ function createMockGl() {
     drawArrays: vi.fn(),
     getUniformLocation: vi.fn(() => ({})),
     getAttribLocation: vi.fn(() => 0),
+    deleteShader: vi.fn(),
     deleteTexture: vi.fn(),
     deleteProgram: vi.fn(),
     deleteBuffer: vi.fn(),
@@ -153,16 +154,19 @@ describe("playSeamTransitionLoop", () => {
     handle.stop();
   });
 
-  it("resolves a catalog block name that differs from its registry key", () => {
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "domain-warp-dissolve");
+  it.each(["domain-warp-dissolve", "chromatic-radial-split"])(
+    "resolves catalog block name %s, which differs from its registry key",
+    (catalogName) => {
+      const raf = stubRaf();
+      const gl = createMockGl();
+      const canvas = createMockCanvas(gl);
+      const handle = playSeamTransitionLoop(canvas, fromSource, toSource, catalogName);
 
-    raf.flush(0);
-    expect(gl.drawArrays).toHaveBeenCalledTimes(1);
-    handle.stop();
-  });
+      raf.flush(0);
+      expect(gl.drawArrays).toHaveBeenCalledTimes(1);
+      handle.stop();
+    },
+  );
 
   it("stop() deletes its own program, textures and buffer, and is idempotent", () => {
     const { gl, handle } = startRunningLoop();
@@ -216,6 +220,39 @@ describe("playSeamTransitionLoop", () => {
     expect(gl.uniform1f).toHaveBeenLastCalledWith(expect.anything(), expect.closeTo(0.6, 5));
 
     handle.stop();
+  });
+
+  it("comes back down in the second half of the loop instead of climbing past 1", () => {
+    const raf = stubRaf();
+    const gl = createMockGl();
+    const canvas = createMockCanvas(gl);
+    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", {
+      loopMs: 1000,
+    });
+
+    raf.flush(0); // elapsed 0 -> progress 0
+    raf.flush(500); // elapsed 500 -> the peak, progress 1
+    expect(gl.uniform1f).toHaveBeenLastCalledWith(expect.anything(), 1);
+
+    raf.flush(700); // elapsed 700 -> descending, progress 0.6
+    expect(gl.uniform1f).toHaveBeenLastCalledWith(expect.anything(), expect.closeTo(0.6, 5));
+
+    handle.stop();
+  });
+
+  it.each([0, -1000, Number.NaN, Number.POSITIVE_INFINITY])(
+    "throws synchronously for an invalid loopMs (%s)",
+    (loopMs) => {
+      const canvas = createMockCanvas(createMockGl());
+      expect(() =>
+        playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", { loopMs }),
+      ).toThrow(/loopMs/);
+    },
+  );
+
+  it("passes the render pipeline's default accent colors, not none", () => {
+    const { gl } = startRunningLoop();
+    expect(gl.uniform3f).toHaveBeenCalledTimes(3);
   });
 
   it("defaults width/height to the canvas's own drawing-buffer size", () => {
