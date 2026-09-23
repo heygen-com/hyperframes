@@ -307,7 +307,8 @@
           } catch (error) {
             /* no scoped variables API in this context */
           }
-          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+          var runtimeVars = Object.assign({}, window.__hfVariables || {}, scopedVariables);
+          var vars = Object.assign({}, DEFAULTS, runtimeVars);
 
           function num(value, fallback, lo, hi) {
             var n = Number(value);
@@ -355,7 +356,9 @@
             if (proto === "data") return /^data:image\//i.test(s) ? s : "";
             return "";
           }
-          var image = safeImageUrl(vars.image);
+          // Runtime variables only: the declared default is empty (the built-in
+          // dashboard), and page markup never becomes an image URL.
+          var image = safeImageUrl(runtimeVars.image);
           var builtIn = image === "";
           if (!builtIn) {
             var img = document.getElementById("zf-img");
