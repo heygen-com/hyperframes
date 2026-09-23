@@ -11,11 +11,23 @@ import { PANEL_IDS, type PanelId } from "./panelRegistry";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// happy-dom never resizes anything; a test calls `resizeAll` to stand in for a real resize.
+const liveObservers = new Set<ResizeObserverStub>();
 class ResizeObserverStub {
+  readonly callback: () => void;
+  constructor(callback: () => void) {
+    this.callback = callback;
+    liveObservers.add(this);
+  }
   observe() {}
   unobserve() {}
-  disconnect() {}
+  disconnect() {
+    liveObservers.delete(this);
+  }
 }
+const resizeAll = () => {
+  for (const observer of liveObservers) observer.callback();
+};
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 
 // happy-dom has no layout: a tab sits at 100px per position and is 90px wide.
@@ -159,5 +171,16 @@ describe("dock tab fill", () => {
     await activate("renders");
     expect(stripOf("design")?.querySelectorAll(".hf-dock-tab-fill")).toHaveLength(1);
     expect(fill()?.style.transform).toBe(`translateX(${2 * TAB_STEP}px)`);
+  });
+
+  it("keeps the shown tab whole when its strip narrows, as when the strip's actions appear", async () => {
+    const strip = stripOf("design");
+    if (!strip) throw new Error("no design strip");
+    await activate("variables");
+    // The four tabs fit, so the strip is unscrolled.
+    strip.scrollLeft = 0;
+    Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
+    act(() => resizeAll());
+    expect(strip.scrollLeft).toBe(3 * TAB_STEP + TAB_WIDTH + 1 - 250);
   });
 });

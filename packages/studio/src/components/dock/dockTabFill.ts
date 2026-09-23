@@ -15,16 +15,26 @@ function fillOf(list: HTMLElement): HTMLElement {
   return fill;
 }
 
+/** The scroll that shows the whole shown tab, e.g. after the strip narrows because its actions appeared. */
+function revealedScroll(box: { left: number; width: number }, scrollLeft: number, width: number) {
+  if (box.left < scrollLeft) return box.left;
+  // Offset sizes are rounded while the tab's edge is fractional; a pixel over is clamped at the end.
+  return Math.max(scrollLeft, box.left + box.width + 1 - width);
+}
+
 /** Reads where the shown tab sits; the write happens after every strip is read, so layout runs once. */
 function measureFill(list: HTMLElement): () => void {
   const fill = fillOf(list);
   const tab = list.querySelector<HTMLElement>(":scope > .dv-active-tab");
   const box = tab ? { width: tab.offsetWidth, left: tab.offsetLeft } : null;
+  const scrollLeft = list.scrollLeft;
+  const target = box ? revealedScroll(box, scrollLeft, list.clientWidth) : scrollLeft;
   return () => {
     fill.hidden = !box;
     if (!box) return;
     fill.style.width = `${box.width}px`;
     fill.style.transform = `translateX(${box.left}px)`;
+    if (target !== scrollLeft) list.scrollLeft = target;
   };
 }
 
@@ -39,7 +49,8 @@ function markClippedEdges(list: HTMLElement) {
 }
 
 /**
- * Slides one fill per tab strip under its shown tab, and keeps the clipped-edge marks current.
+ * Slides one fill per tab strip under its shown tab, keeps that tab in view, and keeps the
+ * clipped-edge marks current.
  * Returns a disposer.
  */
 export function installTabFill(api: DockviewApi, root: HTMLElement): () => void {

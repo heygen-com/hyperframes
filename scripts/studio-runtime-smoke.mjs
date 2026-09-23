@@ -114,6 +114,33 @@ function clippedStrip(index, allowance) {
   return `${labels.join(", ")}: ${strip.scrollWidth}px of tabs in ${Math.floor(room)}px`;
 }
 
+/** Every dock strip gives its tabs the whole width it can, and fits them while its group is active. */
+async function dockStripErrors(page) {
+  const found = [];
+  const reservedSlots = await page.$$eval(
+    ".dv-groupview.dv-inactive-group .dv-right-actions-container",
+    (slots) => slots.filter((slot) => slot.getBoundingClientRect().width > 0).length,
+  );
+  if (reservedSlots > 0) {
+    found.push(`${reservedSlots} inactive dock strips hold width for actions they do not draw`);
+  }
+  const shownTabs = await page.$$(".dv-tabs-container .dv-active-tab");
+  for (const [index, tab] of shownTabs.entries()) {
+    // An active group draws its strip actions, so this is the least room its tabs get.
+    await tab.click();
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    const clipped = await page.evaluate(clippedStrip, index, MAC_FONT_ALLOWANCE_PX);
+    if (clipped) {
+      found.push(
+        `Dock tab strip clips a label at the default layout (${MAC_FONT_ALLOWANCE_PX}px macOS allowance): ${clipped}`,
+      );
+    }
+  }
+  return found;
+}
+
 export function isExpectedStudioSmokeError(message) {
   return message.includes("favicon.ico");
 }
@@ -162,27 +189,7 @@ export async function runStudioRuntimeSmoke(targetUrl) {
       return textContent.includes("Something went wrong") ? textContent : null;
     });
     if (errorBoundary) errors.push(`React error boundary triggered: ${errorBoundary}`);
-    const reservedSlots = await page.$$eval(
-      ".dv-groupview.dv-inactive-group .dv-right-actions-container",
-      (slots) => slots.filter((slot) => slot.getBoundingClientRect().width > 0).length,
-    );
-    if (reservedSlots > 0) {
-      errors.push(`${reservedSlots} inactive dock strips hold width for actions they do not draw`);
-    }
-    const shownTabs = await page.$$(".dv-tabs-container .dv-active-tab");
-    for (const [index, tab] of shownTabs.entries()) {
-      // An active group draws its strip actions, so this is the least room its tabs get.
-      await tab.click();
-      await page.evaluate(
-        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-      );
-      const clipped = await page.evaluate(clippedStrip, index, MAC_FONT_ALLOWANCE_PX);
-      if (clipped) {
-        errors.push(
-          `Dock tab strip clips a label at the default layout (${MAC_FONT_ALLOWANCE_PX}px macOS allowance): ${clipped}`,
-        );
-      }
-    }
+    errors.push(...(await dockStripErrors(page)));
   } finally {
     await browser.close();
   }
