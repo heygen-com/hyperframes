@@ -197,8 +197,7 @@ export async function resolveProjectAndSignature(
 
 /**
  * Creates a stable preview cache-busting signature for project source plus Studio manifests.
- * `excluding` (project-relative paths) leaves those files out, for a key that must not move
- * when they change.
+ * `excluding` (project-relative paths) leaves those files out.
  */
 export function createProjectSignature(
   projectDir: string,

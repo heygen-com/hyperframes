@@ -51,12 +51,8 @@ function closureOf(read: SourceReader, compPath: string): Set<string> {
 // composition) ever thumbnailed, never evicted; LRU them if a server ever holds thousands.
 const inputSignatures = new Map<string, { projectSignature: string; inputSignature: string }>();
 
-/**
- * The part of the project a thumbnail of `compPath` renders from: everything except the
- * compositions the root mounts that `compPath` itself does not. The root always counts,
- * since a sub-composition preview is built on index.html's head. Recomputed only when
- * `projectSignature` (the whole project's) moves.
- */
+// What a thumbnail of `compPath` renders from: the project minus the compositions the root
+// mounts that `compPath` does not. The root always counts (previews use its head).
 export function compositionInputSignature(
   projectDir: string,
   compPath: string,
