@@ -133,13 +133,25 @@ describe("lottie adapter", () => {
       expect(player.seek.mock.calls).toEqual([[50], [0], [100]]);
     });
 
-    it("wraps a looping lottie-web animation into its own cycle", () => {
+    it("wraps a looping lottie-web animation into its own cycle and clamps a one-shot", () => {
       const cycle = { ...createLottieWebAnim({ totalFrames: 120, frameRate: 30 }), loop: true };
       const once = createLottieWebAnim({ totalFrames: 120, frameRate: 30 });
       lottieWindow.__hfLottie = [cycle, once];
       createLottieAdapter().seek({ time: 5 });
       expect(cycle.goToAndStop).toHaveBeenCalledWith(1000, false);
-      expect(once.goToAndStop).toHaveBeenCalledWith(5000, false);
+      expect(once.goToAndStop).toHaveBeenCalledWith((119 / 30) * 1000, false);
+    });
+
+    it("holds a one-shot lottie-web animation on its last frame past its end", () => {
+      const anim = createLottieWebAnim({ totalFrames: 30, frameRate: 30 });
+      lottieWindow.__hfLottie = [anim];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 0.5 });
+      adapter.seek({ time: 2.5 });
+      expect(anim.goToAndStop.mock.calls).toEqual([
+        [500, false],
+        [(29 / 30) * 1000, false],
+      ]);
     });
 
     it("wraps a looping dotlottie player into its own cycle", () => {
