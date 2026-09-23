@@ -11,7 +11,7 @@ import { usePlayerStore } from "../player/store/playerStore";
  */
 describe("fetchParsedAnimations — in-flight sharing", () => {
   beforeEach(() => {
-    usePlayerStore.setState({ previewBooted: true });
+    usePlayerStore.setState({ timelineProjectId: "p", previewBooted: true });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -29,6 +29,18 @@ describe("fetchParsedAnimations — in-flight sharing", () => {
     await vi.waitFor(() => expect(fetchStub.calls()).toBe(1));
     fetchStub.settle();
     expect((await parsed)?.animations).toHaveLength(1);
+  });
+
+  it("drops a parse for a project the user left before its preview booted", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const fetchStub = stubFetch();
+
+    const parsed = fetchParsedAnimations("p", "left.html");
+    usePlayerStore.getState().beginTimelineSession("q");
+    usePlayerStore.getState().markPreviewBooted();
+
+    expect(await parsed).toBeNull();
+    expect(fetchStub.calls()).toBe(0);
   });
 
   function stubFetch(): { calls: () => number; settle: () => void } {

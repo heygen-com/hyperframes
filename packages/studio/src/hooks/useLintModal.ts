@@ -2,7 +2,7 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { LintFinding } from "../components/LintModal";
 import { usePlayerStore } from "../player";
-import { whenPreviewBooted } from "../player/store/playerStore";
+import { isPreviewBooted, whenPreviewBooted } from "../player/store/playerStore";
 
 interface RawFinding {
   severity?: string;
@@ -37,7 +37,7 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
       if (!projectId) return;
       if (!opts?.background) setLinting(true);
       // A background lint is a separate process on the server; it must not compete with the boot.
-      else if (!usePlayerStore.getState().previewBooted) await whenPreviewBooted();
+      else if (!isPreviewBooted(projectId) && !(await whenPreviewBooted(projectId))) return;
       try {
         const res = await fetch(buildProjectApiPath(projectId, `/lint`));
         const data = await res.json();

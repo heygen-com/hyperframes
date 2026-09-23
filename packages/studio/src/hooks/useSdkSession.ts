@@ -396,8 +396,10 @@ export function useSdkSession(
 
     // Parsing the source for editing takes the main thread for hundreds of ms on a large film;
     // the first frame and play do not need it, so it waits for the live preview to boot.
-    whenPreviewBooted()
-      .then(() => (cancelled ? null : readProjectFileOptional(projectId, activeCompPath)))
+    whenPreviewBooted(projectId)
+      .then((booted) =>
+        cancelled || !booted ? null : readProjectFileOptional(projectId, activeCompPath),
+      )
       .then(async (read) => {
         if (!read || cancelled) return;
         if (!read.ok) {

@@ -21,7 +21,7 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 const trackMock = vi.mocked(trackStudioEvent);
 
 beforeEach(() => {
-  usePlayerStore.setState({ previewBooted: true });
+  usePlayerStore.setState({ timelineProjectId: "project-a", previewBooted: true });
 });
 
 function Probe({ projectId }: { projectId: string }) {
@@ -117,7 +117,11 @@ describe("useSdkSession ownership", () => {
     expect(publication).toBe("published");
     expect(captured.handle?.session).toBe(publishedA);
 
-    await act(async () => root.render(<Probe projectId="project-b" />));
+    await act(async () => {
+      usePlayerStore.getState().beginTimelineSession("project-b");
+      usePlayerStore.getState().markPreviewBooted();
+      root.render(<Probe projectId="project-b" />);
+    });
     expect(captured.handle?.session).toBeNull();
     expect(publishedA.dispose).toHaveBeenCalledOnce();
     expect(
@@ -187,6 +191,7 @@ describe("useSdkSession unreachable project", () => {
   });
 
   function probeHandle(projectId: string) {
+    usePlayerStore.setState({ timelineProjectId: projectId });
     const captured: { handle: SdkSessionHandle | null } = { handle: null };
     function HandleProbe() {
       captured.handle = useSdkSession(projectId, "index.html");

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { usePlayerStore, liveTime, type TimelineElement } from "./playerStore";
+import { usePlayerStore, liveTime, whenPreviewBooted, type TimelineElement } from "./playerStore";
 import { thumbnailRevisionOf } from "./thumbnailSlice";
 
 /** The playback/selection state `reset()` restores (persistent prefs asserted separately). */
@@ -746,5 +746,28 @@ describe("liveTime", () => {
     unsubscribe();
     const result = unsubscribe();
     expect(result).toBe(false);
+  });
+});
+
+describe("whenPreviewBooted", () => {
+  it("resolves false for a project the user left before its preview booted", async () => {
+    usePlayerStore.setState({ timelineProjectId: "project-a", previewBooted: false });
+    const waitA = whenPreviewBooted("project-a");
+
+    usePlayerStore.getState().beginTimelineSession("project-b");
+    usePlayerStore.getState().markPreviewBooted();
+
+    await expect(waitA).resolves.toBe(false);
+    await expect(whenPreviewBooted("project-b")).resolves.toBe(true);
+  });
+
+  it("waits through the open of its own project, then resolves on that project's boot", async () => {
+    usePlayerStore.setState({ timelineProjectId: "project-a", previewBooted: true });
+    const waitB = whenPreviewBooted("project-b");
+
+    usePlayerStore.getState().beginTimelineSession("project-b");
+    usePlayerStore.getState().markPreviewBooted();
+
+    await expect(waitB).resolves.toBe(true);
   });
 });
