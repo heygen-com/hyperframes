@@ -3,7 +3,7 @@ name: hyperframes-cli
 description: >
   Use the HyperFrames CLI development loop: init, add, catalog, capture, lint, check, snapshot,
   compare, grade-compare, preview, play, present, beats, keyframes, single or batch render, publish,
-  cloud, cloudrun, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, docs,
+  cloud, cloudrun, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, timeline, docs,
   benchmark, telemetry, transcribe, auth, tts, and remove-background. Also use when diagnosing build
   or render failures. validate, inspect, and layout are deprecated aliases; use check. Covers local,
   HeyGen-hosted cloud, AWS Lambda, and Google Cloud Run rendering.
@@ -16,8 +16,8 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 ## Development loop
 
 1. **Scaffold:** `npx hyperframes init <project>` (centered blank). Or capture a site. Pass `--example=<name>` only to start from a named example.
-2. **Find the move:** before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time"`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
-3. **Author:** write the composition using `/hyperframes-core`.
+2. **Find the move:** if the request names an asset, sound, image, voice or fast visual edit, resolve it through `/media-use` before proposing a plan. Otherwise, before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time"`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
+3. **Author:** write the composition using `/hyperframes-core`. To know what is on a project's timeline (tracks, clips, starts, ends, what plays), run `npx hyperframes timeline --json` instead of reading `index.html` and every sub-composition file: nested rows carry absolute main-timeline `absStart`/`absEnd` and their owning `file`, not just their local, per-sub-composition time. Prefer `--json` over the text form; it costs fewer tokens for the same or better correctness. See `references/upgrade-info-misc.md` for one-liners that answer common questions without reading the whole output.
 4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
 5. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
 6. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
@@ -36,7 +36,7 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 - For fade-in/fade-out, crossfade, track gain, volume automation, ducking,
   voiceover carve, or FX on placed audio, read `/hyperframes-audio`. Load core
   alongside it when clip placement or picture timing also changes.
-- Use `/media-use` only to source/generate media or preprocess a derived asset.
+- A request naming an asset, sound, image, voice or fast visual edit resolves through `/media-use` before a plan is proposed.
   Copy creator edit markup from `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 ```bash
@@ -53,16 +53,9 @@ ffprobe -v error -show_format -show_streams out.mp4
 
 `check` runs lint first, then uses one browser session and one seek pass to audit runtime errors, failed requests, layout, `*.motion.json` assertions, and WCAG contrast. Persistent findings gate the exit code; transient entrance or exit findings are informational. Use `--strict` to gate warnings. `validate`, `inspect`, and `layout` remain aliases for compatibility but must not appear in new instructions or scripts.
 
-## Two different preview surfaces
+## Preview before render
 
-Do not confuse these states:
-
-| Surface                   | When it may open                                       | Purpose                                                                           |
-| ------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Storyboard board          | Before composition checks, only when `storyboard: yes` | Review plan cards and wireframe sketches. Open `?view=storyboard#project/<name>`. |
-| Final composition preview | After `check` passes                                   | Review the assembled timeline before render. Open `#project/<name>`.              |
-
-The early board is not approval of the final video. Rendering always requires the final approval defined by `hyperframes/references/review-loop.md`.
+Open the final composition preview (`#project/<name>`) only after `check` passes, to review the assembled timeline. The plan in chat and the `storyboard.html` sketch sheet are not approval of the final video. Rendering always requires the final approval defined by `hyperframes/references/review-loop.md`.
 
 ## Sub-composition smoke test
 
@@ -136,18 +129,18 @@ Keep clean-run feedback concise. For any bug or friction, capture a **reproducti
 
 The following references and owning skills are mandatory command contracts, not optional background reading. Before running a command in the table, read its matching row.
 
-| Need                                                                                   | Reference                             |
-| -------------------------------------------------------------------------------------- | ------------------------------------- |
-| `init`, `capture`, `skills`                                                            | `references/init-and-scaffold.md`     |
-| `lint`, `check`, motion sidecars, `snapshot`                                           | `references/lint-validate-inspect.md` |
-| `compare`, `grade-compare`, variable-driven `render --batch`                           | `references/compare-and-batch.md`     |
-| `beats` for an existing project's Studio beat grid                                     | `references/beats.md`                 |
-| `preview`, `play`, `render`, `publish`, Studio context, feedback                       | `references/preview-render.md`        |
-| `doctor`, browser management                                                           | `references/doctor-browser.md`        |
-| `auth`, HeyGen-hosted cloud rendering, and template variables                          | `references/cloud.md`                 |
-| AWS Lambda deployment and rendering                                                    | `references/lambda.md`                |
-| Google Cloud Run deployment and rendering                                              | `references/cloudrun.md`              |
-| `info`, `upgrade`, `compositions`, `docs`, `benchmark`, telemetry, media preprocessing | `references/upgrade-info-misc.md`     |
+| Need                                                                                               | Reference                             |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `init`, `capture`, `skills`                                                                        | `references/init-and-scaffold.md`     |
+| `lint`, `check`, motion sidecars, `snapshot`                                                       | `references/lint-validate-inspect.md` |
+| `compare`, `grade-compare`, variable-driven `render --batch`                                       | `references/compare-and-batch.md`     |
+| `beats` for an existing project's Studio beat grid                                                 | `references/beats.md`                 |
+| `preview`, `play`, `render`, `publish`, Studio context, feedback                                   | `references/preview-render.md`        |
+| `doctor`, browser management                                                                       | `references/doctor-browser.md`        |
+| `auth`, HeyGen-hosted cloud rendering, and template variables                                      | `references/cloud.md`                 |
+| AWS Lambda deployment and rendering                                                                | `references/lambda.md`                |
+| Google Cloud Run deployment and rendering                                                          | `references/cloudrun.md`              |
+| `info`, `upgrade`, `compositions`, `timeline`, `docs`, `benchmark`, telemetry, media preprocessing | `references/upgrade-info-misc.md`     |
 
 For composition variables, also read `/hyperframes-core` → `references/variables-and-media.md`. For `hyperframes add` and `hyperframes catalog`, use `/hyperframes-registry`. Before `hyperframes present`, read `/slideshow`; before `hyperframes keyframes`, read `/hyperframes-keyframes`. For TTS, transcription, captions, or background removal choices, use `/media-use`.
 

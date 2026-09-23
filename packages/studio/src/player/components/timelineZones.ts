@@ -1,10 +1,11 @@
 import type { TimelineElement } from "../store/playerStore";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { isTransitionPair } from "./timelineTransitionSeams";
 
 /**
- * Free-form vertical zones, top → bottom: visual, audio. There is no "main track"
- * — canvas layering is CSS z-index (the renderer ignores track index), so the
- * timeline's only job is to keep visual clips grouped above audio clips.
+ * Free-form vertical zones, top → bottom: visual, audio. Canvas layering is
+ * CSS z-index (the renderer ignores track index), so a track's only structural
+ * job is to keep visual clips grouped above audio clips.
  */
 export type TrackZone = "visual" | "audio";
 
@@ -12,6 +13,13 @@ export type TrackZone = "visual" | "audio";
  *  else (video / image / text / sub-comp) is a visual lane on top. */
 export function classifyZone(el: TimelineElement): TrackZone {
   return isAudioTimelineElement(el) ? "audio" : "visual";
+}
+
+/** The "main track" is a convention, not a schema field: the first
+ *  visual-zone display lane, matched only when it actually holds a visual
+ *  clip and isn't an inline-expanded sub-composition child. */
+export function isMainTrackElement(el: TimelineElement): boolean {
+  return el.track === 0 && classifyZone(el) === "visual" && el.expandedParentStart == null;
 }
 
 const keyOf = (el: TimelineElement) => el.key ?? el.id;
@@ -59,7 +67,9 @@ function packTrackLanes(
   const ordered = [...clips].sort(byStableId);
   const lanes: TimelineElement[][] = [];
   for (const el of ordered) {
-    let sub = lanes.findIndex((occ) => occ.every((o) => !overlaps(o, el)));
+    let sub = lanes.findIndex((occ) =>
+      occ.every((o) => !overlaps(o, el) || isTransitionPair(o, el)),
+    );
     if (sub === -1) {
       sub = lanes.length;
       lanes.push([]);

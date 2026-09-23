@@ -21,7 +21,7 @@ import { usePlayerStore } from "../store/playerStore";
 
 /** Accent rail on a group-owned lane — the same green the member rail uses, so
  *  "this belongs to the group" reads the same in both places (groups doc §5). */
-const GROUP_LANE_ACCENT = "#3CE6AC";
+const GROUP_LANE_ACCENT = "var(--timeline-accent)";
 
 interface TimelineGroupRowProps {
   index: number;
@@ -140,7 +140,7 @@ export function TimelineGroupRow({
           around the labels alone does not work either, because as a flex item
           after the header it starts at x = columnWidth, i.e. inside the lanes. */}
       <div
-        className="sticky left-0 z-[12] shrink-0"
+        className="sticky left-0 z-12 shrink-0"
         style={{ width: contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin }}
       >
         <TimelineGroupHeader

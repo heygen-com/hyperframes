@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import * as fs from "fs";
 import { tmpdir } from "node:os";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import { readWav } from "./audioFxRender.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
 vi.mock("fs", async (importOriginal) => {
@@ -307,14 +308,7 @@ describe("applyVolumeEnvelopeToWav", () => {
       expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(0, 3);
     });
 
-    /**
-     * The fixtures above are hand-built canonical 44-byte headers, which is NOT
-     * what the group sub-mix actually hands this function: ffmpeg's `pcm_f32le`
-     * writes an 18-byte `fmt ` chunk plus a `fact` chunk, putting `data` at
-     * offset 92. Every assertion above would still pass if this function could
-     * not read a real one — and an unreadable file returns false, which the
-     * caller reads as "no automation here" and drops the group's envelope.
-     */
+    // Exercise the installed encoder as well as the captured extensible fixtures.
     it.skipIf(!HAS_FFMPEG)("reads what ffmpeg actually writes, not just a canonical header", () => {
       const path = join(tmp(), "ffmpeg-f32.wav");
       const made = spawnSync(
@@ -337,12 +331,7 @@ describe("applyVolumeEnvelopeToWav", () => {
       );
       expect(made.status).toBe(0);
 
-      const before = readFileSync(path);
-      // The format tag is the load-bearing part; the chunk LAYOUT is this
-      // build's quirk, so it is logged as context rather than required — a
-      // build emitting a canonical 16-byte fmt with data at 44 is legal and
-      // handled, and pinning 18/92 would fail on the good case.
-      expect(before.readUInt16LE(20)).toBe(3); // WAVE_FORMAT_IEEE_FLOAT
+      expect(readWav(path)).toMatchObject({ float: true, channels: 2, sampleRate: 48000 });
 
       expect(
         applyVolumeEnvelopeToWav(
@@ -376,4 +365,37 @@ describe("applyVolumeEnvelopeToWav", () => {
       expect(Math.abs(after.readFloatLE(dataOffset + (SAMPLE_RATE - 2) * 8))).toBeLessThan(0.02);
     });
   });
+
+  // FFmpeg 8.1.1 output, captured without rewriting its RIFF/fmt/fact/LIST/data chunks.
+  // ffmpeg -f lavfi -i 'aevalsrc=0.5|-0.5|0.25|-0.25:s=48000:d=0.0001' -c:a <codec> out.wav
+  const extensibleFixtures = [
+    {
+      codec: "pcm_f32le",
+      float: true,
+      hex: "52494646ba00000057415645666d742028000000feff040080bb000000b80b001000200016002000070100000300000000001000800000aa00389b716661637404000000050000004c4953541a000000494e464f495346540e0000004c61766636322e31322e3130310064617461500000000000003f000000bf0000803e000080be0000003f000000bf0000803e000080be0000003f000000bf0000803e000080be0000003f000000bf0000803e000080be0000003f000000bf0000803e000080be",
+    },
+    {
+      codec: "pcm_s16le",
+      float: false,
+      hex: "524946468600000057415645666d742028000000feff040080bb000000dc05000800100016001000070100000100000000001000800000aa00389b714c4953541a000000494e464f495346540e0000004c61766636322e31322e313031006461746128000000004000c0002000e0004000c0002000e0004000c0002000e0004000c0002000e0004000c0002000e0",
+    },
+  ];
+
+  it.each(extensibleFixtures)(
+    "reads and applies gain to real FFmpeg extensible $codec",
+    (fixture) => {
+      const path = join(tmp(), "extensible.wav");
+      const original = Buffer.from(fixture.hex, "hex");
+      expect(original.readUInt16LE(20)).toBe(0xfffe);
+      writeFileSync(path, original);
+      const decoded = readWav(path);
+      expect(decoded).toMatchObject({ float: fixture.float, channels: 4, sampleRate: 48000 });
+      expect([...decoded.samples]).toEqual(Array(5).fill([0.5, -0.5, 0.25, -0.25]).flat());
+      expect(applyVolumeEnvelopeToWav(path, [{ time: 0, volume: 0.5 }], 0, 1)).toBe(true);
+      expect([...readWav(path).samples]).toEqual(
+        Array(5).fill([0.25, -0.25, 0.125, -0.125]).flat(),
+      );
+      expect(readFileSync(path).subarray(0, 60)).toEqual(original.subarray(0, 60));
+    },
+  );
 });

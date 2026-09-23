@@ -4,7 +4,7 @@ The **locked narration** for a project: the final spoken lines + voice + deliver
 
 This file defines the SCRIPT.md **shape** only. Synthesizing the spoken lines into audio is a capability owned by `media-use` → `../../media-use/audio/references/tts.md`.
 
-Free-form markdown — there is no strict parser; the Studio renders it read-only beside the Storyboard board, and the TTS step extracts the indented spoken lines.
+Free-form markdown — there is no strict parser; the TTS step extracts the indented spoken lines.
 
 ## Shape
 
@@ -14,7 +14,7 @@ A header block, then one section per spoken line.
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Header                          | `**Voice:**` (provider + voice), `**Voice settings:**` (e.g. stability / similarity / style), `**Voice direction:**` (overall delivery) |
 | `## Line N — <label> (Frame N)` | one spoken line, tied to its storyboard frame                                                                                           |
-| `**Time:**`                     | the board's rough window — a _guide_, not authoritative (real timing comes from TTS word timestamps)                                    |
+| `**Time:**`                     | the frame's rough window — a _guide_, not authoritative (real timing comes from TTS word timestamps)                                    |
 | `**Delivery:**`                 | per-line delivery note                                                                                                                  |
 | indented block                  | the **spoken text** — the only part fed to TTS                                                                                          |
 

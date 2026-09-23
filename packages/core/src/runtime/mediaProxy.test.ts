@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hasMediaSyncStateForTest, syncRuntimeMedia } from "./media";
+import {
+  hasMediaSyncStateForTest,
+  syncRuntimeMedia as syncRuntimeMediaWithDuration,
+} from "./media";
+// Most cases predate the terminal rule and run with no composition end to hold at.
+const syncRuntimeMedia = (
+  params: Omit<Parameters<typeof syncRuntimeMediaWithDuration>[0], "getCompositionDuration"> &
+    Partial<Pick<Parameters<typeof syncRuntimeMediaWithDuration>[0], "getCompositionDuration">>,
+) => syncRuntimeMediaWithDuration({ getCompositionDuration: () => 0, ...params });
+
 import {
   deriveCodecMapKey,
   handleErrorForProxy,

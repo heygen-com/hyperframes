@@ -29,6 +29,7 @@ import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
+  type RateSpec,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -44,6 +45,7 @@ import {
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
   parseHostVariableValues,
+  inlineScriptRuns,
 } from "@hyperframes/core/compiler";
 import {
   checkSubCompositionUsability,
@@ -424,7 +426,7 @@ export function detectShaderTransitionUsage(html: string): boolean {
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
-  playbackRate: number,
+  playbackRate: RateSpec,
   baseDir: string,
   downloadDir: string,
   tagName: string,
@@ -853,8 +855,8 @@ class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentit
 
 /**
  * Merge all `<head>` `<style>` blocks into a single tag with `@import` rules
- * at the top, and merge all inline `<body>` `<script>` blocks into one at the
- * end of `<body>`.
+ * at the top, and merge each run of adjacent inline `<body>` `<script>` blocks
+ * into one, without moving any of them past a `<script src>` or module script.
  *
  * Mirrors the bundler's `coalesceHeadStylesAndBodyScripts` to guarantee
  * identical CSS cascade order and script execution order between preview and
@@ -901,26 +903,20 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
   }
 
   if (body) {
-    const bodyScripts = Array.from(body.querySelectorAll("script")).filter((el) => {
-      const src = (el.getAttribute("src") || "").trim();
-      if (src) return false;
-      const type = (el.getAttribute("type") || "").trim().toLowerCase();
-      return !type || type === "text/javascript" || type === "application/javascript";
-    });
-    if (bodyScripts.length > 0) {
-      const mergedJs = bodyScripts
+    for (const { members, anchor } of inlineScriptRuns(
+      Array.from(body.querySelectorAll("script")),
+    )) {
+      const mergedJs = members
         .map((el) => (el.textContent || "").trim())
         .filter(Boolean)
         .join("\n;\n")
         .trim();
-      for (const el of bodyScripts) {
-        el.remove();
-      }
-      if (mergedJs) {
-        const script = document.createElement("script");
-        script.textContent = mergedJs;
-        body.appendChild(script);
-      }
+      for (const el of members) el.remove();
+      if (!mergedJs) continue;
+      const script = document.createElement("script");
+      script.textContent = mergedJs;
+      if (anchor) anchor.before(script);
+      else body.appendChild(script);
     }
   }
 
@@ -2001,11 +1997,7 @@ export async function compileForRender(
     abortSignal: options.abortSignal,
   });
 
-  // Download CDN scripts and inline them AFTER coalescing. This order matters:
-  // coalesceHeadStylesAndBodyScripts merges inline scripts and appends them at
-  // the end of <body>. If we inlined CDN scripts first, the GSAP library would
-  // become an inline script that gets moved after local <script src="script.js">
-  // tags that depend on it, causing "gsap is not defined" errors.
+  // CDN scripts are inlined after coalescing so they stay separate from the merged inline runs.
   const assembledHtml = await inlineExternalScripts(coalescedHtml);
 
   // Inject studio position seek re-apply script when positions are baked into HTML.

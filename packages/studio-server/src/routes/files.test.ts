@@ -1307,30 +1307,40 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
   });
 
   it("rejects a stale semantic no-op after a concurrent file write", async () => {
-    const projectDir = createProjectDir();
-    writeHtml(projectDir, "comp.html", FROMTO_COMP);
-    const app = new Hono();
-    registerFileRoutes(app, createAdapter(projectDir));
-    const successor = FROMTO_COMP.replace('data-duration="3"', 'data-duration="9"');
-    let releaseImport = () => {};
-    recastImportGate.wait = new Promise<void>((resolve) => {
-      releaseImport = resolve;
-    });
-    const parserEntered = new Promise<void>((resolve) => {
-      recastImportGate.onEnter = resolve;
-    });
+    // Pins the recast writer: this test's interleave seam is recast's LAZY module
+    // import, which the acorn default no longer performs (acorn is statically
+    // imported). The 409 revalidation under test is writer-independent.
+    const previousWriter = process.env.HYPERFRAMES_GSAP_WRITER;
+    process.env.HYPERFRAMES_GSAP_WRITER = "recast";
+    try {
+      const projectDir = createProjectDir();
+      writeHtml(projectDir, "comp.html", FROMTO_COMP);
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
+      const successor = FROMTO_COMP.replace('data-duration="3"', 'data-duration="9"');
+      let releaseImport = () => {};
+      recastImportGate.wait = new Promise<void>((resolve) => {
+        releaseImport = resolve;
+      });
+      const parserEntered = new Promise<void>((resolve) => {
+        recastImportGate.onEnter = resolve;
+      });
 
-    const pending = postGsapMutationBatch(app, "comp.html", {
-      mutations: [{ type: "shift-positions", targetSelector: "#missing", delta: 1 }],
-    });
-    await parserEntered;
-    writeHtml(projectDir, "comp.html", successor);
-    releaseImport();
-    const response = await pending;
+      const pending = postGsapMutationBatch(app, "comp.html", {
+        mutations: [{ type: "shift-positions", targetSelector: "#missing", delta: 1 }],
+      });
+      await parserEntered;
+      writeHtml(projectDir, "comp.html", successor);
+      releaseImport();
+      const response = await pending;
 
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ conflict: true });
-    expect(readFileSync(join(projectDir, "comp.html"), "utf-8")).toBe(successor);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ conflict: true });
+      expect(readFileSync(join(projectDir, "comp.html"), "utf-8")).toBe(successor);
+    } finally {
+      if (previousWriter === undefined) delete process.env.HYPERFRAMES_GSAP_WRITER;
+      else process.env.HYPERFRAMES_GSAP_WRITER = previousWriter;
+    }
   });
 
   it("applies an ordered GSAP mutation batch with one before/after write result", async () => {
@@ -1756,7 +1766,9 @@ gsap.set("#box", { rotation: 45 });
     expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     // The SECOND `.sub` (selectorIndex 1) is the one restacked, not the first.
-    expect(payload.content).toContain('<div class="sub" style="z-index: 1">A</div>');
+    expect(payload.content).toMatch(
+      /<div data-hf-id="hf-[a-z0-9]+" class="sub" style="z-index: 1">A<\/div>/,
+    );
     expect(payload.content).toContain("z-index: 0");
   });
 
@@ -1788,7 +1800,9 @@ gsap.set("#box", { rotation: 45 });
     expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     // First "main" untouched; second one restacked.
-    expect(payload.content).toContain('<div class="root" id="main" style="z-index: 5">first</div>');
+    expect(payload.content).toMatch(
+      /<div data-hf-id="hf-[a-z0-9]+" class="root" id="main" style="z-index: 5">first<\/div>/,
+    );
     expect(payload.content).toContain("z-index: 0");
   });
 

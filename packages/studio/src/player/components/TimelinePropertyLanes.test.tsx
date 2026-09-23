@@ -386,7 +386,7 @@ describe("TimelinePropertyLanes", () => {
     const positionFill = laneDiamonds(host, "position")[0]?.querySelector("path:last-child");
     const visualFill = laneDiamonds(host, "visual")[0]?.querySelector("path:last-child");
     expect(positionFill?.getAttribute("fill")).toBe("#4ba3d2");
-    expect(visualFill?.getAttribute("fill")).toBe("#a3a3a3");
+    expect(visualFill?.getAttribute("fill")).toBe("var(--timeline-diamond-muted)");
     act(() => root.unmount());
   });
 
@@ -406,7 +406,7 @@ describe("TimelinePropertyLanes", () => {
     expect(laneDiamonds(host, "position")).toHaveLength(3);
     const buttons = laneEaseButtons(host, "position");
     expect(buttons).toHaveLength(2);
-    expect(buttons.every((button) => button.classList.contains("opacity-0"))).toBe(true);
+    expect(buttons.every((button) => button.classList.contains("opacity-40"))).toBe(true);
     expect(buttons.every((button) => button.classList.contains("group-hover:opacity-100"))).toBe(
       true,
     );

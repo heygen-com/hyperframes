@@ -370,3 +370,43 @@ function sceneDoc(): Document {
   </main>`;
   return doc;
 }
+
+describe("buildStudioLook clips", () => {
+  const clip = (overrides: Partial<TimelineElement>) =>
+    element({ tag: "audio", kind: "audio", domId: "sfx", start: 2, duration: 0.5, ...overrides });
+
+  it("returns timeline clips that are not scene layers, audio included", () => {
+    const result = buildStudioLook(
+      snapshot({
+        elements: [clip({ domId: "late", start: 9 }), clip({ domId: "early", volume: 0.85 })],
+      }),
+    );
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.clipCount).toBe(2);
+    expect(result.clips.map((c) => c.id)).toEqual(["early", "late"]);
+    expect(result.clips[0]).toMatchObject({ kind: "audio", start: 2, volume: 0.85 });
+    expect(result.elements).toEqual([]);
+  });
+
+  it("filters clips by id, kind or src", () => {
+    const result = buildStudioLook(
+      snapshot({
+        elements: [
+          clip({ domId: "click", src: "click.mp3" }),
+          clip({ domId: "vo", src: "voice.mp3" }),
+        ],
+      }),
+      { filter: "voice" },
+    );
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.clips.map((c) => c.id)).toEqual(["vo"]);
+  });
+
+  it("caps clips at the limit and reports the full count and truncation", () => {
+    const elements = Array.from({ length: 5 }, (_, i) => clip({ domId: `c${i}`, start: i }));
+    const result = buildStudioLook(snapshot({ elements }), { limit: 2 });
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.clips.map((c) => c.id)).toEqual(["c0", "c1"]);
+    expect([result.clipCount, result.clipsTruncated]).toEqual([5, true]);
+  });
+});

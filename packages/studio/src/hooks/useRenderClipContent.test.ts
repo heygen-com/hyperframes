@@ -13,7 +13,7 @@ import { useRenderClipContent } from "./useRenderClipContent";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
-  usePlayerStore.setState({ thumbnailMode: "hidden" });
+  usePlayerStore.setState({ thumbnailMode: "hidden", elements: [] });
   document.body.innerHTML = "";
 });
 
@@ -144,6 +144,36 @@ describe("useRenderClipContent", () => {
     }
   });
 
+  it("marks audio linked when a video clip uses the same file, and muted when hidden", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "hidden",
+      elements: [
+        {
+          id: "picture",
+          tag: "video",
+          start: 0,
+          duration: 4,
+          track: 0,
+          src: "assets/clip.mp4",
+        },
+      ],
+    });
+    const linked = renderClipContent({
+      id: "bed",
+      tag: "audio",
+      start: 0,
+      duration: 4,
+      track: 1,
+      src: "assets/clip.mp4",
+      hidden: true,
+    });
+    expect(isValidElement<{ linked: boolean; muted: boolean }>(linked)).toBe(true);
+    if (isValidElement<{ linked: boolean; muted: boolean }>(linked)) {
+      expect(linked.props.linked).toBe(true);
+      expect(linked.props.muted).toBe(true);
+    }
+  });
+
   it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive" });
 
@@ -208,7 +238,7 @@ describe("useRenderClipContent", () => {
     }
   });
 
-  it("forwards the viewport priority and interaction detail to media work", () => {
+  it("forwards the viewport priority to video media work", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive", timelineSessionEpoch: 7 });
 
     const content = renderClipContent(
@@ -229,7 +259,6 @@ describe("useRenderClipContent", () => {
         projectId: string;
         sessionEpoch: number;
         priority: string;
-        rich: boolean;
       }>(content),
     ).toBe(true);
     if (isValidElement(content)) {
@@ -237,8 +266,8 @@ describe("useRenderClipContent", () => {
         projectId: "my-project",
         sessionEpoch: 7,
         priority: "interaction",
-        rich: true,
       });
+      expect(content.props).not.toHaveProperty("rich");
     }
   });
 

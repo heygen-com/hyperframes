@@ -7,6 +7,16 @@ export interface TimelineSnapTarget {
   type: TimelineSnapType;
 }
 
+/** The guide the canvas draws: the live move's snap target, else the live trim's. */
+export function resolveSnapGuide(
+  moving: { started: boolean; snapTime: number | null; snapType: TimelineSnapType | null } | null,
+  trimming: { snapTime?: number | null; snapType?: TimelineSnapType | null } | null,
+): TimelineSnapTarget | null {
+  const source = moving?.started ? moving : trimming;
+  if (source?.snapTime == null || source.snapType == null) return null;
+  return { time: source.snapTime, type: source.snapType };
+}
+
 /** Pixel radius within which a time snaps to a target (matches historical beat snap). */
 export const TIMELINE_SNAP_PX = 8;
 
@@ -21,6 +31,8 @@ export function collectTimelineSnapTargets(input: {
   playheadTime: number | null;
   beatTimes: readonly number[];
   excludeElementKey?: string | null;
+  /** A trim excludes the playhead: the dragged edge drives it, so snapping to it is circular. */
+  includePlayhead?: boolean;
 }): TimelineSnapTarget[] {
   const byTime = new Map<number, TimelineSnapTarget>();
   const add = (time: number, type: TimelineSnapType) => {
@@ -38,7 +50,8 @@ export function collectTimelineSnapTargets(input: {
     add(el.start, "clip-edge");
     add(el.start + el.duration, "clip-edge");
   }
-  if (input.playheadTime != null) add(input.playheadTime, "playhead");
+  if (input.playheadTime != null && input.includePlayhead !== false)
+    add(input.playheadTime, "playhead");
 
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }

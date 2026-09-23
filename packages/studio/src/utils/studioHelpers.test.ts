@@ -2,9 +2,11 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  historyTooltipLabel,
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
   resolveDroppedAssetDimensions,
+  resolveElementTrack,
   resolveTimelineIdForSelection,
   resolveTimelineSelectionSeekTime,
 } from "./studioHelpers";
@@ -40,6 +42,13 @@ describe("findMatchingTimelineElementId", () => {
   it("matches a top-level element by domId + sourceFile", () => {
     const els = [el({ id: "s1", domId: "s1", sourceFile: "index.html" })];
     expect(findMatchingTimelineElementId({ id: "s1", sourceFile: "index.html" }, els)).toBe("s1");
+  });
+
+  it("matches by hfId when the selection has no domId, so an element with no authored id can still be found", () => {
+    const els = [el({ id: "hf-1", domId: undefined, hfId: "hf-1", sourceFile: "index.html" })];
+    expect(
+      findMatchingTimelineElementId({ id: undefined, hfId: "hf-1", sourceFile: "index.html" }, els),
+    ).toBe("hf-1");
   });
 
   it("returns a qualified id for a sub-comp child with no matching timeline element", () => {
@@ -197,5 +206,32 @@ describe("resolveDroppedAssetDimensions", () => {
     await expect(result).resolves.toBeNull();
     expect(video.getAttribute("src")).toBe("");
     expect(load).toHaveBeenCalledOnce();
+  });
+});
+
+describe("resolveElementTrack", () => {
+  it("rounds an authored track", () => {
+    expect(resolveElementTrack({ authoredTrack: 2.4, track: 0 })).toBe(2);
+  });
+
+  it("falls back to the resolved track, rounded, when nothing was authored", () => {
+    expect(resolveElementTrack({ authoredTrack: undefined, track: 3.6 })).toBe(4);
+  });
+});
+
+describe("historyTooltipLabel", () => {
+  // A disabled control gets no pointer events, so its tooltip cannot be opened
+  // to read. The wording is checked here instead of through the DOM.
+  it("names the action that would be undone", () => {
+    expect(historyTooltipLabel("undo", "Move layer")).toMatch(/^Undo Move layer \(.+\)$/);
+  });
+
+  it("names the action that would be redone", () => {
+    expect(historyTooltipLabel("redo", "Move layer")).toMatch(/^Redo Move layer \(.+\)$/);
+  });
+
+  it("keeps the shortcut when the history is empty", () => {
+    expect(historyTooltipLabel("undo", undefined)).toMatch(/^Undo \(.+\)$/);
+    expect(historyTooltipLabel("redo", null)).toMatch(/^Redo \(.+\)$/);
   });
 });

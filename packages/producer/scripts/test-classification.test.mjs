@@ -57,3 +57,15 @@ describe("producer test classification", () => {
     });
   });
 });
+
+it("selects the distributed smoke and playback parity tests as integration tests", () => {
+  const files = [
+    "tests/distributed/_smoke/webm-concat-copy.test.ts",
+    "tests/playback-rate-av-parity/playback-rate-av-parity.test.ts",
+  ];
+  const selected = discoverProducerTests().filter((entry) => files.includes(entry.file));
+  assert.deepEqual(
+    selected,
+    files.map((file) => ({ file, runner: "bun", lane: "integration" })),
+  );
+});

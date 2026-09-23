@@ -222,7 +222,7 @@ function ParamControl({
             disabled={disabled}
             aria-label={`${param.label} color`}
             onChange={(e) => onChange(e.target.value)}
-            className="w-7 h-7 rounded border border-neutral-700 bg-transparent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-7 h-7 rounded-sm border border-neutral-700 bg-transparent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
           />
           <input
             type="text"
@@ -230,7 +230,7 @@ function ParamControl({
             disabled={disabled}
             aria-label={`${param.label} value`}
             onChange={(e) => onChange(e.target.value)}
-            className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-[10px] text-neutral-200 font-mono focus:outline-none focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 bg-neutral-900 border border-neutral-800 rounded-sm px-2 py-1 text-[10px] text-neutral-200 font-mono focus:outline-hidden focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
       )}
@@ -259,7 +259,7 @@ function ParamControl({
           disabled={disabled}
           aria-label={param.label}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-[10px] text-neutral-200 focus:outline-none focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full bg-neutral-900 border border-neutral-800 rounded-sm px-2 py-1 text-[10px] text-neutral-200 focus:outline-hidden focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
         />
       )}
 
@@ -269,7 +269,7 @@ function ParamControl({
           disabled={disabled}
           aria-label={param.label}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-[10px] text-neutral-200 focus:outline-none focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full bg-neutral-900 border border-neutral-800 rounded-sm px-2 py-1 text-[10px] text-neutral-200 focus:outline-hidden focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {param.options.map((opt) => (
             <option key={opt.value} value={opt.value}>

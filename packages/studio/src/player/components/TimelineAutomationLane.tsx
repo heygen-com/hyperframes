@@ -75,7 +75,7 @@ function pointCircleStyle(
     radius: POINT_R * (dragging ? 1.3 : inRange ? 1.15 : 1),
     // A white ring rather than a different fill: the fill is the parameter's
     // own colour, and a lane with two envelopes on it is read by colour first.
-    stroke: inRange ? "#fff" : "rgba(0,0,0,0.5)",
+    stroke: inRange ? "var(--timeline-text-solid)" : "var(--timeline-automation-point-muted)",
     strokeWidth: inRange ? 1.5 : 1,
   };
 }
@@ -132,7 +132,7 @@ function ReadOnlyNote({
   return (
     <div
       data-automation-readonly-note=""
-      className="hf-automation-readonly-note pointer-events-none absolute rounded-[3px] bg-black/85 px-1.5 py-0.5 text-[9px] text-white/80"
+      className="hf-automation-readonly-note pointer-events-none absolute rounded-[3px] bg-[var(--timeline-overlay-bg-strong)] px-1.5 py-0.5 text-[9px] text-[var(--timeline-overlay-text)]"
       style={{ left: leftPx + 6, top: 2, zIndex: 3, maxWidth: Math.max(120, widthPx - 12) }}
     >
       {note}
@@ -470,7 +470,7 @@ export function TimelineAutomationLane({
           x2={PAD_X + widthPx}
           y1={pad + inner / 2}
           y2={pad + inner / 2}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--timeline-automation-rail)"
           strokeDasharray="3 4"
         />
         {rangeSelection ? (
@@ -541,7 +541,7 @@ export function TimelineAutomationLane({
             cx={xOf(playheadSec)}
             cy={yOf(currentValue)}
             r={2.5}
-            fill="#fff"
+            fill="var(--timeline-text-solid)"
             opacity={0.8}
             pointerEvents="none"
           />
@@ -561,7 +561,7 @@ export function TimelineAutomationLane({
 
       {hint ? (
         <div
-          className="hf-automation-hint pointer-events-none absolute rounded-[3px] bg-black/80 px-1 py-0.5 font-mono text-[9px] text-white"
+          className="hf-automation-hint pointer-events-none absolute rounded-[3px] bg-[var(--timeline-overlay-bg)] px-1 py-0.5 font-mono text-[9px] text-[var(--timeline-text-solid)]"
           style={{ left: leftPx + 6, top: 2, zIndex: 3 }}
         >
           {hint}

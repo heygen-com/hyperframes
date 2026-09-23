@@ -22,7 +22,12 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
-import { variableBootstrap, variablePreviewWrapper } from "./generate-catalog-pages.ts";
+import {
+  mdxStringAttribute,
+  stageProps,
+  variableBootstrap,
+  variablePreviewWrapper,
+} from "./generate-catalog-pages.ts";
 
 const here = join(fileURLToPath(import.meta.url), "..");
 
@@ -61,7 +66,7 @@ function queryOf(url: string): string {
 
 /**
  * Hop 1: the explorer's first load. Mirrors the one expression in
- * docs/snippets/variables-explorer.jsx that builds it, which the last test in
+ * docs/snippets/catalog-detail.jsx that builds it, which the last test in
  * this file pins so the two cannot drift apart silently.
  */
 function explorerQuery(values: Record<string, string>): string {
@@ -149,18 +154,18 @@ function formEncodingPlayer(src: string): string {
 }
 
 describe("hfv round trip", () => {
-  it("carries every declared value through all four hops unchanged", () => {
-    const demoSrc = prepareSrcForElement(plainPlayer, runWrapper(explorerQuery(DECLARED)));
+  const assertDeclaredSurvives = (demoSrc: string): void => {
     const read = runBootstrap(queryOf(demoSrc));
     assert.deepEqual(read.fromWindow, DECLARED);
     assert.deepEqual(read.fromAttribute, DECLARED);
+  };
+
+  it("carries every declared value through all four hops unchanged", () => {
+    assertDeclaredSurvives(prepareSrcForElement(plainPlayer, runWrapper(explorerQuery(DECLARED))));
   });
 
   it("survives a player build that form-encodes the query", () => {
-    const demoSrc = formEncodingPlayer(runWrapper(explorerQuery(DECLARED)));
-    const read = runBootstrap(queryOf(demoSrc));
-    assert.deepEqual(read.fromWindow, DECLARED);
-    assert.deepEqual(read.fromAttribute, DECLARED);
+    assertDeclaredSurvives(formEncodingPlayer(runWrapper(explorerQuery(DECLARED))));
   });
 
   it("carries an edited value in from the explorer's message", () => {
@@ -192,11 +197,167 @@ describe("player src rewriting", () => {
 });
 
 describe("explorer producer", () => {
-  it("still encodes the first load with encodeURIComponent", () => {
+  it("still posts the values in the message the wrapper listens for", () => {
     const source = readFileSync(
-      join(here, "..", "docs", "snippets", "variables-explorer.jsx"),
+      join(here, "..", "docs", "snippets", "catalog-detail.jsx"),
       "utf-8",
     );
-    assert.match(source, /\?hfv=\$\{encodeURIComponent\(JSON\.stringify\(defaults\)\)\}/);
+    assert.match(source, /postMessage\(\{ hfVariables: values \}/);
+  });
+});
+
+describe("mdxStringAttribute", () => {
+  it("emits a plain double-quoted string, not an expression", () => {
+    assert.equal(
+      mdxStringAttribute("title", "beat-freeze-cut.html"),
+      'title="beat-freeze-cut.html"',
+    );
+  });
+
+  it("escapes the characters that would end the string or open an expression", () => {
+    assert.equal(
+      mdxStringAttribute("title", 'say "hi" & <b>{x}</b>'),
+      'title="say &quot;hi&quot; &amp; &lt;b>&#123;x&#125;&lt;/b>"',
+    );
+  });
+
+  it("leaves backticks alone inside the quoted value", () => {
+    assert.equal(mdxStringAttribute("title", "`code`"), 'title="`code`"');
+  });
+
+  it("passes backslashes through unchanged, since JSX strings do not treat them as escapes", () => {
+    assert.equal(mdxStringAttribute("title", "a\\b"), 'title="a\\b"');
+  });
+});
+
+describe("WebGPU stage fallback props", () => {
+  const page = (name: string) =>
+    readFileSync(join(here, "..", "docs", "catalog", "blocks", `${name}.mdx`), "utf-8");
+
+  it("gives a live WebGPU item its recorded clip, poster and the webgpu flag", () => {
+    const mdx = page("frost-sequence-camera-orbit");
+    assert.match(mdx, /^ {2}previewSrc=/m);
+    assert.match(mdx, /^ {2}video=".*frost-sequence-camera-orbit\.mp4"/m);
+    assert.match(mdx, /^ {2}poster=/m);
+    assert.match(mdx, /^ {2}webgpu$/m);
+  });
+
+  it("leaves a live item that does not need WebGPU without a recorded fallback", () => {
+    const mdx = page("ai-chat-reveal");
+    assert.match(mdx, /^ {2}previewSrc=/m);
+    assert.doesNotMatch(mdx, /^ {2}(video=|webgpu$)/m);
+  });
+});
+
+describe("WebGPU adapter probe", () => {
+  const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-detail.jsx"), "utf-8");
+  const fn = source.slice(
+    source.indexOf("const hasWebgpuAdapter"),
+    source.indexOf("// END hasWebgpuAdapter"),
+  );
+  const probe = runInNewContext(`${fn} hasWebgpuAdapter`, { setTimeout, Promise }) as (
+    gpu: unknown,
+    ms: number,
+  ) => Promise<boolean>;
+
+  it("says yes only for a real adapter", async () => {
+    assert.equal(await probe({ requestAdapter: async () => ({}) }, 50), true);
+  });
+
+  it("falls back for no gpu, a null adapter, a rejection, a sync throw and a hang", async () => {
+    const throws = () => {
+      throw new Error("blocked");
+    };
+    const cases = [
+      undefined,
+      { requestAdapter: async () => null },
+      { requestAdapter: () => Promise.reject(new Error("no")) },
+      { requestAdapter: throws },
+      { requestAdapter: () => new Promise(() => {}) },
+    ];
+    for (const gpu of cases) assert.equal(await probe(gpu, 30), false);
+  });
+});
+
+describe("snippet scope", () => {
+  it("has no top-level helper outside its exports, because Mintlify only evaluates exports", () => {
+    const source = readFileSync(
+      join(here, "..", "docs", "snippets", "catalog-detail.jsx"),
+      "utf-8",
+    );
+    assert.deepEqual(source.match(/^(?:function|const|let|var|class) .*/gm), null);
+  });
+});
+
+describe("stageProps recorded-clip guard", () => {
+  const frost = JSON.parse(
+    readFileSync(
+      join(here, "..", "registry", "blocks", "frost-sequence-camera-orbit", "registry-item.json"),
+      "utf-8",
+    ),
+  );
+
+  it("offers the recorded fallback only when the manifest has a clip", () => {
+    assert.ok(stageProps("block", frost).includes("  webgpu"));
+    assert.deepEqual(stageProps("block", { ...frost, preview: undefined }), []);
+  });
+});
+
+describe("tile reveal", () => {
+  const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-gallery.jsx"), "utf-8");
+  const fn = source.slice(
+    source.indexOf("const revealWhenPainted"),
+    source.indexOf("// END revealWhenPainted"),
+  );
+  const frames: Array<() => void> = [];
+  const revealWhenPainted = runInNewContext(`${fn} revealWhenPainted`, {
+    requestAnimationFrame: (cb: () => void) => frames.push(cb),
+  }) as (player: unknown, reveal: () => void) => void;
+  const player = (assetsReady: boolean) => {
+    const target = new EventTarget();
+    return Object.assign(target, { assetsReady });
+  };
+
+  it("keeps the poster until assetsready plus one frame, not at runtime ready", () => {
+    frames.length = 0;
+    const p = player(false);
+    let revealed = 0;
+    revealWhenPainted(p, () => revealed++);
+    p.dispatchEvent(new Event("ready"));
+    assert.equal(revealed + frames.length, 0);
+    p.dispatchEvent(new Event("assetsready"));
+    assert.equal(revealed, 0);
+    frames.forEach((f) => f());
+    assert.equal(revealed, 1);
+  });
+
+  it("reveals after one frame when the assets were already settled", () => {
+    frames.length = 0;
+    let revealed = 0;
+    revealWhenPainted(player(true), () => revealed++);
+    frames.forEach((f) => f());
+    assert.equal(revealed, 1);
+  });
+
+  it("wires the reveal into the ready handler and not a bare data-ready flip", () => {
+    const handler = source.slice(
+      source.indexOf("addEventListener('ready'"),
+      source.indexOf("player.setAttribute('srcdoc'"),
+    );
+    assert.match(handler, /revealWhenPainted\(/);
+    assert.doesNotMatch(handler.split("revealWhenPainted")[0] ?? "", /dataset\.ready = 'true'/);
+  });
+});
+
+describe("tile poster priority", () => {
+  const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-gallery.jsx"), "utf-8");
+
+  it("fetches the pinned group's posters eagerly at high priority and every other poster lazily", () => {
+    assert.match(
+      source,
+      /loading: eager \? "eager" : "lazy", fetchPriority: eager \? "high" : undefined/,
+    );
+    assert.match(source, /card\(item, group\.pinned === true\)/);
+    assert.doesNotMatch(source, /\.map\(card\)/);
   });
 });

@@ -24,18 +24,20 @@ import {
 const cache = new Map<string, HfAutomationLane | null>();
 const CACHE_LIMIT = 64;
 
-function laneFromAttr(raw: string): HfAutomationLane | null {
-  const hit = cache.get(raw);
+/** The lane for `target` inside a `data-automation` value, or null when absent or unreadable. */
+export function laneFromAttr(raw: string, target: string = VOLUME_TARGET): HfAutomationLane | null {
+  const key = `${target}\0${raw}`;
+  const hit = cache.get(key);
   if (hit !== undefined) return hit;
   let lane: HfAutomationLane | null = null;
   try {
-    lane = parseAutomation(raw).lanes.find((l) => l.target === VOLUME_TARGET) ?? null;
+    lane = parseAutomation(raw).lanes.find((l) => l.target === target) ?? null;
   } catch {
     // Unreadable automation plays the track flat rather than silencing it.
     lane = null;
   }
   if (cache.size > CACHE_LIMIT) cache.clear();
-  cache.set(raw, lane);
+  cache.set(key, lane);
   return lane;
 }
 

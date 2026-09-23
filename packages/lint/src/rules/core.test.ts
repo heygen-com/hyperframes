@@ -19,6 +19,24 @@ ${rootContent}
 </html>`;
 }
 
+/** A portrait root inside a document whose scaffold copies of the resolution
+ *  are supplied by the caller, so they can be aligned or left stale. */
+function portraitCompositionWithScaffold(bodyCss: string, viewportContent: string): string {
+  return `
+<html>
+<head>
+  <meta name="viewport" content="${viewportContent}" />
+  <style>
+    html, body { ${bodyCss} overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+}
+
 describe("core rules", () => {
   it("does not lint scripts embedded inside an iframe srcdoc attribute", async () => {
     const html = `
@@ -113,6 +131,114 @@ describe("core rules", () => {
     const finding = result.findings.find((f) => f.code === "root_missing_dimensions");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
+  });
+
+  it("reports root_dimensions_mismatch when html/body CSS and the viewport meta are still the scaffolded landscape size", async () => {
+    // GH#4001: the root is edited to portrait without `hyperframes init
+    // --resolution`, the only thing that otherwise keeps the scaffold's copies
+    // of the resolution in sync. The stale landscape body (overflow: hidden)
+    // then clips the correctly-sized root at its old height.
+    const html = portraitCompositionWithScaffold(
+      "width: 1920px; height: 1080px;",
+      "width=1920, height=1080",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain("html/body CSS is 1920x1080");
+    expect(finding?.message).toContain("the viewport meta is 1920x1080");
+  });
+
+  it("reads a stale html/body size authored height-before-width", async () => {
+    const html = portraitCompositionWithScaffold(
+      "height: 1080px; width: 1920px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding?.message).toContain("html/body CSS is 1920x1080");
+    expect(finding?.message).not.toContain("viewport");
+  });
+
+  it("does not report root_dimensions_mismatch when the scaffold agrees with the root", async () => {
+    const html = portraitCompositionWithScaffold(
+      "width: 1080px; height: 1920px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
+  });
+
+  it("does not report root_dimensions_mismatch for a sub-composition fragment with no html/body/viewport to compare", async () => {
+    const html = `<div data-composition-id="c1" data-width="1080" data-height="1920"></div>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
+  });
+
+  it("does not report root_dimensions_mismatch for a full sub-composition document whose own viewport meta disagrees with its root", async () => {
+    // Matches the hf2550 flowchart-vertical fixture's shape: a full standalone
+    // document mounted as a sub-composition. See the rule's comment in core.ts
+    // for why its own <meta viewport> never reaches the rendering document.
+    const html = `
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=1440, height=2560" />
+</head>
+<body>
+  <div id="root" data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
+  });
+
+  it("still reports root_dimensions_mismatch for the same shape linted as a top-level composition, with no-clipping-risk wording since there is no html/body CSS block at all", async () => {
+    const html = `
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=1440, height=2560" />
+</head>
+<body>
+  <div id="root" data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding).toBeDefined();
+    // No html/body CSS block is present here at all (the real hf2550 fixture
+    // shape) -- distinct from the "present and matching" case covered below --
+    // so the "absent" and "matches" cases of describeSizeMismatch must both
+    // route to the same no-clipping-risk wording, not just the "matches" one.
+    expect(finding?.message).not.toContain("clips");
+    expect(finding?.message.toLowerCase()).toContain("no effect on capture");
+  });
+
+  it("uses no-clipping-risk wording when only the viewport meta disagrees and html/body CSS matches the root", async () => {
+    const html = portraitCompositionWithScaffold(
+      "width: 1080px; height: 1920px;",
+      "width=1440, height=2560",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain("the viewport meta is 1440x2560");
+    expect(finding?.message).not.toContain("clips");
+    expect(finding?.message.toLowerCase()).toContain("no effect on capture");
+  });
+
+  it("keeps the body-clipping wording when html/body CSS itself disagrees with the root", async () => {
+    const html = portraitCompositionWithScaffold(
+      "width: 1920px; height: 1080px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding?.message).toContain("clips");
   });
 
   it("accepts body as the composition root", async () => {

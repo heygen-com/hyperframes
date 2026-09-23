@@ -137,7 +137,12 @@ export async function tryGsapResizeIntercept(
     ? hasNonHoldTweenForElement(iframe, liveSelector, undefined, [...resizeProperties])
     : false;
   if (!anim && hasLiveResizeTween) {
-    return { status: "blocked", reason: "source-uneditable" };
+    // Third twin of the position/rotation cases: a live tween with no source match.
+    return {
+      status: "blocked",
+      reason: "source-uneditable",
+      detail: "live-resize-no-source-tween",
+    };
   }
   logResize("intercept-enter", {
     hasScaleGroup,
@@ -194,7 +199,12 @@ export async function tryGsapResizeIntercept(
   }
 
   const tweenDuration = resolveTweenDuration(anim);
-  if (tweenDuration <= 0) return { status: "blocked", reason: "source-uneditable" };
+  if (tweenDuration <= 0) {
+    // The tween exists in source but has no positive duration, so there is no
+    // timeline position at which a resize could land — a different cause from
+    // the live-tween-without-a-source-match cases above.
+    return { status: "blocked", reason: "source-uneditable", detail: "zero-duration-tween" };
+  }
 
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);

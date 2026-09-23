@@ -56,6 +56,12 @@
       "types": "./dist/mediaTiming.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./composition-readiness": {
+      "source": "./src/compositionReadiness.ts",
+      "runtime": "./dist/compositionReadiness.js",
+      "types": "./dist/compositionReadiness.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./editing": {
       "source": "./src/editing/affordances.ts",
       "runtime": "./dist/editing/affordances.js",
@@ -170,10 +176,28 @@
       "types": "./dist/audioAutomation.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./clip-facts": {
+      "source": "./src/clipFacts.ts",
+      "runtime": "./dist/clipFacts.js",
+      "types": "./dist/clipFacts.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-gain": {
       "source": "./src/audioGain.ts",
       "runtime": "./dist/audioGain.js",
       "types": "./dist/audioGain.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fade": {
+      "source": "./src/audioFade.ts",
+      "runtime": "./dist/audioFade.js",
+      "types": "./dist/audioFade.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./speed-ramp": {
+      "source": "./src/speedRamp.ts",
+      "runtime": "./dist/speedRamp.js",
+      "types": "./dist/speedRamp.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./color-grading": {
@@ -236,6 +260,12 @@
       "types": "./dist/runtime/protocol.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/clip-window": {
+      "source": "./src/runtime/clipWindow.ts",
+      "runtime": "./dist/runtime/clipWindow.js",
+      "types": "./dist/runtime/clipWindow.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/stacking-context": {
       "source": "./src/runtime/stackingContext.ts",
       "runtime": "./dist/runtime/stackingContext.js",
@@ -246,6 +276,12 @@
       "source": "./src/runtime/webAudioRoute.ts",
       "runtime": "./dist/runtime/webAudioRoute.js",
       "types": "./dist/runtime/webAudioRoute.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/levelTap": {
+      "source": "./src/runtime/levelTap.ts",
+      "runtime": "./dist/runtime/levelTap.js",
+      "types": "./dist/runtime/levelTap.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./compiler/html-document": {

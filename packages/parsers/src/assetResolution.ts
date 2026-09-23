@@ -1,6 +1,14 @@
 import { existsSync } from "node:fs";
-import { isAbsolute, posix, relative, resolve } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
+
+/** The subset of `node:path` that `isWithinProjectRoot` needs to run under
+ * an injected platform (tests pass `path.win32` / `path.posix`). */
+interface PathModuleLike {
+  resolve: (...segments: string[]) => string;
+  relative: (from: string, to: string) => string;
+  isAbsolute: (path: string) => boolean;
+}
 
 /**
  * Shared local-asset resolution helpers for every package that maps
@@ -115,10 +123,22 @@ export function cleanAssetUrl(url: string): string {
   return url.trim().split(/[?#]/, 1)[0] ?? "";
 }
 
-export function isWithinProjectRoot(projectDir: string, candidate: string): boolean {
-  const projectRoot = resolve(projectDir);
-  const relativePath = relative(projectRoot, candidate);
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+/**
+ * `pathModule` defaults to the host's native `node:path`, so every existing
+ * caller gets its actual OS's separator and drive-letter rules unchanged.
+ * Tests inject `path.win32` / `path.posix` to exercise both platforms' rules
+ * from a single OS (same pattern as producer/fileServer.ts's `isPathInside`).
+ */
+export function isWithinProjectRoot(
+  projectDir: string,
+  candidate: string,
+  pathModule: PathModuleLike = { resolve, relative, isAbsolute },
+): boolean {
+  const projectRoot = pathModule.resolve(projectDir);
+  const relativePath = pathModule.relative(projectRoot, candidate);
+  return (
+    relativePath === "" || (!relativePath.startsWith("..") && !pathModule.isAbsolute(relativePath))
+  );
 }
 
 function addCandidate(candidates: string[], candidate: string): void {
@@ -156,6 +176,41 @@ export function resolveExistingLocalAsset(
   const resolved = resolveLocalAssetCandidates(projectRoot, url).find(existsSync);
   if (!resolved) return null;
   return { resolved, rootRelativePath: relative(projectRoot, resolved) };
+}
+
+// Candidates for a variant whose join escaped the project root, re-anchored at the root.
+function reanchoredCandidates(variant: string, baseDir: string, compiledDir?: string): string[] {
+  const baseAbs = resolve(baseDir);
+  const joinedAbs = resolve(join(baseDir, variant));
+  if (joinedAbs === baseAbs || joinedAbs.startsWith(baseAbs + sep)) return [];
+  // Normalize before stripping, or `assets/../../assets/foo` becomes `assets/assets/foo`.
+  const stripped = posix.normalize(variant.replace(/\\/g, "/")).replace(/^(\.\.\/)+/, "");
+  if (!stripped || stripped === variant || stripped.startsWith("..")) return [];
+  return compiledDir
+    ? [join(compiledDir, stripped), join(baseDir, stripped)]
+    : [join(baseDir, stripped)];
+}
+
+/** Resolves a media `src` like a browser URL (`..` clamps at the project root); a miss returns the base-dir join. */
+export function resolveProjectRelativeSrc(
+  src: string,
+  baseDir: string,
+  compiledDir?: string,
+): string {
+  const cleanSrc = cleanAssetUrl(src);
+
+  // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
+  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+
+  const candidates = new Set<string>();
+  for (const variant of decodeUrlPathVariants(cleanSrc)) {
+    for (const candidate of reanchoredCandidates(variant, baseDir, compiledDir)) {
+      candidates.add(candidate);
+    }
+    if (compiledDir) candidates.add(join(compiledDir, variant));
+    candidates.add(join(baseDir, variant));
+  }
+  return [...candidates].find(existsSync) ?? join(baseDir, cleanSrc);
 }
 
 function maskRange(src: string, pattern: RegExp): string {

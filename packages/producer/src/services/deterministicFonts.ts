@@ -1118,6 +1118,57 @@ async function ensureWoff2DataUri(
   return `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
 }
 
+// Per-process cache for Google Fonts CSS lookups, keyed by request URL —
+// repeat compiles of the same family reuse one network round trip. A
+// rejected lookup evicts itself so a later call still retries.
+const googleFontCssCache = new Map<string, Promise<{ ok: true; body: string } | { ok: false }>>();
+
+/** Test-only reset — the cache is otherwise process-lifetime, shared across calls. */
+export function _clearGoogleFontCssCacheForTests(): void {
+  googleFontCssCache.clear();
+}
+
+/** Rejects with `signal`'s own abort reason without cancelling `promise` itself. */
+function raceAgainstAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(callerAbortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(callerAbortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+function fetchGoogleFontCss(
+  url: string,
+  familyName: string,
+  options: InternalFontFetchOptions,
+): Promise<{ ok: true; body: string } | { ok: false }> {
+  // Fail-closed callers retry and throw where lenient ones don't, so they never share an entry.
+  const key = `${options.failClosedFontFetch ? "closed" : "open"}:${url}`;
+  let shared = googleFontCssCache.get(key);
+  if (!shared) {
+    // The shared fetch must not carry any one caller's abortSignal, or that
+    // caller cancelling would fail the lookup for every other waiter.
+    shared = fetchFontResource(
+      url,
+      { headers: { "User-Agent": WOFF2_USER_AGENT } },
+      (response) => response.text(),
+      familyName,
+      "Google Fonts CSS",
+      { ...options, abortSignal: undefined },
+    ).then((result) => {
+      if (result.ok) return { ok: true as const, body: result.body };
+      // A transient status must not stick for the process lifetime.
+      if (isRetryableFontFetchStatus(result.response.status)) googleFontCssCache.delete(key);
+      return { ok: false as const };
+    });
+    googleFontCssCache.set(key, shared);
+    shared.catch(() => googleFontCssCache.delete(key));
+  }
+  return raceAgainstAbort(shared, options.abortSignal);
+}
+
 async function fetchGoogleFont(
   familyName: string,
   options: InternalFontFetchOptions,
@@ -1136,14 +1187,7 @@ async function fetchGoogleFont(
 
   let cssText: string;
   try {
-    const cssResult = await fetchFontResource(
-      url,
-      { headers: { "User-Agent": WOFF2_USER_AGENT } },
-      (response) => response.text(),
-      familyName,
-      "Google Fonts CSS",
-      options,
-    );
+    const cssResult = await fetchGoogleFontCss(url, familyName, options);
     if (!cssResult.ok) {
       // 4xx is a *deterministic* answer from Google Fonts that this
       // family is not served (e.g. HTTP 400 for "Segoe UI", "Arial",

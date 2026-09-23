@@ -55,6 +55,11 @@ const fullObservability: NonNullable<RenderPerfSummary["observability"]> = {
     protocolTimeoutMs: 300_000,
     pageNavigationTimeoutMs: 60_000,
     playerReadyTimeoutMs: 45_000,
+    adaptersUsed: ["gsap"],
+    audioCount: 2,
+    imageCount: 3,
+    rootBodyMismatch: true,
+    rootBodyDeltaPxBucket: "11-50",
   },
   extraction: {
     videoCount: 6,
@@ -211,6 +216,15 @@ describe("studioRenderTelemetry", () => {
       expect(p.observabilityExtractCacheMisses).toBe(6);
       expect(p.observabilityInitDurationMs).toBe(1234);
       expect(p.observabilityInitTweenCount).toBe(42);
+      // capture.audioCount / imageCount / rootBodyMismatch / adaptersUsed are the
+      // only source for these on a studio render, since no drawElement resolves here.
+      // events.ts's trackRenderComplete falls back to captureXxx precisely because
+      // this path only ever supplies these, never the direct field.
+      expect(p.captureAdaptersUsed).toEqual(["gsap"]);
+      expect(p.captureAudioCount).toBe(2);
+      expect(p.captureImageCount).toBe(3);
+      expect(p.captureRootBodyMismatch).toBe(true);
+      expect(p.captureRootBodyDeltaPxBucket).toBe("11-50");
     });
 
     it("omits all perf-derived fields when perfSummary is undefined", () => {

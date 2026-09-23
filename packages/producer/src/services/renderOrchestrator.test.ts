@@ -25,6 +25,7 @@ import {
   closeOrphanedProbeForRetry,
   describeMemoryExhaustion,
   executeDiskCaptureWithAdaptiveRetry,
+  explainStreamingEncodeGate,
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
   extractStandaloneEntryFromIndex,
@@ -41,21 +42,32 @@ import {
   shouldRetryViaPinnedFallback,
   isDeRendererStallError,
   isSequentialCaptureStallError,
-  countElementTags,
+  isParallelCaptureStallError,
+  isParallelStreamForced,
+  fallbackCaptureModeLabel,
+  isRetryableEncoderDeath,
+  scanElementTags,
   envInt,
   isDeParallelRouterEnabled,
   mergeWorkerInitObservability,
   resolveCompositionElementCount,
+  detectAdaptersStatic,
+  resolveAdaptersUsed,
   resolveDeShortBand,
   shouldClampDefaultDrawElement,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  isCaptureParallelStreamRouterEnabled,
+  shouldSegmentCapture,
+  SEGMENTED_MIN_SECONDS_AFTER_SOAK,
+  resolveParallelCaptureMode,
   shouldStreamParallelCapture,
   shouldUseStreamingEncode,
   resolveObservedCaptureMode,
   createCaptureObservabilityUpdater,
 } from "./renderOrchestrator.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
+import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
 import { resolveCompositeTransfer, shouldUseLayeredComposite } from "./hdrCompositor.js";
 import {
@@ -584,23 +596,130 @@ describe("shouldUseStreamingEncode", () => {
     );
   });
 
-  it("keeps renders over the configured max duration on normal encoding", () => {
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240)).toBe(true);
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(false);
+  it("ignores the duration cap unless streamingEncodeDurationCapEnabled is true", () => {
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 3600)).toBe(true);
     expect(
       shouldUseStreamingEncode(
-        { enableStreamingEncode: true, streamingEncodeMaxDurationSeconds: 120 },
+        { ...streamingEnabledConfig, streamingEncodeDurationCapEnabled: true },
+        "mp4",
+        1,
+        240.001,
+      ),
+    ).toBe(false);
+    expect(
+      shouldUseStreamingEncode(
+        {
+          enableStreamingEncode: true,
+          streamingEncodeMaxDurationSeconds: 120,
+          streamingEncodeDurationCapEnabled: true,
+        },
         "mp4",
         1,
         120.001,
       ),
     ).toBe(false);
+    expect(
+      shouldUseStreamingEncode(
+        { ...streamingEnabledConfig, streamingEncodeDurationCapEnabled: true },
+        "mp4",
+        1,
+        240,
+      ),
+    ).toBe(true);
   });
 
   it("keeps long single-worker renders streaming in low-memory mode", () => {
     expect(
       shouldUseStreamingEncode({ ...streamingEnabledConfig, lowMemoryMode: true }, "mp4", 1, 411),
     ).toBe(true);
+  });
+});
+
+describe("explainStreamingEncodeGate", () => {
+  const cfg = {
+    enableStreamingEncode: true,
+    streamingEncodeMaxDurationSeconds: 240,
+    lowMemoryMode: false,
+  };
+
+  it("names the reason for every decision", () => {
+    expect(
+      explainStreamingEncodeGate({ ...cfg, enableStreamingEncode: false }, "mp4", 1, 10),
+    ).toEqual({ enabled: false, reason: "disabled_by_config" });
+    expect(explainStreamingEncodeGate(cfg, "png-sequence", 1, 10)).toEqual({
+      enabled: false,
+      reason: "format_excluded",
+    });
+    expect(explainStreamingEncodeGate(cfg, "gif", 1, 10)).toEqual({
+      enabled: false,
+      reason: "format_excluded",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 1, 0)).toEqual({
+      enabled: false,
+      reason: "invalid_duration",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 1, Number.NaN)).toEqual({
+      enabled: false,
+      reason: "invalid_duration",
+    });
+    expect(
+      explainStreamingEncodeGate(
+        { ...cfg, streamingEncodeDurationCapEnabled: true },
+        "mp4",
+        1,
+        300,
+      ),
+    ).toEqual({ enabled: false, reason: "duration_cap" });
+    expect(
+      explainStreamingEncodeGate(
+        { ...cfg, streamingEncodeDurationCapEnabled: true, lowMemoryMode: true },
+        "mp4",
+        1,
+        300,
+      ),
+    ).toEqual({ enabled: true, reason: "low_memory_mode" });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 3, 300, true)).toEqual({
+      enabled: true,
+      reason: "parallel_forced",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 1, 300)).toEqual({
+      enabled: true,
+      reason: "single_worker",
+    });
+    expect(explainStreamingEncodeGate(cfg, "mp4", 2, 300)).toEqual({
+      enabled: false,
+      reason: "multi_worker",
+    });
+  });
+
+  it("low-memory mode only bypasses the cap; it never streams an unforced multi-worker render", () => {
+    // `--low-memory-mode --workers 4` is a real combination (only the
+    // single-worker pin is bypassed by an explicit worker count). The
+    // contiguous-chunk parallel writer stalls, so the gate must still say no.
+    expect(
+      explainStreamingEncodeGate(
+        { ...cfg, streamingEncodeDurationCapEnabled: true, lowMemoryMode: true },
+        "mp4",
+        4,
+        300,
+      ),
+    ).toEqual({ enabled: false, reason: "multi_worker" });
+  });
+
+  it("agrees with shouldUseStreamingEncode on every input", () => {
+    const cases: Array<[typeof cfg, "mp4" | "webm" | "gif", number, number, boolean]> = [
+      [cfg, "mp4", 1, 10, false],
+      [cfg, "mp4", 2, 10, false],
+      [cfg, "mp4", 2, 10, true],
+      [cfg, "gif", 1, 10, false],
+      [{ ...cfg, enableStreamingEncode: false }, "mp4", 1, 10, false],
+    ];
+    for (const [c, format, workers, duration, force] of cases) {
+      expect(shouldUseStreamingEncode(c, format, workers, duration, force)).toBe(
+        explainStreamingEncodeGate(c, format, workers, duration, force).enabled,
+      );
+    }
   });
 });
 
@@ -2075,14 +2194,14 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     });
   });
 
-  describe("countElementTags", () => {
+  describe("scanElementTags", () => {
     it("counts closing tags", () => {
-      expect(countElementTags("<div><span>a</span></div>")).toBe(2);
+      expect(scanElementTags("<div><span>a</span></div>").total).toBe(2);
     });
 
     it("counts void elements — an image gallery must not read as a tiny comp", () => {
-      expect(countElementTags("<img><br><hr>")).toBe(3);
-      expect(countElementTags('<img src="a.png"><IMG SRC="b.png">')).toBe(2);
+      expect(scanElementTags("<img><br><hr>").total).toBe(3);
+      expect(scanElementTags('<img src="a.png"><IMG SRC="b.png">').total).toBe(2);
     });
 
     // Review-flagged blocker (v1): SVG elements are neither closing-tag-shaped
@@ -2092,14 +2211,14 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     // measured 1.8x regression case is made of. The ceiling cannot bound an
     // error that has no bound of its own.
     it("counts self-closing SVG elements — the 40k-node regression case must not read as empty", () => {
-      expect(countElementTags("<circle/>".repeat(40000))).toBe(40000);
-      expect(countElementTags('<path d="M0 0 L1 1" stroke="red" />')).toBe(1);
-      expect(countElementTags("<feGaussianBlur stdDeviation='2'/>")).toBe(1);
+      expect(scanElementTags("<circle/>".repeat(40000)).total).toBe(40000);
+      expect(scanElementTags('<path d="M0 0 L1 1" stroke="red" />').total).toBe(1);
+      expect(scanElementTags("<feGaussianBlur stdDeviation='2'/>").total).toBe(1);
     });
 
     it("does not double-count a self-closed void element (still just 1)", () => {
-      expect(countElementTags('<img src="a.png"/>')).toBe(1);
-      expect(countElementTags('<img src="a.png" />')).toBe(1);
+      expect(scanElementTags('<img src="a.png"/>').total).toBe(1);
+      expect(scanElementTags('<img src="a.png" />').total).toBe(1);
     });
 
     it("does not false-positive on minified JS division-after-comparison (the self-closing alt's real risk)", () => {
@@ -2108,16 +2227,16 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       // starting a match — but it still requires the literal two-char "/>"
       // sequence, and here a "c" sits between the "/" and the ">", so
       // backtracking never finds one and it correctly fails to match.
-      expect(countElementTags("if(a<b/c>d){}")).toBe(0);
+      expect(scanElementTags("if(a<b/c>d){}").total).toBe(0);
     });
 
     it("does not false-positive on inline-script comparisons or void-prefixed words", () => {
       // Script bodies are stripped wholesale (with their own closing tag), so
       // nothing inside can match — including "<breadth" / "<imgWidth", which
       // would anyway fail the \b word boundary.
-      expect(countElementTags("<script>if (a < b && x <breadth && y <imgWidth) {}</script>")).toBe(
-        0,
-      );
+      expect(
+        scanElementTags("<script>if (a < b && x <breadth && y <imgWidth) {}</script>").total,
+      ).toBe(0);
     });
 
     // Review finding: the `</[a-zA-Z]` alternation matches ANY "</" + letter,
@@ -2126,16 +2245,17 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     // on the ~83% of renders with no probe, for which this scan is the only
     // element signal.
     it("does not count closing tags written inside inline script strings", () => {
-      expect(countElementTags('<div></div><script>const h = "</div></div></div>";</script>')).toBe(
-        1,
-      );
       expect(
-        countElementTags("<p></p><script>const t = words.map(w => `</span>`).join('');</script>"),
+        scanElementTags('<div></div><script>const h = "</div></div></div>";</script>').total,
+      ).toBe(1);
+      expect(
+        scanElementTags("<p></p><script>const t = words.map(w => `</span>`).join('');</script>")
+          .total,
       ).toBe(1);
     });
 
     it("strips <style> bodies too — CSS content strings can carry the same shapes", () => {
-      expect(countElementTags('<div></div><style>a::after{content:"</div>"}</style>')).toBe(1);
+      expect(scanElementTags('<div></div><style>a::after{content:"</div>"}</style>').total).toBe(1);
     });
 
     // CodeQL "incomplete multi-character sanitization": a single-pass replace
@@ -2145,28 +2265,238 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     it("strips script tags that reform after one pass", () => {
       // Inner <script> removed by pass 1 leaves "<script>alert(1)</script>",
       // which pass 2 removes. A single pass would leave a stray tag behind.
-      expect(countElementTags("<div></div><scr<script></script>ipt>alert(1)</script>")).toBe(1);
+      expect(scanElementTags("<div></div><scr<script></script>ipt>alert(1)</script>").total).toBe(
+        1,
+      );
     });
 
     it("terminates on input with no closing tag rather than looping", () => {
-      expect(countElementTags("<div></div><script>unterminated")).toBe(1);
+      expect(scanElementTags("<div></div><script>unterminated").total).toBe(1);
     });
 
     it("strips multiple and attributed script blocks, not just the first", () => {
       expect(
-        countElementTags(
+        scanElementTags(
           '<div></div><script type="module">"</span>"</script><script>"</span>"</script>',
-        ),
+        ).total,
       ).toBe(1);
     });
 
     it("is stable on empty and malformed input rather than throwing", () => {
-      expect(countElementTags("")).toBe(0);
-      expect(countElementTags("<<<>>>")).toBe(0);
+      expect(scanElementTags("").total).toBe(0);
+      expect(scanElementTags("<<<>>>").total).toBe(0);
     });
 
     it("scales to a large document without a full parse", () => {
-      expect(countElementTags("<p>x</p>".repeat(40000))).toBe(40000);
+      expect(scanElementTags("<p>x</p>".repeat(40000)).total).toBe(40000);
+    });
+
+    it("groups mixed native and custom hf-* tags by raw tag name", () => {
+      const html =
+        "<div><span>a</span></div><hf-caption></hf-caption><hf-audio-group></hf-audio-group><div></div>";
+      const scan = scanElementTags(html);
+      expect(scan.byTag).toEqual({ div: 2, span: 1, "hf-caption": 1, "hf-audio-group": 1 });
+      expect(scan.total).toBe(5);
+    });
+
+    it("normalizes case so <DIV>/<Div>/<div> collapse into one key", () => {
+      const scan = scanElementTags("<DIV></DIV><Div></Div><div></div>");
+      expect(scan.byTag).toEqual({ div: 3 });
+    });
+
+    it("count/map consistency: the sum of byTag always equals total", () => {
+      const html =
+        '<div><img src="a.png"><hf-caption></hf-caption></div><circle/><path d="M0 0" />' +
+        "<hf-audio-group></hf-audio-group>".repeat(3);
+      const scan = scanElementTags(html);
+      const sum = Object.values(scan.byTag).reduce((a, b) => a + b, 0);
+      expect(sum).toBe(scan.total);
+    });
+
+    it("caps distinct reported tags, folding the overflow into an `other` bucket", () => {
+      // 60 distinct single-use tag names, well past the 50-tag cap. "div"
+      // (100 uses) takes the top rank, leaving only 49 of the 50 slots for
+      // the 60 distinct tags — 11 of them fold into "other".
+      const distinctTags = Array.from({ length: 60 }, (_, i) => `hf-tag-${i}`);
+      const html = "<div></div>".repeat(100) + distinctTags.map((t) => `<${t}></${t}>`).join("");
+      const scan = scanElementTags(html);
+      expect(Object.keys(scan.byTag).length).toBe(51); // 50 reported + "other"
+      expect(scan.byTag.div).toBe(100);
+      expect(scan.byTag.other).toBe(11); // 60 distinct tags - 49 reported = 11 folded in
+      const sum = Object.values(scan.byTag).reduce((a, b) => a + b, 0);
+      expect(sum).toBe(scan.total);
+      expect(scan.total).toBe(100 + 60);
+    });
+
+    it("counts <video data-aroll=true> elements, not audio/img carrying the same attribute", () => {
+      const html =
+        '<video data-aroll="true" src="a.mp4"></video>' +
+        '<video src="b.mp4"></video>' +
+        '<audio data-aroll="true" src="a.mp3"></audio>' +
+        '<img data-aroll="true" src="a.png" />';
+      expect(scanElementTags(html).arollVideoCount).toBe(1);
+    });
+
+    it("counts <video data-media-source=heygen> elements only, not other provider values", () => {
+      const html =
+        '<video data-media-source="heygen" src="a.mp4"></video>' +
+        '<video src="b.mp4"></video>' +
+        '<video data-media-source="ltx.local" src="c.mp4"></video>' +
+        '<audio data-media-source="heygen" src="a.mp3"></audio>';
+      expect(scanElementTags(html).heygenVideoCount).toBe(1);
+    });
+
+    it("counts audio/image/audio-group elements from the uncapped Map, not the capped byTag", () => {
+      // 55 distinct single-use filler tags, each ranked (tied count=1) ahead
+      // of audio/img/hf-audio-group by insertion order in a stable sort,
+      // push all three past the 50-tag cap into "other" in byTag, but the
+      // dedicated counts must still report the true number.
+      const distinctTags = Array.from({ length: 55 }, (_, i) => `hf-tag-${i}`);
+      const html =
+        distinctTags.map((t) => `<${t}></${t}>`).join("") +
+        "<audio></audio><img/><hf-audio-group></hf-audio-group>";
+      const scan = scanElementTags(html);
+      expect(scan.audioCount).toBe(1);
+      expect(scan.imageCount).toBe(1);
+      expect(scan.audioGroupCount).toBe(1);
+      expect(scan.byTag.audio).toBeUndefined();
+      expect(scan.byTag.img).toBeUndefined();
+      expect(scan.byTag["hf-audio-group"]).toBeUndefined();
+    });
+
+    it("counts data-composition-src sub-composition mounts", () => {
+      const html =
+        '<div data-composition-src="a.html" data-duration="2"></div>' +
+        '<section data-composition-src="b.html"></section><div></div>';
+      expect(scanElementTags(html).subCompositionCount).toBe(2);
+    });
+
+    it("counts data-color-grading elements and detects a LUT reference", () => {
+      const html =
+        '<img data-color-grading=\'{"lut":{"src":"a.cube","intensity":0.5}}\'>' +
+        '<video data-color-grading=\'{"exposure":0.2,"lut":null}\'></video>';
+      const scan = scanElementTags(html);
+      expect(scan.colorGradingCount).toBe(2);
+      expect(scan.hasLut).toBe(true);
+    });
+
+    it("reports hasLut false when no color-grading element references a LUT", () => {
+      const html = '<img data-color-grading=\'{"exposure":0.2,"lut":null}\'>';
+      const scan = scanElementTags(html);
+      expect(scan.colorGradingCount).toBe(1);
+      expect(scan.hasLut).toBe(false);
+    });
+
+    it("decodes the &quot;-escaped attribute form the compile pipeline actually emits", () => {
+      // linkedom's serializer re-emits this attribute &quot;-escaped on every
+      // compile round-trip, the real mainstream shape, not single-quoted.
+      const html = '<img data-color-grading="{&quot;lut&quot;:&quot;a.cube&quot;}">';
+      const scan = scanElementTags(html);
+      expect(scan.colorGradingCount).toBe(1);
+      expect(scan.hasLut).toBe(true);
+    });
+
+    // Mirrors normalizeLut (@hyperframes/core colorGrading.ts): an empty
+    // string, an object with no `src`, or a blank `src` are all "no LUT",
+    // matching the runtime consumer, not just "the key is present".
+    it("reports hasLut false for an empty-string, srcless, or blank-src lut value", () => {
+      const html =
+        '<img data-color-grading=\'{"lut":""}\'>' +
+        "<img data-color-grading='{\"lut\":{}}'>" +
+        '<img data-color-grading=\'{"lut":{"src":"  "}}\'>';
+      const scan = scanElementTags(html);
+      expect(scan.colorGradingCount).toBe(3);
+      expect(scan.hasLut).toBe(false);
+    });
+
+    it("does not crash on malformed data-color-grading JSON, counts the element, no LUT signal", () => {
+      const html = "<img data-color-grading='{not json'>";
+      const scan = scanElementTags(html);
+      expect(scan.colorGradingCount).toBe(1);
+      expect(scan.hasLut).toBe(false);
+    });
+
+    it("reports zero (not undefined) for every count and an empty byTag when nothing matches", () => {
+      const scan = scanElementTags("plain text, no tags at all");
+      expect(scan.arollVideoCount).toBe(0);
+      expect(scan.heygenVideoCount).toBe(0);
+      expect(scan.audioCount).toBe(0);
+      expect(scan.imageCount).toBe(0);
+      expect(scan.subCompositionCount).toBe(0);
+      expect(scan.audioGroupCount).toBe(0);
+      expect(scan.colorGradingCount).toBe(0);
+      expect(scan.hasLut).toBe(false);
+      expect(scan.byTag).toEqual({});
+      expect(scan.total).toBe(0);
+      // Unlike the counts above, this pair reports absent (not a false/"0"
+      // default) when there's no root tag at all to compare against.
+      expect(scan.rootBodyMismatch).toBeUndefined();
+      expect(scan.rootBodyDeltaPxBucket).toBeUndefined();
+    });
+
+    describe("rootBodyMismatch / rootBodyDeltaPxBucket", () => {
+      function html(rootWidth: number, rootHeight: number, css: string): string {
+        return (
+          `<style>${css}</style>` +
+          `<body><div data-composition-id="c1" data-width="${rootWidth}" data-height="${rootHeight}"></div></body>`
+        );
+      }
+
+      it("reports no mismatch and bucket 0 when the scaffold's html/body CSS matches the root exactly", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1080px; height: 1920px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(false);
+        expect(scan.rootBodyDeltaPxBucket).toBe("0");
+      });
+
+      it("buckets a small stale-scaffold delta as 1-10", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1085px; height: 1920px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(true);
+        expect(scan.rootBodyDeltaPxBucket).toBe("1-10");
+      });
+
+      it("buckets a mid-size delta as 11-50", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1080px; height: 1950px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(true);
+        expect(scan.rootBodyDeltaPxBucket).toBe("11-50");
+      });
+
+      it("buckets a landscape-scaffold-under-portrait-root delta as 51+ (the real #4001 shape)", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1920px; height: 1080px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(true);
+        expect(scan.rootBodyDeltaPxBucket).toBe("51+");
+      });
+
+      it("reads a height-authored-before-width CSS block the same way", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { height: 1920px; width: 1080px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(false);
+        expect(scan.rootBodyDeltaPxBucket).toBe("0");
+      });
+
+      it("reports absent, not a false default, when there is no composition root to read", () => {
+        const scan = scanElementTags(
+          "<style>html, body { width: 1080px; height: 1920px; }</style><p>no root</p>",
+        );
+        expect(scan.rootBodyMismatch).toBeUndefined();
+        expect(scan.rootBodyDeltaPxBucket).toBeUndefined();
+      });
+
+      it("reports absent, not a false default, when the scaffold has no html/body CSS block at all", () => {
+        const scan = scanElementTags(
+          '<body><div data-composition-id="c1" data-width="1080" data-height="1920"></div></body>',
+        );
+        expect(scan.rootBodyMismatch).toBeUndefined();
+        expect(scan.rootBodyDeltaPxBucket).toBeUndefined();
+      });
     });
   });
 
@@ -2193,6 +2523,15 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(null, "<div><span></span></div>")).toEqual({
         count: 2,
         source: "static",
+        byTag: { div: 1, span: 1 },
+        arollVideoCount: 0,
+        heygenVideoCount: 0,
+        audioCount: 0,
+        imageCount: 0,
+        subCompositionCount: 0,
+        audioGroupCount: 0,
+        colorGradingCount: 0,
+        hasLut: false,
       });
     });
 
@@ -2201,6 +2540,15 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(session, "<div></div>")).toEqual({
         count: 1,
         source: "static",
+        byTag: { div: 1 },
+        arollVideoCount: 0,
+        heygenVideoCount: 0,
+        audioCount: 0,
+        imageCount: 0,
+        subCompositionCount: 0,
+        audioGroupCount: 0,
+        colorGradingCount: 0,
+        hasLut: false,
       });
     });
 
@@ -2216,6 +2564,15 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(session, "<div><span></span></div>")).toEqual({
         count: 2,
         source: "static",
+        byTag: { div: 1, span: 1 },
+        arollVideoCount: 0,
+        heygenVideoCount: 0,
+        audioCount: 0,
+        imageCount: 0,
+        subCompositionCount: 0,
+        audioGroupCount: 0,
+        colorGradingCount: 0,
+        hasLut: false,
       });
     });
 
@@ -2224,7 +2581,130 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(await resolveCompositionElementCount(session, "<div></div>")).toEqual({
         count: 1,
         source: "static",
+        byTag: { div: 1 },
+        arollVideoCount: 0,
+        heygenVideoCount: 0,
+        audioCount: 0,
+        imageCount: 0,
+        subCompositionCount: 0,
+        audioGroupCount: 0,
+        colorGradingCount: 0,
+        hasLut: false,
       });
+    });
+
+    it("omits byTag/arollVideoCount on the live path — that path never runs the static scan", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => 40001 } };
+      const result = await resolveCompositionElementCount(session, "<div><span></span></div>");
+      expect(result).not.toHaveProperty("byTag");
+      expect(result).not.toHaveProperty("arollVideoCount");
+      expect(result).not.toHaveProperty("heygenVideoCount");
+    });
+  });
+
+  describe("detectAdaptersStatic", () => {
+    it("returns empty for a composition using no tracked adapter", () => {
+      expect(detectAdaptersStatic("<div><span>hello</span></div>")).toEqual([]);
+    });
+
+    it("detects gsap from a timeline call, not a bare mention", () => {
+      expect(detectAdaptersStatic("<script>const gsap = 1;</script>")).toEqual([]);
+      expect(detectAdaptersStatic("<script>gsap.timeline().to('.a', {x:1});</script>")).toEqual([
+        "gsap",
+      ]);
+    });
+
+    it("detects the __hf<Name> registration token for each array-registered adapter", () => {
+      expect(detectAdaptersStatic("<script>window.__hfLottie.push(anim);</script>")).toEqual([
+        "lottie",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfAnime.push(tl);</script>")).toEqual([
+        "animejs",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfD3 = [t];</script>")).toEqual(["d3"]);
+      expect(detectAdaptersStatic("<script>window.__hfLeaflet.push(m);</script>")).toEqual([
+        "leaflet",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfMapbox.push(m);</script>")).toEqual([
+        "mapbox",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfMaplibre.push(m);</script>")).toEqual([
+        "maplibre",
+      ]);
+      expect(detectAdaptersStatic("<script>window.__hfGoogleMaps.push(m);</script>")).toEqual([
+        "google-maps",
+      ]);
+    });
+
+    it("detects three from a THREE global reference", () => {
+      expect(
+        detectAdaptersStatic("<script>const mgr = THREE.DefaultLoadingManager;</script>"),
+      ).toEqual(["three"]);
+    });
+
+    it("detects typegpu from the data-requires-webgpu authoring attribute", () => {
+      expect(
+        detectAdaptersStatic('<div data-composition-id="a" data-requires-webgpu></div>'),
+      ).toEqual(["typegpu"]);
+    });
+
+    it("detects css from an authored @keyframes rule", () => {
+      expect(detectAdaptersStatic("<style>@keyframes spin { to { opacity: 1; } }</style>")).toEqual(
+        ["css"],
+      );
+    });
+
+    it("detects waapi from an element.animate keyframe-array call", () => {
+      expect(
+        detectAdaptersStatic("<script>el.animate([{opacity:0},{opacity:1}], 500);</script>"),
+      ).toEqual(["waapi"]);
+    });
+
+    it("reports multiple adapters in KNOWN_RUNTIME_ADAPTERS order, not detection order", () => {
+      const html = "<script>gsap.timeline();window.__hfLottie.push(a);window.__hfD3=[t];</script>";
+      expect(detectAdaptersStatic(html)).toEqual(["d3", "gsap", "lottie"]);
+    });
+  });
+
+  describe("resolveAdaptersUsed", () => {
+    it("falls back to the static scan when there is no probe session", async () => {
+      const html = "<script>gsap.timeline();</script>";
+      expect(await resolveAdaptersUsed(null, html)).toEqual(["gsap"]);
+    });
+
+    it("falls back to the static scan when the probe session is not yet initialized", async () => {
+      const session = { isInitialized: false, page: { evaluate: async () => ["three"] } };
+      const html = "<script>gsap.timeline();</script>";
+      expect(await resolveAdaptersUsed(session, html)).toEqual(["gsap"]);
+    });
+
+    it("unions the live probe result with the static scan, deduped and canonically ordered", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => ["three", "lottie"] } };
+      const html = "<script>gsap.timeline();window.__hfLottie.push(a);</script>";
+      expect(await resolveAdaptersUsed(session, html)).toEqual(["gsap", "lottie", "three"]);
+    });
+
+    it("falls back to the static scan when page.evaluate throws", async () => {
+      const session = {
+        isInitialized: true,
+        page: {
+          evaluate: async () => {
+            throw new Error("Execution context was destroyed");
+          },
+        },
+      };
+      const html = "<script>gsap.timeline();</script>";
+      expect(await resolveAdaptersUsed(session, html)).toEqual(["gsap"]);
+    });
+
+    it("ignores unknown values the live probe might return", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => ["gsap", "bogus"] } };
+      expect(await resolveAdaptersUsed(session, "<div></div>")).toEqual(["gsap"]);
+    });
+
+    it("reports an empty list, not absent, when nothing is detected", async () => {
+      const session = { isInitialized: true, page: { evaluate: async () => [] } };
+      expect(await resolveAdaptersUsed(session, "<div></div>")).toEqual([]);
     });
   });
 
@@ -2844,6 +3324,131 @@ describe("sequential capture stall recovery", () => {
   });
 });
 
+describe("resolveParallelCaptureMode", () => {
+  const beginframe = {
+    platform: "linux" as NodeJS.Platform,
+    headlessShell: true,
+    forceScreenshot: false,
+    deviceScaleFactor: 1,
+  };
+
+  it("reports beginframe only for linux headless-shell at DPR 1 without forceScreenshot", () => {
+    expect(resolveParallelCaptureMode(beginframe)).toBe("beginframe");
+  });
+
+  it("reports screenshot wherever the engine's preMode would", () => {
+    expect(resolveParallelCaptureMode({ ...beginframe, platform: "darwin" })).toBe("screenshot");
+    expect(resolveParallelCaptureMode({ ...beginframe, platform: "win32" })).toBe("screenshot");
+    // System Chrome on linux: resolveObservedCaptureMode calls this beginframe,
+    // the engine launches screenshot. Getting this wrong would default-enable
+    // the router for a cohort whose real path is the screenshot one.
+    expect(resolveParallelCaptureMode({ ...beginframe, headlessShell: false })).toBe("screenshot");
+    expect(resolveParallelCaptureMode({ ...beginframe, forceScreenshot: true })).toBe("screenshot");
+    // Supersampling: BeginFrame ignores deviceScaleFactor, so preMode falls back.
+    expect(resolveParallelCaptureMode({ ...beginframe, deviceScaleFactor: 2 })).toBe("screenshot");
+  });
+
+  it("treats an unset deviceScaleFactor as 1", () => {
+    expect(resolveParallelCaptureMode({ ...beginframe, deviceScaleFactor: undefined })).toBe(
+      "beginframe",
+    );
+  });
+});
+
+describe("shouldSegmentCapture", () => {
+  const base = {
+    env: {} as Record<string, string | undefined>,
+    durationSeconds: 900,
+    outputFormat: "mp4",
+    layeredOrEffectRoute: false,
+    streamingOk: true,
+  };
+
+  it("does not route on duration until the soak flip", () => {
+    // The threshold ships disabled: the release that introduces the route
+    // must not also change which route every long render takes.
+    expect(shouldSegmentCapture(base)).toBe(false);
+    expect(shouldSegmentCapture({ ...base, durationSeconds: 36_000 })).toBe(false);
+  });
+
+  it("routes long mp4/mov renders once a threshold is set", () => {
+    const env = { HF_SEGMENTED_MIN_SECONDS: String(SEGMENTED_MIN_SECONDS_AFTER_SOAK) };
+    expect(shouldSegmentCapture({ ...base, env })).toBe(true);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "mov" })).toBe(true);
+    expect(shouldSegmentCapture({ ...base, env, durationSeconds: 599 })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, durationSeconds: 600 })).toBe(true);
+  });
+
+  it("is forced at any duration by the explicit opt-in", () => {
+    expect(
+      shouldSegmentCapture({
+        ...base,
+        durationSeconds: 5,
+        env: { HF_SEGMENTED_CAPTURE: "true" },
+      }),
+    ).toBe(true);
+  });
+
+  it("honours the kill switch and the exclusions", () => {
+    const env = { HF_SEGMENTED_MIN_SECONDS: "60" };
+    expect(shouldSegmentCapture({ ...base, env: { ...env, HF_SEGMENTED_CAPTURE: "false" } })).toBe(
+      false,
+    );
+    // The kill switch beats the force flag's other spellings too.
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_CAPTURE: "off" } })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "webm" })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "png-sequence" })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, outputFormat: "hls" })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, layeredOrEffectRoute: true })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env, streamingOk: false })).toBe(false);
+    // Even the explicit force cannot route an excluded output.
+    expect(
+      shouldSegmentCapture({
+        ...base,
+        env: { HF_SEGMENTED_CAPTURE: "true" },
+        outputFormat: "webm",
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores an unparseable threshold rather than routing on it", () => {
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_MIN_SECONDS: "soon" } })).toBe(
+      false,
+    );
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_MIN_SECONDS: "-5" } })).toBe(false);
+    expect(shouldSegmentCapture({ ...base, env: { HF_SEGMENTED_MIN_SECONDS: "0" } })).toBe(true);
+  });
+});
+
+describe("isCaptureParallelStreamRouterEnabled", () => {
+  it("is on by default only where capture will run BeginFrame", () => {
+    expect(isCaptureParallelStreamRouterEnabled({}, "beginframe")).toBe(true);
+    // macOS/Windows screenshot capture stays opt-in: its opt-in cohort runs a
+    // 5.5% error rate against a ~1.1% baseline (stall watchdog / EPIPE class).
+    expect(isCaptureParallelStreamRouterEnabled({}, "screenshot")).toBe(false);
+    expect(
+      isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: "" }, "screenshot"),
+    ).toBe(false);
+  });
+
+  it("honours the explicit opt-in for either mode", () => {
+    expect(
+      isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: "true" }, "screenshot"),
+    ).toBe(true);
+    expect(
+      isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: " TRUE " }, "screenshot"),
+    ).toBe(true);
+  });
+
+  it("honours the kill switch, using the same off-spellings as the DE router", () => {
+    for (const off of ["false", "FALSE", "0", "off", "no"]) {
+      expect(
+        isCaptureParallelStreamRouterEnabled({ HF_CAPTURE_PARALLEL_STREAM: off }, "beginframe"),
+      ).toBe(false);
+    }
+  });
+});
+
 describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {
   const eligible = {
     routerEnabled: true,
@@ -2858,7 +3463,7 @@ describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () =>
     expect(shouldStreamParallelCapture(eligible)).toBe(true);
   });
 
-  it("is disabled by default (kill switch off is the shipped default)", () => {
+  it("honours the kill switch when the caller passes routerEnabled=false", () => {
     expect(shouldStreamParallelCapture({ ...eligible, routerEnabled: false })).toBe(false);
   });
 
@@ -3095,5 +3700,134 @@ describe("createCaptureObservabilityUpdater", () => {
     const { observability, update } = seed("win32", false);
     update({ workerCount: 4 });
     expect(observability.workerCount).toBe(4);
+  });
+});
+
+describe("parallel stall and encoder death: retry eligibility on default routing", () => {
+  it("recognises the parallel stall by name or by message", () => {
+    const named = Object.assign(new Error("anything"), { name: "ParallelCaptureStallError" });
+    expect(isParallelCaptureStallError(named)).toBe(true);
+    expect(
+      isParallelCaptureStallError(
+        new Error(
+          "[Render] Parallel screenshot capture stalled: no frame progress for 60000ms (stuck at 0/9000).",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isParallelCaptureStallError(
+        new Error(
+          "[Render] Parallel BeginFrame capture stalled after 60000ms with no frame progress",
+        ),
+      ),
+    ).toBe(true);
+    // The sequential stall has its own predicate and its own fallback shape.
+    expect(
+      isParallelCaptureStallError(
+        new Error("[Render] Sequential screenshot capture stalled: no frame progress for 60000ms"),
+      ),
+    ).toBe(false);
+    expect(isParallelCaptureStallError("[Render] Parallel screenshot capture stalled")).toBe(false);
+  });
+
+  it("retries an encoder death only once frames had started, and never a host interruption", () => {
+    const died = (frame: number) =>
+      new Error(
+        `Streaming encoder exited before frame ${frame} was written: FFmpeg exited with code 1`,
+      );
+    // Frames 0 and 1: the encoder rejected its own arguments or first input.
+    // That reproduces on a fresh ffmpeg, so a retry only doubles the time.
+    expect(isRetryableEncoderDeath(died(0))).toBe(false);
+    expect(isRetryableEncoderDeath(died(1))).toBe(false);
+    expect(isRetryableEncoderDeath(died(2))).toBe(true);
+    expect(isRetryableEncoderDeath(died(4831))).toBe(true);
+    // Same prefix, but typed as a host lifecycle interruption: the producer
+    // that owns this render retries that, not the capture stage.
+    expect(
+      isRetryableEncoderDeath(
+        new EncoderInterruptedError("Streaming encoder exited before frame 4831 was written", "x"),
+      ),
+    ).toBe(false);
+    expect(isRetryableEncoderDeath(new Error("Segment 3 encode failed: boom"))).toBe(false);
+    expect(isRetryableEncoderDeath("Streaming encoder exited before frame 9 was written")).toBe(
+      false,
+    );
+  });
+
+  it("routes both through the pinned fallback with no pinned routing", () => {
+    const base = {
+      isVerifyError: false,
+      isCancellation: false,
+      deWorkerInversion: undefined,
+      deParallelRouter: undefined,
+    };
+    // Default routing alone retries nothing…
+    expect(shouldRetryViaPinnedFallback(base)).toBe(false);
+    // …so each of these has to be its own gate, like the sequential stall.
+    expect(shouldRetryViaPinnedFallback({ ...base, isParallelCaptureStall: true })).toBe(true);
+    expect(shouldRetryViaPinnedFallback({ ...base, isEncoderDeath: true })).toBe(true);
+    // Cancellation and host interruption still win.
+    expect(
+      shouldRetryViaPinnedFallback({ ...base, isParallelCaptureStall: true, isCancellation: true }),
+    ).toBe(false);
+    expect(
+      shouldRetryViaPinnedFallback({ ...base, isEncoderDeath: true, isEncoderInterrupted: true }),
+    ).toBe(false);
+  });
+});
+
+describe("fallbackCaptureModeLabel: trace label when no probe session is open", () => {
+  it("labels a non-Linux multi-worker render screenshot, not beginframe", () => {
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: false,
+        platform: "darwin",
+      }),
+    ).toBe("screenshot");
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: false,
+        platform: "win32",
+      }),
+    ).toBe("screenshot");
+  });
+
+  it("keeps beginframe for Linux and honours forced screenshot and drawElement", () => {
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: false,
+        platform: "linux",
+      }),
+    ).toBe("beginframe");
+    expect(
+      fallbackCaptureModeLabel({ forceScreenshot: true, useDrawElement: true, platform: "linux" }),
+    ).toBe("screenshot");
+    expect(
+      fallbackCaptureModeLabel({
+        forceScreenshot: false,
+        useDrawElement: true,
+        platform: "darwin",
+      }),
+    ).toBe("drawelement");
+  });
+});
+
+describe("isParallelStreamForced: the plan carries the manual interleave opt-in", () => {
+  const flagsOff = { deParallelStreamForced: false, captureParallelStreamForced: false };
+
+  it("folds HF_DE_PARALLEL_STREAM=true into the plan flag so the retry drops to one worker", () => {
+    expect(isParallelStreamForced({ HF_DE_PARALLEL_STREAM: "true" }, flagsOff)).toBe(true);
+  });
+
+  it("otherwise follows the two routers' flags", () => {
+    expect(isParallelStreamForced({}, flagsOff)).toBe(false);
+    expect(isParallelStreamForced({ HF_DE_PARALLEL_STREAM: "false" }, flagsOff)).toBe(false);
+    expect(isParallelStreamForced({}, { ...flagsOff, deParallelStreamForced: true })).toBe(true);
+    expect(isParallelStreamForced({}, { ...flagsOff, captureParallelStreamForced: true })).toBe(
+      true,
+    );
   });
 });

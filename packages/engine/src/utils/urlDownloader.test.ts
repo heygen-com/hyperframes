@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
@@ -112,7 +112,15 @@ function isoBmffMediaBytes(marker: string): Buffer {
   return Buffer.concat([ftyp, Buffer.from(marker)]);
 }
 
+// Fake only Date: downloadToTemp's deadlines read Date.now() around sync work, so a slow
+// runner can trip a false timeout with no timer-driven delay. Real timers keep firing, so
+// setTimeout-based races are unaffected.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   fsRaceControls.deleteBeforeLstatPath = undefined;
   fsRaceControls.deleteInjectedWinnerBeforeLstatPath = undefined;

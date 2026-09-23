@@ -65,4 +65,6 @@ format: 1920x1080
   const outgoing = readFileSync(join(project, "compositions/frames/01-a.html"), "utf8");
   assert.match(outgoing, /data-composition-id="01-a" data-duration="2.5"/);
   assert.match(outgoing, /class="clip"[^>]*data-duration="2.5"/);
+  const index = readFileSync(join(project, "index.html"), "utf8");
+  assert.match(index, /tl\.addLabel\("hf:transition:01-a:02-b:crossfade", 2\)/);
 });

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
+import { FlatSliderReadout } from "./propertyPanelFlatSliderReadout";
 import {
   VALUE_TIER_LABEL_CLASS,
   VALUE_TIER_VALUE_CLASS,
@@ -19,6 +20,7 @@ export function FlatRow({
   value,
   tier,
   disabled,
+  tooltip,
   liveCommit,
   suffix,
   dropdown,
@@ -30,6 +32,8 @@ export function FlatRow({
   value: string;
   tier: PropertyValueTier;
   disabled?: boolean;
+  /** Shown as a title attribute, e.g. why the row is disabled. */
+  tooltip?: string;
   liveCommit?: boolean;
   suffix?: ReactNode;
   /** Renders a trailing 10px caret-down, for select-backed rows. */
@@ -40,9 +44,9 @@ export function FlatRow({
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="group flex min-h-[30px] items-center justify-between gap-3">
+    <div className="group flex min-h-[30px] items-center justify-between gap-3" title={tooltip}>
       <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
-      <span className="flex min-w-0 flex-shrink-0 items-center gap-1.5">
+      <span className="flex min-w-0 shrink-0 items-center gap-1.5">
         <span
           data-flat-row-value="true"
           className={`min-w-0 border-b pb-px font-mono text-[11px] ${VALUE_TIER_VALUE_CLASS[tier]} ${
@@ -73,7 +77,7 @@ export function FlatRow({
               track("button", `Reset ${label}`);
               onReset();
             }}
-            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
+            className="shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
           >
             <RotateCcw size={11} />
           </button>
@@ -84,7 +88,7 @@ export function FlatRow({
             height="10"
             viewBox="0 0 10 10"
             fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
+            className="shrink-0 text-panel-text-5"
           >
             <path d="M2 3l3 4 3-4z" />
           </svg>
@@ -196,7 +200,7 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 w-full flex-shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left`}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 w-full shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left`}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
@@ -211,7 +215,7 @@ export function FlatGroupHeader({
           height="12"
           viewBox="0 0 12 12"
           fill="currentColor"
-          className="flex-shrink-0 text-panel-text-5"
+          className="shrink-0 text-panel-text-5"
         >
           <path d="M4 2l4 4-4 4z" />
         </svg>
@@ -221,7 +225,7 @@ export function FlatGroupHeader({
 
   return (
     <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 flex-shrink-0 items-center justify-between bg-panel-bg px-4`}
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 shrink-0 items-center justify-between bg-panel-bg px-4`}
     >
       <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
       <span className="flex items-center gap-2.5 text-panel-text-5">
@@ -275,6 +279,7 @@ export function FlatSlider({
   centerTick,
   onReset,
   onCommit,
+  onCommitText,
 }: {
   label: string;
   value: number;
@@ -287,6 +292,8 @@ export function FlatSlider({
   centerTick?: boolean;
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
+  /** Typed readout: return false to refuse the text, keep the field open, and mark it invalid. */
+  onCommitText?: (text: string) => boolean | void;
 }) {
   const track = useTrackDesignInput();
   // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
@@ -415,7 +422,7 @@ export function FlatSlider({
 
   return (
     <div className="flex min-h-[28px] items-center gap-2.5">
-      <span className="w-[86px] flex-shrink-0 text-[11px] text-panel-text-3">{label}</span>
+      <span className="w-[86px] shrink-0 text-[11px] text-panel-text-3">{label}</span>
       <div
         data-flat-slider-track="true"
         role="slider"
@@ -516,7 +523,7 @@ export function FlatSlider({
           {centerTick && (
             <div
               data-flat-slider-center-tick="true"
-              className="absolute left-1/2 top-[-1px] h-1 w-px -translate-x-1/2 bg-panel-text-5"
+              className="absolute left-1/2 -top-px h-1 w-px -translate-x-1/2 bg-panel-text-5"
             />
           )}
           {tier === "explicitCustom" && (
@@ -535,16 +542,16 @@ export function FlatSlider({
           style={{ left: `${clampedPct}%` }}
         />
       </div>
-      <span
-        data-flat-slider-value="true"
-        className={`w-11 flex-shrink-0 text-right font-mono text-[10px] ${
-          tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
-        }`}
-      >
-        {displayValue}
-      </span>
+      <FlatSliderReadout
+        label={label}
+        displayValue={displayValue}
+        tier={tier}
+        disabled={disabled}
+        onCommitText={onCommitText}
+        onCommitted={() => track("input", label)}
+      />
       {(centerTick || onReset) && (
-        <span data-flat-slider-reset-slot="true" className="w-3.5 flex-shrink-0">
+        <span data-flat-slider-reset-slot="true" className="w-3.5 shrink-0">
           {tier === "explicitCustom" && onReset && (
             <button
               type="button"

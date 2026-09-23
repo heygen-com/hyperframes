@@ -1,3 +1,4 @@
+import { DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS } from "@hyperframes/parsers/media-duration";
 import { describe, it, expect, afterEach } from "vitest";
 import { collectRuntimeTimelinePayload } from "./timeline";
 
@@ -326,6 +327,41 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].kind).toBe("image");
   });
 
+  it("gives a timed image with no data-duration the dropped-image default, not the composition remainder", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const timed = document.createElement("img");
+    timed.id = "timed";
+    timed.setAttribute("data-start", "2");
+    root.appendChild(timed);
+
+    const timedClip = collectRuntimeTimelinePayload(defaultParams).clips.find(
+      (c) => c.id === "timed",
+    );
+    expect([timedClip?.start, timedClip?.duration]).toEqual([
+      2,
+      DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS,
+    ]);
+  });
+
+  it("trims a timed image with data-end and no data-duration to end minus start", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const img = document.createElement("img");
+    img.id = "trimmed";
+    img.setAttribute("data-start", "2");
+    img.setAttribute("data-end", "6");
+    root.appendChild(img);
+
+    const clip = collectRuntimeTimelinePayload(defaultParams).clips.find((c) => c.id === "trimmed");
+    expect([clip?.start, clip?.duration]).toEqual([2, 4]);
+  });
+
   it("identifies composition clips", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -369,7 +405,7 @@ describe("collectRuntimeTimelinePayload", () => {
     [0, 2, 5],
     [2, 2, 4],
     [2, 0.01, 80],
-    [2, 20, 1.6],
+    [2, 20, 0.8],
     [0, "2x", 5],
     [0, "0x2", 10],
   ])("rate-scales natural media duration (start=%s rate=%s)", (mediaStart, rate, expected) => {

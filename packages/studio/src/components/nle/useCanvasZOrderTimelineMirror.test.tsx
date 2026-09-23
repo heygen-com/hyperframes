@@ -24,7 +24,7 @@ import {
 afterEach(() => {
   document.body.innerHTML = "";
   // Wrapped in act: mounted harnesses subscribe to the store via
-  // useExpandedTimelineElements, so the reset re-renders them.
+  // the store timeline elements, so the reset re-renders them.
   act(() => usePlayerStore.getState().setElements([]));
 });
 

@@ -63,6 +63,7 @@ export function useTimelineLogicalFocus(input: TimelineLogicalFocusInput) {
     projectId,
     sessionEpoch: input.sessionEpoch,
     syncScrollViewport: input.syncScrollViewport,
+    lastScrollLeftRef: input.lastScrollLeftRef,
   });
   const rows = useTimelineRowVirtualization({
     scrollRef: input.scrollRef,

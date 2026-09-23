@@ -37,6 +37,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 const { trackEvent, flush, flushSync } = await import("./client.js");
+const system = await import("./system.js");
 
 type Batch = { uuid: string; event: string }[];
 
@@ -66,6 +67,27 @@ describe("telemetry queue delivery", () => {
     );
     await flush();
     vi.unstubAllGlobals();
+  });
+
+  it("delivers harness context alongside a recognized agent without leaking marker values", async () => {
+    const meta = vi.spyOn(system, "getSystemMeta").mockReturnValue({
+      ...system.getSystemMeta(),
+      agent_runtime: "claude_code",
+      execution_harness_hint: "harbor",
+    });
+    try {
+      const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+      vi.stubGlobal("fetch", fetchMock);
+      trackEvent("cli_command", { command: "skills" });
+      await flush();
+      expect(eventProps(fetchMock)).toMatchObject({
+        agent_runtime: "claude_code",
+        execution_harness_hint: "harbor",
+      });
+      expect(eventProps(fetchMock)).not.toHaveProperty("HARBOR_AGENT");
+    } finally {
+      meta.mockRestore();
+    }
   });
 
   it("forgets events only after the request completes, and stamps each with a uuid", async () => {

@@ -17,6 +17,7 @@ import {
   type HfAutomation,
 } from "@hyperframes/core/audio-automation";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
+import { mergeInsertPoint } from "../../player/components/automationLaneGeometry";
 
 const EMPTY: HfAutomation = { version: 1, lanes: [] };
 
@@ -87,6 +88,20 @@ export function withLane(automation: HfAutomation, lane: HfAutomationLane): HfAu
     version: 1,
     lanes: [...automation.lanes.filter((l) => l.target !== lane.target), lane],
   };
+}
+
+/** Insert or replace the point nearest `t` on `target`'s lane — reuses the
+ * timeline envelope's own double-click merge rule, so a panel control with no
+ * drag gesture of its own can still write into an automated parameter the
+ * same way. */
+export function withPointAt(
+  automation: HfAutomation,
+  target: string,
+  t: number,
+  v: number,
+): HfAutomation {
+  const points = automation.lanes.find((lane) => lane.target === target)?.points ?? [];
+  return withLane(automation, { target, points: mergeInsertPoint(points, t, v) });
 }
 
 /** The attribute value for an automation set; empty when nothing is automated. */

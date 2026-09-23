@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchModifierKey, dispatchPlainKey } from "./useAppHotkeys";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { dispatchModifierKey, dispatchPlainKey, type HotkeyCallbacks } from "./appHotkeysDispatch";
 import { usePlayerStore } from "../player/store/playerStore";
+import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
@@ -19,7 +20,7 @@ const bgmElement: TimelineElement = {
 /** Every callback dispatchPlainKey can reach, so a test can assert which one
  *  a key resolved to. Unannotated on purpose: the parameter type is not
  *  exported, and structural inference checks it at the call site. */
-function callbacks() {
+function callbacks(overrides: Partial<HotkeyCallbacks> = {}) {
   return {
     handleTimelineElementDelete: vi.fn(async () => {}),
     handleTimelineElementsDelete: vi.fn(async () => {}),
@@ -30,11 +31,15 @@ function callbacks() {
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(async () => {}),
     handleCut: vi.fn(async () => false),
+    handleDuplicate: vi.fn(async () => false),
+    onGroupSelection: vi.fn(),
+    onUngroupSelection: vi.fn(),
     onResetKeyframes: vi.fn(() => true),
     onDeleteSelectedKeyframes: vi.fn(),
     showToast: vi.fn(),
-    leftSidebarRef: { current: null },
     domEditSelectionRef: { current: null },
+    readOnlyPreview: false,
+    ...overrides,
   };
 }
 
@@ -275,5 +280,89 @@ describe("dispatchModifierKey — Cmd+C/Cmd+V arbitration", () => {
     dispatchModifierKey(e, "v", cb);
     expect(cb.handlePaste).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe('dispatchPlainKey — "A" returns to select while the razor is armed', () => {
+  afterEach(() => {
+    usePlayerStore.setState({ activeTool: "select" });
+  });
+
+  it("returns to the select tool, matching CapCut's keybinding", () => {
+    usePlayerStore.setState({ activeTool: "razor" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("does not intercept plain \"a\" when the razor isn't armed, leaving playback's seek-to-in-point live", () => {
+    usePlayerStore.setState({ activeTool: "select" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe("hotkeys with the preview read-only", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: null });
+  });
+
+  it("does not delete the selected element on Delete", () => {
+    const cb = callbacks({ readOnlyPreview: true });
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+    expect(cb.handleDomEditElementDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not split on s", () => {
+    usePlayerStore.setState({
+      currentTime: 3,
+      elements: [{ ...bgmElement, hfId: "hf-bgm" }],
+      selectedElementId: "bgm",
+    });
+    const cb = callbacks({ readOnlyPreview: true });
+    dispatchPlainKey(press("s"), "s", cb);
+    expect(cb.handleTimelineElementSplit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["x", "handleCut"],
+    ["d", "handleDuplicate"],
+    ["v", "handlePaste"],
+    ["g", "onGroupSelection"],
+  ] as const)("does not run %s", (key, callback) => {
+    const cb = callbacks({ readOnlyPreview: true });
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchModifierKey(chord(key), key, cb);
+    expect(cb[callback]).not.toHaveBeenCalled();
+  });
+
+  it("still undoes, because history covers timeline edits", () => {
+    const cb = callbacks({ readOnlyPreview: true });
+    dispatchModifierKey(chord("z"), "z", cb);
+    expect(cb.handleUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps timeline paste when the mirrored preview selection is not the owner", () => {
+    usePlayerStore.setState({ selectedElementId: "bgm" });
+    const cb = callbacks({ readOnlyPreview: true });
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    const event = chord("v");
+    const timeline = document.createElement("div");
+    timeline.dataset.studioTimeline = "true";
+    Object.defineProperty(event, "target", { value: timeline });
+    dispatchModifierKey(event, "v", cb);
+    expect(cb.handlePaste).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: with the flag off Delete removes the selected element", () => {
+    const cb = callbacks();
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledTimes(1);
   });
 });

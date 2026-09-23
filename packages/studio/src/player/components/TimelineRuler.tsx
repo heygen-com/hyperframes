@@ -69,7 +69,8 @@ export const TimelineRuler = memo(function TimelineRuler({
                 y1={0}
                 x2={x}
                 y2={totalH}
-                stroke={`rgba(34, 197, 94, ${opacity.toFixed(3)})`}
+                stroke="var(--timeline-beat)"
+                strokeOpacity={opacity}
                 strokeWidth="1"
               />
             );
@@ -85,7 +86,7 @@ export const TimelineRuler = memo(function TimelineRuler({
         style={{ height: RULER_H, width: contentOrigin + trackContentWidth, zIndex: 70 }}
       >
         <div
-          className="sticky left-0 z-[12] flex-shrink-0"
+          className="sticky left-0 z-12 shrink-0"
           style={{
             width: contentOrigin,
             // Ruler corner uses the panel surface — same as the ruler strip itself.
@@ -99,7 +100,7 @@ export const TimelineRuler = memo(function TimelineRuler({
           style={{
             height: RULER_H,
             width: trackContentWidth,
-            // Ruler background = panel surface (#0A0A0B) — no bottom border,
+            // Ruler background = the panel surface token — no bottom border,
             // no tick lines (CapCut-style clean ruler, labels only).
             background: theme.shellBackground,
           }}

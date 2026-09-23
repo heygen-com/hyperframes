@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { freemem } from "node:os";
-import type { Fps } from "@hyperframes/core";
+import type { CanvasResolution, Fps } from "@hyperframes/core";
 import { fpsToNumber } from "@hyperframes/core";
 import type { RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
@@ -20,6 +20,14 @@ import { bytesToMb } from "../telemetry/system.js";
 export interface StudioRenderOpts {
   fps: Fps;
   quality: string;
+  /** Output container format; Studio requests are constrained to these three. */
+  format?: "mp4" | "webm" | "mov";
+  /** Named canvas preset the Studio request asked for; undefined renders at the composition's native dimensions. */
+  outputResolution?: CanvasResolution;
+  // gif_fps_capped/hdr_mode/video_frame_format are deliberately absent: Studio
+  // has no gif/png-sequence option and createRenderJob never receives an
+  // hdrMode or videoFrameFormat from the Studio request type, so there is no
+  // per-request value: see the PR description for the full reasoning.
   // Telemetry id of the browser user who triggered the render, so the render
   // outcome joins their studio_session_start / studio_render_start events.
   // Undefined for older studio clients → falls back to the install anonymousId.
@@ -123,6 +131,8 @@ export function emitStudioRenderError(
     failedStage,
     errorMessage: err instanceof Error ? err.message : String(err),
     elapsedMs,
+    outputFormat: opts.format,
+    outputResolutionPreset: opts.outputResolution,
     distinctId: opts.distinctId,
     ...renderJobObservabilityTelemetryPayload(job),
     ...memSnapshot(),
@@ -142,6 +152,8 @@ export function emitStudioRenderComplete(
     docker: false,
     gpu: false,
     source: "studio",
+    outputFormat: opts.format,
+    outputResolutionPreset: opts.outputResolution,
     distinctId: opts.distinctId,
     ...perfPayload(perf, elapsedMs),
     ...memSnapshot(),

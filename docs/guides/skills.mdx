@@ -52,22 +52,6 @@ Install or refresh one workflow explicitly:
 npx hyperframes skills update pr-to-video
 ```
 
-## Use the skills in Google Antigravity
-
-Install the skills from the root of the project you open in Antigravity:
-
-```bash
-npx skills add heygen-com/hyperframes
-```
-
-Select **Core Skills** and **Antigravity**. This uses Antigravity's supported
-project location, `.agents/skills`, and keeps the skills with the project. Start
-a fresh Antigravity conversation after installation.
-
-Antigravity also supports a global `~/.gemini/config/skills` directory. See
-Google's [current skills guide](https://antigravity.google/docs/skills?app=antigravity-ide)
-before managing that directory by hand.
-
 ## Use the skills in GitHub Copilot CLI
 
 Run `npx hyperframes skills update`, open the project, and start Copilot:
@@ -89,6 +73,34 @@ Using /hyperframes, make a 10-second product intro for https://example.com.
 
 Continue in the same conversation for revisions. For hosted creation instead
 of a local project, use the [HyperFrames MCP guide](/guides/mcp).
+
+## Use the skills in Google Antigravity
+
+Install the skills from the root of the project you open in Antigravity:
+
+```bash
+npx skills add heygen-com/hyperframes
+```
+
+Select **Core Skills** and **Antigravity**. This uses Antigravity's supported
+project location, `.agents/skills`, and keeps the skills with the project. Start
+a fresh Antigravity conversation after installation.
+
+Antigravity also supports a global `~/.gemini/config/skills` directory. See
+Google's [current skills guide](https://antigravity.google/docs/skills?app=antigravity-ide)
+before managing that directory by hand.
+
+## Use the skills in IBM Bob
+
+Run `npx hyperframes skills update`, then open or restart Bob Shell in the
+project folder so it discovers the skills linked under `~/.bob/skills`:
+
+```bash
+bob
+```
+
+Ask Bob to use `/hyperframes` for the first request. Running the update again
+refreshes the same global skill bundles without changing the project format.
 
 ## Let the router choose
 

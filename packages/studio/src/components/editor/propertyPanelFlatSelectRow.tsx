@@ -68,7 +68,7 @@ export function FlatSelectRow({
               track("select", trackName);
               onChange(e.target.value);
             }}
-            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-none disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
+            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-hidden disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
           >
             {renderedOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -81,7 +81,7 @@ export function FlatSelectRow({
             height="10"
             viewBox="0 0 10 10"
             fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
+            className="shrink-0 text-panel-text-5"
           >
             <path d="M2 3l3 4 3-4z" />
           </svg>
@@ -96,7 +96,7 @@ export function FlatSelectRow({
               track("button", `Reset ${trackName}`);
               onReset();
             }}
-            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <RotateCcw size={11} />
           </button>

@@ -3,7 +3,7 @@ import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { getTimelineEditCapabilities } from "./timelineEditing";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 
-/** Whether Studio may write timing to this clip (false for locked/implicit rows). */
+/** Whether Studio may write timing to this clip (false for locked rows). */
 export function canMoveTimelineElement(element: TimelineElement): boolean {
   return getTimelineEditCapabilities({
     tag: element.tag,
@@ -16,7 +16,6 @@ export function canMoveTimelineElement(element: TimelineElement): boolean {
     playbackStart: element.playbackStart,
     playbackStartAttr: element.playbackStartAttr,
     sourceDuration: element.sourceDuration,
-    timingSource: element.timingSource,
     timelineLocked: element.timelineLocked,
   }).canMove;
 }

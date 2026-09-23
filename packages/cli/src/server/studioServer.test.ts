@@ -9,6 +9,54 @@ import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
 
+// Forces loadStudioProducer() down its production import branch (real
+// isDevMode() is true for a .ts test file, which instead throws a
+// "requires bun" error before ever reaching executeRenderJob — see
+// studioServer.ts's loadStudioProducer). Only startRender reads this.
+vi.mock("../utils/env.js", () => ({ isDevMode: () => false }));
+
+const producerState = vi.hoisted(() => ({
+  // Set per-test to control when the render "finishes" so a shutdown that
+  // races an in-flight render is observable instead of vacuous.
+  executeRenderJob: (
+    _job: unknown,
+    _dir: string,
+    _outputPath: string,
+    _onProgress: unknown,
+    _signal: AbortSignal,
+  ): Promise<void> => Promise.resolve(),
+}));
+vi.mock("@hyperframes/producer", () => ({
+  createRenderJob: (opts: Record<string, unknown>) => ({ ...opts, perfSummary: undefined }),
+  executeRenderJob: (...args: Parameters<typeof producerState.executeRenderJob>) =>
+    producerState.executeRenderJob(...args),
+}));
+const engineState = vi.hoisted(() => ({
+  acquireBrowser: async (..._args: unknown[]): Promise<unknown> => {
+    throw new Error("acquireBrowser called without a test double");
+  },
+  closeBrowserPool: async (): Promise<void> => {},
+}));
+vi.mock("@hyperframes/engine", () => ({
+  acquireBrowser: (...args: unknown[]) => engineState.acquireBrowser(...args),
+  buildChromeArgs: () => [],
+  killTrackedProcesses: () => {},
+  closeBrowserPool: () => engineState.closeBrowserPool(),
+}));
+vi.mock("../browser/gpuPolicy.js", () => ({
+  resolveCaptureBrowserGpuMode: async () => "software",
+  resolveLocalBrowserGpuMode: () => "software",
+  compositionRequiresWebGpu: () => false,
+  assertWebGpuAdapterAvailable: async () => {},
+}));
+vi.mock("../browser/preflight.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../browser/preflight.js")>()),
+  resolveRenderBrowser: async () => ({ executablePath: "/fake/chrome", source: "system" }),
+}));
+vi.mock("../browser/manager.js", () => ({
+  ensureBrowser: async () => ({ executablePath: undefined, source: "system" }),
+}));
+
 // Only `fs.watch` is replaced, so the SSE describe below can fire a file-change
 // on demand; every other server test keeps reading and writing real files.
 const mockWatcher = new EventEmitter() as EventEmitter & { close: () => void };
@@ -60,7 +108,7 @@ describe("Studio thumbnail GPU capture plumbing", () => {
     const source = readFileSync(new URL("./studioServer.ts", import.meta.url), "utf8");
     expect(source).toContain("resolveCaptureBrowserGpuMode");
     expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
-    expect(source).toContain("assertWebGpuRequirement");
+    expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu)");
     expect(source).toContain("await seekCompositionTimeline(page, opts.seekTime");
   });
 });
@@ -103,6 +151,238 @@ describe("createStudioServer autoProxy plumbing", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ browserGpuMode: "software" });
+  });
+});
+
+// A render that never reaches the executor (browser check refused, import failed) must fail with
+// its reason, not hang until the suite timeout.
+async function untilStarted(started: Promise<void>, state: { status: string; error?: string }) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const never = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `render never reached executeRenderJob: status=${state.status} error=${state.error}`,
+          ),
+        ),
+      5_000,
+    );
+  });
+  try {
+    await Promise.race([started, never]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+describe("createStudioServer shutdown", () => {
+  function startRenderOpts(jobId: string, outputPath: string) {
+    return {
+      project: { id: "demo", dir: tmpProject(), title: "demo" },
+      outputPath,
+      format: "mp4" as const,
+      fps: { num: 30, den: 1 },
+      quality: "draft",
+      jobId,
+    };
+  }
+
+  it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {
+    const events: string[] = [];
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = (_job, _dir, _outputPath, _onProgress, signal) => {
+      started();
+      return new Promise((_resolve, reject) => {
+        const onAbort = () =>
+          setTimeout(() => {
+            events.push("render-settled");
+            reject(Object.assign(new Error("cancelled"), { name: "AbortError" }));
+          }, 20);
+        // A signal aborted before this executor ran would never fire a later
+        // "abort" listener (edge-triggered, not level-triggered) — check the
+        // already-aborted case too, same as real capture code must.
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort);
+      });
+    };
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    const outputPath = join(tmpdir(), "shutdown-render.mp4");
+    const state = server.adapter.startRender(startRenderOpts("job-1", outputPath));
+    expect(state.status).toBe("rendering");
+
+    // Wait until the render has actually reached executeRenderJob (several
+    // microtask hops through loadStudioProducer/ensureBrowser) before racing
+    // it against shutdown, or shutdown could abort a signal nothing is
+    // listening on yet — a race in this test, not in the fix under test.
+    await untilStarted(startedPromise, state);
+
+    await server.shutdown();
+    events.push("drain-and-shutdown-returned");
+
+    expect(events).toEqual(["render-settled", "drain-and-shutdown-returned"]);
+  });
+
+  it("refuses a render started after shutdown has begun instead of launching a fresh browser", async () => {
+    let releaseFirstRender: () => void = () => {};
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = () => {
+      started();
+      return new Promise<void>((resolve) => {
+        releaseFirstRender = resolve;
+      });
+    };
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    const first = server.adapter.startRender(startRenderOpts("job-1", join(tmpdir(), "a.mp4")));
+    await untilStarted(startedPromise, first);
+
+    const shutdownPromise = server.shutdown();
+    // shuttingDown is set synchronously as shutdown()'s first statement, so a
+    // render request arriving anywhere after that call has been made (even
+    // before it resolves) must already see it.
+    const late = server.adapter.startRender(startRenderOpts("job-2", join(tmpdir(), "b.mp4")));
+
+    expect(late.status).toBe("failed");
+    expect(late.error).toMatch(/shutting down/i);
+
+    releaseFirstRender();
+    await shutdownPromise;
+  });
+
+  const thumbnailOpts = () => ({
+    project: { id: "demo", dir: tmpProject(), title: "demo" },
+    compPath: "index.html",
+    seekTime: 0.5,
+    width: 640,
+    height: 360,
+    outputWidth: 640,
+    outputHeight: 360,
+    previewUrl: "http://localhost/preview",
+    signal: new AbortController().signal,
+  });
+
+  it("does not launch a browser for a thumbnail request after shutdown has begun", async () => {
+    const acquire = vi.fn();
+    engineState.acquireBrowser = acquire;
+    server = createStudioServer({ projectDir: tmpProject() });
+    await server.shutdown();
+
+    await expect(server.adapter.generateThumbnail?.(thumbnailOpts())).resolves.toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("releases a thumbnail browser that finished launching after shutdown began", async () => {
+    const release = vi.fn(async () => {});
+    let launched!: () => void;
+    const launchedPromise = new Promise<void>((resolve) => (launched = resolve));
+    let finishLaunch: () => void = () => {};
+    engineState.acquireBrowser = async () => {
+      launched();
+      await new Promise<void>((resolve) => (finishLaunch = resolve));
+      return { browser: new EventEmitter(), release };
+    };
+    let reachedBrowserClose!: () => void;
+    const reachedBrowserClosePromise = new Promise<void>(
+      (resolve) => (reachedBrowserClose = resolve),
+    );
+    engineState.closeBrowserPool = async () => reachedBrowserClose();
+    server = createStudioServer({ projectDir: tmpProject() });
+    const thumbnail = server.adapter.generateThumbnail?.(thumbnailOpts());
+    await launchedPromise;
+
+    const shutdown = server.shutdown();
+    // shutdown() starts the pool close alongside the thumbnail-browser close,
+    // before it waits on renders: closing is the signal the close has begun
+    // while the launch is still pending, without racing a fixed sleep.
+    await reachedBrowserClosePromise;
+    finishLaunch();
+    await shutdown;
+
+    await expect(thumbnail).resolves.toBeNull();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes browsers within a bounded timeout even when a render's done promise never settles", async () => {
+    const closeBrowserPool = vi.fn(async () => {});
+    engineState.closeBrowserPool = closeBrowserPool;
+    const release = vi.fn(async () => {});
+    let launched!: () => void;
+    const launchedPromise = new Promise<void>((resolve) => (launched = resolve));
+    let finishLaunch: () => void = () => {};
+    engineState.acquireBrowser = async () => {
+      launched();
+      await new Promise<void>((resolve) => (finishLaunch = resolve));
+      return { browser: new EventEmitter(), release };
+    };
+
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = () => {
+      started();
+      // Never settles, even once aborted -- the pathological case the CLI's
+      // 3s exit watchdog exists to survive.
+      return new Promise<void>(() => {});
+    };
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender(startRenderOpts("job-1", join(tmpdir(), "hang.mp4")));
+    await untilStarted(startedPromise, state);
+
+    const thumbnail = server.adapter.generateThumbnail?.(thumbnailOpts());
+    await launchedPromise;
+    finishLaunch();
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const never = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("shutdown() did not resolve within its bound")),
+        3_000,
+      );
+    });
+    try {
+      await Promise.race([server.shutdown(), never]);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(closeBrowserPool).toHaveBeenCalledTimes(1);
+    await expect(thumbnail).resolves.toBeNull();
+  });
+
+  it("does not hand an already-leased browser to a new caller once shutdown has begun", async () => {
+    const release = vi.fn(async () => {});
+    const newPage = vi.fn(async () => {
+      throw new Error("no real page in this test double");
+    });
+    engineState.acquireBrowser = async () => ({
+      browser: { connected: true, newPage, on: () => {} },
+      release,
+    });
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    await server.adapter.generateThumbnail?.(thumbnailOpts());
+    expect(newPage).toHaveBeenCalledTimes(1);
+
+    const shutdownPromise = server.shutdown();
+    // shuttingDown flips true synchronously as shutdown()'s first statement,
+    // before its closeThumbnailBrowser() call runs -- this request lands in
+    // that window and must not reuse the still-connected lease.
+    const late = server.adapter.generateThumbnail?.(thumbnailOpts());
+
+    await expect(late).resolves.toBeNull();
+    expect(newPage).toHaveBeenCalledTimes(1);
+    await shutdownPromise;
   });
 });
 
@@ -268,5 +548,24 @@ describe("Studio file-change SSE", () => {
       expect(payload).not.toContain("writeToken");
       expect(payload).toContain(encodedVersion("<html>agent</html>"));
     }
+  });
+
+  // `/api/events` is one connection per SERVER, not per project: a tab left
+  // open from a `preview` run whose port was later reused by a DIFFERENT
+  // project shares this exact stream. Without `projectId` on the wire, that
+  // stale tab cannot tell "my project changed" from "the other project this
+  // server now serves changed" — see useExternalFileChangeCoordinator's
+  // cross-project filter, which reads this field.
+  it("labels every file-change with this server's project id", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, projectName: "demo-project" });
+    const streams = await subscribe(1);
+
+    writeFileSync(join(projectDir, "index.html"), "<html>agent</html>");
+    mockWatcher.emit("change", "change", "index.html");
+
+    const [payload] = await Promise.all(streams.map(nextEvent));
+    expect(payload).toContain('"projectId":"demo-project"');
   });
 });

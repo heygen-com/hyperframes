@@ -9,6 +9,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  type Dirent,
   mkdirSync,
   lstatSync,
   linkSync,
@@ -44,6 +45,7 @@ export const MIME_TYPES: Record<string, string> = {
   ".json": "application/json",
   ".glb": "model/gltf-binary",
   ".gltf": "model/gltf+json",
+  ".hdr": "image/vnd.radiance",
   ".wav": "audio/wav",
   ".mp3": "audio/mpeg",
   ".mp4": "video/mp4",
@@ -81,6 +83,22 @@ function pathPart(ref: string): string {
   return ref.split(/[?#]/)[0] ?? ref;
 }
 
+const NON_FILE_REFERENCE = /^(https?:|data:|blob:|mailto:|#|%23|\/\/)/i;
+const LOCAL_REFERENCE_PATTERNS = [
+  /(?<![\w$])(?:src|href)\s*=\s*["']([^"']+)["']/gi,
+  /url\(\s*["']?([^"')]+)["']?\s*\)/gi,
+];
+const QUOTED_FILE_NAME = /["']([^"'\s]+\.[a-z0-9]{2,5})["']/gi;
+
+/** A candidate that is not a URL or fragment and carries an extension we know. */
+function isFileReference(ref: string): boolean {
+  return !NON_FILE_REFERENCE.test(ref) && Boolean(MIME_TYPES[extname(pathPart(ref)).toLowerCase()]);
+}
+
+function capturedRefs(html: string, pattern: RegExp): string[] {
+  return [...html.matchAll(pattern)].map((match) => match[1] ?? "");
+}
+
 /**
  * Local files the composition loads from beside itself. A `srcdoc` iframe has
  * no base URL of its own, so these would otherwise resolve against the docs
@@ -93,22 +111,8 @@ function pathPart(ref: string): string {
  * juggling, and bare CSS keywords.
  */
 export function localReferences(html: string): string[] {
-  const found = new Set<string>();
-  const patterns = [
-    /(?<![\w$])(?:src|href)\s*=\s*["']([^"']+)["']/gi,
-    /url\(\s*["']?([^"')]+)["']?\s*\)/gi,
-  ];
-  for (const pattern of patterns) {
-    for (const [, ref] of html.matchAll(pattern)) {
-      if (!ref) continue;
-      // `%23` is an encoded `#`: an in-document SVG filter reference, not a file.
-      if (/^(https?:|data:|blob:|mailto:|#|%23|\/\/)/i.test(ref)) continue;
-      if (ref.includes("\n")) continue;
-      if (!MIME_TYPES[extname(pathPart(ref)).toLowerCase()]) continue;
-      found.add(ref);
-    }
-  }
-  return [...found];
+  const refs = LOCAL_REFERENCE_PATTERNS.flatMap((pattern) => capturedRefs(html, pattern));
+  return [...new Set(refs.filter((ref) => !ref.includes("\n") && isFileReference(ref)))];
 }
 
 /**
@@ -123,14 +127,8 @@ export function localReferences(html: string): string[] {
  */
 export function probableReferences(html: string): string[] {
   const definite = new Set(localReferences(html));
-  const found = new Set<string>();
-  for (const [, ref] of html.matchAll(/["']([^"'\s]+\.[a-z0-9]{2,5})["']/gi)) {
-    if (!ref || definite.has(ref)) continue;
-    if (/^(https?:|data:|blob:|mailto:|#|%23|\/\/)/i.test(ref)) continue;
-    if (!MIME_TYPES[extname(pathPart(ref)).toLowerCase()]) continue;
-    found.add(ref);
-  }
-  return [...found];
+  const refs = capturedRefs(html, QUOTED_FILE_NAME);
+  return [...new Set(refs.filter((ref) => !definite.has(ref) && isFileReference(ref)))];
 }
 
 export interface AssetResult {
@@ -148,12 +146,21 @@ function isWithin(root: string, filePath: string): boolean {
   return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
+function hasErrnoCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
 function isMissingFile(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
+  return hasErrnoCode(error, "ENOENT") || hasErrnoCode(error, "ENOTDIR");
+}
+
+function orNullIfMissing<T>(read: () => T): T | null {
+  try {
+    return read();
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
 }
 
 /** Keep oversized or concurrently growing directory assets within the read budget. */
@@ -170,33 +177,47 @@ function readWithinBudget(fd: number, maxBytes: number): Buffer<ArrayBuffer> {
   return Buffer.concat(chunks);
 }
 
+const realpathOrNull = (path: string) => orNullIfMissing(() => realpathSync(path));
+
+function isWithinRealRoot(root: string, source: string): boolean {
+  const realRoot = realpathOrNull(root);
+  return realRoot !== null && isWithin(realRoot, source);
+}
+
+function realPathWithin(root: string, filePath: string): string | null {
+  if (!isWithin(root, filePath)) return null;
+  const source = realpathOrNull(filePath);
+  return source !== null && isWithinRealRoot(root, source) ? source : null;
+}
+
+const isNotRegularFile = (path: string) => !statSync(path, { throwIfNoEntry: false })?.isFile();
+
+function openOrNull(source: string): number | null {
+  try {
+    // Nonblocking mode lets fstat reject named pipes without waiting for a writer.
+    return openSync(source, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (error) {
+    if (isMissingFile(error) || isNotRegularFile(source)) return null;
+    throw error;
+  }
+}
+
+function readOpenFile(fd: number, maxBytes?: number): Buffer<ArrayBuffer> | null {
+  if (!fstatSync(fd).isFile()) return null;
+  return maxBytes === undefined ? readFileSync(fd) : readWithinBudget(fd, maxBytes);
+}
+
 /** Read one checked file from the prepared project, including internal links. */
 function readProjectFile(
   root: string,
   filePath: string,
   maxBytes?: number,
 ): Buffer<ArrayBuffer> | null {
-  if (!isWithin(root, filePath)) return null;
-  let source: string;
+  const source = realPathWithin(root, filePath);
+  const fd = source === null ? null : openOrNull(source);
+  if (fd === null) return null;
   try {
-    source = realpathSync(filePath);
-    if (!isWithin(realpathSync(root), source)) return null;
-  } catch (error) {
-    if (isMissingFile(error)) return null;
-    throw error;
-  }
-  let fd: number;
-  try {
-    // Nonblocking mode lets fstat reject named pipes without waiting for a writer.
-    fd = openSync(source, constants.O_RDONLY | constants.O_NONBLOCK);
-  } catch (error) {
-    if (isMissingFile(error)) return null;
-    if (!statSync(source, { throwIfNoEntry: false })?.isFile()) return null;
-    throw error;
-  }
-  try {
-    if (!fstatSync(fd).isFile()) return null;
-    return maxBytes === undefined ? readFileSync(fd) : readWithinBudget(fd, maxBytes);
+    return readOpenFile(fd, maxBytes);
   } finally {
     closeSync(fd);
   }
@@ -209,31 +230,103 @@ export interface AssetTarget {
   urlBase: string;
 }
 
+function ensureRealDirectory(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  if (!lstatSync(dir).isDirectory()) throw new Error("Catalog cache must be a real directory");
+}
+
+function linkIfAbsent(staged: string, dest: string): void {
+  try {
+    linkSync(staged, dest);
+  } catch (error) {
+    if (!hasErrnoCode(error, "EEXIST")) throw error;
+  }
+}
+
+function removeQuietly(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {}
+}
+
+function publishExclusive(bytes: Buffer<ArrayBuffer>, dest: string, dir: string): void {
+  const staging = mkdtempSync(join(dir, ".hf-asset-"));
+  try {
+    const staged = join(staging, "content");
+    writeFileSync(staged, bytes, { flag: "wx" });
+    linkIfAbsent(staged, dest);
+  } finally {
+    // Cleanup must not mask a publication error or fail an already published asset.
+    removeQuietly(staging);
+  }
+}
+
 /** Publish a complete cache entry without replacing a competing file or link. */
 function cacheAsset(bytes: Buffer<ArrayBuffer>, ext: string, target: AssetTarget): string {
   const name = `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${ext}`;
   const dest = join(target.dir, name);
   // Cache hits need no writable directory. A miss still has to win linkSync.
   if (lstatSync(dest, { throwIfNoEntry: false })) return name;
-  mkdirSync(target.dir, { recursive: true });
-  if (!lstatSync(target.dir).isDirectory())
-    throw new Error("Catalog cache must be a real directory");
-  const staging = mkdtempSync(join(target.dir, ".hf-asset-"));
-  try {
-    const staged = join(staging, "content");
-    writeFileSync(staged, bytes, { flag: "wx" });
-    try {
-      linkSync(staged, dest);
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-    }
-  } finally {
-    // Cleanup must not mask a publication error or fail an already published asset.
-    try {
-      rmSync(staging, { recursive: true, force: true });
-    } catch {}
-  }
+  ensureRealDirectory(target.dir);
+  publishExclusive(bytes, dest, target.dir);
   return name;
+}
+
+interface AssetContext {
+  root: string;
+  projectDir: string;
+  target: AssetTarget;
+  scriptsInlinedByCaller: boolean;
+}
+
+type CandidateOutcome =
+  | { kind: "ignored" | "unresolved" }
+  | { kind: "hosted" | "inlined"; value: string };
+
+const IGNORED: CandidateOutcome = { kind: "ignored" };
+const UNRESOLVED: CandidateOutcome = { kind: "unresolved" };
+
+/** The caller's inliner matches these script tags by their original src, so they stay untouched. */
+const isCallerInlinedScript = (ext: string, context: AssetContext): boolean =>
+  context.scriptsInlinedByCaller && (ext === ".js" || ext === ".mjs");
+
+function classifyBytes(
+  source: string,
+  bytes: Buffer<ArrayBuffer>,
+  context: AssetContext,
+): CandidateOutcome {
+  const ext = extname(source).toLowerCase();
+  const mime = MIME_TYPES[ext];
+  if (!mime || isCallerInlinedScript(ext, context)) return UNRESOLVED;
+  if (HOSTED_EXTENSIONS.has(ext)) {
+    return {
+      kind: "hosted",
+      value: `${context.target.urlBase}/${cacheAsset(bytes, ext, context.target)}`,
+    };
+  }
+  return { kind: "inlined", value: `data:${mime};base64,${bytes.toString("base64")}` };
+}
+
+function classifyCandidate(
+  candidate: { ref: string; strict: boolean },
+  context: AssetContext,
+): CandidateOutcome {
+  // A composition reaching outside its own directory would pull an arbitrary
+  // file from the build machine into a published payload.
+  const source = resolve(context.projectDir, pathPart(candidate.ref));
+  const bytes = readProjectFile(context.root, source);
+  // A name a script passed around that turned out not to be a file is just
+  // a string; only a reference we are sure about counts as a broken one.
+  if (bytes === null) return candidate.strict ? UNRESOLVED : IGNORED;
+  return classifyBytes(source, bytes, context);
+}
+
+function applyOutcome(result: AssetResult, ref: string, outcome: CandidateOutcome): void {
+  if (outcome.kind === "unresolved") result.unresolved.push(ref);
+  if (outcome.kind === "hosted" || outcome.kind === "inlined") {
+    result.html = result.html.split(ref).join(outcome.value);
+    result[outcome.kind] += 1;
+  }
 }
 
 /**
@@ -248,51 +341,27 @@ function cacheAsset(bytes: Buffer<ArrayBuffer>, ext: string, target: AssetTarget
  * Types the host will not publish still travel as data URIs, because a link to
  * a file that 404s is worse than a larger payload.
  */
-export function processAssets(html: string, projectDir: string, target: AssetTarget): AssetResult {
-  const root = resolve(projectDir);
-  let out = html;
-  let hosted = 0;
-  let inlined = 0;
-  const unresolved: string[] = [];
-
-  const definite = localReferences(html);
+export function processAssets(
+  html: string,
+  projectDir: string,
+  target: AssetTarget,
+  scriptsInlinedByCaller = false,
+): AssetResult {
+  const context: AssetContext = {
+    root: resolve(projectDir),
+    projectDir,
+    target,
+    scriptsInlinedByCaller,
+  };
   const candidates = [
-    ...definite.map((ref) => ({ ref, strict: true })),
+    ...localReferences(html).map((ref) => ({ ref, strict: true })),
     ...probableReferences(html).map((ref) => ({ ref, strict: false })),
   ];
-
-  for (const { ref, strict } of candidates) {
-    const source = resolve(projectDir, pathPart(ref));
-
-    // A composition reaching outside its own directory would pull an arbitrary
-    // file from the build machine into a published payload.
-    const bytes = readProjectFile(root, source);
-    if (bytes === null) {
-      // A name a script passed around that turned out not to be a file is just
-      // a string; only a reference we are sure about counts as a broken one.
-      if (strict) unresolved.push(ref);
-      continue;
-    }
-
-    const ext = extname(source).toLowerCase();
-    const mime = MIME_TYPES[ext];
-    if (!mime) {
-      unresolved.push(ref);
-      continue;
-    }
-
-    if (HOSTED_EXTENSIONS.has(ext)) {
-      const name = cacheAsset(bytes, ext, target);
-      out = out.split(ref).join(`${target.urlBase}/${name}`);
-      hosted += 1;
-      continue;
-    }
-
-    out = out.split(ref).join(`data:${mime};base64,${bytes.toString("base64")}`);
-    inlined += 1;
+  const result: AssetResult = { html, hosted: 0, inlined: 0, unresolved: [] };
+  for (const candidate of candidates) {
+    applyOutcome(result, candidate.ref, classifyCandidate(candidate, context));
   }
-
-  return { html: out, hosted, inlined, unresolved };
+  return result;
 }
 
 /** `image/png` -> `.png`, for naming a blob that arrives without a filename. */
@@ -338,31 +407,55 @@ export function externalizeDataUris(
   return { html: out, externalized };
 }
 
-/** Enumerate publishable paths without using pathname sizes to authorize reads. */
+/** Enumerates publishable paths without using pathname sizes to authorize reads. `.js`/`.mjs`/
+ * `.hdr` are never hosted (see catalog-script-inlining.ts); `source/` (pre-compile input) is skipped. */
 function* hostedPaths(from: string, rel = ""): Generator<string> {
   for (const entry of readdirSync(from, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) continue;
-    const childRel = rel ? `${rel}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      yield* hostedPaths(join(from, entry.name), childRel);
-    } else if (HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
-      yield childRel;
-    }
+    if (isSkippedEntry(entry, rel)) continue;
+    yield* hostedEntry(from, rel, entry);
   }
 }
 
+const isSkippedEntry = (entry: Dirent, rel: string): boolean =>
+  entry.isSymbolicLink() || (!rel && entry.name === "source");
+
+function* hostedEntry(from: string, rel: string, entry: Dirent): Generator<string> {
+  const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+  if (entry.isDirectory()) yield* hostedPaths(join(from, entry.name), childRel);
+  else if (HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) yield childRel;
+}
+
 /** Internal directory aliases share the buffers already collected at their real paths. */
+function mirrorPrefixWithin(root: string, downloads: string): string | null {
+  if (!isWithin(root, downloads) || !statSync(downloads).isDirectory()) return null;
+  const rel = relative(root, downloads).split(sep).join("/");
+  return rel ? `${rel}/` : "";
+}
+
 function downloadMirrorPrefix(projectDir: string): string | null {
-  try {
-    const root = realpathSync(projectDir);
-    const downloads = realpathSync(join(projectDir, "_downloads"));
-    if (!isWithin(root, downloads) || !statSync(downloads).isDirectory()) return null;
-    const rel = relative(root, downloads).split(sep).join("/");
-    return rel ? `${rel}/` : "";
-  } catch (error) {
-    if (isMissingFile(error)) return null;
-    throw error;
-  }
+  return orNullIfMissing(() =>
+    mirrorPrefixWithin(realpathSync(projectDir), realpathSync(join(projectDir, "_downloads"))),
+  );
+}
+
+function isMirrorPair(file: {
+  path?: string;
+  target?: string;
+}): file is { path: string; target: string } {
+  return Boolean(file.path && file.target && file.path !== file.target);
+}
+
+// target -> path for every pair mirrorRegistryTargets already copied, so a
+// target's bytes can be reused instead of re-read and re-charged.
+function installMirrorTargets(projectDir: string): Map<string, string> {
+  const bytes = readProjectFile(projectDir, join(projectDir, "registry-item.json"), 1_000_000);
+  if (bytes === null) return new Map();
+  const manifest = JSON.parse(bytes.toString("utf-8")) as {
+    files?: { path?: string; target?: string }[];
+  };
+  return new Map(
+    (manifest.files ?? []).filter(isMirrorPair).map((file) => [file.target, file.path]),
+  );
 }
 
 /**
@@ -381,44 +474,128 @@ function downloadMirrorPrefix(projectDir: string): string | null {
 /**
  * What an item may add by publishing its own directory.
  *
- * The texture sheets are the reason: one ships 66 masks, twice over, for 12 MB
- * — against a whole catalog that is otherwise around 30 MB. An item over budget
- * keeps the recorded video it already had, which is no worse than before.
+ * The texture sheet is the reason: 66 masks published under both path layouts,
+ * about 11.4 MB. The browser fetches them only when the tile plays, so this
+ * costs repository size, not page weight. An item over budget has no live
+ * preview, which the docs catalog check rejects.
  */
-export const MAX_HOSTED_DIRECTORY_BYTES = 2_000_000;
+export const MAX_HOSTED_DIRECTORY_BYTES = 12_000_000;
 
-export function hostItemDirectory(projectDir: string, destDir: string, urlBase: string): string {
-  const mirrorPrefix = downloadMirrorPrefix(projectDir);
-  const files = new Map<string, Buffer<ArrayBuffer>>();
-  let total = 0;
-  for (const path of hostedPaths(projectDir)) {
-    const bytes = readProjectFile(
-      projectDir,
-      join(projectDir, path),
-      MAX_HOSTED_DIRECTORY_BYTES - total,
-    );
-    if (bytes === null) continue;
-    total += bytes.length;
-    if (total > MAX_HOSTED_DIRECTORY_BYTES) return "";
-    files.set(path, bytes);
+// "not-needed" and "over-budget" both leave nothing published, but the caller
+// must not treat them alike: an over-budget item still needs the directory,
+// so it has to fall back to its recorded video instead of shipping with dead
+// relative references and no <base> to resolve them against.
+export type HostItemDirectoryResult =
+  | { readonly status: "not-needed" }
+  | { readonly status: "hosted"; readonly baseHref: string }
+  | { readonly status: "over-budget" };
+
+interface ChargeState {
+  files: Map<string, Buffer<ArrayBuffer>>;
+  total: number;
+}
+
+// Reads one path against the remaining budget, charging its bytes toward
+// `state.total`. Returns false only when adding it would overflow the
+// budget, so the caller can abort before that file is ever recorded.
+function chargeRead(
+  projectDir: string,
+  path: string,
+  maxBytes: number,
+  state: ChargeState,
+): boolean {
+  const bytes = readProjectFile(projectDir, join(projectDir, path), maxBytes - state.total);
+  if (bytes === null) return true;
+  state.total += bytes.length;
+  if (state.total > maxBytes) return false;
+  state.files.set(path, bytes);
+  return true;
+}
+
+function readDirect(
+  projectDir: string,
+  paths: string[],
+  maxBytes: number,
+  state: ChargeState,
+): boolean {
+  for (const path of paths) {
+    if (!chargeRead(projectDir, path, maxBytes, state)) return false;
   }
+  return true;
+}
 
-  // Charge each source once, as before. Publish only after the entire item fits,
-  // and reuse the collected bytes for both registry and install-path layouts.
-  const publish = (path: string, bytes: Buffer<ArrayBuffer>): void => {
-    const to = join(destDir, path);
-    mkdirSync(join(to, ".."), { recursive: true });
-    writeFileSync(to, bytes);
-  };
-  for (const [path, bytes] of files) publish(path, bytes);
+// A mirrored path's source may already be in `state.files` (reuse, no re-read
+// or re-charge) or may itself have been dropped as too large or unreadable,
+// in which case it falls back to reading and charging the target directly.
+function readMirrored(
+  projectDir: string,
+  paths: string[],
+  installTargets: Map<string, string>,
+  maxBytes: number,
+  state: ChargeState,
+): boolean {
+  for (const path of paths) {
+    const source = state.files.get(installTargets.get(path) as string);
+    if (source !== undefined) {
+      state.files.set(path, source);
+      continue;
+    }
+    if (!chargeRead(projectDir, path, maxBytes, state)) return false;
+  }
+  return true;
+}
 
+function collectWithinBudget(projectDir: string): Map<string, Buffer<ArrayBuffer>> | null {
+  const installTargets = installMirrorTargets(projectDir);
+  const state: ChargeState = { files: new Map(), total: 0 };
+  const maxBytes = MAX_HOSTED_DIRECTORY_BYTES;
+
+  // Read every path that is not a known install-layout duplicate first, so a
+  // target's source is always already in `state.files` by the time the target
+  // is handled below, regardless of the order the filesystem yields entries in.
+  const allPaths = [...hostedPaths(projectDir)];
+  const mirrored = allPaths.filter((path) => installTargets.has(path));
+  const direct = allPaths.filter((path) => !installTargets.has(path));
+  const fits =
+    readDirect(projectDir, direct, maxBytes, state) &&
+    readMirrored(projectDir, mirrored, installTargets, maxBytes, state);
+  return fits ? state.files : null;
+}
+
+function publishFile(destDir: string, path: string, bytes: Buffer<ArrayBuffer>): void {
+  const to = join(destDir, path);
+  mkdirSync(join(to, ".."), { recursive: true });
+  writeFileSync(to, bytes);
+}
+
+const withoutMirrorPrefix = (path: string, prefix: string | null): string | null =>
+  prefix !== null && path.startsWith(prefix) ? path.slice(prefix.length) : null;
+
+function publishAll(
+  files: Map<string, Buffer<ArrayBuffer>>,
+  destDir: string,
+  mirrorPrefix: string | null,
+): void {
+  for (const [path, bytes] of files) publishFile(destDir, path, bytes);
   // Compiler references omit `_downloads/`. Preserve both spellings and the
   // existing mirror-wins collision order without reopening any source file.
   for (const [path, bytes] of files) {
-    if (mirrorPrefix !== null && path.startsWith(mirrorPrefix))
-      publish(path.slice(mirrorPrefix.length), bytes);
+    const alias = withoutMirrorPrefix(path, mirrorPrefix);
+    if (alias !== null) publishFile(destDir, alias, bytes);
   }
-  return files.size > 0 ? urlBase : "";
+}
+
+export function hostItemDirectory(
+  projectDir: string,
+  destDir: string,
+  urlBase: string,
+): HostItemDirectoryResult {
+  const mirrorPrefix = downloadMirrorPrefix(projectDir);
+  const files = collectWithinBudget(projectDir);
+  if (files === null) return { status: "over-budget" };
+  // Publish only after the entire item fits, reusing the bytes read once.
+  publishAll(files, destDir, mirrorPrefix);
+  return files.size > 0 ? { status: "hosted", baseHref: urlBase } : { status: "not-needed" };
 }
 
 /**

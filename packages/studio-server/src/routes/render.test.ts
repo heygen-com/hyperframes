@@ -456,6 +456,41 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
     tmpDirs.length = 0;
   });
 
+  it("serves non-Latin-1 filenames with RFC 6266 content dispositions", async () => {
+    const filename = "測試.mp4";
+    const { app, rendersDir } = buildApp();
+    const outputPath = join(rendersDir, filename);
+    writeFileSync(outputPath, "render-bytes");
+
+    const listResponse = await app.request("http://localhost/projects/demo/renders");
+    expect(listResponse.status).toBe(200);
+    const jobId = encodeURIComponent(filename.replace(/\.mp4$/, ""));
+    const expectedFilename = `filename="__.mp4"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+    const responses = [
+      {
+        response: await app.request(`http://localhost/render/${jobId}/view`),
+        disposition: "inline",
+      },
+      {
+        response: await app.request(`http://localhost/render/${jobId}/download`),
+        disposition: "attachment",
+      },
+      {
+        response: await app.request(
+          `http://localhost/projects/demo/renders/file/${encodeURIComponent(filename)}`,
+        ),
+        disposition: "inline",
+      },
+    ];
+
+    for (const { response, disposition } of responses) {
+      expect(response.status).toBe(200);
+      const header = response.headers.get("Content-Disposition");
+      expect(header).toBe(`${disposition}; ${expectedFilename}`);
+      expect(header).toMatch(/^[\x20-\x7e]+$/);
+    }
+  });
+
   it("serves a render file that lives inside rendersDir", async () => {
     const { app, rendersDir } = buildApp();
     writeFileSync(join(rendersDir, "demo.mp4"), "render-bytes");

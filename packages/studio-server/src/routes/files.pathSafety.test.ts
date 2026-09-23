@@ -203,6 +203,40 @@ describe("file route containment", () => {
   });
 });
 
+describe("resolveProjectPath why", () => {
+  // The CLI host's `resolveProject` is static — it answers with this project
+  // for as long as the server runs, even after its folder is renamed or
+  // deleted. Before this fix that produced a 403 "forbidden" (isSafePath
+  // fails closed when its base doesn't exist), indistinguishable from a real
+  // path-traversal attempt. This must be a 404 with its own `why`, checked
+  // BEFORE the NUL/traversal checks so it wins when both are true.
+  it("reports a missing project directory as 404, not 403", async () => {
+    const { app, project } = fixture();
+    rmSync(project, { recursive: true, force: true });
+
+    const response = await app.request(fileUrl("inside.txt"));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
+  });
+
+  it("still reports a NUL byte as 403 with its own why when the project exists", async () => {
+    const response = await fixture().app.request(fileUrl("inside.txt\0"));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "nul" });
+  });
+
+  it("still reports an escaping path as 403 with its own why when the project exists", async () => {
+    const { app, project, outside } = fixture();
+
+    const response = await app.request(fileUrl(relative(project, join(outside, "secret.txt"))));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "outside_project" });
+  });
+});
+
 describe("upload collision races", () => {
   function raceDuringRead(filename: string, collide: () => void) {
     const file = new File(["new upload"], filename);

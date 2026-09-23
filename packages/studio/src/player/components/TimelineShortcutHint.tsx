@@ -9,11 +9,11 @@ export function TimelineShortcutHint({ theme }: TimelineShortcutHintProps) {
     <div className="absolute bottom-2 right-3 pointer-events-none z-20">
       <div
         className="flex items-center gap-1.5 px-2 py-1 rounded-md border"
-        style={{ background: "rgba(17,23,35,0.84)", borderColor: theme.gutterBorder }}
+        style={{ background: "var(--timeline-shortcut-bg)", borderColor: theme.gutterBorder }}
       >
         <kbd
-          className="text-[9px] font-mono px-1 py-0.5 rounded"
-          style={{ color: theme.textSecondary, background: "rgba(255,255,255,0.06)" }}
+          className="text-[9px] font-mono px-1 py-0.5 rounded-sm"
+          style={{ color: theme.textSecondary, background: "var(--timeline-tick-minor)" }}
         >
           Shift
         </kbd>

@@ -9,6 +9,8 @@ export const PRODUCER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), ".
 // or local sockets. Keep the list explicit so a filename-only rename does not
 // make Git/fallow re-audit thousands of unchanged test lines as new code.
 const INTEGRATION_TEST_FILES = new Set([
+  "tests/distributed/_smoke/webm-concat-copy.test.ts",
+  "tests/playback-rate-av-parity/playback-rate-av-parity.test.ts",
   "src/regression-harness-psnr.test.ts",
   "src/services/coreRuntimeBrowser.test.ts",
   "src/services/deterministicFonts-systemCapture.test.ts",
@@ -25,6 +27,7 @@ const INTEGRATION_TEST_FILES = new Set([
   "src/services/assetMediaType.test.ts",
   "src/services/htmlCompiler.mediaType.test.ts",
   "src/services/htmlCompiler.naturalDuration.test.ts",
+  "src/services/render/hlsRender.integration.test.ts",
   "src/services/render/stages/compileStage.mediaType.test.ts",
   "src/utils/audioRegression.test.ts",
   "src/utils/streamDurationParity.test.ts",
@@ -54,11 +57,13 @@ export function classifyTestSource(filePath, source, integrationFiles = INTEGRAT
 }
 
 export function discoverProducerTests(producerRoot = PRODUCER_ROOT) {
-  const srcDir = resolve(producerRoot, "src");
-  const files = collectTestFiles(srcDir).map((absolutePath) => ({
-    absolutePath,
-    filePath: relative(producerRoot, absolutePath).replaceAll("\\", "/"),
-  }));
+  const roots = ["src", "tests"].map((directory) => resolve(producerRoot, directory));
+  const files = roots
+    .flatMap((directory) => collectTestFiles(directory))
+    .map((absolutePath) => ({
+      absolutePath,
+      filePath: relative(producerRoot, absolutePath).replaceAll("\\", "/"),
+    }));
   const discoveredFiles = new Set(files.map((test) => test.filePath));
   const staleEntries = [...INTEGRATION_TEST_FILES].filter((file) => !discoveredFiles.has(file));
   if (staleEntries.length > 0) {

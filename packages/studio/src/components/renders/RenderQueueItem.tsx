@@ -2,6 +2,8 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useState } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { Button } from "../ui/Button";
+import { IconButton } from "../ui/IconButton";
+import { Tooltip } from "../ui/Tooltip";
 import type { RenderJob } from "./useRenderQueue";
 
 interface RenderQueueItemProps {
@@ -66,7 +68,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
         setVideoReady(false);
         setConfirmingDelete(false);
       }}
-      className="px-3 py-2.5 border-b border-panel-border last:border-0 transition-colors duration-150 hover:bg-panel-hover/30"
+      className="px-3 py-2.5 border-b border-border last:border-0 transition-colors duration-150 hover:bg-hover/30"
     >
       <div className="flex items-center gap-2.5">
         {/* Thumbnail — static frame; swaps to live video on hover.
@@ -77,8 +79,8 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           disabled={!isComplete}
           aria-label={isComplete ? `Open ${job.filename} in a new tab` : undefined}
           className={[
-            "w-20 h-[45px] rounded-md overflow-hidden bg-panel-input flex-shrink-0 relative",
-            "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent",
+            "w-20 h-[45px] rounded-md overflow-hidden bg-input shrink-0 relative",
+            "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
             isComplete ? "cursor-pointer" : "cursor-default",
           ].join(" ")}
         >
@@ -108,17 +110,17 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           )}
           {isRendering && (
             <div className="w-full h-full flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-panel-accent animate-pulse motion-reduce:animate-none" />
+              <div className="w-2 h-2 rounded-full bg-accent animate-pulse motion-reduce:animate-none" />
             </div>
           )}
           {job.status === "failed" && (
             <div className="w-full h-full flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-red-400" />
+              <div className="w-2 h-2 rounded-full bg-danger" />
             </div>
           )}
           {job.status === "cancelled" && (
             <div className="w-full h-full flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-neutral-600" />
+              <div className="w-2 h-2 rounded-full bg-text-5" />
             </div>
           )}
         </button>
@@ -126,11 +128,9 @@ export const RenderQueueItem = memo(function RenderQueueItem({
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-medium text-panel-text-2 truncate">
-              {job.filename}
-            </span>
+            <span className="text-step-11 font-medium text-text-2 truncate">{job.filename}</span>
             {job.durationMs && (
-              <span className="text-[9px] text-panel-text-5 flex-shrink-0">
+              <span className="text-step-9 text-text-5 shrink-0">
                 {formatDuration(job.durationMs)}
               </span>
             )}
@@ -139,11 +139,11 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           {isRendering && (
             <div className="mt-1">
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] text-panel-text-4">{job.stage || "Rendering"}</span>
-                <span className="text-[9px] font-mono text-panel-accent">{job.progress}%</span>
+                <span className="text-step-9 text-text-4">{job.stage || "Rendering"}</span>
+                <span className="text-step-9 font-mono text-accent">{job.progress}%</span>
               </div>
               <div
-                className="w-full h-1 bg-panel-border rounded-full overflow-hidden"
+                className="w-full h-1 bg-border rounded-full overflow-hidden"
                 role="progressbar"
                 aria-valuenow={job.progress}
                 aria-valuemin={0}
@@ -151,7 +151,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                 aria-label={`Render progress: ${job.progress}%`}
               >
                 <div
-                  className="h-full bg-panel-accent rounded-full transition-all duration-300"
+                  className="h-full bg-accent rounded-full transition-all duration-300"
                   style={{ width: `${job.progress}%` }}
                 />
               </div>
@@ -159,19 +159,19 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           )}
 
           {job.status === "failed" && job.error && (
-            <span className="text-[9px] text-red-400 mt-0.5 block">{job.error}</span>
+            <span className="text-step-9 text-danger mt-0.5 block">{job.error}</span>
           )}
           {job.status === "cancelled" && (
-            <span className="text-[9px] text-panel-text-4 mt-0.5 block">Cancelled</span>
+            <span className="text-step-9 text-text-4 mt-0.5 block">Cancelled</span>
           )}
 
           {!isRendering && (
-            <span className="text-[9px] text-panel-text-5">{formatTimeAgo(job.createdAt)}</span>
+            <span className="text-step-9 text-text-5">{formatTimeAgo(job.createdAt)}</span>
           )}
         </div>
 
         {/* Actions — always visible to prevent layout shifts */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {isRendering ? (
             <Button
               size="sm"
@@ -209,53 +209,58 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             </>
           ) : (
             <>
-              <button
-                onClick={isComplete ? handleDownload : undefined}
-                className={`p-1.5 min-w-6 min-h-6 rounded transition-colors outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
-                  isComplete
-                    ? "text-panel-text-5 hover:text-panel-accent"
-                    : "text-panel-text-5/30 cursor-default"
-                }`}
-                title={isComplete ? "Download" : undefined}
-                aria-label={`Download ${job.filename}`}
-                disabled={!isComplete}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmingDelete(true);
-                }}
-                className="p-1.5 min-w-6 min-h-6 rounded text-panel-text-5 hover:text-red-400 transition-colors outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
-                title="Delete render file"
-                aria-label={`Delete ${job.filename}`}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
+              {/* The tooltip explains the control whether or not it is
+                  reachable; `disabled:` on the shared Button keeps pointer
+                  events alive precisely so a disabled one can still say why. */}
+              <Tooltip label={isComplete ? "Download" : "Available when the render finishes"}>
+                <IconButton
+                  size="sm"
+                  onClick={handleDownload}
+                  disabled={!isComplete}
+                  aria-label={`Download ${job.filename}`}
+                  icon={
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                  }
+                />
+              </Tooltip>
+              <Tooltip label="Delete render file">
+                <IconButton
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmingDelete(true);
+                  }}
+                  aria-label={`Delete ${job.filename}`}
+                  icon={
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  }
+                />
+              </Tooltip>
             </>
           )}
         </div>

@@ -46,10 +46,30 @@ declare global {
       onSwallowed?: (label: string, err: unknown) => void;
       seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
       duration?: number;
+      /** How a length that no timeline supplied was found: the render telemetry reads this. */
+      durationSource?: {
+        source: "authored" | "derived" | "unresolved";
+        seconds: number | null;
+        pendingClips: number;
+      };
       /** Borrow an element's playback while the transport clock is paused, so the
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
       releasePausedMedia?: (el: HTMLMediaElement) => void;
+      /** Read-only level taps for the Studio meters: nothing exists until
+       *  `start()`, and `stop()` removes every tap. Peaks are linear per channel. */
+      audioMeter?: {
+        start(): void;
+        stop(): void;
+        read(): {
+          master: { l: number; r: number };
+          groups: Record<string, { l: number; r: number }>;
+        };
+      };
+      /** Declared-compute hold for setup no adapter can see (mesh building,
+       * shader compiles). Runtime and player hold until every promise
+       * registered here, under any key unique to your piece, resolves. */
+      buildReady?: Record<string, PromiseLike<unknown>>;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;

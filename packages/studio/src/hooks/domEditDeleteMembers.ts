@@ -7,6 +7,8 @@
 
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { TimelineElement } from "../player";
+import { findMatchingTimelineElementId } from "../utils/studioHelpers";
 
 /** One entry in the studio's edit history, as `useDomEditSession`'s caller
  *  supplies it. */
@@ -31,4 +33,21 @@ export function membersForDelete(
   options?: { expandGroup?: boolean },
 ): DomEditSelection[] {
   return options?.expandGroup && group.length > 0 ? group : [selection];
+}
+
+/** The timeline row for each member, only when EVERY member is one — a mixed
+ *  group stays on the DOM path. Exact-identity match only, no ancestor
+ *  fallback: a click inside a clip must not delete the whole clip. */
+export function timelineElementsForDelete(
+  members: readonly DomEditSelection[],
+  elements: TimelineElement[],
+): TimelineElement[] | null {
+  const matches: TimelineElement[] = [];
+  for (const member of members) {
+    const id = findMatchingTimelineElementId(member, elements);
+    const match = id ? elements.find((el) => (el.key ?? el.id) === id) : undefined;
+    if (!match) return null;
+    matches.push(match);
+  }
+  return matches;
 }

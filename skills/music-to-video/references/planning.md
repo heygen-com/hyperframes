@@ -90,8 +90,8 @@ frame** is owned by the worker on its frame timeline; you only set each group's 
 ## Write + validate
 
 Complete `STORYBOARD.md` ([`storyboard-format.md`](storyboard-format.md)), then run
-`node scripts/validate-plan.mjs` and fix every `✗`. Show the user a frame-by-frame summary and
-iterate until approved.
+`node scripts/validate-plan.mjs` and fix every `✗`. Present the frame-by-frame summary in chat
+and iterate until approved (Step 3 in `SKILL.md` says how).
 
 ## Self-check
 

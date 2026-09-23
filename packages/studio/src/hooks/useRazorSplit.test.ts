@@ -24,7 +24,6 @@ const rootElement: TimelineElement = {
   track: 0,
   domId: "root-clip",
   sourceFile: ROOT_FILE,
-  timingSource: "authored",
 };
 
 // An expanded sub-comp child: `start` is in MASTER coordinates (offset by the
@@ -38,7 +37,6 @@ const expandedChild: TimelineElement = {
   track: 1,
   domId: "child-clip",
   sourceFile: SUBCOMP_FILE,
-  timingSource: "authored",
   expandedParentStart: 2,
 };
 

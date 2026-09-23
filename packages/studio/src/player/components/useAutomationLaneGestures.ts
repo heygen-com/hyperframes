@@ -13,7 +13,7 @@
 
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { AutomationRange, HfAutomationLane } from "@hyperframes/core/audio-automation";
-import { curveForDrag, formatValue, GRAB_PX, POINT_MERGE_SEC } from "./automationLaneGeometry";
+import { curveForDrag, formatValue, GRAB_PX, mergeInsertPoint } from "./automationLaneGeometry";
 import { pointInSelection } from "./automationLaneSelection";
 import { capturePointer } from "./automationLanePointer";
 import { useAutomationEdgeStretch } from "./useAutomationEdgeStretch";
@@ -548,15 +548,7 @@ export function useAutomationLaneGestures({
         return;
       }
       const { t, v } = pointAt(e.clientX, e.clientY);
-      const kept = lane.points.filter((p) => Math.abs(p.t - t) > POINT_MERGE_SEC);
-      // A lane's first point alone would be a constant, which is not what
-      // clicking an empty lane means: seed the far end at the same value so the
-      // envelope has somewhere to go.
-      const seeded = lane.points.length === 0 && t > POINT_MERGE_SEC ? [{ t: 0, v }] : [];
-      commitPoints(
-        [...seeded, ...kept, { t, v }].sort((a, b) => a.t - b.t),
-        true,
-      );
+      commitPoints(mergeInsertPoint(lane.points, t, v), true);
     },
     [lane, pointAt, commitPoints, readOnly, hitIndex, segmentIndex],
   );

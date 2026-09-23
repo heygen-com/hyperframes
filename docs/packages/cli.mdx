@@ -374,7 +374,8 @@ The model is `u2net_human_seg` (MIT, ~168 MB ONNX). It downloads to
 after that. Peak inference RAM is about 1.5 GB.
 
 `--device auto` picks CoreML on Apple Silicon, CUDA where available, CPU
-otherwise. The CLI bundles the CPU build of `onnxruntime-node`; for CUDA, set
+otherwise. The first run installs the CPU build of `onnxruntime-node` into
+`~/.cache/hyperframes/optional/` (one line on stderr, once, no prompt); for CUDA, set
 `HYPERFRAMES_CUDA=1` and supply a GPU-enabled build.
 
 <Tip>
@@ -845,6 +846,9 @@ npx hyperframes render --docker --output output.mp4
 # Transparent, for overlays and lower thirds
 npx hyperframes render --format webm --output overlay.webm
 
+# HLS VOD stream (output is a directory of playlists and .ts segments)
+npx hyperframes render --format hls --output stream
+
 npx hyperframes render --output output.mp4 --fps 60 --quality high
 npx hyperframes render --gpu --output gpu.mp4
 ```
@@ -855,7 +859,7 @@ The flags that come up most:
 | ------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--output, -o`      | `renders/<name>.mp4`          | Output file path                                                                                                                                  |
 | `--composition, -c` | `index.html`                  | Render a different composition file. Sub-compositions using `<template>` wrappers must be referenced from `index.html` via `data-composition-src`. |
-| `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, or `png-sequence`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory.                 |
+| `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, `png-sequence`, or `hls`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory; `hls` writes a VOD playlist directory. |
 | `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
 | `--quality, -q`     | `looks`                       | `draft`, `looks` (CRF 16, default), `delivery` (= `high`), `standard`, or `high`. MOV always uses the fixed alpha-preserving ProRes 4444 profile. |
 | `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
@@ -873,6 +877,7 @@ Quality and file size:
 | `--video-bitrate`      | from `--quality`| Target MP4/WebM bitrate, e.g. `10M` or `5000k`. Not with `--crf`; rejected for MOV.                       |
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
 | `--gif-loop`           | `0`             | GIF loop count, `0` for forever. Range 0–65535, `--format gif` only.                                     |
+| `--hls-segment-seconds`| `4`             | HLS target segment length in whole seconds, 1–60. `--format hls` only. Also fixes the encoder GOP so every segment starts on a keyframe. |
 | `--video-frame-format` | `auto`          | How source video frames are extracted: `auto`, `jpg`, `png`. Use `png` for UI recordings, screen captures, and other colour-sensitive footage. |
 | `--hdr`                | off             | Force HDR even with no HDR sources. MP4 only. See [HDR rendering](/guides/hdr).                           |
 | `--sdr`                | off             | Force SDR even when HDR sources are detected                                                              |
@@ -922,6 +927,66 @@ does not.
   auto-scales with output pixel area, capped at 30 minutes; an explicit value
   becomes a floor and disables that scaling below it. Env:
   `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS`.
+
+#### Long renders and the capture path
+
+Captured frames either stream into FFmpeg as they arrive or land on disk first
+as raw RGBA, which costs `frames × width × height × 4` bytes — about 25 GB per
+minute at 1080p30. Streaming is the default for single-worker mp4/mov renders
+**at any duration**: the old four-minute ceiling guarded an FFmpeg timeout that
+is now per-frame rather than whole-render, so it no longer applies.
+
+Multi-worker mp4/mov renders also stream where capture runs BeginFrame — Linux
+on the bundled `chrome-headless-shell`, at DPR 1, with no forced screenshot. On
+macOS and Windows, multi-worker capture is screenshot-based and still writes
+frames to disk unless you opt in with `HF_CAPTURE_PARALLEL_STREAM=true`. That
+path now retries a stalled worker pool or a mid-stream encoder exit on a fresh
+screenshot session, dropping an interleaved render to one worker, instead of
+failing the render; it stays opt-in until its error rate matches the disk
+path's.
+
+Renders still land on the disk path when the output is `png-sequence` or `gif`,
+when HDR or shader-transition layering is in play, and when streaming is
+switched off. If a render fails preflight asking for tens of GB of temporary
+frame storage, the message names which of those applied; the usual fixes are
+`--workers 1`, `--low-memory-mode`, or freeing disk.
+
+| Environment variable                             | Default | Effect                                                                                  |
+| ------------------------------------------------ | ------- | ----------------------------------------------------------------------------------------- |
+| `PRODUCER_ENABLE_STREAMING_ENCODE`               | `true`  | `false` sends every render to the disk path                                             |
+| `HF_CAPTURE_PARALLEL_STREAM`                     | on for BeginFrame | `true` also streams multi-worker screenshot capture; `false` disables the router entirely |
+| `PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED` | `false` | `true` restores the duration ceiling below                                              |
+| `PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS` | `240`   | The ceiling's value; inert unless the flag above is `true`, including the `0` ("never") setting |
+
+#### Segmented capture
+
+For long renders, capture can be split into fixed-size segments, each encoded
+by its own ffmpeg and stream-copied together at the end. It costs some speed
+against a single-encoder streaming render, and buys three things:
+
+- Scratch is encoded video rather than raw frames, at any duration.
+- The browser restarts at segment boundaries, so a session never accumulates
+  the tens of thousands of frames where Chrome starts losing its target.
+- A crash costs one segment. `--resume` re-runs the render and reuses the
+  segments a previous attempt finished, after re-validating each one; a
+  resumed render is byte-identical to an uninterrupted one.
+
+Segments live in `renders/.hf-segments/<hash>/`, where the hash covers
+everything that determines segment bytes, so changing the composition, fps,
+resolution, quality or segment size starts a fresh set instead of splicing
+mismatched encodes. The directory is deleted after a successful render unless
+`--keep-segments`, and deliberately kept after a failure, because that is what
+`--resume` reads next time.
+
+mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
+keep their existing routes.
+
+| Environment variable           | Default    | Effect                                                                                   |
+| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------ |
+| `HF_SEGMENTED_CAPTURE`         | unset      | `true` segments any eligible render; `false` is the kill switch                          |
+| `HF_SEGMENTED_MIN_SECONDS`     | off        | Segment renders at least this long. Unset means duration never routes on its own          |
+| `HF_SEGMENT_FRAMES`            | `3000`     | Frames per segment (~100 s at 30 fps); minimum 30                                        |
+| `HF_SEGMENT_BROWSER_RECYCLE`   | `3`        | Restart the browser every N segments; `0` keeps one session for the whole render          |
 
 #### Render the same composition with different content
 

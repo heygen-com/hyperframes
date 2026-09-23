@@ -18,3 +18,23 @@ export function resolveAbsoluteMediaStartSeconds(input: {
     ? input.authoredStart
     : input.hostStart + input.authoredStart;
 }
+
+/** The one rule for a media element's root-timeline start; the runtime and the CLI both call it.
+ * With no literal start, an auto-injected start, or a host at t<=0 there is nothing for the basis
+ * to disambiguate, so the ordinary start resolution applies. */
+export function resolveMediaStartSeconds(input: {
+  authoredStart: number | null;
+  hostStart: number;
+  hasAutoStart: boolean;
+  basis?: string | null;
+  ordinaryStart: () => number;
+}): number {
+  if (input.hasAutoStart || input.authoredStart == null || input.hostStart <= 0) {
+    return input.ordinaryStart();
+  }
+  return resolveAbsoluteMediaStartSeconds({
+    authoredStart: input.authoredStart,
+    hostStart: input.hostStart,
+    basis: input.basis,
+  });
+}

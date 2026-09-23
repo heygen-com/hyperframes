@@ -44,9 +44,9 @@ didn't specify trim.
 <Audio src={staticFile("music.wav")} volume={(f) => interpolate(f, [0, 30], [0, 1])} />
 ```
 
-HF supports static `data-volume` only for now. Volume ramps need to be
-applied to the audio file at translation time (with ffmpeg `afade`) or the
-ramp is dropped with a translation note.
+Volume ramps become a `data-automation` volume lane on the `<audio>`
+(form in `hyperframes-core/references/creator-editing-recipes.md`); `data-volume`
+is the static baseline.
 
 ### Trim / playbackRate
 

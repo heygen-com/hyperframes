@@ -1,0 +1,15 @@
+{
+  "name": "Speed ramp",
+  "description": "A video and an audio clip carry the same rate lane (1x to 4x to 0.5x). Frames and audio must follow the integrated source time, not a constant rate.",
+  "tags": ["speed-ramp", "video", "audio", "regression"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30
+  }
+}

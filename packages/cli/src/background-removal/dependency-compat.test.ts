@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { OPTIONAL_PACKAGES } from "../utils/optionalPackages.js";
 
 const require = createRequire(import.meta.url);
 
@@ -39,12 +40,18 @@ describe("background-removal native dependency compatibility", () => {
     const packagePath = fileURLToPath(new URL("../../package.json", import.meta.url));
     const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as {
       dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
 
     // 1.22+ pulls vulnerable adm-zip <0.6.0, while later releases also drop
     // the Intel macOS binary. Return to a newer ONNX release once it satisfies
     // both the clean dependency graph and the six-platform binary contract.
-    expect(packageJson.dependencies?.["onnxruntime-node"]).toBe("1.21.1");
+    expect(OPTIONAL_PACKAGES["onnxruntime-node"]).toBe("1.21.1");
+
+    // Installed on first use, so it must not ride along with `npx hyperframes`; the devDependency
+    // only supplies types and the binding listing below, at the same pinned version.
+    expect(packageJson.dependencies).not.toHaveProperty("onnxruntime-node");
+    expect(packageJson.devDependencies).toMatchObject(OPTIONAL_PACKAGES);
 
     const bindingEntry = require.resolve("onnxruntime-node");
     const packageRoot = join(dirname(bindingEntry), "..");

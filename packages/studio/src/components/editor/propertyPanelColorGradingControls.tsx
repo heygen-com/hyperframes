@@ -328,7 +328,7 @@ export function ColorGradingControls({
         <select
           value={String(grading.preset ?? "neutral")}
           onChange={(event) => applyPreset(event.target.value)}
-          className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-none"
+          className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-hidden"
         >
           {HF_COLOR_GRADING_PRESETS.map((preset) => (
             <option key={preset.id} value={preset.id}>
@@ -358,14 +358,12 @@ export function ColorGradingControls({
           aria-expanded={lutOpen}
         >
           {lutOpen ? (
-            <ChevronDown size={11} className="flex-shrink-0 text-panel-text-5" />
+            <ChevronDown size={11} className="shrink-0 text-panel-text-5" />
           ) : (
-            <ChevronRight size={11} className="flex-shrink-0 text-panel-text-5" />
+            <ChevronRight size={11} className="shrink-0 text-panel-text-5" />
           )}
           <span className="min-w-0 flex-1 truncate">Custom LUT</span>
-          {grading.lut && (
-            <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-studio-accent" />
-          )}
+          {grading.lut && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-studio-accent" />}
         </button>
         {lutOpen && (
           <div className="grid gap-1.5 border-t border-panel-border/60 p-1.5">
@@ -380,7 +378,7 @@ export function ColorGradingControls({
                     nextSrc && grading.lut?.src === nextSrc ? grading.lut.intensity : 1,
                   );
                 }}
-                className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-none"
+                className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-hidden"
                 title="Uploaded .cube LUT"
               >
                 <option value="">None</option>
@@ -441,7 +439,7 @@ export function ColorGradingControls({
               <div className="grid gap-2">
                 {selectedProjectLut && (
                   <div className="flex min-w-0 items-start gap-2 text-[10px] leading-4 text-panel-text-3">
-                    <span className="mt-[5px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-studio-accent" />
+                    <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-studio-accent" />
                     <span className="min-w-0 flex-1 truncate" title={selectedProjectLut}>
                       <span className="font-medium text-panel-text-2">Uploaded LUT</span>
                       {` · ${selectedProjectLut}`}
@@ -527,7 +525,7 @@ export function ColorGradingControls({
                 aria-label="Close settings"
                 title="Close settings"
                 onClick={() => setDetailSettings(null)}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1"
               >
                 <X size={11} />
               </button>

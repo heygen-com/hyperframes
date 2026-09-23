@@ -4,10 +4,18 @@ import {
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
-  syncRuntimeMedia,
+  syncRuntimeMedia as syncRuntimeMediaWithDuration,
 } from "./media";
 import type { RuntimeMediaClip } from "./media";
 import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import { sourceTimeAt } from "../speedRamp";
+import type { HfAutomationLane } from "../audioAutomation";
+
+// Most cases predate the terminal rule and run with no composition end to hold at.
+const syncRuntimeMedia = (
+  params: Omit<Parameters<typeof syncRuntimeMediaWithDuration>[0], "getCompositionDuration"> &
+    Partial<Pick<Parameters<typeof syncRuntimeMediaWithDuration>[0], "getCompositionDuration">>,
+) => syncRuntimeMediaWithDuration({ getCompositionDuration: () => 0, ...params });
 
 function createVideo(attrs: Record<string, string>): HTMLVideoElement {
   const el = document.createElement("video");
@@ -42,12 +50,12 @@ describe("readElementPlaybackRate", () => {
     expect(readElementPlaybackRate(el)).toBe(1);
   });
 
-  it("clamps to [0.1, 5]", () => {
+  it("clamps to [0.1, 10]", () => {
     const el = document.createElement("video");
     Object.defineProperty(el, "defaultPlaybackRate", { value: 0.01, writable: true });
     expect(readElementPlaybackRate(el)).toBe(0.1);
-    Object.defineProperty(el, "defaultPlaybackRate", { value: 10, writable: true });
-    expect(readElementPlaybackRate(el)).toBe(5);
+    Object.defineProperty(el, "defaultPlaybackRate", { value: 20, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(10);
   });
 
   it("defaults to 1 for NaN/negative/zero", () => {
@@ -165,16 +173,16 @@ describe("refreshRuntimeMediaCache", () => {
     expect(result.mediaClips[0].playbackRate).toBe(1);
   });
 
-  it("clamps playback rate to [0.1, 5]", () => {
+  it("clamps playback rate to [0.1, 10]", () => {
     const el1 = createVideo({ "data-start": "0", "data-duration": "5" });
     Object.defineProperty(el1, "defaultPlaybackRate", { value: 0.01, writable: true });
     const r1 = refreshRuntimeMediaCache();
     expect(r1.mediaClips[0].playbackRate).toBe(0.1);
     document.body.innerHTML = "";
     const el2 = createVideo({ "data-start": "0", "data-duration": "5" });
-    Object.defineProperty(el2, "defaultPlaybackRate", { value: 10, writable: true });
+    Object.defineProperty(el2, "defaultPlaybackRate", { value: 20, writable: true });
     const r2 = refreshRuntimeMediaCache();
-    expect(r2.mediaClips[0].playbackRate).toBe(5);
+    expect(r2.mediaClips[0].playbackRate).toBe(10);
   });
 
   it("adjusts fallback duration by playback rate", () => {
@@ -365,6 +373,24 @@ describe("syncRuntimeMedia", () => {
     document.body.innerHTML = "";
   });
 
+  describe("speed ramp", () => {
+    it("seeks to the integrated source time and plays at the instantaneous rate", () => {
+      const rate = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 3 },
+        ],
+      };
+      const clip = createMockClip({ start: 1, end: 5, rate });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 3, playing: false, playbackRate: 1 });
+      expect(clip.el.currentTime).toBeCloseTo(3.641, 2);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 3, playing: true, playbackRate: 1 });
+      expect(clip.el.playbackRate).toBeCloseTo(3, 5);
+    });
+  });
+
   describe("volume automation lane", () => {
     const DUCK = JSON.stringify({
       version: 1,
@@ -437,6 +463,56 @@ describe("syncRuntimeMedia", () => {
     it("falls back to data-volume when there is no lane", () => {
       const [only] = volumesAt([5], undefined, 0.55);
       expect(only).toBeCloseTo(0.55, 5);
+    });
+
+    it("applies data-fade-in / data-fade-out on top of data-volume, anchored to the clip edges", () => {
+      const at = (t: number) => {
+        const clip = createMockClip({ start: 2, end: 12, duration: 10, volume: 0.8 });
+        Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+        clip.el.setAttribute("data-fade-in", "2");
+        clip.el.setAttribute("data-fade-out", "1");
+        clip.fades = { fadeIn: 2, fadeOut: 1 };
+        let authored = -1;
+        syncRuntimeMedia({
+          clips: [clip],
+          timeSeconds: t,
+          playing: true,
+          playbackRate: 1,
+          onElementVolume: (_el, _effective, authorVolume) => {
+            authored = authorVolume;
+          },
+        });
+        return authored;
+      };
+      expect(at(2.5)).toBeCloseTo(0.2, 5); // a quarter into the 2 s fade-in
+      expect(at(3)).toBeCloseTo(0.4, 5); // halfway through the fade-in
+      expect(at(6)).toBeCloseTo(0.8, 5); // body of the clip: data-volume alone
+      expect(at(11.5)).toBeCloseTo(0.4, 5); // halfway through the 1 s fade-out
+      expect(at(11.9)).toBeCloseTo(0.08, 5); // almost at the clip's end
+    });
+
+    it("never writes NaN or a negative volume for 0, negative, NaN, or longer-than-clip fades", () => {
+      const cases: Array<{ fadeIn: number; fadeOut: number }> = [
+        { fadeIn: 0, fadeOut: 0 },
+        { fadeIn: -2, fadeOut: -1 },
+        { fadeIn: Number.NaN, fadeOut: Number.NaN },
+        { fadeIn: 40, fadeOut: 40 },
+      ];
+      for (const fades of cases) {
+        const clip = createMockClip({ start: 0, end: 10, duration: 10, volume: 0.5, fades });
+        Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+        for (const t of [0, 5, 10, 12]) {
+          syncRuntimeMedia({
+            clips: [clip],
+            timeSeconds: t,
+            playing: true,
+            playbackRate: 1,
+          });
+          expect(Number.isFinite(clip.el.volume)).toBe(true);
+          expect(clip.el.volume).toBeGreaterThanOrEqual(0);
+          expect(clip.el.volume).toBeLessThanOrEqual(1);
+        }
+      }
     });
 
     it("sends boosted author gain to Web Audio while keeping the native element legal", () => {
@@ -788,6 +864,65 @@ describe("syncRuntimeMedia", () => {
     syncRuntimeMedia({ clips: [clip], timeSeconds: 4, playing: true, playbackRate: 1 });
     expect(clip.el.currentTime).toBe(0.25);
     expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("holds a video that runs to the composition end on its last frame at the terminal time", () => {
+    const clip = createMockClip({ start: 2.5, end: 5, duration: 2.5, sourceDuration: 10 });
+    const seek = {
+      clips: [clip],
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 5,
+    };
+    syncRuntimeMedia({ ...seek, timeSeconds: 5 });
+    expect(clip.el.currentTime).toBe(2.5);
+    expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("holds a speed-ramped video that runs to the composition end at the source time of its own end", () => {
+    const lane: HfAutomationLane = {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 5, v: 2 },
+      ],
+    };
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 100, rate: lane });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 6,
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 5,
+    });
+    expect(clip.el.currentTime).toBeCloseTo(sourceTimeAt(lane, 5), 5);
+    expect(clip.el.currentTime).toBeLessThan(sourceTimeAt(lane, 6));
+    expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("clamps a terminal video hold to a shorter source tail", () => {
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 0.25 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 5,
+      playing: true,
+      playbackRate: 1,
+      getCompositionDuration: () => 5,
+    });
+    expect(clip.el.currentTime).toBe(0.25);
+    expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("does not hold a video that ended before the composition did", () => {
+    const clip = createMockClip({ start: 0, end: 2.5, duration: 2.5, sourceDuration: 10 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 5,
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 5,
+    });
+    expect(clip.el.currentTime).toBe(0);
   });
 
   it("seeks an ended video backward into its playable source", () => {

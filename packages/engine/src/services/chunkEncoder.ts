@@ -7,13 +7,18 @@
  */
 
 import {
+  closeSync,
   copyFileSync,
   existsSync,
+  ftruncateSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
+  readFileSync,
   readdirSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from "fs";
 import { join, dirname, extname } from "path";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
@@ -159,6 +164,60 @@ export function getEncoderPreset(
 // Re-export GPU utilities so existing consumers that import from chunkEncoder still work.
 export { detectGpuEncoder, type GpuEncoder } from "../utils/gpuEncoder.js";
 
+/** The `lockGopForChunkConcat` / `gopSize` pair, shared by every encoder entry point. */
+export interface LockedGopOptions {
+  lockGopForChunkConcat?: boolean;
+  gopSize?: number;
+}
+
+/**
+ * Integer GOP length, or `null` when no lock was requested. Throws on a lock
+ * with an invalid size — a silent fallback ships open-GOP output that only
+ * surfaces later as a broken playback seam.
+ */
+export function resolveLockedGopSize(options: LockedGopOptions): number | null {
+  if (options.lockGopForChunkConcat !== true) return null;
+  if (
+    typeof options.gopSize !== "number" ||
+    !Number.isFinite(options.gopSize) ||
+    options.gopSize <= 0
+  ) {
+    throw new Error(
+      `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
+    );
+  }
+  return Math.floor(options.gopSize);
+}
+
+/**
+ * Closed-GOP / forced-keyframe args for libx264 / libx265, so an orchestrator
+ * can concat chunks with `-c copy` or cut the stream into segments with
+ * `-f hls -c copy`. Without them the encoder picks its own keyframes and a
+ * boundary may not land on an independently decodable IDR.
+ */
+export function appendLockedGopArgs(args: string[], gopSize: number): void {
+  args.push(
+    "-g",
+    String(gopSize),
+    "-keyint_min",
+    String(gopSize),
+    "-sc_threshold",
+    "0",
+    "-force_key_frames",
+    `expr:eq(mod(n,${gopSize}),0)`,
+  );
+}
+
+/**
+ * The `-x264-params` / `-x265-params` fragment that bakes the IDR cadence into
+ * the encoder itself — `-force_key_frames` alone still permits mini-GOPs with
+ * open-GOP references. `repeat-headers=1` keeps each boundary self-contained.
+ */
+export function lockedGopCodecParams(codec: "h264" | "h265", gopSize: number): string {
+  const shared = "scenecut=0:open-gop=0:repeat-headers=1";
+  return codec === "h264" ? shared : `keyint=${gopSize}:min-keyint=${gopSize}:${shared}`;
+}
+
 export function buildEncoderArgs(
   options: EncoderOptions,
   inputArgs: string[],
@@ -258,34 +317,10 @@ export function buildEncoderArgs(
       else args.push("-crf", String(quality));
 
       // Closed-GOP / forced-keyframe args so an external orchestrator can
-      // ffmpeg-concat chunk files with `-c copy`. Without these, libx264 /
-      // libx265 emit open-GOP frames with mid-chunk scenecut keyframes; the
-      // first frame of each chunk isn't an independently-decodable IDR and
-      // concat-copy playback freezes at chunk seams on some decoders.
-      const lockGop = options.lockGopForChunkConcat === true;
-      let gop = 0;
-      if (lockGop) {
-        if (
-          typeof options.gopSize !== "number" ||
-          !Number.isFinite(options.gopSize) ||
-          options.gopSize <= 0
-        ) {
-          throw new Error(
-            `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
-          );
-        }
-        gop = Math.floor(options.gopSize);
-        args.push(
-          "-g",
-          String(gop),
-          "-keyint_min",
-          String(gop),
-          "-sc_threshold",
-          "0",
-          "-force_key_frames",
-          `expr:eq(mod(n,${gop}),0)`,
-        );
-      }
+      // ffmpeg-concat chunk files with `-c copy`. See `appendLockedGopArgs`.
+      const gop = resolveLockedGopSize(options);
+      const lockGop = gop !== null;
+      if (gop !== null) appendLockedGopArgs(args, gop);
 
       // Disable B-frames. Standard h264 with B-frames produces negative DTS
       // at the start of the stream (the first B-frame's decode order is
@@ -322,11 +357,7 @@ export function buildEncoderArgs(
         codec === "h265" && options.hdr
           ? getHdrEncoderColorParams(options.hdr.transfer).x265ColorParams
           : "colorprim=bt709:transfer=bt709:colormatrix=bt709";
-      let gopParams = "";
-      if (lockGop) {
-        const shared = "scenecut=0:open-gop=0:repeat-headers=1";
-        gopParams = codec === "h264" ? shared : `keyint=${gop}:min-keyint=${gop}:${shared}`;
-      }
+      const gopParams = gop !== null ? lockedGopCodecParams(codec, gop) : "";
       const joinParams = (...parts: string[]): string =>
         parts.filter((p) => p.length > 0).join(":");
       if (preset === "ultrafast") {
@@ -354,19 +385,10 @@ export function buildEncoderArgs(
     // displayable reference when alt-ref is on. The shared `vp9CpuUsed`
     // option pins speed/quality against libvpx-vp9 default drift across
     // versions for both chunked and streaming WebM encodes.
-    const lockGopVp9 = options.lockGopForChunkConcat === true;
-    if (lockGopVp9) {
-      if (
-        typeof options.gopSize !== "number" ||
-        !Number.isFinite(options.gopSize) ||
-        options.gopSize <= 0
-      ) {
-        throw new Error(
-          `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
-        );
-      }
-      const gop = Math.floor(options.gopSize);
-      args.push("-g", String(gop), "-keyint_min", String(gop), "-auto-alt-ref", "0");
+    const vp9Gop = resolveLockedGopSize(options);
+    const lockGopVp9 = vp9Gop !== null;
+    if (vp9Gop !== null) {
+      args.push("-g", String(vp9Gop), "-keyint_min", String(vp9Gop), "-auto-alt-ref", "0");
     }
     if (pixelFormat === "yuva420p") {
       // Alpha + alt-ref is unsupported by libvpx-vp9. The closed-GOP
@@ -543,6 +565,71 @@ export async function encodeFramesFromDir(
   };
 }
 
+export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
+  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  // The concat demuxer does not carry per-input container metadata into the
+  // output, so provenance is re-asserted on the concatenated file.
+  appendRenderProvenanceArgs(args, outputPath);
+  args.push("-y", outputPath);
+  return args;
+}
+
+/**
+ * Sequence rather than a timestamp: two lists written in the same millisecond
+ * into one directory would otherwise collide, and a concat that reads another
+ * render's list produces a silently wrong video rather than an error.
+ */
+let concatListSeq = 0;
+
+function writeConcatList(dir: string, inputPaths: readonly string[]): string {
+  concatListSeq += 1;
+  const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
+  const body = inputPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n");
+  writeFileSync(listPath, body, "utf-8");
+  return listPath;
+}
+
+/**
+ * Stream-copy `inputPaths` (closed-GOP, same codec/params) into one file.
+ * Used by the in-process chunked encode and by segmented capture.
+ *
+ * `externalInterruption` distinguishes an ffmpeg killed from outside (SIGTERM
+ * / SIGKILL from a supervisor or OOM killer) from a genuine encode error;
+ * callers map it to a retryable failure reason.
+ */
+export async function concatVideoFiles(
+  inputPaths: readonly string[],
+  outputPath: string,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegEncodeTimeout">>,
+): Promise<{ success: true } | { success: false; error: string; externalInterruption: boolean }> {
+  const [firstInput] = inputPaths;
+  if (firstInput === undefined) {
+    return { success: false, error: "concatVideoFiles: no inputs", externalInterruption: false };
+  }
+  mkdirSync(dirname(outputPath), { recursive: true });
+  // The list lives with the inputs, not with the output: concurrent encodes
+  // get their own chunk directory but can share an output directory.
+  // The list is left on disk deliberately: it is removed with the work dir,
+  // and `--debug` keeps both so a bad concat can be reproduced from its list.
+  const listPath = writeConcatList(dirname(firstInput), inputPaths);
+  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+  const result = await runFfmpeg(buildConcatArgs(listPath, outputPath), {
+    signal,
+    timeout: encodeTimeout,
+  });
+  if (result.success) return { success: true };
+  return {
+    success: false,
+    error: appendEncodeTimeoutMessage(
+      `Chunk concat failed: ${result.stderr.slice(-400)}`,
+      result.terminationReason === "deadline",
+      encodeTimeout,
+    ),
+    externalInterruption: isExternalFfmpegInterruption(result),
+  };
+}
+
 export async function encodeFramesChunkedConcat(
   framesDir: string,
   framePattern: string,
@@ -635,31 +722,7 @@ export async function encodeFramesChunkedConcat(
     chunkPaths.push(chunkPath);
   }
 
-  const concatListPath = join(chunkDir, "concat-list.txt");
-  const concatInput = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
-  writeFileSync(concatListPath, concatInput, "utf-8");
-
-  const concatArgs = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
-  // The concat demuxer does not carry per-chunk container metadata into the
-  // output, so the chunks' provenance is dropped here even though every chunk
-  // carries it. Re-assert on the concatenated file: for a no-audio mov/webm
-  // this is the last container write, since mux is skipped and applyFaststart
-  // only copies those two formats.
-  appendRenderProvenanceArgs(concatArgs, outputPath);
-  concatArgs.push("-y", outputPath);
-  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-  const concatProcessResult = await runFfmpeg(concatArgs, { signal, timeout: encodeTimeout });
-  const concatResult = {
-    success: concatProcessResult.success,
-    error: concatProcessResult.success
-      ? undefined
-      : appendEncodeTimeoutMessage(
-          `Chunk concat failed: ${concatProcessResult.stderr.slice(-400)}`,
-          concatProcessResult.terminationReason === "deadline",
-          encodeTimeout,
-        ),
-  };
-
+  const concatResult = await concatVideoFiles(chunkPaths, outputPath, signal, config);
   if (!concatResult.success) {
     return {
       success: false,
@@ -668,9 +731,7 @@ export async function encodeFramesChunkedConcat(
       framesEncoded: 0,
       fileSize: 0,
       error: concatResult.error,
-      failureReason: isExternalFfmpegInterruption(concatProcessResult)
-        ? "external_interruption"
-        : undefined,
+      failureReason: concatResult.externalInterruption ? "external_interruption" : undefined,
     };
   }
 
@@ -758,6 +819,154 @@ export async function muxVideoWithAudio(
   return {
     success: result.success,
     outputPath,
+    durationMs: result.durationMs,
+    error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
+    failureReason: result.failureReason,
+  };
+}
+
+export const HLS_MASTER_PLAYLIST = "master.m3u8";
+export const HLS_VIDEO_PLAYLIST = "video.m3u8";
+export const HLS_AUDIO_PLAYLIST = "audio.m3u8";
+
+/**
+ * Drop the standalone audio-only variant ffmpeg's `-var_stream_map` adds to
+ * the master playlist.
+ *
+ * With `a:0,agroup:aud` the hls muxer lists the audio rendition twice: as the
+ * `#EXT-X-MEDIA:TYPE=AUDIO` entry the video variant references (wanted), and
+ * again as its own `#EXT-X-STREAM-INF` variant with no `RESOLUTION` (not
+ * wanted). That is valid HLS, but a player choosing variants by bandwidth can
+ * pick it and play sound with no picture, and the VOD consumer asked for a
+ * single rendition. A variant tag without a `RESOLUTION` attribute is
+ * audio-only; its URI is always the following line, so both go.
+ */
+export function stripAudioOnlyVariants(masterPlaylist: string): string {
+  const lines = masterPlaylist.split("\n");
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.startsWith("#EXT-X-STREAM-INF:") && !line.includes("RESOLUTION=")) {
+      // ffmpeg separates variants with a blank line; drop the one before this
+      // variant so the master does not end up with two in a row.
+      if (kept.at(-1) === "") kept.pop();
+      i += 1;
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept.join("\n");
+}
+
+export interface PackageHlsOptions extends Partial<Pick<EngineConfig, "ffmpegProcessTimeout">> {
+  /** Whole seconds, so it matches the integer `EXT-X-TARGETDURATION` ffmpeg writes. */
+  segmentSeconds: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Stream-copy an H.264 video (and optional AAC sidecar) into an HLS VOD
+ * directory: `master.m3u8`, `video.m3u8` + `video_%05d.ts`, and `audio.m3u8` +
+ * `audio_%05d.ts` when audio is given. `outputPath` in the result is the directory.
+ * The master carries exactly one `#EXT-X-STREAM-INF` variant (the video, with
+ * the audio attached as a rendition group); see `stripAudioOnlyVariants`.
+ *
+ * `-hls_time` cuts at the first keyframe at or after each target, so the input
+ * must be encoded with the GOP lock (`gopSize = segmentSeconds × fps`). The lock
+ * is software-encoder only; a GPU encode will not segment on time.
+ */
+export async function packageHls(
+  videoPath: string,
+  audioPath: string | null,
+  outputDir: string,
+  options: PackageHlsOptions,
+): Promise<MuxResult> {
+  const { segmentSeconds, signal } = options;
+  if (!Number.isInteger(segmentSeconds) || segmentSeconds <= 0) {
+    throw new Error(
+      `[chunkEncoder] packageHls requires a positive integer segmentSeconds (received ${String(segmentSeconds)})`,
+    );
+  }
+  // `-hls_segment_filename` is a printf template and the hls muxer does not honor `%%`.
+  if (outputDir.includes("%")) {
+    throw new Error(`[chunkEncoder] packageHls outputDir must not contain "%": ${outputDir}`);
+  }
+
+  // ffmpeg does not create the directory for the segment pattern.
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+
+  const hasAudio = audioPath !== null;
+  const args = hasAudio
+    ? ["-i", videoPath, "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0"]
+    : ["-i", videoPath, "-map", "0:v:0"];
+
+  args.push(
+    "-c",
+    "copy",
+    "-f",
+    "hls",
+    "-hls_time",
+    String(segmentSeconds),
+    "-hls_playlist_type",
+    "vod",
+    "-hls_flags",
+    "independent_segments",
+    "-hls_segment_type",
+    "mpegts",
+    "-var_stream_map",
+    hasAudio ? "v:0,agroup:aud,name:video a:0,agroup:aud,name:audio" : "v:0,name:video",
+    "-master_pl_name",
+    HLS_MASTER_PLAYLIST,
+    "-hls_segment_filename",
+    join(outputDir, "%v_%05d.ts"),
+    // Without these the mpegts muxer starts the stream at PTS 1.4 s.
+    "-muxdelay",
+    "0",
+    "-muxpreload",
+    "0",
+  );
+
+  // No provenance tags (MPEG-TS drops them; `-movflags` is invalid for `-f hls`)
+  // and no `-avoid_negative_ts`, which would drop the AAC priming (#3487).
+  args.push("-y", join(outputDir, "%v.m3u8"));
+
+  const processTimeout = options.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+  const result = await runFfmpeg(args, { signal, timeout: processTimeout });
+
+  if (signal?.aborted) {
+    return {
+      success: false,
+      outputPath: outputDir,
+      durationMs: result.durationMs,
+      error: "FFmpeg HLS packaging cancelled",
+    };
+  }
+  if (result.success && hasAudio) {
+    const masterPath = join(outputDir, HLS_MASTER_PLAYLIST);
+    // One descriptor for the read-modify-write: re-resolving the path to write
+    // it back races anything else in this predictable temp dir, and `r+` with
+    // owner-only mode neither creates nor widens the playlist ffmpeg wrote.
+    // A missing one is fine — the argument-level tests stub ffmpeg.
+    let master: number | undefined;
+    try {
+      master = openSync(masterPath, "r+", 0o600);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (master !== undefined) {
+      try {
+        const stripped = stripAudioOnlyVariants(readFileSync(master, "utf-8"));
+        // Stripping only shortens the playlist; truncate or the tail survives.
+        ftruncateSync(master, 0);
+        writeSync(master, stripped, 0, "utf-8");
+      } finally {
+        closeSync(master);
+      }
+    }
+  }
+  return {
+    success: result.success,
+    outputPath: outputDir,
     durationMs: result.durationMs,
     error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
     failureReason: result.failureReason,

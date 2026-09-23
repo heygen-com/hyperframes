@@ -524,8 +524,15 @@ export function wrapScopedCompositionScript(
       })
     : window;
   var __hfResolveGsapTarget = function(target) {
-    if (typeof target !== "string") return target;
-    return __hfQueryAll(target);
+    if (typeof target === "string") return __hfQueryAll(target);
+    if (!Array.isArray(target)) return target;
+    return target.reduce(function(resolved, item) {
+      if (typeof item === "string") {
+        return resolved.concat(Array.prototype.slice.call(__hfQueryAll(item)));
+      }
+      resolved.push(item);
+      return resolved;
+    }, []);
   };
   var __hfScopeTimeline = function(timeline) {
     if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;

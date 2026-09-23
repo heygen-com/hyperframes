@@ -5,20 +5,88 @@ import type {
   RuntimeTimelineLike,
 } from "./types";
 import { stableClipId } from "./clipTree";
-import { resolveAuthoredTimingWindow } from "./authoredTiming";
+import {
+  AUTHORED_DURATION_ATTR,
+  AUTHORED_END_ATTR,
+  resolveAuthoredTimingWindow,
+} from "./authoredTiming";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
 import {
   parseStrictFiniteTimingNumber,
   resolveMediaElementDurationSeconds,
   resolveNaturalMediaTimelineDuration,
+  resolveTimedImageDurationSeconds,
 } from "./playbackRate";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
+import { isClipVisibleAt } from "./clipWindow";
+import { snapTimeToFrameBoundary } from "../inline-scripts/parityContract";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
+
+export function isRuntimeElementVisibleAt(
+  rawNode: HTMLElement,
+  options: {
+    currentTime: number;
+    compositionDuration: number;
+    canonicalFps: number;
+    exportRenderSeek: boolean;
+    timelineRegistry: Record<string, RuntimeTimelineLike | undefined>;
+    resolver: ReturnType<typeof createRuntimeStartTimeResolver>;
+  },
+): boolean {
+  const tag = rawNode.tagName.toLowerCase();
+  if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
+    return false;
+  }
+
+  const isMedia = tag === "video" || tag === "audio";
+  const start = isMedia
+    ? options.resolver.resolveMediaStartForElement(rawNode)
+    : options.resolver.resolveStartForElement(rawNode, 0);
+  let duration = options.resolver.resolveDurationForElement(rawNode);
+  const compId = rawNode.getAttribute("data-composition-id");
+  if (compId) {
+    const compTimeline = options.timelineRegistry[compId];
+    const liveDuration =
+      compTimeline && typeof compTimeline.duration === "function"
+        ? Number(compTimeline.duration())
+        : null;
+    const hasAuthoredTiming =
+      rawNode.hasAttribute("data-duration") ||
+      rawNode.hasAttribute("data-end") ||
+      rawNode.hasAttribute(AUTHORED_DURATION_ATTR) ||
+      rawNode.hasAttribute(AUTHORED_END_ATTR);
+    if (
+      !hasAuthoredTiming &&
+      (duration == null || duration <= 0) &&
+      liveDuration != null &&
+      Number.isFinite(liveDuration) &&
+      liveDuration > 0
+    ) {
+      duration = liveDuration;
+    }
+  }
+  const computedEnd =
+    duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+  // Export seeks snap to frame boundaries; interactive visibility uses authored seconds.
+  const visibilityStart = options.exportRenderSeek
+    ? snapTimeToFrameBoundary(start, options.canonicalFps)
+    : start;
+  const visibilityEnd =
+    options.exportRenderSeek && Number.isFinite(computedEnd)
+      ? snapTimeToFrameBoundary(computedEnd, options.canonicalFps)
+      : computedEnd;
+  return isClipVisibleAt(
+    options.currentTime,
+    visibilityStart,
+    visibilityEnd,
+    options.compositionDuration,
+  );
+}
 
 function parseNum(value: string | null | undefined): number | null {
   return parseStrictFiniteTimingNumber(value);
@@ -26,7 +94,7 @@ function parseNum(value: string | null | undefined): number | null {
 
 function parseElementDurationAttr(element: Element): number | null {
   const publicDuration = element.getAttribute("data-duration");
-  const authoredDuration = element.getAttribute("data-hf-authored-duration");
+  const authoredDuration = element.getAttribute(AUTHORED_DURATION_ATTR);
   const resolved = resolveAuthoredTimingWindow({
     start: 0,
     duration: publicDuration,
@@ -44,7 +112,7 @@ function parseElementEndAttr(element: Element): number | null {
     resolveAuthoredTimingWindow({
       start: 0,
       end: element.getAttribute("data-end"),
-      authoredEnd: element.getAttribute("data-hf-authored-end"),
+      authoredEnd: element.getAttribute(AUTHORED_END_ATTR),
     })?.end ?? null
   );
 }
@@ -362,6 +430,7 @@ export function collectRuntimeTimelinePayload(params: {
         duration = resolveNaturalMediaTimelineDuration(node, node.duration);
       }
     }
+    if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);
     if (duration == null) {
       const inheritedDuration = compositionContext.inheritedDuration;
       if (inheritedDuration != null && inheritedDuration > 0) {

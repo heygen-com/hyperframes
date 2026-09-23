@@ -1,0 +1,59 @@
+{
+  "guards": {
+    "scripts/check-media-use-copy-parity.test.mjs": [
+      "skills/media-use/scripts/lib/**",
+      "packages/cli/src/media-use/lib/**"
+    ],
+    "scripts/check-test-reachability.test.mjs": [
+      ".github/workflows/ci.yml",
+      "**/package.json",
+      "**/*.test.{mjs,ts,tsx}"
+    ],
+    "scripts/creator-editing-capabilities.test.mjs": [
+      "skills/**",
+      "packages/core/**",
+      "packages/engine/**"
+    ],
+    "scripts/registry-primitive-payloads.test.ts": ["registry/**"],
+    "scripts/generate-catalog-previews.test.ts": [
+      "registry/**",
+      "scripts/**",
+      "packages/producer/**"
+    ],
+    "scripts/generate-catalog-payloads.test.ts": ["registry/**", "scripts/**"]
+  },
+  "runners": [
+    {
+      "cwd": ".",
+      "command": "set -euo pipefail\nmapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name \"*.test.mjs\" | sort)\nif [ \"${#SKILLS_TESTS[@]}\" -eq 0 ]; then\necho \"::error::No skills/**/*.test.mjs files found. Did the layout change?\"\nexit 1\nfi\nSKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)\nprintf 'Running %d skills test file(s):\\n' \"${#SKILLS_TESTS[@]}\"\nprintf '  * %s\\n' \"${SKILLS_TESTS[@]}\"\nnode --test \"${SKILLS_TESTS[@]}\"",
+      "tests": [
+        "skills/**/*.test.mjs",
+        "packages/cli/src/media-use/**/*.test.mjs",
+        "scripts/check-media-use-copy-parity.test.mjs",
+        "scripts/creator-editing-capabilities.test.mjs"
+      ],
+      "sources": {},
+      "reason": "Shell find plus an explicit parity file; exact command match invalidates this mapping on edits."
+    },
+    {
+      "cwd": ".",
+      "command": "bun run producer:test:${{ matrix.lane }}",
+      "tests": [
+        "packages/producer/src/**/*.test.ts",
+        "packages/producer/scripts/test-classification.test.mjs",
+        "packages/producer/tests/**/*.test.ts"
+      ],
+      "sources": {
+        "packages/producer/scripts/run-test-lane.mjs": "bff02680f19eebcce0df72cdeedbbc05edfdcede3f3f60658fc0cb18ed8c59f6",
+        "packages/producer/scripts/test-classification.mjs": "f7a1129f49d86fe4a1429dc8b9b75168b25540e1c63242fc79376ae02cf5d0de",
+        ".github/workflows/ci.yml#job#producer-source-tests": "3709c6ac6c9f5c7c66f57fc6c1c106aec4ffe906f919eb7cdf2a6ce1d4e0974c",
+        "packages/producer/package.json#script#test:unit": "ae6beda8319d166774be958ea5593cd27dbf7f6c9bce1d787a3fe28dfc3477b1",
+        "packages/producer/package.json#script#test:integration": "008589f37d026877595a13501cbb66abd5cbe50e21fdcac6904f45466c3f475d",
+        "packages/producer/package.json#script#test:classification": "4ad50d88c81de374dd6ef8a53d702a4b1901483837ecd3d833b1cb0c9a29a058",
+        "package.json#script#producer:test:unit": "ded6d4183d455d1f414e41d15794c1aef5323e53b5ea5e2ff349e3bb049c18db",
+        "package.json#script#producer:test:integration": "8bb545947f4f8fef3bd5c6c9b1bcb394c7c942d7a3ab90cf4540c662572a278e"
+      },
+      "reason": "Both unit and integration matrix lanes discover tests under src and tests; workflow and runner sources are pinned to invalidate changed selection."
+    }
+  ]
+}

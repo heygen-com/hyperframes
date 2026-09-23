@@ -36,7 +36,8 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function render(rich = false) {
+async function render(width = 0) {
+  Object.defineProperty(host, "clientWidth", { configurable: true, value: width });
   root = createRoot(host);
   await act(async () => {
     root!.render(
@@ -47,7 +48,6 @@ async function render(rich = false) {
         projectId="p"
         sessionEpoch={1}
         priority="visible"
-        rich={rich}
       />,
     );
     await Promise.resolve();
@@ -55,7 +55,7 @@ async function render(rich = false) {
 }
 
 describe("VideoThumbnail", () => {
-  it("renders a scheduler-provided sparse poster", async () => {
+  it("does not acquire a thumbnail lease before the clip is measured", async () => {
     vi.mocked(decodeVideoThumbnail).mockResolvedValue({
       value: { kind: "image", url: "blob:poster", aspect: 16 / 9 },
       weight: 128,
@@ -63,27 +63,38 @@ describe("VideoThumbnail", () => {
 
     await render();
 
-    expect(decodeVideoThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({ frameCount: 1 }),
-      expect.any(AbortSignal),
-    );
-    expect(host.querySelector('img[src="blob:poster"]')).not.toBeNull();
-    expect(host.querySelector(".animate-pulse")).toBeNull();
+    expect(decodeVideoThumbnail).not.toHaveBeenCalled();
   });
 
-  it("requests a rich filmstrip only for interaction actors", async () => {
+  it("requests a geometry-sized filmstrip by default", async () => {
     vi.mocked(decodeVideoThumbnail).mockResolvedValue({
       value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
       weight: 256,
     });
 
-    await render(true);
+    await render(500);
 
+    expect(decodeVideoThumbnail).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ frameCount: 1 }),
+      expect.any(AbortSignal),
+    );
     expect(decodeVideoThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({ frameCount: 6 }),
+      expect.objectContaining({ frameCount: 8 }),
       expect.any(AbortSignal),
     );
     expect(host.querySelectorAll("img").length).toBeGreaterThan(0);
+  });
+
+  it("issues a single decode job for a narrow clip", async () => {
+    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
+      value: { kind: "image", url: "blob:poster", aspect: 16 / 9 },
+      weight: 128,
+    });
+
+    await render(100);
+
+    expect(decodeVideoThumbnail).toHaveBeenCalledTimes(1);
   });
 
   it("clears the loading shimmer when the scheduled decode fails", async () => {

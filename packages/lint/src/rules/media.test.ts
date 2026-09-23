@@ -1011,3 +1011,21 @@ describe("media_src_kind_mismatch", () => {
     expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
   });
 });
+
+describe("speed_ramp_on_non_media", () => {
+  const RATE = `data-automation='{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":3}]}]}'`;
+  const page = (tag: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">${tag}</div>
+  </body></html>`;
+
+  it("warns on a rate lane outside video and audio, and stays quiet on a clip", async () => {
+    const bad = await lintHyperframeHtml(
+      page(`<img id="pic" src="a.png" data-start="0" data-duration="4" ${RATE}>`),
+    );
+    const good = await lintHyperframeHtml(
+      page(`<video id="v" src="a.mp4" data-start="0" data-duration="4" ${RATE}></video>`),
+    );
+    expect(bad.findings.find((f) => f.code === "speed_ramp_on_non_media")?.elementId).toBe("pic");
+    expect(good.findings.some((f) => f.code === "speed_ramp_on_non_media")).toBe(false);
+  });
+});

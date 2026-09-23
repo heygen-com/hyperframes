@@ -1,7 +1,12 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { optionalPackageDir } from "../utils/optionalPackages.js";
 import {
   buildDoctorReport,
   checkFramesCache,
+  checkOptionalPackage,
   redactHome,
   parseToolVersion,
   type CheckOutcome,
@@ -270,5 +275,36 @@ describe("checkFramesCache", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.detail).toContain("free space unknown");
+  });
+});
+
+describe("checkOptionalPackage", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reports a package that has not been installed yet as ok, installing on first use", () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-doctor-optional-"));
+    dirs.push(cacheDir);
+    expect(checkOptionalPackage("onnxruntime-node", cacheDir)).toEqual({
+      ok: true,
+      detail: "Not installed (installs on first use)",
+    });
+  });
+
+  it("reports the installed version read from the cached package", () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-doctor-optional-"));
+    dirs.push(cacheDir);
+    const pkgDir = join(
+      optionalPackageDir("@google/genai", cacheDir),
+      "node_modules/@google/genai",
+    );
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ version: "1.52.0" }));
+    expect(checkOptionalPackage("@google/genai", cacheDir)).toEqual({
+      ok: true,
+      detail: "1.52.0 installed",
+    });
   });
 });

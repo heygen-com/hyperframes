@@ -1223,6 +1223,120 @@ describe("commitDraggedClipMove", () => {
       expect(onStackingPatches).not.toHaveBeenCalled();
     });
   });
+
+  describe("magnetic main track on a track-insert", () => {
+    it("a top-gutter insert that renumbers to literal track 0 snaps its start to 0", () => {
+      // Sole visual clip sits on track 1 — the real main track (0) is genuinely
+      // empty. Dragging it into the top insert-gutter creates a new lane that
+      // normalizeToZones renumbers to literal 0, so the main-track rule must apply
+      // even though the preview never saw a literal-0 landing track.
+      const elements = [el("v1", 1, 0, 5)];
+      const { onMoveElements } = runClipMove(
+        drag(elements[0], { previewStart: 8, previewTrack: 1, insertRow: 0 }),
+        { elements, trackOrder: [1] },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.v1).toEqual({ start: 0, track: 0 });
+    });
+
+    it("the z-sync candidate reflects the snapped start, not the raw previewStart", async () => {
+      // v1 snaps from previewStart 8 to 0 (see the test above). A foreign-file
+      // sibling at [2, 5) only overlaps the SNAPPED window [0, 5), never the
+      // raw [8, 13) — so a z-sync firing at all proves the candidate the
+      // stacking check reads from carries the snapped start.
+      const v1 = el("v1", 2, 0, 5);
+      const sibling = el("s", 1, 2, 3); // [2, 5) — same source file, same paint scope
+      const elements = [v1, sibling];
+      const onStackingPatches = vi.fn();
+      // v1 lands on lane 0, which paints above lane 1 (lower track paints higher),
+      // yet carries the lower z: a violation only while the two overlap in time.
+      commitDraggedClipMove(drag(v1, { previewStart: 8, previewTrack: 2, insertRow: 0 }), {
+        elements,
+        trackOrder: [1, 2],
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        onMoveElements: vi.fn(),
+        readZIndex: (element) => (element.key === "v1" ? 1 : 10),
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+    });
+
+    it("a plain lane change onto the empty main track snaps its committed start to 0", () => {
+      const elements = [el("v1", 1, 0, 5)];
+      const spies = runClipMove(drag(elements[0], { previewStart: 8, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0, 1],
+      });
+      expect(expectAtomicMoveMap(spies).v1).toEqual({ start: 0, track: 0 });
+    });
+
+    it("the z-sync candidate of a plain lane change carries the snapped start", async () => {
+      // The sibling [2, 5) overlaps v1 only at the snapped [0, 5), never at the raw [8, 13).
+      const v1 = el("v1", 2, 0, 5);
+      const sibling = el("s", 1, 2, 3);
+      const onStackingPatches = vi.fn();
+      commitDraggedClipMove(drag(v1, { previewStart: 8, previewTrack: 0 }), {
+        elements: [v1, sibling],
+        trackOrder: [0, 1, 2],
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        onMoveElements: vi.fn(),
+        readZIndex: (element) => (element.key === "v1" ? 1 : 10),
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+    });
+
+    it("a top-gutter insert that pushes the old track-0 clip down snaps to the new track 0", () => {
+      const oldMain = el("old", 0, 0, 3);
+      const dragged = el("v1", 2, 0, 5);
+      const { onMoveElements } = runClipMove(
+        drag(dragged, { previewStart: 8, previewTrack: 2, insertRow: 0 }),
+        { elements: [oldMain, dragged], trackOrder: [0, 2] },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.old.track).toBe(1);
+      expect(map.v1).toEqual({ start: 0, track: 0 });
+    });
+
+    it("an expanded child dragged with its host commits the HOST at 0", () => {
+      for (const [hostStart, childStart] of [
+        [30, 32],
+        [20, 22],
+      ]) {
+        const host = el("host", 1, hostStart, 10);
+        const child: TimelineElement = {
+          ...el("child", 2, childStart, 4),
+          expandedHostKey: "host",
+          expandedParentStart: hostStart,
+        };
+        const { onMoveElements } = runClipMove(
+          drag(child, { previewStart: childStart, previewTrack: 0 }),
+          {
+            elements: [host, child],
+            trackOrder: [0, 1, 2],
+            selectedKeys: new Set(["host", "child"]),
+          },
+        );
+        expect(editMap(onMoveElements.mock.calls[0][0]).host).toEqual({ start: 0, track: 0 });
+      }
+    });
+
+    it("a multi-selection top-gutter insert does NOT snap (siblings key off the unsnapped start)", () => {
+      const dragged = el("v1", 1, 0, 5);
+      const sibling = el("v2", 1, 10, 5);
+      const elements = [dragged, sibling];
+      const { onMoveElements } = runClipMove(
+        drag(dragged, { previewStart: 8, previewTrack: 1, insertRow: 0 }),
+        { elements, trackOrder: [1], selectedKeys: new Set(["v1", "v2"]) },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.v1.start).toBe(8); // unsnapped — multi-selection guard
+    });
+  });
 });
 
 describe("commitZMirrorLaneMove", () => {

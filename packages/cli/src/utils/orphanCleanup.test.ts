@@ -92,7 +92,7 @@ describe.skipIf(!IS_UNIX)("killProcessTree", () => {
 
   it("handles non-existent PID gracefully", () => {
     // Should not throw for a PID that doesn't exist
-    killProcessTree(999999999);
+    expect(killProcessTree(999999999)).toBeUndefined();
   });
 
   it("escalates to SIGKILL after grace period", async () => {

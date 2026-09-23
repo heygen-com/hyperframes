@@ -30,7 +30,7 @@ function CopyChip({ feedback, asset }: { feedback: CopyFeedback; asset: string }
   return (
     <span
       role="status"
-      className={`flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
+      className={`shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
         feedback.ok ? "text-panel-accent bg-panel-accent/10" : "text-red-400 bg-red-500/10"
       }`}
     >
@@ -223,12 +223,12 @@ export function AssetCard({
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        className={`flex flex-col gap-1 cursor-pointer rounded-md p-1 transition-colors outline-none focus-visible:bg-neutral-800/60 ${
+        className={`flex flex-col gap-1 cursor-pointer rounded-md p-1 transition-colors outline-hidden focus-visible:bg-neutral-800/60 ${
           isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/40"
         }`}
       >
         {/* Thumbnail */}
-        <div className="w-full aspect-video rounded overflow-hidden bg-neutral-900 relative">
+        <div className="w-full aspect-video rounded-sm overflow-hidden bg-neutral-900 relative">
           {isImage && !imgError && (
             <img
               src={serveUrl}
@@ -261,14 +261,14 @@ export function AssetCard({
 
           {/* "Added" badge — top-left */}
           {used && (
-            <span className="absolute top-1 left-1 text-[9px] font-semibold leading-none px-1.5 py-[3px] rounded bg-neutral-950/80 text-panel-text-1">
+            <span className="absolute top-1 left-1 text-[9px] font-semibold leading-none px-1.5 py-[3px] rounded-sm bg-neutral-950/80 text-panel-text-1">
               Added
             </span>
           )}
 
           {/* Duration badge — top-right, media only */}
           {durationLabel && (
-            <span className="absolute top-1 right-1 text-[9px] font-medium leading-none px-1.5 py-[3px] rounded bg-neutral-950/80 text-panel-text-2 tabular-nums">
+            <span className="absolute top-1 right-1 text-[9px] font-medium leading-none px-1.5 py-[3px] rounded-sm bg-neutral-950/80 text-panel-text-2 tabular-nums">
               {durationLabel}
             </span>
           )}
@@ -348,13 +348,13 @@ export function FontRow({
         }}
         onDragStart={(e) => writeAssetDragData(e, asset)}
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
-        className={`px-2.5 py-1.5 flex items-center gap-2.5 cursor-pointer transition-colors outline-none focus-visible:bg-neutral-800/60 ${
+        className={`px-2.5 py-1.5 flex items-center gap-2.5 cursor-pointer transition-colors outline-hidden focus-visible:bg-neutral-800/60 ${
           isCopied
             ? "bg-studio-accent/10 border-l-2 border-studio-accent"
             : "border-l-2 border-transparent hover:bg-neutral-800/50"
         }`}
       >
-        <div className="w-[50px] h-[32px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 flex items-center justify-center">
+        <div className="w-[50px] h-[32px] rounded-sm overflow-hidden bg-neutral-900 shrink-0 flex items-center justify-center">
           <span className="text-[9px] font-medium text-neutral-700">{extension}</span>
         </div>
         <div className="min-w-0 flex-1">
@@ -366,7 +366,7 @@ export function FontRow({
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-neutral-600 truncate">{extension}</span>
             {used && (
-              <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
+              <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded-sm">
                 in use
               </span>
             )}

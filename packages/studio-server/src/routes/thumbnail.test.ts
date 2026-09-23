@@ -94,13 +94,9 @@ describe("registerThumbnailRoutes", () => {
     const previewResponse = await app.request(
       "http://localhost/projects/demo/thumbnail/index.html?t=1.2&output=preview",
     );
-    const storyboardResponse = await app.request(
-      "http://localhost/projects/demo/thumbnail/index.html?t=1.2&output=storyboard",
-    );
 
     expect(sourceResponse.status).toBe(200);
     expect(previewResponse.status).toBe(200);
-    expect(storyboardResponse.status).toBe(200);
     expect(adapter.generateThumbnail).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -112,30 +108,6 @@ describe("registerThumbnailRoutes", () => {
     expect(adapter.generateThumbnail).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ outputWidth: 135, outputHeight: 135 }),
-    );
-    expect(adapter.generateThumbnail).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ outputWidth: 1080, outputHeight: 1080 }),
-    );
-  });
-
-  it("caps storyboard output at a 1080px longest side", async () => {
-    const adapter = createAdapter();
-    const app = new Hono();
-    registerThumbnailRoutes(app, adapter);
-    await writeComposition(adapter, 7680, 4320);
-
-    const response = await app.request(
-      "http://localhost/projects/demo/thumbnail/index.html?t=1.2&output=storyboard",
-    );
-
-    expect(response.status).toBe(200);
-    expect(adapter.generateThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        format: "jpeg",
-        outputWidth: 1080,
-        outputHeight: 608,
-      }),
     );
   });
 

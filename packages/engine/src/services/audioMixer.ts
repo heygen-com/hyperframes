@@ -6,11 +6,12 @@
  */
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
 import { clampAudioGain } from "@hyperframes/core/audio-gain";
+import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
 import {
   downloadToTemp,
   isHttpUrl,
@@ -44,8 +45,13 @@ import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
 import {
   MEDIA_RENDER_ID_ATTR,
   normalizePlaybackRate,
+  normalizeRateSpec,
   parseStrictFiniteTimingNumber,
+  readElementRateSpec,
   readMediaStart,
+  sourceTimeAt,
+  timeAtSourceTime,
+  type RateSpec,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { AUDIO_GROUP_RENDER_ID_ATTR } from "@hyperframes/core";
@@ -129,7 +135,45 @@ function buildAtempoFilter(playbackRate: number): string | null {
   return stages.map((stage) => `atempo=${formatFilterNumber(stage)}`).join(",");
 }
 
-function preparedAudioOutputArgs(srcPath: string, playbackRate: number): Promise<string[]> {
+/** Composition seconds per constant-tempo slice when a rate lane is baked into audio. */
+const RAMP_SLICE_SECONDS = 0.25;
+const MAX_RAMP_SLICES = 240;
+
+/** Bake a rate lane as consecutive source slices, each stretched by its mean `sourceTimeAt` rate, keeping pitch. */
+function buildRampFilterComplex(
+  lane: RateSpec & object,
+  duration: number,
+  tailFilter: string | null,
+): string {
+  const slices = Math.min(MAX_RAMP_SLICES, Math.max(1, Math.ceil(duration / RAMP_SLICE_SECONDS)));
+  const step = duration / slices;
+  const split = Array.from({ length: slices }, (_, i) => `[s${i}]`).join("");
+  const parts = [`[0:a]asplit=${slices}${split}`];
+  for (let i = 0; i < slices; i += 1) {
+    const from = sourceTimeAt(lane, i * step);
+    const to = sourceTimeAt(lane, (i + 1) * step);
+    const tempo = buildAtempoFilter((to - from) / step);
+    const chain = [
+      `atrim=start=${formatFilterNumber(from)}:end=${formatFilterNumber(to)}`,
+      "asetpts=PTS-STARTPTS",
+      ...(tempo ? [tempo] : []),
+      "apad",
+      "asetpts=N/SR/TB",
+      `atrim=0:${formatFilterNumber(step)}`,
+    ].join(",");
+    parts.push(`[s${i}]${chain}[t${i}]`);
+  }
+  const joined = Array.from({ length: slices }, (_, i) => `[t${i}]`).join("");
+  parts.push(`${joined}concat=n=${slices}:v=0:a=1${tailFilter ? "[cat]" : "[out]"}`);
+  if (tailFilter) parts.push(`[cat]${tailFilter}[out]`);
+  return parts.join(";");
+}
+
+function preparedAudioOutputArgs(
+  srcPath: string,
+  playbackRate: RateSpec,
+  duration = 0,
+): Promise<string[]> {
   return stereoOutputArgs(srcPath).then((channelArgs) => {
     const filters: string[] = [];
     const outputArgs: string[] = [];
@@ -137,6 +181,10 @@ function preparedAudioOutputArgs(srcPath: string, playbackRate: number): Promise
       filters.push(channelArgs[1]);
     } else {
       outputArgs.push(...channelArgs);
+    }
+    if (typeof playbackRate === "object") {
+      const graph = buildRampFilterComplex(playbackRate, duration, filters.join(",") || null);
+      return ["-filter_complex", graph, "-map", "[out]", ...outputArgs];
     }
     const atempo = buildAtempoFilter(playbackRate);
     if (atempo) filters.push(atempo);
@@ -302,12 +350,58 @@ function buildVolumeExpression(track: AudioTrack, ignoreKeyframes = false): stri
   return `volume=${escapeExpressionCommas(expression)}:eval=frame`;
 }
 
+/** afade stages after the volume filter (leading comma), or "" when none. Stream time 0 is the clip start. */
+export function buildFadeFilters(
+  track: Pick<AudioTrack, "start" | "end" | "fadeIn" | "fadeOut">,
+): string {
+  const duration = track.end - track.start;
+  const { fadeIn, fadeOut } = clampFadesToDuration(
+    { fadeIn: track.fadeIn ?? 0, fadeOut: track.fadeOut ?? 0 },
+    duration,
+  );
+  const stages: string[] = [];
+  if (fadeIn > 0) stages.push(`afade=t=in:st=0:d=${formatFilterNumber(fadeIn)}`);
+  if (fadeOut > 0 && duration > 0) {
+    stages.push(
+      `afade=t=out:st=${formatFilterNumber(Math.max(0, duration - fadeOut))}:d=${formatFilterNumber(fadeOut)}`,
+    );
+  }
+  return stages.length ? `,${stages.join(",")}` : "";
+}
+
+/** One track: trim, volume, afade, delay/pad. asetpts after apad so FFmpeg 5-8 delayed branches do not land at t=0. */
+export function buildTrackInputFilter(
+  track: Pick<AudioTrack, "start" | "end" | "fadeIn" | "fadeOut" | "tailSeconds">,
+  index: number,
+  volumeFilter: string,
+  totalDuration: number,
+): string {
+  const delayMs = Math.round(track.start * 1000);
+  const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
+  return `[${index}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter}${buildFadeFilters(track)},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${index}]`;
+}
+
 interface ExtractResult {
   success: boolean;
   outputPath: string;
   durationMs: number;
   error?: string;
   failure?: AudioProcessingFailure;
+}
+
+// Absolute paths are omitted: boundedDetail redacts them to end-of-line and they name the host.
+function missingSourceMessage(
+  elementId: string,
+  src: string,
+  baseDir: string,
+  resolvedPath: string,
+): string {
+  const relativePath = relative(baseDir, resolvedPath).replace(/\\/g, "/");
+  const insideProject = !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  const authored = /^([\\/]|[A-Za-z]:)/.test(src) ? "" : `src="${src}" `;
+  return `Source not found for audio element ${elementId}: ${authored}resolved to ${
+    insideProject ? relativePath : "a path outside the project"
+  }`;
 }
 
 function boundedDetail(message: string, maxLength = 2_000): string {
@@ -521,9 +615,9 @@ export function parseAudioElements(html: string): AudioElement[] {
     src: string,
     type: AudioElement["type"],
   ): AudioElement => {
-    const playbackRateAttr = el.getAttribute("data-playback-rate");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
+    const fades = readElementFades(el);
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
     const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
     // Audio only in v1 (matches resolveAudioGroups, which only scans
@@ -536,11 +630,11 @@ export function parseAudioElements(html: string): AudioElement[] {
       start: resolveStart(el),
       end: parseEnd(el.getAttribute("data-end")),
       mediaStart: readMediaStart(el),
-      playbackRate: normalizePlaybackRate(
-        playbackRateAttr ? parseFloat(playbackRateAttr) : Number.NaN,
-      ),
+      playbackRate: readElementRateSpec(el),
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
+      ...(fades.fadeIn > 0 ? { fadeIn: fades.fadeIn } : {}),
+      ...(fades.fadeOut > 0 ? { fadeOut: fades.fadeOut } : {}),
       ...(fxChain ? { fxChain } : {}),
       ...(automation ? { automation } : {}),
       ...(group
@@ -585,7 +679,7 @@ export function parseAudioElements(html: string): AudioElement[] {
 async function extractAudioFromVideo(
   videoPath: string,
   outputPath: string,
-  options?: { startTime?: number; duration?: number; playbackRate?: number },
+  options?: { startTime?: number; duration?: number; playbackRate?: RateSpec },
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
@@ -593,12 +687,14 @@ async function extractAudioFromVideo(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const playbackRate = normalizePlaybackRate(options?.playbackRate ?? 1);
+  const playbackRate = normalizeRateSpec(options?.playbackRate);
   const args: string[] = [];
   if (options?.startTime !== undefined) args.push("-ss", String(options.startTime));
-  if (options?.duration !== undefined) args.push("-t", String(options.duration * playbackRate));
+  if (options?.duration !== undefined) {
+    args.push("-t", String(sourceTimeAt(playbackRate, options.duration)));
+  }
   args.push("-i", videoPath);
-  const outputArgs = await preparedAudioOutputArgs(videoPath, playbackRate);
+  const outputArgs = await preparedAudioOutputArgs(videoPath, playbackRate, options?.duration);
   args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
   if (playbackRate !== 1 && options?.duration !== undefined) {
     args.push("-t", String(options.duration));
@@ -641,21 +737,21 @@ async function prepareAudioTrack(
   outputPath: string,
   mediaStart: number,
   duration: number,
-  playbackRate = 1,
+  playbackRate: RateSpec = 1,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-  const normalizedPlaybackRate = normalizePlaybackRate(playbackRate);
-  const outputArgs = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate);
+  const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
+  const outputArgs = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate, duration);
 
   const args = [
     "-ss",
     String(mediaStart),
     "-t",
-    String(duration * normalizedPlaybackRate),
+    String(sourceTimeAt(normalizedPlaybackRate, duration)),
     "-i",
     srcPath,
     "-acodec",
@@ -774,27 +870,8 @@ async function mixAudioTracks(
   const buildFilterComplex = (ignoreAutomation: boolean): string => {
     const filterParts: string[] = [];
     tracks.forEach((track, i) => {
-      const delayMs = Math.round(track.start * 1000);
-      // A clip's own audio ends at `end`, but an FX tail is still decaying past
-      // it. Trimming at the boundary is what cut every reverb short; the final
-      // atrim below still holds the mix to the composition's length, so a tail
-      // can run over what follows but never past the end of the video.
-      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
-      // `apad` then `atrim` is the portable pad-to-length shape: PR #2769 moved
-      // off `apad=whole_dur=` because some FFmpeg builds reject that option
-      // outright ("Error applying option 'whole_dur': Option not found").
-      // But on FFmpeg 5.x through 8.0.x the samples `apad` appends carry
-      // timestamps the following `atrim` misreads, so a delayed branch lands at
-      // t=0 and, once four or more branches are mixed, the last one disappears
-      // entirely. `asetpts=N/SR/TB` renumbers the padded stream from the sample
-      // count before the trim reads it, which fixes the misplacement while
-      // keeping the filter set every build supports. Verified correct on 4.2.7,
-      // 7.0.2, an 8.x nightly and 8.1.1; the un-reset form is wrong on the
-      // middle two.
-      filterParts.push(
-        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
-      );
+      filterParts.push(buildTrackInputFilter(track, i, volumeFilter, totalDuration));
     });
 
     const mixInputs = tracks.map((_, i) => `[a${i}]`).join("");
@@ -962,14 +1039,8 @@ async function mixGroupMembers(
 
   const buildInputFilters = (ignoreKeyframes: boolean) =>
     memberTracks.map((track, i) => {
-      const delayMs = Math.round(track.start * 1000);
-      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreKeyframes);
-      // Same `asetpts=N/SR/TB` as the master mix above, for the same reason and
-      // on the same builds: these are delayed branches padded to length and then
-      // amix'd, so without the renumbering a delayed member lands at t=0 and a
-      // group of four or more loses its last one.
-      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
+      return buildTrackInputFilter(track, i, volumeFilter, totalDuration);
     });
   const mixInputs = memberTracks.map((_, i) => `[a${i}]`).join("");
 
@@ -1118,8 +1189,7 @@ export async function processCompositionAudio(
       try {
         let srcPath = element.src;
         if (!isHttpUrl(srcPath)) {
-          // Same browser-vs-filesystem path semantics as videos — see
-          // resolveProjectRelativeSrc in videoFrameExtractor for the full why.
+          // Same browser-URL path semantics as videos.
           srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);
         }
 
@@ -1148,7 +1218,7 @@ export async function processCompositionAudio(
             owner: "user",
             retryable: false,
             elementId: element.id,
-            detail: boundedDetail(`Source not found for audio element ${element.id}`),
+            detail: boundedDetail(missingSourceMessage(element.id, element.src, baseDir, srcPath)),
           });
           return;
         }
@@ -1184,9 +1254,10 @@ export async function processCompositionAudio(
             );
             return;
           }
-          const effectiveDuration =
-            (metadata.durationSeconds - element.mediaStart) /
-            normalizePlaybackRate(element.playbackRate ?? 1);
+          const effectiveDuration = timeAtSourceTime(
+            normalizeRateSpec(element.playbackRate),
+            metadata.durationSeconds - element.mediaStart,
+          );
           element.end =
             element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
         }
@@ -1330,6 +1401,8 @@ export async function processCompositionAudio(
           // Gain is already in the samples when baked, so mix at unity.
           volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
           volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
+          ...(element.fadeIn ? { fadeIn: element.fadeIn } : {}),
+          ...(element.fadeOut ? { fadeOut: element.fadeOut } : {}),
           ...(tailSeconds > 0 ? { tailSeconds } : {}),
         };
 

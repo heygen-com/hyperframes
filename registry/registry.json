@@ -4,42 +4,6 @@
   "homepage": "https://hyperframes.heygen.com",
   "items": [
     {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vscode-theme-visualizer",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
-    },
-    {
       "name": "ai-chat-reveal",
       "type": "hyperframes:block"
     },
@@ -69,6 +33,10 @@
     },
     {
       "name": "camera-dolly-zoom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "canopy-part-title",
       "type": "hyperframes:block"
     },
     {
@@ -216,51 +184,11 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "code-snippet-apple-terminal-basic",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-clear-dark",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-clear-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-grass",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-homebrew",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-man-page",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-novel",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-ocean",
+      "name": "code-slice-hero",
       "type": "hyperframes:block"
     },
     {
       "name": "code-snippet-apple-terminal-pro",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-red-sands",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-silver-aerogel",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-solid-colors",
       "type": "hyperframes:block"
     },
     {
@@ -269,50 +197,6 @@
     },
     {
       "name": "code-snippet-dark-modern",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-dark-plus",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-flight",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-high-contrast",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-high-contrast-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-light-2026",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-light-modern",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-light-plus",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-monokai",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-solarized-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-visual-studio-dark",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-visual-studio-light",
       "type": "hyperframes:block"
     },
     {
@@ -325,6 +209,10 @@
     },
     {
       "name": "cross-warp-morph",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "cuboid-carousel",
       "type": "hyperframes:block"
     },
     {
@@ -356,7 +244,15 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "frost-sequence-camera-orbit",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "gallery-tunnel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "glass-shard-title",
       "type": "hyperframes:block"
     },
     {
@@ -413,14 +309,6 @@
     },
     {
       "name": "light-leak",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-context-menu",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-media-controls",
       "type": "hyperframes:block"
     },
     {
@@ -541,6 +429,10 @@
     },
     {
       "name": "nyc-paris-flight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "orbit-card",
       "type": "hyperframes:block"
     },
     {
@@ -725,6 +617,10 @@
     },
     {
       "name": "whip-pan",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "wireframe-portal-title",
       "type": "hyperframes:block"
     },
     {
@@ -932,6 +828,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "colorama-wipe",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "comparison-split",
       "type": "hyperframes:component"
     },
@@ -989,6 +889,10 @@
     },
     {
       "name": "echo-trail",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "extended-keyframe",
       "type": "hyperframes:component"
     },
     {
@@ -1364,6 +1268,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "shutter-slam",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "signup-flow",
       "type": "hyperframes:component"
     },
@@ -1493,6 +1401,10 @@
     },
     {
       "name": "testimonial-proof-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-match-cut",
       "type": "hyperframes:component"
     },
     {
@@ -1634,9 +1546,41 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
     }
   ],
   "catalogArtifact": {
-    "revision": "b33b552d4f830abfcccb2bfe9495ac6284a7e7c05b3d3f4df630dfd5e753e518"
+    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
   }
 }

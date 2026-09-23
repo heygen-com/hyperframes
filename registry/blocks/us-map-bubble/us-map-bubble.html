@@ -115,7 +115,6 @@
           stroke: #ffffff;
           stroke-width: 1;
           transform-origin: center center;
-          transform: scale(0);
         }
 
         #us-map-bubble .city-pulse {
@@ -357,6 +356,9 @@
           function buildTimeline(projectedCities, pulseCircle) {
             var statePaths = statesGroup.querySelectorAll(".state-path");
             var bubbles = bubblesGroup.querySelectorAll(".city-bubble");
+            // Own the full transform via GSAP from the start (not CSS), so the
+            // scale tween below doesn't clobber a value GSAP never tracked.
+            gsap.set(bubbles, { scale: 0 });
             var callouts = calloutsGroup.querySelectorAll(".callout-group");
             var connections = connectionsGroup.querySelectorAll(".connection-line");
 

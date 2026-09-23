@@ -14,7 +14,7 @@ describe("timeline performance diagnostics", () => {
 
   it("reads mounted resources without mutating the timeline", () => {
     document.body.innerHTML = `
-      <div aria-label="Timeline" data-timeline-scheduler-queued="3"
+      <div aria-label="Timeline track view" data-timeline-scheduler-queued="3"
            data-timeline-scheduler-active="2" data-timeline-cache-bytes="4096">
         <div data-timeline-row><div data-clip="true"></div><div data-clip="true"></div></div>
         <div data-timeline-row><div data-clip="true"></div></div>
@@ -41,7 +41,8 @@ describe("timeline performance diagnostics", () => {
   });
 
   it("returns the zero baseline after unmount or reset removes the DOM", () => {
-    document.body.innerHTML = '<div aria-label="Timeline"><div data-clip="true"></div></div>';
+    document.body.innerHTML =
+      '<div aria-label="Timeline track view"><div data-clip="true"></div></div>';
     expect(readTimelinePerformanceDiagnostics().mountedClipRoots).toBe(1);
 
     document.body.replaceChildren();

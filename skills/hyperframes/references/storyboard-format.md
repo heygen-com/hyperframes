@@ -2,7 +2,7 @@
 
 Defines the storyboard's **base data format** only: the `STORYBOARD.md` file shape and the `StoryboardManifest` it parses into. How a workflow _generates_ a storyboard lives in that workflow; the optional narration/TTS file (`SCRIPT.md`) is a separate concern owned by the TTS step, not here.
 
-A storyboard is the **plan layer** for a video — an ordered set of **frames** (key moments) in one markdown file. HyperFrames Studio renders it as a contact sheet (the Storyboard view, available by default in every Studio session). Parser: `@hyperframes/core/storyboard` → `StoryboardManifest`; read API: `GET /api/projects/<id>/storyboard`.
+A storyboard is the **plan layer** for a video — an ordered set of **frames** (key moments) in one markdown file. Parser: `@hyperframes/core/storyboard` → `StoryboardManifest`.
 
 ## Frontmatter (global direction)
 
@@ -53,40 +53,9 @@ StoryboardManifest {
 }
 ```
 
-The read API also adds `srcExists` per frame and attaches the optional `SCRIPT.md` payload when present.
-
 ## `SCRIPT.md` (out of scope here)
 
 Optional, free-form, **not parsed into the manifest** — the locked-narration file that drives TTS. Its format is defined in `references/script-format.md`, and it is absent for videos with no narration/TTS. The per-frame `voiceover` above is the storyboard's own narration guide.
-
-## Frame comments — `.hyperframes/frame-comments.json`
-
-The storyboard review's **structured feedback channel** — the file Studio's per-frame comment boxes write on submit (chat feedback follows the same rule — `brief-contract.md` § 1, the comments channel). Like `SCRIPT.md`, it is a sibling of the storyboard, not parsed into the manifest.
-
-```json
-{
-  "version": 1,
-  "pass": "sketch",
-  "submitted_at": "2026-07-09T12:04:00Z",
-  "comments": [
-    {
-      "frame": 3,
-      "src": "compositions/frames/03-mechanism.html",
-      "title": "Mechanism",
-      "text": "Swap the bar chart for a before/after slider."
-    }
-  ]
-}
-```
-
-| Field                    | Meaning                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `pass`                   | which review the batch belongs to: `storyboard` (text layer) / `sketch` (static frames) / `final` (assembled video) |
-| `comments[].frame`       | the frame's 1-based `index` in the manifest — the key                                                               |
-| `comments[].src` `title` | copied from the frame at submit time — if frames get reordered after submit, the mismatch shows                     |
-| `comments[].text`        | the feedback, verbatim                                                                                              |
-
-Lifecycle — the whole contract: a workflow finding this file at a checkpoint treats it as the revision feedback — **revise exactly the frames named, delete the file, re-present**. Writers create it only on submit; it never lingers across rounds.
 
 ## Example
 
@@ -125,6 +94,6 @@ The old way: prompt, wait, get something that misses. Establish the pain we remo
 ## Notes
 
 - A frame with `status: outline` and no built `src` renders as an outline placeholder.
-- `built` is the middle rung: the frame's HTML exists and its **layout is confirmed** (a wireframe sketch or better) — motion not yet added. Studio chips it blue.
-- The process that walks these statuses — plan, sketch, build, each pass reviewed on the board — is `review-loop.md`.
+- `built` is the middle rung: the frame's HTML exists and its **layout is confirmed** (a wireframe sketch or better) — motion not yet added. Nothing is drawn yet beyond the approved layout.
+- The process that walks these statuses — plan, sketch, build, each pass reviewed in chat and in `storyboard.html` — is `review-loop.md`.
 - Multi-line `voiceover` values collapse to one line on save.

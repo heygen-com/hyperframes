@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { Browser, PuppeteerNode } from "puppeteer-core";
+import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 
 import type { CaptureMode } from "./browserLeasePool.js";
 
@@ -18,6 +18,9 @@ import {
   _setPuppeteerForTests,
   acquireBrowser,
   buildChromeArgs,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
+  WebGpuUnavailableError,
   drainBrowserPool,
   forceReleaseBrowser,
   releaseBrowser,
@@ -187,6 +190,88 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).toContain("--disable-gpu");
     expect(args).toContain("--use-angle=swiftshader");
     expect(args).not.toContain("--use-angle=metal");
+  });
+
+  it("adds the WebGPU flag for a declaring composition even in software mode", () => {
+    const args = buildChromeArgs({ ...base, requiresWebGpu: true }, { browserGpuMode: "software" });
+    expect(args).toContain("--enable-unsafe-webgpu");
+    expect(args).toContain("--use-angle=swiftshader");
+  });
+
+  it("is byte-identical to the requiresWebGpu-absent case for a non-declaring composition", () => {
+    expect(buildChromeArgs({ ...base, requiresWebGpu: false })).toEqual(buildChromeArgs(base));
+  });
+});
+
+describe("compositionRequiresWebGpu", () => {
+  it("detects the explicit WebGPU capability marker on the composition root", () => {
+    expect(
+      compositionRequiresWebGpu(
+        '<div data-requires-webgpu data-composition-id="gpu" data-duration="2"></div>',
+      ),
+    ).toBe(true);
+    expect(compositionRequiresWebGpu('<div data-composition-id="dom"></div>')).toBe(false);
+  });
+
+  it("reads only the composition root tag and stays linear on repeated '<'", () => {
+    expect(
+      compositionRequiresWebGpu('<p data-requires-webgpu></p><div data-composition-id="a"></div>'),
+    ).toBe(false);
+    expect(
+      compositionRequiresWebGpu('<div data-composition-id="a" title="x<y" data-requires-webgpu>'),
+    ).toBe(true);
+    const started = performance.now();
+    expect(compositionRequiresWebGpu("<".repeat(200_000))).toBe(false);
+    expect(compositionRequiresWebGpu("<a'".repeat(100_000))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
+describe("assertWebGpuAdapterAvailable", () => {
+  const pageWithAdapter = (hasAdapter: boolean) =>
+    ({ evaluate: vi.fn().mockResolvedValue(hasAdapter) }) as unknown as Page;
+
+  it("no-ops for a composition that does not require WebGPU, regardless of adapter", () => {
+    const page = pageWithAdapter(false);
+    return expect(assertWebGpuAdapterAvailable(page, false)).resolves.toBeUndefined();
+  });
+
+  it("resolves when a WebGPU adapter is obtainable", () => {
+    const page = pageWithAdapter(true);
+    return expect(assertWebGpuAdapterAvailable(page, true)).resolves.toBeUndefined();
+  });
+
+  it("throws naming the requirement when no adapter is obtainable", async () => {
+    const page = pageWithAdapter(false);
+    await expect(assertWebGpuAdapterAvailable(page, true)).rejects.toThrow("data-requires-webgpu");
+  });
+
+  describe("in-page adapter check (real callback, stubbed navigator.gpu)", () => {
+    const runInPage = {
+      evaluate: (fn: (t: number) => unknown, t: number) => fn(t),
+    } as unknown as Page;
+    const stubAdapter = (adapter: unknown) =>
+      vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => adapter } });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("accepts a hardware adapter", async () => {
+      stubAdapter({ info: { isFallbackAdapter: false } });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).resolves.toBeUndefined();
+    });
+
+    it("refuses a software fallback adapter such as swiftshader", async () => {
+      stubAdapter({ info: { isFallbackAdapter: true } });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+    });
+
+    it("refuses a host with no navigator.gpu", async () => {
+      vi.stubGlobal("navigator", {});
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+    });
   });
 });
 
@@ -440,6 +525,44 @@ describe("resolveBrowserGpuMode", () => {
   });
 });
 
+// CodeQL js/bad-code-sanitization: values must never be woven into the eval
+// string itself. This script is a fixed constant; every variable (module
+// URL, faked platform/arch, faked os.release) crosses as an env var instead.
+const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
+  if (process.env.HF_TEST_PLATFORM) {
+    Object.defineProperty(process, "platform", { value: process.env.HF_TEST_PLATFORM });
+  }
+  if (process.env.HF_TEST_ARCH) {
+    Object.defineProperty(process, "arch", { value: process.env.HF_TEST_ARCH });
+  }
+  if (process.env.HF_TEST_OS_RELEASE) {
+    const os = require("node:os");
+    os.release = () => process.env.HF_TEST_OS_RELEASE;
+    require("node:module").syncBuiltinESMExports();
+  }
+  import(process.env.HF_TEST_MODULE_URL).then(({ resolveHeadlessShellPath }) => {
+    process.stdout.write(resolveHeadlessShellPath({}) ?? "");
+  });
+`;
+
+/** Runs resolveHeadlessShellPath in a subprocess with a faked platform/arch/os.release. */
+function resolveHeadlessShellInSubprocess(
+  env: NodeJS.ProcessEnv,
+  fakes: { platform?: string; arch?: string; osRelease?: string } = {},
+): string {
+  const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+  return execFileSync("bun", ["--eval", RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT], {
+    encoding: "utf8",
+    env: {
+      ...env,
+      HF_TEST_MODULE_URL: moduleUrl,
+      ...(fakes.platform ? { HF_TEST_PLATFORM: fakes.platform } : {}),
+      ...(fakes.arch ? { HF_TEST_ARCH: fakes.arch } : {}),
+      ...(fakes.osRelease ? { HF_TEST_OS_RELEASE: fakes.osRelease } : {}),
+    },
+  });
+}
+
 describe("resolveHeadlessShellPath", () => {
   const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
   const originalHyperframesBrowserPath = process.env.HYPERFRAMES_BROWSER_PATH;
@@ -533,15 +656,11 @@ describe("resolveHeadlessShellPath", () => {
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
-        const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
-        const stdout = execFileSync(
-          "bun",
-          [
-            "--eval",
-            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
-          ],
-          { encoding: "utf8", env },
-        );
+        const stdout = resolveHeadlessShellInSubprocess(env, {
+          platform: hostPlatform,
+          arch: hostArch,
+          osRelease: "24.0.0",
+        });
 
         expect(stdout).toBe(expectedBinary);
       } finally {
@@ -577,15 +696,11 @@ describe("resolveHeadlessShellPath", () => {
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
-        const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
-        const stdout = execFileSync(
-          "bun",
-          [
-            "--eval",
-            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
-          ],
-          { encoding: "utf8", env },
-        );
+        const stdout = resolveHeadlessShellInSubprocess(env, {
+          platform: hostPlatform,
+          arch: hostArch,
+          osRelease: "24.0.0",
+        });
 
         expect(stdout).toBe("");
       } finally {
@@ -617,17 +732,42 @@ describe("resolveHeadlessShellPath", () => {
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
-      const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
-      const stdout = execFileSync(
-        "bun",
-        [
-          "--eval",
-          `Object.defineProperty(process, "platform", { value: "linux" }); Object.defineProperty(process, "arch", { value: "x64" }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
-        ],
-        { encoding: "utf8", env },
-      );
+      const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
       expect(stdout).toBe(binary);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("skips managed-cache builds newer than Chrome 150 on macOS 12", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-macos12-"));
+    try {
+      const shell = (version: string) =>
+        join(
+          home,
+          ".cache",
+          "hyperframes",
+          "chrome",
+          "chrome-headless-shell",
+          `mac-${version}`,
+          "chrome-headless-shell-mac-x64",
+          "chrome-headless-shell",
+        );
+      for (const version of ["152.0.7977.30", "150.0.7871.124"]) {
+        mkdirSync(join(shell(version), ".."), { recursive: true });
+        writeFileSync(shell(version), "");
+      }
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const stdout = resolveHeadlessShellInSubprocess(env, {
+        platform: "darwin",
+        arch: "x64",
+        osRelease: "21.6.0",
+      });
+
+      expect(stdout).toBe(shell("150.0.7871.124"));
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

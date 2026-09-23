@@ -21,21 +21,24 @@ export function formatDuration(ms: number): string {
  * wall-clock render time explicitly labeled "rendered in" so the two are never
  * confused (users were comparing the render time to ffprobe's media duration).
  * Directory (png-sequence) output has no single muxed video, so it shows a frame
- * count instead, or just the render time when neither is known.
+ * count instead, or just the render time when neither is known. An HLS playlist
+ * directory does play as one continuous video, so it reports a duration.
  */
 export function formatRenderSummaryDetail(input: {
   elapsedMs: number;
   outputDurationSeconds?: number;
   isDirectory: boolean;
   frameCount?: number;
+  playlistDirectory?: boolean;
 }): string {
-  const middle = input.isDirectory
-    ? input.frameCount != null
-      ? `${input.frameCount} frames`
-      : undefined
-    : input.outputDurationSeconds != null && input.outputDurationSeconds > 0
-      ? `${formatDuration(input.outputDurationSeconds * 1000)} video`
-      : undefined;
+  const middle =
+    input.isDirectory && !input.playlistDirectory
+      ? input.frameCount != null
+        ? `${input.frameCount} frames`
+        : undefined
+      : input.outputDurationSeconds != null && input.outputDurationSeconds > 0
+        ? `${formatDuration(input.outputDurationSeconds * 1000)} video`
+        : undefined;
   const renderTime = `rendered in ${formatDuration(input.elapsedMs)}`;
   return [middle, renderTime].filter(Boolean).join(" · ");
 }

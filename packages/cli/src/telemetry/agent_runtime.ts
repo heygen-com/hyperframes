@@ -22,6 +22,7 @@ import { detectWSL } from "./platform.js";
 export type SandboxRuntime = "gvisor" | "firecracker" | "docker" | "kvm" | "wsl" | null;
 
 export type AgentRuntime =
+  | "bob"
   | "claude_code"
   | "codex"
   | "cursor"
@@ -47,6 +48,18 @@ interface VendorRule {
 // before more generic ones (e.g. copilot_agent before a hypothetical generic
 // 'github_actions' rule).
 const VENDOR_RULES: VendorRule[] = [
+  // IBM Bob Shell — both shell execution paths stamp BOBSHELL_CLI=1 onto the
+  // child environment: childProcessFallback's spawn env and executeWithPty's
+  // PTY env. Keep this ahead of other agents because Bob inherits the parent
+  // environment, so a Bob session launched from Codex or Claude can carry both
+  // vendors' markers; BOBSHELL_CLI identifies the immediate executor.
+  // BOBSHELL_API_KEY is deliberately ignored: it is an authentication setting,
+  // not proof that Bob launched the current process.
+  // Source: IBM Bob Shell 1.0.6 bundle (lb.childProcessFallback / executeWithPty).
+  {
+    name: "bob",
+    check: (env) => typeof env["BOBSHELL_CLI"] === "string",
+  },
   // Anthropic Claude Code — sets CLAUDECODE=1 on every Bash/PowerShell tool
   // spawn (Shell.ts:321) and CLAUDE_CODE_ENTRYPOINT at startup, inherited by
   // every child (main.tsx:527). Both propagate to spawned subprocesses.
@@ -74,12 +87,12 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor IDE integrated terminal — exports TERM_PROGRAM=cursor (exact,
-  // lowercase). Cursor Background Agent env vars are not publicly documented;
-  // if a canonical marker is identified later, add it here.
+  // Cursor Agent marks its shell with CURSOR_AGENT; TERM_PROGRAM identifies
+  // the IDE terminal only. Keep this after Claude/Codex for nested agents.
+  // Source: https://docs.cursor.com/en/agent/terminal
   {
     name: "cursor",
-    check: (env) => env["TERM_PROGRAM"] === "cursor",
+    check: (env) => Boolean(env["CURSOR_AGENT"]) || env["TERM_PROGRAM"] === "cursor",
   },
   // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
   // Attested across many independent detectors (nx
@@ -244,6 +257,12 @@ export function detectAgentRuntime(): AgentRuntime {
   return null;
 }
 
+/** Observed harness marker, not proof of a vendor, benchmark, or human user. */
+export function detectExecutionHarnessHint(): "harbor" | null {
+  // Read presence only. Preserve this context even when the child agent is known.
+  return typeof process.env["HARBOR_AGENT"] === "string" ? "harbor" : null;
+}
+
 // ---------------------------------------------------------------------------
 // New-agent discovery signals.
 //
@@ -345,7 +364,17 @@ export const HINT_KEY_PATTERN = /AGENT|ASSISTANT|COPILOT|CODEX|CLAUDE|LLM|_THREA
 function isDiscoveryHintKey(upperKey: string): boolean {
   if (upperKey === "AGENT" || upperKey === "AI_AGENT") return false;
   if (upperKey.startsWith("SSH_") || upperKey.startsWith("GPG_")) return false;
+  if (["NPM_CONFIG_USER_AGENT", "TERM_SESSION_ID", "XDG_SESSION_ID"].includes(upperKey))
+    return false;
   return HINT_KEY_PATTERN.test(upperKey);
+}
+
+function discoveryHintPriority(key: string): number {
+  // Kubernetes service expansion can otherwise consume the entire hint cap.
+  if (/_SERVICE_(HOST|PORT)(_|$)|_PORT(_\d+_(TCP|UDP)(_(ADDR|PORT|PROTO))?)?$/.test(key)) return 2;
+  if (/^(HARBOR_AGENT|CURSOR_AGENT|ANTIGRAVITY_AGENT)$|_(SESSION_ID|THREAD_ID)$/.test(key))
+    return 0;
+  return 1;
 }
 
 /**
@@ -363,8 +392,11 @@ export function detectAgentHints(): AgentHints {
     const upper = key.toUpperCase();
     if (isDiscoveryHintKey(upper)) keys.add(upper);
   }
-  const sorted = [...keys].sort();
-  const agent_env_hints = sorted.length ? sorted.slice(0, 16).join(",") : null;
+  const selected = [...keys]
+    .sort((a, b) => discoveryHintPriority(a) - discoveryHintPriority(b) || a.localeCompare(b))
+    .slice(0, 16)
+    .sort();
+  const agent_env_hints = selected.length ? selected.join(",") : null;
 
   return { agent_hint, term_program, agent_env_hints };
 }

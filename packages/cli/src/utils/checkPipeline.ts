@@ -23,6 +23,7 @@ import {
   type MotionFrame,
 } from "./motionAudit.js";
 import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
+import { inspectHdrAutoPromotion } from "./hdrPromotion.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
   parseColorRGBA,
@@ -1145,8 +1146,24 @@ export async function runCheckPipeline(
   });
 
   const lint = buildLintSection(lintResult);
+  let hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null;
+  let hdrInspection: CheckReport["hdr"]["inspection"] = "available";
+  try {
+    hdrPromotion = await (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(project);
+  } catch {
+    hdrInspection = "unavailable";
+  }
   if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
-    return buildReport(options, lint, emptyBrowserResult(), { kind: "none" }, [], []);
+    return buildReport(
+      options,
+      lint,
+      emptyBrowserResult(),
+      { kind: "none" },
+      [],
+      [],
+      hdrPromotion,
+      hdrInspection,
+    );
   }
 
   const motion = dependencies.resolveMotionSpec(project.dir);
@@ -1173,7 +1190,16 @@ export async function runCheckPipeline(
   const snapshotFiles = options.snapshots
     ? await writeContrastSnapshots(dependencies, project.dir, browser)
     : [];
-  const report = buildReport(options, lint, browser, motion, specFindings, snapshotFiles);
+  const report = buildReport(
+    options,
+    lint,
+    browser,
+    motion,
+    specFindings,
+    snapshotFiles,
+    hdrPromotion,
+    hdrInspection,
+  );
   return options.snapshots
     ? await withFindingCrops(dependencies, project, options, report)
     : report;
@@ -1353,6 +1379,8 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
+  hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null,
+  hdrInspection: CheckReport["hdr"]["inspection"] = "available",
 ): CheckReport {
   const layout = shapeLayoutSection(browser.layoutIssues, browser, options);
   const shapedMotion = shapeLayoutFindings(browser.motionIssues, options);
@@ -1391,6 +1419,7 @@ function buildReport(
       checked: browser.contrastChecked,
       passed: browser.contrastPassed,
     },
+    hdr: { autoPromotion: hdrPromotion, inspection: hdrInspection },
     snapshots: {
       enabled: options.snapshots,
       files: snapshotFiles,
@@ -1595,4 +1624,5 @@ const DEFAULT_DEPENDENCIES: CheckDependencies = {
   runBrowserCheck,
   writeSnapshot,
   captureFindingCrops,
+  inspectHdrAutoPromotion,
 };

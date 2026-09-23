@@ -31,7 +31,7 @@ for (const stream of [process.stdout, process.stderr]) {
 // probe lands in a directory that does not contain the bundled worker.
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
 // the pool where to find it via the published env-var override.
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
@@ -106,6 +106,7 @@ import { getRunId } from "./telemetry/runId.js";
 import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
 import { isRenderSucceeded } from "./utils/render-success-state.js";
 import { resolveCommandUsage } from "./utils/commandUsageResolution.js";
+import { isDevMode } from "./utils/env.js";
 import {
   CliResultSignal,
   CliRuntimeError,
@@ -118,6 +119,22 @@ import {
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
+// Runs before commands/preview.js is imported, so a missing or stale
+// package is named here instead of crashing deep inside that import.
+async function assertStudioWorkspaceBuilt(): Promise<void> {
+  if (!isDevMode()) return;
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const { checkStudioWorkspaceBuild, formatWorkspaceBuildProblems } =
+    await import("./utils/workspaceBuildCheck.js");
+  const problems = checkStudioWorkspaceBuild(repoRoot);
+  if (problems.length === 0) return;
+  console.error(formatWorkspaceBuildProblems(problems));
+  throw new CliRuntimeError("Studio workspace build check failed", {
+    exitCode: 1,
+    presented: true,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // CLI definition — all commands are lazy-loaded via dynamic import()
 // ---------------------------------------------------------------------------
@@ -126,9 +143,11 @@ const commandLoaders = {
   init: () => import("./commands/init.js").then((m) => m.default),
   add: () => import("./commands/add.js").then((m) => m.default),
   catalog: () => import("./commands/catalog.js").then((m) => m.default),
+  "media-use": () => import("./commands/media-use.js").then((m) => m.default),
   play: () => import("./commands/play.js").then((m) => m.default),
   present: () => import("./commands/present.js").then((m) => m.default),
-  preview: () => import("./commands/preview.js").then((m) => m.default),
+  preview: () =>
+    assertStudioWorkspaceBuilt().then(() => import("./commands/preview.js").then((m) => m.default)),
   publish: () => import("./commands/publish.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
@@ -140,6 +159,7 @@ const commandLoaders = {
   layout: () => import("./commands/layout.js").then((m) => m.default),
   info: () => import("./commands/info.js").then((m) => m.default),
   compositions: () => import("./commands/compositions.js").then((m) => m.default),
+  timeline: () => import("./commands/timeline.js").then((m) => m.default),
   benchmark: () => import("./commands/benchmark.js").then((m) => m.default),
   browser: () => import("./commands/browser.js").then((m) => m.default),
   "remove-background": () => import("./commands/remove-background.js").then((m) => m.default),

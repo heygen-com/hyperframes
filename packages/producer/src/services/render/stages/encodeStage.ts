@@ -52,6 +52,7 @@ import {
 } from "./gifEncodeArgs.js";
 import { updateJobStatus } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { frameFileExtension } from "@hyperframes/engine";
 
 export interface EncodeStageInput {
   job: RenderJob;
@@ -67,6 +68,12 @@ export interface EncodeStageInput {
   height: number;
   /** True when the output format requires an alpha channel; selects frame extension. */
   needsAlpha: boolean;
+  /**
+   * Format the frames on disk were captured in. Drives the encoder's input pattern, which
+   * must match what `writeCapturedFrame` named them. Not derivable from `needsAlpha`:
+   * motion blur also forces PNG capture on an opaque output.
+   */
+  captureImageFormat: "jpeg" | "png";
   /** True iff the composition has audio. Drives the sidecar copy. */
   hasAudio: boolean;
   /**
@@ -94,13 +101,20 @@ export interface EncodeStageInput {
   onProgress?: ProgressCallback;
   /**
    * Pass-through of `EncoderOptions.lockGopForChunkConcat`. When `true`,
-   * the encode emits closed-GOP keyframes at every `gopSize` boundary so
-   * downstream `ffmpeg -f concat -c copy` round-trips losslessly. Only the
-   * distributed chunk worker (`renderChunk`) sets this — the in-process
-   * renderer's call site omits it, preserving the existing open-GOP output.
+   * the encode emits closed-GOP keyframes at every `gopSize` boundary so a
+   * downstream `-c copy` stream-copy can cut the stream on those boundaries.
+   *
+   * Two callers set it: the distributed chunk worker (`renderChunk`), so
+   * `ffmpeg -f concat -c copy` round-trips losslessly, and an in-process
+   * `format: "hls"` render, so `-hls_time` segments land exactly on the
+   * segment boundary. Every other render omits it, preserving the existing
+   * open-GOP output.
    */
   lockGopForChunkConcat?: boolean;
-  /** Required when `lockGopForChunkConcat === true`. Number of frames per GOP — set to the chunk's frame count by `renderChunk`. */
+  /**
+   * Required when `lockGopForChunkConcat === true`. Frames per GOP — the
+   * chunk's frame count for `renderChunk`, `hlsSegmentSeconds × fps` for HLS.
+   */
   gopSize?: number;
 }
 
@@ -266,7 +280,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     if (hasAudio) {
       log.warn("[Render] GIF output does not support audio; audio tracks will be ignored.");
     }
-    const frameExt = needsAlpha ? "png" : "jpg";
+    const frameExt = frameFileExtension(input.captureImageFormat);
     const framePattern = `frame_%06d.${frameExt}`;
     const loop = resolveGifLoop(job.config.gifLoop);
     const encodeResult = await encodeGifFromDir(framesDir, framePattern, outputPath, {
@@ -299,7 +313,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       ? { ...engineCfg, ffmpegEncodeTimeout: scaledEncodeTimeout }
       : engineCfg;
 
-  const frameExt = needsAlpha ? "png" : "jpg";
+  const frameExt = frameFileExtension(input.captureImageFormat);
   const framePattern = `frame_%06d.${frameExt}`;
   const encoderOpts = {
     fps: job.config.fps,

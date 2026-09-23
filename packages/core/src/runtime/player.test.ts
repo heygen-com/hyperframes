@@ -652,3 +652,69 @@ describe("createRuntimePlayer", () => {
     });
   });
 });
+
+describe("renderSeek sub-frame grid (issue #4010 motion blur)", () => {
+  // The 16 sample times of one frame at the After Effects defaults (180 degree shutter,
+  // phase -90): offsets -0.234375 .. +0.234375 frames on the engine's 4096-tick grid.
+  const SUB_FRAME_DIVISIONS = 4096;
+  const sampleTimes = (frameIndex: number, fps: number, samples: number): number[] => {
+    const grid = fps * SUB_FRAME_DIVISIONS;
+    return Array.from({ length: samples }, (_, k) => {
+      const offsetFrames = -0.25 + ((k + 0.5) / samples) * 0.5;
+      const ticks =
+        frameIndex * SUB_FRAME_DIVISIONS + Math.round(offsetFrames * SUB_FRAME_DIVISIONS);
+      return ticks / grid;
+    });
+  };
+
+  it("keeps 16 sub-frame sample times distinct instead of flooring them onto frame 10", () => {
+    const timeline = createMockTimeline();
+    const player = createRuntimePlayer(createMockDeps(timeline));
+
+    const landed = sampleTimes(10, 30, 16).map((t) => {
+      player.renderSeek(t, { suppressEvents: true, subFrameDivisions: SUB_FRAME_DIVISIONS });
+      return timeline.time();
+    });
+
+    // Without the finer grid every sample floors onto frame 10 and the averaged frame is
+    // byte-identical to the unblurred one, which reads as "the feature does nothing".
+    expect(new Set(landed).size).toBe(16);
+    expect(landed).toEqual([...landed].sort((a, b) => a - b));
+    // The window straddles the frame instant: first sample before it, last after.
+    expect(landed[0]).toBeLessThan(10 / 30);
+    expect(landed[15]).toBeGreaterThan(10 / 30);
+  });
+
+  it("recovers the intended tick exactly on a long composition", () => {
+    const timeline = createMockTimeline();
+    const player = createRuntimePlayer(createMockDeps(timeline));
+    // Frame 18000 is 10 minutes in at 30fps, where the tick count is large enough that a
+    // floor with a 1e-9 epsilon can land a tick early on the float round trip.
+    const expected = sampleTimes(18000, 30, 16);
+
+    const landed = expected.map((t) => {
+      player.renderSeek(t, { suppressEvents: true, subFrameDivisions: SUB_FRAME_DIVISIONS });
+      return timeline.time();
+    });
+
+    expect(landed).toEqual(expected);
+  });
+
+  it("still floors onto the output frame grid when no subdivision is asked for", () => {
+    const timeline = createMockTimeline();
+    const player = createRuntimePlayer(createMockDeps(timeline));
+
+    player.renderSeek(10 / 30 + 0.017, {});
+
+    expect(timeline.time()).toBe(10 / 30);
+  });
+
+  it("suppresses timeline events on a sub-frame sample seek", () => {
+    const timeline = createMockTimeline();
+    const player = createRuntimePlayer(createMockDeps(timeline));
+
+    player.renderSeek(10 / 30, { suppressEvents: true, subFrameDivisions: SUB_FRAME_DIVISIONS });
+
+    expect(timeline.totalTime).toHaveBeenCalledWith(10 / 30, true);
+  });
+});

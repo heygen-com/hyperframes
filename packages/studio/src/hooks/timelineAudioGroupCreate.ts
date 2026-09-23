@@ -8,7 +8,6 @@
 
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { runtimeAudioId } from "../player/lib/timelineElementHelpers";
@@ -27,6 +26,19 @@ import {
   type MutableRef,
   type UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
+
+interface AudioGroupCarveInput extends UseTimelineElementVisibilityEditingInput {
+  checkEditable?: (elements: readonly TimelineElement[]) => boolean;
+}
+
+function assertAudioGroupEditable(
+  checkEditable: AudioGroupCarveInput["checkEditable"],
+  elements: readonly TimelineElement[],
+): void {
+  if (checkEditable && !checkEditable(elements)) {
+    throw new Error("Timeline edit blocked");
+  }
+}
 
 /**
  * Assign (or restore) `data-audio-group` across a set of members.
@@ -267,12 +279,13 @@ export function useAudioGroupCarveAssignment({
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
-}: UseTimelineElementVisibilityEditingInput): (
+  checkEditable,
+}: AudioGroupCarveInput): (
   clipIds: readonly string[],
   groupId: string,
   groupLabel?: string,
 ) => Promise<void> {
-  const expandedElements = useExpandedTimelineElements();
+  const timelineElements = usePlayerStore((state) => state.elements);
   return useCallback(
     async (clipIds: readonly string[], groupId: string, groupLabel?: string) => {
       if (isRecordingRef?.current) {
@@ -285,10 +298,11 @@ export function useAudioGroupCarveAssignment({
       // timeline's group-pointer button) name clips the way the document does,
       // because that is the only space `resolveAudioGroups` reads back.
       const wanted = new Set(clipIds);
-      const elements = expandedElements.filter((item) => {
+      const elements = timelineElements.filter((item) => {
         const domId = runtimeAudioId(item);
         return domId !== null && wanted.has(domId);
       });
+      if (elements.length === wanted.size) assertAudioGroupEditable(checkEditable, elements);
       try {
         // Loud, not silent: an unresolved id used to leave `elements` short,
         // `createAudioGroupAndAssignMembers` returning early with no write, and
@@ -325,7 +339,7 @@ export function useAudioGroupCarveAssignment({
     },
     [
       activeCompPath,
-      expandedElements,
+      timelineElements,
       previewIframeRef,
       writeProjectFile,
       recordEdit,
@@ -333,6 +347,7 @@ export function useAudioGroupCarveAssignment({
       isRecordingRef,
       showToast,
       projectIdRef,
+      checkEditable,
     ],
   );
 }

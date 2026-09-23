@@ -1,47 +1,28 @@
 ---
 title: "Speech Bubble"
 description: "Hand-drawn speech bubble with a positionable tail: outline draws on, paper fill fades in, handwritten text types per character; boils"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/hw-text-cloud.json"
+  compositionId="hw-text-cloud"
+  compositionSrc="compositions/hw-text-cloud.html"
+  title="Speech Bubble"
+  description="Hand-drawn speech bubble with a positionable tail: outline draws on, paper fill fades in, handwritten text types per character; boils"
+  variables={[]}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":286}}
+  attribution={{"path":"registry/blocks/hw-text-cloud","tags":["handwritten","speech-bubble","overlay"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/hw-text-cloud/hw-text-cloud.html"
+>
 
-<InstallCommand command="npx hyperframes add hw-text-cloud" item="hw-text-cloud" />
+<CatalogSlot slot="code">
 
-That writes `compositions/hw-text-cloud.html`, plus 1 supporting file under `assets/fonts/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="hw-text-cloud preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/hw-text-cloud.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/hw-text-cloud.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 6 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="hw-text-cloud"
-  data-composition-src="compositions/hw-text-cloud.html"
-  data-start="0"
-  data-duration="6"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title={`hw-text-cloud.html`}>
-
-```html
+```html hw-text-cloud.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -272,8 +253,10 @@ Move it in time with `data-start`. Put it on a different timeline row with
         var svg = document.getElementById("hw-tc-svg");
         svg.setAttribute("viewBox", "0 0 " + CONFIG.w + " " + CONFIG.h);
         var d = cloudPath(CONFIG.w, CONFIG.h, CONFIG.tip, CONFIG.seed);
-        document.getElementById("hw-tc-fill").setAttribute("d", d);
-        document.getElementById("hw-tc-stroke").setAttribute("d", d);
+        var fillEl = document.getElementById("hw-tc-fill");
+        var stroke = document.getElementById("hw-tc-stroke");
+        fillEl.setAttribute("d", d);
+        stroke.setAttribute("d", d);
 
         var text = document.getElementById("hw-tc-text");
         text.style.left = CONFIG.w * 0.12 + "px";
@@ -293,7 +276,6 @@ Move it in time with `data-start`. Put it on a different timeline row with
         var tl = gsap.timeline({ paused: true });
 
         /* draw outline, fade fill, type text */
-        var stroke = document.getElementById("hw-tc-stroke");
         var len = stroke.getTotalLength();
         gsap.set(stroke, { strokeDasharray: len, strokeDashoffset: len });
         var t0 = CONFIG.animationIn ? 0.3 : 0;
@@ -329,7 +311,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add hw-text-cloud" item="hw-text-cloud" />
+
+That writes `compositions/hw-text-cloud.html`, plus 1 supporting file under `assets/fonts/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="hw-text-cloud"
+  data-composition-src="compositions/hw-text-cloud.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -340,3 +351,7 @@ Tagged `handwritten` `speech-bubble` `overlay`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

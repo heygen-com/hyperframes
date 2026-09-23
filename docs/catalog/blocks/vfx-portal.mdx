@@ -1,36 +1,29 @@
 ---
 title: "Portal"
 description: "VFX composition block"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="vfx-portal"
+  compositionSrc="compositions/vfx-portal.html"
+  title="Portal"
+  description="VFX composition block"
+  variables={[]}
+  meta={{"duration":10,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":863}}
+  attribution={{"path":"registry/blocks/vfx-portal","tags":["html-in-canvas","webgl"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-portal.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-portal.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/vfx-portal/vfx-portal.html"
+>
 
-<InstallCommand command="npx hyperframes add vfx-portal" item="vfx-portal" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/vfx-portal.html`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-portal.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-portal.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Change the colors
-
-Set these CSS variables on the block:
-
-- `--bg-color` — Background. Defaults to `#000000`.
-- `--portal-color` — Portal color. Defaults to `#fafafa`.
-
-## Source
-
-<Accordion title={`vfx-portal.html`}>
-
-```html
+```html vfx-portal.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -896,15 +889,49 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add vfx-portal" item="vfx-portal" />
 
-```html
-<div data-composition-id="vfx-portal" data-composition-src="compositions/vfx-portal.html" data-start="0" data-duration="10" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes one file: `compositions/vfx-portal.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="vfx-portal"
+  data-composition-src="compositions/vfx-portal.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change the colors
+
+Set these CSS variables on the block:
+
+- `--bg-color` — Background. Defaults to `#000000`.
+- `--portal-color` — Portal color. Defaults to `#fafafa`.
 
 {/* hf:generated-footer */}
 
@@ -915,3 +942,7 @@ Tagged `html-in-canvas` `webgl`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -160,4 +160,50 @@ describe("BrowserLeasePool", () => {
     await draining;
     expect(close).toHaveBeenCalledWith(value);
   });
+
+  it("refuses acquire after close, even once the drain it started has resolved", async () => {
+    const value = browser("only");
+    const launch = vi.fn().mockResolvedValue({ browser: value, captureMode: "screenshot" });
+    const pool = new BrowserLeasePool({
+      launch,
+      close: async (v) => v.close(),
+      forceClose: vi.fn(),
+    });
+    const first = await pool.acquire(fingerprint(), true);
+    const releasing = first.release();
+
+    // drain()'s own drainPromise resets to null once it settles -- close()
+    // must still refuse a request that arrives after that, not just a
+    // request that raced the drain while it was in flight.
+    await pool.close();
+    await releasing;
+    launch.mockClear();
+
+    await expect(pool.acquire(fingerprint(), true)).rejects.toThrow(/pool is closed/i);
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it("force-closes an entry whose graceful close hangs past drain's bound", async () => {
+    vi.useFakeTimers();
+    try {
+      const value = browser("stuck");
+      const forceClose = vi.fn();
+      const pool = new BrowserLeasePool({
+        launch: vi.fn().mockResolvedValue({ browser: value, captureMode: "screenshot" }),
+        close: () => new Promise<void>(() => {}), // never resolves
+        forceClose,
+      });
+      const lease = await pool.acquire(fingerprint(), true);
+      const releasing = lease.release();
+
+      const draining = pool.drain();
+      await vi.advanceTimersByTimeAsync(1_100);
+      await draining;
+      await releasing;
+
+      expect(forceClose).toHaveBeenCalledWith(value);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

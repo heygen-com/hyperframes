@@ -20,7 +20,16 @@ import type { GsapProvenance } from "./gsapSerialize.js";
 type Node = any;
 
 /** Node keys that are metadata, not child AST to traverse/substitute. */
-const SKIP_KEYS = new Set(["type", "start", "end", "loc", "range", "__hfProvenance", "__hfOrder"]);
+const SKIP_KEYS = new Set([
+  "type",
+  "start",
+  "end",
+  "loc",
+  "range",
+  "__hfProvenance",
+  "__hfOrder",
+  "__hfSiteStart",
+]);
 
 const FUNCTION_TYPES = new Set([
   "ArrowFunctionExpression",
@@ -33,7 +42,7 @@ const GSAP_METHODS = new Set(["set", "to", "from", "fromTo"]);
 const MAX_DEPTH = 8;
 const MAX_ITERS = 512;
 
-function isFunctionNode(node: Node): boolean {
+export function isFunctionNode(node: Node): boolean {
   return !!node && FUNCTION_TYPES.has(node.type);
 }
 
@@ -161,6 +170,8 @@ interface ExpandCtx {
   site: { n: number };
   /** Mutable counter stamping expansion order onto tweens (clones share source loc). */
   order: { n: number };
+  /** Source offset of the top-level statement being expanded; tweens inherit it as their sort site. */
+  rootStart: number;
 }
 
 function walkNodes(node: Node, fn: (n: Node) => void): void {
@@ -181,11 +192,18 @@ function timelineRootName(call: Node): string | null {
   return obj?.type === "Identifier" ? obj.name : null;
 }
 
-function isTimelineRooted(call: Node, timelineVar: string): boolean {
+export function isTimelineRooted(call: Node, timelineVar: string): boolean {
   if (timelineRootName(call) !== timelineVar) return false;
   return (
     call.callee?.property?.type === "Identifier" && GSAP_METHODS.has(call.callee.property.name)
   );
+}
+
+/** True for `tl.addLabel(...)`: not a tween, but its position must sort in the same coordinate
+ *  space as tween calls, or a label defined inside an inlined helper resolves at its declaration
+ *  offset instead of its call site. */
+function isAddLabelCall(call: Node, timelineVar: string): boolean {
+  return timelineRootName(call) === timelineVar && call.callee?.property?.name === "addLabel";
 }
 
 function containsTimelineCall(node: Node, timelineVar: string): boolean {
@@ -463,12 +481,21 @@ function bodyStatements(node: Node): Node[] {
 /** Tag this body's direct timeline tweens with provenance + a monotonic expansion-order stamp. */
 function tagTimelineCalls(stmts: Node[], prov: GsapProvenance, ctx: ExpandCtx): void {
   for (const stmt of stmts) {
+    const calls: Node[] = [];
     walkNodes(stmt, (n) => {
-      if (n.type === "CallExpression" && isTimelineRooted(n, ctx.timelineVar)) {
-        tagProvenance(n, { ...prov });
-        n.__hfOrder = ctx.order.n++;
-      }
+      if (
+        n.type === "CallExpression" &&
+        (isTimelineRooted(n, ctx.timelineVar) || isAddLabelCall(n, ctx.timelineVar))
+      )
+        calls.push(n);
     });
+    // A chain's outer call is visited first but runs last; stamp in source order.
+    calls.sort((a, b) => a.callee.property.start - b.callee.property.start);
+    for (const n of calls) {
+      tagProvenance(n, { ...prov });
+      n.__hfOrder = ctx.order.n++;
+      n.__hfSiteStart = ctx.rootStart;
+    }
   }
 }
 
@@ -724,7 +751,11 @@ export function inlineComputedTimelines(
     depth: 0,
     site: { n: 0 },
     order: { n: 0 },
+    rootStart: 0,
   };
   const body = (ast.body ?? []).filter((stmt: Node) => !isHelperDecl(stmt, helpers));
-  ast.body = expandStatements(body, ctx);
+  ast.body = body.flatMap((stmt: Node) => {
+    ctx.rootStart = stmt.start;
+    return expandStatements([stmt], ctx);
+  });
 }
