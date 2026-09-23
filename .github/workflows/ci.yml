@@ -11,6 +11,11 @@ env:
 
 on:
   workflow_dispatch:
+    inputs:
+      catalog_publish:
+        description: "Run required checks for a generated catalog publication."
+        type: boolean
+        default: false
   pull_request:
     # `edited` is required so the workflow re-fires when a PR's base ref is
     # set back to `main` after a Graphite stack restack momentarily flips
@@ -57,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) || steps.filter.outputs.code == 'true' }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
@@ -1066,36 +1071,51 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      PR_TITLE_TYPES: |
+        feat
+        fix
+        docs
+        style
+        refactor
+        perf
+        test
+        build
+        ci
+        chore
+        revert
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - id: pr
+      - if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: ${{ env.PR_TITLE_TYPES }}
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - if: github.event_name == 'workflow_dispatch'
+        id: pr
         run: node scripts/ci/resolve-workflow-pr.mjs
         env:
           GH_TOKEN: ${{ github.token }}
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: amannn/action-semantic-pull-request
           ref: e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
           path: .semantic-pr-action
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: Validate PR title
+      - if: github.event_name == 'workflow_dispatch'
+        name: Validate PR title
         run: GITHUB_EVENT_PATH="$PR_EVENT_PATH" node .semantic-pr-action/dist/index.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_EVENT_PATH: ${{ steps.pr.outputs.event_path }}
           INPUT_GITHUBBASEURL: ${{ github.api_url }}
-          INPUT_TYPES: |
-            feat
-            fix
-            docs
-            style
-            refactor
-            perf
-            test
-            build
-            ci
-            chore
-            revert
+          INPUT_TYPES: ${{ env.PR_TITLE_TYPES }}

@@ -191,6 +191,12 @@ function checkAlreadyScheduled(run) {
   return run.status !== "completed" || run.conclusion === "success";
 }
 
+function publishCheckRequest(workflow) {
+  if (workflow === "ci.yml" || workflow === "regression.yml")
+    return { ref: BRANCH, inputs: { catalog_publish: true } };
+  return { ref: BRANCH };
+}
+
 function dispatchPublishChecks(repository) {
   const head = commitOid(
     api(`repos/${repository}/git/ref/heads/${BRANCH}`, "GET", undefined, ".object.sha"),
@@ -207,7 +213,7 @@ function dispatchPublishChecks(repository) {
       api(`${endpoint}/runs?event=workflow_dispatch&head_sha=${head}&per_page=1`),
     );
     if (checkAlreadyScheduled(runs.workflow_runs[0])) continue;
-    api(`${endpoint}/dispatches`, "POST", { ref: BRANCH });
+    api(`${endpoint}/dispatches`, "POST", publishCheckRequest(workflow));
   }
 }
 

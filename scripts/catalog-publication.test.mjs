@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 import { catalogChanges, commitBatches } from "./publish-catalog.mjs";
 import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
 import { committedCatalogOutputs } from "./check-catalog-source-pr.mjs";
@@ -227,7 +228,16 @@ test("publication dispatches every required workflow after updating its branch a
     dispatches.map((call) => call.endpoint.split("/").at(-2)),
     ["ci.yml", "regression.yml", "windows-render.yml", "pr-captures.yml", "codeql.yml"],
   );
-  for (const call of dispatches) assert.deepEqual(call.body, { ref: "bot/catalog-publish" });
+  assert.deepEqual(
+    dispatches.map((call) => call.body),
+    [
+      { ref: "bot/catalog-publish", inputs: { catalog_publish: true } },
+      { ref: "bot/catalog-publish", inputs: { catalog_publish: true } },
+      { ref: "bot/catalog-publish" },
+      { ref: "bot/catalog-publish" },
+      { ref: "bot/catalog-publish" },
+    ],
+  );
   assert.ok(
     calls.indexOf(dispatches[0]) >
       calls.findIndex((call) => call.endpoint.endsWith("/pulls/42") && call.method === "PATCH"),
@@ -247,4 +257,50 @@ test("dispatch rejection fails publication and still cleans up the staging branc
   const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1", DISPATCH_FAIL: "1" });
   assert.throws(fixture.run);
   assert.equal(fixture.calls().at(-1).method, "DELETE");
+});
+
+const regressionWorkflow = parse(
+  readFileSync(new URL("../.github/workflows/regression.yml", import.meta.url), "utf8"),
+);
+const summary = regressionWorkflow.jobs.regression.steps.find(
+  (step) => step.name === "Check results",
+);
+
+function runSummary(changes, code, shards) {
+  return spawnSync("bash", ["-e", "-c", summary.run], {
+    encoding: "utf8",
+    env: { ...process.env, CHANGES_RESULT: changes, CODE_CHANGED: code, SHARDS_RESULT: shards },
+    timeout: 5000,
+  });
+}
+
+test("regression fails when change detection did not finish successfully", () => {
+  for (const state of ["failure", "cancelled", "skipped"]) {
+    const result = runSummary(state, "false", "skipped");
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+  }
+});
+
+test("regression accepts an explicit successful no-change decision", () => {
+  const result = runSummary("success", "false", "skipped");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("regression rejects missing or malformed change decisions", () => {
+  for (const decision of ["", "unknown"]) {
+    const result = runSummary("success", decision, "success");
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+  }
+});
+
+test("regression code changes require every shard to succeed", () => {
+  for (const state of ["failure", "cancelled", "skipped"]) {
+    const result = runSummary("success", "true", state);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+  }
+});
+
+test("regression accepts completed shards after successful change detection", () => {
+  const result = runSummary("success", "true", "success");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
