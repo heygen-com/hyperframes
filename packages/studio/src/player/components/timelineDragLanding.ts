@@ -37,15 +37,11 @@ export function layoutAfterTrackInsert(
 } | null {
   const { elements, trackOrder } = deps;
   const editKey = keyOf(element);
-  // Expanded-child rows are synthetic host lanes, not source-file topology.
-  if (element.expandedParentStart != null) return null;
   const targetTrack = insertTrackValue(trackOrder, insertRow);
   // Foreign display rows and the opposite zone must not affect this topology.
   const writableZone = classifyZone(element);
   const writable = (src: TimelineElement): boolean =>
-    sameSourceFile(src, element) &&
-    classifyZone(src) === writableZone &&
-    src.expandedParentStart == null;
+    sameSourceFile(src, element) && classifyZone(src) === writableZone;
   const topologyOrder = [...new Set(elements.filter(writable).map((e) => e.track))].sort(
     (a, b) => a - b,
   );

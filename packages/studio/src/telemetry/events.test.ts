@@ -12,6 +12,7 @@ const {
   trackPreviewFirstFrame,
   trackStudioRenderStart,
   trackStudioRazorSplit,
+  trackStudioKeyframeLaneExpand,
   trackStudioSegmentEaseEdit,
   trackStudioFeedback,
   trackStudioTimelinePerformance,
@@ -103,6 +104,11 @@ describe("studio telemetry events", () => {
   it("trackStudioRazorSplit emits 'studio_razor_split' with mode and count", () => {
     trackStudioRazorSplit({ mode: "all", count: 3 });
     expect(trackEvent).toHaveBeenCalledWith("studio_razor_split", { mode: "all", count: 3 });
+  });
+
+  it("trackStudioKeyframeLaneExpand emits 'studio_keyframe_lane_expand' with expanded", () => {
+    trackStudioKeyframeLaneExpand({ expanded: true });
+    expect(trackEvent).toHaveBeenCalledWith("studio_keyframe_lane_expand", { expanded: true });
   });
 
   it("trackStudioSegmentEaseEdit emits 'studio_segment_ease_edit' with action and ease", () => {

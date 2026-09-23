@@ -84,6 +84,11 @@ export function trackStudioRazorSplit(props: { mode: "single" | "all"; count: nu
   });
 }
 
+// Adoption signal for the per-clip keyframe-lane caret toggle.
+export function trackStudioKeyframeLaneExpand(props: { expanded: boolean }): void {
+  trackEvent("studio_keyframe_lane_expand", { expanded: props.expanded });
+}
+
 // Adoption signal for opening and committing the per-segment ease editor.
 export function trackStudioSegmentEaseEdit(props: {
   action: "open" | "commit";

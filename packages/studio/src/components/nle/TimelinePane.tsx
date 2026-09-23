@@ -1,76 +1,10 @@
-import { useCallback, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Timeline } from "../../player";
 import type { TimelineElement, TimelineTimeRange } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { AudioMeterStrip } from "./AudioMeterStrip";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { useNLEContext } from "./NLEContext";
-import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
-
-type TimelineMoveEdit = {
-  element: TimelineElement;
-  updates: Pick<TimelineElement, "start" | "track">;
-};
-
-export function forwardRebasedTimelineMoveElements(
-  edits: TimelineMoveEdit[],
-  coalesceKey: string | undefined,
-  operation: TimelineMoveOperation | undefined,
-  onMoveElements: (
-    edits: TimelineMoveEdit[],
-    coalesceKey?: string,
-    operation?: TimelineMoveOperation,
-    coalesceMs?: number,
-  ) => Promise<void> | void,
-  coalesceMs?: number,
-) {
-  return onMoveElements(
-    edits.map(({ element, updates }) => {
-      const basis = element.expandedParentStart;
-      if (basis === undefined) return { element, updates };
-      return {
-        element: { ...element, id: element.domId ?? element.id, start: element.start - basis },
-        updates: { ...updates, start: Math.max(0, updates.start - basis) },
-      };
-    }),
-    coalesceKey,
-    operation,
-    coalesceMs,
-  );
-}
-
-type TimelineResizeChange = {
-  element: TimelineElement;
-  start: number;
-  duration: number;
-  playbackStart?: number;
-};
-
-export function forwardRebasedTimelineResizeElements(
-  changes: TimelineResizeChange[],
-  options: { coalesceKey?: string } | undefined,
-  onResizeElements: (
-    changes: TimelineResizeChange[],
-    options?: { coalesceKey?: string },
-  ) => Promise<void> | void,
-) {
-  return onResizeElements(
-    changes.map((change) => {
-      const basis = change.element.expandedParentStart;
-      if (basis === undefined) return change;
-      return {
-        ...change,
-        element: {
-          ...change.element,
-          id: change.element.domId ?? change.element.id,
-          start: change.element.start - basis,
-        },
-        start: Math.max(0, change.start - basis),
-      };
-    }),
-    options,
-  );
-}
 
 export interface TimelinePaneProps {
   /** Slot rendered above the timeline tracks (toolbar with split, delete, zoom) */
@@ -113,7 +47,6 @@ export interface TimelinePaneProps {
   canPasteClip?: () => boolean;
 }
 
-// fallow-ignore-next-line complexity
 export function TimelinePane({
   timelineToolbar,
   timelineFooter,
@@ -141,106 +74,9 @@ export function TimelinePane({
     timelineSessionEpoch,
   } = useNLEContext();
 
-  // Move/resize/split come from the timeline edit context, not props — the
-  // wrappers below intercept expanded clips and must call the *real* handlers.
-  // (Delete is a direct prop; it stays that way.)
+  // Move/resize/split come from the timeline edit context, not props.
   const { onMoveElement, onMoveElements, onResizeElement, onResizeElements, onSplitElement } =
     useTimelineEditContext();
-
-  // An expanded sub-comp child reaches the normal edit handlers in its own
-  // local coordinates: addressed by its real DOM id, with timeline time rebased
-  // onto the sub-comp it lives in. The handlers then save + reloadPreview exactly
-  // as they do for top-level clips — no separate live-DOM path.
-  const toLocalElement = useCallback(
-    (element: TimelineElement, basis: number): TimelineElement => ({
-      ...element,
-      id: element.domId ?? element.id,
-      start: element.start - basis,
-    }),
-    [],
-  );
-
-  const handleMoveElement = useCallback(
-    (element: TimelineElement, updates: Pick<TimelineElement, "start" | "track">) => {
-      const basis = element.expandedParentStart;
-      if (basis === undefined) return onMoveElement?.(element, updates);
-      onMoveElement?.(toLocalElement(element, basis), {
-        ...updates,
-        start: Math.max(0, updates.start - basis),
-      });
-    },
-    [onMoveElement, toLocalElement],
-  );
-
-  // Batched move (ripple / insert): rebase each expanded sub-comp child to its
-  // local coords, exactly as handleMoveElement does for a single clip.
-  const handleMoveElements = useCallback(
-    (
-      edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
-      coalesceKey?: string,
-      operation?: TimelineMoveOperation,
-      coalesceMs?: number,
-    ) => {
-      if (!onMoveElements) return;
-      return forwardRebasedTimelineMoveElements(
-        edits,
-        coalesceKey,
-        operation,
-        onMoveElements,
-        coalesceMs,
-      );
-    },
-    [onMoveElements],
-  );
-
-  const handleResizeElement = useCallback(
-    (
-      element: TimelineElement,
-      updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
-    ) => {
-      const basis = element.expandedParentStart;
-      if (basis === undefined) return onResizeElement?.(element, updates);
-      onResizeElement?.(toLocalElement(element, basis), {
-        ...updates,
-        start: Math.max(0, updates.start - basis),
-      });
-    },
-    [onResizeElement, toLocalElement],
-  );
-
-  const handleResizeElements = useCallback(
-    (
-      changes: Array<{
-        element: TimelineElement;
-        start: number;
-        duration: number;
-        playbackStart?: number;
-      }>,
-      options?: { coalesceKey?: string },
-    ) => {
-      if (!onResizeElements) return;
-      return forwardRebasedTimelineResizeElements(changes, options, onResizeElements);
-    },
-    [onResizeElements],
-  );
-
-  const handleDeleteElement = useCallback(
-    (element: TimelineElement) => {
-      const basis = element.expandedParentStart;
-      if (basis === undefined) return onDeleteElement?.(element);
-      return onDeleteElement?.(toLocalElement(element, basis));
-    },
-    [onDeleteElement, toLocalElement],
-  );
-
-  const handleSplitElement = useCallback(
-    (element: TimelineElement, splitTime: number) => {
-      const basis = element.expandedParentStart;
-      if (basis === undefined) return onSplitElement?.(element, splitTime);
-      return onSplitElement?.(toLocalElement(element, basis), Math.max(0, splitTime - basis));
-    },
-    [onSplitElement, toLocalElement],
-  );
 
   return (
     <div
@@ -267,16 +103,16 @@ export function TimelinePane({
               onDrillDown={handleDrillDown}
               renderClipContent={renderClipContent}
               onFileDrop={onFileDrop}
-              onDeleteElement={handleDeleteElement}
+              onDeleteElement={onDeleteElement}
               onAssetDrop={onAssetDrop}
               onBlockDrop={onBlockDrop}
               onCompositionDrop={onCompositionDrop}
-              onMoveElement={handleMoveElement}
-              onMoveElements={handleMoveElements}
-              onResizeElement={handleResizeElement}
-              onResizeElements={handleResizeElements}
+              onMoveElement={onMoveElement}
+              onMoveElements={onMoveElements}
+              onResizeElement={onResizeElement}
+              onResizeElements={onResizeElements}
               onBlockedEditAttempt={onBlockedEditAttempt}
-              onSplitElement={handleSplitElement}
+              onSplitElement={onSplitElement}
               onSelectElement={onSelectTimelineElement}
               onRangeSelect={onRangeSelect}
               onCopyClip={onCopyClip}
