@@ -48,7 +48,7 @@
 
 .hf-dock .dv-tabs-and-actions-container {
   align-items: flex-end;
-  padding: 6px 0 0 6px;
+  padding: 6px 0 0 4px;
 }
 
 .hf-dock .dv-scrollable {
@@ -62,7 +62,6 @@
 }
 
 .hf-dock .dv-tabs-container {
-  gap: 2px;
   --hf-fade-start: 0px;
   --hf-fade-end: 0px;
 }
@@ -91,7 +90,7 @@
   display: flex;
   align-items: center;
   height: 30px;
-  padding: 0 10px;
+  padding: 0 6px;
   border-radius: 6px 6px 0 0;
   white-space: nowrap;
 }
@@ -134,7 +133,7 @@
 .hf-dock-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   height: 100%;
 }
 
@@ -158,7 +157,6 @@
 /* Takes its space whenever the tab is shown, so hover never moves the label. */
 .hf-dock-tab-close {
   display: flex;
-  margin-left: 2px;
   opacity: 0;
 }
 

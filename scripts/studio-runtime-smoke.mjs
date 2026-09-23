@@ -113,6 +113,8 @@ export async function runStudioRuntimeSmoke(targetUrl) {
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
   const page = await browser.newPage();
+  // Studio's default layout is sized for a laptop window; the tab-strip check below depends on it.
+  await page.setViewport({ width: 1440, height: 900 });
   const errors = [];
   const unmockedApiRequests = [];
 
@@ -143,6 +145,17 @@ export async function runStudioRuntimeSmoke(targetUrl) {
       return textContent.includes("Something went wrong") ? textContent : null;
     });
     if (errorBoundary) errors.push(`React error boundary triggered: ${errorBoundary}`);
+    const clippedStrips = await page.evaluate(() =>
+      [...document.querySelectorAll(".dv-tabs-container")]
+        .filter((strip) => strip.scrollWidth > strip.clientWidth + 1)
+        .map((strip) => {
+          const labels = [...strip.querySelectorAll(".dv-tab")].map((tab) => tab.textContent);
+          return `${labels.join(", ")}: ${strip.scrollWidth}px of tabs in ${strip.clientWidth}px`;
+        }),
+    );
+    for (const strip of clippedStrips) {
+      errors.push(`Dock tab strip clips a label at the default layout: ${strip}`);
+    }
   } finally {
     await browser.close();
   }

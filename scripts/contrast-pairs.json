@@ -300,8 +300,8 @@
           "role": "text",
           "minimum": 4.5,
           "sources": [
-            "packages/studio/src/components/dock/dock.css:101",
-            "packages/studio/src/components/dock/dock.css:103"
+            "packages/studio/src/components/dock/dock.css:100",
+            "packages/studio/src/components/dock/dock.css:102"
           ]
         }
       ]
