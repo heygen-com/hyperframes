@@ -3160,7 +3160,6 @@ export function initSandboxRuntimeModular(): void {
       }
       syncMediaForCurrentState();
       colorGrading.redraw();
-      paintVfx(state.currentTime);
       postState(true);
     },
     renderSeek: (timeSeconds, options) => {
@@ -3184,7 +3183,6 @@ export function initSandboxRuntimeModular(): void {
       runAdapters("pause");
       syncMediaForCurrentState();
       colorGrading.redraw();
-      paintVfx(state.currentTime, { engineMode: true });
       postState(true);
     },
     getTime: () => clock.now(),
