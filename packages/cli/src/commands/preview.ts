@@ -1537,7 +1537,11 @@ async function runEmbeddedMode(
   // Compute everything that may throw before acquiring the fs.watch handle.
   // Once createStudioServer returns, every subsequent exit path must close it.
   const serverBuildSignature = await loadPreviewServerBuildSignature();
-  const { app, watcher } = createStudioServer({
+  const {
+    app,
+    watcher,
+    shutdown: shutdownStudio,
+  } = createStudioServer({
     projectDir: dir,
     projectName: pName,
     autoProxy: options?.autoProxy,
@@ -1643,8 +1647,6 @@ async function runEmbeddedMode(
     const shutdown = (): void => {
       if (shuttingDown) return;
       shuttingDown = true;
-      process.off("SIGINT", shutdown);
-      process.off("SIGTERM", shutdown);
       rl?.close();
       reportPreviewShutdown(Boolean(options?.json));
 
@@ -1653,24 +1655,18 @@ async function runEmbeddedMode(
       // can't be blocked by a stuck drainBrowserPool().
       setTimeout(() => requestCliExit(0), 3000).unref();
 
-      // Kill ffmpeg first (sync, fast), then drain browsers (async, slower).
-      const cleanup = async () => {
-        const { closeThumbnailBrowser } = await import("../server/studioServer.js");
-        const { drainBrowserPool, killTrackedProcesses } = await import("@hyperframes/engine");
-        killTrackedProcesses();
-        await closeThumbnailBrowser().catch(() => {});
-        await drainBrowserPool().catch(() => {});
-      };
-
-      cleanup()
+      shutdownStudio()
         .catch(() => {})
         .finally(() => {
           watcher.close();
           result.server.close(() => resolveRun());
         });
     };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
+    // `on`, not `once`: a repeat Ctrl+C/SIGTERM while shutdown is running must
+    // stay caught and no-op via `shuttingDown`, not fall through to the OS
+    // default once a one-shot listener has self-removed after the first signal.
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
 
     // Last-resort cleanup for crash paths (unhandled exceptions/rejections)
     // that bypass the signal handlers. Eagerly resolve the sync killer so

@@ -5,7 +5,7 @@ import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailSche
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
 
-interface ImageThumbnailProps {
+export interface ImageThumbnailProps {
   imageSrc: string;
   label: string;
   labelColor: string;

@@ -187,11 +187,8 @@ export async function renderLottiePreviews(
           .waitForFunction(() => (window as any).__READY === true, { timeout: 5000 })
           .catch(() => {});
         if (liveRemainingMs(budget, 1) > 0) {
-          await previewPage.screenshot({
-            path: join(previewDir, previewName),
-            type: "png",
-            omitBackground: true,
-          });
+          const shot = await previewPage.screenshot({ type: "png", omitBackground: true });
+          writeCaptureFileSync(join(previewDir, previewName), shot);
           preview = `assets/lottie/previews/${previewName}`;
         }
       } catch {
@@ -523,8 +520,8 @@ export async function captureVideoManifest(
         if (rect && rect.width >= 10) {
           await new Promise((r) => setTimeout(r, 200)); // let decoder settle
           if (liveRemainingMs(opts ?? {}, 1) > 0) {
-            await page.screenshot({
-              path: join(previewDir, previewName),
+            const shot = await page.screenshot({
+              type: "png",
               clip: {
                 x: Math.max(0, rect.x),
                 y: Math.max(0, rect.y),
@@ -532,6 +529,7 @@ export async function captureVideoManifest(
                 height: Math.min(rect.height, 1080),
               },
             });
+            writeCaptureFileSync(join(previewDir, previewName), shot);
             preview = `assets/videos/previews/${previewName}`;
           }
         }

@@ -1,10 +1,12 @@
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -217,4 +219,83 @@ describe("Lottie capture rejects unsafe persistence", () => {
     expect(await saveLottieAnimations([{ url: "https://public.example/bad.json" }], dir)).toBe(0);
     expect(readdirSync(dir)).toEqual([]);
   });
+});
+
+describe("media previews replace pre-planted links", () => {
+  const PNG = Buffer.from("\x89PNG preview");
+
+  it.skipIf(process.platform === "win32")(
+    "writes a Lottie preview without following a pre-planted symlink",
+    async () => {
+      const dir = tempDir();
+      const lottieDir = join(dir, "assets", "lottie");
+      const previewPath = join(lottieDir, "previews", "logo-preview.png");
+      const victim = join(dir, "victim.txt");
+      mkdirSync(join(dir, "extracted"), { recursive: true });
+      mkdirSync(join(lottieDir, "previews"), { recursive: true });
+      writeFileSync(
+        join(lottieDir, "logo.json"),
+        JSON.stringify({ w: 100, h: 100, fr: 30, ip: 0, op: 30, layers: [] }),
+      );
+      writeFileSync(victim, "do not touch");
+      symlinkSync(victim, previewPath);
+      const previewPage = {
+        setRequestInterception: vi.fn(async () => undefined),
+        on: vi.fn(),
+        setViewport: vi.fn(async () => undefined),
+        setContent: vi.fn(async () => undefined),
+        evaluate: vi.fn(async () => undefined),
+        waitForFunction: vi.fn(async () => undefined),
+        screenshot: vi.fn(async () => PNG),
+        close: vi.fn(async () => undefined),
+      };
+      const browser = { newPage: vi.fn(async () => previewPage) } as unknown as Browser;
+
+      await renderLottiePreviews(browser, lottieDir, dir);
+
+      expect(readFileSync(victim, "utf8")).toBe("do not touch");
+      expect(readFileSync(previewPath)).toEqual(PNG);
+      expect(lstatSync(previewPath).isSymbolicLink()).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "writes a video preview without following a pre-planted symlink",
+    async () => {
+      const dir = tempDir();
+      const previewPath = join(dir, "assets", "videos", "previews", "video-0-preview.png");
+      const victim = join(dir, "victim.txt");
+      mkdirSync(join(dir, "extracted"), { recursive: true });
+      mkdirSync(join(dir, "assets", "videos", "previews"), { recursive: true });
+      writeFileSync(victim, "do not touch");
+      symlinkSync(victim, previewPath);
+      const descriptor = {
+        src: "https://video.example/hero.mp4",
+        filename: "hero.mp4",
+        width: 640,
+        height: 360,
+        sourceWidth: 640,
+        sourceHeight: 360,
+        top: 0,
+        left: 0,
+        heading: "Hero",
+        caption: "Demo",
+        ariaLabel: "",
+      };
+      const evaluate = vi.fn(async (expression: unknown) =>
+        typeof expression === "function" ? { x: 0, y: 0, width: 640, height: 360 } : [descriptor],
+      );
+      const page = { evaluate, screenshot: vi.fn(async () => PNG) } as unknown as Page;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(null, { status: 404 })),
+      );
+
+      await captureVideoManifest(page, dir, () => {});
+
+      expect(readFileSync(victim, "utf8")).toBe("do not touch");
+      expect(readFileSync(previewPath)).toEqual(PNG);
+      expect(lstatSync(previewPath).isSymbolicLink()).toBe(false);
+    },
+  );
 });

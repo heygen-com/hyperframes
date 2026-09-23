@@ -77,6 +77,16 @@ export {
 export { TimelineProvider, useTimelineContext } from "./player/components/TimelineProvider";
 export type { TimelineTheme } from "./player/components/timelineTheme";
 
+// Clip content thumbnails: used by a host rendering its own timeline lane.
+export { AudioWaveform } from "./player/components/AudioWaveform";
+export type { AudioWaveformProps } from "./player/components/AudioWaveform";
+export { ImageThumbnail } from "./player/components/ImageThumbnail";
+export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
+export { useRenderClipContent } from "./hooks/useRenderClipContent";
+export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
+export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";
+export type { TimelineClipRenderContext } from "./player/components/TimelineTypes";
+
 // Host overlays: draw over the preview in composition coordinates (see EditorShellProps.gestureOverlay)
 export { usePreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
 export type { PreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";

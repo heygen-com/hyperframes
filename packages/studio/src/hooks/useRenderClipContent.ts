@@ -97,7 +97,7 @@ function renderAudioClip(
   });
 }
 
-interface UseRenderClipContentOptions {
+export interface UseRenderClipContentOptions {
   projectIdRef: { current: string | null };
   compIdToSrc: Map<string, string>;
   activePreviewUrl: string | null;

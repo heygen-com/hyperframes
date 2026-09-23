@@ -321,55 +321,6 @@ describe("useCanvasZOrderTimelineMirror", () => {
     expect(history.moveCoalesceKeys).toEqual([]);
   });
 
-  it("maps the crossed neighbor to its timeline key and rebases expanded sub-comp children", async () => {
-    // t is an expanded sub-comp child (expandedParentStart 5, absolute start 5):
-    // the mirror must forward its persist in LOCAL time (start 0), the same
-    // rebase a timeline lane drag applies (forwardRebasedTimelineMoveElements).
-    setStoreElements([
-      {
-        ...storeEl("a", 0, 25, 5),
-        sourceFile: "sub.html",
-        key: "sub.html#a",
-        expandedParentStart: 5,
-      },
-      {
-        ...storeEl("b", 1, 5, 10),
-        sourceFile: "sub.html",
-        key: "sub.html#b",
-        expandedParentStart: 5,
-      },
-      {
-        ...storeEl("t", 2, 5, 10),
-        sourceFile: "sub.html",
-        key: "sub.html#t",
-        expandedParentStart: 5,
-      },
-    ]);
-    const edits: Array<{ element: TimelineElement; updates: { start: number; track: number } }> =
-      [];
-    const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (batch) => {
-      edits.push(...batch);
-    };
-    const { mirror } = mountMirrorOnlyHarness(onMoveElements);
-
-    const mirrored = await act(async () =>
-      mirror({
-        selectionKey: "sub.html#t",
-        action: "bring-forward",
-        // The crossed sibling maps to sub.html#b via its DOM id + sourceFile —
-        // the same derivation reorder entries use (deriveTimelineStoreKey).
-        crossed: domTarget("b"),
-        sourceFile: "sub.html",
-        coalesceKey: "z-reorder:bring-forward:t",
-      }),
-    );
-    expect(mirrored).toBe(true);
-    expect(edits).toHaveLength(1);
-    // Rebased to sub-comp local coords: absolute 5 − parent start 5 = 0.
-    expect(edits[0].element.start).toBe(0);
-    expect(edits[0].updates).toMatchObject({ start: 0, track: 0 });
-  });
-
   it("maps a cross-file duplicate selector to the source-scoped crossed occurrence", async () => {
     setStoreElements([
       {

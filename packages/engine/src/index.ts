@@ -79,6 +79,7 @@ export {
   acquireBrowser,
   releaseBrowser,
   drainBrowserPool,
+  closeBrowserPool,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
   buildChromeArgs,

@@ -41,6 +41,10 @@ const STORYBOARD_VIEW_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio/src/components/nle/TimelinePane.test.ts",
+    "its only subject, the expandedParentStart rebase wrappers, is dead code now removed",
+  ],
+  [
     "scripts/test-reachability-baseline.json",
     "Reachability now requires zero orphans and rejects baseline files.",
   ],

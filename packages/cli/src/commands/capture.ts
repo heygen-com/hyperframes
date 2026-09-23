@@ -269,11 +269,12 @@ export default defineCommand({
     } catch (err) {
       const errMsg = normalizeErrorMessage(err);
       try {
-        const { mkdirSync, writeFileSync } = await import("node:fs");
+        const { mkdirSync } = await import("node:fs");
         const { formatCaptureFailureReason } = await import("../capture/captureTimeout.js");
+        const { writeCaptureFileSync } = await import("../capture/captureFile.js");
         mkdirSync(outputDir, { recursive: true });
         const reason = formatCaptureFailureReason(errMsg);
-        writeFileSync(
+        writeCaptureFileSync(
           `${outputDir}/BLOCKED.md`,
           `# Capture Failed\n\n${reason}\n\nURL: ${url}\n\n## What to try\n\n- Re-run with a longer timeout: \`--timeout 60000\`\n- The site may block headless browsers (anti-bot protection)\n- Try capturing a different page on the same domain\n`,
           "utf-8",

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { compileCutList } from "./lib/cutlist.mjs";
+import { fadeFilterFor } from "./lib/transcriptCutFade.mjs";
 import { track } from "./lib/telemetry.mjs";
 
 const { values: args } = parseArgs({
@@ -92,11 +93,23 @@ function run() {
 
   try {
     const parts = segments.map((segment, index) => {
-      const out = join(
-        tmpDir,
-        `segment-${String(index).padStart(4, "0")}${extname(outPath) || ".mp4"}`,
-      );
-      cutSegment(inputPath, segment, out, Boolean(args.copy));
+      // Intermediates carry PCM audio, not the final codec. Encoding each
+      // segment to a lossy codec separately makes the encoder pad every segment
+      // with priming silence (~25-35ms for AAC), which concat then bakes in as a
+      // gap at each cut -- a defect distinct from, and surviving, the fades
+      // below. PCM has no priming, so audio is encoded exactly once, at concat.
+      const ext = args.copy ? extname(outPath) || ".mp4" : isAudioOnly(outPath) ? ".wav" : ".mkv";
+      const out = join(tmpDir, `segment-${String(index).padStart(4, "0")}${ext}`);
+      // --copy stays fade-free (stream copy cannot filter). A segment's true
+      // start/end (index 0's start, the last segment's end) borders nothing
+      // kept, so only an interior splice edge gets a ramp.
+      const fade = args.copy
+        ? null
+        : fadeFilterFor(segment.end - segment.start, {
+            fadeIn: index > 0,
+            fadeOut: index < segments.length - 1,
+          });
+      cutSegment(inputPath, segment, out, args.copy, fade);
       return out;
     });
     const listPath = join(tmpDir, "list.txt");
@@ -107,9 +120,16 @@ function run() {
     // Encode to a sibling temp (same extension so ffmpeg picks the right muxer),
     // then atomic-rename so a SIGKILL mid-encode can't leave a truncated outPath.
     const tmpOut = `${outPath}.part${extname(outPath) || ".mp4"}`;
+    // --copy already produced final-codec segments, so concat can stream-copy.
+    // Otherwise the PCM intermediates are encoded here, once, for the whole file.
+    const concatCodecs = args.copy
+      ? ["-c", "copy"]
+      : isAudioOnly(outPath)
+        ? encodeArgsFor(extname(outPath).toLowerCase())
+        : ["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"];
     execFileSync(
       "ffmpeg",
-      ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", tmpOut],
+      ["-y", "-f", "concat", "-safe", "0", "-i", listPath, ...concatCodecs, tmpOut],
       {
         stdio: "ignore",
       },
@@ -158,7 +178,7 @@ function run() {
   console.log(`next: resolve --from ${outPath} --type <type>`);
 }
 
-function cutSegment(inputPath, segment, outPath, copy) {
+function cutSegment(inputPath, segment, outPath, copy, fade) {
   const argv = [
     "-y",
     "-nostdin",
@@ -171,8 +191,15 @@ function cutSegment(inputPath, segment, outPath, copy) {
   ];
   if (copy) {
     argv.push("-c", "copy", "-avoid_negative_ts", "make_zero");
+  } else if (extname(outPath).toLowerCase() === ".mkv") {
+    // Concat splices raw segment edges together; without a short ramp the
+    // waveform steps discontinuously at every boundary and you hear a click.
+    if (fade) argv.push("-af", fade);
+    // Video intermediate: keep the picture cheap and the audio uncompressed.
+    argv.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "pcm_s16le");
   } else {
-    argv.push(...encodeArgsFor(extname(outPath).toLowerCase()));
+    if (fade) argv.push("-af", fade);
+    argv.push("-c:a", "pcm_s16le");
   }
   argv.push(outPath);
   execFileSync("ffmpeg", argv, { stdio: "ignore" });
@@ -180,6 +207,10 @@ function cutSegment(inputPath, segment, outPath, copy) {
 
 // Codec set per output container. Audio-only outputs must not get the
 // video-centric aac/x264 set (aac inside .wav breaks timing entirely).
+function isAudioOnly(filePath) {
+  return [".wav", ".mp3", ".m4a", ".aac", ".flac"].includes(extname(filePath).toLowerCase());
+}
+
 function encodeArgsFor(ext) {
   if (ext === ".wav") return ["-c:a", "pcm_s16le"];
   if (ext === ".mp3") return ["-c:a", "libmp3lame", "-q:a", "2"];

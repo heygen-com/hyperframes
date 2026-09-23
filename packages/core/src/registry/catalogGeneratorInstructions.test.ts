@@ -86,6 +86,23 @@ describe("carriedSectionsFrom preserves hand-written sections", () => {
     expect(joined).not.toContain("## Install");
   });
 
+  it("does not carry the generated Texture masks section into the next run", () => {
+    const page = write(
+      "texture-masks.mdx",
+      [
+        "## Texture masks",
+        "",
+        '<div className="hf-texture-preview-panel">',
+        '  <div className="hf-texture-preview-label">Brick</div>',
+        "</div>",
+        "",
+        "{/* hf:generated-footer */}",
+        "",
+      ].join("\n"),
+    );
+    expect(carriedSectionsFrom(page).sections).toEqual([]);
+  });
+
   it("keeps a hand-written section appended below the generated footer", () => {
     const page = write(
       "below-footer.mdx",

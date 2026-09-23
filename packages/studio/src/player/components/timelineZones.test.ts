@@ -67,11 +67,6 @@ describe("isMainTrackElement", () => {
   it("is false for an audio clip even on track 0 (audio-only project has no main track)", () => {
     expect(isMainTrackElement(el("m", "audio", 0))).toBe(false);
   });
-
-  it("is false for an inline-expanded sub-composition child on track 0", () => {
-    const child: TimelineElement = { ...el("c", "video", 0), expandedParentStart: 4 };
-    expect(isMainTrackElement(child)).toBe(false);
-  });
 });
 
 describe("normalizeToZones — CapCut-stable lanes follow the track-index (never z)", () => {
