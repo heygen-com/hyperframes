@@ -134,7 +134,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
 
       pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);
-      const inBurst = Date.now() - lastFlushAt < BURST_MS;
+      const delay = Date.now() - lastFlushAt < BURST_MS ? BURST_MS : QUIET_MS;
       debounceTimer = setTimeout(() => {
         const changedPaths = [...pendingPaths];
         pendingPaths.clear();
@@ -145,7 +145,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
             fn(changedPath);
           }
         }
-      }, inBurst ? BURST_MS : QUIET_MS);
+      }, delay);
     });
   } catch {
     // fs.watch may fail on some platforms — degrade gracefully (no auto-refresh)
