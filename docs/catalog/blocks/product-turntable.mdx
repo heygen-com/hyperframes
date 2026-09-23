@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Product Turntable"
   description="A product turns a full revolution on a studio plinth in a seamless loop. Drop in a GLB or glTF model, or keep the built-in drink can with your own label."
   variables={[{"id":"model_url","type":"string","role":"content","label":"Model URL (.glb or .gltf)","description":"Leave empty for the built-in drink can.","default":""},{"id":"product_name","type":"string","role":"content","label":"Label wordmark","default":"YUZU","maxLength":10},{"id":"flavor","type":"string","role":"content","label":"Label line","default":"Sparkling Citrus","maxLength":28},{"id":"caption","type":"string","role":"content","label":"Caption","default":"Sparkling Citrus · 355 ml","maxLength":40},{"id":"label_color","type":"color","role":"style","label":"Label color","default":"#f2c230"},{"id":"ink_color","type":"color","role":"style","label":"Label ink","default":"#1d2a24"},{"id":"background","type":"color","role":"style","label":"Backdrop","default":"#e8e4dc"},{"id":"turns","type":"number","role":"motion","label":"Turns per clip","default":1,"min":1,"max":4,"step":1}]}
-  meta={{"duration":6,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":314}}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":309}}
   attribution={{"path":"registry/blocks/product-turntable","tags":["3d-object","three-js","webgl","product","turntable","glb","loop"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/product-turntable/product-turntable.html"
@@ -313,17 +313,12 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         return wrapper;
       }
 
+      // A model_url that fails to load fails the render; it never swaps in a different product.
       async function product() {
         const url = String(V.model_url || "").trim();
-        if (url) {
-          try {
-            const gltf = await new GLTFLoader().loadAsync(url);
-            return fitModel(gltf.scene);
-          } catch (error) {
-            console.error(`[product-turntable] model_url failed to load (${url}), showing the built-in can`, error);
-          }
-        }
-        return builtInCan();
+        if (!url) return builtInCan();
+        const gltf = await new GLTFLoader().loadAsync(url);
+        return fitModel(gltf.scene);
       }
 
       turntable.add(await product());

@@ -288,17 +288,12 @@
         return wrapper;
       }
 
+      // A model_url that fails to load fails the render; it never swaps in a different product.
       async function product() {
         const url = String(V.model_url || "").trim();
-        if (url) {
-          try {
-            const gltf = await new GLTFLoader().loadAsync(url);
-            return fitModel(gltf.scene);
-          } catch (error) {
-            console.error(`[product-turntable] model_url failed to load (${url}), showing the built-in can`, error);
-          }
-        }
-        return builtInCan();
+        if (!url) return builtInCan();
+        const gltf = await new GLTFLoader().loadAsync(url);
+        return fitModel(gltf.scene);
       }
 
       turntable.add(await product());

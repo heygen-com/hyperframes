@@ -230,7 +230,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       const font = await new FontLoader().loadAsync(
         "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/fonts/helvetiker_bold.typeface.json",
       );
-      const text = (String(V.text || "NOVA").toUpperCase().slice(0, 8) || "NOVA").split("");
+      const text = String(V.text || "NOVA").toUpperCase().slice(0, 8).split("");
       const SIZE = 1.5;
       const scale = SIZE / font.data.resolution;
       const tracking = 0.08;

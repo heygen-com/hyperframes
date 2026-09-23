@@ -103,7 +103,6 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         color: #1b1e27;
         white-space: nowrap;
         opacity: 0;
-        will-change: transform, opacity;
       }
       .es-index {
         font-size: 20px;
@@ -177,7 +176,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         });
 
         var clock = { t: 0 };
-        var scene = { vars: vars, names: names, duration: duration, clock: clock, render: null };
+        var scene = { vars: vars, names: names, duration: duration, clock: clock, hex: hex, render: null };
         window.__explodedStack = scene;
         window.__hf = window.__hf || {};
         window.__hf.buildReady = window.__hf.buildReady || {};
@@ -205,7 +204,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
       const host = window.__explodedStack;
       const V = host.vars;
-      const hex = (v, fallback) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : fallback);
+      const hex = host.hex;
       const accent = new THREE.Color(hex(V.accent, "#4f5bff"));
       const D = host.duration;
 
@@ -330,7 +329,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           const open =
             ease((f - EXPLODE[0] - i * stagger) / (EXPLODE[1] - EXPLODE[0])) -
             ease((f - COLLAPSE[0] - order * stagger) / (COLLAPSE[1] - COLLAPSE[0]));
-          const y = (LAYERS - 1 - i) * (THICK + 0.02 + open * GAP) - 2.2;
+          const y = order * (THICK + 0.02 + open * GAP) - 2.2;
           plates[i].position.y = y;
 
           const shown =
@@ -341,7 +340,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           const [ax, ay] = toScreen(anchor);
           const lx = ax + 90;
           labelEls[i].style.opacity = shown.toFixed(3);
-          labelEls[i].style.transform = `translate(${lx + 24 + (1 - shown) * 16}px, ${ay - 22}px)`;
+          // Whole pixels: a fractional offset rasterises text differently by frame order.
+          labelEls[i].style.transform = `translate(${Math.round(lx + 24 + (1 - shown) * 16)}px, ${Math.round(ay - 22)}px)`;
           lines[i].setAttribute("x1", ax.toFixed(1));
           lines[i].setAttribute("y1", ay.toFixed(1));
           lines[i].setAttribute("x2", (ax + 90 * shown).toFixed(1));
