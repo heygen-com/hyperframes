@@ -42,38 +42,39 @@
       }
       #pd-maths {
         position: absolute;
-        left: 64px;
-        top: 72px;
-        width: 700px;
-        padding: 28px 34px 30px;
+        left: 56px;
+        top: 56px;
+        width: 800px;
+        padding: 26px 34px 28px;
         border-radius: 18px;
-        background: rgba(250, 247, 241, 0.78);
+        background: rgba(250, 247, 241, 0.92);
         color: #2a1a10;
         font-family: "STIX Two Text", Georgia, serif;
-        font-size: 25px;
-        line-height: 1.3;
+        font-size: 28px;
+        line-height: 1.28;
         font-variant-numeric: tabular-nums;
       }
       #pd-maths .pd-clock {
         font-family: Inter, sans-serif;
-        font-size: 19px;
+        font-size: 20px;
         font-weight: 600;
-        letter-spacing: 0.02em;
-        margin-bottom: 14px;
+        margin-bottom: 8px;
       }
       #pd-maths .pd-eq {
-        margin-top: 13px;
+        margin-top: 14px;
       }
       #pd-maths .pd-label {
         font-family: Inter, sans-serif;
-        font-size: 13px;
+        font-size: 18px;
         font-weight: 600;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #8a5a3a;
+        color: #7a3a18;
       }
       #pd-maths .pd-val {
-        color: #a0461e;
+        color: #6e2f12;
+        letter-spacing: 0;
+        text-transform: none;
       }
     </style>
   </head>
@@ -134,7 +135,7 @@
         var MILK = hexRgb(vars.milk, "#f4efe6");
         var DISSOLVE = clampNum(vars.dissolve, 3, 30, 8);
         var MATHS = vars.maths === true || vars.maths === "true";
-        var OFFSET_X = MATHS ? 0.3 : 0; // clear the left of the frame for the panel
+        var OFFSET_X = MATHS ? 0.4 : 0; // clear the left of the frame for the panel
 
         function mulberry32(seed) {
           return function () {
@@ -411,7 +412,8 @@
         var spread = new Float32Array(3);
         // ── Maths panel ────────────────────────────────────────────────────
         // Every line is an expression the shader or draw() above evaluates, with its live
-        // value from the same phase curves. Each fades in as its phase starts (seconds).
+        // value from the same phase curves. Listed in phase order: the live phase is full ink,
+        // finished phases dim, future phases stay hidden (their space is reserved, so no reflow).
         function atS(sv) {
           return LAND + sv * (DISSOLVE - LAND);
         }
@@ -437,15 +439,10 @@
           {
             label: "Wetting front",
             from: atS(0),
-            tex: "<i>W</i>(<i>s</i>) = smoothstep(0, 0.55, <i>s</i>),  <i>d</i> = <i>h</i> − erosion<br />wet = smoothstep(0, 0.08, 1.2<i>W</i> − 0.12 − 1.1(<i>d</i> − 0.45) + 0.4(fbm(9<i>x</i>) − ½))",
+            tex: "<i>W</i>(<i>s</i>) = smoothstep(0, 0.55, <i>s</i>),  <i>d</i> = <i>h</i> − erosion<br />wet = smoothstep(0, 0.08, 1.2<i>W</i> − 0.12<br />&emsp;&emsp;− 1.1(<i>d</i> − 0.45) + 0.4(fbm(9<i>x</i>) − ½))",
             val: function (ph) {
               return "W = " + pct(ph.wet);
             },
-          },
-          {
-            label: "Crust cracks",
-            from: atS(0.13), // W(s) reaches 0.15 here
-            tex: "crack ⇔ <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06  (Worley cells of 10<i>x</i> + 1.5 fbm(8<i>x</i>), once <i>W</i> &gt; 0.15)",
           },
           {
             label: "Diffusion (exact Gaussian spread)",
@@ -458,6 +455,11 @@
             },
           },
           {
+            label: "Crust cracks",
+            from: atS(0.13), // W(s) reaches 0.15 here
+            tex: "crack ⇔ <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06, once <i>W</i> &gt; 0.15<br /><i>F</i><sub>1,2</sub>: nearest Worley distances of 10<i>x</i> + 1.5 fbm(8<i>x</i>)",
+          },
+          {
             label: "Fingers",
             from: atS(0.16),
             tex: "<i>c</i> += 0.8 <i>P</i>(<i>s</i>) Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> smoothstep(0.6, 0.74, fbm(4.5 <i>x̂</i> + …))",
@@ -467,7 +469,7 @@
           },
           {
             label: "Tint mix (Beer–Lambert)",
-            from: atS(0.4),
+            from: atS(0.55), // M passes 5 % here; the curve starts at s = 0.4
             tex:
               "<i>M</i> = smoothstep(0.4, 1, <i>s</i>)<sup>1.6</sup>,  <i>c</i> ← (1 − <i>M</i>)<i>c</i> + 0.6<i>M</i>" +
               "<br />colour = milk · e<sup>−0.55 <i>c</i> (−ln powder)</sup>",
@@ -476,6 +478,12 @@
             },
           },
         ];
+        EQS.forEach(function (eq) {
+          eq.until = Infinity; // a phase stays live until a later one starts
+          EQS.forEach(function (other) {
+            if (other.from > eq.from) eq.until = Math.min(eq.until, other.from);
+          });
+        });
         var mathsEl = document.getElementById("pd-maths");
         var clockEl, rows;
         if (MATHS) {
@@ -510,9 +518,9 @@
             ") = " +
             ph.s.toFixed(2);
           EQS.forEach(function (eq, i) {
-            rows[i].el.style.opacity = (0.08 + 0.92 * smooth(eq.from, eq.from + 0.5, ph.t)).toFixed(
-              3,
-            );
+            var shown = smooth(eq.from, eq.from + 0.4, ph.t);
+            var done = eq.until === Infinity ? 0 : smooth(eq.until, eq.until + 0.4, ph.t);
+            rows[i].el.style.opacity = (shown * (1 - 0.62 * done)).toFixed(3);
             if (eq.val) rows[i].val.textContent = eq.val(ph);
           });
         }
