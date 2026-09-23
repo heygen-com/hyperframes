@@ -2,9 +2,10 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DomEditOverlay } from "./DomEditOverlay";
 import { RECOMPUTE_INTERVAL_MS } from "./offCanvasIndicatorRefresh";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -130,6 +131,10 @@ function mountOverlayWithHeadline(initialLeft: number): OverlayHarness {
     },
   };
 }
+
+beforeEach(() => {
+  usePlayerStore.setState({ previewBooted: true });
+});
 
 describe("off-canvas indicator refresh", () => {
   it("removes the indicator when an off-canvas element moves in-canvas (off->on)", async () => {

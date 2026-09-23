@@ -2,10 +2,11 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GridOverlay } from "./GridOverlay";
 import { PreviewOverlayProvider } from "./PreviewOverlayProvider";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -26,6 +27,10 @@ function compositionFrame() {
   document.body.append(iframe);
   return iframe;
 }
+
+beforeEach(() => {
+  usePlayerStore.setState({ previewBooted: true });
+});
 
 describe("PreviewOverlayProvider", () => {
   it("derives grid geometry after the iframe prop becomes available", async () => {
