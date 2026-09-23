@@ -551,3 +551,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 }));
 
 attachPlayerStoreDevHandle(usePlayerStore);
+
+/** Resolves once the project's live preview has booted; open-time work that the first frame
+ * does not need (server parses, lint) waits on it instead of competing with the boot. */
+export function whenPreviewBooted(): Promise<void> {
+  return new Promise((resolve) => {
+    if (usePlayerStore.getState().previewBooted) return resolve();
+    const stop = usePlayerStore.subscribe((state) => {
+      if (!state.previewBooted) return;
+      stop();
+      resolve();
+    });
+  });
+}

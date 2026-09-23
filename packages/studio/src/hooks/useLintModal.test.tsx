@@ -2,8 +2,9 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLintModal } from "./useLintModal";
+import { usePlayerStore } from "../player/store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -14,6 +15,10 @@ function Probe() {
   latest = useLintModal("demo");
   return null;
 }
+
+beforeEach(() => {
+  usePlayerStore.setState({ previewBooted: true });
+});
 
 afterEach(() => {
   if (root) act(() => root?.unmount());
@@ -61,5 +66,19 @@ describe("useLintModal hasLintError", () => {
     });
     expect(latest?.lintModal).toHaveLength(1);
     expect(latest?.hasLintError).toBe(true);
+  });
+});
+
+describe("useLintModal background lint", () => {
+  it("waits for the live preview to boot before asking the server to lint", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const fetchStub = vi.fn(lintResponse([]));
+    vi.stubGlobal("fetch", fetchStub);
+    root = createRoot(document.createElement("div"));
+    await act(async () => root?.render(<Probe />));
+    expect(fetchStub).not.toHaveBeenCalled();
+
+    await act(async () => usePlayerStore.getState().markPreviewBooted());
+    expect(fetchStub).toHaveBeenCalledTimes(1);
   });
 });
