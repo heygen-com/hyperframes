@@ -96,6 +96,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** A loop already past its first frame, for tests that only care about `stop()`. */
+function startRunningLoop() {
+  const raf = stubRaf();
+  const gl = createMockGl();
+  const canvas = createMockCanvas(gl);
+  const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
+  raf.flush(0);
+  return { raf, gl, canvas, handle };
+}
+
 describe("playSeamTransitionLoop", () => {
   it("throws synchronously for a shader with no WebGL implementation", () => {
     const canvas = createMockCanvas(createMockGl());
@@ -155,11 +165,7 @@ describe("playSeamTransitionLoop", () => {
   });
 
   it("stop() deletes its own program, textures and buffer, and is idempotent", () => {
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
-    raf.flush(0);
+    const { gl, handle } = startRunningLoop();
 
     handle.stop();
     handle.stop();
@@ -174,11 +180,7 @@ describe("playSeamTransitionLoop", () => {
     // The mock gl has no getExtension at all: a lost context can never be
     // reacquired via canvas.getContext(), so stop() must never reach for
     // WEBGL_lose_context. Calling it here would throw "not a function".
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
-    raf.flush(0);
+    const { handle } = startRunningLoop();
 
     expect(() => handle.stop()).not.toThrow();
   });
@@ -242,11 +244,7 @@ describe("playSeamTransitionLoop", () => {
   });
 
   it("does not draw again after stop()", () => {
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
-    raf.flush(0);
+    const { raf, gl, handle } = startRunningLoop();
     expect(gl.drawArrays).toHaveBeenCalledTimes(1);
 
     handle.stop();
