@@ -1,0 +1,52 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cursor-text-select",
+  "type": "hyperframes:component",
+  "title": "Text Select Cursor",
+  "description": "An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold.",
+  "tags": ["cursor", "motion-primitive", "text", "selection", "editor", "toolbar"],
+  "files": [
+    {
+      "path": "cursor-text-select.html",
+      "target": "compositions/components/cursor-text-select.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "syncPoints": [
+    { "id": "selection-released", "phase": "in", "offset": 2.05 },
+    { "id": "bold-click", "phase": "in", "offset": 3.35 }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "type": "string",
+      "role": "content",
+      "label": "Heading",
+      "default": "Spring release notes"
+    },
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Paragraph",
+      "default": "Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half."
+    },
+    {
+      "id": "phrase",
+      "type": "string",
+      "role": "content",
+      "label": "Phrase to select",
+      "default": "approve the final cut"
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "role": "style",
+      "label": "Accent",
+      "default": "#3b6cf6"
+    }
+  ]
+}

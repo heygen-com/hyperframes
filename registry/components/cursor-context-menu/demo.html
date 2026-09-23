@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Context Menu Cursor, standalone demo. Mounts cursor-context-menu.html full-frame over a
+  soft desk backdrop; the component draws its own folder window.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Context Menu Cursor, Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(1100px 700px at 15% 0%, #dfe6ff 0%, transparent 60%),
+          radial-gradient(900px 700px at 100% 100%, #f3dcf5 0%, transparent 55%), #eceef5;
+      }
+      .backdrop {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="cursor-context-menu-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5.2"
+    >
+      <div class="backdrop clip" data-start="0" data-duration="5.2" data-track-index="0"></div>
+      <div
+        class="clip"
+        id="cursor-context-menu"
+        data-composition-id="cursor-context-menu"
+        data-composition-src="./cursor-context-menu.html"
+        data-variable-values='{"items":"Open,Rename,Duplicate,Share,Move to Trash","pick":2,"tone":"light"}'
+        data-start="0"
+        data-duration="5.2"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+        style="position: absolute; inset: 0; width: 1920px; height: 1080px"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      window.__timelines["cursor-context-menu-demo"] = tl;
+    </script>
+  </body>
+</html>
