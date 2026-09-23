@@ -5,6 +5,7 @@ import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import { addExternalFileReloadListener } from "./externalFileReloadBus";
+import { whenPreviewBooted } from "../player/store/playerStore";
 
 /**
  * Why an optional project-file read produced no usable content. `stage: "read"`
@@ -331,9 +332,12 @@ export function useSdkSession(
       generation,
     };
 
-    readProjectFileOptional(projectId, activeCompPath)
+    // Parsing the source for editing takes the main thread for hundreds of ms on a large film;
+    // the first frame and play do not need it, so it waits for the live preview to boot.
+    whenPreviewBooted()
+      .then(() => (cancelled ? null : readProjectFileOptional(projectId, activeCompPath)))
       .then(async (read) => {
-        if (cancelled) return;
+        if (!read || cancelled) return;
         if (!read.ok) {
           const pathInTree = fileTreeLoaded ? fileTree.includes(activeCompPath) : null;
           setUnreachableProject(reportReadFailure(read, projectId, pathInTree));
