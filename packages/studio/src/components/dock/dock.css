@@ -65,6 +65,10 @@
   gap: 2px;
   --hf-fade-start: 0px;
   --hf-fade-end: 0px;
+}
+
+/* A mask adds a compositor render pass; only a strip that is actually clipped needs one. */
+.hf-dock .dv-tabs-container[data-clipped] {
   mask-image: linear-gradient(
     to right,
     transparent,
