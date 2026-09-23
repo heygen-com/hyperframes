@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "extruded-logo",
+  "type": "hyperframes:block",
+  "title": "Extruded Logo",
+  "description": "Beveled 3D letters flip up one by one, the word swings so light runs across the bevels, then settles for a readable hold. Chrome, gold or matte.",
+  "tags": ["3d-object", "three-js", "webgl", "logo", "text", "extruded", "title-card"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "extruded-logo.html",
+      "target": "compositions/extruded-logo.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
