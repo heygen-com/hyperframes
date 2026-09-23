@@ -188,7 +188,9 @@
             <div class="dd-col-head">To do <span class="dd-count" id="dd-count-a">4</span></div>
           </div>
           <div class="dd-col" style="left: 1020px">
-            <div class="dd-col-head">In progress <span class="dd-count" id="dd-count-b">0</span></div>
+            <div class="dd-col-head">
+              In progress <span class="dd-count" id="dd-count-b">0</span>
+            </div>
           </div>
           <div class="dd-slot" id="dd-slot" style="left: 1040px; top: 300px">
             <div class="dd-slot-hot" id="dd-slot-hot"></div>
@@ -238,7 +240,13 @@
                 </g>
               </defs>
               <!-- Outline pass under a fill pass, so the overlapping parts read as one hand. -->
-              <use href="#dd-hand-shape" fill="#141414" stroke="#141414" stroke-width="2.6" stroke-linejoin="round" />
+              <use
+                href="#dd-hand-shape"
+                fill="#141414"
+                stroke="#141414"
+                stroke-width="2.6"
+                stroke-linejoin="round"
+              />
               <use href="#dd-hand-shape" fill="#ffffff" />
             </svg>
           </div>
@@ -279,7 +287,9 @@
           var compositionId = "cursor-drag-drop";
           var duration = Math.max(
             0.001,
-            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "5"),
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "5",
+            ),
           );
           root.setAttribute("data-tone", vars.tone === "dark" ? "dark" : "light");
           if (vars.accent) root.style.setProperty("--dd-accent", String(vars.accent));
@@ -289,7 +299,13 @@
           var H = root.clientHeight || 1080;
           var fit = Math.min(W / 1920, H / 1080);
           $("dd-stage").style.transform =
-            "translate(" + (W - 1920 * fit) / 2 + "px," + (H - 1080 * fit) / 2 + "px) scale(" + fit + ") translate(960px,545px) scale(1.15) translate(-960px,-545px)";
+            "translate(" +
+            (W - 1920 * fit) / 2 +
+            "px," +
+            (H - 1080 * fit) / 2 +
+            "px) scale(" +
+            fit +
+            ") translate(960px,545px) scale(1.15) translate(-960px,-545px)";
 
           var s = Math.min(1, duration / 5);
           var T_ARRIVE = 0.9 * s;
@@ -341,7 +357,8 @@
               return { x: GRIP.x + c.x, y: GRIP.y + c.y };
             }
             var dropped = { x: GRIP.x + DROP.x, y: GRIP.y + DROP.y };
-            if (t <= T_EXIT) return arc(dropped, ASIDE, 0.1, easeArrive(clamp01((t - T_DRIFT) / (0.5 * s))));
+            if (t <= T_EXIT)
+              return arc(dropped, ASIDE, 0.1, easeArrive(clamp01((t - T_DRIFT) / (0.5 * s))));
             return arc(ASIDE, START, -0.1, easeExit(clamp01((t - T_EXIT) / (duration - T_EXIT))));
           }
 
@@ -374,8 +391,15 @@
             var vx = (ahead.x - lagged.x) / 0.08;
             var tilt = Math.max(-3, Math.min(3, (vx / 1200) * 3)) * liftAt(t);
             card.style.transform =
-              "translate(" + c.x.toFixed(2) + "px," + c.y.toFixed(2) + "px) rotate(" + tilt.toFixed(2) +
-              "deg) scale(" + cardScaleAt(t).toFixed(4) + ")";
+              "translate(" +
+              c.x.toFixed(2) +
+              "px," +
+              c.y.toFixed(2) +
+              "px) rotate(" +
+              tilt.toFixed(2) +
+              "deg) scale(" +
+              cardScaleAt(t).toFixed(4) +
+              ")";
             lift.style.opacity = liftAt(t).toFixed(3);
 
             var close = easeCarry(clamp01((t - T_CARRY - 0.15 * s) / (0.4 * s)));
@@ -386,7 +410,8 @@
             var gap = Math.hypot(c.x - DROP.x, c.y - DROP.y);
             var hot = t < T_DROP ? smooth(1 - gap / 300) : 1 - clamp01((t - T_DROP) / (0.3 * s));
             slotHot.style.opacity = hot.toFixed(3);
-            slot.style.opacity = t < T_DROP ? "1" : (1 - clamp01((t - T_DROP) / (0.3 * s))).toFixed(3);
+            slot.style.opacity =
+              t < T_DROP ? "1" : (1 - clamp01((t - T_DROP) / (0.3 * s))).toFixed(3);
 
             countA.textContent = t >= T_CARRY + 0.15 * s ? "3" : "4";
             countB.textContent = t >= T_DROP ? "1" : "0";
@@ -394,16 +419,23 @@
             var grabbing = t >= T_PRESS && t < T_DROP;
             var p = pointerAt(t);
             var anchor = grabbing ? PALM : ARROW_TIP;
-            var pressDip = t >= T_PRESS && t < T_PRESS + 0.22 * s
-              ? 1 - 0.1 * Math.sin(Math.PI * clamp01((t - T_PRESS) / (0.22 * s)))
-              : 1;
-            var releasePop = t >= T_DROP && t < T_DROP + 0.2 * s
-              ? 1 - 0.08 * Math.sin(Math.PI * clamp01((t - T_DROP) / (0.2 * s)))
-              : 1;
+            var pressDip =
+              t >= T_PRESS && t < T_PRESS + 0.22 * s
+                ? 1 - 0.1 * Math.sin(Math.PI * clamp01((t - T_PRESS) / (0.22 * s)))
+                : 1;
+            var releasePop =
+              t >= T_DROP && t < T_DROP + 0.2 * s
+                ? 1 - 0.08 * Math.sin(Math.PI * clamp01((t - T_DROP) / (0.2 * s)))
+                : 1;
             cursor.style.transformOrigin = anchor.x + "px " + anchor.y + "px";
             cursor.style.transform =
-              "translate(" + (p.x - anchor.x).toFixed(2) + "px," + (p.y - anchor.y).toFixed(2) +
-              "px) scale(" + (pressDip * releasePop).toFixed(4) + ")";
+              "translate(" +
+              (p.x - anchor.x).toFixed(2) +
+              "px," +
+              (p.y - anchor.y).toFixed(2) +
+              "px) scale(" +
+              (pressDip * releasePop).toFixed(4) +
+              ")";
             arrow.style.opacity = grabbing ? "0" : "1";
             hand.style.opacity = grabbing ? "1" : "0";
           }

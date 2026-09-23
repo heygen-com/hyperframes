@@ -84,7 +84,9 @@
         <h1>Launch notes, week 38</h1>
         <p>
           The new onboarding flow ships to everyone on Thursday. Read the
-          <span class="sel" id="sel">rollout checklist<span class="sel-line" id="sel-line"></span></span>
+          <span class="sel" id="sel"
+            >rollout checklist<span class="sel-line" id="sel-line"></span
+          ></span>
           before your first support shift, and flag anything that still reads unclear.
         </p>
         <p>Open questions go in the team thread, not in comments on this page.</p>
@@ -108,7 +110,11 @@
     <script>
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
-      tl.to("#sel", { color: "#2563eb", backgroundColor: "rgba(59,130,246,0.1)", duration: 0.2 }, 2.4);
+      tl.to(
+        "#sel",
+        { color: "#2563eb", backgroundColor: "rgba(59,130,246,0.1)", duration: 0.2 },
+        2.4,
+      );
       tl.to("#sel-line", { scaleX: 1, duration: 0.3, ease: "power3.out" }, 2.42);
       window.__timelines["magnetic-cursor-demo"] = tl;
     </script>

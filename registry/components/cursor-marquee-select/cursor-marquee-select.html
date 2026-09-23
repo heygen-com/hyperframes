@@ -270,7 +270,9 @@
           var compositionId = "cursor-marquee-select";
           var duration = Math.max(
             0.001,
-            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "4.6"),
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "4.6",
+            ),
           );
           if (vars.accent) root.style.setProperty("--ms-accent", String(vars.accent));
           var pillLabel = String(vars.pill_label || "selected");
@@ -279,7 +281,13 @@
           var H = root.clientHeight || 1080;
           var fit = Math.min(W / 1920, H / 1080);
           $("ms-stage").style.transform =
-            "translate(" + (W - 1920 * fit) / 2 + "px," + (H - 1080 * fit) / 2 + "px) scale(" + fit + ")";
+            "translate(" +
+            (W - 1920 * fit) / 2 +
+            "px," +
+            (H - 1080 * fit) / 2 +
+            "px) scale(" +
+            fit +
+            ")";
 
           var PHOTOS = [
             ["#ffb86b", "#ff6f91", "#c2416b", "beach-sunset.jpg"],
@@ -312,9 +320,17 @@
             el.className = "ms-tile";
             el.style.cssText = "left:" + box.x + "px;top:" + box.y + "px";
             el.innerHTML =
-              '<div class="ms-ring"></div><div class="ms-photo" style="--a:' + p[0] + ";--b:" + p[1] +
-              ";--c:" + p[2] + '"></div><div class="ms-check">' + CHECK + '</div><div class="ms-name">' +
-              p[3] + "</div>";
+              '<div class="ms-ring"></div><div class="ms-photo" style="--a:' +
+              p[0] +
+              ";--b:" +
+              p[1] +
+              ";--c:" +
+              p[2] +
+              '"></div><div class="ms-check">' +
+              CHECK +
+              '</div><div class="ms-name">' +
+              p[3] +
+              "</div>";
             grid.appendChild(el);
             return {
               box: box,
@@ -350,7 +366,10 @@
             };
           }
 
-          var A = { x: (num(vars.start_x, 20.5) / 100) * 1920, y: (num(vars.start_y, 25.5) / 100) * 1080 };
+          var A = {
+            x: (num(vars.start_x, 20.5) / 100) * 1920,
+            y: (num(vars.start_y, 25.5) / 100) * 1080,
+          };
           var B = { x: (num(vars.end_x, 57) / 100) * 1920, y: (num(vars.end_y, 52) / 100) * 1080 };
           var START = { x: 2060, y: 1220 };
           var ASIDE = { x: B.x + 120, y: B.y + 110 };
@@ -359,9 +378,11 @@
           function pointerAt(t) {
             if (t <= T_ARRIVE) return arc(START, A, 0.16, easeArrive(clamp01(t / T_ARRIVE)));
             if (t <= T_DRAG) return A;
-            if (t <= T_RELEASE) return arc(A, B, 0.06, easeDrag((t - T_DRAG) / (T_RELEASE - T_DRAG)));
+            if (t <= T_RELEASE)
+              return arc(A, B, 0.06, easeDrag((t - T_DRAG) / (T_RELEASE - T_DRAG)));
             if (t <= T_DRIFT) return B;
-            if (t <= T_EXIT) return arc(B, ASIDE, 0.1, easeArrive(clamp01((t - T_DRIFT) / (0.5 * s))));
+            if (t <= T_EXIT)
+              return arc(B, ASIDE, 0.1, easeArrive(clamp01((t - T_DRIFT) / (0.5 * s))));
             return arc(ASIDE, START, -0.1, easeExit(clamp01((t - T_EXIT) / (duration - T_EXIT))));
           }
           function rectAt(t) {
@@ -397,7 +418,12 @@
           function render(t) {
             var r = rectAt(t);
             var dragging = t >= T_DRAG && t < T_RELEASE;
-            var rectAlpha = t < T_DRAG ? 0 : dragging ? clamp01((t - T_DRAG) / 0.06) : 1 - clamp01((t - T_RELEASE) / (0.18 * s));
+            var rectAlpha =
+              t < T_DRAG
+                ? 0
+                : dragging
+                  ? clamp01((t - T_DRAG) / 0.06)
+                  : 1 - clamp01((t - T_RELEASE) / (0.18 * s));
             rect.style.opacity = rectAlpha.toFixed(3);
             var sx = Math.max(0.001, (r.x1 - r.x0) / 100).toFixed(4);
             var sy = Math.max(0.001, (r.y1 - r.y0) / 100).toFixed(4);
@@ -418,7 +444,8 @@
               if (on) count++;
               if (on) firstAt = Math.min(firstAt, tile.at);
               tile.ring.style.opacity = clamp01(u * 2).toFixed(3);
-              tile.photo.style.transform = "scale(" + (1 - 0.06 * clamp01(u * 1.6)).toFixed(4) + ")";
+              tile.photo.style.transform =
+                "scale(" + (1 - 0.06 * clamp01(u * 1.6)).toFixed(4) + ")";
               tile.check.style.opacity = clamp01(u * 3).toFixed(3);
               tile.check.style.transform = "scale(" + (0.5 + 0.5 * easePop(u)).toFixed(4) + ")";
             });
@@ -429,10 +456,19 @@
             pill.style.transform = "scale(" + (0.94 + 0.06 * easePop(pillU)).toFixed(4) + ")";
 
             var p = pointerAt(t);
-            var press = t >= T_PRESS && t < T_PRESS + 0.2 * s ? 1 - 0.1 * Math.sin(Math.PI * clamp01((t - T_PRESS) / (0.2 * s))) : 1;
+            var press =
+              t >= T_PRESS && t < T_PRESS + 0.2 * s
+                ? 1 - 0.1 * Math.sin(Math.PI * clamp01((t - T_PRESS) / (0.2 * s)))
+                : 1;
             cursor.style.transformOrigin = TIP.x + "px " + TIP.y + "px";
             cursor.style.transform =
-              "translate(" + (p.x - TIP.x).toFixed(2) + "px," + (p.y - TIP.y).toFixed(2) + "px) scale(" + press.toFixed(4) + ")";
+              "translate(" +
+              (p.x - TIP.x).toFixed(2) +
+              "px," +
+              (p.y - TIP.y).toFixed(2) +
+              "px) scale(" +
+              press.toFixed(4) +
+              ")";
           }
 
           var clock = { t: 0 };

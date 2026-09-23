@@ -235,7 +235,12 @@
       tl.to("#projects", { opacity: 0, x: -12, duration: 0.18, ease: "power2.in" }, 2.83);
       tl.to("#nav-projects", { color: "#5b6173", duration: 0.2 }, 2.83);
       tl.to("#nav-settings", { color: "#151827", duration: 0.2 }, 2.83);
-      tl.fromTo("#settings", { opacity: 0, x: 16 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" }, 2.95);
+      tl.fromTo(
+        "#settings",
+        { opacity: 0, x: 16 },
+        { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" },
+        2.95,
+      );
 
       // Second click (4.39s): backups turn on.
       tl.to("#backup-toggle", { backgroundColor: "#8b5cf6", duration: 0.2 }, 4.43);

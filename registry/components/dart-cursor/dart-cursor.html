@@ -299,7 +299,8 @@
             var depth = depthAt(t);
             var exiting = t > T_EXIT;
             var perFrame = speed / 60;
-            var smearUnits = blurAmount * Math.min(exiting ? 36 : 12, (exiting ? 0.28 : 0.16) * perFrame);
+            var smearUnits =
+              blurAmount * Math.min(exiting ? 36 : 12, (exiting ? 0.28 : 0.16) * perFrame);
             var lift = Math.max(0, depth - 0.9);
 
             cursor.style.transform = "translate(" + p.x.toFixed(2) + "px," + p.y.toFixed(2) + "px)";
@@ -313,7 +314,11 @@
               "))";
             spin.setAttribute(
               "transform",
-              "rotate(" + rotation.toFixed(2) + ") scale(" + (depth * PX_PER_SVG_UNIT).toFixed(4) + ")",
+              "rotate(" +
+                rotation.toFixed(2) +
+                ") scale(" +
+                (depth * PX_PER_SVG_UNIT).toFixed(4) +
+                ")",
             );
             // The blur's x axis is turned onto the travel direction, then the shape turned back.
             var local = wrap(travelDeg - rotation);

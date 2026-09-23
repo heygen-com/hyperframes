@@ -130,7 +130,12 @@
         }
         .ag-status {
           color: rgba(255, 255, 255, 0.9);
-          background: linear-gradient(90deg, rgba(255, 255, 255, 0.45) 35%, #fff 50%, rgba(255, 255, 255, 0.45) 65%);
+          background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.45) 35%,
+            #fff 50%,
+            rgba(255, 255, 255, 0.45) 65%
+          );
           background-size: 300% 100%;
           -webkit-background-clip: text;
           background-clip: text;
@@ -216,7 +221,9 @@
           var compositionId = "agent-cursor";
           var duration = Math.max(
             0.001,
-            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "6"),
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "6",
+            ),
           );
           var W = root.clientWidth || 1920;
           var H = root.clientHeight || 1080;
@@ -284,7 +291,8 @@
 
           function positionAt(t) {
             if (t <= T_ENTER) return lerp(START, READ_A, enter(clamp01(t / T_ENTER)));
-            if (t <= T_READ_END) return lerp(READ_A, READ_B, reading(clamp01((t - T_ENTER) / (T_READ_END - T_ENTER))));
+            if (t <= T_READ_END)
+              return lerp(READ_A, READ_B, reading(clamp01((t - T_ENTER) / (T_READ_END - T_ENTER))));
             var from = READ_B;
             for (var i = 0; i < beats.length; i++) {
               var b = beats[i];
@@ -327,7 +335,10 @@
             var text = stepText(index);
             var typeDur = Math.min(0.4, text.length * 0.026) * k;
             var shown = Math.floor(clamp01(since / typeDur) * text.length);
-            return { text: text.slice(0, Math.max(index === 0 ? 0 : 1, shown)), thinking: thinking };
+            return {
+              text: text.slice(0, Math.max(index === 0 ? 0 : 1, shown)),
+              thinking: thinking,
+            };
           }
 
           var bursts = beats.map(function (b) {
@@ -340,11 +351,18 @@
               s.setAttribute("viewBox", "-10 -10 20 20");
               s.setAttribute("class", "ag-spark");
               var star = document.createElementNS(SVG_NS, "path");
-              star.setAttribute("d", "M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z");
+              star.setAttribute(
+                "d",
+                "M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z",
+              );
               star.setAttribute("fill", j % 2 ? "#ffffff" : accent);
               s.appendChild(star);
               wrap.appendChild(s);
-              sparks.push({ el: s, angle: (j * 45 + (j % 2 ? 14 : -6)) * (Math.PI / 180), reach: [1, 0.72, 0.88][j % 3] });
+              sparks.push({
+                el: s,
+                angle: (j * 45 + (j % 2 ? 14 : -6)) * (Math.PI / 180),
+                reach: [1, 0.72, 0.88][j % 3],
+              });
             }
             root.appendChild(wrap);
             return { at: b.click, sparks: sparks };
@@ -367,10 +385,17 @@
             actor.style.transform = "translate(" + p.x.toFixed(2) + "px," + p.y.toFixed(2) + "px)";
             arrow.style.transform = "scale(" + press(t).toFixed(3) + ")";
             arrow.style.transformOrigin = "0 0";
-            glow.style.transform = "rotate(" + (t * 140).toFixed(1) + "deg) scale(" + (1 + 0.08 * Math.sin(t * 4.2)).toFixed(3) + ")";
+            glow.style.transform =
+              "rotate(" +
+              (t * 140).toFixed(1) +
+              "deg) scale(" +
+              (1 + 0.08 * Math.sin(t * 4.2)).toFixed(3) +
+              ")";
             glow.style.opacity = (0.5 + 0.12 * Math.sin(t * 3.1)).toFixed(3);
-            tagAnchor.style.transform = "translate(" + tp.x.toFixed(2) + "px," + tp.y.toFixed(2) + "px)";
-            tag.style.transform = "scale(" + (0.9 + 0.1 * enter(clamp01((t - 0.15 * k) / (0.35 * k)))).toFixed(3) + ")";
+            tagAnchor.style.transform =
+              "translate(" + tp.x.toFixed(2) + "px," + tp.y.toFixed(2) + "px)";
+            tag.style.transform =
+              "scale(" + (0.9 + 0.1 * enter(clamp01((t - 0.15 * k) / (0.35 * k)))).toFixed(3) + ")";
             var leaving = clamp01((t - T_EXIT) / (0.25 * k));
             tag.style.opacity = (clamp01((t - 0.15 * k) / (0.2 * k)) * (1 - leaving)).toFixed(3);
 
@@ -383,7 +408,8 @@
             check.style.opacity = done.toFixed(3);
             check.style.transform = "scale(" + (0.5 + 0.5 * pop(done)).toFixed(3) + ")";
             dot.style.opacity = (1 - done).toFixed(3);
-            dot.style.transform = "scale(" + (status.thinking ? 0.8 + 0.2 * Math.sin(t * 12) : 1).toFixed(3) + ")";
+            dot.style.transform =
+              "scale(" + (status.thinking ? 0.8 + 0.2 * Math.sin(t * 12) : 1).toFixed(3) + ")";
 
             bursts.forEach(function (burst) {
               var u = (t - burst.at) / (0.5 * k);
@@ -395,8 +421,15 @@
                 var r = (0.2 + 2.4 * enter(u)) * s.reach;
                 s.el.style.opacity = (1 - u * u).toFixed(3);
                 s.el.style.transform =
-                  "translate(" + (Math.cos(s.angle) * r).toFixed(3) + "cqw," + (Math.sin(s.angle) * r).toFixed(3) +
-                  "cqw) scale(" + (1 - 0.7 * u).toFixed(3) + ") rotate(" + (u * 90).toFixed(1) + "deg)";
+                  "translate(" +
+                  (Math.cos(s.angle) * r).toFixed(3) +
+                  "cqw," +
+                  (Math.sin(s.angle) * r).toFixed(3) +
+                  "cqw) scale(" +
+                  (1 - 0.7 * u).toFixed(3) +
+                  ") rotate(" +
+                  (u * 90).toFixed(1) +
+                  "deg)";
               });
             });
             actor.style.opacity = gone ? "0" : "1";
