@@ -21,21 +21,19 @@ export const skillModuleCopies = [
   ],
 ];
 
+function synchronizeCopy(content, target, check) {
+  const path = resolve(root, target);
+  if (check) return readFileSync(path, "utf8") !== content;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
+  return false;
+}
+
 export function generateSkillModuleCopies({ check = false } = {}) {
-  const drifted = [];
-  for (const [source, targets] of skillModuleCopies) {
+  return skillModuleCopies.flatMap(([source, targets]) => {
     const content = readFileSync(resolve(root, source), "utf8");
-    for (const target of targets) {
-      const path = resolve(root, target);
-      if (check) {
-        if (readFileSync(path, "utf8") !== content) drifted.push(target);
-      } else {
-        mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, content);
-      }
-    }
-  }
-  return drifted;
+    return targets.filter((target) => synchronizeCopy(content, target, check));
+  });
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
