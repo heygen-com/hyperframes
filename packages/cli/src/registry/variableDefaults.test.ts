@@ -106,3 +106,30 @@ describe("applyVariableDefaults", () => {
     expect(applyVariableDefaults(COMPONENT, {}).html).toBe(COMPONENT);
   });
 });
+
+/** One variable of each type the CLI previously wrote without checking. */
+const TYPED = `<div
+  data-hf-ui-root
+  data-composition-variables='[
+    { "id": "maths", "type": "boolean", "label": "Maths", "default": false },
+    { "id": "accent", "type": "color", "label": "Accent", "default": "#7a4a2e" },
+    { "id": "title", "type": "string", "label": "Title", "default": "Hello" }
+  ]'
+></div>`;
+
+describe("applyVariableDefaults type checks", () => {
+  it("refuses a value whose type does not match the declaration", () => {
+    expect(applyVariableDefaults(TYPED, { maths: 1, accent: 5, title: {} }).invalid).toEqual([
+      { id: "maths", reason: "expected boolean, got number" },
+      { id: "accent", reason: "expected color, got number" },
+      { id: "title", reason: "expected string, got object" },
+    ]);
+  });
+
+  it("keeps a boolean a boolean, so the composition's own check still sees true", () => {
+    const r = applyVariableDefaults(TYPED, { maths: true, accent: "#ffffff" });
+    expect(r.invalid).toEqual([]);
+    expect(defaultOf(r.html, "maths")).toBe(true);
+    expect(defaultOf(r.html, "accent")).toBe("#ffffff");
+  });
+});

@@ -17,6 +17,7 @@ import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { DEFAULT_REGISTRY_URL, installItem, resolveItemsByTag } from "../registry/index.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
+import { InvalidVariableValuesError } from "../registry/variableDefaults.js";
 import {
   gateRegistryItemsCompatibility,
   RegistryCompatibilityError,
@@ -208,13 +209,11 @@ async function installAll(
   preserved: string[];
   variablesApplied: string[];
   variablesUnknown: string[];
-  variablesInvalid: { id: string; reason: string }[];
 }> {
   const written: string[] = [];
   const preserved: string[] = [];
   let variablesApplied: string[] = [];
   let variablesUnknown: string[] = [];
-  let variablesInvalid: { id: string; reason: string }[] = [];
   try {
     for (const planItem of installPlan) {
       const result = await installItem(planItem, {
@@ -230,13 +229,13 @@ async function installAll(
       if (planItem.name === requestedName) {
         variablesApplied = result.variablesApplied;
         variablesUnknown = result.variablesUnknown;
-        variablesInvalid = result.variablesInvalid;
       }
     }
   } catch (err) {
+    if (err instanceof InvalidVariableValuesError) throw new AddError(err.message, "invalid-vars");
     throw new AddError(describeInstallFailure(err, baseUrl), "install-failed");
   }
-  return { written, preserved, variablesApplied, variablesUnknown, variablesInvalid };
+  return { written, preserved, variablesApplied, variablesUnknown };
 }
 
 /**
@@ -318,15 +317,14 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
 
   // 5. Install — dependencies first, requested item last.
   const variableValues = parseVariableValues(opts.vars);
-  const { written, preserved, variablesApplied, variablesUnknown, variablesInvalid } =
-    await installAll(
-      installPlan,
-      projectDir,
-      config.registry,
-      opts.force ?? false,
-      item.name,
-      variableValues,
-    );
+  const { written, preserved, variablesApplied, variablesUnknown } = await installAll(
+    installPlan,
+    projectDir,
+    config.registry,
+    opts.force ?? false,
+    item.name,
+    variableValues,
+  );
 
   // Report what landed, not what was asked for: a failed install throws above,
   // and the bulk `add <tag>` path re-enters here per item, so this one place
@@ -358,9 +356,6 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   const snippet = buildSnippet(item, snippetTargetRel, variableValues);
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
 
-  for (const { id, reason } of variablesInvalid) {
-    warnings.push(`--vars ${id} ignored: ${reason}`);
-  }
   if (variablesUnknown.length > 0) {
     warnings.push(`--vars ignored (not declared by ${item.name}): ${variablesUnknown.join(", ")}`);
   }

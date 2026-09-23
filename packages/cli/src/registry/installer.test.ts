@@ -236,3 +236,42 @@ describe("installing several items, as a dependency plan does", () => {
     expect(readFileSync(join(dir, target), "utf-8")).toBe("EDITED DEPENDENCY\n");
   });
 });
+
+describe("installing with --vars the item cannot take", () => {
+  const declaration = `<div data-composition-id="demo" data-composition-variables='[{"id":"maths","type":"boolean","label":"Maths","default":false}]'></div>`;
+  const block = {
+    name: "demo-block",
+    title: "Demo block",
+    description: "Block",
+    dimensions: { width: 100, height: 100 },
+    duration: 1,
+    type: "hyperframes:block",
+    files: [
+      {
+        path: "demo-block.html",
+        target: "compositions/demo-block.html",
+        type: "hyperframes:composition",
+      },
+    ],
+  } as unknown as RegistryItem;
+
+  it.each([
+    ["block", block, "compositions/demo-block.html"],
+    ["component", item, target],
+  ])(
+    "refuses a wrong-typed value for a %s and writes nothing",
+    async (_kind, installable, file) => {
+      const dir = project();
+      remote.contents = declaration;
+      try {
+        await expect(
+          installItem(installable, { destDir: dir, variableValues: { maths: 1 } }),
+        ).rejects.toThrow(/maths: expected boolean, got number/);
+        expect(existsSync(join(dir, file))).toBe(false);
+      } finally {
+        remote.contents = "REGISTRY VERSION\n";
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});
