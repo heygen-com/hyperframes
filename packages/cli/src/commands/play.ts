@@ -236,6 +236,14 @@ export async function registerCompositionRoute(
     }
 
     const contentType = assetContentType(filePath);
+    // Edited text is caught by a content hash; an mtime tag can repeat for a same-size rewrite.
+    if (/^text\/|javascript|json|svg/.test(contentType)) {
+      return revalidatedResponse(
+        readFileSync(filePath, "utf-8"),
+        contentType,
+        ctx.req.header("If-None-Match"),
+      );
+    }
     const proxyParam = ctx.req.query("hf-proxy");
     if (proxyParam !== undefined && isProxyVariantRequest(proxyParam)) {
       // Opt-out (or a non-video asset) 404s the param without attempting a

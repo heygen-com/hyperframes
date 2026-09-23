@@ -82,13 +82,6 @@ export function assetContentType(filePath: string): string {
   return getMimeType(filePath);
 }
 
-/**
- * Hono-native Range/206 response for a file on disk, mirroring the inline
- * Range logic in `packages/studio-server/src/routes/preview.ts`'s static
- * asset route. `staticProjectServer.ts`'s raw-`node:http` counterpart is
- * `serveFileWithRange`; this version converts Node's bounded file stream to a
- * Fetch API stream for Hono without allocating the whole media/proxy file.
- */
 /** `body` with a content validator, or a 304 when the browser already holds these bytes. */
 export function revalidatedResponse(
   body: string,
@@ -101,6 +94,13 @@ export function revalidatedResponse(
   return new Response(body, { status: 200, headers });
 }
 
+/**
+ * Hono-native Range/206 response for a file on disk, mirroring the inline
+ * Range logic in `packages/studio-server/src/routes/preview.ts`'s static
+ * asset route. `staticProjectServer.ts`'s raw-`node:http` counterpart is
+ * `serveFileWithRange`; this version converts Node's bounded file stream to a
+ * Fetch API stream for Hono without allocating the whole media/proxy file.
+ */
 export function buildRangeResponse(
   filePath: string,
   contentType: string,
