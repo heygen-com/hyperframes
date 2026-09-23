@@ -4,7 +4,17 @@
   "type": "hyperframes:component",
   "title": "Before After Wipe",
   "description": "Two full-bleed content slots compare before and after states as a persistent divider wipes the after layer over the before layer and rests at a configurable split. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty.",
-  "tags": ["prop", "ui-props", "compare", "holdable", "before-after", "wipe", "slots"],
+  "tags": [
+    "prop",
+    "ui-props",
+    "compare",
+    "comparison",
+    "split-screen",
+    "holdable",
+    "before-after",
+    "wipe",
+    "slots"
+  ],
   "jobs": ["compare"],
   "family": "ui-props",
   "profile": "holdable",
