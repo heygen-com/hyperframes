@@ -4,6 +4,7 @@ import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readin
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
+import { usePlayerStore } from "../store/playerStore";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -440,6 +441,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         onReadyToShowChangeRef.current?.(false);
         return;
       }
+      // The preview shows and can play: work that waited on the boot (editing session, lint) starts.
+      usePlayerStore.getState().markPreviewBooted();
       let second = 0;
       const first = requestAnimationFrame(() => {
         second = requestAnimationFrame(() => onReadyToShowChangeRef.current?.(true));
@@ -449,6 +452,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         cancelAnimationFrame(second);
       };
     }, [readyToShow]);
+
+    useEffect(() => {
+      if (previewError) usePlayerStore.getState().markPreviewBooted();
+    }, [previewError]);
 
     const showCompositionOverlay =
       !suppressLoadingOverlay &&
