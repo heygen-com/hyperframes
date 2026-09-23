@@ -14,33 +14,14 @@ afterEach(() => {
 });
 
 describe("CLI lifecycle", () => {
-  it("queues a command failure before finalizing telemetry", async () => {
-    let resolveEvents!: (events: {
-      trackCommandFailure: (command: string, error: unknown) => void;
-    }) => void;
-    const eventsModule = new Promise<{
-      trackCommandFailure: (command: string, error: unknown) => void;
-    }>((resolve) => {
-      resolveEvents = resolve;
-    });
-    let markEventsImportStarted!: () => void;
-    const eventsImportStarted = new Promise<void>((resolve) => {
-      markEventsImportStarted = resolve;
-    });
-    const order: string[] = [];
-
-    vi.doMock("./commands/init.js", () => ({
-      default: {
-        meta: { name: "init" },
-        args: { json: { type: "boolean" } },
-        run: vi.fn(),
-      },
-    }));
+  it("finalizes without waiting on a slow network flush, and the exit handler still delivers the queued event", async () => {
+    const flushSync = vi.fn();
+    mockInitCommand(vi.fn());
     vi.doMock("./telemetry/index.js", () => ({
-      flush: async () => {
-        order.push("flush");
-      },
-      flushSync: vi.fn(),
+      // Never resolves — stands in for a slow/stalled network POST. Old
+      // code awaited this and would hang finalizeCli until it settled.
+      flush: () => new Promise<void>(() => {}),
+      flushSync,
       incrementCommandCount: vi.fn(),
       showTelemetryNotice: vi.fn(),
       shouldTrack: () => false,
@@ -48,25 +29,17 @@ describe("CLI lifecycle", () => {
       trackCommand: vi.fn(),
       trackCommandResult: vi.fn(),
     }));
-    vi.doMock("./telemetry/events.js", async () => {
-      markEventsImportStarted();
-      return eventsModule;
-    });
+    vi.doMock("./telemetry/events.js", () => ({ trackCommandFailure: vi.fn() }));
 
-    process.argv = ["node", "cli.ts", "init", "--bogus", "--json"];
-    const execution = import("./cli.js");
+    process.argv = ["node", "cli.ts", "init", "--json"];
+    // Hangs (test-timeout failure) on old code, which awaits flush() before
+    // finalizeCli can return; resolves promptly on new code, which doesn't.
+    await import("./cli.js");
 
-    await eventsImportStarted;
-    expect(order).toEqual([]);
-
-    resolveEvents({
-      trackCommandFailure: () => {
-        order.push("cli_error");
-      },
-    });
-    await execution;
-
-    expect(order).toEqual(["cli_error", "flush"]);
+    // finalizeCli already ran without the network flush ever settling; the
+    // exit handler's flushSync() is what still hands the queue off.
+    process.emit("exit", 0);
+    expect(flushSync).toHaveBeenCalled();
   });
 
   it("hands queued events to flushSync even after finalizeCli has run", async () => {

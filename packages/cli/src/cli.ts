@@ -213,7 +213,6 @@ const hasJsonFlag = process.argv.includes("--json");
 // Captured references — populated when the lazy imports resolve.
 // Used in exit handlers where dynamic import() is unsafe (beforeExit loops,
 // exit handler is synchronous-only).
-let _flush: (() => Promise<void>) | undefined;
 let _flushSync: (() => void) | undefined;
 let _trackCliError:
   | ((props: {
@@ -243,7 +242,6 @@ let telemetryReady: Promise<void> = Promise.resolve();
 // printed into a skill's captured output).
 if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
   telemetryReady = import("./telemetry/index.js").then((mod) => {
-    _flush = mod.flush;
     _flushSync = mod.flushSync;
     _trackCliError = mod.trackCliError;
     _trackCommandResult = mod.trackCommandResult;
@@ -321,7 +319,8 @@ async function finalizeCli(result: CommandResult): Promise<void> {
     durationMs: Date.now() - commandStart,
     runId,
   });
-  await _flush?.().catch(() => {});
+  // No network wait here — the `exit` handler's unconditional flushSync()
+  // already delivers whatever is still queued (see its comment below).
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
     _printStalePinNotice?.();
