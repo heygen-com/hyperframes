@@ -388,7 +388,7 @@ export function trackRenderComplete(
     // measurement's producer-side counterpart). Undefined on render paths
     // with no capture session, same as the composition-element fields above.
     /** Host count — one per `data-vfx-chain` attribute occurrence, regardless of its chain's node count. */
-    vfxNodeCount?: number;
+    vfxHostCount?: number;
     /** Strongest enabled node's capture across every host ("none" | "self" | "backdrop", max). */
     vfxCapture?: string;
     /** Sorted unique def ids across every enabled node in every chain, comma-joined. */
@@ -512,7 +512,7 @@ export function trackRenderComplete(
       begin_frame_no_damage_frames: props.beginFrameNoDamageFrames,
       begin_frame_has_damage_frames: props.beginFrameHasDamageFrames,
       de_capture_mode: props.deCaptureMode,
-      vfx_node_count: props.vfxNodeCount,
+      vfx_host_count: props.vfxHostCount,
       vfx_capture: props.vfxCapture,
       vfx_types: props.vfxTypes,
       de_compile_gate: props.deCompileGate,

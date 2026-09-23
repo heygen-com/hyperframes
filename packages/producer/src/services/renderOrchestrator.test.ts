@@ -2434,7 +2434,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(scan.rootBodyDeltaPxBucket).toBeUndefined();
       // data-vfx-chain: no hosts, so vfxCapture never ran ("undefined", not
       // "none" — there is nothing to have a capture requirement).
-      expect(scan.vfxNodeCount).toBe(0);
+      expect(scan.vfxHostCount).toBe(0);
       expect(scan.vfxTypes).toBe("");
       expect(scan.vfxCapture).toBeUndefined();
     });
@@ -2445,7 +2445,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         '<div data-vfx-chain=\'{"version":1,"nodes":[{"type":"wave-warp","id":"n1","params":{}},' +
         '{"type":"displacement-map","id":"n2","params":{}}]}\'></div>';
       const scan = scanElementTags(html);
-      expect(scan.vfxNodeCount).toBe(2);
+      expect(scan.vfxHostCount).toBe(2);
       // fractal-noise is capture "none"; wave-warp/displacement-map are "self"
       // — the strongest of the two hosts wins.
       expect(scan.vfxCapture).toBe("self");
@@ -2458,7 +2458,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         '{"type":"wave-warp","id":"n1","enabled":false,"params":{}},' +
         '{"type":"fractal-noise","id":"n2","params":{}}]}\'></div>';
       const scan = scanElementTags(html);
-      expect(scan.vfxNodeCount).toBe(1);
+      expect(scan.vfxHostCount).toBe(1);
       expect(scan.vfxTypes).toBe("fractal-noise");
       // The only enabled node is fractal-noise (capture "none") — the
       // disabled self-capture node must not inflate the chain's capture.
@@ -2470,14 +2470,14 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         '<div data-vfx-chain="{&quot;version&quot;:1,&quot;nodes&quot;:[{&quot;type&quot;:' +
         '&quot;fractal-noise&quot;,&quot;id&quot;:&quot;n1&quot;,&quot;params&quot;:{}}]}"></div>';
       const scan = scanElementTags(html);
-      expect(scan.vfxNodeCount).toBe(1);
+      expect(scan.vfxHostCount).toBe(1);
       expect(scan.vfxTypes).toBe("fractal-noise");
     });
 
     it("does not crash on a malformed data-vfx-chain attribute; still counts the host, no type or capture signal from it", () => {
       const html = "<div data-vfx-chain='{not json'></div>";
       const scan = scanElementTags(html);
-      expect(scan.vfxNodeCount).toBe(1);
+      expect(scan.vfxHostCount).toBe(1);
       expect(scan.vfxTypes).toBe("");
       expect(scan.vfxCapture).toBeUndefined();
     });
@@ -2580,7 +2580,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         audioGroupCount: 0,
         colorGradingCount: 0,
         hasLut: false,
-        vfxNodeCount: 0,
+        vfxHostCount: 0,
         vfxTypes: "",
       });
     });
@@ -2599,7 +2599,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         audioGroupCount: 0,
         colorGradingCount: 0,
         hasLut: false,
-        vfxNodeCount: 0,
+        vfxHostCount: 0,
         vfxTypes: "",
       });
     });
@@ -2625,7 +2625,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         audioGroupCount: 0,
         colorGradingCount: 0,
         hasLut: false,
-        vfxNodeCount: 0,
+        vfxHostCount: 0,
         vfxTypes: "",
       });
     });
@@ -2644,7 +2644,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
         audioGroupCount: 0,
         colorGradingCount: 0,
         hasLut: false,
-        vfxNodeCount: 0,
+        vfxHostCount: 0,
         vfxTypes: "",
       });
     });

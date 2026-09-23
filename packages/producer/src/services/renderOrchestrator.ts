@@ -606,10 +606,10 @@ export interface RenderPerfSummary {
     rootBodyMismatch?: boolean;
     rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
     /** `data-vfx-chain` host count from the same static scan. Only set when the source above is "static". */
-    vfxNodeCount?: number;
-    /** Strongest enabled node's capture across every `data-vfx-chain` host (`chainCapture`, max: backdrop > self > none). Undefined when vfxNodeCount is 0. */
+    vfxHostCount?: number;
+    /** Strongest enabled node's capture across every `data-vfx-chain` host (`chainCapture`, max: backdrop > self > none). Undefined when vfxHostCount is 0. */
     vfxCapture?: HfVfxCapture;
-    /** Sorted unique def ids across every enabled node in every chain, comma-joined ("" when vfxNodeCount is 0). */
+    /** Sorted unique def ids across every enabled node in every chain, comma-joined ("" when vfxHostCount is 0). */
     vfxTypes?: string;
     /** Short-comp band attribution: "applied" | "skipped_elements" | "unmeasured"; unset when the frame count made the band irrelevant. */
     shortBand?: "applied" | "skipped_elements" | "unmeasured";
@@ -1595,10 +1595,10 @@ export interface ElementTagScan {
   rootBodyMismatch?: boolean;
   rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
   /** `data-vfx-chain` host count — each occurrence of the attribute is one host, regardless of how many nodes its chain has. */
-  vfxNodeCount: number;
-  /** Strongest enabled node's capture across every host (`chainCapture`, max: backdrop > self > none). Undefined when vfxNodeCount is 0. */
+  vfxHostCount: number;
+  /** Strongest enabled node's capture across every host (`chainCapture`, max: backdrop > self > none). Undefined when vfxHostCount is 0. */
   vfxCapture?: HfVfxCapture;
-  /** Sorted unique def ids across every enabled node in every chain, comma-joined ("" when vfxNodeCount is 0). */
+  /** Sorted unique def ids across every enabled node in every chain, comma-joined ("" when vfxHostCount is 0). */
   vfxTypes: string;
 }
 
@@ -1761,11 +1761,11 @@ export function scanElementTags(html: string): ElementTagScan {
     // JSON parse stops running for every element after the first hit.
     if (!hasLut) hasLut = colorGradingValueHasLut(m[1] ?? m[2] ?? "");
   }
-  let vfxNodeCount = 0;
+  let vfxHostCount = 0;
   let vfxCapture: HfVfxCapture | undefined;
   const vfxTypeSet = new Set<string>();
   for (const m of markup.matchAll(new RegExp(`\\b${HF_VFX_ATTR}=(?:"([^"]*)"|'([^']*)')`, "gi"))) {
-    vfxNodeCount++;
+    vfxHostCount++;
     // A chain the runtime would refuse (bad JSON, unknown type, wrong
     // version) is skipped rather than thrown here: this scan is
     // observational telemetry, and the runtime already reports the bad
@@ -1782,7 +1782,7 @@ export function scanElementTags(html: string): ElementTagScan {
       }
     } catch {
       // Unparsable — not counted toward vfxCapture/vfxTypes, but the host
-      // itself still counts toward vfxNodeCount (it IS a data-vfx-chain host).
+      // itself still counts toward vfxHostCount (it IS a data-vfx-chain host).
     }
   }
   const vfxTypes = [...vfxTypeSet].sort().join(",");
@@ -1797,7 +1797,7 @@ export function scanElementTags(html: string): ElementTagScan {
     audioGroupCount,
     colorGradingCount,
     hasLut,
-    vfxNodeCount,
+    vfxHostCount,
     vfxCapture,
     vfxTypes,
     ...detectRootBodySizeMismatch(html),
@@ -1871,7 +1871,7 @@ export async function resolveCompositionElementCount(
   hasLut?: boolean;
   rootBodyMismatch?: boolean;
   rootBodyDeltaPxBucket?: ElementTagScan["rootBodyDeltaPxBucket"];
-  vfxNodeCount?: number;
+  vfxHostCount?: number;
   vfxCapture?: HfVfxCapture;
   vfxTypes?: string;
 }> {
@@ -1909,7 +1909,7 @@ export async function resolveCompositionElementCount(
     hasLut: scan.hasLut,
     rootBodyMismatch: scan.rootBodyMismatch,
     rootBodyDeltaPxBucket: scan.rootBodyDeltaPxBucket,
-    vfxNodeCount: scan.vfxNodeCount,
+    vfxHostCount: scan.vfxHostCount,
     vfxCapture: scan.vfxCapture,
     vfxTypes: scan.vfxTypes,
   };
@@ -3678,7 +3678,7 @@ async function executeRenderPipeline(input: {
       hasLut,
       rootBodyMismatch,
       rootBodyDeltaPxBucket,
-      vfxNodeCount,
+      vfxHostCount,
       vfxCapture,
       vfxTypes,
     } = await resolveCompositionElementCount(probeSession, compiled.html);
@@ -5179,7 +5179,7 @@ async function executeRenderPipeline(input: {
         hasLut,
         rootBodyMismatch,
         rootBodyDeltaPxBucket,
-        vfxNodeCount,
+        vfxHostCount,
         vfxCapture,
         vfxTypes,
         shortBand: deShortBand,

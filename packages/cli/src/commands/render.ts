@@ -1796,7 +1796,7 @@ function trackRenderMetrics(
     beginFrameNoDamageFrames: perf?.beginFrameReuse?.noDamageFrames,
     beginFrameHasDamageFrames: perf?.beginFrameReuse?.hasDamageFrames,
     deCaptureMode: perf?.drawElement?.mode,
-    vfxNodeCount: perf?.drawElement?.vfxNodeCount,
+    vfxHostCount: perf?.drawElement?.vfxHostCount,
     vfxCapture: perf?.drawElement?.vfxCapture,
     vfxTypes: perf?.drawElement?.vfxTypes,
     deCompileGate: perf?.drawElement?.compileGate,

@@ -595,12 +595,12 @@ describe("render telemetry events", () => {
       quality: "high",
       docker: false,
       gpu: false,
-      vfxNodeCount: 2,
+      vfxHostCount: 2,
       vfxCapture: "self",
       vfxTypes: "displacement-map,wave-warp",
     });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(props.vfx_node_count).toBe(2);
+    expect(props.vfx_host_count).toBe(2);
     expect(props.vfx_capture).toBe("self");
     expect(props.vfx_types).toBe("displacement-map,wave-warp");
   });
@@ -612,11 +612,11 @@ describe("render telemetry events", () => {
       quality: "high",
       docker: false,
       gpu: false,
-      vfxNodeCount: 0,
+      vfxHostCount: 0,
       vfxTypes: "",
     });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(props.vfx_node_count).toBe(0);
+    expect(props.vfx_host_count).toBe(0);
     expect(props.vfx_types).toBe("");
     // No vfx-chain host means chainCapture never ran — undefined, not "none".
     expect(props.vfx_capture).toBeUndefined();
@@ -625,7 +625,7 @@ describe("render telemetry events", () => {
   it("omits the vfx fields entirely when the caller never resolved them", () => {
     trackRenderComplete({ durationMs: 1000, fps: 30, quality: "high", docker: false, gpu: false });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(props.vfx_node_count).toBeUndefined();
+    expect(props.vfx_host_count).toBeUndefined();
     expect(props.vfx_capture).toBeUndefined();
     expect(props.vfx_types).toBeUndefined();
   });
