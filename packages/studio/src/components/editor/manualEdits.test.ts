@@ -518,6 +518,24 @@ describe("studio manual edits", () => {
     expect(frames).toHaveLength(0);
   });
 
+  it("tolerates a timeline whose parent chain loops", () => {
+    const window = new Window();
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __timelines: Record<string, Record<string, unknown>>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = () => 1;
+    const loop: Record<string, unknown> = { paused: () => false };
+    loop.parent = loop;
+    previewWindow.__timelines = {
+      scene0: { parent: loop, play: () => {}, paused: () => false, time: () => 0, duration: () => 5 },
+    };
+
+    expect(() => installStudioManualEditSeekReapply(previewWindow, () => {})).not.toThrow();
+  });
+
   it("keeps reapplying while Studio drives a timeline directly and the player reads idle", () => {
     const window = new Window();
     const frames: FrameRequestCallback[] = [];
