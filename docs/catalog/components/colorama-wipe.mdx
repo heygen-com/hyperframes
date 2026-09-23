@@ -8,12 +8,13 @@ import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
 <CatalogDetail
+  previewSrc="/public/catalog/components/colorama-wipe.json"
   compositionId="colorama-wipe"
   compositionSrc="compositions/components/colorama-wipe.html"
   title="Colorama Wipe"
   description="Headline reveal through a feathered, leaning wipe front that is blurred and colour-mapped as it passes, then settles to clean type and wipes off again — the After Effects masked-text + Compound Blur + Colorama 'shiny wipe' as a deterministic canvas effect on any text element"
   variables={[]}
-  meta={{"category":"Typography & Text","badge":"Stable","codeLines":352}}
+  meta={{"category":"Typography & Text","badge":"Stable","codeLines":358}}
   attribution={{"path":"registry/components/colorama-wipe","tags":["text","reveal","wipe","colorama","gradient","blur","headline","saas"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/colorama-wipe/colorama-wipe.html"
@@ -354,6 +355,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       // one linear clock tween at `at`; at progress 0 the mask shows nothing, at progress 1 the exit has closed,
       // so a seek anywhere outside the window still paints an empty stage
       var clock = { t: 0 };
+      function cleanup() {
+        stage.remove();
+        el.classList.remove("cw-src");
+        delete el.__cw;
+      }
       draw(0);
       tl.fromTo(
         clock,
@@ -365,6 +371,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           onUpdate: function () {
             draw(clock.t);
           },
+          onInterrupt: cleanup,
         },
         o.at,
       );
