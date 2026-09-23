@@ -117,6 +117,7 @@ jobs:
               - "bun.lock"
               - ".github/workflows/ci.yml"
             skills:
+              - "scripts/generate-captured-font-copies.mjs"
               - "packages/cli/src/media-use/**"
               - "scripts/check-media-use-copy-parity.test.mjs"
               - "skills/**"

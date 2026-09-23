@@ -20,7 +20,19 @@
       "scripts/**",
       "packages/producer/**"
     ],
-    "scripts/generate-catalog-payloads.test.ts": ["registry/**", "scripts/**"]
+    "scripts/generate-catalog-payloads.test.ts": ["registry/**", "scripts/**"],
+    "skills/product-launch-video/scripts/build-frame-subsets.test.mjs": [
+      "scripts/generate-captured-font-copies.mjs",
+      "skills/product-launch-video/scripts/build-frame.mjs",
+      "skills/product-launch-video/scripts/captions.mjs",
+      "skills/product-launch-video/scripts/lib/captured-fonts.mjs",
+      "skills/faceless-explainer/scripts/build-frame.mjs",
+      "skills/faceless-explainer/scripts/captions.mjs",
+      "skills/faceless-explainer/scripts/lib/captured-fonts.mjs",
+      "skills/pr-to-video/scripts/build-frame.mjs",
+      "skills/pr-to-video/scripts/captions.mjs",
+      "skills/pr-to-video/scripts/lib/captured-fonts.mjs"
+    ]
   },
   "runners": [
     {
