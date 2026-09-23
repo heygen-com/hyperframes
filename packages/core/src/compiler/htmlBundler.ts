@@ -22,6 +22,7 @@ import {
 // rewriteSubCompPaths functions are used by inlineSubCompositions (shared module)
 import {
   buildVariablesByCompScript,
+  dedupeFontFaceRules,
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
@@ -1242,13 +1243,16 @@ export async function bundleToSingleHtml(
     if (srcset)
       el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir, inlineAssets));
   }
-  for (const styleEl of document.querySelectorAll("style")) {
-    styleEl.textContent = rewriteCssUrlsWithInlinedAssets(
-      styleEl.textContent || "",
-      projectDir,
-      inlineAssets,
-    );
-  }
+  const styleEls = [...document.querySelectorAll("style")];
+  const rewrittenStyles = styleEls.map((styleEl) =>
+    rewriteCssUrlsWithInlinedAssets(styleEl.textContent || "", projectDir, inlineAssets),
+  );
+  // Each composition that shares a font carries its own @font-face copy;
+  // once src is inlined to a data URL, drop later byte-identical repeats.
+  const dedupedStyles = dedupeFontFaceRules(rewrittenStyles);
+  styleEls.forEach((styleEl, i) => {
+    styleEl.textContent = dedupedStyles[i] ?? "";
+  });
   for (const el of [...document.querySelectorAll("[style]")]) {
     el.setAttribute(
       "style",

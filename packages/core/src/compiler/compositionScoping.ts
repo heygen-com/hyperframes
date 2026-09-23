@@ -256,6 +256,47 @@ export function scopeCssToComposition(
   return root.toResult({ map: false }).css;
 }
 
+function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {
+  return node.type === "atrule" && (node as AtRule).name.toLowerCase() === "font-face";
+}
+
+function fontFaceKey(atRule: AtRule): string {
+  const decls: string[] = [];
+  atRule.walkDecls((decl) => {
+    decls.push(`${decl.prop.trim().toLowerCase()}:${decl.value.replace(/\s+/g, " ").trim()}`);
+  });
+  return decls.sort().join(";");
+}
+
+/**
+ * A bundled film's compositions each carry their own copy of a shared
+ * `@font-face` rule; once every `src` is inlined to a data URL the same
+ * font's bytes would otherwise ship once per composition that declares it.
+ * Keep the first occurrence across the given `<style>` texts, in order, and
+ * drop only later rules whose family, weight, style, unicode-range, src and
+ * every other descriptor match byte-for-byte; a rule differing in any
+ * descriptor is untouched.
+ */
+export function dedupeFontFaceRules(styleTexts: string[]): string[] {
+  const seen = new Set<string>();
+  return styleTexts.map((css) => {
+    if (!css || !/@font-face/i.test(css)) return css;
+    const root = postcss.parse(css);
+    let changed = false;
+    root.each((node) => {
+      if (!isFontFaceAtRule(node)) return;
+      const key = fontFaceKey(node);
+      if (seen.has(key)) {
+        node.remove();
+        changed = true;
+      } else {
+        seen.add(key);
+      }
+    });
+    return changed ? root.toResult({ map: false }).css : css;
+  });
+}
+
 /**
  * Serialize a value as a JS literal safe to emit inside a `<script>` element.
  *

@@ -1389,6 +1389,86 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).not.toContain("data:font/woff2");
   });
 
+  it("inlines a font shared by two compositions once, keeping a rule that differs in weight", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      data-composition-id="hero"
+      data-composition-src="compositions/hero.html"
+      data-start="0"
+      data-duration="2"></div>
+    <div
+      data-composition-id="outro"
+      data-composition-src="compositions/outro.html"
+      data-start="2"
+      data-duration="2"></div>
+    <div
+      data-composition-id="bold"
+      data-composition-src="compositions/bold.html"
+      data-start="4"
+      data-duration="2"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/hero.html": `<template id="hero-template">
+  <div data-composition-id="hero" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Brand Sans";
+        font-weight: 400;
+        font-style: normal;
+        src: url("../fonts/brand.woff2") format("woff2");
+      }
+    </style>
+    <p>Hero</p>
+  </div>
+</template>`,
+      // A separate composition declaring the byte-identical @font-face rule:
+      // its bytes must ship once, not once per composition that repeats it.
+      "compositions/outro.html": `<template id="outro-template">
+  <div data-composition-id="outro" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Brand Sans";
+        font-weight: 400;
+        font-style: normal;
+        src: url("../fonts/brand.woff2") format("woff2");
+      }
+    </style>
+    <p>Outro</p>
+  </div>
+</template>`,
+      // Same family and src, but a different font-weight: a genuinely
+      // different rule that must survive dedupe untouched.
+      "compositions/bold.html": `<template id="bold-template">
+  <div data-composition-id="bold" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Brand Sans";
+        font-weight: 700;
+        font-style: normal;
+        src: url("../fonts/brand.woff2") format("woff2");
+      }
+    </style>
+    <p>Bold</p>
+  </div>
+</template>`,
+      "fonts/brand.woff2": "brand-font-bytes",
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const fontFaceRules = bundled.match(/@font-face\s*{[^}]*}/g) ?? [];
+    const rulesByWeight = (weight: string) =>
+      fontFaceRules.filter((rule) => rule.includes(`font-weight: ${weight};`));
+
+    expect(fontFaceRules).toHaveLength(2);
+    expect(rulesByWeight("400")).toHaveLength(1);
+    expect(rulesByWeight("700")).toHaveLength(1);
+    expect(bundled.split(inlinedAs("font/woff2", "brand-font-bytes")).length - 1).toBe(2);
+  });
+
   it("leaves an oversized asset relative and warns rather than inlining it", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
