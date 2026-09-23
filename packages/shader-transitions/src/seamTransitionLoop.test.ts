@@ -279,4 +279,28 @@ describe("playSeamTransitionLoop", () => {
     raf.flush(16);
     expect(gl.drawArrays).toHaveBeenCalledTimes(1);
   });
+
+  it("frees whatever it already allocated when setup throws partway through", () => {
+    stubRaf();
+    const gl = createMockGl();
+    let texImage2DCalls = 0;
+    gl.texImage2D.mockImplementation(() => {
+      texImage2DCalls += 1;
+      // 1st/2nd calls are createTexture's placeholder upload for texFrom/texTo;
+      // 3rd is the real upload for texFrom. Fail on the 4th (texTo's real
+      // upload) once both textures already exist, to prove the ones that
+      // succeeded before the throw get cleaned up, not just skipped.
+      if (texImage2DCalls === 4) throw new Error("bad toSource");
+    });
+    const canvas = createMockCanvas(gl);
+
+    expect(() => playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan")).toThrow(
+      "bad toSource",
+    );
+
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
+    expect(gl.deleteProgram).toHaveBeenCalledTimes(1);
+    expect(gl.deleteBuffer).toHaveBeenCalledTimes(1);
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
 });

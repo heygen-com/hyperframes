@@ -4,9 +4,7 @@
  * popover) can show it on hover without owning any WebGL of its own.
  *
  * Deliberately decoupled from hyper-shader.ts's full composition engine: no
- * GSAP timeline, no scene capture, no multi-transition scheduling. The
- * caller supplies the two frames directly (Desktop decodes PNGs from its own
- * hidden-window capture, so nothing here assumes a DOM scene exists).
+ * GSAP timeline, no scene capture — the caller supplies the frames directly.
  */
 
 import {
@@ -26,16 +24,10 @@ import { getFragSource, type ShaderName } from "./shaders/registry.js";
 export type SeamTransitionFrameSource = HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 
 /**
- * Catalog block name -> shader-transitions registry key, for the two catalog
- * names that don't match their registry key verbatim. Those registry keys
- * are also used as-is by engine/producer's render pipeline
- * (packages/engine/src/utils/shaderTransitions.ts), so they were not renamed
- * to match the catalog; this map is the one place the two naming schemes are
- * reconciled. Every other catalog shader name (including "glitch", an
- * unquoted — but real — registry key) matches its registry key verbatim.
- * A Map, not a plain object, so a bogus name like "constructor" can never
- * resolve to an Object.prototype member instead of falling through to
- * getFragSource's own unknown-shader check.
+ * Catalog block name -> shader-transitions registry key, for the two names
+ * that don't match their registry key verbatim (those keys are also used
+ * as-is by engine/producer's render pipeline, so they weren't renamed to
+ * match the catalog). Every other name, including "glitch", matches as-is.
  */
 const CATALOG_SHADER_ALIASES = new Map<string, ShaderName>([
   ["domain-warp-dissolve", "domain-warp"],
@@ -71,11 +63,9 @@ function assertPositiveFinite(name: string, value: number): void {
 }
 
 /**
- * Throws synchronously when `shaderName` has no WebGL implementation (a
- * catalog block with only a CSS/motion effect, not one of the 14 shader
- * blocks), when `canvas` yields no WebGL context, or when `width`, `height`
- * or `loopMs` (explicit or defaulted from the canvas) isn't a finite number
- * above 0 — a bad size otherwise renders nothing forever with no error.
+ * Throws synchronously for a shader with no WebGL implementation, a canvas
+ * that yields no WebGL context, or a non-finite/non-positive width, height
+ * or loopMs — a bad size otherwise renders nothing forever with no error.
  */
 export function playSeamTransitionLoop(
   canvas: HTMLCanvasElement,
@@ -97,14 +87,40 @@ export function playSeamTransitionLoop(
   if (!gl) {
     throw new Error(`[playSeamTransitionLoop] No WebGL context available for "${shaderName}"`);
   }
+  // A const would still narrow through the closures below on its own, but
+  // `frame` is a hoisted function declaration, not a nested arrow — TS
+  // widens gl back to WebGLRenderingContext | null inside it. This alias
+  // carries the non-null narrowing across that boundary.
   const glContext = gl;
 
-  const quadBuf = setupQuad(glContext);
-  const prog = createProgram(glContext, fragSrc);
-  const texFrom = createTexture(glContext);
-  const texTo = createTexture(glContext);
-  uploadTextureSource(glContext, texFrom, fromSource);
-  uploadTextureSource(glContext, texTo, toSource);
+  // A mid-setup throw (a bad fromSource/toSource reaching
+  // uploadTextureSource, most realistically) must free what already
+  // succeeded — the caller never gets a handle back to call stop() on.
+  let quadBuf: WebGLBuffer | null = null;
+  let prog: WebGLProgram | null = null;
+  let texFrom: WebGLTexture | null = null;
+  let texTo: WebGLTexture | null = null;
+  let resources: {
+    quadBuf: WebGLBuffer;
+    prog: WebGLProgram;
+    texFrom: WebGLTexture;
+    texTo: WebGLTexture;
+  };
+  try {
+    quadBuf = setupQuad(glContext);
+    prog = createProgram(glContext, fragSrc);
+    texFrom = createTexture(glContext);
+    texTo = createTexture(glContext);
+    uploadTextureSource(glContext, texFrom, fromSource);
+    uploadTextureSource(glContext, texTo, toSource);
+    resources = { quadBuf, prog, texFrom, texTo };
+  } catch (err) {
+    if (texFrom) glContext.deleteTexture(texFrom);
+    if (texTo) glContext.deleteTexture(texTo);
+    if (prog) glContext.deleteProgram(prog);
+    if (quadBuf) glContext.deleteBuffer(quadBuf);
+    throw err;
+  }
 
   let stopped = false;
   let rafId = 0;
@@ -123,7 +139,17 @@ export function playSeamTransitionLoop(
     }
     const phase = ((nowMs - startMs) % loopMs) / loopMs;
     const progress = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-    renderShader(glContext, quadBuf, prog, texFrom, texTo, progress, undefined, width, height);
+    renderShader(
+      glContext,
+      resources.quadBuf,
+      resources.prog,
+      resources.texFrom,
+      resources.texTo,
+      progress,
+      undefined,
+      width,
+      height,
+    );
     if (isFirstFrame) resolveReady();
     rafId = requestAnimationFrame(frame);
   }
@@ -136,10 +162,10 @@ export function playSeamTransitionLoop(
       stopped = true;
       cancelAnimationFrame(rafId);
       resolveReady();
-      glContext.deleteTexture(texFrom);
-      glContext.deleteTexture(texTo);
-      glContext.deleteProgram(prog);
-      glContext.deleteBuffer(quadBuf);
+      glContext.deleteTexture(resources.texFrom);
+      glContext.deleteTexture(resources.texTo);
+      glContext.deleteProgram(resources.prog);
+      glContext.deleteBuffer(resources.quadBuf);
     },
   };
 }
