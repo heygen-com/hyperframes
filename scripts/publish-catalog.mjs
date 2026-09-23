@@ -55,25 +55,29 @@ export function catalogChanges(root, base) {
     });
 }
 
+function batchEntry(change) {
+  const size = Buffer.byteLength(JSON.stringify(change));
+  if (size > MAX_BATCH_BYTES)
+    throw new Error(`Generated artifact exceeds API batch budget: ${change.path}`);
+  if (change.kind === "delete") return { size, field: "deletions", file: { path: change.path } };
+  return { size, field: "additions", file: { path: change.path, contents: change.contents } };
+}
+
 export function commitBatches(changes) {
-  const batches = [];
   let batch = { additions: [], deletions: [] };
+  const batches = [batch];
   let bytes = 0;
   for (const change of changes) {
-    const size = Buffer.byteLength(JSON.stringify(change));
-    if (size > MAX_BATCH_BYTES)
-      throw new Error(`Generated artifact exceeds API batch budget: ${change.path}`);
+    const { size, field, file } = batchEntry(change);
     if (bytes + size > MAX_BATCH_BYTES || batch.additions.length + batch.deletions.length === 100) {
-      batches.push(batch);
       batch = { additions: [], deletions: [] };
+      batches.push(batch);
       bytes = 0;
     }
-    if (change.kind === "delete") batch.deletions.push({ path: change.path });
-    else batch.additions.push({ path: change.path, contents: change.contents });
+    batch[field].push(file);
     bytes += size;
   }
-  if (bytes > 0) batches.push(batch);
-  return batches;
+  return batches.filter((entry) => entry.additions.length + entry.deletions.length > 0);
 }
 
 function api(endpoint, method = "GET", body, jq) {
@@ -166,62 +170,44 @@ function openPublishPr(repository, base) {
   }
 }
 
-export function publish(root) {
-  const base = commitOid(git(root, ["rev-parse", "HEAD"]));
-  const changes = catalogChanges(root, base);
-  const batches = commitBatches(changes);
-  console.log(
-    `Catalog publication: ${changes.length} files, ${batches.length} signed commit batches.`,
-  );
-  if (process.argv.includes("--dry-run")) return;
-  const repository = process.env.GITHUB_REPOSITORY;
-  const run = process.env.GITHUB_RUN_ID;
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? "") || !/^\d+$/.test(run ?? ""))
+function actionEnvironment() {
+  const { GITHUB_REPOSITORY: repository = "", GITHUB_RUN_ID: run = "" } = process.env;
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^\d+$/.test(run))
     throw new Error("Run publication in GitHub Actions.");
+  return { repository, run, endpoint: `repos/${repository}/git` };
+}
+
+function assertCurrentMain(endpoint, base) {
+  const current = commitOid(api(`${endpoint}/ref/heads/main`, "GET", undefined, ".object.sha"));
+  if (current !== base)
+    throw new Error("Main advanced during publication; the next push run will regenerate it.");
+}
+
+function updateStandingBranch(endpoint, exists, head) {
+  if (exists) api(`${endpoint}/refs/heads/${BRANCH}`, "PATCH", { sha: head, force: true });
+  else api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${BRANCH}`, sha: head });
+}
+
+function clearObsoletePublication(repository, base, exists) {
   const endpoint = `repos/${repository}/git`;
-  const currentMain = () =>
-    commitOid(api(`${endpoint}/ref/heads/main`, "GET", undefined, ".object.sha"));
-  if (currentMain() !== base)
-    throw new Error("Main advanced during generation; the next push run will regenerate it.");
-  const refs = api(`${endpoint}/matching-refs/heads/${BRANCH}`, "GET", undefined, ".[].ref").split(
-    "\n",
+  const number = openPublishPrNumber(repository);
+  assertCurrentMain(endpoint, base);
+  if (number !== undefined)
+    api(`repos/${repository}/pulls/${number}`, "PATCH", { state: "closed" });
+  if (exists) updateStandingBranch(endpoint, true, base);
+  console.log("No unpublished catalog changes; obsolete publication cleared.");
+}
+
+function snapshotMatches(root, endpoint, exists) {
+  if (!exists) return false;
+  const previous = commitOid(
+    api(`${endpoint}/ref/heads/${BRANCH}`, "GET", undefined, ".object.sha"),
   );
-  const exists = refs.includes(`refs/heads/${BRANCH}`);
-  if (batches.length === 0) {
-    const number = openPublishPrNumber(repository);
-    if (currentMain() !== base)
-      throw new Error("Main advanced before publication; leaving the standing PR unchanged.");
-    if (number !== undefined)
-      api(`repos/${repository}/pulls/${number}`, "PATCH", { state: "closed" });
-    if (exists) api(`${endpoint}/refs/heads/${BRANCH}`, "PATCH", { sha: base, force: true });
-    console.log("No unpublished catalog changes; obsolete publication cleared.");
-    return;
-  }
-  if (exists) {
-    const previous = commitOid(
-      api(`${endpoint}/ref/heads/${BRANCH}`, "GET", undefined, ".object.sha"),
-    );
-    const tree = commitOid(api(`${endpoint}/commits/${previous}`, "GET", undefined, ".tree.sha"));
-    if (tree === catalogTree(root)) {
-      openPublishPr(repository, base);
-      console.log("Standing catalog PR already contains this snapshot.");
-      return;
-    }
-  }
-  const staging = `${BRANCH}-build-${run}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
-  api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${staging}`, sha: base });
-  const errors = [];
-  try {
-    let head = base;
-    for (const batch of batches) head = signedCommit(repository, staging, head, batch);
-    if (currentMain() !== base)
-      throw new Error("Main advanced before publication; leaving the standing PR unchanged.");
-    if (exists) api(`${endpoint}/refs/heads/${BRANCH}`, "PATCH", { sha: head, force: true });
-    else api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${BRANCH}`, sha: head });
-    openPublishPr(repository, base);
-  } catch (error) {
-    errors.push(error);
-  }
+  const tree = commitOid(api(`${endpoint}/commits/${previous}`, "GET", undefined, ".tree.sha"));
+  return tree === catalogTree(root);
+}
+
+function cleanStagingBranch(endpoint, staging, errors) {
   try {
     api(`${endpoint}/refs/heads/${staging}`, "DELETE");
   } catch (error) {
@@ -230,6 +216,47 @@ export function publish(root) {
   if (errors.length === 1) throw errors[0];
   if (errors.length > 1)
     throw new AggregateError(errors, "Publication and staging cleanup failed.");
+}
+
+function publishSnapshot(context, base, exists, batches) {
+  const { repository, run, endpoint } = context;
+  const staging = `${BRANCH}-build-${run}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
+  api(`${endpoint}/refs`, "POST", { ref: `refs/heads/${staging}`, sha: base });
+  const errors = [];
+  try {
+    let head = base;
+    for (const batch of batches) head = signedCommit(repository, staging, head, batch);
+    assertCurrentMain(endpoint, base);
+    updateStandingBranch(endpoint, exists, head);
+    openPublishPr(repository, base);
+  } catch (error) {
+    errors.push(error);
+  }
+  cleanStagingBranch(endpoint, staging, errors);
+}
+
+export function publish(root) {
+  const base = commitOid(git(root, ["rev-parse", "HEAD"]));
+  const changes = catalogChanges(root, base);
+  const batches = commitBatches(changes);
+  console.log(
+    `Catalog publication: ${changes.length} files, ${batches.length} signed commit batches.`,
+  );
+  if (process.argv.includes("--dry-run")) return;
+  const context = actionEnvironment();
+  const { repository, endpoint } = context;
+  assertCurrentMain(endpoint, base);
+  const refs = api(`${endpoint}/matching-refs/heads/${BRANCH}`, "GET", undefined, ".[].ref").split(
+    "\n",
+  );
+  const exists = refs.includes(`refs/heads/${BRANCH}`);
+  if (batches.length === 0) return clearObsoletePublication(repository, base, exists);
+  if (snapshotMatches(root, endpoint, exists)) {
+    openPublishPr(repository, base);
+    console.log("Standing catalog PR already contains this snapshot.");
+    return;
+  }
+  publishSnapshot(context, base, exists, batches);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

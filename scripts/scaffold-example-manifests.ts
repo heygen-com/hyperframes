@@ -85,15 +85,18 @@ interface CanvasMeta {
   duration: number;
 }
 
+function durationSeconds(rawDuration: string | undefined): number {
+  return rawDuration === undefined || rawDuration === PLACEHOLDER_DURATION
+    ? DEFAULT_DURATION_SECONDS
+    : Number(rawDuration);
+}
+
 function probeCanvas(exampleDir: string): CanvasMeta {
   const html = readFileSync(join(exampleDir, "index.html"), "utf-8");
   const width = Number(extractAttr(html, "width") ?? 1920);
   const height = Number(extractAttr(html, "height") ?? 1080);
   const rawDuration = extractAttr(html, "duration");
-  const duration =
-    rawDuration === undefined || rawDuration === PLACEHOLDER_DURATION
-      ? DEFAULT_DURATION_SECONDS
-      : Number(rawDuration);
+  const duration = durationSeconds(rawDuration);
   return { width, height, duration };
 }
 
@@ -104,24 +107,13 @@ function fileTypeFor(path: string): FileType {
 
 /** Walk the example dir and collect every tracked file (HTML + assets). */
 function collectFiles(exampleDir: string): FileTarget[] {
-  const files: FileTarget[] = [];
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-      } else if (entry.isFile()) {
-        // Skip the registry-item.json itself if it already exists from a
-        // prior run; we're regenerating it.
-        if (entry.name === "registry-item.json") continue;
-        const rel = relative(exampleDir, full);
-        files.push({ path: rel, target: rel, type: fileTypeFor(rel) });
-      }
-    }
-  };
-  walk(exampleDir);
-  files.sort((a, b) => a.path.localeCompare(b.path));
-  return files;
+  return readdirSync(exampleDir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name !== "registry-item.json")
+    .map((entry) => {
+      const path = relative(exampleDir, join(entry.parentPath, entry.name));
+      return { path, target: path, type: fileTypeFor(path) };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function buildItem(entry: LegacyTemplateEntry): RegistryItem {
@@ -150,36 +142,36 @@ function writeItem(item: RegistryItem): void {
   console.log(`wrote ${relative(repoRoot, out)}`);
 }
 
-function main(): void {
+function selectedExamples(): LegacyTemplateEntry[] {
   const args = process.argv.slice(2);
   const onlyIdx = args.indexOf("--only");
   const only = onlyIdx >= 0 ? args[onlyIdx + 1] : undefined;
-
-  const legacy = readLegacyManifest();
-  // Skip bundled templates (e.g. `blank`) — they live inside the CLI package,
-  // not under registry/examples/.
-  const onDisk = legacy.filter((t) => !t.bundled);
-  const filtered = only ? onDisk.filter((t) => t.id === only) : onDisk;
-
-  if (filtered.length === 0) {
-    console.error(
-      only
-        ? `No example matches --only ${only}. Available: ${onDisk.map((t) => t.id).join(", ")}`
-        : "No examples found in registry/examples/templates.json",
+  const onDisk = readLegacyManifest().filter((entry) => !entry.bundled);
+  if (!only) return onDisk;
+  const filtered = onDisk.filter((entry) => entry.id === only);
+  if (filtered.length === 0)
+    throw new Error(
+      `No example matches --only ${only}. Available: ${onDisk.map((entry) => entry.id).join(", ")}`,
     );
-    process.exit(1);
-  }
+  return filtered;
+}
 
-  for (const entry of filtered) {
-    const exampleDir = join(examplesDir, entry.id);
-    try {
-      statSync(exampleDir);
-    } catch {
-      console.warn(`skip ${entry.id}: directory not found at ${relative(repoRoot, exampleDir)}`);
-      continue;
-    }
-    writeItem(buildItem(entry));
+function scaffoldExample(entry: LegacyTemplateEntry): void {
+  const exampleDir = join(examplesDir, entry.id);
+  try {
+    statSync(exampleDir);
+  } catch {
+    console.warn(`skip ${entry.id}: directory not found at ${relative(repoRoot, exampleDir)}`);
+    return;
   }
+  writeItem(buildItem(entry));
+}
+
+function main(): void {
+  const entries = selectedExamples();
+  if (entries.length === 0)
+    throw new Error("No examples found in registry/examples/templates.json");
+  for (const entry of entries) scaffoldExample(entry);
 }
 
 main();
