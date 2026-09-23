@@ -15,6 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  workflow_dispatch:
   pull_request:
     # Re-run when Graphite changes only the PR base for the same head SHA.
     types: [opened, synchronize, reopened, edited]
@@ -28,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
       matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.

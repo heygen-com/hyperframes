@@ -30,7 +30,7 @@ on:
       ref:
         description: "Git ref to render (branch / tag / SHA)."
         required: false
-        default: "main"
+        default: ""
 
 concurrency:
   group: windows-render-${{ github.ref }}
@@ -71,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
       - uses: ./.github/actions/preflight
 
   render-windows:
@@ -90,7 +90,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
           lfs: true
 
       - name: Show platform info
@@ -416,7 +416,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
           lfs: true
 
       # -----------------------------------------------------------------

@@ -10,6 +10,7 @@ env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
 on:
+  workflow_dispatch:
   pull_request:
     # `edited` is required so the workflow re-fires when a PR's base ref is
     # set back to `main` after a Graphite stack restack momentarily flips
@@ -56,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
@@ -232,7 +233,7 @@ jobs:
         run: node scripts/check-catalog-source-pr.mjs origin/main
       - name: Generate and validate catalog
         env:
-          PUBLISH_PR: ${{ github.head_ref == 'bot/catalog-publish' }}
+          PUBLISH_PR: ${{ (github.head_ref || github.ref_name) == 'bot/catalog-publish' }}
         run: |
           if [ "$PUBLISH_PR" = "true" ]; then
             bun run check:catalog-drift --committed
@@ -1062,15 +1063,31 @@ jobs:
 
   semantic-pr-title:
     name: Semantic PR title
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: pr
+        run: node scripts/ci/resolve-workflow-pr.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: amannn/action-semantic-pull-request
+          ref: e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+          path: .semantic-pr-action
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Validate PR title
+        run: GITHUB_EVENT_PATH="$PR_EVENT_PATH" node .semantic-pr-action/dist/index.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
+          PR_EVENT_PATH: ${{ steps.pr.outputs.event_path }}
+          INPUT_GITHUBBASEURL: ${{ github.api_url }}
+          INPUT_TYPES: |
             feat
             fix
             docs

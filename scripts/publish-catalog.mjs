@@ -177,12 +177,37 @@ function openPublishPr(repository, base) {
   const body =
     `Generated catalog snapshot from ${base}.\n\n` +
     "Item sources are reviewed in their own PRs. This PR publishes the registry index, search vectors, docs pages, payloads and navigation together.\n\n" +
-    "Approve any GitHub Actions runs awaiting approval, then review and merge this PR after checks pass. Publication uses GITHUB_TOKEN and GitHub-signed API commits; branch protection remains in effect.";
+    "Required workflows are dispatched on this snapshot. Review and merge after checks pass. Publication uses GITHUB_TOKEN and GitHub-signed API commits; branch protection remains in effect.";
   if (number !== undefined) {
     if (api(`${endpoint}/${number}`, "GET", undefined, ".body") !== body)
       api(`${endpoint}/${number}`, "PATCH", { title: TITLE, body });
   } else {
     api(endpoint, "POST", { title: TITLE, body, head: BRANCH, base: "main" });
+  }
+}
+
+function checkAlreadyScheduled(run) {
+  if (!run) return false;
+  return run.status !== "completed" || run.conclusion === "success";
+}
+
+function dispatchPublishChecks(repository) {
+  const head = commitOid(
+    api(`repos/${repository}/git/ref/heads/${BRANCH}`, "GET", undefined, ".object.sha"),
+  );
+  for (const workflow of [
+    "ci.yml",
+    "regression.yml",
+    "windows-render.yml",
+    "pr-captures.yml",
+    "codeql.yml",
+  ]) {
+    const endpoint = `repos/${repository}/actions/workflows/${workflow}`;
+    const runs = JSON.parse(
+      api(`${endpoint}/runs?event=workflow_dispatch&head_sha=${head}&per_page=1`),
+    );
+    if (checkAlreadyScheduled(runs.workflow_runs[0])) continue;
+    api(`${endpoint}/dispatches`, "POST", { ref: BRANCH });
   }
 }
 
@@ -245,6 +270,7 @@ function publishSnapshot(context, base, exists, batches) {
     assertCurrentMain(endpoint, base);
     updateStandingBranch(endpoint, exists, head);
     openPublishPr(repository, base);
+    dispatchPublishChecks(repository);
   } catch (error) {
     errors.push(error);
   }
@@ -269,6 +295,7 @@ export function publish(root) {
   if (batches.length === 0) return clearObsoletePublication(repository, base, exists);
   if (snapshotMatches(root, endpoint, exists)) {
     openPublishPr(repository, base);
+    dispatchPublishChecks(repository);
     console.log("Standing catalog PR already contains this snapshot.");
     return;
   }

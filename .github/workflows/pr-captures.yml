@@ -6,12 +6,13 @@ permissions:
 
 # Runs on every PR (no path filter) so it can be a required check; the script passes when neither package changed.
 on:
+  workflow_dispatch:
   pull_request:
     types: [opened, synchronize, reopened, edited]
     branches: [main]
 
 concurrency:
-  group: pr-captures-${{ github.event.pull_request.number }}
+  group: pr-captures-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,12 +24,16 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - id: pr
+        run: node scripts/ci/resolve-workflow-pr.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Require Before and After captures
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_BODY: ${{ fromJSON(steps.pr.outputs.pr).body }}
+          PR_NUMBER: ${{ fromJSON(steps.pr.outputs.pr).number }}
+          BASE_REF: ${{ fromJSON(steps.pr.outputs.pr).base.ref }}
+          HEAD_REPO: ${{ fromJSON(steps.pr.outputs.pr).head.repo.full_name }}
           BASE_REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ fromJSON(steps.pr.outputs.pr).head.sha }}
         run: node scripts/check-pr-captures.mjs --base "origin/$BASE_REF" --head "$HEAD_SHA"
