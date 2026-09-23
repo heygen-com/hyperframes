@@ -147,7 +147,7 @@ function addRegistryItemMarker(source: string, item: RegistryItem): string {
   return `<!-- hyperframes-registry-item: ${item.name} -->\n${source}`;
 }
 
-interface FileOutcome {
+export interface FileOutcome {
   destPath: string;
   target: string;
   preserved: boolean;
@@ -176,7 +176,7 @@ function bakeVariables(
   return { bytes: rewrite ? Buffer.from(vars.html) : bytes, vars };
 }
 
-/** Fetch and post-process one file; installItem writes it once every file is ready. */
+/** Fetch and post-process one file; publishItem writes it once the whole plan is ready. */
 async function prepareOneFile(
   item: RegistryItem,
   file: FileTarget,
@@ -226,6 +226,20 @@ export async function installItem(
   item: RegistryItem,
   options: InstallOptions,
 ): Promise<InstallResult> {
+  return publishItem(await prepareItem(item, options));
+}
+
+/** An item fetched and checked, with nothing written yet. */
+export interface PreparedItem {
+  root: string;
+  outcomes: FileOutcome[];
+}
+
+/** Fetch and check every file of an item without writing, so a caller can refuse a whole plan. */
+export async function prepareItem(
+  item: RegistryItem,
+  options: InstallOptions,
+): Promise<PreparedItem> {
   if (!validRegistryItem(item, item.name, item.type)) throw new Error("Invalid registry item");
   const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
   const destDir = resolve(options.destDir);
@@ -243,10 +257,15 @@ export async function installItem(
   const outcomes = await installFileBatches(item.files, (file) =>
     prepareOneFile(item, file, root, baseUrl, record, options, budget),
   );
-  // Every file is fetched before any is written, so a refusal (or a failed
-  // fetch) leaves the project exactly as it was.
   const invalid = outcomes.flatMap((o) => o.vars?.invalid ?? []);
   if (invalid.length > 0) throw new InvalidVariableValuesError(invalid);
+  return { root, outcomes };
+}
+
+/** Write a prepared item and record what landed. */
+export function publishItem({ root, outcomes }: PreparedItem): InstallResult {
+  // Read now, not at prepare time: another item published in between has recorded its own files.
+  const record = readInstallRecord(root);
   for (const outcome of outcomes) {
     if (outcome.bytes) publishRegistryFile(root, outcome.target, outcome.bytes);
   }

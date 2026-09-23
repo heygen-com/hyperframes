@@ -15,7 +15,13 @@ import { existsSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { DEFAULT_REGISTRY_URL, installItem, resolveItemsByTag } from "../registry/index.js";
+import {
+  DEFAULT_REGISTRY_URL,
+  prepareItem,
+  publishItem,
+  resolveItemsByTag,
+  type PreparedItem,
+} from "../registry/index.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
 import { InvalidVariableValuesError } from "../registry/variableDefaults.js";
 import {
@@ -195,8 +201,8 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
 }
 
 // Install a topologically-ordered plan (dependencies first, requested item
-// last). The installer validates every target before any write; a failure on
-// any item surfaces as an install-failed AddError. Returns all written paths.
+// last). Every item is fetched and checked before any is written, so a refusal
+// or failed fetch anywhere in the plan writes nothing. Returns all written paths.
 async function installAll(
   installPlan: RegistryItem[],
   destDir: string,
@@ -215,15 +221,21 @@ async function installAll(
   let variablesApplied: string[] = [];
   let variablesUnknown: string[] = [];
   try {
+    const prepared: PreparedItem[] = [];
     for (const planItem of installPlan) {
-      const result = await installItem(planItem, {
-        destDir,
-        baseUrl,
-        force,
-        // Only the item the user named. A dependency dragged in behind it never
-        // declared these variables and must not be rewritten by them.
-        variableValues: planItem.name === requestedName ? variableValues : null,
-      });
+      prepared.push(
+        await prepareItem(planItem, {
+          destDir,
+          baseUrl,
+          force,
+          // Only the item the user named. A dependency dragged in behind it never
+          // declared these variables and must not be rewritten by them.
+          variableValues: planItem.name === requestedName ? variableValues : null,
+        }),
+      );
+    }
+    for (const [i, planItem] of installPlan.entries()) {
+      const result = publishItem(prepared[i]!);
       written.push(...result.written);
       preserved.push(...result.preserved);
       if (planItem.name === requestedName) {
@@ -534,8 +546,9 @@ export default defineCommand({
             if (!json) console.log(`  ${c.warn("Warning:")} ${warning}`);
           }
           if (!json) console.log(`  ${c.success("✓")} ${result.name}`);
-        } catch {
-          if (!json) console.log(`  ${c.error("✗")} ${item.name} (skipped)`);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          if (!json) console.log(`  ${c.error("✗")} ${item.name} (skipped: ${reason})`);
         }
       }
 
