@@ -170,6 +170,7 @@ const RENDER_READY_POLL_MS = 50;
 // `__hf` is omitted from Window so the runtime program's strict shape can't conflict with `unknown`.
 interface RuntimeReadinessWindow extends Omit<Window, "__hf"> {
   __renderReady?: boolean;
+  __playReady?: boolean;
   // __renderReady is only ever set by init.ts, which always sets __hf
   // first (`window.__hf = window.__hf || {}`) — a doc with no __hf can
   // never get __renderReady either, so this alone is enough to gate on
@@ -184,7 +185,9 @@ interface RuntimeReadinessWindow extends Omit<Window, "__hf"> {
 export function computeReadinessInput(doc: Document, signal: AbortSignal): Promise<void> | null {
   const win = doc.defaultView as RuntimeReadinessWindow | null;
   if (!win) return null;
-  if (win.__renderReady) return null;
+  // A preview can play once its playable scenes are attached; renders keep waiting on __renderReady.
+  const computeReady = () => win.__renderReady === true || win.__playReady === true;
+  if (computeReady()) return null;
   if (!win.__hf) return null;
   return new Promise<void>((resolve) => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -199,7 +202,7 @@ export function computeReadinessInput(doc: Document, signal: AbortSignal): Promi
     }
     signal.addEventListener("abort", finish, { once: true });
     const poll = () => {
-      if (win.__renderReady) {
+      if (computeReady()) {
         finish();
         return;
       }

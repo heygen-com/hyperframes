@@ -73,6 +73,8 @@ declare global {
     };
     __playerReady?: boolean;
     __renderReady?: boolean;
+    /** The scenes a player needs to start playing are attached; later scenes may still load. */
+    __playReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;

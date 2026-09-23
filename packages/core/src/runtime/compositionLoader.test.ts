@@ -36,6 +36,37 @@ describe("loadExternalCompositions", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("requests scenes in playback order and reports each one as it attaches", async () => {
+    for (const [id, start] of [
+      ["third", 10],
+      ["first", 0],
+      ["second", 5],
+    ] as const) {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", `https://example.com/${id}.html`);
+      host.setAttribute("data-composition-id", id);
+      host.setAttribute("data-start", String(start));
+      document.body.appendChild(host);
+    }
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => new Response(`<div>${String(input)}</div>`));
+    const attached: string[] = [];
+
+    await loadExternalCompositions({
+      ...defaultParams,
+      startOf: (host) => Number(host.getAttribute("data-start")),
+      onAttached: (host) => attached.push(host.getAttribute("data-composition-id") ?? ""),
+    });
+
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://example.com/first.html",
+      "https://example.com/second.html",
+      "https://example.com/third.html",
+    ]);
+    expect(attached.sort()).toEqual(["first", "second", "third"]);
+  });
+
   it("fetches and mounts external composition HTML", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/comp.html");

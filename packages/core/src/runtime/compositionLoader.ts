@@ -13,6 +13,10 @@ import {
 import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
 
 type LoadExternalCompositionsParams = {
+  /** Start time of a scene host; scenes are requested in this order. */
+  startOf?: (host: Element) => number;
+  /** Called as each scene finishes loading (or fails), before the whole set settles. */
+  onAttached?: (host: Element) => void;
   injectedStyles: HTMLStyleElement[];
   injectedScripts: HTMLScriptElement[];
   injectedLinks: HTMLLinkElement[];
@@ -641,111 +645,114 @@ export async function loadExternalCompositions(
   const hosts = trackedHosts.filter((host) => host.hasAttribute("data-composition-src"));
   if (hosts.length === 0) return;
 
-  await Promise.all(
-    hosts.map(async (host) => {
-      const src = host.getAttribute("data-composition-src");
-      if (!src) return;
-      const hostIdentity = hostIdentityByElement.get(host);
-      const authoredCompositionId = hostIdentity?.authoredCompositionId || null;
-      const runtimeCompositionId =
-        hostIdentity?.runtimeCompositionId || authoredCompositionId || null;
-      let compositionUrl: URL | null = null;
-      try {
-        compositionUrl = new URL(src, document.baseURI);
-      } catch {
-        compositionUrl = null;
-      }
-      resetCompositionHost(host);
-      try {
-        const localTemplate =
-          authoredCompositionId != null
-            ? document.querySelector<HTMLTemplateElement>(
-                `template#${CSS.escape(authoredCompositionId)}-template`,
-              )
-            : null;
-        if (localTemplate) {
-          await mountCompositionContent({
-            host,
-            authoredCompositionId,
-            runtimeCompositionId,
-            hostCompositionSrc: src,
-            sourceNode: localTemplate.content,
-            hasTemplate: true,
-            fallbackBodyInnerHtml: "",
-            compositionUrl,
-            injectedStyles: params.injectedStyles,
-            injectedScripts: params.injectedScripts,
-            injectedLinks: params.injectedLinks,
-            parseDimensionPx: params.parseDimensionPx,
-            onDiagnostic: params.onDiagnostic,
-          });
-          return;
-        }
-        const response = await fetch(src);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-        // Rewrite project-root-traversing (`../`) asset paths against the
-        // sub-composition's URL before extracting any nodes. Without this,
-        // `<video src="../../assets/x.mp4">` authored from
-        // `compositions/frames/scene.html` resolves against the main
-        // document's base (the project preview root) and climbs above it
-        // to 404 — the Studio-preview-vs-render divergence reported by
-        // OSS users. The server-side bundler already does this for the
-        // baked render via `inlineSubCompositions`; this is the runtime
-        // mirror so live preview matches.
-        rewriteSubCompositionAssetPaths(doc, compositionUrl);
-        const template =
-          (authoredCompositionId
-            ? doc.querySelector<HTMLTemplateElement>(
-                `template#${CSS.escape(authoredCompositionId)}-template`,
-              )
-            : null) ?? doc.querySelector<HTMLTemplateElement>("template");
-        const sourceNode = template ? template.content : doc.body;
+  const loadHost = async (host: Element): Promise<void> => {
+    const src = host.getAttribute("data-composition-src");
+    if (!src) return;
+    const hostIdentity = hostIdentityByElement.get(host);
+    const authoredCompositionId = hostIdentity?.authoredCompositionId || null;
+    const runtimeCompositionId =
+      hostIdentity?.runtimeCompositionId || authoredCompositionId || null;
+    let compositionUrl: URL | null = null;
+    try {
+      compositionUrl = new URL(src, document.baseURI);
+    } catch {
+      compositionUrl = null;
+    }
+    resetCompositionHost(host);
+    try {
+      const localTemplate =
+        authoredCompositionId != null
+          ? document.querySelector<HTMLTemplateElement>(
+              `template#${CSS.escape(authoredCompositionId)}-template`,
+            )
+          : null;
+      if (localTemplate) {
         await mountCompositionContent({
           host,
           authoredCompositionId,
           runtimeCompositionId,
           hostCompositionSrc: src,
-          sourceNode,
-          hasTemplate: Boolean(template),
-          fallbackBodyInnerHtml: doc.body.innerHTML,
+          sourceNode: localTemplate.content,
+          hasTemplate: true,
+          fallbackBodyInnerHtml: "",
           compositionUrl,
           injectedStyles: params.injectedStyles,
           injectedScripts: params.injectedScripts,
           injectedLinks: params.injectedLinks,
           parseDimensionPx: params.parseDimensionPx,
-          // A non-templated composition's <head> carries critical CSS
-          // (backgrounds, positioning, fonts) and library scripts; every
-          // composition's <head> can carry a webfont <link>. The shared
-          // assembly module decides which of those apply.
-          head: doc.head,
-          // TODO(template-var-carriers): reads `<html>` only. A template/fragment
-          // sub-comp that declares on its `[data-composition-id]` root div (the
-          // dual-carrier contract from #2081) loses its defaults on this lazy
-          // external-load path — see inlineSubCompositions for the fixed path.
-          declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
-          variableDeclarer: doc.documentElement,
           onDiagnostic: params.onDiagnostic,
         });
-      } catch (error) {
-        params.onDiagnostic?.({
-          code: "external_composition_load_failed",
-          details: {
-            hostCompositionId: authoredCompositionId,
-            runtimeCompositionId,
-            hostCompositionSrc: src,
-            errorMessage: error instanceof Error ? error.message : "unknown_error",
-          },
-        });
-        // Keep host empty on load failures to avoid rendering escaped fallback HTML.
-        resetCompositionHost(host);
+        return;
       }
-    }),
-  );
+      const response = await fetch(src);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      // Rewrite project-root-traversing (`../`) asset paths against the
+      // sub-composition's URL before extracting any nodes. Without this,
+      // `<video src="../../assets/x.mp4">` authored from
+      // `compositions/frames/scene.html` resolves against the main
+      // document's base (the project preview root) and climbs above it
+      // to 404 — the Studio-preview-vs-render divergence reported by
+      // OSS users. The server-side bundler already does this for the
+      // baked render via `inlineSubCompositions`; this is the runtime
+      // mirror so live preview matches.
+      rewriteSubCompositionAssetPaths(doc, compositionUrl);
+      const template =
+        (authoredCompositionId
+          ? doc.querySelector<HTMLTemplateElement>(
+              `template#${CSS.escape(authoredCompositionId)}-template`,
+            )
+          : null) ?? doc.querySelector<HTMLTemplateElement>("template");
+      const sourceNode = template ? template.content : doc.body;
+      await mountCompositionContent({
+        host,
+        authoredCompositionId,
+        runtimeCompositionId,
+        hostCompositionSrc: src,
+        sourceNode,
+        hasTemplate: Boolean(template),
+        fallbackBodyInnerHtml: doc.body.innerHTML,
+        compositionUrl,
+        injectedStyles: params.injectedStyles,
+        injectedScripts: params.injectedScripts,
+        injectedLinks: params.injectedLinks,
+        parseDimensionPx: params.parseDimensionPx,
+        // A non-templated composition's <head> carries critical CSS
+        // (backgrounds, positioning, fonts) and library scripts; every
+        // composition's <head> can carry a webfont <link>. The shared
+        // assembly module decides which of those apply.
+        head: doc.head,
+        // TODO(template-var-carriers): reads `<html>` only. A template/fragment
+        // sub-comp that declares on its `[data-composition-id]` root div (the
+        // dual-carrier contract from #2081) loses its defaults on this lazy
+        // external-load path — see inlineSubCompositions for the fixed path.
+        declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
+        variableDeclarer: doc.documentElement,
+        onDiagnostic: params.onDiagnostic,
+      });
+    } catch (error) {
+      params.onDiagnostic?.({
+        code: "external_composition_load_failed",
+        details: {
+          hostCompositionId: authoredCompositionId,
+          runtimeCompositionId,
+          hostCompositionSrc: src,
+          errorMessage: error instanceof Error ? error.message : "unknown_error",
+        },
+      });
+      // Keep host empty on load failures to avoid rendering escaped fallback HTML.
+      resetCompositionHost(host);
+    }
+  };
+  // Requested in playback order (the browser queues past its connection limit in issue order),
+  // and each scene reports as it attaches, so the first scenes can play while later ones arrive.
+  const startOf = params.startOf;
+  const ordered = startOf ? [...hosts].sort((a, b) => startOf(a) - startOf(b)) : hosts;
+  await Promise.all(ordered.map((host) => loadHost(host).finally(() => params.onAttached?.(host))));
 }
 
 /**

@@ -820,6 +820,10 @@ export function initSandboxRuntimeModular(): void {
     }
   }
   let externalCompositionsReady = !hasExternalCompositions && !hasInlineTemplateCompositions;
+  // Scenes starting within this window must be attached before the player may start; the rest
+  // attach while it plays. Renders still wait for every scene (`__renderReady`).
+  const PLAYABLE_WINDOW_SECONDS = 2;
+  let playableWindowReady = externalCompositionsReady;
 
   const getTimelineDurationSeconds = (timeline: RuntimeTimelineLike | null): number | null => {
     if (!timeline || typeof timeline.duration !== "function") return null;
@@ -1740,7 +1744,7 @@ export function initSandboxRuntimeModular(): void {
     // init runs early, but if GSAP wasn't ready then (load-order race) it's a
     // no-op with no retry — so re-assert here, at the render site. Idempotent.
     ensureStudioCustomEase();
-    if (!externalCompositionsReady) return false;
+    if (!playableWindowReady) return false;
     const currentTimeline = state.capturedTimeline;
     const currentDuration = getTimelineDurationSeconds(currentTimeline);
     const currentTimelineUsable = isUsableTimelineDuration(currentDuration);
@@ -3021,10 +3025,39 @@ export function initSandboxRuntimeModular(): void {
         });
       },
     };
-    void loadExternalCompositions(compositionLoaderParams)
+    const sceneStarts = createRuntimeStartTimeResolver({
+      timelineRegistry: (window.__timelines ?? {}) as Record<
+        string,
+        RuntimeTimelineLike | undefined
+      >,
+      includeAuthoredTimingAttrs: true,
+    });
+    const sceneStart = (host: Element) => sceneStarts.resolveStartForElement(host, 0);
+    const windowScenes = new Set(
+      Array.from(document.querySelectorAll("[data-composition-src]")).filter(
+        (host) => sceneStart(host) < PLAYABLE_WINDOW_SECONDS,
+      ),
+    );
+    const onSceneAttached = (host: Element) => {
+      windowScenes.delete(host);
+      if (!playableWindowReady && windowScenes.size > 0) return;
+      playableWindowReady = true;
+      // A scene that attaches after the root timeline bound is nested on the next binding pass.
+      childrenBound = false;
+      bindMediaMetadataListeners();
+      applyVariableBindings(document);
+      maybePublishRenderReady();
+    };
+    void loadExternalCompositions({
+      ...compositionLoaderParams,
+      startOf: sceneStart,
+      onAttached: onSceneAttached,
+    })
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
+        playableWindowReady = true;
+        childrenBound = false;
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
         applyCaptionOverrides();
@@ -3335,7 +3368,8 @@ export function initSandboxRuntimeModular(): void {
     // __renderReady = timeline binding attempted, safe for deterministic seeking.
     // Set after any GSAP batching has completed. renderSeek works with or
     // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
-    window.__renderReady = true;
+    window.__renderReady = externalCompositionsReady;
+    window.__playReady = true;
     postTimeline();
     postState(true);
   };
@@ -3358,7 +3392,7 @@ export function initSandboxRuntimeModular(): void {
   });
 
   maybePublishRenderReady = () => {
-    if (!externalCompositionsReady) {
+    if (!playableWindowReady) {
       window.__renderReady = false;
       return;
     }

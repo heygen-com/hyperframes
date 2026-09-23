@@ -192,6 +192,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__player;
     delete window.__playerReady;
     delete window.__renderReady;
+    delete window.__playReady;
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
@@ -1078,6 +1079,49 @@ describe("initSandboxRuntimeModular", () => {
     player?.renderSeek(2);
 
     expect(child.style.visibility).toBe("visible");
+  });
+
+  it("is ready to play once the opening scenes attach, and ready to render once all do", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    for (const [id, start] of [
+      ["opening", "0"],
+      ["later", "5"],
+    ] as const) {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", id);
+      host.setAttribute("data-composition-src", `https://example.com/${id}.html`);
+      host.setAttribute("data-start", start);
+      host.setAttribute("data-duration", "5");
+      root.appendChild(host);
+    }
+    let deliverLater: (response: Response) => void = () => {};
+    const later = new Promise<Response>((resolve) => (deliverLater = resolve));
+    const scene = (id: string) =>
+      new Response(
+        `<template id="${id}-template"><div data-composition-id="${id}">${id}</div></template>`,
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      String(input).includes("later") ? later : Promise.resolve(scene("opening")),
+    );
+    window.__timelines = {
+      main: createMockTimeline(10),
+      opening: createMockTimeline(5),
+      later: createMockTimeline(5),
+    };
+
+    initSandboxRuntimeModular();
+    await vi.waitFor(() => expect(window.__playReady).toBe(true));
+    expect(window.__renderReady).toBe(false);
+
+    deliverLater(scene("later"));
+    await vi.waitFor(() => expect(window.__renderReady).toBe(true));
   });
 
   it("removes external composition head links during runtime teardown", async () => {
