@@ -449,7 +449,7 @@
             from: atS(BATCH_AT[0]),
             tex:
               "<i>c</i>(<i>x</i>, <i>t</i>) = 5 Σ<sub><i>b</i></sub> <i>m<sub>b</sub></i> Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> <i>σ<sub>i</sub></i>² / (<i>σ<sub>i</sub></i>² + <i>v<sub>b</sub></i>) e<sup>−|<i>x</i>−<i>c<sub>i</sub></i>|² / 2(<i>σ<sub>i</sub></i>² + <i>v<sub>b</sub></i>)</sup>" +
-              "<br />front radius <i>r</i> = √(<i>σ</i>² + <i>v</i><sub>0</sub>)",
+              "<br />front radius <i>r</i> = (<i>σ</i>² + <i>v</i><sub>0</sub>)<sup>½</sup>",
             val: function (ph) {
               return "r = " + Math.round(ph.radius * H) + " px";
             },
@@ -457,7 +457,7 @@
           {
             label: "Crust cracks",
             from: atS(0.13), // W(s) reaches 0.15 here
-            tex: "crack ⇔ <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06, once <i>W</i> &gt; 0.15<br /><i>F</i><sub>1,2</sub>: nearest Worley distances of 10<i>x</i> + 1.5 fbm(8<i>x</i>)",
+            tex: "crack where <i>F</i><sub>2</sub> − <i>F</i><sub>1</sub> &lt; 0.06, once <i>W</i> &gt; 0.15<br /><i>F</i><sub>1,2</sub>: nearest Worley distances of 10<i>x</i> + 1.5 fbm(8<i>x</i>)",
           },
           {
             label: "Fingers",
@@ -471,7 +471,7 @@
             label: "Tint mix (Beer–Lambert)",
             from: atS(0.55), // M passes 5 % here; the curve starts at s = 0.4
             tex:
-              "<i>M</i> = smoothstep(0.4, 1, <i>s</i>)<sup>1.6</sup>,  <i>c</i> ← (1 − <i>M</i>)<i>c</i> + 0.6<i>M</i>" +
+              "<i>M</i> = smoothstep(0.4, 1, <i>s</i>)<sup>1.6</sup>,  <i>c</i> := (1 − <i>M</i>)<i>c</i> + 0.6<i>M</i>" +
               "<br />colour = milk · e<sup>−0.55 <i>c</i> (−ln powder)</sup>",
             val: function (ph) {
               return "M = " + pct(ph.mix);
