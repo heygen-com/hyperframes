@@ -11,7 +11,7 @@ import { usePlayerStore } from "../player/store/playerStore";
  */
 describe("fetchParsedAnimations — in-flight sharing", () => {
   beforeEach(() => {
-    usePlayerStore.setState({ previewBooted: true });
+    usePlayerStore.setState({ timelineProjectId: "p", previewBooted: true });
   });
   afterEach(() => {
     vi.unstubAllGlobals();

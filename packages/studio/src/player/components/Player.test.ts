@@ -287,6 +287,20 @@ describe("ready to show", () => {
     expect(usePlayerStore.getState().previewBooted).toBe(true);
   });
 
+  it("stops deferring editing work when the preview never shows", async () => {
+    vi.useFakeTimers();
+    try {
+      usePlayerStore.setState({ previewBooted: false });
+      await mountPlayer({});
+      act(() => void vi.advanceTimersByTime(4999));
+      expect(usePlayerStore.getState().previewBooted).toBe(false);
+      act(() => void vi.advanceTimersByTime(1));
+      expect(usePlayerStore.getState().previewBooted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reports the document start time with the painted iframe", async () => {
     const onPainted = vi.fn();
     const now = vi.spyOn(performance, "now").mockReturnValue(100);

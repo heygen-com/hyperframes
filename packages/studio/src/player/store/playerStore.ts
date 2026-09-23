@@ -552,15 +552,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
 attachPlayerStoreDevHandle(usePlayerStore);
 
-/** Resolves once the project's live preview has booted; open-time work that the first frame
- * does not need (server parses, lint) waits on it instead of competing with the boot. */
-export function whenPreviewBooted(): Promise<void> {
+export function isPreviewBooted(projectId: string): boolean {
+  const { previewBooted, timelineProjectId } = usePlayerStore.getState();
+  return previewBooted && timelineProjectId === projectId;
+}
+
+/** True once projectId's live preview has booted, false once another project replaces it.
+ * Open-time work the first frame does not need (server parses, lint) waits on it. */
+export function whenPreviewBooted(projectId: string): Promise<boolean> {
+  const openedFrom = usePlayerStore.getState().timelineProjectId;
+  let seen = false;
+  const settle = (state: PlayerState): boolean | null => {
+    if (state.timelineProjectId === projectId) {
+      seen = true;
+      return state.previewBooted ? true : null;
+    }
+    return seen || state.timelineProjectId !== openedFrom ? false : null;
+  };
   return new Promise((resolve) => {
-    if (usePlayerStore.getState().previewBooted) return resolve();
+    const now = settle(usePlayerStore.getState());
+    if (now !== null) return resolve(now);
     const stop = usePlayerStore.subscribe((state) => {
-      if (!state.previewBooted) return;
+      const result = settle(state);
+      if (result === null) return;
       stop();
-      resolve();
+      resolve(result);
     });
   });
 }
