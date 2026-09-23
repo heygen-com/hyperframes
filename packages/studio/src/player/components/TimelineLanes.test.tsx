@@ -12,6 +12,7 @@ import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 import { buildTimelineLogicalRows } from "./timelineKeyboardNavigation";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
+import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { DraggedClipState, BlockedClipState } from "./useTimelineClipDrag";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -20,6 +21,7 @@ afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
 });
+
 /** The z-order sort keys really are fractional: a clip nudged between two lanes
  *  lands on the midpoint. These are the values that used to reach aria-label. */
 const TRACK_A = 1 / 6;
@@ -40,17 +42,33 @@ function element(id: string, track: number): TimelineElement {
   return { id, label: id, tag: "div", start: 0, duration: 2, track };
 }
 
+function positionTween(id: string): GsapAnimation {
+  return {
+    id: `${id}-tween`,
+    targetSelector: `#${id}`,
+    method: "to",
+    position: 0,
+    duration: 2,
+    properties: {},
+    propertyGroup: "position",
+    keyframes: {
+      format: "percentage",
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 100 } },
+      ],
+    },
+  };
+}
+
 interface RenderLanesOptions {
   elements?: TimelineElement[];
   animations?: Map<string, GsapAnimation[]>;
+  expandedClipIds?: string[];
   selectedElementIds?: Set<string>;
   multiDragPreview?: MultiDragPreviewInput | null;
   draggedClip?: DraggedClipState | null;
-  onToggleTrackHidden?: (
-    track: number,
-    hidden: boolean,
-    displayNumber?: number | null,
-  ) => void | Promise<void>;
+  onToggleTrackHidden?: TimelineEditCallbacks["onToggleTrackHidden"];
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
   hoveredClip?: string | null;
   renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
@@ -82,6 +100,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
     );
     const rowHeights = displayTrackOrder.map(() => TRACK_H);
     act(() => {
+      usePlayerStore.setState({ expandedClipIds: new Set(next.expandedClipIds ?? []) });
       root.render(
         <TimelineLanes
           pps={100}
@@ -101,10 +120,12 @@ function renderLanes(options: RenderLanesOptions = {}): {
             laneCounts,
             selectedElementId: null,
             selectedElementIds: next.selectedElementIds ?? new Set(),
+            expandedClipIds: new Set(next.expandedClipIds ?? []),
             collapsedGroupIds: new Set(),
             expandedLaneOwnerIds: new Set(),
             groups: [],
             trackGroupOf: new Map(),
+            gsapAnimations,
           })}
           clipIndex={createTimelineClipIndex(tracks)}
           renderTimeRange={{ start: 0, end: Number.POSITIVE_INFINITY }}
@@ -140,6 +161,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           currentTime={0}
           onContextMenuLane={next.onContextMenuLane}
           onToggleTrackHidden={next.onToggleTrackHidden}
+          onTogglePropertyGroupKeyframe={vi.fn()}
           onResizeElement={vi.fn()}
           onMoveElement={vi.fn()}
           onSelectElement={onSelectElement}
@@ -210,9 +232,7 @@ describe("TimelineLanes track numbering", () => {
     const onToggleTrackHidden = vi.fn();
     const view = renderLanes({
       elements: [element("clip-a", TRACK_A), element("clip-b", TRACK_B)],
-      onToggleTrackHidden: (track, hidden, displayNumber) => {
-        onToggleTrackHidden(track, hidden, displayNumber);
-      },
+      onToggleTrackHidden,
     });
 
     const second = view.host.querySelector<HTMLButtonElement>('button[aria-label="Hide track 2"]');
@@ -251,88 +271,146 @@ describe("TimelineLanes track numbering", () => {
   });
 });
 
-describe("TimelineLanes audio disclosure", () => {
-  it("keeps a keyframed audio lane collapsed until its owner is expanded", () => {
-    const audio = element("audio-clip", TRACK_A);
-    audio.tag = "audio";
-    audio.automation = JSON.stringify({
-      version: 1,
-      lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
-    });
-    const view = renderLanes({ elements: [audio] });
+describe("TimelineLanes disclosure target", () => {
+  const ANIMATIONS = new Map([["clip-a", [positionTween("clip-a")]]]);
 
-    expect(
-      view.host.querySelector('button[aria-label^="Show "][aria-label$=" lanes"]'),
-    ).not.toBeNull();
-    expect(view.host.querySelectorAll("[data-automation-lane-label]")).toHaveLength(0);
+  /**
+   * `aria-controls` is an ID LIST, and the caret needs one: it reveals the
+   * active clip's keyframe lanes AND the track's automation lanes, which cannot
+   * be one element — one belongs to a clip, the other to the row.
+   */
+  function ariaControlsIds(host: HTMLElement): string[] {
+    const caret = host.querySelector("button[aria-controls]");
+    return (caret?.getAttribute("aria-controls") ?? "").split(/\s+/).filter(Boolean);
+  }
 
-    act(() => {
-      view.host
-        .querySelector<HTMLButtonElement>('button[aria-label^="Show "][aria-label$=" lanes"]')
-        ?.click();
-    });
+  function ariaControlsTargets(host: HTMLElement): (HTMLElement | null)[] {
+    return ariaControlsIds(host).map((id) => host.querySelector<HTMLElement>(`#${id}`));
+  }
 
-    expect(
-      view.host.querySelector('button[aria-label^="Hide "][aria-label$=" lanes"]'),
-    ).not.toBeNull();
-    expect(view.host.querySelectorAll("[data-automation-lane-label]")).toHaveLength(1);
+  /** The first region named, which is the keyframe lanes. */
+  function ariaControlsTarget(host: HTMLElement): HTMLElement | null {
+    return ariaControlsTargets(host)[0] ?? null;
+  }
+
+  // aria-controls used to name a div in the sticky label column: it computed to
+  // 0x0 and held no diamonds at all.
+  it("resolves the caret's aria-controls to an element holding the property lanes", () => {
+    const view = renderLanes({ animations: ANIMATIONS, expandedClipIds: ["clip-a"] });
+    const target = ariaControlsTarget(view.host);
+
+    expect(target).not.toBeNull();
+    expect(target?.querySelectorAll("[data-timeline-property-lane]").length).toBeGreaterThan(0);
+    // Every region it names has to exist, or the caret points at nothing.
+    expect(ariaControlsTargets(view.host).length).toBeGreaterThan(1);
+    expect(ariaControlsTargets(view.host).every(Boolean)).toBe(true);
     act(() => view.root.unmount());
   });
 
-  it("renders an expanded envelope on a video track", () => {
-    const video = element("video-clip", TRACK_A);
-    video.tag = "video";
-    video.automation = JSON.stringify({
-      version: 1,
-      lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
-    });
-    usePlayerStore.setState({ expandedLaneOwnerIds: new Set([video.id]) });
-    const view = renderLanes({ elements: [video] });
+  it("still resolves the caret's aria-controls while the layer is collapsed", () => {
+    const view = renderLanes({ animations: ANIMATIONS, expandedClipIds: [] });
+    const target = ariaControlsTarget(view.host);
 
-    expect(
-      view.host.querySelector('button[aria-label^="Hide "][aria-label$=" lanes"]'),
-    ).not.toBeNull();
-    expect(view.host.querySelectorAll("[data-automation-lane-label]")).toHaveLength(1);
+    expect(target).not.toBeNull();
+    expect(target?.querySelectorAll("[data-timeline-property-lane]")).toHaveLength(0);
+    // Including the automation region, which is mounted empty while collapsed
+    // for exactly this reason.
+    expect(ariaControlsTargets(view.host).every(Boolean)).toBe(true);
     act(() => view.root.unmount());
   });
 
-  it("toggles every clip owner on a shared audio row", () => {
-    const automation = JSON.stringify({
-      version: 1,
-      lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
-    });
-    const first = { ...element("audio-1", TRACK_A), tag: "audio", automation };
-    const second = { ...element("audio-2", TRACK_A), tag: "audio", automation };
-    const view = renderLanes({ elements: [first, second] });
+  // Two timelines on one page (a mini-timeline in a modal beside the main one)
+  // both minted `timeline-lanes-track-0`, so every caret's aria-controls
+  // resolved to whichever instance mounted first.
+  it("mints lane ids that do not collide with a second TimelineLanes on the page", () => {
+    const first = renderLanes({ animations: ANIMATIONS, expandedClipIds: ["clip-a"] });
+    const second = renderLanes({ animations: ANIMATIONS, expandedClipIds: ["clip-a"] });
 
-    act(() =>
-      view.host
-        .querySelector<HTMLButtonElement>('button[aria-label="Show Track 1 lanes"]')
-        ?.click(),
-    );
+    const idsFor = (host: HTMLElement) =>
+      Array.from(host.querySelectorAll("button[aria-controls]")).flatMap((caret) =>
+        (caret.getAttribute("aria-controls") ?? "").split(/\s+/).filter(Boolean),
+      );
+    const firstIds = idsFor(first.host);
+    const secondIds = idsFor(second.host);
+    const cellIdsFor = (host: HTMLElement) =>
+      new Set(
+        Array.from(host.querySelectorAll<HTMLElement>("[data-property-group][id]"), (cell) =>
+          cell.getAttribute("id"),
+        ).filter((id): id is string => id !== null),
+      );
+    const ownedIdsFor = (host: HTMLElement) =>
+      Array.from(host.querySelectorAll("[aria-owns]"), (owner) =>
+        owner.getAttribute("aria-owns"),
+      ).filter((id): id is string => id !== null);
+    const firstCellIds = cellIdsFor(first.host);
+    const secondCellIds = cellIdsFor(second.host);
 
-    expect(usePlayerStore.getState().expandedLaneOwnerIds).toEqual(new Set(["audio-1", "audio-2"]));
-    act(() => view.root.unmount());
+    for (const { host } of [first, second]) {
+      const treegrid = host.querySelector<HTMLElement>('[role="treegrid"]');
+      expect(treegrid?.getAttribute("aria-colcount")).toBe("2");
+      expect(treegrid?.hasAttribute("aria-multiselectable")).toBe(false);
+      expect(
+        [...host.querySelectorAll('[role="rowheader"]')].every(
+          (cell) => cell.getAttribute("aria-colindex") === "1",
+        ),
+      ).toBe(true);
+      expect(
+        [...host.querySelectorAll('[role="gridcell"]')].every(
+          (cell) => cell.getAttribute("aria-colindex") === "2",
+        ),
+      ).toBe(true);
+    }
+    expect(firstIds.length).toBeGreaterThan(0);
+    expect(firstIds.some((id) => secondIds.includes(id))).toBe(false);
+    expect(firstCellIds.size).toBeGreaterThan(0);
+    expect([...firstCellIds].some((id) => secondCellIds.has(id))).toBe(false);
+    expect(ownedIdsFor(first.host).every((id) => firstCellIds.has(id))).toBe(true);
+    expect(ownedIdsFor(second.host).every((id) => secondCellIds.has(id))).toBe(true);
+    // Still a legal CSS id selector: the aria-controls lookups above use `#id`.
+    for (const id of [...firstIds, ...secondIds]) {
+      expect(id).toMatch(/^[A-Za-z][\w-]*$/);
+    }
+    act(() => first.root.unmount());
+    act(() => second.root.unmount());
   });
 
-  it("keeps a second automation label aligned with its own curve", () => {
-    const audio = element("audio-clip", TRACK_A);
-    audio.tag = "audio";
-    audio.automation = JSON.stringify({
-      version: 1,
-      lanes: [
-        { target: "volume", points: [{ t: 0, v: 1 }] },
-        { target: "rate", points: [{ t: 0, v: 1 }] },
-      ],
+  // The passenger branch wraps [clip, lanes] in a transformed div that re-renders
+  // on every pointer move. An unstable key there remounts the lanes and drops the
+  // in-flight drag.
+  it("does not remount the lanes while a multi-clip drag slides the formation", () => {
+    const elements = [element("clip-a", TRACK_A), element("clip-b", TRACK_A)];
+    const selectedElementIds = new Set(["clip-a", "clip-b"]);
+    const preview = (draggedPreviewStart: number): MultiDragPreviewInput => ({
+      dragStarted: true,
+      draggedKey: "clip-b",
+      draggedOriginStart: 0,
+      draggedPreviewStart,
+      selectedKeys: selectedElementIds,
     });
-    usePlayerStore.setState({ expandedLaneOwnerIds: new Set([audio.id]) });
-    const view = renderLanes({ elements: [audio] });
+    const view = renderLanes({
+      elements,
+      animations: ANIMATIONS,
+      expandedClipIds: ["clip-a"],
+      selectedElementIds,
+      multiDragPreview: preview(0.25),
+    });
 
-    const labels = [...view.host.querySelectorAll<HTMLElement>("[data-automation-lane-label]")];
-    const curves = [...view.host.querySelectorAll<HTMLElement>("[data-automation-lane]")];
-    expect(labels).toHaveLength(2);
-    expect(curves).toHaveLength(2);
-    expect(labels.map((el) => el.style.top)).toEqual(curves.map((el) => el.style.top));
+    const before = ariaControlsTarget(view.host);
+    const beforeLane = before?.querySelector("[data-timeline-property-lane]");
+    expect(before).not.toBeNull();
+    expect(beforeLane).not.toBeNull();
+
+    view.rerender({
+      elements,
+      animations: ANIMATIONS,
+      expandedClipIds: ["clip-a"],
+      selectedElementIds,
+      multiDragPreview: preview(0.75),
+    });
+
+    // Node identity, not just presence: a remount replaces these nodes.
+    expect(ariaControlsTarget(view.host)).toBe(before);
+    expect(before?.querySelector("[data-timeline-property-lane]")).toBe(beforeLane);
     act(() => view.root.unmount());
   });
 });

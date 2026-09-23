@@ -1,3 +1,4 @@
+import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { ZoomMode } from "../store/playerStore";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
@@ -81,6 +82,38 @@ export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
  * (clip left = t·pps, beat lines, lane-menu time) is untouched.
  */
 export const TRACKS_LEFT_PAD = 48;
+
+export interface TimelineTrackHeightClip {
+  clipId: string;
+  laneCount: number;
+  /** Audio automation lanes shown when expanded, reserved at their own height. */
+  automationLaneCount?: number;
+}
+
+type TimelineTrackHeightInput = readonly (readonly TimelineTrackHeightClip[])[];
+
+/**
+ * Resolve each track's full height. Without expansion state every row is the
+ * legacy TRACK_H; if multiple clips in one track expand, the tallest one owns
+ * the shared row height.
+ */
+export function trackHeights(
+  tracks: TimelineTrackHeightInput,
+  expandedClipIds?: ReadonlySet<string>,
+): number[] {
+  return tracks.map((clips) => {
+    let laneCount = 0;
+    let automationLanes = 0;
+    for (const clip of clips) {
+      if (!expandedClipIds?.has(clip.clipId)) continue;
+      laneCount = Math.max(laneCount, clip.laneCount);
+      automationLanes = Math.max(automationLanes, clip.automationLaneCount ?? 0);
+    }
+    return (
+      TRACK_H + Math.max(0, Math.trunc(laneCount)) * LANE_H + automationLanes * AUTOMATION_LANE_H
+    );
+  });
+}
 
 function validRowHeight(height: number | undefined): number {
   if (height === undefined || !Number.isFinite(height) || height <= 0) return TRACK_H;
@@ -186,6 +219,11 @@ export function getTimelineRowGeometry(rowHeights: readonly number[]): TimelineR
   );
   rowGeometryCache.set(rowHeights, geometry);
   return geometry;
+}
+
+/** Cumulative top offsets, including the final bottom boundary. */
+export function getTimelineRowOffsets(rowHeights: readonly number[]): number[] {
+  return [...getTimelineRowGeometry(rowHeights).rowOffsets];
 }
 
 export function getTimelineRowHeight(

@@ -1,12 +1,20 @@
+import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import type { TimelineElement } from "../store/playerStore";
+import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { groupAutomationLanes } from "./automationLaneData";
-import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
+import {
+  timelineKeyframeSelectionKey,
+  type TimelineKeyframeTarget,
+} from "./timelineKeyframeIdentity";
 import {
   timelineClipFocusId,
+  timelineEaseFocusId,
   timelineGroupRowId,
+  timelineKeyframeFocusId,
+  timelinePropertyRowId,
   timelineTrackRowId,
 } from "./timelineNavigationIdentity";
-import { isTimelineRowExpanded, resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
+import { resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 
 export type TimelineNavigationKey =
@@ -56,6 +64,7 @@ export interface TimelineLogicalRow {
   groupId?: string;
   expandable: boolean;
   expanded: boolean;
+  propertyGroup?: PropertyGroupName;
   items: readonly TimelineLogicalItem[];
 }
 
@@ -67,12 +76,14 @@ export interface BuildTimelineLogicalRowsInput {
   laneCounts: ReadonlyMap<string, number>;
   selectedElementId: string | null;
   selectedElementIds: ReadonlySet<string>;
+  expandedClipIds: ReadonlySet<string>;
   /** Groups the caret has COLLAPSED — absent means expanded, the default. */
   collapsedGroupIds: ReadonlySet<string>;
   /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
   expandedLaneOwnerIds: ReadonlySet<string>;
   groups: readonly TimelineTrackGroupInfo[];
   trackGroupOf: ReadonlyMap<number, TimelineTrackGroupInfo>;
+  gsapAnimations: ReadonlyMap<string, readonly GsapAnimation[]>;
 }
 
 export interface TimelineNavigationOptions {
@@ -106,15 +117,17 @@ function clipItems(rowId: string, elements: readonly TimelineElement[]): Timelin
     });
 }
 
-/** A track's active clip (if any) and its element id. */
+/** A track's active clip (if any), its element id, and its automation lanes. */
 function resolveActiveTrackClip(
   elements: readonly TimelineElement[],
   laneCounts: BuildTimelineLogicalRowsInput["laneCounts"],
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
+  gsapAnimations: BuildTimelineLogicalRowsInput["gsapAnimations"],
 ): {
   activeClip: TimelineElement | null;
   activeId: string | null;
+  lanes: ReturnType<typeof getTimelinePropertyLanes>;
 } {
   const activeClip = resolveTrackKeyframeClip(
     elements,
@@ -123,7 +136,111 @@ function resolveActiveTrackClip(
     selectedElementIds,
   );
   const activeId = activeClip ? elementId(activeClip) : null;
-  return { activeClip, activeId };
+  const lanes = activeClip
+    ? getTimelinePropertyLanes(
+        gsapAnimations.get(elementId(activeClip)) ?? [],
+        activeClip.start,
+        activeClip.duration,
+      )
+    : [];
+  return { activeClip, activeId, lanes };
+}
+
+function keyframeTarget(
+  keyframe: ReturnType<typeof getTimelinePropertyLanes>[number]["keyframes"][number],
+): TimelineKeyframeTarget {
+  return {
+    percentage: keyframe.percentage,
+    tweenPercentage: keyframe.tweenPercentage,
+    propertyGroup: keyframe.propertyGroup,
+    animationId: keyframe.animationId,
+    collidingAnimationTargets: keyframe.collidingAnimationTargets,
+  };
+}
+
+function propertyItems(
+  rowId: string,
+  clip: TimelineElement,
+  keyframes: ReturnType<typeof getTimelinePropertyLanes>[number]["keyframes"],
+): TimelineLogicalItem[] {
+  const id = elementId(clip);
+  const unique = new Map<string, { target: TimelineKeyframeTarget; time: number }>();
+  for (const keyframe of keyframes) {
+    const target = keyframeTarget(keyframe);
+    const key = timelineKeyframeSelectionKey(id, target);
+    if (!unique.has(key)) {
+      unique.set(key, {
+        target,
+        time: clip.start + (keyframe.percentage / 100) * clip.duration,
+      });
+    }
+  }
+  const ordered = [...unique.entries()].sort(
+    ([leftKey, left], [rightKey, right]) =>
+      left.time - right.time || leftKey.localeCompare(rightKey),
+  );
+  const items: TimelineLogicalItem[] = [];
+  // ponytail: The composite property lane owns adjacency, so the incoming keyframe
+  // owns an ease segment even when its previous neighbor came from another animation.
+  for (let index = 0; index < ordered.length; index += 1) {
+    const [, current] = ordered[index]!;
+    const previous = ordered[index - 1]?.[1];
+    if (previous && current.time > previous.time && current.target.animationId !== undefined) {
+      items.push({
+        id: timelineEaseFocusId(id, current.target),
+        kind: "ease",
+        rowId,
+        elementId: id,
+        time: previous.time + (current.time - previous.time) / 2,
+        keyframeTarget: current.target,
+      });
+    }
+    items.push({
+      id: timelineKeyframeFocusId(id, current.target),
+      kind: "keyframe",
+      rowId,
+      elementId: id,
+      time: current.time,
+      keyframeTarget: current.target,
+    });
+  }
+  return items;
+}
+
+/** A clip's lanes are visible when either the caret or the `∿` button opened it. */
+function isRowOpen(
+  activeId: string | null,
+  expandedClipIds: ReadonlySet<string>,
+  expandedLaneOwnerIds: ReadonlySet<string>,
+): boolean {
+  if (activeId === null) return false;
+  return expandedClipIds.has(activeId) || expandedLaneOwnerIds.has(activeId);
+}
+
+/** A single automation-lane row, one level deeper than the track/group row that owns it. */
+function buildLaneRow(
+  track: number,
+  logicalIndex: number,
+  activeId: string,
+  activeClip: TimelineElement,
+  lane: ReturnType<typeof getTimelinePropertyLanes>[number],
+  level: 2 | 3,
+  parentId: string,
+): TimelineLogicalRow {
+  const laneRowId = timelinePropertyRowId(activeId, lane.group);
+  return {
+    id: laneRowId,
+    kind: "row",
+    physicalTrackKey: track,
+    logicalIndex,
+    level,
+    parentId,
+    elementId: activeId,
+    expandable: false,
+    expanded: false,
+    propertyGroup: lane.group,
+    items: propertyItems(laneRowId, activeClip, lane.keyframes),
+  };
 }
 
 /** Canonical model of the treegrid, independent of which virtual rows or clips are mounted. */
@@ -133,28 +250,31 @@ export function buildTimelineLogicalRows({
   laneCounts,
   selectedElementId,
   selectedElementIds,
+  expandedClipIds,
   collapsedGroupIds,
   expandedLaneOwnerIds,
   groups,
   trackGroupOf,
+  gsapAnimations,
 }: BuildTimelineLogicalRowsInput): TimelineLogicalRow[] {
   const trackMap = new Map(tracks);
   const groupByAnchor = new Map(groups.map((group) => [group.anchorKey, group]));
   const rows: TimelineLogicalRow[] = [];
 
-  // A real track's own row (level 1 ungrouped, level 2 under a group) plus
-  // its audio automation disclosure state.
+  // A real track's own row (level 1 ungrouped, level 2 under a group) plus,
+  // when its clip's lanes are open, the lane rows one level deeper.
   function emitTrack(track: number, level: 1 | 2, parentId: string | null): void {
     const elements = trackMap.get(track) ?? [];
     const trackId = timelineTrackRowId(track);
-    const { activeId } = resolveActiveTrackClip(
+    const { activeClip, activeId, lanes } = resolveActiveTrackClip(
       elements,
       laneCounts,
       selectedElementId,
       selectedElementIds,
+      gsapAnimations,
     );
-    const disclosable = groupAutomationLanes(elements).length > 0;
-    const expanded = isTimelineRowExpanded(elements, expandedLaneOwnerIds);
+    const disclosable = isTrackDisclosable(elements, lanes.length);
+    const expanded = isRowOpen(activeId, expandedClipIds, expandedLaneOwnerIds) && disclosable;
     rows.push({
       id: trackId,
       kind: "row",
@@ -167,6 +287,12 @@ export function buildTimelineLogicalRows({
       expanded,
       items: clipItems(trackId, elements),
     });
+    if (!expanded || !activeClip || !activeId) return;
+    for (const lane of lanes) {
+      rows.push(
+        buildLaneRow(track, rows.length, activeId, activeClip, lane, level === 1 ? 2 : 3, trackId),
+      );
+    }
   }
 
   // A group's own row (level 1) plus, when its `∿` is open, its own
@@ -328,4 +454,18 @@ export function resolveTimelineFocusFallback(
     if (parent) return parent.target;
   }
   return nextRows[previous.rowIndex] ?? nextRows[previous.rowIndex - 1] ?? null;
+}
+
+/**
+ * Does a track have anything to open — the header's own `disclosable`.
+ *
+ * `TimelineTrackHeader` is `lanes.length > 0 || automationRows.length > 0`, and
+ * keyed on tweens alone here an audio track whose only disclosable content is
+ * AUTOMATION drew the `∿` while reporting itself unexpandable to the treegrid,
+ * so ArrowRight could not open it. Automation rows are counted per shared
+ * PROPERTY across the track's clips, the way the header counts them, not per
+ * clip.
+ */
+function isTrackDisclosable(elements: readonly TimelineElement[], laneCount: number): boolean {
+  return laneCount > 0 || groupAutomationLanes(elements).length > 0;
 }

@@ -88,6 +88,13 @@ export interface KeyframeSlice {
   toggleSelectedKeyframe: (key: string) => void;
   clearSelectedKeyframes: () => void;
 
+  /** Clips whose keyframe property lanes are expanded in the timeline. */
+  expandedClipIds: Set<string>;
+  toggleClipExpanded: (id: string) => void;
+  setClipExpanded: (id: string, expanded: boolean) => void;
+  /** Union-expand clips (keyframed clips are expanded by default on load). */
+  expandClips: (ids: readonly string[]) => void;
+
   /**
    * Groups whose member rows the caret has HIDDEN (structural, not lanes).
    *
@@ -100,9 +107,9 @@ export interface KeyframeSlice {
   collapsedGroupIds: Set<string>;
   toggleGroupExpanded: (id: string) => void;
 
-  /** Rows (clip ids or group id) whose automation-lane rows the `∿` button opened. */
+  /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
   expandedLaneOwnerIds: Set<string>;
-  toggleLaneOwnerExpanded: (ids: readonly string[]) => void;
+  toggleLaneOwnerExpanded: (id: string) => void;
 
   /**
    * Project/session/element-scoped request. Its nonce is monotonic across store
@@ -149,6 +156,30 @@ export function createKeyframeSlice(
       }),
     clearSelectedKeyframes: () => set({ selectedKeyframes: new Set() }),
 
+    expandedClipIds: new Set(),
+    toggleClipExpanded: (id) =>
+      set((state) => {
+        const next = new Set(state.expandedClipIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { expandedClipIds: next };
+      }),
+    setClipExpanded: (id, expanded) =>
+      set((state) => {
+        if (state.expandedClipIds.has(id) === expanded) return state;
+        const next = new Set(state.expandedClipIds);
+        if (expanded) next.add(id);
+        else next.delete(id);
+        return { expandedClipIds: next };
+      }),
+    expandClips: (ids) =>
+      set((state) => {
+        if (ids.every((id) => state.expandedClipIds.has(id))) return state;
+        const next = new Set(state.expandedClipIds);
+        for (const id of ids) next.add(id);
+        return { expandedClipIds: next };
+      }),
+
     collapsedGroupIds: new Set(),
     toggleGroupExpanded: (id) =>
       set((state) => {
@@ -159,15 +190,11 @@ export function createKeyframeSlice(
       }),
 
     expandedLaneOwnerIds: new Set(),
-    toggleLaneOwnerExpanded: (ids) =>
+    toggleLaneOwnerExpanded: (id) =>
       set((state) => {
-        if (ids.length === 0) return state;
         const next = new Set(state.expandedLaneOwnerIds);
-        const shouldExpand = ids.some((id) => !next.has(id));
-        for (const id of ids) {
-          if (shouldExpand) next.add(id);
-          else next.delete(id);
-        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         return { expandedLaneOwnerIds: next };
       }),
 

@@ -25,6 +25,7 @@ export function createTimelineResetState() {
     // switch can match a same-keyed clip in the new project and redirect a
     // paste through `sel.elementKey === paste.elementKey` to a stale t0.
     automationSelection: null,
+    expandedClipIds: new Set<string>(),
     // Per-composition: ids from comp A match nothing in B, silencing all of it.
     collapsedGroupIds: new Set<string>(),
     expandedLaneOwnerIds: new Set<string>(),

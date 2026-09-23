@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
@@ -17,6 +18,7 @@ interface TimelineLogicalFocusInput {
   selectedElementIds: ReadonlySet<string>;
   groups: readonly TimelineTrackGroupInfo[];
   trackGroupOf: ReadonlyMap<number, TimelineTrackGroupInfo>;
+  gsapAnimations: ReadonlyMap<string, readonly GsapAnimation[]>;
   elements: readonly TimelineElement[];
   pixelsPerSecond: number;
   contentOrigin: number;
@@ -32,6 +34,7 @@ interface TimelineLogicalFocusInput {
 }
 
 export function useTimelineLogicalFocus(input: TimelineLogicalFocusInput) {
+  const expandedClipIds = usePlayerStore((state) => state.expandedClipIds);
   const collapsedGroupIds = usePlayerStore((state) => state.collapsedGroupIds);
   const expandedLaneOwnerIds = usePlayerStore((state) => state.expandedLaneOwnerIds);
   const projectId = usePlayerStore((state) => state.timelineProjectId);
@@ -41,10 +44,12 @@ export function useTimelineLogicalFocus(input: TimelineLogicalFocusInput) {
     laneCounts: input.laneCounts,
     selectedElementId: input.selectedElementId,
     selectedElementIds: input.selectedElementIds,
+    expandedClipIds,
     collapsedGroupIds,
     expandedLaneOwnerIds,
     groups: input.groups,
     trackGroupOf: input.trackGroupOf,
+    gsapAnimations: input.gsapAnimations,
   });
   const focus = useTimelineFocusCoordinator({
     scrollRef: input.scrollRef,

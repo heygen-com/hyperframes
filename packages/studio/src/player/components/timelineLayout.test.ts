@@ -13,18 +13,16 @@ import {
   getTimelineRowTop,
   getTimelineScrubTime,
   getTimelineRowFromY,
+  getTimelineRowOffsets,
   getTimelineCanvasHeight,
   createTimelineRowGeometry,
   getTimelineRowGeometry,
+  trackHeights,
   resolveTimelineAssetDrop,
   getTimelineBeatEntries,
 } from "./timelineLayout";
 import { generateTicks, getTimelineMajorTickInterval } from "./timelineRulerGeometry";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
-
-function baseRows(count: number): number[] {
-  return Array.from({ length: count }, () => TRACK_H);
-}
 
 describe("horizontal timeline window", () => {
   it("adds the shared quarter-viewport overscan on each side and clamps to duration", () => {
@@ -62,8 +60,60 @@ describe("horizontal timeline window", () => {
   });
 });
 
-/** Row geometry remains immutable and reusable for each height array. */
+/** N collapsed rows, the shape every caller passes when nothing is expanded. */
+const baseRows = (count: number) => Array.from({ length: count }, () => TRACK_H);
+
 describe("variable timeline row geometry", () => {
+  const tracks = [
+    [{ clipId: "a", laneCount: 0 }],
+    [{ clipId: "b", laneCount: 2 }],
+    [{ clipId: "c", laneCount: 1 }],
+  ];
+
+  it("resolves every row to the base height when no clip is expanded", () => {
+    expect(trackHeights(tracks)).toEqual([TRACK_H, TRACK_H, TRACK_H]);
+    expect(trackHeights([[], [], []])).toEqual([TRACK_H, TRACK_H, TRACK_H]);
+  });
+
+  it("adds one lane height per lane on an expanded clip", () => {
+    expect(trackHeights(tracks, new Set(["b"]))).toEqual([TRACK_H, TRACK_H + 2 * LANE_H, TRACK_H]);
+  });
+
+  it("derives row tops from cumulative offsets", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    expect(getTimelineRowOffsets(heights)).toEqual([
+      0,
+      TRACK_H,
+      2 * TRACK_H + 2 * LANE_H,
+      3 * TRACK_H + 2 * LANE_H,
+    ]);
+    expect(getTimelineRowTop(2, heights)).toBe(RULER_H + TRACKS_TOP_PAD + 2 * TRACK_H + 2 * LANE_H);
+  });
+
+  it("maps y inside an expanded lane region back to the expanded track", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    const yInSecondExpandedLane = getTimelineRowTop(1, heights) + TRACK_H + LANE_H * 1.5;
+    const row = getTimelineRowFromY(yInSecondExpandedLane, heights);
+    expect(Math.floor(row)).toBe(1);
+    expect(row).toBeGreaterThan(1.5);
+    expect(row).toBeLessThan(2);
+  });
+
+  it("sums resolved row heights into the canvas height", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    expect(getTimelineCanvasHeight(heights)).toBe(
+      RULER_H + TRACKS_TOP_PAD + 3 * TRACK_H + 2 * LANE_H + TRACKS_BOTTOM_PAD,
+    );
+  });
+
+  it("reuses one immutable geometry snapshot for one height array", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    const first = getTimelineRowGeometry(heights);
+    expect(getTimelineRowGeometry(heights)).toBe(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first.rowOffsets)).toBe(true);
+  });
+
   it("looks up row boundaries through the precomputed geometry", () => {
     const geometry = createTimelineRowGeometry([4, 8, 12], [48, 104, 76]);
     expect(getTimelineRowGeometry(geometry.rowHeights)).toBe(geometry);

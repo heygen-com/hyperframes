@@ -1,5 +1,6 @@
 import { memo } from "react";
 import type { TimelineProps } from "./TimelineTypes";
+import { TimelineProvider, useTimelineContext } from "./TimelineProvider";
 import {
   TimelineEmptyStatePart,
   TimelineEditPopover,
@@ -14,7 +15,6 @@ import {
   TimelineRuler,
   TimelineShortcutHint,
 } from "./TimelineParts";
-import { TimelineProvider, useTimelineContext } from "./TimelineProvider";
 
 export * from "./TimelineProvider";
 export {

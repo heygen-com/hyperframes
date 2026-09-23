@@ -4,7 +4,7 @@ import type { KeyframeCacheEntry, TimelineElement } from "../store/playerStore";
 export type TimelinePerformanceFixtureProfile =
   | "dense-short"
   | "long-overlap"
-  | "keyframe-heavy"
+  | "keyframe-heavy-expanded"
   | "composition-heavy"
   | "remote-unsupported";
 
@@ -25,6 +25,7 @@ export interface TimelinePerformanceFixture {
   elements: TimelineElement[];
   keyframeCache: Map<string, KeyframeCacheEntry>;
   gsapAnimations: Map<string, GsapAnimation[]>;
+  expandedClipIds: Set<string>;
 }
 
 const TRACK_COUNT = 1_000;
@@ -34,7 +35,7 @@ const PROFILE_GEOMETRY: Readonly<
 > = Object.freeze({
   "dense-short": { duration: 120, clipDuration: 1.5 },
   "long-overlap": { duration: 7_200, clipDuration: 120 },
-  "keyframe-heavy": { duration: 600, clipDuration: 8 },
+  "keyframe-heavy-expanded": { duration: 600, clipDuration: 8 },
   "composition-heavy": { duration: 900, clipDuration: 12 },
   "remote-unsupported": { duration: 900, clipDuration: 12 },
 });
@@ -115,6 +116,7 @@ export function createTimelinePerformanceFixture(
   const elements: TimelineElement[] = [];
   const keyframeCache = new Map<string, KeyframeCacheEntry>();
   const gsapAnimations = new Map<string, GsapAnimation[]>();
+  const expandedClipIds = new Set<string>();
 
   for (let index = 0; index < spec.elementCount; index += 1) {
     const id = `perf-${spec.profile}-${spec.elementCount}-${index}`;
@@ -141,9 +143,10 @@ export function createTimelinePerformanceFixture(
           ? `https://media.invalid/perf-${index % 32}.mp4`
           : `assets/perf-${index % 32}.unsupported`;
     }
-    if (spec.profile === "keyframe-heavy") {
+    if (spec.profile === "keyframe-heavy-expanded") {
       keyframeCache.set(id, keyframeData());
       gsapAnimations.set(id, [fixtureAnimation(id, start, geometry.clipDuration)]);
+      expandedClipIds.add(id);
     }
     elements.push(element);
   }
@@ -154,10 +157,11 @@ export function createTimelinePerformanceFixture(
       duration: geometry.duration,
       trackCount: TRACK_COUNT,
       keyframedElementCount: keyframeCache.size,
-      expandedElementCount: 0,
+      expandedElementCount: expandedClipIds.size,
     }),
     elements,
     keyframeCache,
     gsapAnimations,
+    expandedClipIds,
   };
 }

@@ -141,7 +141,7 @@ export interface TimelineAutomationLaneSlotProps {
   lanes: UseAutomationLanesResult;
   pps: number;
   /** Keyframe lanes already stacked above, which automation sits under. */
-  laneCount?: number;
+  laneCount: number;
   /** Exact y for the first lane, overriding `laneCount`. A group's lanes sit
    *  directly under its header row rather than under a stack of keyframe
    *  lanes, so it cannot be said in `laneCount`. */
@@ -168,7 +168,7 @@ export function TimelineAutomationLaneSlot({
   isSelected,
   lanes,
   pps,
-  laneCount = 0,
+  laneCount,
   topOffset,
   accentColor,
   currentTime,

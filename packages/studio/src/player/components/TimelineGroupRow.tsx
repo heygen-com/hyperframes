@@ -37,7 +37,7 @@ interface TimelineGroupRowProps {
   collapsedGroupIds: ReadonlySet<string>;
   expandedLaneOwnerIds: ReadonlySet<string>;
   toggleGroupExpanded: (id: string) => void;
-  toggleLaneOwnerExpanded: (ids: readonly string[]) => void;
+  toggleLaneOwnerExpanded: (id: string) => void;
   lanes: UseAutomationLanesResult;
   pps: number;
   currentTime: number;
@@ -120,6 +120,9 @@ export function TimelineGroupRow({
       index={index}
       rowKey={rowKey}
       logicalRow={logicalRow}
+      propertyRows={[]}
+      lanesId=""
+      headerLanesId=""
       top={top}
       height={height}
       virtualized={virtualized}
@@ -151,7 +154,7 @@ export function TimelineGroupRow({
           // not own and cannot show.
           laneCount={groupAutomationLanes([groupElement]).length}
           isLaneOpen={isLaneOpen}
-          onToggleLanes={() => toggleLaneOwnerExpanded([group.id])}
+          onToggleLanes={() => toggleLaneOwnerExpanded(group.id)}
           fxChain={group.fxChain}
           onFxChainChange={(next) => writeGroupFxChain(next, false)}
           onFxChainPreview={(next) => writeGroupFxChain(next, true)}
@@ -199,6 +202,7 @@ export function TimelineGroupRow({
             lanes={lanes}
             pps={pps}
             // Below the strip, which sits directly under the header row.
+            laneCount={0}
             topOffset={TRACK_H}
             accentColor={GROUP_LANE_ACCENT}
             currentTime={currentTime}

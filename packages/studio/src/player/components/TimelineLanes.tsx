@@ -2,18 +2,21 @@ import { Fragment, useId, useMemo } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
+import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { useAutomationLanes } from "./useAutomationLanes";
 import { useAutomationSelectionKeyboard } from "../../hooks/useAutomationSelectionKeyboard";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { TimelineGroupRow } from "./TimelineGroupRow";
 import { useTimelineLaneRowIndexes, useTimelineGroupDisclosure } from "./useTimelineLaneRowIndexes";
+import { useTimelineClipDisclosure } from "./useTimelineClipDisclosure";
 import {
-  isTimelineRowExpanded,
+  isTrackRowExpanded,
   resolveTrackKeyframeClip,
   trackShowsBeatStrip,
 } from "./useTimelineTrackLayout";
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
+import { clipTimingStart } from "../../hooks/gsapShared";
 import { getTimelineEditCapabilities } from "./timelineEditing";
 import { CLIP_Y, TRACK_H } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
@@ -77,8 +80,10 @@ export function TimelineLanes({
   getPreviewElement,
   getTrackStyle,
   keyframeCache,
+  gsapAnimations,
   selectedKeyframes,
   currentTime,
+  onSeek,
   onSelectSegment,
   onClickKeyframe,
   onShiftClickKeyframe,
@@ -88,6 +93,7 @@ export function TimelineLanes({
   onContextMenuLane,
   beatAnalysis,
   onToggleTrackHidden,
+  onTogglePropertyGroupKeyframe,
   onResizeElement,
   onMoveElement,
   onRazorSplit,
@@ -96,6 +102,7 @@ export function TimelineLanes({
   // ponytail: One per-instance namespace prevents aria-controls and aria-owns
   // from resolving into a second timeline that renders the same logical rows.
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
+  const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
@@ -112,6 +119,10 @@ export function TimelineLanes({
     () => new Set(groups.flatMap((group) => group.memberTracks)),
     [groups],
   );
+  const {
+    toggleRowExpanded: toggleRowExpandedTracked,
+    toggleClipExpanded: toggleClipExpandedTracked,
+  } = useTimelineClipDisclosure();
   const actorWindows = useTimelineMultiDragActorWindows(
     multiDragPreview,
     rowsVirtualized,
@@ -123,10 +134,7 @@ export function TimelineLanes({
     rowGeometry,
     scrollRef,
     onToggleRow: (row) => {
-      const ownerIds = row.groupId
-        ? [row.groupId]
-        : row.items.filter((item) => item.kind === "clip").map((item) => item.elementId);
-      if (ownerIds.length > 0) toggleLaneOwnerExpanded(ownerIds);
+      if (row.elementId) toggleClipExpandedTracked(row.elementId);
     },
   });
   return (
@@ -208,7 +216,7 @@ export function TimelineLanes({
             selectedElementIds,
           );
           const keyframeClipKey = keyframeClip?.key ?? keyframeClip?.id;
-          const rowExpanded = isTimelineRowExpanded(els, expandedLaneOwnerIds);
+          const rowExpanded = isTrackRowExpanded(els, expandedClipIds);
           // How tall a clip BAR is drawn. An expanded row is mostly lanes, and a
           // clip left to fill it painted its waveform straight over them — so the
           // bar is capped for every clip on the row, not just the one whose
@@ -224,7 +232,9 @@ export function TimelineLanes({
           // on the canvas. Keyed by display row, not by `trackNum`, which is a
           // fractional sort key and would mint ids like `...-0.16666666666666666`.
           const lanesId = `${lanesIdPrefix}-track-${row}`;
-          // The caret reveals the track's automation lanes in the row-owned region.
+          // The caret reveals two canvas regions now: the active clip's keyframe
+          // lanes and the track's automation lanes. They cannot be one element —
+          // one belongs to a clip, the other to the row — so the caret names both.
           const automationLanesId = `${lanesId}-automation`;
           // The header's remove buttons write through the same binding the lanes
           // themselves edit through, so a deletion persists exactly like dragging
@@ -252,6 +262,9 @@ export function TimelineLanes({
               index={row}
               rowKey={rowKey}
               logicalRow={logicalRow}
+              propertyRows={trackLogicalRows.slice(1)}
+              lanesId={lanesId}
+              headerLanesId={`${lanesId} ${automationLanesId}`}
               top={rowGeometry.getRowTop(row)}
               height={rowHeight}
               virtualized={rowsVirtualized}
@@ -270,21 +283,27 @@ export function TimelineLanes({
                   els[0]?.id ??
                   `Track${trackDisplaySuffix(displayNumber)}`
                 }
-                lanesId={automationLanesId}
+                lanesId={`${lanesId} ${automationLanesId}`}
                 contentOrigin={contentOrigin}
                 keyframeClip={keyframeClip}
                 trackElements={els}
                 clipCount={els.length}
                 isExpanded={rowExpanded}
+                animations={keyframeClipKey ? (gsapAnimations.get(keyframeClipKey) ?? []) : []}
+                currentTime={currentTime}
                 isTrackHidden={isTrackHidden}
                 isAudioTrack={isAudioTrack}
                 isGroupMember={groupMemberTracks.has(trackNum)}
                 theme={theme}
                 onToggleClipExpanded={() => {
-                  toggleLaneOwnerExpanded(els.map(getTimelineElementIdentity));
+                  const keys = els.map(getTimelineElementIdentity);
+                  if (keys.length > 0) toggleRowExpandedTracked(keys);
                 }}
                 onToggleTrackHidden={onToggleTrackHidden}
+                onTogglePropertyGroupKeyframe={onTogglePropertyGroupKeyframe}
                 onRemoveAutomationLane={removeAutomationLane}
+                onSeek={onSeek}
+                rovingTargetId={keyboard.rovingTargetId}
               />
               <div
                 role="gridcell"
@@ -347,6 +366,11 @@ export function TimelineLanes({
                   renderElements.map((el) => {
                     const clipStyle = getTrackStyle(el.tag);
                     const elementKey = getTimelineElementIdentity(el);
+                    // Only the track's active keyframe clip shows expanded lanes;
+                    // other clips (incl. siblings on a shared track) show compact
+                    // diamonds on their own bar instead.
+                    const isTrackKeyframeClip = elementKey === keyframeClipKey;
+                    const showsLanes = isTrackKeyframeClip && rowExpanded;
                     const capabilities = getTimelineEditCapabilities(el);
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
@@ -437,7 +461,7 @@ export function TimelineLanes({
                       </TimelineClip>
                     );
                     const compactKeyframes = keyframeCache?.get(elementKey);
-                    const compactDiamonds = compactKeyframes && (
+                    const compactDiamonds = !showsLanes && compactKeyframes && (
                       <TimelineCompactDiamonds
                         key={`${clipKey}-diamonds`}
                         element={previewElement}
@@ -459,6 +483,46 @@ export function TimelineLanes({
                         suppressClickRef={suppressClickRef}
                       />
                     );
+                    // Keep this shell mounted while collapsed so aria-controls stays valid
+                    // and multi-drag cannot remount the subtree mid-gesture.
+                    const propertyLanes = isTrackKeyframeClip && (
+                      <TimelinePropertyLanes
+                        key={`${clipKey}-property-lanes`}
+                        id={lanesId}
+                        animations={showsLanes ? (gsapAnimations.get(elementKey) ?? []) : []}
+                        // clipTimingStart, not the raw start: an expanded sub-comp
+                        // child's start is host-absolute while its tweens are
+                        // local to its own file.
+                        clipStart={clipTimingStart(previewElement)}
+                        clipDuration={previewElement.duration}
+                        clipLeftPx={previewElement.start * pps}
+                        clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                        accentColor={clipStyle.accent}
+                        isSelected={isSelected}
+                        currentPercentage={
+                          previewElement.duration > 0
+                            ? ((currentTime - previewElement.start) / previewElement.duration) * 100
+                            : 0
+                        }
+                        elementId={elementKey}
+                        selectedKeyframes={selectedKeyframes}
+                        rovingTargetId={keyboard.rovingTargetId}
+                        onSelectSegment={(target) => onSelectSegment?.(elementKey, target)}
+                        onClickKeyframe={(target) => onClickKeyframe?.(previewElement, target)}
+                        onShiftClickKeyframe={(target) =>
+                          onShiftClickKeyframe?.(elementKey, target)
+                        }
+                        onContextMenuKeyframe={(e, target) =>
+                          onContextMenuKeyframe?.(e, elementKey, target)
+                        }
+                        onMoveKeyframe={(target, toClipPercentage) =>
+                          onMoveKeyframe?.(elementKey, target, toClipPercentage) ??
+                          Promise.resolve(false)
+                        }
+                        suppressClickRef={suppressClickRef}
+                      />
+                    );
+
                     // Keep one keyed top-level child per element. Returning an
                     // array here makes React reconcile the outer array by
                     // position, so a window shift remounts otherwise stable
@@ -468,6 +532,7 @@ export function TimelineLanes({
                         <Fragment key={clipKey}>
                           {clip}
                           {compactDiamonds}
+                          {propertyLanes}
                         </Fragment>
                       );
                     }
@@ -484,6 +549,7 @@ export function TimelineLanes({
                       >
                         {clip}
                         {compactDiamonds}
+                        {propertyLanes}
                       </div>
                     );
                   })
@@ -517,6 +583,7 @@ export function TimelineLanes({
                       }}
                       lanes={automationLanes}
                       pps={pps}
+                      laneCount={keyframeClipKey ? (laneCounts.get(keyframeClipKey) ?? 0) : 0}
                       accentColor={getTrackStyle(keyframeClip?.tag ?? "").accent}
                       currentTime={currentTime}
                       beatTimes={beatAnalysis?.beatTimes}

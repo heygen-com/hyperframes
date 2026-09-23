@@ -117,6 +117,7 @@ export interface TimelineLanesProps extends TimelineLaneBaseProps {
   snapGuide: TimelineSnapTarget | null;
   multiDragPreview: MultiDragPreviewInput | null;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
+  onTogglePropertyGroupKeyframe: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
   onResizeElement: TimelineEditCallbacks["onResizeElement"];
   onMoveElement: TimelineEditCallbacks["onMoveElement"];
   onRazorSplit: TimelineEditCallbacks["onRazorSplit"];

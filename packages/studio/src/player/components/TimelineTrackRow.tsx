@@ -1,10 +1,19 @@
 import type { ReactNode } from "react";
+import { timelineLogicalRowCellId } from "./timelineNavigationIdentity";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 
 interface TimelineTrackRowProps {
   index: number;
   rowKey: number;
   logicalRow: TimelineLogicalRow;
+  propertyRows: readonly TimelineLogicalRow[];
+  /** Names the canvas-side content cell — the active clip's own property lanes,
+   *  minted with this single id in TimelinePropertyLanes. */
+  lanesId: string;
+  /** Names the header cell. Space-separated because the caret it lives under
+   *  expands two disjoint subtrees (the clip's keyframe lanes AND the track's
+   *  automation lanes) — see TimelineTrackHeader for why they cannot share one id. */
+  headerLanesId: string;
   top: number;
   height: number;
   virtualized: boolean;
@@ -19,6 +28,9 @@ export function TimelineTrackRow({
   index,
   rowKey,
   logicalRow,
+  propertyRows,
+  lanesId,
+  headerLanesId,
   top,
   height,
   virtualized,
@@ -54,6 +66,39 @@ export function TimelineTrackRow({
       >
         {children}
       </div>
+      {propertyRows.map((row) => {
+        const group = row.propertyGroup;
+        const keyframeCount = row.items.filter((item) => item.kind === "keyframe").length;
+        const easeCount = row.items.filter((item) => item.kind === "ease").length;
+        return (
+          // ponytail: aria-owns maps this hidden logical row onto the two visible
+          // property-lane cells without duplicating interactive controls.
+          <div
+            key={row.id}
+            role="row"
+            aria-rowindex={row.logicalIndex + 1}
+            aria-level={row.level}
+            data-property-group={group}
+            data-timeline-logical-row-id={row.id}
+            className="sr-only"
+          >
+            <div
+              role="rowheader"
+              aria-colindex={1}
+              aria-owns={timelineLogicalRowCellId(headerLanesId, row.id, "header")}
+            >
+              {group}
+            </div>
+            <div
+              role="gridcell"
+              aria-colindex={2}
+              aria-owns={timelineLogicalRowCellId(lanesId, row.id, "content")}
+            >
+              {keyframeCount} keyframes, {easeCount} ease controls
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -84,6 +84,7 @@ export function useStudioTestHooks({
           selectedKeyframes: new Set(),
           keyframeCache: fixture.keyframeCache,
           gsapAnimations: fixture.gsapAnimations,
+          expandedClipIds: fixture.expandedClipIds,
         });
         return fixture.summary;
       },
