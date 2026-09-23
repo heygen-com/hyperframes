@@ -17,7 +17,7 @@ function Probe() {
 }
 
 beforeEach(() => {
-  usePlayerStore.setState({ previewBooted: true });
+  usePlayerStore.setState({ timelineProjectId: "demo", previewBooted: true });
 });
 
 afterEach(() => {
@@ -80,5 +80,19 @@ describe("useLintModal background lint", () => {
 
     await act(async () => usePlayerStore.getState().markPreviewBooted());
     expect(fetchStub).toHaveBeenCalledTimes(1);
+  });
+
+  it("never lints a project the user left before its preview booted", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const fetchStub = vi.fn(lintResponse([]));
+    vi.stubGlobal("fetch", fetchStub);
+    root = createRoot(document.createElement("div"));
+    await act(async () => root?.render(<Probe />));
+
+    await act(async () => {
+      usePlayerStore.getState().beginTimelineSession("another-project");
+      usePlayerStore.getState().markPreviewBooted();
+    });
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,7 @@
  */
 import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
 import { isStudioHoldSet } from "@hyperframes/core/gsap-parser";
-import { usePlayerStore, whenPreviewBooted } from "../player/store/playerStore";
+import { isPreviewBooted, usePlayerStore, whenPreviewBooted } from "../player/store/playerStore";
 import { replaceKeyframeCacheForFile } from "./gsapKeyframeCacheHelpers";
 import { resolveClipTimingBasis, resolveSelectorElementIds, toClipKeyframes } from "./gsapShared";
 import {
@@ -75,7 +75,7 @@ async function requestParsedAnimations(
   sourceFile: string,
 ): Promise<ParsedGsapAnimations | null> {
   // The parse runs on the server's only event loop and feeds keyframes, not the first frame.
-  if (!usePlayerStore.getState().previewBooted) await whenPreviewBooted();
+  if (!isPreviewBooted(projectId) && !(await whenPreviewBooted(projectId))) return null;
   try {
     const res = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
