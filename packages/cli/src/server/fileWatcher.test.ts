@@ -6,14 +6,24 @@ type WatchCallback = (eventType: string, filename: string | Buffer | null) => vo
 const mockWatcher = new EventEmitter() as EventEmitter & { close: () => void };
 mockWatcher.close = vi.fn();
 
+const fakeDirs = { children: [] as string[], unwatchable: "" };
+
 vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs")>();
   return {
     ...original,
-    watch: vi.fn((_path: string, _options: unknown, onChange: WatchCallback) => {
+    watch: vi.fn((path: string, _options: unknown, onChange: WatchCallback) => {
+      if (fakeDirs.unwatchable && path.endsWith(fakeDirs.unwatchable)) {
+        throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
+      }
       mockWatcher.on("change", onChange);
       return mockWatcher;
     }),
+    readdirSync: vi.fn((path: string) =>
+      path === "/fake/project/dir"
+        ? fakeDirs.children.map((name) => ({ name, isDirectory: () => true }))
+        : [],
+    ),
   };
 });
 
@@ -59,6 +69,26 @@ describe("createProjectWatcher", () => {
     expect(listener.mock.calls).toEqual([["scene-a.html"], ["scene-b.html"]]);
     projectWatcher.close();
   });
+
+  it.runIf(process.platform === "linux")(
+    "keeps the project watched when one subdirectory cannot be",
+    () => {
+      vi.useFakeTimers();
+      fakeDirs.children = ["compositions", "full"];
+      fakeDirs.unwatchable = "full";
+      const projectWatcher = createProjectWatcher("/fake/project/dir");
+      const listener = vi.fn();
+      projectWatcher.addListener(listener);
+
+      mockWatcher.emit("change", "change", "index.html");
+      vi.advanceTimersByTime(300);
+
+      expect(listener).toHaveBeenCalledWith("index.html");
+      fakeDirs.children = [];
+      fakeDirs.unwatchable = "";
+      projectWatcher.close();
+    },
+  );
 
   // Regression: fs.watch can fail asynchronously (e.g. EMFILE from exhausted
   // OS watch handles) via an 'error' event, not a thrown exception. An
