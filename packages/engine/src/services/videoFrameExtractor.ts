@@ -923,6 +923,20 @@ export async function extractVideoFramesRange(
     );
   }
 
+  // Post-extraction reconciliation: when FFmpeg delivers <=60% of the
+  // frames predicted by the probed duration, the duration is likely
+  // inflated (container duration includes a longer audio track). Correct
+  // it so downstream coverage accounting uses the actual video extent.
+  if (framePaths.size > 0 && duration > 0 && !options.finalFrameOnly) {
+    const expectedAtFps = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+    if (expectedAtFps > 0 && framePaths.size <= expectedAtFps * 0.6) {
+      const correctedDuration = startTime + framePaths.size / fps;
+      if (correctedDuration < metadata.videoStreamDurationSeconds) {
+        metadata.videoStreamDurationSeconds = correctedDuration;
+      }
+    }
+  }
+
   return {
     videoId,
     srcPath: videoPath,
