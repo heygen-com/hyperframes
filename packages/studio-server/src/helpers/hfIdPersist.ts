@@ -1,6 +1,26 @@
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { replaceFileAtomically } from "./atomicFile.js";
+import { isInHiddenOrVendorDir, walkDir } from "./safePath.js";
+
+export const isCompositionSource = (html: string): boolean => /data-composition-id\s*=/.test(html);
+
+/** Pins hf-ids into every composition in the project. A host runs it once before it serves or
+ * watches the project: an id write during a session reaches Studio as an outside edit and reloads it. */
+export function stampProjectHfIds(projectDir: string): void {
+  for (const file of walkDir(projectDir)) {
+    if (!file.endsWith(".html") || isInHiddenOrVendorDir(file)) continue;
+    const absPath = join(projectDir, file);
+    let html: string;
+    try {
+      html = readFileSync(absPath, "utf-8");
+    } catch {
+      continue; // unreadable now; the preview route stamps it when it is served
+    }
+    if (isCompositionSource(html)) stampFileHfIds(absPath);
+  }
+}
 
 /**
  * Ensure `html` has `data-hf-id` attributes minted, and write the result back

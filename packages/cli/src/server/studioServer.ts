@@ -50,6 +50,7 @@ import {
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
+  stampProjectHfIds,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
@@ -400,6 +401,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const browserGpuMode = options.browserGpuMode ?? resolveLocalBrowserGpuMode();
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
+  stampProjectHfIds(projectDir);
   const watcher = createProjectWatcher(projectDir);
 
   // ── CLI adapter for the shared studio API ──────────────────────────────
