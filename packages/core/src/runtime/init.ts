@@ -291,9 +291,21 @@ export function initSandboxRuntimeModular(): void {
   state.transportClock = clock;
   const webAudio = new WebAudioTransport();
   let webAudioReady = false;
-  void webAudio.init().then((ok) => {
-    webAudioReady = ok;
-  });
+  let webAudioInitPromise: Promise<boolean> | null = null;
+  // `new AudioContext()` inside `init()` costs ~230ms of synchronous CPU;
+  // starting it here used to block every image/video request behind it.
+  // Deferred to first play instead: transport.play() below reschedules once
+  // this resolves, so the native fallback it already has for a losing race
+  // only covers the gap until then, not the whole first play session.
+  const ensureWebAudioInit = (): Promise<boolean> => {
+    if (!webAudioInitPromise) {
+      webAudioInitPromise = webAudio.init().then((ok) => {
+        webAudioReady = ok;
+        return ok;
+      });
+    }
+    return webAudioInitPromise;
+  };
   window.__hf = window.__hf || {};
   /** Hidden by an ancestor, or by the BUS this clip belongs to. The bus is
    *  never an ancestor — membership is on the member's `data-audio-group` — so
@@ -3110,11 +3122,18 @@ export function initSandboxRuntimeModular(): void {
       state.isPlaying = true;
       state.mediaForceSyncNextTick = true;
       hardSyncAllMedia(clock.now());
-      // Schedule audio through WebAudio for sample-accurate timing.
-      // Falls back to HTMLMediaElement playback if WebAudio isn't ready
-      // or decoding fails (the syncRuntimeMedia path handles that).
-      if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
-        scheduleWebAudioForActiveClips();
+      // Schedule audio through WebAudio for sample-accurate timing. The
+      // context is created lazily, on this first play; a losing race falls
+      // back to HTMLMediaElement playback (syncRuntimeMedia, below) until it
+      // resolves, then reschedules onto WebAudio for the rest of this play.
+      if (!state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
+        if (webAudioReady) {
+          scheduleWebAudioForActiveClips();
+        } else {
+          void ensureWebAudioInit().then((ok) => {
+            if (ok && clock.isPlaying()) scheduleWebAudioForActiveClips();
+          });
+        }
       }
       runAdapters("play");
       syncMediaForCurrentState();

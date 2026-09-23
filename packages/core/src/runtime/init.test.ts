@@ -3969,6 +3969,53 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  // Runtime init used to construct the WebAudio `AudioContext` synchronously,
+  // ahead of every image/video request the composition makes.
+  describe("lazy Web Audio context creation", () => {
+    class CountingAudioContext {
+      static instances = 0;
+      currentTime = 0;
+      state = "running";
+      destination = {};
+      resume() {
+        return Promise.resolve();
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect() {}, disconnect() {} };
+      }
+      constructor() {
+        CountingAudioContext.instances += 1;
+      }
+    }
+    const originalAudioContext = (globalThis as Record<string, unknown>).AudioContext;
+
+    beforeEach(() => {
+      CountingAudioContext.instances = 0;
+      (globalThis as Record<string, unknown>).AudioContext = CountingAudioContext;
+    });
+
+    afterEach(() => {
+      (globalThis as Record<string, unknown>).AudioContext = originalAudioContext;
+    });
+
+    it("defers AudioContext construction from runtime init to the first play()", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-duration="10">` +
+        `<audio data-start="0" data-duration="10"></audio>` +
+        `</div>`;
+      const audio = document.querySelector("audio")!;
+      audio.load = () => {};
+      audio.play = vi.fn(() => Promise.resolve());
+      window.__timelines = { main: createMockTimeline(10) };
+
+      initSandboxRuntimeModular();
+      expect(CountingAudioContext.instances).toBe(0);
+
+      window.__player?.play();
+      expect(CountingAudioContext.instances).toBe(1);
+    });
+  });
+
   // #3458: cross-origin media with no CORS opt-in. `createMediaElementSource`
   // returns a node that outputs silence per the Web Audio spec rather than
   // throwing, so the composition played through with visuals animating and no
