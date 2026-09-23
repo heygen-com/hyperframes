@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Magnetic Cursor"
   description="A soft dot pointer glides across an editor toolbar, is pulled into each button and morphs into its rounded hover plate while the icon leans toward it, presses one, and leaves as a dot."
   variables={[{"id":"accent","type":"color","role":"style","label":"Accent","default":"#3b82f6"},{"id":"tone","type":"enum","role":"style","label":"Tone","default":"light","options":[{"value":"light","label":"Light toolbar"},{"value":"dark","label":"Dark toolbar"}]},{"id":"visits","type":"string","role":"content","label":"Buttons visited","description":"Comma-separated indexes 0-5: bold, italic, underline, link, list, image.","default":"0,3,5"},{"id":"press","type":"number","role":"timing","label":"Pressed visit","default":2,"min":1,"max":3,"step":1}]}
-  meta={{"category":"Cursors","badge":"Stable","codeLines":370}}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":420}}
   attribution={{"path":"registry/components/magnetic-cursor","tags":["cursor","motion-primitive","pointer","hover","morph","toolbar"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/magnetic-cursor/magnetic-cursor.html"
@@ -136,13 +136,38 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           <rect id="mc-plate" x="0" y="0" width="0" height="0" rx="0" />
         </svg>
         <div class="mc-bar" id="mc-bar">
-          <div class="mc-btn"><svg class="mc-icon" viewBox="0 0 24 24"><path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" /></svg></div>
-          <div class="mc-btn"><svg class="mc-icon" viewBox="0 0 24 24"><path d="M10 5h8M6 19h8M14 5l-4 14" /></svg></div>
-          <div class="mc-btn"><svg class="mc-icon" viewBox="0 0 24 24"><path d="M7 4v7a5 5 0 0 0 10 0V4M5 20h14" /></svg></div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
+            </svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24"><path d="M10 5h8M6 19h8M14 5l-4 14" /></svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path d="M7 4v7a5 5 0 0 0 10 0V4M5 20h14" />
+            </svg>
+          </div>
           <div class="mc-sep"></div>
-          <div class="mc-btn"><svg class="mc-icon" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg></div>
-          <div class="mc-btn"><svg class="mc-icon" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" /></svg></div>
-          <div class="mc-btn"><svg class="mc-icon" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><path d="M3.5 16l5-5 4 4 3-3 5 5M15 9h.01" /></svg></div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path
+                d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"
+              />
+            </svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+            </svg>
+          </div>
+          <div class="mc-btn">
+            <svg class="mc-icon" viewBox="0 0 24 24">
+              <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+              <path d="M3.5 16l5-5 4 4 3-3 5 5M15 9h.01" />
+            </svg>
+          </div>
         </div>
       </div>
 
@@ -183,7 +208,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           var compositionId = "magnetic-cursor";
           var duration = Math.max(
             0.001,
-            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "5"),
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "5",
+            ),
           );
           var tone = vars.tone === "dark" ? "dark" : "light";
           var accent = String(vars.accent || "#3b82f6");
@@ -199,7 +226,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             })
             .slice(0, 3);
           if (visits.length === 0) visits = [0, 3, 5];
-          var pressVisit = Math.max(1, Math.min(visits.length, Math.round(Number(vars.press) || 2))) - 1;
+          var pressVisit =
+            Math.max(1, Math.min(visits.length, Math.round(Number(vars.press) || 2))) - 1;
 
           // Geometry is read once at load: fixed viewport per render, no resize mid-render.
           var W = root.clientWidth || 1920;
@@ -232,7 +260,12 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           visits.forEach(function (index, k) {
             if (k > 0) t += GLIDE;
             var hold = HOLD + (k === pressVisit ? PRESS_HOLD : 0);
-            plan.push({ index: index, arrive: t, leave: t + hold, press: k === pressVisit ? t + 0.28 : -1 });
+            plan.push({
+              index: index,
+              arrive: t,
+              leave: t + hold,
+              press: k === pressVisit ? t + 0.28 : -1,
+            });
             t += hold + RELEASE;
           });
           var base = t + EXIT;
@@ -276,20 +309,30 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             var cx = (p0.x + p1.x) / 2 - (p1.y - p0.y) * bend;
             var cy = (p0.y + p1.y) / 2 + (p1.x - p0.x) * bend;
             var w = 1 - u;
-            return { x: w * w * p0.x + 2 * w * u * cx + u * u * p1.x, y: w * w * p0.y + 2 * w * u * cy + u * u * p1.y };
+            return {
+              x: w * w * p0.x + 2 * w * u * cx + u * u * p1.x,
+              y: w * w * p0.y + 2 * w * u * cy + u * u * p1.y,
+            };
           }
 
           function fingerAt(time) {
             var first = plan[0];
-            if (time <= first.arrive) return glide(START, arrivePoint(first), easeOut(clamp01(time / first.arrive)), 0.15);
+            if (time <= first.arrive)
+              return glide(START, arrivePoint(first), easeOut(clamp01(time / first.arrive)), 0.15);
             for (var k = 0; k < plan.length; k++) {
               var v = plan[k];
               var a = arrivePoint(v);
               var d = driftPoint(v);
-              if (time <= v.leave) return glide(a, d, easeInOut(clamp01((time - v.arrive) / (v.leave - v.arrive))), 0);
+              if (time <= v.leave)
+                return glide(a, d, easeInOut(clamp01((time - v.arrive) / (v.leave - v.arrive))), 0);
               var next = plan[k + 1];
               if (next && time <= next.arrive) {
-                return glide(d, arrivePoint(next), easeInOut(clamp01((time - v.leave) / (next.arrive - v.leave))), -0.12);
+                return glide(
+                  d,
+                  arrivePoint(next),
+                  easeInOut(clamp01((time - v.leave) / (next.arrive - v.leave))),
+                  -0.12,
+                );
               }
             }
             var last = driftPoint(plan[plan.length - 1]);
@@ -332,7 +375,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             if (!active) {
               // The magnet: within reach of a button the dot is already leaning toward its centre.
               boxes.forEach(function (b) {
-                var pull = 0.35 * smooth(1 - Math.hypot(b.x - finger.x, b.y - finger.y) / PULL_RADIUS);
+                var pull =
+                  0.35 * smooth(1 - Math.hypot(b.x - finger.x, b.y - finger.y) / PULL_RADIUS);
                 cx = mix(cx, b.x, pull);
                 cy = mix(cy, b.y, pull);
               });
@@ -362,7 +406,13 @@ import { InstallCommand } from "/snippets/install-command.jsx";
               var dy = (finger.y - bx.y) * 0.12 * lean;
               var dip = active && active.index === i ? squash : 0;
               icon.style.transform =
-                "translate(" + dx.toFixed(2) + "px," + dy.toFixed(2) + "px) scale(" + (1 - 0.12 * dip).toFixed(3) + ")";
+                "translate(" +
+                dx.toFixed(2) +
+                "px," +
+                dy.toFixed(2) +
+                "px) scale(" +
+                (1 - 0.12 * dip).toFixed(3) +
+                ")";
               var pressed = plan.some(function (v) {
                 return v.index === i && v.press >= 0 && time >= v.press + 0.05 * k0;
               });

@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Annotate Cursor"
   description="A marker pen glides onto the frame and hand-draws a loose loop, an underline, or an arrow around a region, the ink laid exactly under its nib, then lifts and leaves."
   variables={[{"id":"shape","type":"enum","role":"style","label":"Mark","default":"circle","options":[{"value":"circle","label":"Loose loop"},{"value":"underline","label":"Underline"},{"value":"arrow","label":"Arrow"}]},{"id":"color","type":"color","role":"style","label":"Ink","default":"#f43f5e"},{"id":"target_x","type":"number","role":"layout","label":"Region left","default":40,"min":0,"max":95,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Region top","default":38,"min":0,"max":95,"step":1,"unit":"%"},{"id":"target_w","type":"number","role":"layout","label":"Region width","default":20,"min":2,"max":90,"step":1,"unit":"%"},{"id":"target_h","type":"number","role":"layout","label":"Region height","default":16,"min":2,"max":90,"step":1,"unit":"%"}]}
-  meta={{"category":"Cursors","badge":"Stable","codeLines":345}}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":404}}
   attribution={{"path":"registry/components/cursor-annotate","tags":["cursor","motion-primitive","pen","annotation","draw-on","highlight"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-annotate/cursor-annotate.html"
@@ -110,7 +110,16 @@ import { InstallCommand } from "/snippets/install-command.jsx";
                 <path d="M0 0 L15 -5.5 L15 5.5 Z" fill="#1d1d22" />
                 <path id="ca-pen-tip" d="M3 -1.4 L15 -5.5 L15 5.5 L3 1.4 Z" />
                 <rect x="15" y="-7.5" width="14" height="15" rx="2" fill="#2a2a31" />
-                <rect x="29" y="-9" width="62" height="18" rx="4" fill="#f6f6f8" stroke="#1d1d22" stroke-width="1.5" />
+                <rect
+                  x="29"
+                  y="-9"
+                  width="62"
+                  height="18"
+                  rx="4"
+                  fill="#f6f6f8"
+                  stroke="#1d1d22"
+                  stroke-width="1.5"
+                />
                 <rect x="36" y="-9" width="8" height="18" id="ca-pen-band" />
                 <rect x="91" y="-9.5" width="16" height="19" rx="6" fill="#1d1d22" />
               </g>
@@ -164,7 +173,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
               root.dataset.duration || html.getAttribute("data-composition-duration") || "4.2",
             ),
           );
-          var shape = ["circle", "underline", "arrow"].indexOf(vars.shape) >= 0 ? vars.shape : "circle";
+          var shape =
+            ["circle", "underline", "arrow"].indexOf(vars.shape) >= 0 ? vars.shape : "circle";
           var color = /^#[0-9a-f]{3,8}$/i.test(String(vars.color)) ? vars.color : "#f43f5e";
           var W = root.clientWidth || 1920;
           var H = root.clientHeight || 1080;
@@ -205,7 +215,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
               var r = (1 + 0.035 * Math.sin(3 * a + 1.1)) * (1 + 0.08 * u);
               var ex = Math.cos(a) * rx * r;
               var ey = Math.sin(a) * ry * r;
-              pts.push([cx + ex * Math.cos(tilt) - ey * Math.sin(tilt), cy + ex * Math.sin(tilt) + ey * Math.cos(tilt)]);
+              pts.push([
+                cx + ex * Math.cos(tilt) - ey * Math.sin(tilt),
+                cy + ex * Math.sin(tilt) + ey * Math.cos(tilt),
+              ]);
             }
             return [polyline(pts)];
           }
@@ -217,7 +230,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             var pts = [];
             for (var i = 0; i <= 48; i++) {
               var u = i / 48;
-              pts.push([x0 + span * u, y + 4 * unit * Math.sin(u * Math.PI * 1.3) - 12 * unit * u * u]);
+              pts.push([
+                x0 + span * u,
+                y + 4 * unit * Math.sin(u * Math.PI * 1.3) - 12 * unit * u * u,
+              ]);
             }
             return [polyline(pts)];
           }
@@ -225,13 +241,19 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           // Shaft from below-left, curving onto the region; the head is a second stroke.
           function arrowStrokes() {
             var tip = { x: box.x - 10 * unit, y: box.y + box.h + 8 * unit };
-            var from = { x: tip.x - Math.max(160 * unit, box.w * 0.7), y: tip.y + Math.max(120 * unit, box.h * 0.9) };
+            var from = {
+              x: tip.x - Math.max(160 * unit, box.w * 0.7),
+              y: tip.y + Math.max(120 * unit, box.h * 0.9),
+            };
             var ctrl = { x: from.x + (tip.x - from.x) * 0.15, y: tip.y + (from.y - tip.y) * 0.05 };
             var pts = [];
             for (var i = 0; i <= 40; i++) {
               var u = i / 40;
               var v = 1 - u;
-              pts.push([v * v * from.x + 2 * v * u * ctrl.x + u * u * tip.x, v * v * from.y + 2 * v * u * ctrl.y + u * u * tip.y]);
+              pts.push([
+                v * v * from.x + 2 * v * u * ctrl.x + u * u * tip.x,
+                v * v * from.y + 2 * v * u * ctrl.y + u * u * tip.y,
+              ]);
             }
             var back = Math.atan2(ctrl.y - tip.y, ctrl.x - tip.x);
             var len = 30 * unit;
@@ -241,7 +263,12 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             return [polyline(pts), polyline([barb(0.5), [tip.x, tip.y], barb(-0.5)])];
           }
 
-          var strokeDs = shape === "underline" ? underlineStroke() : shape === "arrow" ? arrowStrokes() : loopStroke();
+          var strokeDs =
+            shape === "underline"
+              ? underlineStroke()
+              : shape === "arrow"
+                ? arrowStrokes()
+                : loopStroke();
           var WIDTH = 11 * unit;
           var strokes = strokeDs.map(function (d) {
             var thin = document.createElementNS(SVG_NS, "path");
@@ -300,21 +327,35 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           // Returns the nib position and how far off the paper it is (0 = touching).
           function penAt(t) {
             if (t <= T_LAND) return { p: mix(START, first, glide(clamp01(t / T_LAND))), lift: 1 };
-            if (t <= T_DRAW) return { p: first, lift: 1 - clamp01((t - T_LAND) / (T_DRAW - T_LAND)) };
+            if (t <= T_DRAW)
+              return { p: first, lift: 1 - clamp01((t - T_LAND) / (T_DRAW - T_LAND)) };
             for (var i = 0; i < windows.length; i++) {
               var w = windows[i];
-              if (t <= w.end) return { p: pointOn(strokes[i], stroke((t - w.start) / (w.end - w.start))), lift: 0 };
+              if (t <= w.end)
+                return {
+                  p: pointOn(strokes[i], stroke((t - w.start) / (w.end - w.start))),
+                  lift: 0,
+                };
               var next = windows[i + 1];
               if (next && t < next.start) {
                 var u = (t - w.end) / (next.start - w.end);
-                return { p: mix(pointOn(strokes[i], 1), pointOn(strokes[i + 1], 0), hop(u)), lift: Math.sin(Math.PI * u) };
+                return {
+                  p: mix(pointOn(strokes[i], 1), pointOn(strokes[i + 1], 0), hop(u)),
+                  lift: Math.sin(Math.PI * u),
+                };
               }
             }
             if (t <= T_EXIT) {
               var a = clamp01((t - T_LIFT) / (0.45 * squeeze));
-              return { p: mix(endPoint, ASIDE, gsap.parseEase("power2.out")(a)), lift: Math.min(1, a * 2.5) };
+              return {
+                p: mix(endPoint, ASIDE, gsap.parseEase("power2.out")(a)),
+                lift: Math.min(1, a * 2.5),
+              };
             }
-            return { p: mix(ASIDE, END, leave(clamp01((t - T_EXIT) / (duration - T_EXIT)))), lift: 1 };
+            return {
+              p: mix(ASIDE, END, leave(clamp01((t - T_EXIT) / (duration - T_EXIT)))),
+              lift: 1,
+            };
           }
 
           function drawn(i, t) {
@@ -326,23 +367,41 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             strokes.forEach(function (s, i) {
               var len = drawn(i, t);
               s.thin.style.opacity = len > 0.5 ? "1" : "0";
-              s.thin.setAttribute("stroke-dasharray", len.toFixed(2) + " " + (s.length * 2).toFixed(2));
+              s.thin.setAttribute(
+                "stroke-dasharray",
+                len.toFixed(2) + " " + (s.length * 2).toFixed(2),
+              );
               // The thick core trails the tip and never reaches either end: the stroke tapers.
               var core = Math.min(len, s.length * 0.9) - s.length * 0.08;
               s.thick.style.opacity = core > 0.5 ? "1" : "0";
-              s.thick.setAttribute("stroke-dasharray", Math.max(0, core).toFixed(2) + " " + (s.length * 3).toFixed(2));
+              s.thick.setAttribute(
+                "stroke-dasharray",
+                Math.max(0, core).toFixed(2) + " " + (s.length * 3).toFixed(2),
+              );
               s.thick.setAttribute("stroke-dashoffset", (-s.length * 0.08).toFixed(2));
             });
             var state = penAt(t);
             var lift = state.lift;
-            pen.style.transform = "translate(" + state.p.x.toFixed(2) + "px," + state.p.y.toFixed(2) + "px)";
+            pen.style.transform =
+              "translate(" + state.p.x.toFixed(2) + "px," + state.p.y.toFixed(2) + "px)";
             penBody.setAttribute(
               "transform",
-              "scale(" + ((1.45 + 0.14 * lift) * unit).toFixed(4) + ") rotate(" + (-4 * lift).toFixed(2) + ")",
+              "scale(" +
+                ((1.45 + 0.14 * lift) * unit).toFixed(4) +
+                ") rotate(" +
+                (-4 * lift).toFixed(2) +
+                ")",
             );
             pen.style.filter =
-              "drop-shadow(" + (4 + 16 * lift).toFixed(1) + "px " + (6 + 20 * lift).toFixed(1) +
-              "px " + (3 + 14 * lift).toFixed(1) + "px rgba(0,0,0," + (0.32 - 0.14 * lift).toFixed(3) + "))";
+              "drop-shadow(" +
+              (4 + 16 * lift).toFixed(1) +
+              "px " +
+              (6 + 20 * lift).toFixed(1) +
+              "px " +
+              (3 + 14 * lift).toFixed(1) +
+              "px rgba(0,0,0," +
+              (0.32 - 0.14 * lift).toFixed(3) +
+              "))";
           }
 
           var clock = { t: 0 };

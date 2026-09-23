@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Context Menu Cursor"
   description="A cursor right-clicks a file, a context menu blooms from its tip, the hover highlight tracks the item under it, and the chosen action plays out: duplicate, rename, move to trash, or a confirmation toast."
   variables={[{"id":"items","type":"string","role":"content","label":"Menu items","default":"Open,Rename,Duplicate,Share,Move to Trash"},{"id":"pick","type":"number","role":"content","label":"Chosen item (0 = first)","default":2,"min":0,"max":9,"step":1},{"id":"tone","type":"enum","role":"style","label":"Tone","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
-  meta={{"category":"Cursors","badge":"Stable","codeLines":437}}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":496}}
   attribution={{"path":"registry/components/cursor-context-menu","tags":["cursor","motion-primitive","menu","right-click","desktop","files"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-context-menu/cursor-context-menu.html"
@@ -96,7 +96,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           width: 64cqw;
           border-radius: 1.4cqw;
           background: var(--cm-win);
-          box-shadow: 0 2.4cqw 6cqw rgba(8, 12, 28, 0.35), 0 0 0 1px var(--cm-line);
+          box-shadow:
+            0 2.4cqw 6cqw rgba(8, 12, 28, 0.35),
+            0 0 0 1px var(--cm-line);
         }
         .cm-bar {
           display: flex;
@@ -167,7 +169,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           padding: 0.55cqw;
           border-radius: 0.9cqw;
           background: var(--cm-menu);
-          box-shadow: 0 1.2cqw 3cqw rgba(8, 12, 28, 0.3), 0 0 0 1px var(--cm-line);
+          box-shadow:
+            0 1.2cqw 3cqw rgba(8, 12, 28, 0.3),
+            0 0 0 1px var(--cm-line);
           opacity: 0;
           will-change: transform, opacity;
         }
@@ -221,7 +225,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       <div id="root" data-composition-id="cursor-context-menu" data-duration="5.2">
         <div class="cm-stage">
           <div class="cm-window">
-            <div class="cm-bar"><i class="cm-dot"></i><i class="cm-dot"></i><i class="cm-dot"></i><span>Launch assets</span></div>
+            <div class="cm-bar">
+              <i class="cm-dot"></i><i class="cm-dot"></i><i class="cm-dot"></i
+              ><span>Launch assets</span>
+            </div>
             <div class="cm-grid" id="cm-grid"></div>
           </div>
         </div>
@@ -267,7 +274,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           var compositionId = "cursor-context-menu";
           var duration = Math.max(
             0.001,
-            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "5.2"),
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "5.2",
+            ),
           );
           root.setAttribute("data-tone", vars.tone === "dark" ? "dark" : "light");
           var labels = String(vars.items || DEFAULTS.items || "Open")
@@ -281,18 +290,46 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
           var FILES = [
             ["Q3 roadmap", "pdf", "1.2 MB &middot; PDF", "linear-gradient(135deg,#ff8a7a,#e8465b)"],
-            ["Launch film v4", "mp4", "2.4 GB &middot; Video", "linear-gradient(135deg,#8f7bff,#4b3bd6)"],
-            ["Pricing notes", "md", "18 KB &middot; Text", "linear-gradient(135deg,#6fc3ff,#2f7de1)"],
-            ["Team offsite", "jpg", "4.8 MB &middot; Image", "linear-gradient(135deg,#7fe0a6,#1f9d6b)"],
-            ["Launch film v4 copy", "mp4", "2.4 GB &middot; Video", "linear-gradient(135deg,#8f7bff,#4b3bd6)"],
+            [
+              "Launch film v4",
+              "mp4",
+              "2.4 GB &middot; Video",
+              "linear-gradient(135deg,#8f7bff,#4b3bd6)",
+            ],
+            [
+              "Pricing notes",
+              "md",
+              "18 KB &middot; Text",
+              "linear-gradient(135deg,#6fc3ff,#2f7de1)",
+            ],
+            [
+              "Team offsite",
+              "jpg",
+              "4.8 MB &middot; Image",
+              "linear-gradient(135deg,#7fe0a6,#1f9d6b)",
+            ],
+            [
+              "Launch film v4 copy",
+              "mp4",
+              "2.4 GB &middot; Video",
+              "linear-gradient(135deg,#8f7bff,#4b3bd6)",
+            ],
           ];
           var TARGET = 1;
           var cards = FILES.map(function (f) {
             var card = document.createElement("div");
             card.className = "cm-file";
             card.innerHTML =
-              '<div class="cm-thumb" style="background:' + f[3] + '"></div>' +
-              '<div class="cm-name">' + f[0] + "." + f[1] + '</div><div class="cm-meta">' + f[2] + "</div>";
+              '<div class="cm-thumb" style="background:' +
+              f[3] +
+              '"></div>' +
+              '<div class="cm-name">' +
+              f[0] +
+              "." +
+              f[1] +
+              '</div><div class="cm-meta">' +
+              f[2] +
+              "</div>";
             grid.appendChild(card);
             return card;
           });
@@ -341,8 +378,16 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
           var squeeze = Math.min(1, duration / 5.2);
           var T = {
-            glide: 0.85, rclick: 0.95, bloom: 1.02, travel0: 1.45, travel1: 2.1,
-            click: 2.25, collapse: 2.43, act: 2.55, away0: 3.1, away1: 3.7,
+            glide: 0.85,
+            rclick: 0.95,
+            bloom: 1.02,
+            travel0: 1.45,
+            travel1: 2.1,
+            click: 2.25,
+            collapse: 2.43,
+            act: 2.55,
+            away0: 3.1,
+            away1: 3.7,
           };
           for (var key in T) T[key] *= squeeze;
 
@@ -387,7 +432,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             menu.style.opacity = String(Math.min(1, open * 3) * (1 - shut));
             menu.style.transform = "translate(" + mx + "px," + my + "px) scale(" + menuScale + ")";
             rows.forEach(function (row, i) {
-              var k = easeOut(seg(t, T.bloom + i * 0.025 * squeeze, T.bloom + (i * 0.025 + 0.16) * squeeze));
+              var k = easeOut(
+                seg(t, T.bloom + i * 0.025 * squeeze, T.bloom + (i * 0.025 + 0.16) * squeeze),
+              );
               row.style.opacity = String(k);
               row.style.transform = "translateY(" + (1 - k) * -4 * u + "px)";
             });
@@ -397,11 +444,15 @@ import { InstallCommand } from "/snippets/install-command.jsx";
               y: my + rows[pick].offsetTop + rows[pick].offsetHeight * 0.55,
             };
             var start = { x: -0.06 * W, y: 1.1 * H };
-            var aside = { x: itemPoint.x + (left ? -1 : 1) * 160 * u, y: Math.min(H - 60 * u, itemPoint.y + 180 * u) };
+            var aside = {
+              x: itemPoint.x + (left ? -1 : 1) * 160 * u,
+              y: Math.min(H - 60 * u, itemPoint.y + 180 * u),
+            };
             var p;
             if (t < T.glide) p = lerp(start, anchor, glide(seg(t, 0, T.glide)));
             else if (t < T.travel0) p = anchor;
-            else if (t < T.travel1) p = lerp(anchor, itemPoint, easeInOut(seg(t, T.travel0, T.travel1)));
+            else if (t < T.travel1)
+              p = lerp(anchor, itemPoint, easeInOut(seg(t, T.travel0, T.travel1)));
             else if (t < T.away0) p = itemPoint;
             else p = lerp(itemPoint, aside, easeInOut(seg(t, T.away0, T.away1)));
 
@@ -416,11 +467,19 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
             var done = t >= T.act;
             var k = easeOut(seg(t, T.act, T.act + 0.32 * squeeze));
-            cards[TARGET].classList.toggle("is-on", t >= T.rclick && !(done && action === "duplicate"));
+            cards[TARGET].classList.toggle(
+              "is-on",
+              t >= T.rclick && !(done && action === "duplicate"),
+            );
             copy.classList.toggle("is-on", done && action === "duplicate");
             var showCopy = action === "duplicate" ? k : 0;
             copy.style.opacity = String(showCopy);
-            copy.style.transform = "translateY(" + (1 - showCopy) * 18 * u + "px) scale(" + (0.94 + 0.06 * showCopy) + ")";
+            copy.style.transform =
+              "translateY(" +
+              (1 - showCopy) * 18 * u +
+              "px) scale(" +
+              (0.94 + 0.06 * showCopy) +
+              ")";
             var gone = action === "trash" ? k : 0;
             cards[TARGET].style.opacity = String(1 - gone);
             cards[TARGET].style.transform = "scale(" + (1 - 0.08 * gone) + ")";

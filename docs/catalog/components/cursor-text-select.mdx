@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Text Select Cursor"
   description="An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold."
   variables={[{"id":"title","type":"string","role":"content","label":"Heading","default":"Spring release notes"},{"id":"text","type":"string","role":"content","label":"Paragraph","default":"Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half."},{"id":"phrase","type":"string","role":"content","label":"Phrase to select","default":"approve the final cut"},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#3b6cf6"}]}
-  meta={{"category":"Cursors","badge":"Stable","codeLines":401}}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":432}}
   attribution={{"path":"registry/components/cursor-text-select","tags":["cursor","motion-primitive","text","selection","editor","toolbar"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-text-select/cursor-text-select.html"
@@ -189,14 +189,18 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         </div>
         <div class="ts-toolbar" id="ts-toolbar">
           <div class="ts-btn" id="ts-bold">
-            <svg viewBox="0 0 24 24"><path d="M7 4h6.5a4 4 0 0 1 0 8H7zM7 12h7.5a4 4 0 0 1 0 8H7z" /></svg>
+            <svg viewBox="0 0 24 24">
+              <path d="M7 4h6.5a4 4 0 0 1 0 8H7zM7 12h7.5a4 4 0 0 1 0 8H7z" />
+            </svg>
           </div>
           <div class="ts-btn">
             <svg viewBox="0 0 24 24"><path d="M14 4h-4M14 20h-4M13.5 4 10.5 20" /></svg>
           </div>
           <div class="ts-btn">
             <svg viewBox="0 0 24 24">
-              <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+              <path
+                d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"
+              />
             </svg>
           </div>
           <div class="ts-btn">
@@ -251,7 +255,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           var compositionId = "cursor-text-select";
           var duration = Math.max(
             0.001,
-            parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "5.6"),
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "5.6",
+            ),
           );
           var text = String(vars.text || DEFAULTS.text || "");
           var phrase = String(vars.phrase || "");
@@ -311,8 +317,19 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
           var squeeze = Math.min(1, duration / 5.6);
           var T = {
-            near: 0.6, inEnd: 0.95, press: 1.05, drag0: 1.15, drag1: 2.0, release: 2.05, bar: 2.2,
-            move0: 2.55, move1: 3.25, click: 3.35, bold: 3.42, away0: 3.9, away1: 4.6,
+            near: 0.6,
+            inEnd: 0.95,
+            press: 1.05,
+            drag0: 1.15,
+            drag1: 2.0,
+            release: 2.05,
+            bar: 2.2,
+            move0: 2.55,
+            move1: 3.25,
+            click: 3.35,
+            bold: 3.42,
+            away0: 3.9,
+            away1: 4.6,
           };
           for (var key in T) T[key] *= squeeze;
           var DRAG_REACH = 0.9;
@@ -330,7 +347,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           function dip(t, at) {
             var d = 0.07 * squeeze;
             if (t < at || t > at + d * 3.3) return 1;
-            return t < at + d ? 1 - 0.12 * seg(t, at, at + d) : 0.88 + 0.12 * easeOut(seg(t, at + d, at + d * 3.3));
+            return t < at + d
+              ? 1 - 0.12 * seg(t, at, at + d)
+              : 0.88 + 0.12 * easeOut(seg(t, at + d, at + d * 3.3));
           }
 
           function render(t) {
@@ -351,7 +370,13 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             var barK = seg(t, T.bar, T.bar + 0.32 * squeeze);
             toolbar.style.opacity = String(Math.min(1, barK * 2.5));
             toolbar.style.transform =
-              "translate(" + barX + "px," + barY + "px) scale(" + (0.92 + 0.08 * spring(barK)) + ")";
+              "translate(" +
+              barX +
+              "px," +
+              barY +
+              "px) scale(" +
+              (0.92 + 0.08 * spring(barK)) +
+              ")";
             var pressed = t >= T.click && t < T.click + 0.12 * squeeze;
             boldBtn.style.transform = pressed ? "scale(0.92)" : "";
             boldBtn.classList.toggle("is-on", bold);
@@ -365,7 +390,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             };
             var aside = { x: cardRight + 80 * u, y: target.y + 140 * u };
             var p;
-            var approach = { x: press.x + 150 * u, y: offsetIn(para).y + para.offsetHeight + 70 * u };
+            var approach = {
+              x: press.x + 150 * u,
+              y: offsetIn(para).y + para.offsetHeight + 70 * u,
+            };
             if (t < T.near) p = lerp(start, approach, glide(seg(t, 0, T.near)));
             else if (t < T.inEnd) p = lerp(approach, press, easeInOut(seg(t, T.near, T.inEnd)));
             else if (t < T.drag0) p = press;
@@ -384,8 +412,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             );
             var m = seg(inside, -6 * u, 18 * u);
             var overBar =
-              barK > 0 && p.x > barX - 10 * u && p.x < barX + toolbar.offsetWidth + 10 * u &&
-              p.y > barY - 10 * u && p.y < barY + toolbar.offsetHeight + 10 * u;
+              barK > 0 &&
+              p.x > barX - 10 * u &&
+              p.x < barX + toolbar.offsetWidth + 10 * u &&
+              p.y > barY - 10 * u &&
+              p.y < barY + toolbar.offsetHeight + 10 * u;
             if (overBar) m = 0;
             var beamH = press.h * 1.15;
             ibeam.style.height = beamH + "px";

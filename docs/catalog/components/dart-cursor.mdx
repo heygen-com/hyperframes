@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Dart Cursor"
   description="A bold outlined arrowhead that dives in from camera depth, flies nose-first with motion blur along its path, squashes on two clicks, and whips out of frame."
   variables={[{"id":"tone","type":"enum","role":"style","label":"Tone","default":"dark","options":[{"value":"dark","label":"Dark body, white outline"},{"value":"light","label":"Light body, dark outline"}]},{"id":"target_x","type":"number","role":"layout","label":"First click X","default":34,"min":5,"max":95,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"First click Y","default":58,"min":5,"max":95,"step":1,"unit":"%"},{"id":"target2_x","type":"number","role":"layout","label":"Second click X","default":64,"min":5,"max":95,"step":1,"unit":"%"},{"id":"target2_y","type":"number","role":"layout","label":"Second click Y","default":46,"min":5,"max":95,"step":1,"unit":"%"},{"id":"enter_from","type":"enum","role":"timing","label":"Enter from","default":"right","options":[{"value":"right","label":"Right"},{"value":"left","label":"Left"},{"value":"top","label":"Top"},{"value":"bottom","label":"Bottom"}]},{"id":"exit_to","type":"enum","role":"timing","label":"Exit to","default":"right","options":[{"value":"right","label":"Right"},{"value":"left","label":"Left"},{"value":"top","label":"Top"},{"value":"bottom","label":"Bottom"}]},{"id":"blur","type":"number","role":"style","label":"Motion blur","default":1,"min":0,"max":1.5,"step":0.1}]}
-  meta={{"category":"Cursors","badge":"Stable","codeLines":351}}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":356}}
   attribution={{"path":"registry/components/dart-cursor","tags":["cursor","motion-primitive","pointer","click","motion-blur","depth"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/dart-cursor/dart-cursor.html"
@@ -324,7 +324,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             var depth = depthAt(t);
             var exiting = t > T_EXIT;
             var perFrame = speed / 60;
-            var smearUnits = blurAmount * Math.min(exiting ? 36 : 12, (exiting ? 0.28 : 0.16) * perFrame);
+            var smearUnits =
+              blurAmount * Math.min(exiting ? 36 : 12, (exiting ? 0.28 : 0.16) * perFrame);
             var lift = Math.max(0, depth - 0.9);
 
             cursor.style.transform = "translate(" + p.x.toFixed(2) + "px," + p.y.toFixed(2) + "px)";
@@ -338,7 +339,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
               "))";
             spin.setAttribute(
               "transform",
-              "rotate(" + rotation.toFixed(2) + ") scale(" + (depth * PX_PER_SVG_UNIT).toFixed(4) + ")",
+              "rotate(" +
+                rotation.toFixed(2) +
+                ") scale(" +
+                (depth * PX_PER_SVG_UNIT).toFixed(4) +
+                ")",
             );
             // The blur's x axis is turned onto the travel direction, then the shape turned back.
             var local = wrap(travelDeg - rotation);
