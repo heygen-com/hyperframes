@@ -646,110 +646,160 @@ export async function loadExternalCompositions(
   if (hosts.length === 0) return;
 
   await Promise.all(
-    hosts.map(async (host) => {
-      const src = host.getAttribute("data-composition-src");
-      if (!src) return;
-      const hostIdentity = hostIdentityByElement.get(host);
-      const authoredCompositionId = hostIdentity?.authoredCompositionId || null;
-      const runtimeCompositionId =
-        hostIdentity?.runtimeCompositionId || authoredCompositionId || null;
-      let compositionUrl: URL | null = null;
-      try {
-        compositionUrl = new URL(src, document.baseURI);
-      } catch {
-        compositionUrl = null;
-      }
-      resetCompositionHost(host);
-      try {
-        const localTemplate =
-          authoredCompositionId != null
-            ? document.querySelector<HTMLTemplateElement>(
-                `template#${CSS.escape(authoredCompositionId)}-template`,
-              )
-            : null;
-        if (localTemplate) {
-          await mountCompositionContent({
-            host,
-            authoredCompositionId,
-            runtimeCompositionId,
-            hostCompositionSrc: src,
-            sourceNode: localTemplate.content,
-            hasTemplate: true,
-            fallbackBodyInnerHtml: "",
-            compositionUrl,
-            injectedStyles: params.injectedStyles,
-            injectedScripts: params.injectedScripts,
-            injectedLinks: params.injectedLinks,
-            parseDimensionPx: params.parseDimensionPx,
-            onDiagnostic: params.onDiagnostic,
-          });
-          return;
-        }
-        const response = await fetch(src);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-        // Rewrite project-root-traversing (`../`) asset paths against the
-        // sub-composition's URL before extracting any nodes. Without this,
-        // `<video src="../../assets/x.mp4">` authored from
-        // `compositions/frames/scene.html` resolves against the main
-        // document's base (the project preview root) and climbs above it
-        // to 404 — the Studio-preview-vs-render divergence reported by
-        // OSS users. The server-side bundler already does this for the
-        // baked render via `inlineSubCompositions`; this is the runtime
-        // mirror so live preview matches.
-        rewriteSubCompositionAssetPaths(doc, compositionUrl);
-        const template =
-          (authoredCompositionId
-            ? doc.querySelector<HTMLTemplateElement>(
-                `template#${CSS.escape(authoredCompositionId)}-template`,
-              )
-            : null) ?? doc.querySelector<HTMLTemplateElement>("template");
-        const sourceNode = template ? template.content : doc.body;
-        await mountCompositionContent({
-          host,
-          authoredCompositionId,
-          runtimeCompositionId,
-          hostCompositionSrc: src,
-          sourceNode,
-          hasTemplate: Boolean(template),
-          fallbackBodyInnerHtml: doc.body.innerHTML,
-          compositionUrl,
-          injectedStyles: params.injectedStyles,
-          injectedScripts: params.injectedScripts,
-          injectedLinks: params.injectedLinks,
-          parseDimensionPx: params.parseDimensionPx,
-          // A non-templated composition's <head> carries critical CSS
-          // (backgrounds, positioning, fonts) and library scripts; every
-          // composition's <head> can carry a webfont <link>. The shared
-          // assembly module decides which of those apply.
-          head: doc.head,
-          // TODO(template-var-carriers): reads `<html>` only. A template/fragment
-          // sub-comp that declares on its `[data-composition-id]` root div (the
-          // dual-carrier contract from #2081) loses its defaults on this lazy
-          // external-load path — see inlineSubCompositions for the fixed path.
-          declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
-          variableDeclarer: doc.documentElement,
-          onDiagnostic: params.onDiagnostic,
-        });
-      } catch (error) {
-        params.onDiagnostic?.({
-          code: "external_composition_load_failed",
-          details: {
-            hostCompositionId: authoredCompositionId,
-            runtimeCompositionId,
-            hostCompositionSrc: src,
-            errorMessage: error instanceof Error ? error.message : "unknown_error",
-          },
-        });
-        // Keep host empty on load failures to avoid rendering escaped fallback HTML.
-        resetCompositionHost(host);
-      }
-    }),
+    hosts.map((host) => loadExternalHost(host, hostIdentityByElement.get(host), params)),
   );
+}
+
+// What each external host's last mount injected, so a remount can take back exactly that.
+const mountedAssetsByHost = new WeakMap<Element, Element[]>();
+
+async function loadExternalHost(
+  host: Element,
+  hostIdentity: HostCompositionIdentity | undefined,
+  params: LoadExternalCompositionsParams,
+): Promise<void> {
+  const own = {
+    injectedStyles: [] as HTMLStyleElement[],
+    injectedScripts: [] as HTMLScriptElement[],
+    injectedLinks: [] as HTMLLinkElement[],
+  };
+  try {
+    await mountExternalHost(host, hostIdentity, { ...params, ...own });
+  } finally {
+    params.injectedStyles.push(...own.injectedStyles);
+    params.injectedScripts.push(...own.injectedScripts);
+    params.injectedLinks.push(...own.injectedLinks);
+    mountedAssetsByHost.set(host, [
+      ...own.injectedLinks,
+      ...own.injectedStyles,
+      ...own.injectedScripts,
+    ]);
+  }
+}
+
+/**
+ * Mount one external host again from its file: drop what its last mount injected, then fetch
+ * and mount. The caller rebinds timelines. A host that was never mounted just mounts.
+ */
+export async function remountExternalComposition(
+  host: Element,
+  params: LoadExternalCompositionsParams,
+): Promise<void> {
+  for (const el of mountedAssetsByHost.get(host) ?? []) {
+    el.remove();
+    for (const list of [params.injectedStyles, params.injectedScripts, params.injectedLinks]) {
+      const index = (list as Element[]).indexOf(el);
+      if (index >= 0) list.splice(index, 1);
+    }
+  }
+  mountedAssetsByHost.delete(host);
+  await loadExternalHost(host, getHostCompositionIdentity(host), params);
+}
+
+async function mountExternalHost(
+  host: Element,
+  hostIdentity: HostCompositionIdentity | undefined,
+  params: LoadExternalCompositionsParams,
+): Promise<void> {
+  const src = host.getAttribute("data-composition-src");
+  if (!src) return;
+  const authoredCompositionId = hostIdentity?.authoredCompositionId || null;
+  const runtimeCompositionId = hostIdentity?.runtimeCompositionId || authoredCompositionId || null;
+  let compositionUrl: URL | null = null;
+  try {
+    compositionUrl = new URL(src, document.baseURI);
+  } catch {
+    compositionUrl = null;
+  }
+  resetCompositionHost(host);
+  try {
+    const localTemplate =
+      authoredCompositionId != null
+        ? document.querySelector<HTMLTemplateElement>(
+            `template#${CSS.escape(authoredCompositionId)}-template`,
+          )
+        : null;
+    if (localTemplate) {
+      await mountCompositionContent({
+        host,
+        authoredCompositionId,
+        runtimeCompositionId,
+        hostCompositionSrc: src,
+        sourceNode: localTemplate.content,
+        hasTemplate: true,
+        fallbackBodyInnerHtml: "",
+        compositionUrl,
+        injectedStyles: params.injectedStyles,
+        injectedScripts: params.injectedScripts,
+        injectedLinks: params.injectedLinks,
+        parseDimensionPx: params.parseDimensionPx,
+        onDiagnostic: params.onDiagnostic,
+      });
+      return;
+    }
+    const response = await fetch(src);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const html = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    // Rewrite project-root-traversing (`../`) asset paths against the
+    // sub-composition's URL before extracting any nodes. Without this,
+    // `<video src="../../assets/x.mp4">` authored from
+    // `compositions/frames/scene.html` resolves against the main
+    // document's base (the project preview root) and climbs above it
+    // to 404 — the Studio-preview-vs-render divergence reported by
+    // OSS users. The server-side bundler already does this for the
+    // baked render via `inlineSubCompositions`; this is the runtime
+    // mirror so live preview matches.
+    rewriteSubCompositionAssetPaths(doc, compositionUrl);
+    const template =
+      (authoredCompositionId
+        ? doc.querySelector<HTMLTemplateElement>(
+            `template#${CSS.escape(authoredCompositionId)}-template`,
+          )
+        : null) ?? doc.querySelector<HTMLTemplateElement>("template");
+    const sourceNode = template ? template.content : doc.body;
+    await mountCompositionContent({
+      host,
+      authoredCompositionId,
+      runtimeCompositionId,
+      hostCompositionSrc: src,
+      sourceNode,
+      hasTemplate: Boolean(template),
+      fallbackBodyInnerHtml: doc.body.innerHTML,
+      compositionUrl,
+      injectedStyles: params.injectedStyles,
+      injectedScripts: params.injectedScripts,
+      injectedLinks: params.injectedLinks,
+      parseDimensionPx: params.parseDimensionPx,
+      // A non-templated composition's <head> carries critical CSS
+      // (backgrounds, positioning, fonts) and library scripts; every
+      // composition's <head> can carry a webfont <link>. The shared
+      // assembly module decides which of those apply.
+      head: doc.head,
+      // TODO(template-var-carriers): reads `<html>` only. A template/fragment
+      // sub-comp that declares on its `[data-composition-id]` root div (the
+      // dual-carrier contract from #2081) loses its defaults on this lazy
+      // external-load path — see inlineSubCompositions for the fixed path.
+      declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
+      variableDeclarer: doc.documentElement,
+      onDiagnostic: params.onDiagnostic,
+    });
+  } catch (error) {
+    params.onDiagnostic?.({
+      code: "external_composition_load_failed",
+      details: {
+        hostCompositionId: authoredCompositionId,
+        runtimeCompositionId,
+        hostCompositionSrc: src,
+        errorMessage: error instanceof Error ? error.message : "unknown_error",
+      },
+    });
+    // Keep host empty on load failures to avoid rendering escaped fallback HTML.
+    resetCompositionHost(host);
+  }
 }
 
 /**

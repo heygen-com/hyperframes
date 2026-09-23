@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
+import {
+  loadExternalCompositions,
+  loadInlineTemplateCompositions,
+  remountExternalComposition,
+} from "./compositionLoader";
 
 // jsdom doesn't provide CSS.escape
 beforeAll(() => {
@@ -29,6 +33,40 @@ describe("loadExternalCompositions", () => {
     injectedLinks: [] as HTMLLinkElement[],
     parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
   };
+
+  it("remounts one host from its file and takes back only that host's styles", async () => {
+    const files: Record<string, string> = {
+      "https://example.com/a.html": `<html><head><style>.a { color: red; }</style></head><body>
+        <div data-composition-id="a"><p>A one</p></div></body></html>`,
+      "https://example.com/b.html": `<html><head><style>.b { color: blue; }</style></head><body>
+        <div data-composition-id="b"><p>B</p></div></body></html>`,
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url) => new Response(files[String(url)], { status: 200 }),
+    );
+    const hosts = ["a", "b"].map((id) => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", id);
+      host.setAttribute("data-composition-src", `https://example.com/${id}.html`);
+      document.body.appendChild(host);
+      return host;
+    });
+    const params = { ...defaultParams, injectedStyles: [] as HTMLStyleElement[] };
+    await loadExternalCompositions(params);
+
+    files["https://example.com/a.html"] = `<html><head><style>.a { color: green; }</style></head>
+      <body><div data-composition-id="a"><p>A two</p></div></body></html>`;
+    await remountExternalComposition(hosts[0]!, params);
+
+    const headCss = [...document.head.querySelectorAll("style")].map((el) => el.textContent ?? "");
+    expect(hosts[0]!.textContent).toContain("A two");
+    expect(hosts[0]!.textContent).not.toContain("A one");
+    expect(headCss.filter((css) => css.includes("color: red"))).toHaveLength(0);
+    expect(headCss.filter((css) => css.includes("color: green"))).toHaveLength(1);
+    expect(headCss.filter((css) => css.includes("color: blue"))).toHaveLength(1);
+    expect(params.injectedStyles.every((el) => el.isConnected)).toBe(true);
+    expect(params.injectedStyles).toHaveLength(2);
+  });
 
   it("does nothing when no composition-src elements exist", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");

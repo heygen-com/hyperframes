@@ -74,6 +74,8 @@ declare global {
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
+    /** Remount the scene at this data-composition-src in place; rejects when it cannot. */
+    __hfRemountComposition?: (src: string) => Promise<void>;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;
       diagnostics?: boolean;

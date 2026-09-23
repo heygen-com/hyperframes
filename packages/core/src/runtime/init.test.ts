@@ -1080,6 +1080,102 @@ describe("initSandboxRuntimeModular", () => {
     expect(child.style.visibility).toBe("visible");
   });
 
+  describe("__hfRemountComposition swaps one scene in place", () => {
+    // jsdom runs no scripts, so each fetch stands in for the scene script registering its timeline.
+    function trackingRoot(duration: number) {
+      const children: Array<{ child: unknown; at: number | undefined }> = [];
+      const root = createMockTimeline(duration) as RuntimeTimelineLike & {
+        remove: (child: unknown) => void;
+      };
+      root.add = ((child: unknown, at?: number) => {
+        children.push({ child, at });
+      }) as RuntimeTimelineLike["add"];
+      root.getChildren = (() =>
+        children.map((entry) => entry.child)) as RuntimeTimelineLike["getChildren"];
+      root.remove = (child) => {
+        const index = children.findIndex((entry) => entry.child === child);
+        if (index >= 0) children.splice(index, 1);
+      };
+      return { root, children };
+    }
+
+    function mountFilm(scenes: Record<string, { html: string; timeline: RuntimeTimelineLike }>) {
+      const rootEl = document.createElement("div");
+      rootEl.setAttribute("data-composition-id", "main");
+      rootEl.setAttribute("data-root", "true");
+      rootEl.setAttribute("data-start", "0");
+      rootEl.setAttribute("data-duration", "6");
+      document.body.appendChild(rootEl);
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+        const id = String(url).replace(/^.*\//, "").replace(".html", "");
+        const scene = scenes[id]!;
+        window.__timelines![id] = scene.timeline;
+        return new Response(scene.html, { status: 200 });
+      });
+      return rootEl;
+    }
+
+    function addHost(rootEl: Element, id: string, start: number) {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", id);
+      host.setAttribute("data-composition-src", `https://example.com/${id}.html`);
+      host.setAttribute("data-start", String(start));
+      host.setAttribute("data-duration", "2");
+      rootEl.appendChild(host);
+      return host;
+    }
+
+    const sceneHtml = (id: string, text: string) =>
+      `<html><body><template id="${id}-template"><div data-composition-id="${id}"><p>${text}</p></div></template></body></html>`;
+
+    it("puts the edited scene's new timeline at its start in place of the old one and keeps the time", async () => {
+      const { root, children } = trackingRoot(6);
+      const before = createMockTimeline(2);
+      const after = createMockTimeline(2);
+      const scenes = { sub: { html: sceneHtml("sub", "Before"), timeline: before } };
+      const rootEl = mountFilm(scenes);
+      const host = addHost(rootEl, "sub", 1);
+      window.__timelines = { main: root };
+      initSandboxRuntimeModular();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      expect(children.map((entry) => entry.child)).toEqual([before]);
+      window.__player?.renderSeek(2);
+
+      scenes.sub = { html: sceneHtml("sub", "After"), timeline: after };
+      await window.__hfRemountComposition?.("https://example.com/sub.html");
+
+      expect(host.textContent).toContain("After");
+      expect(host.textContent).not.toContain("Before");
+      expect(children).toEqual([{ child: after, at: 1 }]);
+      expect(window.__timelines?.sub).toBe(after);
+      expect(window.__player?.getTime()).toBe(2);
+    });
+
+    it("mounts and binds a scene whose host was added after the film opened", async () => {
+      const { root, children } = trackingRoot(6);
+      const landed = createMockTimeline(2);
+      const rootEl = mountFilm({ late: { html: sceneHtml("late", "Landed"), timeline: landed } });
+      window.__timelines = { main: root };
+      initSandboxRuntimeModular();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+      const host = addHost(rootEl, "late", 4);
+      await window.__hfRemountComposition?.("https://example.com/late.html");
+
+      expect(host.textContent).toContain("Landed");
+      expect(children).toEqual([{ child: landed, at: 4 }]);
+    });
+
+    it("rejects a scene with no host so the caller can reload", async () => {
+      mountFilm({});
+      window.__timelines = { main: createMockTimeline(6) };
+      initSandboxRuntimeModular();
+      await expect(
+        window.__hfRemountComposition?.("https://example.com/missing.html"),
+      ).rejects.toThrow("no scene host");
+    });
+  });
+
   it("removes external composition head links during runtime teardown", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

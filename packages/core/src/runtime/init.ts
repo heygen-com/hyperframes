@@ -40,7 +40,11 @@ import { collectRuntimeTimelinePayload, isRuntimeElementVisibleAt } from "./time
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
-import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
+import {
+  loadExternalCompositions,
+  loadInlineTemplateCompositions,
+  remountExternalComposition,
+} from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
@@ -3001,27 +3005,27 @@ export function initSandboxRuntimeModular(): void {
     (err) => swallow("runtime.init.buildReady", err),
   );
 
-  if (!externalCompositionsReady) {
-    const compositionLoaderParams = {
-      injectedStyles: state.injectedCompStyles,
-      injectedScripts: state.injectedCompScripts,
-      injectedLinks: state.injectedCompLinks,
-      parseDimensionPx,
-      onDiagnostic: ({
+  const compositionLoaderParams = {
+    injectedStyles: state.injectedCompStyles,
+    injectedScripts: state.injectedCompScripts,
+    injectedLinks: state.injectedCompLinks,
+    parseDimensionPx,
+    onDiagnostic: ({
+      code,
+      details,
+    }: {
+      code: string;
+      details: Record<string, string | number | boolean | null | string[]>;
+    }) => {
+      postRuntimeMessage({
+        source: "hf-preview",
+        type: "diagnostic",
         code,
         details,
-      }: {
-        code: string;
-        details: Record<string, string | number | boolean | null | string[]>;
-      }) => {
-        postRuntimeMessage({
-          source: "hf-preview",
-          type: "diagnostic",
-          code,
-          details,
-        });
-      },
-    };
+      });
+    },
+  };
+  if (!externalCompositionsReady) {
     void loadExternalCompositions(compositionLoaderParams)
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
@@ -3043,6 +3047,49 @@ export function initSandboxRuntimeModular(): void {
     // No external/inline compositions to load — apply caption overrides immediately
     applyCaptionOverrides();
   }
+
+  // Swap one edited or newly added scene in place: remount its host, then put its new timeline
+  // in the root at the host's start. Rejects when there is no such host; the caller reloads.
+  const remountComposition = async (src: string): Promise<void> => {
+    const hosts = Array.from(
+      document.querySelectorAll(`[data-composition-src="${CSS.escape(src)}"]`),
+    );
+    if (hosts.length === 0) throw new Error(`no scene host for ${src}`);
+    const timelines = (window.__timelines ??= {}) as Record<
+      string,
+      RuntimeTimelineLike | undefined
+    >;
+    const root = state.capturedTimeline as
+      | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
+      | null;
+    for (const host of hosts) {
+      const id = host.getAttribute("data-composition-id");
+      const previous = id ? timelines[id] : undefined;
+      if (id && previous) {
+        root?.remove?.(previous);
+        (previous as { kill?: () => void }).kill?.();
+        delete timelines[id];
+      }
+      await remountExternalComposition(host, compositionLoaderParams);
+    }
+    applyVariableBindings(document);
+    initVfx(document.body, state.canonicalFps);
+    bindMediaMetadataListeners();
+    childrenBound = false;
+    bindRootTimelineIfAvailable();
+    const bound = state.capturedTimeline;
+    const duration = getSafeTimelineDurationSeconds(bound, 0);
+    if (bound && duration > 0) {
+      clock.setDuration(duration);
+      bound.totalTime?.(Math.max(0, state.currentTime || 0), false);
+    }
+    syncTimedElementVisibility(state.currentTime);
+    postTimeline();
+  };
+  window.__hfRemountComposition = remountComposition;
+  registerRuntimeCleanup(() => {
+    delete window.__hfRemountComposition;
+  });
 
   const picker = createPickerModule({
     postMessage: (payload) => postRuntimeMessage(payload),
