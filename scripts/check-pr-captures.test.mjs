@@ -309,7 +309,7 @@ const ok = () => ({
 });
 const noSleep = async () => {};
 
-test("downloadAsset retries a 5xx or a network error with backoff and stops after three attempts", async () => {
+test("downloadAsset retries a 5xx or a network error with backoff and stops after five attempts", async () => {
   const outcomes = [{ ok: false, status: 502 }, new Error("socket hang up"), ok()];
   let calls = 0;
   const sleeps = [];
@@ -320,24 +320,50 @@ test("downloadAsset retries a 5xx or a network error with backoff and stops afte
   };
   assert.equal((await downloadAsset(OLD, flaky, async (ms) => sleeps.push(ms))).toString(), "x");
   assert.equal(calls, 3);
-  assert.deepEqual(sleeps, [1000, 3000]);
+  assert.deepEqual(sleeps, [5000, 15000]);
   calls = 0;
   await assert.rejects(
     downloadAsset(OLD, async () => (calls++, { ok: false, status: 500 }), noSleep),
     /HTTP 500/,
   );
-  assert.equal(calls, 3);
+  assert.equal(calls, 5);
 });
 
-test("downloadAsset does not retry a 404 or 403", async () => {
-  for (const status of [404, 403]) {
-    let calls = 0;
-    await assert.rejects(
-      downloadAsset(OLD, async () => (calls++, { ok: false, status }), noSleep),
-      new RegExp(`HTTP ${status}`),
-    );
-    assert.equal(calls, 1);
-  }
+test("downloadAsset does not retry a 403, even on an attachment host", async () => {
+  let calls = 0;
+  await assert.rejects(
+    downloadAsset(OLD, async () => (calls++, { ok: false, status: 403 }), noSleep),
+    /HTTP 403/,
+  );
+  assert.equal(calls, 1);
+});
+
+// Reproduced this week: the same attachment URL 404'd, then 200'd minutes
+// later with no edit to the PR in between — a fresh upload lagging GitHub's
+// own read-path, not a missing asset.
+test("downloadAsset retries a 404 on a GitHub attachment host", async () => {
+  const outcomes = [{ ok: false, status: 404 }, { ok: false, status: 404 }, ok()];
+  let calls = 0;
+  const sleeps = [];
+  await downloadAsset(
+    OLD,
+    async () => outcomes[calls++],
+    async (ms) => sleeps.push(ms),
+  );
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [5000, 15000]);
+});
+
+// The retry is scoped to the attachment host: a 404 anywhere else (a typo'd
+// link, a deleted gist) still means "does not exist," not "not replicated yet."
+test("downloadAsset does not retry a 404 on a non-attachment host", async () => {
+  const other = "https://example.com/not-an-attachment.png";
+  let calls = 0;
+  await assert.rejects(
+    downloadAsset(other, async () => (calls++, { ok: false, status: 404 }), noSleep),
+    /HTTP 404/,
+  );
+  assert.equal(calls, 1);
 });
 
 const redirect = (location) => ({ ok: false, status: 302, headers: new Headers({ location }) });

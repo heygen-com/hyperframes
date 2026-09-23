@@ -192,9 +192,13 @@ export function evaluate({ body, files }) {
   return { ok: false, problems: [...verdict.problems, ...captures] };
 }
 
-const DOWNLOAD_ATTEMPTS = 3;
-const DOWNLOAD_DEADLINE_MS = 45_000;
-const RETRY_DELAYS_MS = [1000, 3000];
+const DOWNLOAD_ATTEMPTS = 5;
+// A freshly uploaded GitHub attachment can 404 for up to a few minutes before
+// its storage read-path catches up with the write — observed up to ~3 minutes
+// in production, with no edit to the PR in between. The deadline and delays
+// below give a 404 on an attachment host room to clear before this gives up.
+const DOWNLOAD_DEADLINE_MS = 180_000;
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000];
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_ASSET_BYTES = 100 * 1024 * 1024;
@@ -266,7 +270,17 @@ async function readCapped(response, budget) {
   return collector.bytes();
 }
 
-const isRetryableStatus = (status) => status === 429 || status >= 500;
+// A 404 is final for almost anything — but for a GitHub attachment URL, right
+// after it was uploaded, it means "not replicated yet," not "does not exist."
+// Reproduced this week: the same asset URL 404'd, then 200'd minutes later
+// with no edit to the PR in between, and whichever asset had been attached
+// most recently was always the one that failed. Scoped to the attachment host
+// so a real 404 on any other URL (a typo'd link, a deleted gist) still fails fast.
+const isRetryableStatus = (status, url) => {
+  if (status === 429 || status >= 500) return true;
+  const parsed = status === 404 ? parseUrl(url) : null;
+  return parsed !== null && isAttachmentUrl(parsed);
+};
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** One attempt: the bytes, or a NonRetryable for a final status, or a plain Error for a retryable one. */
@@ -274,7 +288,7 @@ async function attemptDownload(url, fetchImpl, signal, budget) {
   const response = await fetchTrusted(url, fetchImpl, signal);
   if (response.ok) return readCapped(response, budget);
   const message = `HTTP ${response.status}`;
-  throw isRetryableStatus(response.status) ? new Error(message) : new NonRetryable(message);
+  throw isRetryableStatus(response.status, url) ? new Error(message) : new NonRetryable(message);
 }
 
 async function waitForRetry(attempt, sleep, signal) {
