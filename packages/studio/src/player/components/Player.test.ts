@@ -287,6 +287,20 @@ describe("ready to show", () => {
     expect(usePlayerStore.getState().previewBooted).toBe(true);
   });
 
+  it("shows a buffering indicator while the runtime holds for a scene", async () => {
+    const { player, host } = await mountPlayer({});
+    const buffering = (value: boolean) =>
+      act(
+        () =>
+          void player.dispatchEvent(new CustomEvent("buffering", { detail: { buffering: value } })),
+      );
+
+    buffering(true);
+    expect(host.querySelector('[data-testid="preview-buffering"]')).not.toBeNull();
+    buffering(false);
+    expect(host.querySelector('[data-testid="preview-buffering"]')).toBeNull();
+  });
+
   it("reports the document start time with the painted iframe", async () => {
     const onPainted = vi.fn();
     const now = vi.spyOn(performance, "now").mockReturnValue(100);

@@ -824,6 +824,15 @@ export function initSandboxRuntimeModular(): void {
   // attach while it plays. Renders still wait for every scene (`__renderReady`).
   const PLAYABLE_WINDOW_SECONDS = 2;
   let playableWindowReady = externalCompositionsReady;
+  // Scenes not yet attached, with their [start, end) in seconds. Playback holds before one of them.
+  const pendingScenes = new Map<Element, readonly [number, number]>();
+  let bufferingScene: Element | null = null;
+  const pendingSceneAt = (timeSeconds: number): Element | null => {
+    for (const [host, [start, end]] of pendingScenes) {
+      if (timeSeconds >= start && timeSeconds < end) return host;
+    }
+    return null;
+  };
 
   const getTimelineDurationSeconds = (timeline: RuntimeTimelineLike | null): number | null => {
     if (!timeline || typeof timeline.duration !== "function") return null;
@@ -2838,6 +2847,7 @@ export function initSandboxRuntimeModular(): void {
       type: "state",
       frame,
       isPlaying: state.isPlaying,
+      buffering: bufferingScene !== null,
       muted: state.bridgeMuted,
       playbackRate: state.playbackRate,
     });
@@ -3033,6 +3043,13 @@ export function initSandboxRuntimeModular(): void {
       includeAuthoredTimingAttrs: true,
     });
     const sceneStart = (host: Element) => sceneStarts.resolveStartForElement(host, 0);
+    for (const host of document.querySelectorAll("[data-composition-src]")) {
+      const start = sceneStart(host);
+      pendingScenes.set(host, [
+        start,
+        start + (sceneStarts.resolveDurationForElement(host) ?? Infinity),
+      ]);
+    }
     const windowScenes = new Set(
       Array.from(document.querySelectorAll("[data-composition-src]")).filter(
         (host) => sceneStart(host) < PLAYABLE_WINDOW_SECONDS,
@@ -3040,6 +3057,7 @@ export function initSandboxRuntimeModular(): void {
     );
     const onSceneAttached = (host: Element) => {
       windowScenes.delete(host);
+      pendingScenes.delete(host);
       if (!playableWindowReady && windowScenes.size > 0) return;
       playableWindowReady = true;
       // A scene that attaches after the root timeline bound is nested on the next binding pass.
@@ -3047,6 +3065,10 @@ export function initSandboxRuntimeModular(): void {
       bindMediaMetadataListeners();
       applyVariableBindings(document);
       maybePublishRenderReady();
+      if (bufferingScene && !pendingSceneAt(state.currentTime)) {
+        bufferingScene = null;
+        transport.play();
+      }
     };
     void loadExternalCompositions({
       ...compositionLoaderParams,
@@ -3941,6 +3963,19 @@ export function initSandboxRuntimeModular(): void {
         }
       } else if (clock.hasAudioSource()) {
         clock.detachAudioSource();
+      }
+
+      // Like a buffering video: playback never renders a frame whose scene has not arrived. It
+      // stops on the last rendered frame and resumes when the scene attaches.
+      const waitingFor = clock.isPlaying() ? pendingSceneAt(clock.now()) : null;
+      if (waitingFor) {
+        bufferingScene = waitingFor;
+        transport.pause();
+        if (Number.isFinite(lastTransportSeekTime)) {
+          clock.seek(lastTransportSeekTime);
+          state.currentTime = lastTransportSeekTime;
+        }
+        postState(true);
       }
 
       const t = clock.now();
