@@ -21,6 +21,7 @@ import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
 import { GUTTER, LABEL_COL_W, TRACKS_LEFT_PAD } from "./timelineLayout";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
+import { ClipContentOnceShown } from "./timelineClipChildren";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
 import {
@@ -508,6 +509,17 @@ export function useTimelineProviderState({
     onRazorSplit: editContext.onRazorSplit,
     onRazorSplitAll: editContext.onRazorSplitAll,
   };
+  const holdNewClipContent = timelineFocus.rowVirtualizationActive && viewport.isScrolling;
+  const timelineRenderClipContent = useMemo<typeof renderClipContent>(
+    () =>
+      renderClipContent &&
+      ((element, style, context) => (
+        <ClipContentOnceShown hold={holdNewClipContent}>
+          {renderClipContent(element, style, context)}
+        </ClipContentOnceShown>
+      )),
+    [holdNewClipContent, renderClipContent],
+  );
   const timelineMeta = buildTimelineMeta({
     emptyState: {
       isDragOver: assetDrop.isDragOver,
@@ -574,7 +586,7 @@ export function useTimelineProviderState({
       overlays,
     },
     actions: {
-      renderClipContent,
+      renderClipContent: timelineRenderClipContent,
       renderClipOverlay,
       setFocusedEaseSegment,
     },

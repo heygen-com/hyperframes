@@ -185,6 +185,50 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     }
   });
 
+  it("gives a clip that appears mid-scroll its picture once the scroll settles", async () => {
+    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
+      import("./Timeline"),
+      import("../store/playerStore"),
+    ]);
+    const clip = (id: string, start: number) => ({
+      id,
+      label: id,
+      tag: "div",
+      start,
+      duration: 5,
+      track: 0,
+    });
+    usePlayerStore.setState({ duration: 60, timelineReady: true, elements: [clip("clip-0", 0)] });
+
+    const { host, root } = await mountTimeline(
+      React.createElement(Timeline, {
+        renderClipContent: (element: { id: string }) =>
+          React.createElement("span", { "data-rich-content": element.id }),
+      }),
+    );
+    try {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 110));
+      });
+      const scroller = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]");
+      if (scroller) await dispatchScroll(scroller);
+      act(() => {
+        usePlayerStore.setState({ elements: [clip("clip-0", 0), clip("clip-1", 5)] });
+      });
+      expect(host.querySelector('[data-el-id="clip-1"]')).not.toBeNull();
+      expect(host.querySelector('[data-rich-content="clip-1"]')).toBeNull();
+      expect(host.querySelector('[data-rich-content="clip-0"]')).not.toBeNull();
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 110));
+      });
+      expect(host.querySelector('[data-rich-content="clip-1"]')).not.toBeNull();
+    } finally {
+      act(() => root.unmount());
+      usePlayerStore.getState().reset();
+    }
+  });
+
   it("mounts a bounded list range over the full geometry height", async () => {
     const [{ Timeline }, { usePlayerStore }, { getTimelineCanvasHeight, TRACK_H }] =
       await Promise.all([
