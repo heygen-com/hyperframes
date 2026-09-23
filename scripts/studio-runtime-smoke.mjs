@@ -97,6 +97,10 @@ export function studioSmokeApiResponse(method, requestUrl) {
   return pathname.startsWith("/api/") ? studioSmokeApiPathResponse(method, pathname) : undefined;
 }
 
+// CI renders Studio's system font stack with Linux's fallback, which sets the default tab labels
+// about 10px narrower than macOS does; keep that much room so a strip that fits here fits on a Mac.
+const MAC_FONT_ALLOWANCE_PX = 10;
+
 export function isExpectedStudioSmokeError(message) {
   return message.includes("favicon.ico");
 }
@@ -145,16 +149,25 @@ export async function runStudioRuntimeSmoke(targetUrl) {
       return textContent.includes("Something went wrong") ? textContent : null;
     });
     if (errorBoundary) errors.push(`React error boundary triggered: ${errorBoundary}`);
-    const clippedStrips = await page.evaluate(() =>
-      [...document.querySelectorAll(".dv-tabs-container")]
-        .filter((strip) => strip.scrollWidth > strip.clientWidth + 1)
-        .map((strip) => {
+    const clippedStrips = await page.evaluate(
+      (allowance) =>
+        [...document.querySelectorAll(".dv-tabs-container")].flatMap((strip) => {
+          const actions = strip
+            .closest(".dv-tabs-and-actions-container")
+            ?.querySelector(".dv-right-actions-container");
+          const room =
+            (actions?.getBoundingClientRect().left ?? Infinity) -
+            strip.getBoundingClientRect().left;
+          if (strip.scrollWidth + allowance <= room) return [];
           const labels = [...strip.querySelectorAll(".dv-tab")].map((tab) => tab.textContent);
-          return `${labels.join(", ")}: ${strip.scrollWidth}px of tabs in ${strip.clientWidth}px`;
+          return [`${labels.join(", ")}: ${strip.scrollWidth}px of tabs in ${Math.floor(room)}px`];
         }),
+      MAC_FONT_ALLOWANCE_PX,
     );
     for (const strip of clippedStrips) {
-      errors.push(`Dock tab strip clips a label at the default layout: ${strip}`);
+      errors.push(
+        `Dock tab strip clips a label at the default layout (${MAC_FONT_ALLOWANCE_PX}px macOS allowance): ${strip}`,
+      );
     }
   } finally {
     await browser.close();
