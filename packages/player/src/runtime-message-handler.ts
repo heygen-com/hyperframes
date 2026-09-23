@@ -36,6 +36,8 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   setCompositionSize: (width: number, height: number) => void;
   sendControl: (action: string, extra?: Record<string, unknown>) => void;
   getIframeDoc: () => Document | null;
+  /** The runtime is holding playback for a scene that has not arrived yet. */
+  setBuffering?: (buffering: boolean) => void;
   /** Invoked when the iframe runtime posts `{type: "ready"}` — the player
    *  uses it to replay current bridge state (mute, volume, playback rate) so
    *  control messages sent before the iframe's listener registered aren't lost. */
@@ -112,6 +114,7 @@ export function handleRuntimeMessage(
   }
 
   if (data["type"] === "state") {
+    callbacks.setBuffering?.(data["buffering"] === true);
     callbacks.setPlaybackState(
       applyRuntimeStateMessage(
         { frame: (data["frame"] as number) ?? 0, isPlaying: !!data["isPlaying"] },

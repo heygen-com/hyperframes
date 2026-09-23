@@ -46,6 +46,8 @@ export type RuntimeStateMessage = {
   type: "state";
   frame: number;
   isPlaying: boolean;
+  /** Playback is held for a scene that has not arrived yet. */
+  buffering?: boolean;
   muted: boolean;
   playbackRate: number;
 };

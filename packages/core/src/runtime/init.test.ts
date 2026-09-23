@@ -1124,6 +1124,50 @@ describe("initSandboxRuntimeModular", () => {
     await vi.waitFor(() => expect(window.__renderReady).toBe(true));
   });
 
+  it("holds playback before a scene that has not arrived, then resumes from the held frame", async () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+    document.body.innerHTML = `
+      <div data-composition-id="main" data-root="true" data-start="0" data-duration="4" data-width="1920" data-height="1080">
+        <div data-composition-id="opening" data-composition-src="https://example.com/opening.html" data-start="0" data-duration="2"></div>
+        <div data-composition-id="later" data-composition-src="https://example.com/later.html" data-start="2" data-duration="2"></div>
+      </div>`;
+    let deliverLater: (response: Response) => void = () => {};
+    const later = new Promise<Response>((resolve) => (deliverLater = resolve));
+    const scene = (id: string) =>
+      new Response(
+        `<template id="${id}-template"><div data-composition-id="${id}">${id}</div></template>`,
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      String(input).includes("later") ? later : Promise.resolve(scene("opening")),
+    );
+    window.__timelines = {
+      main: createMockTimeline(4),
+      opening: createMockTimeline(2),
+      later: createMockTimeline(2),
+    };
+    const posted = vi.spyOn(window, "postMessage");
+
+    initSandboxRuntimeModular();
+    await vi.waitFor(() => expect(window.__playReady).toBe(true));
+    window.__player?.play();
+    for (let i = 0; i < 180; i++) raf.step(16);
+
+    const held = window.__player?.getTime() ?? 0;
+    expect(held).toBeGreaterThan(1.9);
+    expect(held).toBeLessThan(2);
+    expect(posted.mock.calls.some(([data]) => (data as { buffering?: boolean }).buffering)).toBe(
+      true,
+    );
+
+    deliverLater(scene("later"));
+    await vi.waitFor(() => expect(window.__renderReady).toBe(true));
+    for (let i = 0; i < 10; i++) raf.step(16);
+    expect(window.__player?.getTime()).toBeGreaterThan(2);
+  });
+
   it("removes external composition head links during runtime teardown", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

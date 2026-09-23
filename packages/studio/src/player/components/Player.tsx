@@ -175,6 +175,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const [painted, setPainted] = useState(false);
     const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
     const [previewError, setPreviewError] = useState<string | null>(null);
+    const [buffering, setBuffering] = useState(false);
 
     // eslint-disable-next-line no-restricted-syntax
     useEffect(() => {
@@ -229,6 +230,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setPreviewError(null);
           setCompositionLoading(false);
         };
+        const handleBuffering = (event: Event) =>
+          setBuffering((event as CustomEvent<{ buffering?: boolean }>).detail?.buffering === true);
         const handlePainted = () => {
           setPainted(true);
           onPainted?.({ iframe, startedAt: loadStartedAtRef.current, loadId: loadIdRef.current });
@@ -305,6 +308,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("shadertransitionstate", handleShaderTransitionState);
         player.addEventListener("ready", handleReady);
         player.addEventListener("painted", handlePainted);
+        player.addEventListener("buffering", handleBuffering);
         player.addEventListener("error", handleError);
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
@@ -347,6 +351,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
           player.removeEventListener("ready", handleReady);
           player.removeEventListener("painted", handlePainted);
+          player.removeEventListener("buffering", handleBuffering);
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
@@ -520,6 +525,15 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
                 </button>
               )}
             </div>
+          </div>
+        )}
+        {buffering && (
+          <div
+            className="absolute right-3 bottom-3 z-20 pointer-events-none"
+            data-hyperframes-ignore=""
+            data-testid="preview-buffering"
+          >
+            <HyperframesLoader title="Loading the next scene" size={20} />
           </div>
         )}
         {previewError && (
