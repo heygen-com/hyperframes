@@ -612,6 +612,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "week-in-merges",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "weight-wave",
       "type": "hyperframes:block"
     },
