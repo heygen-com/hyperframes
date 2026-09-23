@@ -213,7 +213,7 @@ function createCaptureTexture(gl: WebGL2RenderingContext): WebGLTexture {
 function resolveCaptureSource(
   host: HTMLElement,
   gl: WebGL2RenderingContext,
-): VfxCaptureSource | null {
+): VfxCaptureSource | undefined {
   const canvas = host.querySelector("canvas.hf-vfx-src");
   const inner = canvas?.querySelector(".hf-vfx-in");
   if (!(canvas instanceof HTMLCanvasElement) || !(inner instanceof HTMLElement)) {
@@ -221,7 +221,7 @@ function resolveCaptureSource(
       `${describeHost(host)}: a capturing chain needs ` +
         `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in source.`,
     );
-    return null;
+    return undefined;
   }
   const ctx = canvas.getContext("2d") as DrawElementCtx | null;
   if (!ctx || typeof ctx.drawElementImage !== "function") {
@@ -229,7 +229,7 @@ function resolveCaptureSource(
       `${describeHost(host)}: drawElementImage is unavailable, so the layer cannot be ` +
         `captured. In Studio, enable chrome://flags/#canvas-draw-element.`,
     );
-    return null;
+    return undefined;
   }
   return { canvas, inner, ctx, texture: createCaptureTexture(gl) };
 }
@@ -408,7 +408,10 @@ function setPassUniforms(
 /** Bind this pass's render target and its input texture. */
 function bindPass(entry: VfxEntry, index: number, last: number, ping: PingPong | null): void {
   const { gl } = entry;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, index === last || !ping ? null : ping.framebuffers[index % 2]);
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    index === last || !ping ? null : (ping.framebuffers[index % 2] ?? null),
+  );
   const source =
     index === 0 ? (entry.src?.texture ?? null) : ping && ping.textures[(index - 1) % 2];
   if (!source) return;
