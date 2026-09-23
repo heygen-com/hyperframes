@@ -56,4 +56,45 @@ describe("createThumbnailPages", () => {
     await thumbnails.withPage(browser, "/preview", "v2", load, async () => null);
     expect(load).toHaveBeenCalledTimes(3);
   });
+
+  it("closes a page nobody has used for a while, so an idle Studio runs no composition", async () => {
+    vi.useFakeTimers();
+    try {
+      const { browser, pages } = fakeBrowser();
+      const thumbnails = createThumbnailPages(2, 10_000);
+      const load = vi.fn(async () => {});
+
+      await thumbnails.withPage(browser, "/preview", "v1", load, async () => null);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(pages[0]?.close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(pages[0]?.close).toHaveBeenCalled();
+
+      await thumbnails.withPage(browser, "/preview", "v1", load, async () => null);
+      expect(load).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never closes a page under a frame that is still being taken", async () => {
+    const { browser, pages } = fakeBrowser();
+    const thumbnails = createThumbnailPages(1);
+    const load = vi.fn(async () => {});
+    let finish: () => void = () => {};
+    const slow = thumbnails.withPage(
+      browser,
+      "/a",
+      "v1",
+      load,
+      () => new Promise<void>((r) => (finish = r)),
+    );
+    await vi.waitFor(() => expect(pages).toHaveLength(1));
+
+    await thumbnails.withPage(browser, "/b", "v1", load, async () => null);
+    expect(pages[0]?.close).not.toHaveBeenCalled();
+    finish();
+    await slow;
+    await vi.waitFor(() => expect(pages[0]?.close).toHaveBeenCalled());
+  });
 });
