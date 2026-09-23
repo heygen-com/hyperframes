@@ -8,15 +8,14 @@ import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
 <CatalogDetail
+  previewSrc="/public/catalog/components/cursor-text-select.json"
   compositionId="cursor-text-select"
   compositionSrc="compositions/components/cursor-text-select.html"
   title="Text Select Cursor"
   description="An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold."
-  variables={[]}
+  variables={[{"id":"title","type":"string","role":"content","label":"Heading","default":"Spring release notes"},{"id":"text","type":"string","role":"content","label":"Paragraph","default":"Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half."},{"id":"phrase","type":"string","role":"content","label":"Phrase to select","default":"approve the final cut"},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#3b6cf6"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":401}}
   attribution={{"path":"registry/components/cursor-text-select","tags":["cursor","motion-primitive","text","selection","editor","toolbar"]}}
-  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-text-select.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-text-select.png"
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-text-select/cursor-text-select.html"
 >
@@ -383,7 +382,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
               p.y - box.y,
               box.y + para.offsetHeight - p.y,
             );
-            var m = Math.max(0, Math.min(1, (inside + 6 * u) / (24 * u)));
+            var m = seg(inside, -6 * u, 18 * u);
             var overBar =
               barK > 0 && p.x > barX - 10 * u && p.x < barX + toolbar.offsetWidth + 10 * u &&
               p.y > barY - 10 * u && p.y < barY + toolbar.offsetHeight + 10 * u;

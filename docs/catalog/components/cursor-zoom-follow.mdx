@@ -8,15 +8,14 @@ import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
 <CatalogDetail
+  previewSrc="/public/catalog/components/cursor-zoom-follow.json"
   compositionId="cursor-zoom-follow"
   compositionSrc="compositions/components/cursor-zoom-follow.html"
   title="Zoom Follow Cursor"
   description="Screen-recording auto-zoom: the camera pushes in toward each upcoming click, trails the cursor on a smooth spring, ripples every click, then eases back out to the full screen as the cursor leaves."
-  variables={[]}
+  variables={[{"id":"image","type":"image","role":"content","label":"Screenshot","description":"Your own screen capture. Leave empty for the built-in dashboard.","default":""},{"id":"zoom","type":"number","role":"style","label":"Zoom","default":1.8,"min":1.2,"max":2.6,"step":0.1},{"id":"click1_x","type":"number","role":"layout","label":"Click 1 X","default":68.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click1_y","type":"number","role":"layout","label":"Click 1 Y","default":7.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click2_x","type":"number","role":"layout","label":"Click 2 X","default":50,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click2_y","type":"number","role":"layout","label":"Click 2 Y","default":48.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click3_x","type":"number","role":"layout","label":"Click 3 X","default":90.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click3_y","type":"number","role":"layout","label":"Click 3 Y","default":7.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"accent","type":"color","role":"style","label":"Ripple","default":"#4f5bff"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":446}}
   attribution={{"path":"registry/components/cursor-zoom-follow","tags":["cursor","camera","zoom","screen-recording","click","product-demo"]}}
-  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-zoom-follow.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-zoom-follow.png"
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-zoom-follow/cursor-zoom-follow.html"
 >

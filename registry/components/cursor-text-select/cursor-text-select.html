@@ -357,7 +357,7 @@
               p.y - box.y,
               box.y + para.offsetHeight - p.y,
             );
-            var m = Math.max(0, Math.min(1, (inside + 6 * u) / (24 * u)));
+            var m = seg(inside, -6 * u, 18 * u);
             var overBar =
               barK > 0 && p.x > barX - 10 * u && p.x < barX + toolbar.offsetWidth + 10 * u &&
               p.y > barY - 10 * u && p.y < barY + toolbar.offsetHeight + 10 * u;

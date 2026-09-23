@@ -8,15 +8,14 @@ import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
 <CatalogDetail
+  previewSrc="/public/catalog/components/magnetic-cursor.json"
   compositionId="magnetic-cursor"
   compositionSrc="compositions/components/magnetic-cursor.html"
   title="Magnetic Cursor"
   description="A soft dot pointer glides across an editor toolbar, is pulled into each button and morphs into its rounded hover plate while the icon leans toward it, presses one, and leaves as a dot."
-  variables={[]}
+  variables={[{"id":"accent","type":"color","role":"style","label":"Accent","default":"#3b82f6"},{"id":"tone","type":"enum","role":"style","label":"Tone","default":"light","options":[{"value":"light","label":"Light toolbar"},{"value":"dark","label":"Dark toolbar"}]},{"id":"visits","type":"string","role":"content","label":"Buttons visited","description":"Comma-separated indexes 0-5: bold, italic, underline, link, list, image.","default":"0,3,5"},{"id":"press","type":"number","role":"timing","label":"Pressed visit","default":2,"min":1,"max":3,"step":1}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":370}}
   attribution={{"path":"registry/components/magnetic-cursor","tags":["cursor","motion-primitive","pointer","hover","morph","toolbar"]}}
-  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/magnetic-cursor.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/magnetic-cursor.png"
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/magnetic-cursor/magnetic-cursor.html"
 >

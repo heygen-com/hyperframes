@@ -8,15 +8,14 @@ import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
 <CatalogDetail
+  previewSrc="/public/catalog/components/cursor-marquee-select.json"
   compositionId="cursor-marquee-select"
   compositionSrc="compositions/components/cursor-marquee-select.html"
   title="Marquee Select Cursor"
   description="A cursor drags a selection rectangle across a photo grid; each tile rings and pops a check the frame the rectangle touches it, while a pill counts the selection up."
-  variables={[]}
+  variables={[{"id":"accent","type":"color","role":"style","label":"Accent","default":"#2f7bf6"},{"id":"start_x","type":"number","role":"layout","label":"Drag start X","default":20.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"start_y","type":"number","role":"layout","label":"Drag start Y","default":25.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"end_x","type":"number","role":"layout","label":"Drag end X","default":57,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"end_y","type":"number","role":"layout","label":"Drag end Y","default":52,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"pill_label","type":"string","role":"content","label":"Pill label","default":"selected"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":460}}
   attribution={{"path":"registry/components/cursor-marquee-select","tags":["cursor","motion-primitive","select","marquee","grid","product-demo"]}}
-  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-marquee-select.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-marquee-select.png"
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-marquee-select/cursor-marquee-select.html"
 >

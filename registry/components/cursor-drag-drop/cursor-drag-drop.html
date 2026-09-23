@@ -226,24 +226,20 @@
                 stroke-linejoin="round"
               />
             </svg>
-            <!-- Outline pass under a fill pass, so the overlapping parts read as one hand. -->
             <svg id="dd-hand" viewBox="0 0 24 24" style="opacity: 0">
-              <g fill="#141414" stroke="#141414" stroke-width="2.6" stroke-linejoin="round">
-                <rect x="6.6" y="8.6" width="11" height="11" rx="4.2" />
-                <circle cx="8.2" cy="8.8" r="1.7" />
-                <circle cx="11" cy="8" r="1.7" />
-                <circle cx="13.8" cy="8" r="1.7" />
-                <circle cx="16.4" cy="8.8" r="1.7" />
-                <ellipse cx="6.4" cy="13.4" rx="1.6" ry="2.4" transform="rotate(-30 6.4 13.4)" />
-              </g>
-              <g fill="#ffffff">
-                <rect x="6.6" y="8.6" width="11" height="11" rx="4.2" />
-                <circle cx="8.2" cy="8.8" r="1.7" />
-                <circle cx="11" cy="8" r="1.7" />
-                <circle cx="13.8" cy="8" r="1.7" />
-                <circle cx="16.4" cy="8.8" r="1.7" />
-                <ellipse cx="6.4" cy="13.4" rx="1.6" ry="2.4" transform="rotate(-30 6.4 13.4)" />
-              </g>
+              <defs>
+                <g id="dd-hand-shape">
+                  <rect x="6.6" y="8.6" width="11" height="11" rx="4.2" />
+                  <circle cx="8.2" cy="8.8" r="1.7" />
+                  <circle cx="11" cy="8" r="1.7" />
+                  <circle cx="13.8" cy="8" r="1.7" />
+                  <circle cx="16.4" cy="8.8" r="1.7" />
+                  <ellipse cx="6.4" cy="13.4" rx="1.6" ry="2.4" transform="rotate(-30 6.4 13.4)" />
+                </g>
+              </defs>
+              <!-- Outline pass under a fill pass, so the overlapping parts read as one hand. -->
+              <use href="#dd-hand-shape" fill="#141414" stroke="#141414" stroke-width="2.6" stroke-linejoin="round" />
+              <use href="#dd-hand-shape" fill="#ffffff" />
             </svg>
           </div>
         </div>

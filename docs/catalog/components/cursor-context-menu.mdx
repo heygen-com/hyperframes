@@ -8,15 +8,14 @@ import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
 <CatalogDetail
+  previewSrc="/public/catalog/components/cursor-context-menu.json"
   compositionId="cursor-context-menu"
   compositionSrc="compositions/components/cursor-context-menu.html"
   title="Context Menu Cursor"
   description="A cursor right-clicks a file, a context menu blooms from its tip, the hover highlight tracks the item under it, and the chosen action plays out: duplicate, rename, move to trash, or a confirmation toast."
-  variables={[]}
+  variables={[{"id":"items","type":"string","role":"content","label":"Menu items","default":"Open,Rename,Duplicate,Share,Move to Trash"},{"id":"pick","type":"number","role":"content","label":"Chosen item (0 = first)","default":2,"min":0,"max":9,"step":1},{"id":"tone","type":"enum","role":"style","label":"Tone","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":437}}
   attribution={{"path":"registry/components/cursor-context-menu","tags":["cursor","motion-primitive","menu","right-click","desktop","files"]}}
-  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-context-menu.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-context-menu.png"
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-context-menu/cursor-context-menu.html"
 >
