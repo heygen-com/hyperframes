@@ -1,0 +1,60 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "snow",
+  "type": "hyperframes:block",
+  "title": "Snow",
+  "description": "Seek-safe falling-snow overlay: sparse or dense flakes drift down with size, speed and opacity correlated per flake for depth, radial-masked so the frame center stays clear",
+  "tags": [
+    "snow",
+    "snowfall",
+    "winter",
+    "weather",
+    "overlay",
+    "ambient",
+    "particles",
+    "media-treatment-overlay",
+    "loopable"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "variables": [
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Flake count across the frame.",
+      "default": "sparse",
+      "options": [
+        { "value": "sparse", "label": "Sparse" },
+        { "value": "dense", "label": "Dense" }
+      ]
+    },
+    {
+      "id": "speed",
+      "type": "enum",
+      "role": "style",
+      "label": "Fall speed",
+      "description": "How fast flakes fall and sway.",
+      "default": "calm",
+      "options": [
+        { "value": "calm", "label": "Calm" },
+        { "value": "gust", "label": "Gust" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "snow.html",
+      "target": "compositions/snow.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/snow.png",
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/snow.mp4"
+  }
+}

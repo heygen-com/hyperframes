@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "973eda0eef98aed0e928080d20a64acacd8054e83611df7ed8b30ea96b25bf5b",
+  "revision": "f6ecdadd944069ebb5259e918c94e2ae2a60f49aeaf26d6941a1fe84c250d92e",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -281,6 +281,7 @@
     "slack-notification-ad",
     "slit-scan-reveal",
     "slot-machine-roll",
+    "snow",
     "social-proof-card",
     "soft-blob-touch",
     "soft-blur-in",

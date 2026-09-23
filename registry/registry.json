@@ -4,6 +4,38 @@
   "homepage": "https://hyperframes.heygen.com",
   "items": [
     {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "ai-chat-reveal",
       "type": "hyperframes:block"
     },
@@ -473,6 +505,10 @@
     },
     {
       "name": "slack-notification-ad",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "snow",
       "type": "hyperframes:block"
     },
     {
@@ -1550,41 +1586,9 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
-    },
-    {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
     }
   ],
   "catalogArtifact": {
-    "revision": "973eda0eef98aed0e928080d20a64acacd8054e83611df7ed8b30ea96b25bf5b"
+    "revision": "f6ecdadd944069ebb5259e918c94e2ae2a60f49aeaf26d6941a1fe84c250d92e"
   }
 }
