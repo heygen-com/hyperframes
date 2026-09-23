@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Starfield"
   description="Seek-safe twinkling night-sky overlay: sparse or dense stars in a radial-masked field that keeps the frame center clear"
   variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Star count across the frame.","default":"sparse","options":[{"value":"sparse","label":"Sparse"},{"value":"dense","label":"Dense"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Star color mix.","default":"warm","options":[{"value":"warm","label":"Warm (white + yellow)"},{"value":"cool","label":"Cool (white + blue)"},{"value":"white","label":"White only"}]},{"id":"speed","type":"enum","role":"style","label":"Twinkle speed","description":"How fast stars pulse.","default":"slow","options":[{"value":"slow","label":"Slow"},{"value":"fast","label":"Fast"}]}]}
-  meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":171}}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":177}}
   attribution={{"path":"registry/blocks/starfield","tags":["starfield","night-sky","stars","twinkle","sky","weather","overlay","ambient","particles","media-treatment-overlay","loopable"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/starfield/starfield.html"
@@ -36,9 +36,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
     - tone (warm | cool | white, default warm): star color mix.
     - speed (slow | fast, default slow): how fast stars pulse.
 
-  Envelope: IN = 0, HOLD = the full elastic duration, OUT = 0. The phase proxy advances
-  through baseCycles whole sine cycles during HOLD, so a longer mount adds more twinkle
-  cycles instead of stretching a single one thin.
+  Envelope: IN = 0, HOLD = the full elastic duration (the host clip's data-duration), OUT = 0.
+  Each star runs its own whole number of sine cycles during HOLD, so a longer mount adds
+  more twinkle cycles instead of stretching a single one thin.
 
   Loop invariant: every star's opacity is sin(2*PI * integer * phase + const), so phase = 0
   and phase = 1 (t = 0 and t = duration) always match exactly.
@@ -75,7 +75,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         overflow: hidden;
         pointer-events: none;
         /* Center clearance: a subject placed mid-frame stays readable by default. */
-        -webkit-mask-image: radial-gradient(circle 230px at 50% 50%, transparent 0 230px, #000 653px);
+        -webkit-mask-image: radial-gradient(
+          circle 230px at 50% 50%,
+          transparent 0 230px,
+          #000 653px
+        );
         mask-image: radial-gradient(circle 230px at 50% 50%, transparent 0 230px, #000 653px);
       }
 
@@ -108,8 +112,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       window.__timelines = window.__timelines || {};
 
       (function () {
-        var root = document.getElementById("starfield");
         var field = document.getElementById("hf-starfield");
+        // Mounted, the runtime strips data-duration off this file's root; the host clip carries it.
+        var host = field.closest("[data-composition-id]");
         var vars =
           window.__hyperframes && window.__hyperframes.getVariables
             ? window.__hyperframes.getVariables()
@@ -144,8 +149,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           return x - Math.floor(x);
         }
 
-        var duration = Number(root.getAttribute("data-duration")) || 6;
-        var baseCycles = Math.max(1, Math.round(duration / cycleSeconds));
+        var duration = Number(host.getAttribute("data-duration")) || 6;
         var TAU = 2 * Math.PI;
 
         var stars = [];
@@ -165,10 +169,12 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           el.style.boxShadow = "0 0 " + sizePx * 2 + "px " + color;
           field.appendChild(el);
 
-          var harmonic = 2 + (i % 3);
+          // Whole cycles per star over the mount, drawn independently so the field as a
+          // whole repeats only at t = duration, not every cycleSeconds.
+          var cycles = Math.max(1, Math.round((duration / cycleSeconds) * (2 + rnd(i + 4000) * 2)));
           stars.push({
             el: el,
-            omega: TAU * baseCycles * harmonic,
+            omega: TAU * cycles,
             phi: TAU * rnd(i + 1000),
             base: 0.35 + rnd(i + 2000) * 0.35,
             amp: 0.3 + rnd(i + 3000) * 0.3,
