@@ -5,17 +5,18 @@ import { parseHtmlStructure, readDecodedAttr } from "./utils";
 type Location = Pick<HyperframeLintFinding, "line" | "column">;
 
 function normalized(source: string): { text: string; offsets: number[] } {
-  let text = "";
+  // An array, not +=: V8 flattens a += string on every endsWith, which made this quadratic.
+  const chars: string[] = [];
   const offsets: number[] = [];
+  let lastWasSpace = false;
   for (let i = 0; i < source.length; i++) {
-    const char = source[i]!;
-    if (/\s/.test(char)) {
-      if (text.endsWith(" ")) continue;
-      text += " ";
-    } else text += char;
+    const isSpace = /\s/.test(source[i]!);
+    if (isSpace && lastWasSpace) continue;
+    chars.push(isSpace ? " " : source[i]!);
     offsets.push(i);
+    lastWasSpace = isSpace;
   }
-  return { text, offsets };
+  return { text: chars.join(""), offsets };
 }
 
 /** Resolve against original bytes, not the comment-stripped/template-unwrapped rule input.

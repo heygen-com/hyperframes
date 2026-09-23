@@ -201,3 +201,12 @@ it("uses classic-script Acorn semantics for new.target and hashbang", async () =
   const hashbang = await lintHyperframeHtml("<script>#!/usr/bin/env node\nconst a=1;</script>");
   expect(hashbang.findings.some((f) => f.code === "invalid_inline_script_syntax")).toBe(false);
 });
+
+it("locates a snippet at the end of a large source in linear time", () => {
+  const filler = "<div>\n  <p>a  b</p>\n</div>\n".repeat(12_000);
+  const html = `${filler}<style>\n  .late {\n    position: fixed;\n  }\n</style>`;
+  const start = performance.now();
+  const location = sourceLocationFor(html, finding({ snippet: ".late { position: fixed; }" }));
+  expect(location).toEqual({ line: 36_002, column: 3 });
+  expect(performance.now() - start).toBeLessThan(1_000);
+});
