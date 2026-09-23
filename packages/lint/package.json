@@ -54,6 +54,8 @@
   },
   "dependencies": {
     "@hyperframes/parsers": "workspace:*",
+    "acorn": "^8.17.0",
+    "acorn-walk": "^8.3.5",
     "htmlparser2": "^10.1.0",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",

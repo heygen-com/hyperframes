@@ -111,11 +111,15 @@ function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
-): Array<{ href: string; content: string }> {
-  const styles: Array<{ href: string; content: string }> = [];
+): Array<{ href: string; content: string; file?: string }> {
+  const styles: Array<{ href: string; content: string; file?: string }> = [];
   const { document } = parseHTML(html);
-  for (const { href, content } of collectLocalStylesheets(projectDir, document, compSrcPath)) {
-    styles.push({ href, content });
+  for (const { href, content, rootRelativePath } of collectLocalStylesheets(
+    projectDir,
+    document,
+    compSrcPath,
+  )) {
+    styles.push({ href, content, file: join(projectDir, rootRelativePath) });
   }
   return styles;
 }

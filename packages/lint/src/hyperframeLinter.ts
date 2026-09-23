@@ -121,7 +121,7 @@ function collectFindings(
     const dedupeKey = dedupeKeyFor(finding);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
-    into.push(filePath ? { ...finding, file: filePath } : finding);
+    into.push(filePath ? { ...finding, file: finding.file ?? filePath } : finding);
   }
 }
 
@@ -134,6 +134,17 @@ export async function lintHyperframeHtml(
   const { findings: rawFindings, timings } = await runRules(ctx, options.filePath);
   const locate = createSourceLocator(html);
   const findings = rawFindings.map((finding) => {
+    if (
+      finding.line !== undefined ||
+      finding.code === "invalid_inline_script_syntax" ||
+      finding.code === "non_deterministic_code" ||
+      [
+        "gsap_infinite_repeat",
+        "gsap_repeat_ceil_overshoot",
+        "gsap_repeat_floor_unclamped",
+      ].includes(finding.code)
+    )
+      return finding;
     // External CSS has its own source coordinates; never attribute it to the HTML document.
     if (
       finding.snippet &&
