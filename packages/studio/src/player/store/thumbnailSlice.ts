@@ -5,6 +5,11 @@ import { defaultThumbnailMode, type ThumbnailMode } from "../lib/thumbnailPolicy
 /** Revision that moves every composition's thumbnails at once. */
 const EVERY_COMPOSITION = "*";
 
+/** Mounts may be written `./scene.html`; the server reports `scene.html`. */
+function revisionKey(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\.?\//, "");
+}
+
 export interface ThumbnailSlice {
   thumbnailMode: ThumbnailMode;
   /** Monotonic identity, per composition path, for persisted content shown by mounted thumbnails. */
@@ -18,7 +23,7 @@ export function thumbnailRevisionOf(
   revisions: Readonly<Record<string, number>>,
   compositionPath: string,
 ): number {
-  return (revisions[EVERY_COMPOSITION] ?? 0) + (revisions[compositionPath] ?? 0);
+  return (revisions[EVERY_COMPOSITION] ?? 0) + (revisions[revisionKey(compositionPath)] ?? 0);
 }
 
 export function createThumbnailSlice(set: StoreApi<ThumbnailSlice>["setState"]): ThumbnailSlice {
@@ -32,7 +37,9 @@ export function createThumbnailSlice(set: StoreApi<ThumbnailSlice>["setState"]):
     bumpThumbnailRevisions: (compositions) =>
       set(({ thumbnailRevisions }) => {
         const next = { ...thumbnailRevisions };
-        for (const path of compositions ?? [EVERY_COMPOSITION]) next[path] = (next[path] ?? 0) + 1;
+        for (const path of compositions?.map(revisionKey) ?? [EVERY_COMPOSITION]) {
+          next[path] = (next[path] ?? 0) + 1;
+        }
         return { thumbnailRevisions: next };
       }),
   };

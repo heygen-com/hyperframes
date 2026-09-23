@@ -47,6 +47,8 @@ function closureOf(read: SourceReader, compPath: string): Set<string> {
   return closure;
 }
 
+// ponytail: one small entry per (project, composition) ever thumbnailed, never evicted; LRU it if
+// a server ever holds thousands.
 const inputSignatures = new Map<string, { projectSignature: string; inputSignature: string }>();
 
 /**
@@ -64,7 +66,7 @@ export function compositionInputSignature(
   const known = inputSignatures.get(key);
   if (known?.projectSignature === projectSignature) return known.inputSignature;
   const read = projectReader(projectDir);
-  const inputs = closureOf(read, compPath).add(ROOT_COMPOSITION);
+  const inputs = closureOf(read, normalizeSource(compPath) ?? compPath).add(ROOT_COMPOSITION);
   const siblings = [...closureOf(read, ROOT_COMPOSITION)].filter((path) => !inputs.has(path));
   const inputSignature = createProjectSignature(projectDir, new Set(siblings));
   inputSignatures.set(key, { projectSignature, inputSignature });

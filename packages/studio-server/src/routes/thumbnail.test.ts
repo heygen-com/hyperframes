@@ -436,6 +436,29 @@ describe("registerThumbnailRoutes", () => {
     expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
   });
 
+  it("does not cache pixels changed in flight behind a stale adapter signature", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const { sceneB } = writeTwoScenes(project.dir);
+    const stale = createProjectSignature(project.dir);
+    adapter.getProjectSignature = () => stale;
+    adapter.generateThumbnail = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        writeFileSync(sceneB, `<template><div data-composition-id="b">B, edited</div></template>`);
+        return Buffer.from("rendered-after-change");
+      })
+      .mockResolvedValueOnce(Buffer.from("rendered-again"));
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/compositions/b.html?t=3";
+
+    expect(await (await app.request(url)).text()).toBe("rendered-after-change");
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
+    expect(await (await app.request(url)).text()).toBe("rendered-again");
+  });
+
   it("keeps changed studio motion separated in the disk cache", async () => {
     const adapter = createAdapter();
     const project = await adapter.resolveProject("demo");

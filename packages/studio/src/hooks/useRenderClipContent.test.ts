@@ -271,6 +271,24 @@ describe("useRenderClipContent", () => {
     }
   });
 
+  it("finds the revision of a composition mounted with a ./ path", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "adaptive",
+      thumbnailRevisions: { "compositions/nested.html": 2 },
+    });
+
+    const content = renderClipContent({
+      id: "nested",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      compositionSrc: "./compositions/nested.html",
+    });
+
+    expect(isValidElement(content) && content.props).toMatchObject({ contentRevision: 2 });
+  });
+
   it("forwards persisted content revision to mounted composition thumbnails", () => {
     usePlayerStore.setState({
       thumbnailMode: "adaptive",
