@@ -16,9 +16,8 @@ export function registryItemNamesFromPaths(paths) {
   return names;
 }
 
-// A name only counts as an intentional removal or addition when its own
-// registry-item.json file was deleted or added in the same diff — a bare
-// registry.json edit with no matching file change is never expected.
+// Removals require a deleted source. Additions may also restore an index
+// entry omitted earlier, but must be backed by a tracked registry-item.json.
 export function computeRegistrySetDelta({ baseNames, headNames, removed, added }) {
   const expected = new Set([...baseNames].filter((name) => !removed.has(name)));
   for (const name of added) expected.add(name);
@@ -39,8 +38,11 @@ export function runRegistrySetDeltaCheck(base, { run, readRegistryJson }) {
   const baseManifest = JSON.parse(run(["show", base + ":registry/registry.json"]));
   const headManifest = JSON.parse(readRegistryJson());
   const removed = registryItemNamesFromPaths(diffPaths(run, base, "D"));
-  const added = registryItemNamesFromPaths(diffPaths(run, base, "A"));
   const baseNames = new Set(baseManifest.items.map(({ name }) => name));
+  const tracked = registryItemNamesFromPaths(
+    run(["ls-tree", "-r", "--name-only", "HEAD", "--", "registry"]).split("\n"),
+  );
+  const added = new Set([...tracked].filter((name) => !baseNames.has(name)));
   const headNames = new Set(headManifest.items.map(({ name }) => name));
   const { missing, unexpected } = computeRegistrySetDelta({ baseNames, headNames, removed, added });
   return { missing, unexpected, removedCount: removed.size, addedCount: added.size };

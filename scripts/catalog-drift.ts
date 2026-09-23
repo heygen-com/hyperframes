@@ -1,10 +1,19 @@
 // Fails when the committed docs/public/catalog, which the docs build serves as-is, differs from generator output.
-import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  mkdtempSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAsCommand } from "./entrypoint.ts";
+import { generateCatalog, GENERATED_CATALOG_PATHS } from "./generate-catalog.ts";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MAX_LISTED = 40;
@@ -44,24 +53,72 @@ function generateInto(outRoot: string): number {
 }
 
 /** The catalog as `git` holds it, so a file the working tree has but a .gitignore rule keeps out cannot hide drift. */
-function extractCommittedCatalog(into: string): string {
-  const archive = spawnSync("git", ["archive", "HEAD", "docs/public/catalog"], {
-    cwd: repoRoot,
+function extractCommittedTree(into: string, paths: readonly string[], root = repoRoot): void {
+  mkdirSync(into, { recursive: true });
+  const tracked = execFileSync("git", ["ls-tree", "--name-only", "HEAD", "--", ...paths], {
+    cwd: root,
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  if (tracked.length === 0) return;
+  const archive = spawnSync("git", ["archive", "HEAD", ...tracked], {
+    cwd: root,
     maxBuffer: 2 ** 31 - 1,
   });
-  if (archive.status !== 0) throw new Error("git archive of docs/public/catalog failed.");
+  if (archive.status !== 0) throw new Error(`git archive failed for ${paths.join(", ")}.`);
   mkdirSync(into, { recursive: true });
   const untar = spawnSync("tar", ["-x", "-C", into], { input: archive.stdout });
   if (untar.status !== 0) throw new Error("could not unpack the committed catalog.");
-  return join(into, "docs/public/catalog");
+}
+
+function copyPaths(from: string, into: string, paths: readonly string[]): void {
+  mkdirSync(into, { recursive: true });
+  for (const path of paths) {
+    if (!existsSync(join(from, path))) continue;
+    mkdirSync(dirname(join(into, path)), { recursive: true });
+    cpSync(join(from, path), join(into, path), { recursive: true });
+  }
+}
+
+export function generatedCatalogDifferences(root = repoRoot): string[] {
+  const base = mkdtempSync(join(tmpdir(), "generated-catalog-drift-"));
+  try {
+    const generated = join(base, "generated");
+    copyPaths(root, generated, [
+      "registry",
+      "docs/docs.json",
+      "docs/catalog/blocks",
+      "docs/catalog/components",
+      "docs/public/catalog",
+    ]);
+    mkdirSync(join(generated, "docs/snippets"), { recursive: true });
+    generateCatalog(generated);
+    const actual = join(base, "actual");
+    extractCommittedTree(actual, GENERATED_CATALOG_PATHS, root);
+    const expected = join(base, "expected");
+    copyPaths(generated, expected, GENERATED_CATALOG_PATHS);
+    return treeDifferences(expected, actual);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
 }
 
 async function main(): Promise<void> {
+  const catalogDrift = generatedCatalogDifferences();
+  if (catalogDrift.length > 0) {
+    throw new Error(
+      `Generated catalog differs in ${catalogDrift.length} file(s):\n${catalogDrift.slice(0, MAX_LISTED).join("\n")}\nRun \`bun run generate:catalog\` and commit the result.`,
+    );
+  }
   const base = mkdtempSync(join(tmpdir(), "catalog-drift-"));
   const outRoot = join(base, "generated");
   try {
     if (generateInto(outRoot) !== 0) throw new Error("The catalog payload generator failed.");
-    const committedRoot = extractCommittedCatalog(join(base, "committed"));
+    const committed = join(base, "committed");
+    extractCommittedTree(committed, ["docs/public/catalog"]);
+    const committedRoot = join(committed, "docs/public/catalog");
     const differences = treeDifferences(outRoot, committedRoot);
     if (differences.length === 0) return console.log("docs/public/catalog matches the generator.");
     const listed = differences.slice(0, MAX_LISTED).map((line) => `  ${line}`);

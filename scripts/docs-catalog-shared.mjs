@@ -3,7 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export function resolveDocsRoot(argv2) {
-  const root = fileURLToPath(new URL("..", import.meta.url));
+  const root = path.resolve(
+    process.env.CATALOG_REPO_ROOT ?? fileURLToPath(new URL("..", import.meta.url)),
+  );
   return { root, docs: path.resolve(argv2 || path.join(root, "docs")) };
 }
 

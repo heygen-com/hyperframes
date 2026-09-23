@@ -14,8 +14,8 @@
  */
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
   type FileTarget,
@@ -25,12 +25,10 @@ import {
 } from "../packages/core/src/registry/types.js";
 import { withHostedDefaults } from "./registry-hosted-assets.ts";
 import { declaredVariables } from "./catalog/component-variables.ts";
-import { usesWebgpu } from "./docs-catalog-shared.mjs";
+import { resolveDocsRoot, usesWebgpu } from "./docs-catalog-shared.mjs";
 
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "..");
+const { root: repoRoot, docs: docsDir } = resolveDocsRoot();
 const registryDir = resolve(repoRoot, "registry");
-const docsDir = resolve(repoRoot, "docs");
 const rawSourceBase = "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
 const catalogImageBase = "https://static.heygen.ai/hyperframes-oss/docs/images/catalog";
 const payloadRoot = resolve(repoRoot, "docs/public/catalog");

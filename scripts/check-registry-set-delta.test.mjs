@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
   computeRegistrySetDelta,
@@ -82,9 +86,7 @@ describe("runRegistrySetDeltaCheck", () => {
       if (args[0] === "show") {
         return JSON.stringify({ items: [{ name: "existing" }] });
       }
-      // diff --name-only --diff-filter=A|D base...HEAD
-      const filter = args[2];
-      if (filter === "--diff-filter=A") {
+      if (args[0] === "ls-tree") {
         return "registry/components/text-match-cut/registry-item.json\n";
       }
       return "";
@@ -135,4 +137,40 @@ describe("formatRegistrySetDeltaResult", () => {
       ].join("\n"),
     );
   });
+});
+
+it("permits a tracked-source repair while refusing invented entries and unbacked deletion", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "registry-repair-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const run = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  run(["init", "--quiet"]);
+  for (const name of ["existing", "omitted"]) {
+    const dir = join(root, "registry", "blocks", name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "registry-item.json"), JSON.stringify({ name }));
+  }
+  const index = join(root, "registry/registry.json");
+  const putIndex = (names) =>
+    writeFileSync(index, JSON.stringify({ items: names.map((name) => ({ name })) }));
+  putIndex(["existing"]);
+  run(["add", "."]);
+  run([
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "commit",
+    "--quiet",
+    "-m",
+    "fixture",
+  ]);
+  const base = run(["rev-parse", "HEAD"]);
+  const check = () =>
+    runRegistrySetDeltaCheck(base, { run, readRegistryJson: () => readFileSync(index, "utf8") });
+  putIndex(["existing", "omitted"]);
+  assert.deepEqual(check(), { missing: [], unexpected: [], removedCount: 0, addedCount: 1 });
+  putIndex(["existing", "omitted", "invented"]);
+  assert.deepEqual(check().unexpected, ["invented"]);
+  putIndex(["omitted"]);
+  assert.deepEqual(check().missing, ["existing"]);
 });

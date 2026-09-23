@@ -18,6 +18,7 @@
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isEntrypoint } from "./entrypoint.ts";
 import {
   ITEM_TYPE_DIRS,
   type FileTarget,
@@ -27,12 +28,11 @@ import {
   // Import from source, like every other script here: bun workspace linking
   // does not resolve for scripts outside packages/, so the package name
   // typechecks on a machine with a warm node_modules and fails in CI.
-} from "../packages/core/src/index.js";
+} from "../packages/core/src/registry/types.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const examplesDir = resolve(repoRoot, "registry", ITEM_TYPE_DIRS["hyperframes:example"]);
-const registryManifestPath = resolve(repoRoot, "registry/registry.json");
 const legacyManifestPath = resolve(examplesDir, "templates.json");
 
 const DEFAULT_DURATION_SECONDS = 10;
@@ -158,24 +158,18 @@ function writeItem(item: RegistryItem): void {
  * files; scanning the tree keeps them from being dropped on regeneration
  * (previously this rewrote 300+ entries down to the 8 examples).
  */
-function writeRegistryManifest(): void {
+export function writeRegistryManifest(root = repoRoot): void {
+  const registryManifestPath = resolve(root, "registry/registry.json");
   const items: Array<{ name: string; type: RegistryItem["type"] }> = [];
   for (const [type, dir] of Object.entries(ITEM_TYPE_DIRS) as Array<
     [RegistryItem["type"], string]
   >) {
-    const typeDir = resolve(repoRoot, "registry", dir);
-    let entries: string[];
-    try {
-      entries = readdirSync(typeDir);
-    } catch {
-      continue;
-    }
-    for (const name of entries.sort()) {
-      try {
-        statSync(join(typeDir, name, "registry-item.json"));
-      } catch {
-        continue;
-      }
+    const typeDir = resolve(root, "registry", dir);
+    if (statSync(typeDir, { throwIfNoEntry: false }) === undefined) continue;
+    for (const name of readdirSync(typeDir).sort()) {
+      if (!statSync(join(typeDir, name)).isDirectory()) continue;
+      const manifestPath = join(typeDir, name, "registry-item.json");
+      if (statSync(manifestPath, { throwIfNoEntry: false }) === undefined) continue;
       items.push({ name, type });
     }
   }
@@ -185,24 +179,21 @@ function writeRegistryManifest(): void {
   // else, so it carries that field through rather than rewriting the file
   // without it: dropping it makes the gate fail and the staleness check answer
   // "missing" until someone rebuilds the index.
-  const existing = ((): { catalogArtifact?: unknown } => {
-    try {
-      return JSON.parse(readFileSync(registryManifestPath, "utf-8")) as {
-        catalogArtifact?: unknown;
-      };
-    } catch {
-      return {};
-    }
-  })();
+  let existing: { catalogArtifact?: unknown } = {};
+  if (statSync(registryManifestPath, { throwIfNoEntry: false }) !== undefined) {
+    existing = JSON.parse(readFileSync(registryManifestPath, "utf-8"));
+  }
   const manifest: RegistryManifest = {
     $schema: "https://hyperframes.heygen.com/schema/registry.json",
     name: "hyperframes",
     homepage: "https://hyperframes.heygen.com",
     items,
-    ...(existing.catalogArtifact ? { catalogArtifact: existing.catalogArtifact } : {}),
+    ...(existing.catalogArtifact !== undefined
+      ? { catalogArtifact: existing.catalogArtifact }
+      : {}),
   } as RegistryManifest;
   writeFileSync(registryManifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
-  console.log(`wrote ${relative(repoRoot, registryManifestPath)} (${items.length} items)`);
+  console.log(`wrote ${relative(root, registryManifestPath)} (${items.length} items)`);
 }
 
 function main(): void {
@@ -242,4 +233,4 @@ function main(): void {
   }
 }
 
-main();
+if (isEntrypoint(import.meta.url)) main();
