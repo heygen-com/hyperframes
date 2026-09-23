@@ -235,6 +235,49 @@ describe("resolveProjectPath why", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ why: "outside_project" });
   });
+
+  // A listing (`walkDir`) can show a path that has since been replaced by a
+  // directory — a rename, or an agent overwriting a file with a folder of the
+  // same name. `existsSync` passes; `readFileSync` would throw `EISDIR`, which
+  // Hono answers as plain-text "Internal Server Error" — not JSON, and not a
+  // reason. This must read the same as any other missing-file 404.
+  it("reports a path replaced by a directory as 404, not a bare server error", async () => {
+    const { app, project } = fixture();
+    rmSync(join(project, "inside.txt"));
+    mkdirSync(join(project, "inside.txt"));
+
+    const response = await app.request(fileUrl("inside.txt"));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "not_a_file" });
+  });
+
+  // The dangling case: the link exists, its target does not, anywhere. This is
+  // broken plumbing (a stale symlink), not an attack — the read route should
+  // say so rather than reuse the path-traversal label.
+  it("reports a dangling symlink as 404, not 403", async (context) => {
+    const { app, project } = fixture();
+    linkOrSkip(context, join(project, "nope-target.html"), join(project, "dangling.html"), "file");
+
+    const response = await app.request(fileUrl("dangling.html"));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "dangling_symlink" });
+  });
+
+  // The containment guard must not weaken: a symlink that resolves to
+  // something real outside the project is still the traversal case, whether
+  // or not it happens to be broken in some OTHER way. Only a target that
+  // exists nowhere gets the new label.
+  it("still reports a symlink resolving outside the project as 403 outside_project", async (context) => {
+    const { app, project, outside } = fixture();
+    linkOrSkip(context, join(outside, "secret.txt"), join(project, "escape.html"), "file");
+
+    const response = await app.request(fileUrl("escape.html"));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "outside_project" });
+  });
 });
 
 describe("upload collision races", () => {

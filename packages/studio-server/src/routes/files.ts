@@ -7,6 +7,7 @@ import { bodyLimit } from "hono/body-limit";
 import {
   closeSync,
   existsSync,
+  lstatSync,
   openSync,
   readFileSync,
   writeFileSync,
@@ -126,6 +127,33 @@ interface ResolvedGsapFile {
   absPath: string;
 }
 
+/**
+ * True only for a symlink whose target does not exist anywhere — not for one
+ * that exists but points outside the project (that stays a real containment
+ * failure) and not for a plain missing path (that's the ordinary case
+ * `resolveWithinProject` already covers). `isSafePath` fails closed on a
+ * dangling symlink by design (a write through it could later resolve outside
+ * the project once something creates the target) — this does not loosen that;
+ * it only tells the caller *why* the containment check refused, so the
+ * response can say "not found" instead of a path-traversal-shaped "forbidden"
+ * for a case that scans as broken plumbing, not an attack.
+ */
+function isDanglingSymlink(lexicalPath: string): boolean {
+  let stats;
+  try {
+    stats = lstatSync(lexicalPath);
+  } catch {
+    return false;
+  }
+  if (!stats.isSymbolicLink()) return false;
+  try {
+    statSync(lexicalPath);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 /** Resolve project + safe absolute path for any project-scoped route. */
 async function resolveProjectPath(
   c: RouteContext,
@@ -160,6 +188,9 @@ async function resolveProjectPath(
 
   const absPath = resolveWithinProject(project.dir, filePath);
   if (!absPath) {
+    if (isDanglingSymlink(resolve(project.dir, filePath))) {
+      return { error: c.json({ error: "not found", why: "dangling_symlink" }, 404) } as const;
+    }
     return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
   }
 
@@ -2288,6 +2319,16 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         return c.json({ filename: res.filePath, content: "", missing: true });
       }
       return c.json({ error: "not found" }, 404);
+    }
+
+    // A listing built from `walkDir` can show a path that has since been
+    // replaced by a directory (a rename, or an agent overwriting a file with
+    // a folder of the same name) — `existsSync` passes, and `readFileSync`
+    // below would throw `EISDIR`, which Hono answers as a plain-text 500. The
+    // caller already handles a 404 with `why`; this reports the same shape
+    // instead of an opaque server error for something that is not one.
+    if (!statSync(res.absPath).isFile()) {
+      return c.json({ error: "not found", why: "not_a_file" }, 404);
     }
 
     const content = readFileSync(res.absPath);
