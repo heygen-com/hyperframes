@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e",
+  "revision": "20a9e92fbaa980ccc190c88c8b34b1cf4b6c1879d11afb7b45a68d1ae266670b",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -295,6 +295,7 @@
     "stagger-lattice",
     "staggered-fade-up",
     "star-rating-fill",
+    "starfield",
     "state-chip-rail",
     "sticky-mock-swap",
     "stitched-text-draw",

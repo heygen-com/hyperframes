@@ -1,0 +1,75 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "starfield",
+  "type": "hyperframes:block",
+  "title": "Starfield",
+  "description": "Seek-safe twinkling night-sky overlay: sparse or dense stars in a radial-masked field that keeps the frame center clear",
+  "tags": [
+    "starfield",
+    "night-sky",
+    "stars",
+    "twinkle",
+    "sky",
+    "weather",
+    "overlay",
+    "ambient",
+    "particles",
+    "media-treatment-overlay",
+    "loopable"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "variables": [
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Star count across the frame.",
+      "default": "sparse",
+      "options": [
+        { "value": "sparse", "label": "Sparse" },
+        { "value": "dense", "label": "Dense" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Star color mix.",
+      "default": "warm",
+      "options": [
+        { "value": "warm", "label": "Warm (white + yellow)" },
+        { "value": "cool", "label": "Cool (white + blue)" },
+        { "value": "white", "label": "White only" }
+      ]
+    },
+    {
+      "id": "speed",
+      "type": "enum",
+      "role": "style",
+      "label": "Twinkle speed",
+      "description": "How fast stars pulse.",
+      "default": "slow",
+      "options": [
+        { "value": "slow", "label": "Slow" },
+        { "value": "fast", "label": "Fast" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "starfield.html",
+      "target": "compositions/starfield.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/starfield.png",
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/starfield.mp4"
+  }
+}

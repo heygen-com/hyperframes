@@ -1,0 +1,270 @@
+---
+title: "Starfield"
+description: "Seek-safe twinkling night-sky overlay: sparse or dense stars in a radial-masked field that keeps the frame center clear"
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/starfield.json"
+  compositionId="starfield"
+  compositionSrc="compositions/starfield.html"
+  title="Starfield"
+  description="Seek-safe twinkling night-sky overlay: sparse or dense stars in a radial-masked field that keeps the frame center clear"
+  variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Star count across the frame.","default":"sparse","options":[{"value":"sparse","label":"Sparse"},{"value":"dense","label":"Dense"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Star color mix.","default":"warm","options":[{"value":"warm","label":"Warm (white + yellow)"},{"value":"cool","label":"Cool (white + blue)"},{"value":"white","label":"White only"}]},{"id":"speed","type":"enum","role":"style","label":"Twinkle speed","description":"How fast stars pulse.","default":"slow","options":[{"value":"slow","label":"Slow"},{"value":"fast","label":"Fast"}]}]}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":177}}
+  attribution={{"path":"registry/blocks/starfield","tags":["starfield","night-sky","stars","twinkle","sky","weather","overlay","ambient","particles","media-treatment-overlay","loopable"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/starfield/starfield.html"
+>
+
+<CatalogSlot slot="code">
+
+```html starfield.html
+<!doctype html>
+<!--
+  starfield: HyperFrames video primitive (backgrounds / ambient overlay)
+
+  Concept: sparse or dense stars twinkle in place over a transparent field, meant to sit
+  on a track above real footage rather than as an opaque background. A radial mask keeps
+  the frame center clear for a subject or caption underneath.
+
+  Variables:
+    - density (sparse | dense, default sparse): star count across the frame.
+    - tone (warm | cool | white, default warm): star color mix.
+    - speed (slow | fast, default slow): how fast stars pulse.
+
+  Envelope: IN = 0, HOLD = the full elastic duration (the host clip's data-duration), OUT = 0.
+  Each star runs its own whole number of sine cycles during HOLD, so a longer mount adds
+  more twinkle cycles instead of stretching a single one thin.
+
+  Loop invariant: every star's opacity is sin(2*PI * integer * phase + const), so phase = 0
+  and phase = 1 (t = 0 and t = duration) always match exactly.
+
+  Sound: none.
+
+  Mount contract: the runtime clones only this file's body. The root has no data-width or
+  data-height requirement beyond the block's own declared dimensions, and registers one
+  paused timeline under the hardcoded starfield id.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      #hf-starfield {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        /* Center clearance: a subject placed mid-frame stays readable by default. */
+        -webkit-mask-image: radial-gradient(
+          circle 230px at 50% 50%,
+          transparent 0 230px,
+          #000 653px
+        );
+        mask-image: radial-gradient(circle 230px at 50% 50%, transparent 0 230px, #000 653px);
+      }
+
+      #hf-starfield .hf-star {
+        position: absolute;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="starfield"
+      data-composition-id="starfield"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+      data-composition-variables='[
+        { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Star count across the frame.", "default": "sparse", "options": [{ "value": "sparse", "label": "Sparse" }, { "value": "dense", "label": "Dense" }] },
+        { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Star color mix.", "default": "warm", "options": [{ "value": "warm", "label": "Warm (white + yellow)" }, { "value": "cool", "label": "Cool (white + blue)" }, { "value": "white", "label": "White only" }] },
+        { "id": "speed", "type": "enum", "role": "style", "label": "Twinkle speed", "description": "How fast stars pulse.", "default": "slow", "options": [{ "value": "slow", "label": "Slow" }, { "value": "fast", "label": "Fast" }] }
+      ]'
+    >
+      <div id="hf-starfield" aria-hidden="true"></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      (function () {
+        var field = document.getElementById("hf-starfield");
+        // Mounted, the runtime strips data-duration off this file's root; the host clip carries it.
+        var host = field.closest("[data-composition-id]");
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        var TONES = {
+          warm: ["#fff7e0", "#ffe08a"],
+          cool: ["#f2f8ff", "#a9d6ff"],
+          white: ["#ffffff", "#ffffff"],
+        };
+
+        var COUNT = vars.density === "dense" ? 140 : 60;
+        var palette = Object.prototype.hasOwnProperty.call(TONES, vars.tone)
+          ? TONES[vars.tone]
+          : TONES.warm;
+        var cycleSeconds = vars.speed === "fast" ? 0.9 : 1.6;
+
+        // Even 2D coverage with no clumping and no seed to store (Weyl low-discrepancy
+        // sequence): successive multiples of an irrational constant, taken mod 1.
+        var PHI = 0.6180339887498949; // sqrt(5) - 1) / 2
+        var RT2 = 0.4142135623730951; // sqrt(2) - 1
+
+        function frac(x) {
+          return x - Math.floor(x);
+        }
+
+        // Deterministic per-index hash (sin fold; no Math.random) for scalars that only
+        // need decorrelation, not even coverage. registry/components/stop-motion-cadence's
+        // rnd(n).
+        function rnd(n) {
+          var x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+          return x - Math.floor(x);
+        }
+
+        var duration = Number(host.getAttribute("data-duration")) || 6;
+        var TAU = 2 * Math.PI;
+
+        var stars = [];
+        for (var i = 0; i < COUNT; i++) {
+          var bx = frac(i * PHI + 0.11);
+          var by = frac(i * RT2 + 0.37);
+          var sizePx = 1.4 + rnd(i) * 2.2;
+          var color = i % 3 === 0 ? palette[1] : palette[0];
+
+          var el = document.createElement("div");
+          el.className = "hf-star";
+          el.style.left = bx * 100 + "%";
+          el.style.top = by * 100 + "%";
+          el.style.width = sizePx + "px";
+          el.style.height = sizePx + "px";
+          el.style.background = color;
+          el.style.boxShadow = "0 0 " + sizePx * 2 + "px " + color;
+          field.appendChild(el);
+
+          // Whole cycles per star over the mount, drawn independently so the field as a
+          // whole repeats only at t = duration, not every cycleSeconds.
+          var cycles = Math.max(1, Math.round((duration / cycleSeconds) * (2 + rnd(i + 4000) * 2)));
+          stars.push({
+            el: el,
+            omega: TAU * cycles,
+            phi: TAU * rnd(i + 1000),
+            base: 0.35 + rnd(i + 2000) * 0.35,
+            amp: 0.3 + rnd(i + 3000) * 0.3,
+          });
+        }
+
+        var state = { phase: 0 };
+
+        function render() {
+          var p = state.phase;
+          for (var s = 0; s < stars.length; s++) {
+            var star = stars[s];
+            star.el.style.opacity = star.base + star.amp * Math.sin(star.omega * p + star.phi);
+          }
+        }
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to(state, { phase: 1, duration: duration, ease: "none", onUpdate: render }, 0);
+        render();
+
+        window.__timelines["starfield"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add starfield" item="starfield" />
+
+That writes one file: `compositions/starfield.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="starfield"
+  data-composition-src="compositions/starfield.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `density` | `sparse` | `sparse`, `dense` | Star count across the frame. |
+| `tone` | `warm` | `warm`, `cool`, `white` | Star color mix. |
+| `speed` | `slow` | `slow`, `fast` | How fast stars pulse. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="starfield"
+  data-composition-src="compositions/starfield.html"
+  data-variable-values='{"density":"sparse","tone":"warm","speed":"slow"}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `starfield` `night-sky` `stars` `twinkle` `sky` `weather` `overlay` `ambient` `particles` `media-treatment-overlay` `loopable`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
