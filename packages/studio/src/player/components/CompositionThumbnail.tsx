@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
@@ -153,7 +153,11 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
       {value && (
         <div
           className="absolute inset-0 flex"
-          style={{ animation: "hf-thumb-fade 200ms ease-out", mixBlendMode: "lighten" }}
+          style={{
+            animation: "hf-thumb-fade 200ms ease-out",
+            mixBlendMode:
+              "var(--timeline-composition-thumbnail-blend)" as CSSProperties["mixBlendMode"],
+          }}
         >
           {Array.from({ length: frameCount }, (_, index) => (
             <div
@@ -166,7 +170,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
                 alt=""
                 draggable={false}
                 className="absolute inset-0 h-full w-full object-cover"
-                style={{ opacity: 0.7 }}
+                style={{ opacity: "var(--timeline-composition-thumbnail-opacity)" }}
               />
             </div>
           ))}
