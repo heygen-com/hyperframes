@@ -270,18 +270,13 @@
   --color-panel-media: var(--color-media);
   --color-panel-container: var(--color-container);
 
-  /* panel tabs. Dark values. A paper host overrides these same names:
-     strip #f5f5f4, border #18181b14, active rgba(0, 0, 0, 0.06),
-     muted rgba(0, 0, 0, 0.03), hover rgba(0, 0, 0, 0.035), text #18181b / #71717a. */
-  --panel-strip-bg: var(--color-panel-surface);
-  --panel-strip-border: var(--color-panel-border);
-  --panel-tab-bg-active: rgba(255, 255, 255, 0.08);
-  --panel-tab-bg-active-muted: rgba(255, 255, 255, 0.04);
-  --panel-tab-bg-hover: rgba(255, 255, 255, 0.04);
-  --panel-tab-text-active: var(--color-text-1);
-  --panel-tab-text: var(--color-text-3);
-  --panel-tab-indicator: var(--color-accent);
-  --panel-tab-ring: var(--color-accent);
+  /* Dock panels are cards on the shell. The card owns the only border; its tab
+   * strip sits below the card body and the shown tab is a fill in the body colour. */
+  --panel-shell-bg: var(--color-bg-1);
+  --panel-card-bg: var(--color-surface);
+  --panel-card-border: #303034;
+  --panel-strip-bg: var(--color-bg-0);
+  --panel-tab-bg-hover: #202023;
 
   /* Names Studio's markup invented that no config ever defined, so the classes
    * compiled to nothing. Aliased to the token that was meant, rather than

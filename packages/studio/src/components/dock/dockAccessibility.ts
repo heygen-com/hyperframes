@@ -74,49 +74,16 @@ function onTabKeyDown(event: KeyboardEvent, tab: HTMLElement, api: DockviewApi) 
   target.focus();
 }
 
-/** Dockview's default close control says "Close tab". Name the panel. */
-function labelCloseButtons(root: HTMLElement) {
-  for (const button of root.querySelectorAll<HTMLButtonElement>(".dv-default-tab-action")) {
-    const title = button
-      .closest(".dv-default-tab")
-      ?.querySelector(".dv-default-tab-content")
-      ?.textContent?.trim();
-    if (!title) continue;
-    const label = `Close ${title}`;
-    if (button.getAttribute("aria-label") !== label) button.setAttribute("aria-label", label);
-  }
-}
-
 /** Keyboard and ARIA support dockview 8.3 lacks for sashes and tab arrows. Returns a disposer. */
 export function installDockAccessibility(api: DockviewApi, root: HTMLElement): () => void {
-  const titleDisposers = new Map<string, { dispose: () => void }>();
-  const watchTitles = () => {
-    const live = new Set(api.panels.map((panel) => panel.id));
-    for (const [id, disposer] of titleDisposers) {
-      if (live.has(id)) continue;
-      disposer.dispose();
-      titleDisposers.delete(id);
-    }
-    for (const panel of api.panels) {
-      if (titleDisposers.has(panel.id)) continue;
-      titleDisposers.set(
-        panel.id,
-        panel.api.onDidTitleChange(() => labelCloseButtons(root)),
-      );
-    }
-  };
-  const decorate = () => {
-    decorateSashes(root);
-    labelCloseButtons(root);
-    watchTitles();
-  };
+  const decorate = () => decorateSashes(root);
+  decorate();
   const subscriptions = [
     api.onDidLayoutChange(decorate),
     api.onDidLayoutFromJSON(decorate),
     api.onDidAddPanel(decorate),
     api.onDidRemovePanel(decorate),
   ];
-  decorate();
   // Capture phase so the tab handler runs before dockview's own focus-only arrows.
   const onKeyDown = (event: KeyboardEvent) => {
     if (!(event.target instanceof HTMLElement)) return;
@@ -127,7 +94,5 @@ export function installDockAccessibility(api: DockviewApi, root: HTMLElement): (
   return () => {
     root.removeEventListener("keydown", onKeyDown, true);
     for (const subscription of subscriptions) subscription.dispose();
-    for (const disposer of titleDisposers.values()) disposer.dispose();
-    titleDisposers.clear();
   };
 }

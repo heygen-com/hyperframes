@@ -1,0 +1,151 @@
+// @vitest-environment happy-dom
+
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { Dock } from "./Dock";
+import { useDockLayoutStore } from "./dockLayoutStore";
+import { PANEL_IDS, type PanelId } from "./panelRegistry";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+
+// happy-dom has no layout: a tab sits at 100px per position and is 90px wide.
+const TAB_STEP = 100;
+const TAB_WIDTH = 90;
+const tabIndex = (element: HTMLElement) =>
+  element.classList.contains("dv-tab")
+    ? [...(element.parentElement?.querySelectorAll(":scope > .dv-tab") ?? [])].indexOf(element)
+    : -1;
+const layout = {
+  offsetLeft: {
+    get(this: HTMLElement) {
+      return Math.max(tabIndex(this), 0) * TAB_STEP;
+    },
+  },
+  offsetWidth: {
+    get(this: HTMLElement) {
+      return tabIndex(this) >= 0 ? TAB_WIDTH : 0;
+    },
+  },
+};
+const original = {
+  offsetLeft: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetLeft"),
+  offsetWidth: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth"),
+};
+beforeAll(() => {
+  Object.defineProperties(HTMLElement.prototype, {
+    offsetLeft: { ...layout.offsetLeft, configurable: true },
+    offsetWidth: { ...layout.offsetWidth, configurable: true },
+  });
+});
+afterAll(() => {
+  for (const [key, descriptor] of Object.entries(original)) {
+    if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
+  }
+});
+
+let root: Root | null = null;
+let host: HTMLElement;
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.useFakeTimers();
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  act(() => {
+    root?.render(
+      <Dock.Root projectId="p1">
+        {PANEL_IDS.map((id) => (
+          <Dock.Panel key={id} id={id}>
+            <div>{id}</div>
+          </Dock.Panel>
+        ))}
+      </Dock.Root>,
+    );
+  });
+});
+
+afterEach(() => {
+  act(() => root?.unmount());
+  root = null;
+  document.body.innerHTML = "";
+  vi.useRealTimers();
+});
+
+const tab = (id: PanelId) => host.querySelector<HTMLElement>(`[data-tab-panel-id="${id}"]`);
+const stripOf = (id: PanelId) => tab(id)?.closest<HTMLElement>(".dv-tabs-container");
+const groupOf = (id: PanelId) => tab(id)?.closest<HTMLElement>(".dv-groupview");
+
+async function activate(id: PanelId) {
+  // dockview settles the active panel on a microtask; `act(async)` waits for it.
+  await act(async () => useDockLayoutStore.getState().activatePanel(id));
+}
+
+describe("dock tabs", () => {
+  it("draw the type icon and close glyph on the shown tab only", () => {
+    for (const id of ["design", "compositions"] as const) {
+      expect(tab(id)?.querySelector(".hf-dock-tab-icon")).not.toBeNull();
+      expect(tab(id)?.querySelector(".hf-dock-tab-close")).not.toBeNull();
+    }
+    for (const id of ["layers", "renders", "variables", "assets", "code", "catalog"] as const) {
+      expect(tab(id)?.querySelector(".hf-dock-tab-icon")).toBeNull();
+      expect(tab(id)?.querySelector(".hf-dock-tab-close")).toBeNull();
+      expect(tab(id)?.textContent).toBe(tab(id)?.getAttribute("aria-label"));
+    }
+  });
+
+  it("move the icon to the newly shown tab and drop it from the old one", async () => {
+    await activate("layers");
+    expect(tab("layers")?.querySelector(".hf-dock-tab-icon")).not.toBeNull();
+    expect(tab("design")?.querySelector(".hf-dock-tab-icon")).toBeNull();
+    expect(tab("design")?.querySelector(".hf-dock-tab-close")).toBeNull();
+  });
+
+  it("name the close control after the panel, and close only that panel", async () => {
+    const close = tab("design")?.querySelector<HTMLElement>(".hf-dock-tab-close");
+    expect(close?.getAttribute("aria-label")).toBe("Close Design");
+    await act(async () => close?.click());
+    expect(useDockLayoutStore.getState().openPanels.has("design")).toBe(false);
+    expect(useDockLayoutStore.getState().openPanels.has("layers")).toBe(true);
+  });
+});
+
+describe("dock strip actions", () => {
+  const groupsWithActions = () =>
+    [...host.querySelectorAll(".hf-dock-strip-actions")].map((actions) =>
+      actions.closest(".dv-groupview"),
+    );
+
+  it("sit on the active group's strip only, and follow the active group", async () => {
+    await activate("design");
+    expect(groupsWithActions()).toEqual([groupOf("design")]);
+    const labels = [...host.querySelectorAll(".hf-dock-strip-actions button")].map((button) =>
+      button.getAttribute("aria-label"),
+    );
+    expect(labels).toEqual(["Panel menu", "Maximize panel", "Close group"]);
+    await activate("assets");
+    expect(groupsWithActions()).toEqual([groupOf("assets")]);
+  });
+});
+
+describe("dock tab fill", () => {
+  it("is one element per strip, under the shown tab, and follows a switch", async () => {
+    for (const strip of host.querySelectorAll(".dv-tabs-container")) {
+      expect(strip.querySelectorAll(".hf-dock-tab-fill")).toHaveLength(1);
+    }
+    const fill = () => stripOf("design")?.querySelector<HTMLElement>(".hf-dock-tab-fill");
+    expect(fill()?.style.transform).toBe("translateX(0px)");
+    expect(fill()?.style.width).toBe(`${TAB_WIDTH}px`);
+    await activate("renders");
+    expect(stripOf("design")?.querySelectorAll(".hf-dock-tab-fill")).toHaveLength(1);
+    expect(fill()?.style.transform).toBe(`translateX(${2 * TAB_STEP}px)`);
+  });
+});

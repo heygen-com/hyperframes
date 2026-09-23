@@ -115,10 +115,10 @@ export function PreviewPane({
   return (
     <div
       ref={containerRef}
-      // Panel chrome (rounded border) is dropped in fullscreen so the preview
-      // fills the screen edge-to-edge.
+      // A recessed well inset in its dock card; dropped in fullscreen so the
+      // preview fills the screen edge-to-edge.
       className={`flex-1 min-h-0 flex flex-col overflow-hidden bg-[var(--studio-preview-bg,var(--color-neutral-950))] ${
-        isFullscreen ? "" : "rounded-lg border border-neutral-800/50"
+        isFullscreen ? "" : "m-3 rounded-md border border-neutral-800/50"
       }`}
       data-studio-fullscreen-target=""
     >

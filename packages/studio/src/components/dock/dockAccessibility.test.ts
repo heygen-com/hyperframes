@@ -163,21 +163,4 @@ describe("dock tab strips", () => {
     press(tabs[3] as HTMLElement, "Home");
     expect(api.getPanel("design")?.group.activePanel?.id).toBe("design");
   });
-
-  it("names each closable tab's close control after that panel", () => {
-    const tabs = tabsOf("design");
-    const labels = tabs.map((tab) =>
-      tab.querySelector(".dv-default-tab-action")?.getAttribute("aria-label"),
-    );
-    expect(labels).toEqual(["Close Design", "Close Layers", "Close Renders", "Close Variables"]);
-    expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("renames the close control when the panel title changes", () => {
-    api.getPanel("renders")?.api.setTitle("Renders (2)");
-    const renders = tabsOf("design").find((tab) => tab.dataset.tabPanelId === "renders");
-    expect(renders?.querySelector(".dv-default-tab-action")?.getAttribute("aria-label")).toBe(
-      "Close Renders (2)",
-    );
-  });
 });

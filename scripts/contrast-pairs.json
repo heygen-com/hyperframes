@@ -270,6 +270,39 @@
           ],
           "opacity": 0.64,
           "format": "rgb-channels"
+        },
+        {
+          "id": "dock-tab-label",
+          "foreground": "--color-text-2",
+          "background": ["--panel-strip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:13",
+            "packages/studio/src/components/dock/dock.css:15"
+          ]
+        },
+        {
+          "id": "dock-shown-tab-label",
+          "foreground": "--color-text-1",
+          "background": ["--panel-card-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:12",
+            "packages/studio/src/components/dock/dock.css:14"
+          ]
+        },
+        {
+          "id": "dock-hovered-tab-label",
+          "foreground": "--color-text-1",
+          "background": ["--panel-strip-bg", "--panel-tab-bg-hover"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:97",
+            "packages/studio/src/components/dock/dock.css:99"
+          ]
         }
       ]
     },
