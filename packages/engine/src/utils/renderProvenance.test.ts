@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getFfmpegBinary, getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
@@ -9,6 +10,7 @@ import {
   PROVENANCE_RENDERER_TAG,
   PROVENANCE_VERSION,
   PROVENANCE_VERSION_TAG,
+  readPackageVersionFrom,
   readRenderProvenance,
   renderProvenanceArgs,
 } from "./renderProvenance.js";
@@ -263,5 +265,87 @@ describe.skipIf(!HAS_FFMPEG)("provenance survives a real encode", () => {
       renderer: PROVENANCE_RENDERER_NAME,
       version: PROVENANCE_VERSION,
     });
+  });
+});
+
+describe("engine version resolution", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-provenance-version-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Lay out a package root and return a directory `depth` levels inside it. */
+  const layout = (pkg: Record<string, unknown>, depth: number): string => {
+    writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
+    let inner = join(dir, "dist");
+    for (let i = 1; i < depth; i++) inner = join(inner, `nested${i}`);
+    mkdirSync(inner, { recursive: true });
+    return inner;
+  };
+
+  // The regression. The CLI bundles the engine flat into `dist/cli.js`
+  // (tsup `noExternal`), one directory below the package root rather than the
+  // two that `src/utils/` and the published `dist/utils/` sit at. The previous
+  // hardcoded `../../package.json` overshot to `node_modules/package.json`,
+  // threw MODULE_NOT_FOUND, and stamped the fallback — so every render from
+  // every published CLI carried `hyperframes_version=0.0.0-dev`. Nothing in
+  // the suite exercised this depth, which is exactly why it shipped.
+  it("resolves the version from the bundled CLI layout (one level deep)", () => {
+    const bundled = layout({ name: "hyperframes", version: "1.2.3" }, 1);
+    expect(readPackageVersionFrom(bundled)).toBe("1.2.3");
+  });
+
+  it("resolves the version from the published engine layout (two levels deep)", () => {
+    const published = layout({ name: "@hyperframes/engine", version: "1.2.3" }, 2);
+    expect(readPackageVersionFrom(published)).toBe("1.2.3");
+  });
+
+  it("resolves from any depth, because the depth is what broke", () => {
+    for (const depth of [1, 2, 3, 5]) {
+      rmSync(dir, { recursive: true, force: true });
+      mkdirSync(dir, { recursive: true });
+      expect(readPackageVersionFrom(layout({ name: "hyperframes", version: "9.9.9" }, depth))).toBe(
+        "9.9.9",
+      );
+    }
+  });
+
+  // Reporting someone else's version number under a `hyperframes_version` key
+  // is worse than admitting we don't know.
+  it("refuses a non-HyperFrames package rather than stamping its version", () => {
+    const foreign = layout({ name: "someones-app", version: "9.9.9" }, 1);
+    expect(readPackageVersionFrom(foreign)).toBe("0.0.0-dev");
+  });
+
+  // `hyperframes-monorepo` is this repo's own private root: a prefix match
+  // would accept it and stamp a version it does not even have.
+  it("matches the package name exactly, not by prefix", () => {
+    const monorepo = layout({ name: "hyperframes-monorepo", private: true }, 1);
+    expect(readPackageVersionFrom(monorepo)).toBe("0.0.0-dev");
+  });
+
+  it("falls back instead of throwing when there is no package.json to find", () => {
+    const orphan = join(dir, "deep", "nowhere");
+    mkdirSync(orphan, { recursive: true });
+    expect(readPackageVersionFrom(orphan)).toBe("0.0.0-dev");
+  });
+
+  it("falls back when the owning package.json is unreadable", () => {
+    writeFileSync(join(dir, "package.json"), "{ not json");
+    expect(readPackageVersionFrom(dir)).toBe("0.0.0-dev");
+  });
+
+  // The end-to-end assertion the rest of the suite cannot make: every other
+  // version test compares PROVENANCE_VERSION against itself, so all of them
+  // pass just as happily when it is the fallback sentinel.
+  it("stamps the real engine version, not the fallback", () => {
+    const pkg = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf-8"),
+    ) as { version: string };
+    expect(PROVENANCE_VERSION).toBe(pkg.version);
+    expect(PROVENANCE_VERSION).not.toBe("0.0.0-dev");
   });
 });
