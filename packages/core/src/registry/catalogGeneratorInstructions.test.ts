@@ -93,7 +93,7 @@ describe("carriedSectionsFrom preserves hand-written sections", () => {
         "## Texture masks",
         "",
         '<div className="hf-texture-preview-panel">',
-        "  <div className=\"hf-texture-preview-label\">Brick</div>",
+        '  <div className="hf-texture-preview-label">Brick</div>',
         "</div>",
         "",
         "{/* hf:generated-footer */}",
