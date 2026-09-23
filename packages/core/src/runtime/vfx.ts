@@ -295,12 +295,19 @@ export function initVfx(root: HTMLElement, fps: number): VfxRegistry {
   return registry;
 }
 
-/** Device-pixel size of the host's box; `null` when it has no area to paint. */
+/**
+ * Device-pixel size of the host's box; `null` when it has no area to paint.
+ *
+ * `offsetWidth`/`offsetHeight`, not `getBoundingClientRect()`: the latter is
+ * the element's transformed axis-aligned bounding box, so a host carrying a
+ * GSAP scale or rotation would get an inflated output canvas and a stretched
+ * capture. An After Effects effect operates on the layer's own untransformed
+ * box, which is what the layout size gives.
+ */
 function deviceSize(host: HTMLElement): { width: number; height: number } | null {
-  const rect = host.getBoundingClientRect();
   const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
-  const width = Math.round(rect.width * dpr);
-  const height = Math.round(rect.height * dpr);
+  const width = Math.round(host.offsetWidth * dpr);
+  const height = Math.round(host.offsetHeight * dpr);
   return width > 0 && height > 0 ? { width, height } : null;
 }
 

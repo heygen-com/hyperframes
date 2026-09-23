@@ -126,10 +126,18 @@ function installCanvasMock(webgl2: () => unknown): void {
   } as never);
 }
 
-/** Hosts are 0×0 in jsdom; the runtime refuses to paint a zero-area box. */
+/**
+ * Hosts are 0×0 in jsdom; the runtime refuses to paint a zero-area box. Sets
+ * both the layout box (`offsetWidth`/`offsetHeight`, what `deviceSize` reads)
+ * and the client rect (what a GSAP transform would inflate) to the same
+ * values by default — a test that wants to simulate a transformed host
+ * overrides `getBoundingClientRect` afterwards.
+ */
 function sizeHost(host: HTMLElement, width = 320, height = 180): void {
   host.getBoundingClientRect = () =>
     ({ width, height, left: 0, top: 0, right: width, bottom: height, x: 0, y: 0 }) as DOMRect;
+  Object.defineProperty(host, "offsetWidth", { value: width, configurable: true });
+  Object.defineProperty(host, "offsetHeight", { value: height, configurable: true });
 }
 
 function makeHost(chain: string, id = "h1"): HTMLElement {
@@ -258,6 +266,31 @@ describe("vfx runtime", () => {
     paintVfx(0);
 
     expect(gl!.uniforms["u_contrast"]).toBe(1000);
+  });
+
+  it("sizes the output canvas from the host's layout box, not its transformed AABB", () => {
+    // A GSAP `transform: scale(2)` inflates getBoundingClientRect but leaves
+    // offsetWidth/offsetHeight alone — the runtime must use the latter, or a
+    // scaled or rotated host gets an inflated canvas and a stretched capture.
+    const host = makeHost(ONE_NODE);
+    sizeHost(host, 200, 100);
+    host.getBoundingClientRect = () =>
+      ({
+        width: 400,
+        height: 200,
+        left: 0,
+        top: 0,
+        right: 400,
+        bottom: 200,
+        x: 0,
+        y: 0,
+      }) as DOMRect;
+    initVfx(document.body, 30);
+
+    paintVfx(0);
+
+    expect(gl!.uniforms["u_size"]).toEqual([200, 100]);
+    expect(gl!.viewports.at(-1)).toEqual([200, 100]);
   });
 
   it("does not paint a host whose box has no area", () => {
