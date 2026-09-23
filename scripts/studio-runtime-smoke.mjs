@@ -101,6 +101,19 @@ export function studioSmokeApiResponse(method, requestUrl) {
 // about 10px narrower than macOS does; keep that much room so a strip that fits here fits on a Mac.
 const MAC_FONT_ALLOWANCE_PX = 10;
 
+/** Runs in the page: the strip's tabs, plus the allowance, must fit before its action slot. */
+function clippedStrip(index, allowance) {
+  const strip = document.querySelectorAll(".dv-tabs-container")[index];
+  const actions = strip
+    .closest(".dv-tabs-and-actions-container")
+    ?.querySelector(".dv-right-actions-container");
+  const room =
+    (actions?.getBoundingClientRect().left ?? Infinity) - strip.getBoundingClientRect().left;
+  if (strip.scrollWidth + allowance <= room) return null;
+  const labels = [...strip.querySelectorAll(".dv-tab")].map((tab) => tab.textContent);
+  return `${labels.join(", ")}: ${strip.scrollWidth}px of tabs in ${Math.floor(room)}px`;
+}
+
 export function isExpectedStudioSmokeError(message) {
   return message.includes("favicon.ico");
 }
@@ -149,25 +162,26 @@ export async function runStudioRuntimeSmoke(targetUrl) {
       return textContent.includes("Something went wrong") ? textContent : null;
     });
     if (errorBoundary) errors.push(`React error boundary triggered: ${errorBoundary}`);
-    const clippedStrips = await page.evaluate(
-      (allowance) =>
-        [...document.querySelectorAll(".dv-tabs-container")].flatMap((strip) => {
-          const actions = strip
-            .closest(".dv-tabs-and-actions-container")
-            ?.querySelector(".dv-right-actions-container");
-          const room =
-            (actions?.getBoundingClientRect().left ?? Infinity) -
-            strip.getBoundingClientRect().left;
-          if (strip.scrollWidth + allowance <= room) return [];
-          const labels = [...strip.querySelectorAll(".dv-tab")].map((tab) => tab.textContent);
-          return [`${labels.join(", ")}: ${strip.scrollWidth}px of tabs in ${Math.floor(room)}px`];
-        }),
-      MAC_FONT_ALLOWANCE_PX,
+    const reservedSlots = await page.$$eval(
+      ".dv-groupview.dv-inactive-group .dv-right-actions-container",
+      (slots) => slots.filter((slot) => slot.getBoundingClientRect().width > 0).length,
     );
-    for (const strip of clippedStrips) {
-      errors.push(
-        `Dock tab strip clips a label at the default layout (${MAC_FONT_ALLOWANCE_PX}px macOS allowance): ${strip}`,
+    if (reservedSlots > 0) {
+      errors.push(`${reservedSlots} inactive dock strips hold width for actions they do not draw`);
+    }
+    const shownTabs = await page.$$(".dv-tabs-container .dv-active-tab");
+    for (const [index, tab] of shownTabs.entries()) {
+      // An active group draws its strip actions, so this is the least room its tabs get.
+      await tab.click();
+      await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
       );
+      const clipped = await page.evaluate(clippedStrip, index, MAC_FONT_ALLOWANCE_PX);
+      if (clipped) {
+        errors.push(
+          `Dock tab strip clips a label at the default layout (${MAC_FONT_ALLOWANCE_PX}px macOS allowance): ${clipped}`,
+        );
+      }
     }
   } finally {
     await browser.close();

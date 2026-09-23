@@ -165,17 +165,15 @@
   opacity: 1;
 }
 
-/* Reserved on every strip so tabs never slide under the actions when focus changes group. */
+/* Sized by the actions it draws, so a strip without them gives its tabs the whole width. */
 .hf-dock .dv-right-actions-container {
   flex: none;
   align-self: flex-start;
-  width: 72px;
-  height: 24px;
-  margin-right: 4px;
 }
 
 .hf-dock-strip-actions {
   display: flex;
+  margin-right: 4px;
   opacity: 0;
 }
 
