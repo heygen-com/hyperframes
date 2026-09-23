@@ -794,6 +794,28 @@ function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[
   return file ? (declaredVariables(file.source) as ItemVariable[]) : [];
 }
 
+/**
+ * One section's sidebar entry, from its section label and the shelves it wraps.
+ * A section wrapping exactly one shelf of the SAME name (e.g. "3D motion" wrapping
+ * only "3D motion") would otherwise nest an identical label inside itself — the
+ * accordion header and its one child would read the same word twice. Flatten that
+ * case to the shelf's own pages; a section wrapping a differently-named shelf (e.g.
+ * "Data & charts" wrapping "Data") keeps the nested shelf, since both labels carry
+ * distinct meaning in the sidebar.
+ */
+export function sectionEntry(
+  section: string,
+  children: { group: string; pages: unknown[] }[],
+): { group: string; pages: unknown[] } {
+  if (children.length === 1 && children[0]!.group === section) {
+    return { group: section, pages: children[0]!.pages };
+  }
+  // A nested shelf is an entry in the parent's `pages`, beside the page
+  // strings. A sibling `groups` key parses without complaint and renders
+  // nothing, which took the whole catalog out of the sidebar.
+  return { group: section, pages: children };
+}
+
 /** The catalog shelf an item sits on, one function for the nav and the page's category. */
 // fallow-ignore-next-line complexity
 export function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
@@ -1280,10 +1302,7 @@ function main(): void {
       .filter((g): g is { group: string; pages: string[] } => g !== undefined);
     if (children.length === 0) continue;
     for (const child of children) placed.add(child.group);
-    // A nested shelf is an entry in the parent's `pages`, beside the page
-    // strings. A sibling `groups` key parses without complaint and renders
-    // nothing, which took the whole catalog out of the sidebar.
-    catalogGroups.push({ group: section, pages: children });
+    catalogGroups.push(sectionEntry(section, children));
   }
 
   // A shelf nobody assigned a section still has to appear, or a new tag would

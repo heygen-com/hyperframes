@@ -25,6 +25,7 @@ import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
 import {
   groupForItem,
   mdxStringAttribute,
+  sectionEntry,
   stageProps,
   variableBootstrap,
   variablePreviewWrapper,
@@ -360,6 +361,30 @@ describe("tile poster priority", () => {
     );
     assert.match(source, /card\(item, group\.pinned === true\)/);
     assert.doesNotMatch(source, /\.map\(card\)/);
+  });
+});
+
+describe("sectionEntry", () => {
+  it("flattens a section that wraps exactly one shelf of its own name", () => {
+    const entry = sectionEntry("3D motion", [{ group: "3D motion", pages: ["a", "b"] }]);
+    assert.deepEqual(entry, { group: "3D motion", pages: ["a", "b"] });
+  });
+
+  it("nests a section that wraps one differently-named shelf", () => {
+    const entry = sectionEntry("Data & charts", [{ group: "Data", pages: ["a"] }]);
+    assert.deepEqual(entry, {
+      group: "Data & charts",
+      pages: [{ group: "Data", pages: ["a"] }],
+    });
+  });
+
+  it("nests every shelf when a section wraps more than one", () => {
+    const children = [
+      { group: "Captions", pages: ["a"] },
+      { group: "Typography & Text", pages: ["b"] },
+    ];
+    const entry = sectionEntry("Text & captions", children);
+    assert.deepEqual(entry, { group: "Text & captions", pages: children });
   });
 });
 
