@@ -1,5 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { HfVfxCapture } from "../vfx";
 import { initVfx, paintVfx } from "./vfx";
+
+/**
+ * No def has `capture !== "none"` until Task 2.2 registers `wave-warp`, so the
+ * capture tests below lift a real `fractal-noise` chain into `self` through the
+ * two functions the runtime asks. `null` leaves the real answers alone, so the
+ * Task 1.2 cases in this file are untouched.
+ */
+const override = vi.hoisted(() => ({ capture: null as HfVfxCapture | null }));
+
+vi.mock("../vfx", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../vfx")>();
+  return {
+    ...actual,
+    chainCapture: (chain: import("../vfx").HfVfxChain) =>
+      override.capture ?? actual.chainCapture(chain),
+    getVfxDef: (id: string) => {
+      const def = actual.getVfxDef(id);
+      return def && override.capture ? { ...def, capture: override.capture } : def;
+    },
+  };
+});
 
 const LABEL = "[HyperFrames] composition script error:";
 
@@ -131,6 +153,9 @@ describe("vfx runtime", () => {
     gl = createMockGl();
     installCanvasMock(() => gl);
     errors = [];
+    override.capture = null;
+    delete compositeWindow().__hf_page_composite_pending;
+    delete compositeWindow().__hf_page_composite_resolve;
     vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
       errors.push(args);
     });
@@ -253,5 +278,202 @@ describe("vfx runtime", () => {
     expect(initVfx(document.body, 30)).toHaveLength(0);
     paintVfx(0);
     expect(gl!.calls).toEqual([]);
+  });
+});
+
+interface CompositeWindow extends Window {
+  __hf_page_composite_pending?: boolean;
+  __hf_page_composite_resolve?: () => boolean;
+}
+
+function compositeWindow(): CompositeWindow {
+  return window as CompositeWindow;
+}
+
+interface MockCtx2d {
+  cleared: number[][];
+  drawn: { el: Element; w: number; h: number }[];
+}
+
+/** The 2-D slice a capture host uses, with `drawElementImage` present. */
+function createMockCtx2d(onDraw?: () => void): MockCtx2d {
+  const state: MockCtx2d = { cleared: [], drawn: [] };
+  return Object.assign(state, {
+    clearRect: (_x: number, _y: number, w: number, h: number) => state.cleared.push([w, h]),
+    drawElementImage: (el: Element, _x: number, _y: number, w: number, h: number) => {
+      onDraw?.();
+      state.drawn.push({ el, w, h });
+    },
+  }) as MockCtx2d;
+}
+
+/** A `self` host as the exporter emits it: src canvas wrapping `.hf-vfx-in`. */
+function makeCaptureHost(ctx: unknown, id = "cap"): HTMLElement {
+  const host = makeHost(ONE_NODE, id);
+  const src = document.createElement("canvas");
+  src.className = "hf-vfx-src";
+  src.setAttribute("layoutsubtree", "");
+  if (ctx !== undefined) {
+    src.getContext = ((kind: string) => (kind === "2d" ? ctx : null)) as never;
+  }
+  const inner = document.createElement("div");
+  inner.className = "hf-vfx-in";
+  src.appendChild(inner);
+  host.insertBefore(src, host.firstChild);
+  return host;
+}
+
+describe("vfx runtime — self capture", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    gl = createMockGl();
+    installCanvasMock(() => gl);
+    errors = [];
+    override.capture = "self";
+    delete compositeWindow().__hf_page_composite_pending;
+    delete compositeWindow().__hf_page_composite_resolve;
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args);
+    });
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    override.capture = null;
+    initVfx(document.body, 30);
+    delete compositeWindow().__hf_page_composite_pending;
+    delete compositeWindow().__hf_page_composite_resolve;
+    vi.restoreAllMocks();
+  });
+
+  it("refuses a capture host that has no .hf-vfx-src canvas", () => {
+    makeHost(ONE_NODE);
+
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]![1])).toMatch(/hf-vfx-src/);
+  });
+
+  it("names the Chrome flag when drawElementImage is missing", () => {
+    makeCaptureHost({ clearRect: () => {} });
+
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]![1])).toMatch(/chrome:\/\/flags\/#canvas-draw-element/);
+  });
+
+  it("arms the page-composite protocol instead of painting inline in engine mode", () => {
+    makeCaptureHost(createMockCtx2d());
+    initVfx(document.body, 30);
+
+    paintVfx(1.25, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_pending).toBe(true);
+    expect(typeof compositeWindow().__hf_page_composite_resolve).toBe("function");
+    expect(gl!.calls).toEqual([]);
+  });
+
+  it("captures, uploads and paints when the engine resolves, then clears the flag", () => {
+    const ctx = createMockCtx2d();
+    const host = makeCaptureHost(ctx);
+    initVfx(document.body, 30);
+    paintVfx(1.25, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_resolve!()).toBe(true);
+
+    expect(ctx.drawn).toHaveLength(1);
+    expect(ctx.drawn[0]!.el).toBe(host.querySelector(".hf-vfx-in"));
+    // Cleared before the draw AND after the upload: the src canvas bitmap does
+    // paint on screen even though its layoutsubtree children do not.
+    expect(ctx.cleared).toEqual([
+      [320, 180],
+      [320, 180],
+    ]);
+    expect(gl!.calls).toEqual(["screen", "useProgram", "draw:1"]);
+    expect(compositeWindow().__hf_page_composite_pending).toBe(false);
+  });
+
+  it("composes with a resolver that was already installed, running it first", () => {
+    const order: string[] = [];
+    compositeWindow().__hf_page_composite_resolve = () => {
+      order.push("prior");
+      return true;
+    };
+    const ctx = createMockCtx2d(() => order.push("vfx"));
+    makeCaptureHost(ctx);
+    initVfx(document.body, 30);
+
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect(order).toEqual(["prior", "vfx"]);
+  });
+
+  it("re-wraps a resolver that was installed after ours", () => {
+    const order: string[] = [];
+    const ctx = createMockCtx2d(() => order.push("vfx"));
+    makeCaptureHost(ctx);
+    initVfx(document.body, 30);
+    paintVfx(0, { engineMode: true });
+
+    // shader-transitions' 50 ms poll lands after us and assigns over the slot.
+    compositeWindow().__hf_page_composite_resolve = () => {
+      order.push("late");
+      return true;
+    };
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    expect(order).toEqual(["late", "vfx"]);
+  });
+
+  it("reports a throwing drawElementImage loudly and paints nothing", () => {
+    const ctx = createMockCtx2d(() => {
+      throw new Error(
+        "Failed to execute 'drawElementImage' on 'CanvasRenderingContext2D': " +
+          "No cached paint record for element.",
+      );
+    });
+    makeCaptureHost(ctx);
+    initVfx(document.body, 30);
+    paintVfx(0, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_resolve!()).toBe(false);
+    expect(String(errors[0]![1])).toMatch(/No cached paint record for element/);
+    expect(gl!.calls).toEqual([]);
+  });
+
+  it("skips a host the clip runtime has hidden at this time", () => {
+    const ctx = createMockCtx2d();
+    const host = makeCaptureHost(ctx);
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_pending).toBeUndefined();
+    expect(ctx.drawn).toHaveLength(0);
+  });
+
+  it("asks the canvas to paint before capturing on the preview path", async () => {
+    const ctx = createMockCtx2d();
+    const host = makeCaptureHost(ctx);
+    const src = host.querySelector("canvas.hf-vfx-src") as HTMLCanvasElement & {
+      requestPaint?: () => void;
+    };
+    let requested = 0;
+    src.requestPaint = () => {
+      requested += 1;
+    };
+    initVfx(document.body, 30);
+
+    paintVfx(0.5);
+    expect(requested).toBe(1);
+    expect(ctx.drawn).toHaveLength(0);
+
+    src.dispatchEvent(new Event("paint"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ctx.drawn).toHaveLength(1);
+    expect(compositeWindow().__hf_page_composite_pending).toBeUndefined();
   });
 });

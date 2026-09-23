@@ -61,6 +61,29 @@ void main() {
 }
 `;
 
+/** The html-in-canvas 2-D context, behind the Chrome flag. */
+interface DrawElementCtx extends CanvasRenderingContext2D {
+  drawElementImage: (el: Element, x: number, y: number, w: number, h: number) => void;
+}
+
+/** Chrome's paint-record invalidation hook on a `layoutsubtree` canvas. */
+interface RequestPaintCanvas extends HTMLCanvasElement {
+  requestPaint?: () => void;
+}
+
+interface CompositeWindow extends Window {
+  __hf_page_composite_pending?: boolean;
+  __hf_page_composite_resolve?: () => boolean;
+}
+
+/** Everything a `self` host needs to read its own pixels back. */
+interface VfxCaptureSource {
+  canvas: HTMLCanvasElement;
+  inner: HTMLElement;
+  ctx: DrawElementCtx;
+  texture: WebGLTexture;
+}
+
 interface VfxPass {
   node: HfVfxNode;
   def: HfVfxDef;
@@ -84,6 +107,8 @@ export interface VfxEntry {
   out: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
   passes: VfxPass[];
+  /** Present exactly when `capture !== "none"`. */
+  src?: VfxCaptureSource;
   ping?: PingPong;
 }
 
@@ -91,6 +116,11 @@ export type VfxRegistry = VfxEntry[];
 
 let registry: VfxRegistry = [];
 let registryFps = 30;
+/** The time the last `paintVfx` was given; engine mode paints later, on resolve. */
+let lastPaintTime = 0;
+/** The resolver we installed, and whoever owned the slot when we wrapped it. */
+let vfxResolver: (() => boolean) | null = null;
+let priorResolver: (() => boolean) | null = null;
 
 function reportVfxError(message: string): void {
   // eslint-disable-next-line no-console
@@ -164,6 +194,46 @@ function buildPasses(gl: WebGL2RenderingContext, chain: HfVfxChain): VfxPass[] |
   return passes;
 }
 
+function createCaptureTexture(gl: WebGL2RenderingContext): WebGLTexture {
+  const texture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return texture;
+}
+
+/**
+ * The `<canvas layoutsubtree class="hf-vfx-src">` the exporter emits for a
+ * `self` chain, plus its 2-D context. Never injected at runtime: the compiler
+ * derives the `htmlInCanvas` render-mode hint from this canvas being in the
+ * source, and that pin exists for a measured reason.
+ */
+function resolveCaptureSource(
+  host: HTMLElement,
+  gl: WebGL2RenderingContext,
+): VfxCaptureSource | null {
+  const canvas = host.querySelector("canvas.hf-vfx-src");
+  const inner = canvas?.querySelector(".hf-vfx-in");
+  if (!(canvas instanceof HTMLCanvasElement) || !(inner instanceof HTMLElement)) {
+    reportVfxError(
+      `${describeHost(host)}: a capturing chain needs ` +
+        `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in source.`,
+    );
+    return null;
+  }
+  const ctx = canvas.getContext("2d") as DrawElementCtx | null;
+  if (!ctx || typeof ctx.drawElementImage !== "function") {
+    reportVfxError(
+      `${describeHost(host)}: drawElementImage is unavailable, so the layer cannot be ` +
+        `captured. In Studio, enable chrome://flags/#canvas-draw-element.`,
+    );
+    return null;
+  }
+  return { canvas, inner, ctx, texture: createCaptureTexture(gl) };
+}
+
 function registerVfxHost(host: HTMLElement): VfxEntry | null {
   let chain: HfVfxChain;
   try {
@@ -185,7 +255,23 @@ function registerVfxHost(host: HTMLElement): VfxEntry | null {
     out.remove();
     return null;
   }
-  return { host, chain, capture: chainCapture(chain), out, gl, passes };
+  const capture = chainCapture(chain);
+  const src = capture === "none" ? undefined : resolveCaptureSource(host, gl);
+  if (capture !== "none" && !src) {
+    out.remove();
+    return null;
+  }
+  return { host, chain, capture, out, gl, passes, src };
+}
+
+/**
+ * A hidden host has no paint record, so `drawElementImage` would throw on it —
+ * and the clip runtime hides every host outside its `data-start`/`data-duration`
+ * window, which would otherwise fail the render on each of those frames.
+ */
+function isPaintableHost(host: HTMLElement): boolean {
+  const style = getComputedStyle(host);
+  return style.display !== "none" && style.visibility !== "hidden";
 }
 
 function describeHost(host: HTMLElement): string {
@@ -300,7 +386,8 @@ function setPassUniforms(
 function bindPass(entry: VfxEntry, index: number, last: number, ping: PingPong | null): void {
   const { gl } = entry;
   gl.bindFramebuffer(gl.FRAMEBUFFER, index === last || !ping ? null : ping.framebuffers[index % 2]);
-  const source = index === 0 ? null : ping && ping.textures[(index - 1) % 2];
+  const source =
+    index === 0 ? (entry.src?.texture ?? null) : ping && ping.textures[(index - 1) % 2];
   if (!source) return;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, source);
@@ -326,12 +413,135 @@ function paintEntry(entry: VfxEntry, t: number): void {
   }
 }
 
+function uploadCaptureTexture(gl: WebGL2RenderingContext, src: VfxCaptureSource): void {
+  gl.bindTexture(gl.TEXTURE_2D, src.texture);
+  // The full-screen triangle's `v_uv` is y-up and a canvas is y-down; the
+  // kernels write premultiplied colour, so the source must arrive that way too.
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src.canvas);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+}
+
+/**
+ * Read the host's own pixels into `u_src`. Both `clearRect`s matter: the first
+ * because `drawElementImage` composites onto whatever is there, the second
+ * because a `layoutsubtree` canvas's BITMAP is painted by the page compositor
+ * even though its children are not — leaving the captured frame in it would
+ * show the unprocessed layer through every transparent pixel of `.hf-vfx-out`.
+ */
+function captureEntry(entry: VfxEntry): boolean {
+  const src = entry.src;
+  const size = deviceSize(entry.host);
+  if (!src || !size) return false;
+  if (src.canvas.width !== size.width) src.canvas.width = size.width;
+  if (src.canvas.height !== size.height) src.canvas.height = size.height;
+  src.ctx.clearRect(0, 0, size.width, size.height);
+  try {
+    src.ctx.drawElementImage(src.inner, 0, 0, size.width, size.height);
+  } catch (err) {
+    reportVfxError(
+      `${describeHost(entry.host)}: drawElementImage failed: ${(err as Error).message} ` +
+        `In Studio, enable chrome://flags/#canvas-draw-element.`,
+    );
+    return false;
+  }
+  uploadCaptureTexture(entry.gl, src);
+  src.ctx.clearRect(0, 0, size.width, size.height);
+  return true;
+}
+
+/** Phase 2 of the page-composite protocol: the paint records are valid now. */
+function resolveVfxCapture(): boolean {
+  let painted = false;
+  for (const entry of registry) {
+    if (!entry.src || !isPaintableHost(entry.host)) continue;
+    if (!captureEntry(entry)) continue;
+    paintEntry(entry, lastPaintTime);
+    painted = true;
+  }
+  (window as CompositeWindow).__hf_page_composite_pending = false;
+  return painted;
+}
+
+/**
+ * Claim the engine's two-phase readiness protocol, COMPOSING with whoever else
+ * owns it rather than replacing them: shader-transitions runs first (its
+ * composite is whole-scene, ours is per-layer). Re-checked on every paint
+ * because `installPageSideCompositor` polls for `__hf.seek` on a 50 ms interval
+ * and plainly assigns the slot, so an install after ours would replace us.
+ */
+function armPageComposite(): void {
+  const w = window as CompositeWindow;
+  const current = w.__hf_page_composite_resolve;
+  if (current !== vfxResolver) {
+    priorResolver = typeof current === "function" ? current : null;
+    vfxResolver = () => {
+      const prior = priorResolver ? priorResolver() : false;
+      return resolveVfxCapture() || prior;
+    };
+    w.__hf_page_composite_resolve = vfxResolver;
+  }
+  w.__hf_page_composite_pending = true;
+}
+
+/**
+ * Preview/Studio readiness: `drawElementImage` throws "No cached paint record
+ * for element" unless the subtree has been painted since it last changed, and
+ * a synchronous `requestPaint()` does not create one within the same task.
+ */
+function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      canvas.removeEventListener("paint", finish);
+      resolve();
+    };
+    canvas.addEventListener("paint", finish, { once: true });
+    try {
+      (canvas as RequestPaintCanvas).requestPaint?.();
+    } catch {
+      // Feature drift on this build — the rAF fallback below still fires.
+    }
+    if (typeof requestAnimationFrame !== "function") {
+      finish();
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(finish));
+  });
+}
+
+async function capturePreviewThenPaint(entries: VfxEntry[], t: number): Promise<void> {
+  for (const entry of entries) await awaitCanvasPaint(entry.src!.canvas);
+  for (const entry of entries) {
+    if (captureEntry(entry)) paintEntry(entry, t);
+  }
+}
+
 /**
  * Repaint every registered chain for composition-local time `t`. Called from
  * the runtime transport's `seek` (preview) and `renderSeek` (engine) — the two
  * places a frame's DOM state is finished changing.
+ *
+ * A chain with no capture paints inline. A capturing chain cannot: its texture
+ * comes from `drawElementImage`, which needs a paint record that does not exist
+ * yet at this point in the task.
  */
 export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
-  void options;
-  for (const entry of registry) paintEntry(entry, t);
+  lastPaintTime = t;
+  const capturing: VfxEntry[] = [];
+  for (const entry of registry) {
+    if (!isPaintableHost(entry.host)) continue;
+    if (entry.src) capturing.push(entry);
+    else paintEntry(entry, t);
+  }
+  if (capturing.length === 0) return;
+  if (options?.engineMode) {
+    armPageComposite();
+    return;
+  }
+  void capturePreviewThenPaint(capturing, t);
 }
