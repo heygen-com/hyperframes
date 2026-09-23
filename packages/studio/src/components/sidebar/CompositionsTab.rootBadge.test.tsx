@@ -40,12 +40,12 @@ function mount(compositions: string[], masterCompositionPath: string | null) {
 }
 
 describe("CompositionsTab card thumbnails", () => {
-  it("waits for the live preview's first ready and keeps them through edit reloads", () => {
+  it("waits for the live preview to boot and keeps them through edit reloads", () => {
     usePlayerStore.getState().reset();
     const host = mount(["index.html"], "index.html");
     expect(host.querySelector("img")).toBeNull();
 
-    act(() => usePlayerStore.getState().setTimelineReady(true));
+    act(() => usePlayerStore.getState().markPreviewBooted());
     expect(host.querySelector("img")?.getAttribute("src")).toContain("/thumbnail/index.html");
 
     act(() => usePlayerStore.getState().setTimelineReady(false));
