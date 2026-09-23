@@ -1280,10 +1280,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "simulated-cursor",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "skeleton-reveal",
       "type": "hyperframes:component"
     },
