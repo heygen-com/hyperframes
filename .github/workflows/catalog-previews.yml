@@ -69,9 +69,11 @@ jobs:
         uses: ./.github/actions/install-ffmpeg-linux
 
       - name: Render changed block/component previews
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          # HEAD is the PR merge ref; its first parent is the current base tip,
+          # unlike the event payload's base.sha, which can go stale.
+          BASE_SHA="$(git rev-parse HEAD^1)"
+
           # Find which blocks/components changed in this PR. The trailing slash
           # in the grep matters: an item is a directory, and a file sitting
           # directly under registry/components (CATALOG.md) does not match the
