@@ -15,13 +15,17 @@ function fillOf(list: HTMLElement): HTMLElement {
   return fill;
 }
 
-function placeFill(list: HTMLElement) {
+/** Reads where the shown tab sits; the write happens after every strip is read, so layout runs once. */
+function measureFill(list: HTMLElement): () => void {
   const fill = fillOf(list);
   const tab = list.querySelector<HTMLElement>(":scope > .dv-active-tab");
-  fill.hidden = !tab;
-  if (!tab) return;
-  fill.style.width = `${tab.offsetWidth}px`;
-  fill.style.transform = `translateX(${tab.offsetLeft}px)`;
+  const box = tab ? { width: tab.offsetWidth, left: tab.offsetLeft } : null;
+  return () => {
+    fill.hidden = !box;
+    if (!box) return;
+    fill.style.width = `${box.width}px`;
+    fill.style.transform = `translateX(${box.left}px)`;
+  };
 }
 
 /** Marks which edges of a scrolled strip are clipped, for the CSS edge fade. */
@@ -42,13 +46,25 @@ export function installTabFill(api: DockviewApi, root: HTMLElement): () => void 
   const lists = () => root.querySelectorAll<HTMLElement>(".dv-tabs-container");
   // Tab widths change when a tab gains or loses its icon, after React renders it.
   const resizeObserver = new ResizeObserver(() => placeAll());
-  function placeAll() {
-    for (const list of lists()) {
-      placeFill(list);
-      markClippedEdges(list);
-      resizeObserver.observe(list);
-      for (const tab of list.querySelectorAll(":scope > .dv-tab")) resizeObserver.observe(tab);
+  const observed = new Set<Element>();
+  function observe(elements: Iterable<Element>) {
+    for (const element of observed) {
+      if (element.isConnected) continue;
+      resizeObserver.unobserve(element);
+      observed.delete(element);
     }
+    for (const element of elements) {
+      if (observed.has(element)) continue;
+      resizeObserver.observe(element);
+      observed.add(element);
+    }
+  }
+  function placeAll() {
+    const strips = [...lists()];
+    const writes = strips.map(measureFill);
+    for (const write of writes) write();
+    for (const list of strips) markClippedEdges(list);
+    observe(strips.flatMap((list) => [list, ...list.querySelectorAll(":scope > .dv-tab")]));
   }
   const onScroll = (event: Event) => {
     const list = event.target;

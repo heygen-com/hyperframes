@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import {
   BracketsCurly,
   ChartBarHorizontal,
@@ -33,17 +33,17 @@ const TAB_ICONS: Record<PanelId, Icon> = {
 
 /** A dock tab. Only the shown tab carries its type icon and close glyph; the rest are labels. */
 export function DockTab({ api }: IDockviewPanelHeaderProps) {
-  const [title, setTitle] = useState(api.title ?? "");
-  const [shown, setShown] = useState(api.isVisible);
-  useEffect(() => {
-    const subscriptions = [
-      api.onDidTitleChange((event) => setTitle(event.title)),
-      api.onDidVisibilityChange((event) => setShown(event.isVisible)),
-    ];
-    return () => {
-      for (const subscription of subscriptions) subscription.dispose();
-    };
-  }, [api]);
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const subscriptions = [api.onDidTitleChange(onChange), api.onDidVisibilityChange(onChange)];
+      return () => {
+        for (const subscription of subscriptions) subscription.dispose();
+      };
+    },
+    [api],
+  );
+  const title = useSyncExternalStore(subscribe, () => api.title ?? "");
+  const shown = useSyncExternalStore(subscribe, () => api.isVisible);
   const TypeIcon = shown && isPanelId(api.id) ? TAB_ICONS[api.id] : null;
   return (
     <div className="hf-dock-tab">

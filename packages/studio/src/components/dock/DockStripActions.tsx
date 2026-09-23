@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { CornersIn, CornersOut, DotsThree, X } from "@phosphor-icons/react";
 import type { IDockviewHeaderActionsProps } from "dockview-react";
 import { IconButton, Menu, MenuCheckboxItem, MenuItem, MenuSeparator } from "../ui";
@@ -12,13 +12,14 @@ export function DockStripActions({
   panels,
   isGroupActive,
 }: IDockviewHeaderActionsProps) {
-  const [maximized, setMaximized] = useState(() => api.isMaximized());
-  useEffect(() => {
-    const subscription = containerApi.onDidMaximizedGroupChange(() =>
-      setMaximized(api.isMaximized()),
-    );
-    return () => subscription.dispose();
-  }, [api, containerApi]);
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const subscription = containerApi.onDidMaximizedGroupChange(onChange);
+      return () => subscription.dispose();
+    },
+    [containerApi],
+  );
+  const maximized = useSyncExternalStore(subscribe, () => api.isMaximized());
   const openPanels = useDockLayoutStore((state) => state.openPanels);
   const togglePanel = useDockLayoutStore((state) => state.togglePanel);
   const resetLayout = useDockLayoutStore((state) => state.resetLayout);
