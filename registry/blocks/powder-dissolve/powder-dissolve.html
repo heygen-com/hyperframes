@@ -12,6 +12,10 @@
   its live value, appearing as its phase starts).
   The host clip may run longer than `dissolve`; the tail holds the evenly tinted milk.
 
+  Fonts: no web-font link on purpose. The renderer and Studio inject deterministic faces for
+  every CSS font-family; a network stylesheet declared after them would win whenever it
+  arrived in time, so early frames could differ between renders.
+
   Determinism: every frame is a pure function of time. Clump layout comes from a fixed seed,
   grain and noise from position hashes, and tint spread from the closed-form solution of
   diffusion (a Gaussian convolved with a Gaussian), so frame N never reads frame N-1.
@@ -20,10 +24,6 @@
   <head>
     <meta charset="UTF-8" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=STIX+Two+Text:ital,wght@0,400;0,500;1,400&display=block"
-      rel="stylesheet"
-    />
     <style>
       html,
       body {
@@ -43,15 +43,15 @@
       #pd-maths {
         position: absolute;
         left: 56px;
-        top: 56px;
+        top: 40px;
         width: 800px;
-        padding: 26px 34px 28px;
+        padding: 22px 32px 24px;
         border-radius: 18px;
         background: rgba(250, 247, 241, 0.92);
         color: #2a1a10;
         font-family: "STIX Two Text", Georgia, serif;
         font-size: 28px;
-        line-height: 1.28;
+        line-height: 1.2;
         font-variant-numeric: tabular-nums;
       }
       #pd-maths .pd-clock {
@@ -61,7 +61,7 @@
         margin-bottom: 8px;
       }
       #pd-maths .pd-eq {
-        margin-top: 14px;
+        margin-top: 10px;
       }
       #pd-maths .pd-label {
         font-family: Inter, sans-serif;
@@ -83,7 +83,7 @@
       id="pd-root"
       data-composition-id="powder-dissolve"
       data-composition-variables='[
-        {"id":"powder","type":"color","label":"Powder colour","default":"#7a4a2e"},
+        {"id":"powder","type":"color","label":"Powder colour","description":"Dissolved powder darkens the milk toward this colour, so pick one darker than the milk.","default":"#7a4a2e"},
         {"id":"milk","type":"color","label":"Milk colour","default":"#f4efe6"},
         {"id":"dissolve","type":"number","label":"Dissolve duration","default":8,"min":3,"max":30,"step":0.5,"unit":"s"},
         {"id":"maths","type":"boolean","label":"Show the maths","description":"A whiteboard panel of the equations driving each phase, with live values.","default":false}
@@ -115,26 +115,42 @@
           H = 1080;
         var SEED = 7202611; // fixes the clump layout
 
-        // Read once at init; variables never change mid-render. Ids are single lowercase
-        // words so the runtime's `--<id>` and the compiler's slug agree.
-        var vars =
+        // Read once at init; variables never change mid-render. Defaults come from the root's
+        // own declaration (the single source); runtime values are layered on top. Ids are
+        // single lowercase words so the runtime's `--<id>` and the compiler's slug agree.
+        var DEFAULTS = {};
+        JSON.parse(
+          document.getElementById("pd-root").getAttribute("data-composition-variables"),
+        ).forEach(function (d) {
+          DEFAULTS[d.id] = d.default;
+        });
+        var overrides =
           window.__hyperframes && window.__hyperframes.getVariables
             ? window.__hyperframes.getVariables()
             : {};
+        var vars = {};
+        for (var key in DEFAULTS) {
+          vars[key] = overrides[key] !== undefined ? overrides[key] : DEFAULTS[key];
+        }
         function clampNum(value, lo, hi, fallback) {
           var n = Number(value);
           if (!isFinite(n)) n = fallback;
           return Math.min(hi, Math.max(lo, n));
         }
+        // #rgb or #rrggbb; anything else keeps the declared default.
         function hexRgb(value, fallback) {
-          var m = /^#?([0-9a-f]{6})$/i.exec(typeof value === "string" ? value.trim() : "");
-          var n = parseInt(m ? m[1] : fallback.slice(1), 16);
+          var m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(
+            typeof value === "string" ? value.trim() : "",
+          );
+          if (!m) return hexRgb(fallback, "#000000");
+          var h = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1];
+          var n = parseInt(h, 16);
           return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
         }
-        var POWDER = hexRgb(vars.powder, "#7a4a2e");
-        var MILK = hexRgb(vars.milk, "#f4efe6");
-        var DISSOLVE = clampNum(vars.dissolve, 3, 30, 8);
-        var MATHS = vars.maths === true || vars.maths === "true";
+        var POWDER = hexRgb(vars.powder, DEFAULTS.powder);
+        var MILK = hexRgb(vars.milk, DEFAULTS.milk);
+        var DISSOLVE = clampNum(vars.dissolve, 3, 30, DEFAULTS.dissolve);
+        var MATHS = vars.maths === true;
         var OFFSET_X = MATHS ? 0.4 : 0; // clear the left of the frame for the panel
 
         function mulberry32(seed) {
@@ -433,13 +449,17 @@
             label: "Heap and noise field",
             from: 0,
             tex:
-              "<i>h</i>(<i>x</i>) = <i>L</i> Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> e<sup>−|<i>x</i>−<i>c<sub>i</sub></i>|² / 2<i>σ<sub>i</sub></i>²</sup> (0.55 + 0.7 fbm(6<i>x</i>))" +
+              "<i>h</i>(<i>x</i>) = <i>L</i> Σ<sub><i>i</i></sub> <i>w<sub>i</sub></i> e<sup>−|<i>x</i>−<i>c<sub>i</sub></i>|² / 2<i>σ<sub>i</sub></i>²</sup> (0.55 + 0.7 fbm(6<i>x</i> + 3.1))" +
               "<br />fbm(<i>x</i>) = Σ<sub><i>k</i>=0..3</sub> 2<sup>−<i>k</i>−1</sup> <i>n</i>(<i>x<sub>k</sub></i>) / 0.9375,  <i>x</i><sub><i>k</i>+1</sub> = 2.03 <i>x<sub>k</sub></i> + (1.7, 9.2)",
           },
           {
             label: "Wetting front",
             from: atS(0),
-            tex: "<i>W</i>(<i>s</i>) = smoothstep(0, 0.55, <i>s</i>),  <i>d</i> = <i>h</i> − erosion<br />wet = smoothstep(0, 0.08, 1.2<i>W</i> − 0.12<br />&emsp;&emsp;− 1.1(<i>d</i> − 0.45) + 0.4(fbm(9<i>x</i>) − ½))",
+            tex:
+              "<i>W</i>(<i>s</i>) = smoothstep(0, 0.55, <i>s</i>),  <i>d</i> = <i>h</i> − erosion" +
+              "<br />front = smoothstep(0, 0.08, 1.2<i>W</i> − 0.12 − 1.1(<i>d</i> − 0.45)<br />&emsp;&emsp;+ 0.4(fbm(9<i>x</i> + 4) − ½))" +
+              "<br />blotch = smoothstep(0.64, 0.72, fbm(5.5<i>x</i> + 20) + 0.5<i>W</i> − 0.18)" +
+              "<br />wet = max(front, blotch, crack, loose grain once hash &lt; 2.5<i>W</i>)",
             val: function (ph) {
               return "W = " + pct(ph.wet);
             },
@@ -471,8 +491,10 @@
             label: "Tint mix (Beer–Lambert)",
             from: atS(0.55), // M passes 5 % here; the curve starts at s = 0.4
             tex:
-              "<i>M</i> = smoothstep(0.4, 1, <i>s</i>)<sup>1.6</sup>,  <i>c</i> := (1 − <i>M</i>)<i>c</i> + 0.6<i>M</i>" +
-              "<br />colour = milk · e<sup>−0.55 <i>c</i> (−ln powder)</sup>",
+              "<i>M</i> = smoothstep(0.4, 1, <i>s</i>)<sup>1.6</sup>" +
+              "<br />marbling: <i>c</i> := <i>c</i> (1 + 0.8(1 − <i>M</i>)(fbm(3.5<i>x</i>, 5<i>y</i>) − ½))" +
+              "<br /><i>c</i> := (1 − <i>M</i>) <i>c</i> + 0.6<i>M</i>" +
+              "<br />colour = milk · e<sup>−0.55 <i>c</i> (−ln max(powder, 0.02))</sup>",
             val: function (ph) {
               return "M = " + pct(ph.mix);
             },

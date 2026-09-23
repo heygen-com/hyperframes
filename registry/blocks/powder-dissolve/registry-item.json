@@ -28,7 +28,8 @@
       "id": "powder",
       "type": "color",
       "label": "Powder colour",
-      "default": "#7a4a2e"
+      "default": "#7a4a2e",
+      "description": "Dissolved powder darkens the milk toward this colour, so pick one darker than the milk."
     },
     {
       "id": "milk",
