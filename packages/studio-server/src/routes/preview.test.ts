@@ -471,6 +471,29 @@ describe("hf-id surfacing in preview route", () => {
     expect(readFileSync(compPath, "utf-8")).toContain('data-hf-id="hf-');
   });
 
+  it("scene files fetched through the asset route carry the same data-hf-id as disk", async () => {
+    const { readFileSync } = await import("node:fs");
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "compositions"));
+    const compPath = join(projectDir, "compositions", "scene.html");
+    writeFileSync(
+      compPath,
+      `<template id="s-template"><div data-composition-id="s"><p>Hi</p></div></template>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request("http://localhost/projects/demo/preview/compositions/scene.html");
+    expect(res.status).toBe(200);
+    const servedIds = [...(await res.text()).matchAll(/data-hf-id="(hf-[a-z0-9]+)"/g)].map(
+      (m) => m[1],
+    );
+    const diskIds = [
+      ...readFileSync(compPath, "utf-8").matchAll(/data-hf-id="(hf-[a-z0-9]+)"/g),
+    ].map((m) => m[1]);
+    expect(servedIds.length).toBeGreaterThanOrEqual(1);
+    expect(servedIds).toEqual(diskIds);
+  });
+
   it("returns ByteString-safe stable and distinct ETags for percent-encoded CJK sub-comp paths", async () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, "compositions"));

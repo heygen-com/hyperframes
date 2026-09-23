@@ -604,7 +604,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // 1KB slice of a multi-hundred-MB source must not readFileSync the whole
     // file on each one. The full read also blocked the event loop, so every
     // other Studio request (SSE, saves, the voice track) waited behind it.
-    const textBuffer = isText ? Buffer.from(readFileSync(file, "utf-8"), "utf-8") : null;
+    // The preview runtime fetches scene files here; pin their ids like the /comp route does.
+    const compFile = /\.html?$/i.test(subPath) ? resolveWithinProject(project.dir, subPath) : null;
+    const stampedHtml = compFile ? pinSubCompHfIds(compFile, subPath) : undefined;
+    const textBuffer = isText
+      ? Buffer.from(stampedHtml ?? readFileSync(file, "utf-8"), "utf-8")
+      : null;
     const totalSize = textBuffer ? textBuffer.length : statSync(servedPath).size;
     const bodyFor = (start: number, end: number): BodyInit =>
       textBuffer
