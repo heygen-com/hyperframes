@@ -795,10 +795,30 @@ function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[
   return file ? (declaredVariables(file.source) as ItemVariable[]) : [];
 }
 
+// One section's sidebar entry. A section wrapping exactly one identically-named
+// shelf (e.g. "3D motion") flattens to that shelf's own pages, or the accordion
+// header and its one child read the same word twice; a differently-named single
+// child (e.g. "Data & charts" wrapping "Data") keeps its nested shelf.
+export function sectionEntry(
+  section: string,
+  children: { group: string; pages: unknown[] }[],
+): { group: string; pages: unknown[] } {
+  if (children.length === 1 && children[0]!.group === section) {
+    return { group: section, pages: children[0]!.pages };
+  }
+  // A nested shelf is an entry in the parent's `pages`, beside the page
+  // strings. A sibling `groups` key parses without complaint and renders
+  // nothing, which took the whole catalog out of the sidebar.
+  return { group: section, pages: children };
+}
+
 /** The catalog shelf an item sits on, one function for the nav and the page's category. */
 // fallow-ignore-next-line complexity
-function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
+export function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): string {
   const tags = entry.tags;
+  // `cursor` as the first tag declares the Cursors shelf. It is checked before
+  // `video-primitive` so a pointer that is also a primitive shelves with the cursors.
+  if (tags[0] === "cursor") return "Cursors";
   // Declared membership beats every inferred rule below: `video-primitive` is
   // the tag a human puts on an item to put it on the primitives shelf, and it
   // must not be overridden by whatever else the item happens to be tagged.
@@ -806,6 +826,7 @@ function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): stri
   // Same precedence rule: `3d-motion` is a declared shelf, checked before any
   // inferred tag (e.g. `transition`, `carousel`) that a 3D-motion piece also carries.
   if (tags[0] === "3d-motion") return "3D motion";
+  if (tags[0] === "3d-object") return "3D objects";
   // Two-tag combos for specific grouping
   if (tags.includes("transition") && tags.includes("shader")) return "Shader Transitions";
   if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
@@ -831,7 +852,7 @@ function groupForItem(entry: Pick<CatalogEntry, "name" | "type" | "tags">): stri
   // first: an item tagged both `camera` and `motion-primitive` is a camera
   // move, which is the narrower and more useful shelf to find it on.
   if (tags.includes("texture")) return "Texture";
-  if (tags.includes("camera") || tags.includes("3d")) return "Camera & 3D";
+  if (tags.includes("camera")) return "Camera";
   if (tags.includes("product-demo") || tags.includes("demonstrate") || tags.includes("pointers")) {
     return "Product Demo";
   }
@@ -1209,6 +1230,7 @@ function main(): void {
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
     "3D motion": -1,
+    "3D objects": -0.5,
     "Code Animations": 0,
     Captions: 1,
     "HTML-in-Canvas": 2,
@@ -1223,7 +1245,8 @@ function main(): void {
     "Motion Primitives": 9,
     "Motion Scenes": 11,
     "Typography & Text": 10,
-    "Camera & 3D": 12,
+    Camera: 12,
+    Cursors: 12.5,
     "Product Demo": 13,
     Texture: 14,
     Effects: 15,
@@ -1247,7 +1270,7 @@ function main(): void {
   // Collapsing them under what a reader came here to make turns it into eight
   // openable sections, and keeps every existing shelf name intact underneath.
   const SECTIONS: { section: string; groups: string[] }[] = [
-    { section: "3D motion", groups: ["3D motion"] },
+    { section: "3D", groups: ["3D motion", "3D objects"] },
     { section: "Text & captions", groups: ["Captions", "Typography & Text", "Lower Thirds"] },
     { section: "Code", groups: ["Code Animations", "Code Snippets"] },
     { section: "Transitions", groups: ["Shader Transitions", "CSS Transitions"] },
@@ -1256,12 +1279,13 @@ function main(): void {
       section: "Scenes & demos",
       groups: ["Showcases", "Product Demo", "Social Overlays", "Motion Scenes"],
     },
+    { section: "Cursors", groups: ["Cursors"] },
     // Its own section rather than a shelf inside Scenes & demos. At 25 items it
     // is larger than Data & charts (17) and Blocks (13), which are both
     // sections on their own, and pulling it out takes the largest section in
     // the catalog from 120 items down to 95.
     { section: "Carousels", groups: ["Carousels"] },
-    { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera & 3D"] },
+    { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera"] },
     { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
     { section: "Blocks", groups: ["Blocks"] },
   ];
@@ -1276,10 +1300,7 @@ function main(): void {
       .filter((g): g is { group: string; pages: string[] } => g !== undefined);
     if (children.length === 0) continue;
     for (const child of children) placed.add(child.group);
-    // A nested shelf is an entry in the parent's `pages`, beside the page
-    // strings. A sibling `groups` key parses without complaint and renders
-    // nothing, which took the whole catalog out of the sidebar.
-    catalogGroups.push({ group: section, pages: children });
+    catalogGroups.push(sectionEntry(section, children));
   }
 
   // A shelf nobody assigned a section still has to appear, or a new tag would
