@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { playSeamTransitionLoop, type SeamTransitionFrameSource } from "./seamTransitionLoop.js";
+import {
+  playSeamTransitionLoop,
+  type SeamTransitionFrameSource,
+  type SeamTransitionLoopOptions,
+} from "./seamTransitionLoop.js";
+import { DEFAULT_ACCENT_COLORS } from "./webgl.js";
 
 /** Minimal WebGL double covering every gl call seamTransitionLoop's setup and
  * per-frame render path make (webgl.ts's createContext/setupQuad/
@@ -97,12 +102,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** A loop not yet flushed, for tests that control frame timing themselves. */
-function startLoop(options?: Parameters<typeof playSeamTransitionLoop>[4]) {
+/** A loop not yet flushed, for tests that control frame timing or the shader themselves. */
+function startLoop(options?: SeamTransitionLoopOptions, shaderName = "whip-pan") {
   const raf = stubRaf();
   const gl = createMockGl();
   const canvas = createMockCanvas(gl);
-  const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", options);
+  const handle = playSeamTransitionLoop(canvas, fromSource, toSource, shaderName, options);
   return { raf, gl, canvas, handle };
 }
 
@@ -121,16 +126,15 @@ describe("playSeamTransitionLoop", () => {
     );
   });
 
-  it("plays glitch directly (unaliased catalog name, unquoted registry key)", () => {
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "glitch");
-
-    raf.flush(0);
-    expect(gl.drawArrays).toHaveBeenCalledTimes(1);
-    handle.stop();
-  });
+  it.each(["glitch", "domain-warp-dissolve", "chromatic-radial-split"])(
+    "resolves catalog block name %s (glitch is unaliased and unquoted; the others differ from their registry key)",
+    (catalogName) => {
+      const { raf, gl, handle } = startLoop(undefined, catalogName);
+      raf.flush(0);
+      expect(gl.drawArrays).toHaveBeenCalledTimes(1);
+      handle.stop();
+    },
+  );
 
   it("throws synchronously when the canvas yields no WebGL context", () => {
     stubRaf();
@@ -141,10 +145,7 @@ describe("playSeamTransitionLoop", () => {
   });
 
   it("resolves ready only after the first frame is drawn", async () => {
-    const raf = stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
+    const { raf, gl, handle } = startLoop();
 
     let readyResolved = false;
     void handle.ready.then(() => (readyResolved = true));
@@ -159,20 +160,6 @@ describe("playSeamTransitionLoop", () => {
 
     handle.stop();
   });
-
-  it.each(["domain-warp-dissolve", "chromatic-radial-split"])(
-    "resolves catalog block name %s, which differs from its registry key",
-    (catalogName) => {
-      const raf = stubRaf();
-      const gl = createMockGl();
-      const canvas = createMockCanvas(gl);
-      const handle = playSeamTransitionLoop(canvas, fromSource, toSource, catalogName);
-
-      raf.flush(0);
-      expect(gl.drawArrays).toHaveBeenCalledTimes(1);
-      handle.stop();
-    },
-  );
 
   it("stop() deletes its own program, textures and buffer, and is idempotent", () => {
     const { gl, handle } = startRunningLoop();
@@ -196,10 +183,7 @@ describe("playSeamTransitionLoop", () => {
   });
 
   it("resolves ready even if stop() runs before any frame is drawn", async () => {
-    stubRaf();
-    const gl = createMockGl();
-    const canvas = createMockCanvas(gl);
-    const handle = playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan");
+    const { gl, handle } = startLoop();
 
     handle.stop();
 
@@ -236,19 +220,30 @@ describe("playSeamTransitionLoop", () => {
     handle.stop();
   });
 
-  it.each([0, -1000, Number.NaN, Number.POSITIVE_INFINITY])(
-    "throws synchronously for an invalid loopMs (%s)",
-    (loopMs) => {
+  it.each([
+    ["loopMs", { loopMs: 0 }],
+    ["loopMs", { loopMs: -1000 }],
+    ["loopMs", { loopMs: Number.NaN }],
+    ["loopMs", { loopMs: Number.POSITIVE_INFINITY }],
+    ["width", { width: 0 }],
+    ["width", { width: Number.NaN }],
+    ["height", { height: -180 }],
+  ] satisfies [string, SeamTransitionLoopOptions][])(
+    "throws synchronously for an invalid %s (%j)",
+    (name, options) => {
       const canvas = createMockCanvas(createMockGl());
       expect(() =>
-        playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", { loopMs }),
-      ).toThrow(/loopMs/);
+        playSeamTransitionLoop(canvas, fromSource, toSource, "whip-pan", options),
+      ).toThrow(new RegExp(name));
     },
   );
 
-  it("passes the render pipeline's default accent colors, not none", () => {
-    const { gl } = startRunningLoop();
-    expect(gl.uniform3f).toHaveBeenCalledTimes(3);
+  it("passes the default accent colors (hyper-shader.ts's own fallback), not none", () => {
+    const { gl, handle } = startRunningLoop();
+    expect(gl.uniform3f).toHaveBeenCalledWith(expect.anything(), ...DEFAULT_ACCENT_COLORS.accent);
+    expect(gl.uniform3f).toHaveBeenCalledWith(expect.anything(), ...DEFAULT_ACCENT_COLORS.dark);
+    expect(gl.uniform3f).toHaveBeenCalledWith(expect.anything(), ...DEFAULT_ACCENT_COLORS.bright);
+    handle.stop();
   });
 
   it("defaults width/height to the canvas's own drawing-buffer size", () => {

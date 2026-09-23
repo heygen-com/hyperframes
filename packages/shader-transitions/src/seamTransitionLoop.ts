@@ -16,7 +16,6 @@ import {
   createTexture,
   uploadTextureSource,
   renderShader,
-  DEFAULT_ACCENT_COLORS,
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
 
@@ -34,17 +33,17 @@ export type SeamTransitionFrameSource = HTMLImageElement | HTMLCanvasElement | I
  * to match the catalog; this map is the one place the two naming schemes are
  * reconciled. Every other catalog shader name (including "glitch", an
  * unquoted — but real — registry key) matches its registry key verbatim.
+ * A Map, not a plain object, so a bogus name like "constructor" can never
+ * resolve to an Object.prototype member instead of falling through to
+ * getFragSource's own unknown-shader check.
  */
-const CATALOG_SHADER_ALIASES: Readonly<Record<string, ShaderName>> = {
-  "domain-warp-dissolve": "domain-warp",
-  "chromatic-radial-split": "chromatic-split",
-};
+const CATALOG_SHADER_ALIASES = new Map<string, ShaderName>([
+  ["domain-warp-dissolve", "domain-warp"],
+  ["chromatic-radial-split", "chromatic-split"],
+]);
 
 export interface SeamTransitionLoopOptions {
-  /** Defaults to the canvas's own drawing-buffer size. A mismatched size here
-   * silently under-fills the canvas instead of erroring — WebGL clips to the
-   * smaller of the two, so most of each frame renders outside the visible
-   * buffer and the canvas reads back as a near-flat blend. */
+  /** Defaults to the canvas's own drawing-buffer size. */
   width?: number;
   height?: number;
   /** Full 0→1→0 cycle length. Default 1000ms (D-280's one-second loop). */
@@ -63,10 +62,20 @@ export interface SeamTransitionLoopHandle {
   ready: Promise<void>;
 }
 
+function assertPositiveFinite(name: string, value: number): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      `[playSeamTransitionLoop] ${name} must be a finite number above 0, got ${value}`,
+    );
+  }
+}
+
 /**
  * Throws synchronously when `shaderName` has no WebGL implementation (a
  * catalog block with only a CSS/motion effect, not one of the 14 shader
- * blocks) or when `canvas` yields no WebGL context.
+ * blocks), when `canvas` yields no WebGL context, or when `width`, `height`
+ * or `loopMs` (explicit or defaulted from the canvas) isn't a finite number
+ * above 0 — a bad size otherwise renders nothing forever with no error.
  */
 export function playSeamTransitionLoop(
   canvas: HTMLCanvasElement,
@@ -75,21 +84,14 @@ export function playSeamTransitionLoop(
   shaderName: string,
   options: SeamTransitionLoopOptions = {},
 ): SeamTransitionLoopHandle {
-  const registryName = (
-    Object.hasOwn(CATALOG_SHADER_ALIASES, shaderName)
-      ? CATALOG_SHADER_ALIASES[shaderName]
-      : shaderName
-  ) as ShaderName;
-  const fragSrc = getFragSource(registryName);
+  const fragSrc = getFragSource(CATALOG_SHADER_ALIASES.get(shaderName) ?? shaderName);
 
   const width = options.width ?? canvas.width;
   const height = options.height ?? canvas.height;
   const loopMs = options.loopMs ?? 1000;
-  if (!Number.isFinite(loopMs) || loopMs <= 0) {
-    throw new Error(
-      `[playSeamTransitionLoop] loopMs must be a finite number above 0, got ${loopMs}`,
-    );
-  }
+  assertPositiveFinite("width", width);
+  assertPositiveFinite("height", height);
+  assertPositiveFinite("loopMs", loopMs);
 
   const gl = createContext(canvas, width, height);
   if (!gl) {
@@ -121,17 +123,7 @@ export function playSeamTransitionLoop(
     }
     const phase = ((nowMs - startMs) % loopMs) / loopMs;
     const progress = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-    renderShader(
-      glContext,
-      quadBuf,
-      prog,
-      texFrom,
-      texTo,
-      progress,
-      DEFAULT_ACCENT_COLORS,
-      width,
-      height,
-    );
+    renderShader(glContext, quadBuf, prog, texFrom, texTo, progress, undefined, width, height);
     if (isFirstFrame) resolveReady();
     rafId = requestAnimationFrame(frame);
   }

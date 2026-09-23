@@ -8,6 +8,7 @@ import {
   renderShader,
   DEFAULT_WIDTH,
   DEFAULT_HEIGHT,
+  DEFAULT_ACCENT_COLORS,
   type AccentColors,
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
@@ -867,7 +868,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   const accentColors: AccentColors = config.accentColor
     ? deriveAccentColors(config.accentColor)
-    : { accent: [1, 0.6, 0.2], dark: [0.4, 0.15, 0], bright: [1, 0.85, 0.5] };
+    : DEFAULT_ACCENT_COLORS;
 
   const root = document.querySelector<HTMLElement>("[data-composition-id]");
   const compId = config.compositionId || root?.getAttribute("data-composition-id") || "main";
@@ -2319,7 +2320,7 @@ function initEngineMode(
     const bgColor = config.bgColor ?? "#000";
     const accentColors: AccentColors = config.accentColor
       ? deriveAccentColors(config.accentColor)
-      : { accent: [1, 0.6, 0.2], dark: [0.4, 0.15, 0], bright: [1, 0.85, 0.5] };
+      : DEFAULT_ACCENT_COLORS;
     const rawW = Number(root?.getAttribute("data-width"));
     const rawH = Number(root?.getAttribute("data-height"));
     const compWidth = Number.isFinite(rawW) && rawW > 0 ? rawW : 1920;

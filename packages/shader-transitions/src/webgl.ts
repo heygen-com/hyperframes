@@ -34,6 +34,8 @@ function compileShader(gl: WebGLRenderingContext, src: string, type: number): We
   return s;
 }
 
+// vertexShader is caller-owned (compiled by createProgramWithVertex); this
+// function only deletes what it creates itself, the fragment shader.
 function linkProgram(
   gl: WebGLRenderingContext,
   vertexShader: WebGLShader,
@@ -45,14 +47,13 @@ function linkProgram(
   gl.attachShader(p, vertexShader);
   gl.attachShader(p, fragmentShader);
   gl.linkProgram(p);
-  // Attached and linked, so deleting the shader objects here doesn't affect
-  // the program — they'd otherwise leak for its whole lifetime (WebGL never
-  // frees them on its own). Delete before the link-status check too: a
-  // failed link still attached both.
-  gl.deleteShader(vertexShader);
+  // WebGL never frees an attached shader object on its own; deleting once
+  // linked is safe either way, including on a failed link below.
   gl.deleteShader(fragmentShader);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-    throw new Error(`[HyperShader] Program link: ${gl.getProgramInfoLog(p) || "unknown"}`);
+    const log = gl.getProgramInfoLog(p) || "unknown";
+    gl.deleteProgram(p);
+    throw new Error(`[HyperShader] Program link: ${log}`);
   }
   return p;
 }
@@ -66,7 +67,12 @@ export function createProgramWithVertex(
   vertexSrc: string,
   fragSrc: string,
 ): WebGLProgram {
-  return linkProgram(gl, compileShader(gl, vertexSrc, gl.VERTEX_SHADER), fragSrc);
+  const vertexShader = compileShader(gl, vertexSrc, gl.VERTEX_SHADER);
+  try {
+    return linkProgram(gl, vertexShader, fragSrc);
+  } finally {
+    gl.deleteShader(vertexShader);
+  }
 }
 
 export interface AccentColors {
@@ -75,7 +81,7 @@ export interface AccentColors {
   bright: [number, number, number];
 }
 
-/** hyper-shader.ts's own fallback when a composition sets no accentColor. */
+/** Fallback when a composition sets no accentColor (hyper-shader.ts's own default). */
 export const DEFAULT_ACCENT_COLORS: AccentColors = {
   accent: [1, 0.6, 0.2],
   dark: [0.4, 0.15, 0],
@@ -119,7 +125,7 @@ export function renderShader(
   texFrom: WebGLTexture,
   texTo: WebGLTexture,
   progress: number,
-  colors?: AccentColors,
+  colors: AccentColors = DEFAULT_ACCENT_COLORS,
   width: number = DEFAULT_WIDTH,
   height: number = DEFAULT_HEIGHT,
 ): void {
@@ -133,11 +139,9 @@ export function renderShader(
   gl.uniform1i(loc.to, 1);
   gl.uniform1f(loc.progress, progress);
   gl.uniform2f(loc.resolution, width, height);
-  if (colors) {
-    gl.uniform3f(loc.accent, ...colors.accent);
-    gl.uniform3f(loc.accentDark, ...colors.dark);
-    gl.uniform3f(loc.accentBright, ...colors.bright);
-  }
+  gl.uniform3f(loc.accent, ...colors.accent);
+  gl.uniform3f(loc.accentDark, ...colors.dark);
+  gl.uniform3f(loc.accentBright, ...colors.bright);
   gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
   gl.enableVertexAttribArray(loc.aPos);
   gl.vertexAttribPointer(loc.aPos, 2, gl.FLOAT, false, 0, 0);
