@@ -112,6 +112,8 @@ export interface VfxEntry {
   /** Present exactly when `capture !== "none"`. */
   src?: VfxCaptureSource;
   ping?: PingPong;
+  /** Set once `out` fires `webglcontextlost`; the entry never paints again. */
+  contextLost: boolean;
 }
 
 export type VfxRegistry = VfxEntry[];
@@ -262,6 +264,36 @@ function resolveCaptureSource(
   return { canvas, inner, ctx, texture: createCaptureTexture(gl) };
 }
 
+/**
+ * Chrome caps live WebGL contexts (commonly 16, and `colorGrading.ts` holds
+ * one per graded element too), and a driver reset can take one at any moment.
+ * Calls on a lost context are spec'd to do nothing, so without this the chain
+ * would go on "painting" an empty canvas in silence — the one thing this
+ * module promises not to do.
+ *
+ * Only the OUTPUT canvas is watched: `.hf-vfx-src` is a 2-D context and is
+ * unaffected by GL context loss.
+ *
+ * Restore is deliberately unhandled — the entry stays lost for as long as this
+ * registry does. `initVfx` already re-scans and re-registers every host when
+ * the composition mounts and again when a sub-composition arrives, rebuilding
+ * every program, texture and framebuffer from scratch; a second, narrower
+ * rebuild path for `webglcontextrestored` alone would duplicate that one and
+ * be free to drift from it. `preventDefault()` still runs, so the context is
+ * restorable if a follow-up wants to take it.
+ */
+function watchContextLoss(entry: VfxEntry): void {
+  entry.out.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    // A later `initVfx` may have replaced the registry, and `findOrCreateOut`
+    // hands the same canvas to the new entry — a released entry's loss is
+    // nobody's frame, and reporting it would be a phantom error.
+    if (!registry.includes(entry) || entry.contextLost) return;
+    entry.contextLost = true;
+    reportVfxError(`${describeHost(entry.host)}: WebGL context lost.`);
+  });
+}
+
 function registerVfxHost(host: HTMLElement): VfxEntry | null {
   let chain: HfVfxChain;
   try {
@@ -289,7 +321,9 @@ function registerVfxHost(host: HTMLElement): VfxEntry | null {
     out.remove();
     return null;
   }
-  return { host, chain, capture, out, gl, passes, src };
+  const entry: VfxEntry = { host, chain, capture, out, gl, passes, src, contextLost: false };
+  watchContextLoss(entry);
+  return entry;
 }
 
 /**
@@ -519,6 +553,7 @@ function captureEntry(entry: VfxEntry, quiet = false): boolean {
 function resolveVfxCapture(): boolean {
   let painted = false;
   for (const entry of registry) {
+    if (entry.contextLost) continue;
     if (!entry.src || !isPaintableHost(entry.host)) continue;
     if (!captureEntry(entry)) continue;
     paintEntry(entry, lastPaintTime);
@@ -599,7 +634,7 @@ async function capturePreviewThenPaint(
     // `initVfx` re-scans when a sub-composition mounts and releases the
     // outgoing registry's programs and textures; painting a released entry is
     // a silent GL error, not a frame.
-    if (!registry.includes(entry)) continue;
+    if (!registry.includes(entry) || entry.contextLost) continue;
     if (captureEntry(entry, speculative)) paintEntry(entry, t);
   }
 }
@@ -629,6 +664,8 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   const seq = ++paintSeq;
   const capturing: VfxEntry[] = [];
   for (const entry of registry) {
+    // Reported once, at the moment of loss; repeating it per frame is spam.
+    if (entry.contextLost) continue;
     if (!isPaintableHost(entry.host)) continue;
     if (entry.src) capturing.push(entry);
     else paintEntry(entry, t);

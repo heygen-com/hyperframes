@@ -323,6 +323,34 @@ describe("vfx runtime", () => {
     expect(gl!.calls).toEqual([]);
   });
 
+  it("reports a lost WebGL context once and then paints that host no more", () => {
+    const host = makeHost(ONE_NODE);
+    const entries = initVfx(document.body, 30);
+    const out = host.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement;
+    const lose = (): void => {
+      out.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    };
+
+    lose();
+    paintVfx(0);
+    // A second loss event, and a second paint, must stay quiet: the report is
+    // the moment of loss, not every frame after it.
+    lose();
+    paintVfx(1);
+
+    expect({
+      contextLost: entries[0]!.contextLost,
+      reports: errors.length,
+      message: String(errors[0]?.[1] ?? ""),
+      calls: gl!.calls,
+    }).toEqual({
+      contextLost: true,
+      reports: 1,
+      message: expect.stringMatching(/context lost/i) as unknown as string,
+      calls: [],
+    });
+  });
+
   it("forgets the previous composition's hosts when re-initialised", () => {
     makeHost(ONE_NODE);
     initVfx(document.body, 30);
