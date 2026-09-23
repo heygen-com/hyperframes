@@ -80,6 +80,51 @@ function fixture(chain: string, innerStyle = "", hostStyle = ""): string {
 </div>`;
 }
 
+/** Where the two side-by-side panels sit in the chain-order fixture. */
+const PANEL = { ax: 20, bx: 220, y: 30, w: HOST_W, h: HOST_H };
+
+/**
+ * Chain order is nesting order. The exporter puts effects that run BEFORE the
+ * chain node on `.hf-vfx-in` (inside the capture) and effects that run AFTER it
+ * on the host (outside, applied by the page compositor to `.hf-vfx-out`).
+ *
+ * Panel A is that arrangement with an identity kernel between the two filters;
+ * panel B is the same nesting as plain DOM. If the runtime honours the order,
+ * the two panels are the same picture. Both sit on the same blue field with the
+ * same clearance, so their filters spill into identical neighbourhoods.
+ */
+function chainOrderFixture(chain: string): string {
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #0000ff; }
+  .panel { position: absolute; top: ${PANEL.y}px; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host { left: ${PANEL.ax}px; }
+  #control { left: ${PANEL.bx}px; }
+  #host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  .inner { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  .square {
+    position: absolute; left: 0; top: 0;
+    width: ${SQUARE_W}px; height: ${HOST_H}px; background: #ff0000;
+  }
+</style>
+<svg width="0" height="0" style="position:absolute">
+  <filter id="tint" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="0 0 0 0 0  1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
+  </filter>
+</svg>
+<div data-composition-id="root" data-start="0" data-duration="4"
+     data-width="400" data-height="180">
+  <div id="host" class="panel clip" data-start="0" data-duration="4"
+       data-vfx-chain='${chain}' style="filter: blur(2px)">
+    <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in inner" style="filter: url(#tint)"><div class="square"></div></div></canvas>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+  <div id="control" class="panel" style="filter: blur(2px)">
+    <div class="inner" style="filter: url(#tint)"><div class="square"></div></div>
+  </div>
+</div>`;
+}
+
 interface OutSample {
   width: number;
   height: number;
@@ -133,7 +178,7 @@ describe("data-vfx-chain in the browser", () => {
    */
   const pageErrors = new Map<Page, string[]>();
 
-  async function open(html: string): Promise<Page> {
+  async function open(html: string, viewport = { width: 320, height: 240 }): Promise<Page> {
     const page = await browser.newPage();
     const errors: string[] = [];
     pageErrors.set(page, errors);
@@ -142,7 +187,7 @@ describe("data-vfx-chain in the browser", () => {
       if (text.includes("[HyperFrames] composition script error:")) errors.push(text);
     });
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.setViewport({ width: 320, height: 240, deviceScaleFactor: 1 });
+    await page.setViewport({ ...viewport, deviceScaleFactor: 1 });
     await page.setContent(html);
     await page.addScriptTag({ content: runtime });
     await page.waitForFunction(
@@ -296,6 +341,69 @@ describe("data-vfx-chain in the browser", () => {
           [SQUARE_W, SQUARE_W - shiftOutside],
         ]);
       }
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  /**
+   * Decode the page's own screenshot back inside the page and compare the two
+   * panels. Keeping the compare in the browser avoids a PNG decoder in Node
+   * and guarantees both panels went through one compositor pass.
+   */
+  async function panelPsnr(page: Page): Promise<{ mse: number; psnr: number; aCentre: number[] }> {
+    const shot = await page.screenshot({ encoding: "base64" });
+    const raw = await page.evaluate(
+      async (base64: string, panel: typeof PANEL) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${base64}`;
+        await img.decode();
+        const scratch = document.createElement("canvas");
+        scratch.width = img.width;
+        scratch.height = img.height;
+        const ctx = scratch.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        const a = ctx.getImageData(panel.ax, panel.y, panel.w, panel.h).data;
+        const b = ctx.getImageData(panel.bx, panel.y, panel.w, panel.h).data;
+        let se = 0;
+        let n = 0;
+        for (let i = 0; i < a.length; i += 4) {
+          for (let c = 0; c < 3; c++) {
+            const d = a[i + c]! - b[i + c]!;
+            se += d * d;
+            n += 1;
+          }
+        }
+        const centre = ((panel.h >> 1) * panel.w + 20) * 4;
+        // `Infinity` does not survive the CDP round trip, so the MSE crosses
+        // and the decibels are computed on this side.
+        return { mse: se / n, aCentre: [a[centre]!, a[centre + 1]!, a[centre + 2]!] };
+      },
+      shot,
+      PANEL,
+    );
+    return {
+      ...raw,
+      psnr: raw.mse === 0 ? Number.POSITIVE_INFINITY : 10 * Math.log10((255 * 255) / raw.mse),
+    };
+  }
+
+  it("captures the filters that precede the node and leaves the ones that follow outside", async () => {
+    const page = await open(chainOrderFixture(waveWarpChain({ height: 0, width: 93.4 })), {
+      width: PANEL.bx + PANEL.w + PANEL.ax,
+      height: PANEL.y + PANEL.h + PANEL.y,
+    });
+    try {
+      expect(await seekAndResolve(page, 0)).toBe(true);
+      const { psnr, aCentre } = await panelPsnr(page);
+
+      // The tint runs INSIDE the capture, so the block reaches the kernel green
+      // rather than red — proof that drawElementImage paints the subtree's own
+      // filter rather than its unfiltered source.
+      expect(aCentre[0]).toBeLessThan(64);
+      expect(aCentre[1]).toBeGreaterThan(160);
+      // ...and the host's blur runs OUTSIDE, on the canvas the kernel wrote.
+      expect(psnr).toBeGreaterThanOrEqual(40);
     } finally {
       await page.close();
     }
