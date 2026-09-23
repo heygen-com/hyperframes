@@ -1136,4 +1136,69 @@ describe("core rules", () => {
       expect(finding?.message).toContain("Missed semicolon");
     });
   });
+
+  describe("css_transition_used", () => {
+    const comp = (head: string, bodyInner = "") => `
+<html><head>${head}</head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    ${bodyInner}
+  </div>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`;
+
+    it("errors on transition in a style block", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`<style>.card { transition: opacity 0.5s; }</style>`),
+      );
+      const finding = result.findings.find((f) => f.code === "css_transition_used");
+      expect(finding?.severity).toBe("error");
+      expect(finding?.selector).toBe(".card");
+      expect(finding?.fixHint).toContain("paused GSAP timeline");
+    });
+
+    it("errors on transition-* and -webkit- declarations", async () => {
+      const result = await lintHyperframeHtml(
+        comp(
+          `<style>.a { transition-duration: 0.3s; } .b { -webkit-transition: opacity 0.5s; }</style>`,
+        ),
+      );
+      const findings = result.findings.filter((f) => f.code === "css_transition_used");
+      expect(findings).toHaveLength(2);
+    });
+
+    it("errors on inline style transitions", async () => {
+      const result = await lintHyperframeHtml(
+        comp(``, `<div id="box" style="transition: transform 0.5s;">hi</div>`),
+      );
+      const finding = result.findings.find((f) => f.code === "css_transition_used");
+      expect(finding?.severity).toBe("error");
+      expect(finding?.elementId).toBe("box");
+    });
+
+    it("allows transition: none and transition-property: none", async () => {
+      const result = await lintHyperframeHtml(
+        comp(
+          `<style>.a { transition: none; } .b { transition-property: none; }</style>`,
+          `<div id="box" style="transition: none;">hi</div>`,
+        ),
+      );
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeUndefined();
+    });
+
+    it("ignores custom properties", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`<style>:root { --transition-speed: 0.3s; }</style>`),
+      );
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeUndefined();
+    });
+
+    it("does not flag seekable @keyframes animation", async () => {
+      const result = await lintHyperframeHtml(
+        comp(
+          `<style>@keyframes fade { from { opacity: 0; } to { opacity: 1; } } .card { animation-name: fade; }</style>`,
+        ),
+      );
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeUndefined();
+    });
+  });
 });
