@@ -695,16 +695,13 @@ export function collectRuntimeTimelinePayload(params: {
   // payload duration down to the last visible clip end, the controls jump even
   // though playback still runs for the full authored root duration.
   const safeDuration = Math.max(1, maxEnd || 1, rootCompositionDuration ?? 0);
-  const shouldEmitNonDeterministicInf = timelineLooksLoopInflated && attrDurationCandidate == null;
-  const durationInFrames = shouldEmitNonDeterministicInf
-    ? Number.POSITIVE_INFINITY
-    : Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
+  const durationInFrames = Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
   return {
     ...runtimeProtocolMetadata(params.canonicalFps),
     source: "hf-preview",
     type: "timeline",
     compositionContractVersion: COMPOSITION_CONTRACT_VERSION,
-    durationSeconds: shouldEmitNonDeterministicInf ? Number.POSITIVE_INFINITY : safeDuration,
+    durationSeconds: safeDuration,
     durationInFrames,
     clips,
     scenes,

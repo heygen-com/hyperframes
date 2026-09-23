@@ -1049,12 +1049,13 @@ describe("collectRuntimeTimelinePayload", () => {
       expect(result.durationInFrames).toBe(156 * 30);
     });
 
-    it("still reports an endless loop (GSAP repeat: -1) as unbounded", () => {
+    it("reports the voiceover's window for an endless loop (GSAP repeat: -1), never Infinity", () => {
       appendVoicedRoot(1e10);
 
-      expect(collectRuntimeTimelinePayload(defaultParams).durationSeconds).toBe(
-        Number.POSITIVE_INFINITY,
-      );
+      const result = collectRuntimeTimelinePayload(defaultParams);
+
+      expect(result.durationSeconds).toBe(154.8);
+      expect(result.durationInFrames).toBe(Math.ceil(154.8 * 30));
     });
   });
 });
