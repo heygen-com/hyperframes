@@ -163,7 +163,7 @@ class EmptyCompositionError extends Error {
       `${problems.length} composition file${problems.length === 1 ? "" : "s"} referenced by ` +
         `data-composition-src cannot be rendered:\n${lines.join("\n")}\n\n` +
         "Check that each file referenced by data-composition-src contains valid HTML with a " +
-        "<template> or <body> containing a [data-composition-id] element. If a scene-authoring " +
+        "[data-composition-id] element in a <template>, <body>, or bare fragment. If a scene-authoring " +
         "step is still running, wait for it to finish before referencing the file.",
     );
     this.name = "EmptyCompositionError";

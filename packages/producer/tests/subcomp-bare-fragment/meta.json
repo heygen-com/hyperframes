@@ -1,0 +1,13 @@
+{
+  "name": "Bare fragment sub-composition",
+  "description": "A sub-composition without html, body, or template wrappers renders its root and sibling linked CSS, inline styles, and GSAP script. The moving square catches dropped markup, styles, or animation; raw-fragment rejection fails compilation.",
+  "tags": ["sub-composition", "regression"],
+  "minPsnr": 40,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 24,
+    "workers": 1
+  }
+}
