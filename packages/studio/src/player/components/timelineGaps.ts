@@ -32,7 +32,7 @@ export const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const endOf = (e: TimelineElement) => e.start + e.duration;
 
 /** Lane clips sorted by start (key as a deterministic tie-break). */
-function sortedLaneClips(elements: readonly TimelineElement[]): TimelineElement[] {
+export function sortedLaneClips(elements: readonly TimelineElement[]): TimelineElement[] {
   return [...elements].sort((a, b) => a.start - b.start || keyOf(a).localeCompare(keyOf(b)));
 }
 

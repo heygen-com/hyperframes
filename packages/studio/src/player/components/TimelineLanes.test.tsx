@@ -485,4 +485,15 @@ describe("TimelineLanes clip joins", () => {
     expect(clipB?.style.width).toBe("150px");
     act(() => view.root.unmount());
   });
+
+  it("draws no join while a clip is being moved, since the moved clip is drawn elsewhere", () => {
+    const clipA = at("clip-a", 0, 2);
+    const view = renderLanes({
+      elements: [clipA, at("clip-b", 2, 1.5)],
+      draggedClip: { element: clipA, started: true } as DraggedClipState,
+    });
+
+    expect(view.host.querySelectorAll("[data-timeline-clip-join]")).toHaveLength(0);
+    act(() => view.root.unmount());
+  });
 });

@@ -1,17 +1,15 @@
 import { CLIP_Y } from "./timelineLayout";
+import { sortedLaneClips, TRACK_GAP_EPSILON_S } from "./timelineGaps";
 import type { TimelineElement } from "../store/playerStore";
-
-// Frames are at least 1/120 s apart, so anything closer is the same instant.
-const JOIN_EPSILON_S = 1e-3;
 
 /** Times where one clip on a row ends exactly where the next begins. */
 export function deriveTimelineClipJoins(elements: readonly TimelineElement[]): number[] {
-  const sorted = [...elements].sort((left, right) => left.start - right.start);
+  const sorted = sortedLaneClips(elements);
   const joins: number[] = [];
   for (let index = 1; index < sorted.length; index += 1) {
     const previous = sorted[index - 1]!;
     const end = previous.start + previous.duration;
-    if (Math.abs(sorted[index]!.start - end) < JOIN_EPSILON_S) joins.push(end);
+    if (Math.abs(sorted[index]!.start - end) < TRACK_GAP_EPSILON_S) joins.push(end);
   }
   return joins;
 }
