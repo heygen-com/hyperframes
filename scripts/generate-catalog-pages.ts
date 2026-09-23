@@ -794,15 +794,10 @@ function tunableVariables(kind: ItemKind, manifest: RegistryItem): ItemVariable[
   return file ? (declaredVariables(file.source) as ItemVariable[]) : [];
 }
 
-/**
- * One section's sidebar entry, from its section label and the shelves it wraps.
- * A section wrapping exactly one shelf of the SAME name (e.g. "3D motion" wrapping
- * only "3D motion") would otherwise nest an identical label inside itself — the
- * accordion header and its one child would read the same word twice. Flatten that
- * case to the shelf's own pages; a section wrapping a differently-named shelf (e.g.
- * "Data & charts" wrapping "Data") keeps the nested shelf, since both labels carry
- * distinct meaning in the sidebar.
- */
+// One section's sidebar entry. A section wrapping exactly one identically-named
+// shelf (e.g. "3D motion") flattens to that shelf's own pages, or the accordion
+// header and its one child read the same word twice; a differently-named single
+// child (e.g. "Data & charts" wrapping "Data") keeps its nested shelf.
 export function sectionEntry(
   section: string,
   children: { group: string; pages: unknown[] }[],
