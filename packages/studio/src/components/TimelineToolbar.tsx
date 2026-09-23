@@ -1,11 +1,5 @@
 import { useEffect, useRef } from "react";
-import {
-  Image,
-  Magnet,
-  MagnifyingGlassMinus,
-  MagnifyingGlassPlus,
-  Waves,
-} from "@phosphor-icons/react";
+import { Image, Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -22,12 +16,16 @@ import {
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
+import { AudioMetersIcon } from "./icons/AudioMetersIcon";
+import { RippleEditIcon } from "./icons/RippleEditIcon";
 import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
 import { TimelineHistoryButtons } from "./TimelineHistoryButtons";
 import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
+import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
+import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
@@ -141,6 +139,9 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
   const setThumbnailMode = usePlayerStore((s) => s.setThumbnailMode);
   const thumbnailsVisible = thumbnailMode === "adaptive";
+  const audioMetersVisible = useAudioMetersVisible((s) => s.visible);
+  const setAudioMetersVisible = useAudioMetersVisible((s) => s.setVisible);
+  const projectHasAudio = useProjectHasAudio();
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
@@ -246,9 +247,22 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               aria-pressed={rippleEditEnabled}
               className={rippleEditEnabled ? flatActive : flatIdle}
             >
-              <Waves size={16} weight="bold" aria-hidden="true" />
+              <RippleEditIcon size={16} />
             </button>
           </Tooltip>
+          {projectHasAudio && (
+            <Tooltip label={audioMetersVisible ? "Hide audio meters" : "Show audio meters"}>
+              <button
+                type="button"
+                onClick={() => setAudioMetersVisible(!audioMetersVisible)}
+                aria-label="Toggle audio meters"
+                aria-pressed={audioMetersVisible}
+                className={audioMetersVisible ? flatActive : flatIdle}
+              >
+                <AudioMetersIcon size={16} />
+              </button>
+            </Tooltip>
+          )}
           {/* Always rendered (CapCut-style): with no keyframeable selection the
               button fades to a disabled state instead of unmounting, so the
               toolbar layout never shifts. */}

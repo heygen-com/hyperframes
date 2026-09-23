@@ -46,16 +46,52 @@ export {
   VideoThumbnail,
   CompositionThumbnail,
   useTimelinePlayer,
+  usePlayerHandle,
   resolveIframe,
   usePlayerStore,
   liveTime,
   formatTime,
 } from "./player";
-export type { TimelineElement, TimelineTimeRange } from "./player";
+export type {
+  PlayerHandle,
+  PlayerHandleElement,
+  PlayerHandleListener,
+  PlayerHandleTimeListener,
+  TimelineElement,
+  TimelineTimeRange,
+} from "./player";
+export {
+  TimelineFrame,
+  TimelineLanes,
+  TimelineOverlays,
+  TimelinePlayhead,
+  TimelineRazorGuide,
+  TimelineRuler,
+  TimelineEmptyStatePart,
+  TimelineEditPopover,
+  TimelineClipMenu,
+  TimelineGapMenu,
+  TimelineKeyframeMenu,
+  TimelineShortcutHint,
+} from "./player/components/TimelineParts";
+export { TimelineProvider, useTimelineContext } from "./player/components/TimelineProvider";
+export type { TimelineTheme } from "./player/components/timelineTheme";
 
 // Host overlays: draw over the preview in composition coordinates (see EditorShellProps.gestureOverlay)
 export { usePreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
 export type { PreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";
+export {
+  PreviewOverlayProvider,
+  usePreviewOverlayContext,
+} from "./components/editor/PreviewOverlayProvider";
+export type {
+  PreviewOverlayProviderProps,
+  PreviewSnapPreferences,
+} from "./components/editor/PreviewOverlayProvider";
+export { PreviewGuides } from "./components/editor/PreviewGuides";
+export { GridOverlay } from "./components/editor/GridOverlay";
+export { SnapToolbar } from "./components/editor/SnapToolbar";
+export { usePreviewGuidesStore } from "./components/editor/previewGuidesStore";
 
 // Editor
 export { SourceEditor } from "./components/editor/SourceEditor";

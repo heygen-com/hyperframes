@@ -39,6 +39,8 @@ remains authoritative: run `npx hyperframes <command> --help`.
 | Inspect keyframe behavior | `npx hyperframes keyframes` |
 | Compare two or more versions | `npx hyperframes compare v1/ v2/` |
 
+`hyperframes timeline` also accepts agent editing verbs. Use `move`, `trim`, `split`, or `delete` with a row ref; add `--plan` to inspect the before/after rows and diff without writing, or `--json` for a machine-readable receipt. Time values accept seconds, relative offsets, frames, and anchors such as `after:#intro`.
+
 ## Rendering and automation
 
 The CLI also renders in batches and from variables, writes image sequences and

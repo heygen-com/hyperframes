@@ -109,6 +109,15 @@ describe("studio theme", () => {
     expect(vars.get("--text-lg")).toBe("1.125rem");
   });
 
+  it("opens menus from a visible shape and closes them faster", () => {
+    expect(declaredValue("--duration-open")).toBe("120ms");
+    expect(declaredValue("--duration-close")).toBe("90ms");
+    expect(declaredValue("--duration-tooltip")).toBe("100ms");
+    expect(declaredValue("--popup-enter-opacity")).toBe("0.8");
+    expect(declaredValue("--popup-enter-scale")).toBe("0.97");
+    expect(declaredValue("--duration-hover")).toBe("150ms");
+  });
+
   it("compiles a motion-duration utility with a reduced-motion variant", async () => {
     const css = await build("studio.css", ["duration-press", "duration-open"]);
 

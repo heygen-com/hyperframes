@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import type { ClipContextMenuState } from "./TimelineOverlays";
+import type { ClipContextMenuState } from "./TimelineProvider";
 
 /** A clicked member of an active multi-selection keeps the whole group
  *  selected, so the context menu it opens acts on all of it. */

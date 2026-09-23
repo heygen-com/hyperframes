@@ -53,7 +53,7 @@ function line(row: TimelineRow, total: number): string {
   const times = row.host
     ? `${span(row.absStart, row.absEnd)} (local ${span(row.start, row.end)}) nested in ${row.host} ${row.file}`
     : span(row.start, row.end);
-  return `  |${bar(row, total)}| ${row.id} ${times} ${details(row)}`.trimEnd();
+  return `  |${bar(row, total)}| ${row.ref} ${row.id} ${times} ${details(row)}`.trimEnd();
 }
 
 function header({ kind, rows }: TimelineTrack): string {

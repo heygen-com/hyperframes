@@ -58,6 +58,7 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
   /** The timeline context menu's delete op — a canvas selection that IS a
    *  timeline row hands off here instead of the REST remove-elements path. */
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
+  readOnlyPreview: boolean;
 }
 
 export function useDomEditSession({
@@ -98,8 +99,10 @@ export function useDomEditSession({
   publishSdkSession,
   forceReloadSdkSession,
   handleTimelineElementsDelete,
+  readOnlyPreview,
 }: UseDomEditSessionParams) {
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
+  const previewCaptionEditMode = captionEditMode && !readOnlyPreview;
   void _setRefreshKey;
   const {
     domEditSelection,
@@ -125,7 +128,7 @@ export function useDomEditSession({
     activeCompPath,
     isMasterView,
     compIdToSrc,
-    captionEditMode,
+    captionEditMode: previewCaptionEditMode,
     previewIframeRef,
     timelineElements,
     getTimelineSelectionSet,
@@ -247,6 +250,7 @@ export function useDomEditSession({
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
     forceReloadSdkSession,
+    readOnlyPreview,
     onTrySdkPersist: sdkSession
       ? (selection, operations, originalContent, targetPath, options) => {
           // Decoupled tripwire, runs regardless of the cutover flag. originalContent lets
@@ -405,7 +409,6 @@ export function useDomEditSession({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
   } = useDomEditWiring({
-    // fallow-ignore-next-line code-duplication
     projectId,
     activeCompPath,
     domEditSelection,
@@ -414,7 +417,7 @@ export function useDomEditSession({
     refreshDomEditGroupSelectionsFromPreview,
     previewIframeRef,
     previewIframe,
-    captionEditMode,
+    captionEditMode: previewCaptionEditMode,
     refreshKey,
     gsapCacheVersion,
     bumpGsapCache,
@@ -451,7 +454,7 @@ export function useDomEditSession({
     handleBlockedDomMove,
     handleDomManualDragStart,
   } = usePreviewInteraction({
-    captionEditMode,
+    captionEditMode: previewCaptionEditMode,
     compositionLoading,
     previewIframeRef,
     showToast,

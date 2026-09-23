@@ -3,9 +3,13 @@
 import React, { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useTimelinePlayer } from "../../player/hooks/useTimelinePlayer";
 import { NLEPreview, getPreviewPlayerKey, resolvePreviewStageSize } from "./NLEPreview";
+import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const playerMounts: string[] = [];
 
 vi.mock("../../player", async () => {
   const React = await import("react");
@@ -14,6 +18,7 @@ vi.mock("../../player", async () => {
     Player: React.forwardRef(function MockPlayer(
       props: {
         onLoad?: () => void;
+        suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
@@ -21,6 +26,7 @@ vi.mock("../../player", async () => {
       React.useEffect(() => {
         props.onLoad?.();
       }, [props]);
+      React.useState(() => playerMounts.push(props.suppressLoadingOverlay ? "shadow" : "live"));
 
       return React.createElement("div", {
         ref: ref as React.ForwardedRef<HTMLDivElement>,
@@ -70,7 +76,11 @@ function setRect(node: Element, rect: { width: number; height: number }) {
   });
 }
 
-function renderPreview() {
+function renderPreview(
+  previewSlots: Array<{ gen: number; role: "live" | "shadow"; url?: string }> = [
+    { gen: 0, role: "live" },
+  ],
+) {
   resizeCallbacks = [];
   const host = document.createElement("div");
   document.body.append(host);
@@ -83,6 +93,12 @@ function renderPreview() {
         projectId: "timeline-edit-playground",
         iframeRef,
         onIframeLoad: () => {},
+        previewSlots,
+        onShadowIframeLoad: () => {},
+        onShadowReadyChange: () => {},
+        onShadowError: () => {},
+        setShadowIframeNode: () => {},
+        resetPreviewSlots: () => {},
       }),
     );
   });
@@ -163,6 +179,13 @@ describe("resolvePreviewStageSize", () => {
 });
 
 describe("NLEPreview", () => {
+  it("counts timeline clips and media clips from the painted document", () => {
+    const doc = new DOMParser().parseFromString(
+      '<div data-composition-id="main" data-duration="10"><video data-start="0" data-duration="2"></video><audio data-start="2" data-duration="3"></audio><div data-start="5" data-duration="1"></div></div>',
+      "text/html",
+    );
+    expect(readPreviewComplexity(doc)).toEqual({ clip_count: 3, media_clip_count: 2 });
+  });
   beforeEach(() => {
     globalThis.ResizeObserver = MockResizeObserver as typeof ResizeObserver;
   });
@@ -226,5 +249,48 @@ describe("NLEPreview", () => {
 
     expect(view.stage.style.transform).toContain("translate3d(30px, -24px, 0)");
     view.cleanup();
+  });
+
+  it("clips a shadow reload so its own loading overlay cannot paint over the live frame", () => {
+    const view = renderPreview([
+      { gen: 0, role: "live" },
+      { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+    ]);
+    const players = [...view.stage.querySelectorAll<HTMLElement>('[data-testid="mock-player"]')];
+    expect(players).toHaveLength(2);
+    expect(players[0].style.clipPath).toBe("");
+    expect(players[1].style.clipPath).toBe("inset(100%)");
+    expect(players[1].style.visibility).toBe("hidden");
+    expect(players[1].style.pointerEvents).toBe("none");
+    view.cleanup();
+  });
+
+  it("mounts the live player once when the composition switches", () => {
+    playerMounts.length = 0;
+    const Harness = ({ projectId }: { projectId: string }) => {
+      const api = useTimelinePlayer();
+      return React.createElement(NLEPreview, {
+        projectId,
+        iframeRef: api.iframeRef,
+        onIframeLoad: api.onIframeLoad,
+        previewSlots: api.previewSlots,
+        onShadowIframeLoad: api.onShadowIframeLoad,
+        onShadowReadyChange: api.onShadowReadyChange,
+        onShadowError: api.onShadowError,
+        setShadowIframeNode: api.setShadowIframeNode,
+        resetPreviewSlots: api.resetPreviewSlots,
+      });
+    };
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Harness, { projectId: "a" })));
+    expect(playerMounts).toEqual(["live"]);
+
+    act(() => root.render(React.createElement(Harness, { projectId: "b" })));
+    expect(playerMounts).toEqual(["live", "live"]);
+
+    act(() => root.unmount());
+    host.remove();
   });
 });

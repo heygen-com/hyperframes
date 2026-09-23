@@ -1561,21 +1561,24 @@ describe("useTimelineEditing: canEdit gate", () => {
     unmount();
   });
 
-  it("resolves toggle-track-hidden against the expanded rows, not the raw timelineElements prop", async () => {
-    // Regression: canEdit must resolve against the expanded rows
-    // (timelineTrackVisibility.ts's own invariant), not the raw
-    // timelineElements prop — proven by making the two disagree below.
+  it("resolves toggle-track-hidden against the store-owned timeline rows", async () => {
+    // The visibility hook reads the single store-owned row source. The editing
+    // guard must receive that same source so a blocked row cannot fall through
+    // to the write path.
     const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
     const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
     usePlayerStore.getState().setElements([clip]);
     const showToast = vi.fn();
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const canEdit = vi.fn((element: TimelineElement) =>
+      element.id === "clip" ? { blocked: true as const, reason: "Reserved by an agent" } : true,
+    );
     let hook: ReturnType<typeof useTimelineEditing> | null = null;
     function Harness() {
       hook = useTimelineEditing({
         projectId: "p1",
         activeCompPath: "index.html",
-        timelineElements: [], // deliberately does not contain `clip`
+        timelineElements: [clip],
         showToast,
         writeProjectFile,
         recordEdit: vi.fn(),
@@ -1583,8 +1586,7 @@ describe("useTimelineEditing: canEdit gate", () => {
         previewIframeRef: { current: iframe },
         pendingTimelineEditPathRef: { current: new Set<string>() },
         uploadProjectFiles: vi.fn(),
-        canEdit: (element) =>
-          element.id === "clip" ? { blocked: true, reason: "Reserved by an agent" } : true,
+        canEdit,
       });
       return null;
     }
@@ -1596,6 +1598,7 @@ describe("useTimelineEditing: canEdit gate", () => {
       await flushAsyncWork();
     });
 
+    expect(canEdit).toHaveBeenCalledWith(clip);
     expect(showToast).toHaveBeenCalledWith("Reserved by an agent", "error");
     expect(writeProjectFile).not.toHaveBeenCalled();
     unmount();

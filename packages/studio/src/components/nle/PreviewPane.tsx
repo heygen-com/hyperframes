@@ -7,6 +7,7 @@ import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
 import { PreviewGuides } from "../editor/PreviewGuides";
+import { PreviewOverlayProvider } from "../editor/PreviewOverlayProvider";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -60,6 +61,12 @@ export function PreviewPane({
     togglePlay,
     seek,
     onIframeLoad,
+    previewSlots,
+    onShadowIframeLoad,
+    onShadowReadyChange,
+    onShadowError,
+    setShadowIframeNode,
+    resetPreviewSlots,
     compositionStack,
     handleNavigateComposition,
     setCompositionLoading,
@@ -131,6 +138,12 @@ export function PreviewPane({
             projectId={projectId}
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
+            previewSlots={previewSlots}
+            onShadowIframeLoad={onShadowIframeLoad}
+            onShadowReadyChange={onShadowReadyChange}
+            onShadowError={onShadowError}
+            setShadowIframeNode={setShadowIframeNode}
+            resetPreviewSlots={resetPreviewSlots}
             onCompositionLoadingChange={setCompositionLoading}
             portrait={portrait}
             directUrl={directUrl}
@@ -143,8 +156,10 @@ export function PreviewPane({
           )}
           <AssetPreviewOverlay />
         </div>
-        <PreviewGuides iframeRef={iframeRef} />
-        {!isFullscreen && previewOverlay}
+        <PreviewOverlayProvider>
+          <PreviewGuides />
+          {!isFullscreen && previewOverlay}
+        </PreviewOverlayProvider>
       </div>
       {/* Transport row: no own background or border — the controls sit flat on
           the preview panel's surface (CapCut-style). */}

@@ -5,6 +5,7 @@ import type { Example } from "./_examples.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
+import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
 
@@ -175,6 +176,7 @@ export default defineCommand({
             : undefined,
           timeout: args.timeout ? parseInt(args.timeout as string) : undefined,
           postNavigationBudgetMs: captureBudgetMs,
+          captureDeadlineMs: parseCaptureDeadline(process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS),
           json: isJson,
           onPhase: emitCapturePhase,
         },

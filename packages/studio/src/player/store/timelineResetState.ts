@@ -44,7 +44,6 @@ export function createTimelineResetState() {
     beatPersist: null,
     clipManifest: null,
     clipParentMap: new Map<string, string>(),
-    topLevelIds: null,
     domClipChildren: [],
     subCompositionHostState: new Map<string, SubCompositionHostState>(),
   };

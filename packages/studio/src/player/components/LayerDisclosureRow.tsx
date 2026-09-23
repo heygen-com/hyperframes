@@ -37,8 +37,10 @@ export function LaneToggleButton({
       title={`${isExpanded ? "Hide" : "Show"} lanes`}
       // h-6 w-6 = the 24x24 WCAG 2.2 minimum target. The glyph stays 11px;
       // only the hit box grows.
-      className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] leading-none focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
-        isExpanded ? "text-[#3CE6AC]" : "text-white/55 hover:text-white"
+      className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] leading-none focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[var(--timeline-accent)] ${
+        isExpanded
+          ? "text-[var(--timeline-accent)]"
+          : "text-[var(--timeline-handle)] hover:text-[var(--timeline-text-solid)]"
       }`}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
@@ -86,18 +88,21 @@ export function LayerDisclosureRow({
       style={{
         width: columnWidth,
         height: TRACK_H,
-        color: "#ffffff",
+        color: "var(--timeline-text-solid)",
         background: gutterBackground,
       }}
     >
       {/* Decorative: the disclosure button above already names the row's keyframe
           state, and aria-label on a plain span is not exposed reliably anyway. */}
-      <span aria-hidden="true" className="shrink-0 text-[13px] leading-none text-white/40">
+      <span
+        aria-hidden="true"
+        className="shrink-0 text-[13px] leading-none text-[var(--timeline-text-dim)]"
+      >
         ◇
       </span>
-      {/* Wraps rather than truncating: a truncated name needs a hover to be
-          read, which a scanned column cannot rely on. */}
-      <span className="min-w-0 flex-1 wrap-break-word font-medium leading-tight">{name}</span>
+      <span title={name} className="min-w-0 flex-1 truncate font-medium leading-tight">
+        {name}
+      </span>
       <TrackClipCount clipCount={clipCount} />
       {children}
       {/* Anchored right, on every header that has one: the lane toggle is the

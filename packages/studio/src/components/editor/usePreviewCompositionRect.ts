@@ -1,21 +1,21 @@
-import { useMemo, type RefObject } from "react";
-import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
+import { useEffect, useRef, type RefObject } from "react";
+import { requestOverlayFrames } from "./overlayFrameLoop";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 
 export type { DomEditCompositionRect as PreviewCompositionRect } from "./useDomEditCompositionRect";
 
 /**
  * Where the composition sits inside `overlayRef`, in overlay pixels, plus the scale from
- * composition units to pixels. Follows the live preview iframe across reloads.
+ * composition units to pixels.
  */
-export function usePreviewCompositionRect(overlayRef: RefObject<HTMLDivElement | null>) {
-  const iframeRef = useMemo<RefObject<HTMLIFrameElement | null>>(
-    () => ({
-      get current() {
-        return usePreviewIframeStore.getState().iframe;
-      },
-    }),
-    [],
-  );
+export function usePreviewCompositionRect(
+  overlayRef: RefObject<HTMLDivElement | null>,
+  iframe: HTMLIFrameElement | null,
+) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(iframe);
+  iframeRef.current = iframe;
+  useEffect(() => {
+    requestOverlayFrames();
+  }, [iframe]);
   return useDomEditCompositionRect({ iframeRef, overlayRef });
 }

@@ -4,7 +4,14 @@ import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type { RuntimeTimelineLike } from "./types";
 
 // The readiness gate's 8s timeout is a one-shot timer these transport tests must not count.
-vi.mock("../compositionReadiness", () => ({ settleCompositionReadiness: vi.fn() }));
+vi.mock("../compositionReadiness", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../compositionReadiness")>();
+  return {
+    ...actual,
+    settleCompositionReadiness: vi.fn(),
+    settleFirstFrameCompositionReadiness: vi.fn(),
+  };
+});
 
 /**
  * The transport parks itself when the editor is paused and settled. Everything

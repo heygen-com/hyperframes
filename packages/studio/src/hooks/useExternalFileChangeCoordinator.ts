@@ -349,6 +349,19 @@ export function useExternalFileChangeCoordinator({
         logReload("file-change", { path: null, why: path ? "no project" : "no path in payload" });
         return;
       }
+      // `/api/events` is one connection per SERVER, not per project: under the
+      // CLI host, a tab left open from a `preview` run that has since exited
+      // shares this stream with whatever project now runs on that port. Both
+      // commonly use the same default composition path, so without this check
+      // a stale tab reloads its preview (which then 404s — the CLI host is
+      // single-project, so it can't resolve the OTHER project it's serving)
+      // and re-reads its own composition on every save the CURRENT project
+      // makes. Absent field (older server, one release of skew) still passes.
+      const deliveredProjectId = readFileChangeField(payload, "projectId");
+      if (deliveredProjectId && deliveredProjectId !== projectId) {
+        logReload("suppressed", { path, why: "other project" });
+        return;
+      }
       pendingTimelineEditPathRef.current.delete(path);
 
       const content = readFileChangeContent(payload);

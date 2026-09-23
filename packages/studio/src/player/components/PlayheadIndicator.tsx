@@ -26,8 +26,8 @@ interface PlayheadIndicatorProps {
 }
 
 export function PlayheadIndicator({
-  color = "var(--hf-accent, #3CE6AC)",
-  glowColor = "rgba(60,230,172,0.14)",
+  color = "var(--timeline-accent)",
+  glowColor = "var(--timeline-playhead-glow)",
   scrubbing = false,
   stickyHead = true,
 }: PlayheadIndicatorProps) {
@@ -93,7 +93,7 @@ export function PlayheadIndicator({
             background: scrubbing ? color : "transparent",
             border: `1.5px solid ${color}`,
             boxSizing: "border-box",
-            boxShadow: `0 1px 3px rgba(0,0,0,0.55), 0 0 5px ${glowColor}`,
+            boxShadow: `0 1px 3px var(--timeline-playhead-shadow), 0 0 5px ${glowColor}`,
             transform: "rotate(45deg)",
           }}
         />

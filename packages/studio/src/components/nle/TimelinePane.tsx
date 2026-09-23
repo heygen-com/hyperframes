@@ -2,6 +2,7 @@ import { useCallback, type ReactNode } from "react";
 import { Timeline } from "../../player";
 import type { TimelineElement, TimelineTimeRange } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
+import { AudioMeterStrip } from "./AudioMeterStrip";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
 import { useNLEContext } from "./NLEContext";
@@ -255,7 +256,11 @@ export function TimelinePane({
   );
 
   return (
-    <div className="relative flex h-full flex-col" aria-disabled={timelineDisabled || undefined}>
+    <div
+      className="relative flex h-full flex-col"
+      data-studio-timeline="true"
+      aria-disabled={timelineDisabled || undefined}
+    >
       <div
         className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
         onDoubleClick={(e) => {
@@ -267,29 +272,34 @@ export function TimelinePane({
         }}
       >
         <div className="shrink-0">{timelineToolbar}</div>
-        <Timeline
-          sessionEpoch={timelineSessionEpoch}
-          onSeek={seek}
-          onDrillDown={handleDrillDown}
-          renderClipContent={renderClipContent}
-          onFileDrop={onFileDrop}
-          onDeleteElement={handleDeleteElement}
-          onAssetDrop={onAssetDrop}
-          onBlockDrop={onBlockDrop}
-          onCompositionDrop={onCompositionDrop}
-          onMoveElement={handleMoveElement}
-          onMoveElements={handleMoveElements}
-          onResizeElement={handleResizeElement}
-          onResizeElements={handleResizeElements}
-          onBlockedEditAttempt={onBlockedEditAttempt}
-          onSplitElement={handleSplitElement}
-          onSelectElement={onSelectTimelineElement}
-          onRangeSelect={onRangeSelect}
-          onCopyClip={onCopyClip}
-          onPasteClip={onPasteClip}
-          onDuplicateClip={onDuplicateClip}
-          canPasteClip={canPasteClip}
-        />
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1">
+            <Timeline
+              sessionEpoch={timelineSessionEpoch}
+              onSeek={seek}
+              onDrillDown={handleDrillDown}
+              renderClipContent={renderClipContent}
+              onFileDrop={onFileDrop}
+              onDeleteElement={handleDeleteElement}
+              onAssetDrop={onAssetDrop}
+              onBlockDrop={onBlockDrop}
+              onCompositionDrop={onCompositionDrop}
+              onMoveElement={handleMoveElement}
+              onMoveElements={handleMoveElements}
+              onResizeElement={handleResizeElement}
+              onResizeElements={handleResizeElements}
+              onBlockedEditAttempt={onBlockedEditAttempt}
+              onSplitElement={handleSplitElement}
+              onSelectElement={onSelectTimelineElement}
+              onRangeSelect={onRangeSelect}
+              onCopyClip={onCopyClip}
+              onPasteClip={onPasteClip}
+              onDuplicateClip={onDuplicateClip}
+              canPasteClip={canPasteClip}
+            />
+          </div>
+          <AudioMeterStrip />
+        </div>
       </div>
       {timelineFooter && <div className="shrink-0">{timelineFooter}</div>}
       {timelineOverlay && (

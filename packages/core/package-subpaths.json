@@ -188,6 +188,18 @@
       "types": "./dist/audioGain.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-fade": {
+      "source": "./src/audioFade.ts",
+      "runtime": "./dist/audioFade.js",
+      "types": "./dist/audioFade.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./speed-ramp": {
+      "source": "./src/speedRamp.ts",
+      "runtime": "./dist/speedRamp.js",
+      "types": "./dist/speedRamp.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",
@@ -264,6 +276,12 @@
       "source": "./src/runtime/webAudioRoute.ts",
       "runtime": "./dist/runtime/webAudioRoute.js",
       "types": "./dist/runtime/webAudioRoute.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/levelTap": {
+      "source": "./src/runtime/levelTap.ts",
+      "runtime": "./dist/runtime/levelTap.js",
+      "types": "./dist/runtime/levelTap.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./compiler/html-document": {

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
+import { FlatSliderReadout } from "./propertyPanelFlatSliderReadout";
 import {
   VALUE_TIER_LABEL_CLASS,
   VALUE_TIER_VALUE_CLASS,
@@ -19,6 +20,7 @@ export function FlatRow({
   value,
   tier,
   disabled,
+  tooltip,
   liveCommit,
   suffix,
   dropdown,
@@ -30,6 +32,8 @@ export function FlatRow({
   value: string;
   tier: PropertyValueTier;
   disabled?: boolean;
+  /** Shown as a title attribute, e.g. why the row is disabled. */
+  tooltip?: string;
   liveCommit?: boolean;
   suffix?: ReactNode;
   /** Renders a trailing 10px caret-down, for select-backed rows. */
@@ -40,7 +44,7 @@ export function FlatRow({
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="group flex min-h-[30px] items-center justify-between gap-3">
+    <div className="group flex min-h-[30px] items-center justify-between gap-3" title={tooltip}>
       <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
       <span className="flex min-w-0 shrink-0 items-center gap-1.5">
         <span
@@ -275,6 +279,7 @@ export function FlatSlider({
   centerTick,
   onReset,
   onCommit,
+  onCommitText,
 }: {
   label: string;
   value: number;
@@ -287,6 +292,8 @@ export function FlatSlider({
   centerTick?: boolean;
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
+  /** Typed readout: return false to refuse the text, keep the field open, and mark it invalid. */
+  onCommitText?: (text: string) => boolean | void;
 }) {
   const track = useTrackDesignInput();
   // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
@@ -535,14 +542,14 @@ export function FlatSlider({
           style={{ left: `${clampedPct}%` }}
         />
       </div>
-      <span
-        data-flat-slider-value="true"
-        className={`w-11 shrink-0 text-right font-mono text-[10px] ${
-          tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
-        }`}
-      >
-        {displayValue}
-      </span>
+      <FlatSliderReadout
+        label={label}
+        displayValue={displayValue}
+        tier={tier}
+        disabled={disabled}
+        onCommitText={onCommitText}
+        onCommitted={() => track("input", label)}
+      />
       {(centerTick || onReset) && (
         <span data-flat-slider-reset-slot="true" className="w-3.5 shrink-0">
           {tier === "explicitCustom" && onReset && (

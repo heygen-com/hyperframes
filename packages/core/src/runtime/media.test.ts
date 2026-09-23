@@ -465,6 +465,56 @@ describe("syncRuntimeMedia", () => {
       expect(only).toBeCloseTo(0.55, 5);
     });
 
+    it("applies data-fade-in / data-fade-out on top of data-volume, anchored to the clip edges", () => {
+      const at = (t: number) => {
+        const clip = createMockClip({ start: 2, end: 12, duration: 10, volume: 0.8 });
+        Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+        clip.el.setAttribute("data-fade-in", "2");
+        clip.el.setAttribute("data-fade-out", "1");
+        clip.fades = { fadeIn: 2, fadeOut: 1 };
+        let authored = -1;
+        syncRuntimeMedia({
+          clips: [clip],
+          timeSeconds: t,
+          playing: true,
+          playbackRate: 1,
+          onElementVolume: (_el, _effective, authorVolume) => {
+            authored = authorVolume;
+          },
+        });
+        return authored;
+      };
+      expect(at(2.5)).toBeCloseTo(0.2, 5); // a quarter into the 2 s fade-in
+      expect(at(3)).toBeCloseTo(0.4, 5); // halfway through the fade-in
+      expect(at(6)).toBeCloseTo(0.8, 5); // body of the clip: data-volume alone
+      expect(at(11.5)).toBeCloseTo(0.4, 5); // halfway through the 1 s fade-out
+      expect(at(11.9)).toBeCloseTo(0.08, 5); // almost at the clip's end
+    });
+
+    it("never writes NaN or a negative volume for 0, negative, NaN, or longer-than-clip fades", () => {
+      const cases: Array<{ fadeIn: number; fadeOut: number }> = [
+        { fadeIn: 0, fadeOut: 0 },
+        { fadeIn: -2, fadeOut: -1 },
+        { fadeIn: Number.NaN, fadeOut: Number.NaN },
+        { fadeIn: 40, fadeOut: 40 },
+      ];
+      for (const fades of cases) {
+        const clip = createMockClip({ start: 0, end: 10, duration: 10, volume: 0.5, fades });
+        Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+        for (const t of [0, 5, 10, 12]) {
+          syncRuntimeMedia({
+            clips: [clip],
+            timeSeconds: t,
+            playing: true,
+            playbackRate: 1,
+          });
+          expect(Number.isFinite(clip.el.volume)).toBe(true);
+          expect(clip.el.volume).toBeGreaterThanOrEqual(0);
+          expect(clip.el.volume).toBeLessThanOrEqual(1);
+        }
+      }
+    });
+
     it("sends boosted author gain to Web Audio while keeping the native element legal", () => {
       const clip = createMockClip({ start: 0, end: 10, volume: 3.98 });
       Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });

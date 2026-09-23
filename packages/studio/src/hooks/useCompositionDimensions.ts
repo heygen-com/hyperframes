@@ -1,4 +1,6 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
+import { useLivePreviewIframe } from "../player/store/previewIframeStore";
+import { readPreviewCompositionSize } from "../utils/previewCompositionSize";
 import { useMountEffect } from "./useMountEffect";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
 import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
@@ -33,6 +35,20 @@ export function useCompositionDimensions(iframeRef: RefObject<HTMLIFrameElement 
   const [compositionDimensions, setCompositionDimensions] = useState<CompositionDimensions | null>(
     null,
   );
+
+  const livePreviewIframe = useLivePreviewIframe();
+
+  // The runtime posts stage-size once per document, so a promoted reload's message was sent
+  // before this listener could accept it. The size is authored on the document: read it there.
+  useEffect(() => {
+    const dimensions = readPreviewCompositionSize(livePreviewIframe);
+    if (!dimensions) return;
+    setCompositionDimensions((prev) =>
+      prev && prev.width === dimensions.width && prev.height === dimensions.height
+        ? prev
+        : dimensions,
+    );
+  }, [livePreviewIframe]);
 
   useMountEffect(() => {
     const handleMessage = (e: MessageEvent) => {

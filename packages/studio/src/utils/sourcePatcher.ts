@@ -420,7 +420,7 @@ function findMatchingClosingTagIndex(html: string, tagName: string, contentStart
   return -1;
 }
 
-const HTML_BOOLEAN_ATTRIBUTES = new Set([
+export const HTML_BOOLEAN_ATTRIBUTES = new Set([
   "loop",
   "muted",
   "autoplay",

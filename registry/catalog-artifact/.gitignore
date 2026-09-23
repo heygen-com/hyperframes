@@ -10,3 +10,4 @@
 # half-complete and the offline tier silently unable to rank.
 *.json
 !local-vectors.json
+!media-vectors.json

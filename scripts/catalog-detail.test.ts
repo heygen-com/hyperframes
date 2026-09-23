@@ -567,12 +567,38 @@ test("a copy button holds its label and 'Copied' in one grid cell, so the swap n
   );
 });
 
-test("the tab strip and tab content share the 16px inset the boxed panels (caption, tune) already use", async () => {
+// #4238 moved the left inset these two rules used to carry out to the page gutter,
+// so the tab strip, the panes under it and the stage above them all share one left
+// edge instead of the content below the stage sitting 16px further in. The
+// invariant is unchanged — this content is inset from the page edge — but the
+// mechanism moved, so assert both halves of it: the rules carry no inset of their
+// own, and the gutter standing in for them is still there. Asserting only the first
+// would keep passing if the gutter were deleted outright, which is the failure this
+// test exists to catch.
+test("the tab strip and tab content align to the page gutter, with no inset of their own", async () => {
   await renderDetail(["install"]);
-  const source = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "snippets", "catalog-detail.jsx"),
-    "utf8",
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const source = readFileSync(join(root, "docs", "snippets", "catalog-detail.jsx"), "utf8");
+  assert.match(
+    source,
+    /\.hf-ve-tabs-row \{ margin: 20px 0 0; \}/,
+    "tab strip carries no left inset",
   );
-  assert.match(source, /\.hf-ve-tabs-row \{ margin: 20px 0 0 16px; \}/, "tab strip is inset 16px");
-  assert.match(source, /\.hf-ve-body \{ padding: 2rem 0 0 16px; \}/, "tab content is inset 16px");
+  assert.match(
+    source,
+    /\.hf-ve-body \{ padding: 2rem 0 0; \}/,
+    "tab content carries no left inset",
+  );
+
+  const css = readFileSync(join(root, "docs", "custom.css"), "utf8");
+  assert.match(
+    css,
+    /header\.is-frame ~ #body-content #content-area \{\s*padding-left: 1\.25rem;/,
+    "frame mode restores the page gutter the removed insets stood in for",
+  );
+  assert.match(
+    css,
+    /@media \(min-width: 1024px\) \{\s*header\.is-frame ~ #body-content #content-area \{\s*padding-left: 5\.5rem;/,
+    "the gutter keeps its wide-viewport value",
+  );
 });

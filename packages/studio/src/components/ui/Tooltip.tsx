@@ -5,6 +5,8 @@
 
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
 import { cloneElement, useId, useRef, useState, type ReactElement } from "react";
+import { cn } from "./cn";
+import { floatingMotion } from "./Menu";
 
 interface TooltipProps {
   label: string;
@@ -42,7 +44,10 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
           <BaseTooltip.Popup
             id={tooltipId}
             role="tooltip"
-            className="pointer-events-none rounded-md border border-border-input bg-surface px-2 py-1 text-step-10 font-medium text-text-1 whitespace-nowrap shadow-menu"
+            className={cn(
+              "pointer-events-none rounded-md border border-border-input bg-surface px-2 py-1 text-step-10 font-medium text-text-1 whitespace-nowrap shadow-menu",
+              floatingMotion("duration-tooltip"),
+            )}
           >
             {label}
           </BaseTooltip.Popup>

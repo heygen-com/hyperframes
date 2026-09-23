@@ -103,7 +103,7 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     expect(usePlayerStore.getState().selectedElementId).toBe("index.html#clip");
   });
 
-  it("measures the insert row against the visible rows, not clips the timeline hides", async () => {
+  it("measures the insert row against every manifest timeline row", async () => {
     const clip = (id: string, track: number): TimelineElement => ({
       id,
       key: id,
@@ -123,7 +123,6 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       }),
       "</main>",
     ].join("\n");
-    usePlayerStore.getState().setTopLevelIds(new Set(["a", "b"]));
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const getDrop = renderDropHook(source, writeProjectFile, [
       clip("a", 0),
@@ -136,8 +135,8 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     });
 
     const [, written] = writeProjectFile.mock.calls[0] as [string, string];
-    expect(written).toContain('id="b" data-start="0" data-track-index="2"');
-    expect(written).toContain('id="hidden" data-start="0" data-track-index="1"');
+    expect(written).toContain('id="b" data-start="0" data-track-index="3"');
+    expect(written).toContain('id="hidden" data-start="0" data-track-index="2"');
     expect(written).toMatch(/<video id="clip"[^>]*data-track-index="1"/);
   });
 

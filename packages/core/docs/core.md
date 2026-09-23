@@ -283,6 +283,7 @@ Background music or sound effects. Audio clips are invisible.
 ```
 
 - `data-media-start` — Playback begins at this time in the source audio file (seconds). Default: `0`.
+- `data-fade-in` / `data-fade-out` — (optional) Clip-edge fades in seconds. Gain ramps linearly from silence over the first `data-fade-in` seconds and back to silence over the last `data-fade-out` seconds of the clip, on top of `data-volume` and any `data-automation` volume lane. Anchored to the clip's edges, so a fade-out follows a later trim. Also honoured on `<video>` audio.
 - `data-duration` — (optional) How long the clip occupies on the timeline, in seconds. Playback runs from `data-media-start` for up to `data-duration` seconds. If the source media runs out before `data-duration` elapses, playback naturally stops (the clip remains mounted but silent). If omitted, defaults to the remaining duration of the source file from `data-media-start`.
 
 ## Two Layers: Primitives and Scripts

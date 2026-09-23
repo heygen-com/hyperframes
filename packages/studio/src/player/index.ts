@@ -7,6 +7,13 @@ export { CompositionThumbnail } from "./components/CompositionThumbnail";
 
 // Hooks
 export { useTimelinePlayer } from "./hooks/useTimelinePlayer";
+export { usePlayerHandle } from "./hooks/usePlayerHandle";
+export type {
+  PlayerHandle,
+  PlayerHandleElement,
+  PlayerHandleListener,
+  PlayerHandleTimeListener,
+} from "./hooks/usePlayerHandle";
 export { resolveIframe } from "./lib/timelineDOM";
 
 // Store

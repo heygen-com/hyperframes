@@ -8,7 +8,6 @@
 
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { useTimelineRowElements } from "../player/hooks/useTimelineRowElements";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { runtimeAudioId } from "../player/lib/timelineElementHelpers";
@@ -286,7 +285,7 @@ export function useAudioGroupCarveAssignment({
   groupId: string,
   groupLabel?: string,
 ) => Promise<void> {
-  const expandedElements = useTimelineRowElements();
+  const timelineElements = usePlayerStore((state) => state.elements);
   return useCallback(
     async (clipIds: readonly string[], groupId: string, groupLabel?: string) => {
       if (isRecordingRef?.current) {
@@ -299,7 +298,7 @@ export function useAudioGroupCarveAssignment({
       // timeline's group-pointer button) name clips the way the document does,
       // because that is the only space `resolveAudioGroups` reads back.
       const wanted = new Set(clipIds);
-      const elements = expandedElements.filter((item) => {
+      const elements = timelineElements.filter((item) => {
         const domId = runtimeAudioId(item);
         return domId !== null && wanted.has(domId);
       });
@@ -340,7 +339,7 @@ export function useAudioGroupCarveAssignment({
     },
     [
       activeCompPath,
-      expandedElements,
+      timelineElements,
       previewIframeRef,
       writeProjectFile,
       recordEdit,

@@ -143,6 +143,7 @@ const commandLoaders = {
   init: () => import("./commands/init.js").then((m) => m.default),
   add: () => import("./commands/add.js").then((m) => m.default),
   catalog: () => import("./commands/catalog.js").then((m) => m.default),
+  "media-use": () => import("./commands/media-use.js").then((m) => m.default),
   play: () => import("./commands/play.js").then((m) => m.default),
   present: () => import("./commands/present.js").then((m) => m.default),
   preview: () =>

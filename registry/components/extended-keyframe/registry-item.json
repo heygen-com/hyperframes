@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "extended-keyframe",
+  "type": "hyperframes:component",
+  "title": "Extended Keyframe",
+  "description": "The never-fully-lands arrival: an element covers most of its move in the first fifth of the duration and creeps the rest to the last frame, exits along its arrival vector, and carries shutter motion blur — from any side or by scale, one call per element, plus the ease on its own for any tween",
+  "tags": [
+    "motion",
+    "ease",
+    "arrival",
+    "kinetic-type",
+    "text",
+    "motion-blur",
+    "after-effects",
+    "slide-in",
+    "scale-in"
+  ],
+  "files": [
+    {
+      "path": "extended-keyframe.html",
+      "target": "compositions/components/extended-keyframe.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

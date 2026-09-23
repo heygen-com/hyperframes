@@ -21,6 +21,10 @@ export function useTimelineEditContextOptional(): TimelineEditCallbacks {
   return useContext(TimelineEditContext) ?? {};
 }
 
+export function useTimelineEditContextValue(): TimelineEditCallbacks | null {
+  return useContext(TimelineEditContext);
+}
+
 export function TimelineEditProvider({
   value,
   children,

@@ -54,6 +54,11 @@ export interface HotkeyCallbacks {
   onUngroupSelection?: () => void;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
+  readOnlyPreview: boolean;
+}
+
+function timelineOwnsKey(event: KeyboardEvent): boolean {
+  return event.target instanceof Element && event.target.closest("[data-studio-timeline]") !== null;
 }
 
 /** Exported for tests, like dispatchPlainKey below: lets the Cmd+C/Cmd+V
@@ -95,6 +100,7 @@ export function dispatchModifierKey(
 
   if (key === "g" && !event.altKey && !isTypingTarget(event.target)) {
     event.preventDefault();
+    if (cb.readOnlyPreview) return true;
     if (event.shiftKey) cb.onUngroupSelection?.();
     else cb.onGroupSelection?.();
     return true;
@@ -111,6 +117,12 @@ export function dispatchModifierKey(
         event.preventDefault();
         trackStudioEvent("keyboard_shortcut", { action: "copy" });
       }
+      return true;
+    }
+    const previewOwnsMutation =
+      cb.readOnlyPreview && cb.domEditSelectionRef.current !== null && !timelineOwnsKey(event);
+    if (previewOwnsMutation && ["v", "x", "d"].includes(key)) {
+      event.preventDefault();
       return true;
     }
     if (key === "v") {
@@ -158,6 +170,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // Reserve bare `s` for Split even when the current selection cannot split,
     // so secondary listeners do not reinterpret the same key as Snap toggle.
     event.preventDefault();
+    if (cb.readOnlyPreview) return;
     const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
     if (selectedElementId) {
       const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);
@@ -240,8 +253,10 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // the timeline left other selected elements behind. Timeline stays as the
     // fallback for rows with no canvas node (audio, an inactive comp).
     const domSel = cb.domEditSelectionRef.current;
-    if (domSel) {
+    const timelineOwnsDelete = timelineOwnsKey(event);
+    if (domSel && !timelineOwnsDelete) {
       event.preventDefault();
+      if (cb.readOnlyPreview) return;
       // The whole marquee group, not just the primary the ref holds.
       void cb.handleDomEditElementDelete(domSel, { expandGroup: true });
       return;
