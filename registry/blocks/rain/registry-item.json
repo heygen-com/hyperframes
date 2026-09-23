@@ -1,0 +1,60 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "rain",
+  "type": "hyperframes:block",
+  "title": "Rain",
+  "description": "Seek-safe falling-rain overlay: sparse or dense streaks fall calm or gust-speed with length, speed and opacity correlated per streak for depth, radial-masked so the frame center stays clear",
+  "tags": [
+    "rain",
+    "rainfall",
+    "storm",
+    "weather",
+    "overlay",
+    "ambient",
+    "particles",
+    "media-treatment-overlay",
+    "loopable"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "variables": [
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Streak count across the frame.",
+      "default": "sparse",
+      "options": [
+        { "value": "sparse", "label": "Sparse" },
+        { "value": "dense", "label": "Dense" }
+      ]
+    },
+    {
+      "id": "speed",
+      "type": "enum",
+      "role": "style",
+      "label": "Fall speed",
+      "description": "How fast streaks fall, and how much wind-driven drift and lean they carry.",
+      "default": "calm",
+      "options": [
+        { "value": "calm", "label": "Calm" },
+        { "value": "gust", "label": "Gust" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "rain.html",
+      "target": "compositions/rain.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/rain.png",
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/rain.mp4"
+  }
+}

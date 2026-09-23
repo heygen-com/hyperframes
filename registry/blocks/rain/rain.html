@@ -1,0 +1,209 @@
+<!doctype html>
+<!--
+  rain: HyperFrames video primitive (backgrounds / ambient overlay)
+
+  Concept: rain streaks fall from top to bottom in a continuous seamless loop, meant to
+  sit on a track above real footage rather than as an opaque background. Each streak
+  draws one depth value that sets length, width and opacity continuously and buckets it
+  into one of three fall-speed layers (near/mid/far), so speed separation survives even
+  a short mount. Under "gust" the whole field leans into a constant wind angle and drifts
+  sideways as it falls. A radial mask keeps the frame center clear for a subject or
+  caption underneath.
+
+  Variables:
+    - density (sparse | dense, default sparse): streak count across the frame.
+    - speed (calm | gust, default calm): how fast streaks fall, and how much wind-driven
+      sideways drift and lean they carry.
+
+  Envelope: IN = 0, HOLD = the full elastic duration (the host clip's data-duration), OUT = 0.
+  Each streak runs its own whole number of fall cycles during HOLD, so a longer mount
+  adds more falls instead of stretching a single one thin.
+
+  Loop invariant: a streak's vertical position is frac(integer * phase + const); its
+  horizontal position is a pure function of that same fraction (wind drift scales with
+  fall progress, not with elapsed time), so phase = 0 and phase = 1 (t = 0 and
+  t = duration) always match exactly.
+
+  Sound: none.
+
+  Mount contract: the runtime clones only this file's body. The root has no data-width or
+  data-height requirement beyond the block's own declared dimensions, and registers one
+  paused timeline under the hardcoded rain id.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      #hf-rain {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        /* Center clearance: a subject placed mid-frame stays readable by default. */
+        -webkit-mask-image: radial-gradient(
+          circle 230px at 50% 50%,
+          transparent 0 230px,
+          #000 653px
+        );
+        mask-image: radial-gradient(circle 230px at 50% 50%, transparent 0 230px, #000 653px);
+      }
+
+      #hf-rain .hf-streak {
+        position: absolute;
+        top: 0;
+        left: 0;
+        background: linear-gradient(
+          to bottom,
+          rgba(200, 220, 255, 0) 0%,
+          rgba(200, 220, 255, 0.9) 100%
+        );
+        will-change: transform;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="rain"
+      data-composition-id="rain"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+      data-composition-variables='[
+        { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Streak count across the frame.", "default": "sparse", "options": [{ "value": "sparse", "label": "Sparse" }, { "value": "dense", "label": "Dense" }] },
+        { "id": "speed", "type": "enum", "role": "style", "label": "Fall speed", "description": "How fast streaks fall, and how much wind-driven drift and lean they carry.", "default": "calm", "options": [{ "value": "calm", "label": "Calm" }, { "value": "gust", "label": "Gust" }] }
+      ]'
+    >
+      <div id="hf-rain" aria-hidden="true" data-layout-allow-overflow=""></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      (function () {
+        var field = document.getElementById("hf-rain");
+        // Mounted, the runtime strips data-duration off this file's root; the host clip carries it.
+        var host = field.closest("[data-composition-id]");
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        // The host's data-width/data-height are authoritative over this file's own root.
+        var W = Number(host.getAttribute("data-width")) || 1920;
+        var H = Number(host.getAttribute("data-height")) || 1080;
+        var duration = Number(host.getAttribute("data-duration")) || 6;
+
+        var COUNT = vars.density === "dense" ? 140 : 65;
+        var fallSeconds = vars.speed === "gust" ? 0.6 : 1.0;
+        var WIND = vars.speed === "gust" ? 0.12 : 0.02;
+        var ANGLE_DEG = vars.speed === "gust" ? 12 : 4;
+
+        // Even 2D coverage with no clumping and no seed to store (Weyl low-discrepancy
+        // sequence): successive multiples of an irrational constant, taken mod 1.
+        var PHI = 0.6180339887498949; // (sqrt(5) - 1) / 2
+        var RT2 = 0.4142135623730951; // sqrt(2) - 1
+
+        function frac(x) {
+          return x - Math.floor(x);
+        }
+
+        // Deterministic per-index hash (sin fold; no Math.random) for scalars that only
+        // need decorrelation, not even coverage. registry/components/stop-motion-cadence's
+        // rnd(n).
+        function rnd(n) {
+          var x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+          return x - Math.floor(x);
+        }
+
+        // A whole number of cycles over the mount for a given per-cycle duration; the
+        // loop invariant forces this to round to an integer, so callers that need distinct
+        // speeds must space their inputs, not just their multipliers (rounding a sub-1
+        // product always collapses to 1 on a short mount).
+        function wholeCycles(cycleSeconds) {
+          return Math.max(1, Math.round(duration / cycleSeconds));
+        }
+
+        // Streaks enter above the top edge and exit below the bottom before wrapping, so
+        // the loop seam never pops one into view mid-frame. This only needs to clear one
+        // streak's own half-length (max 34px -> ~1.6% of H); it is a correctness bound,
+        // not taste.
+        var WRAP_MARGIN = 0.02;
+
+        var fallBase = wholeCycles(fallSeconds);
+
+        var streaks = [];
+        var fragment = document.createDocumentFragment();
+        for (var i = 0; i < COUNT; i++) {
+          var laneX = frac(i * PHI + 0.07);
+          // One depth draw drives length, width and opacity continuously, and buckets the
+          // streak into one of three fall-speed layers (far/mid/near). Layer cycle counts
+          // are offsets from the shared base, not products of it, so they stay distinct on
+          // any mount.
+          var depth = rnd(i);
+          var lenPx = 14 + depth * 20;
+          var widthPx = 1.2 + depth * 1;
+          var opacity = 0.25 + depth * 0.5;
+          var layer = depth < 1 / 3 ? 0 : depth < 2 / 3 ? 1 : 2;
+
+          var el = document.createElement("div");
+          el.className = "hf-streak";
+          el.style.width = widthPx + "px";
+          el.style.height = lenPx + "px";
+          el.style.opacity = opacity;
+          fragment.appendChild(el);
+
+          streaks.push({
+            el: el,
+            laneX: laneX,
+            fallCycles: fallBase + layer,
+            fallPhi: frac(i * RT2 + 0.37),
+          });
+        }
+        field.appendChild(fragment);
+
+        var state = { phase: 0 };
+
+        function render() {
+          var p = state.phase;
+          for (var s = 0; s < streaks.length; s++) {
+            var f = streaks[s];
+            var travelFrac = frac(f.fallCycles * p + f.fallPhi);
+            var y = (-WRAP_MARGIN + travelFrac * (1 + 2 * WRAP_MARGIN)) * H;
+            var x = (f.laneX + WIND * travelFrac) * W;
+            f.el.style.transform =
+              "translate(" +
+              Math.round(x) +
+              "px, " +
+              Math.round(y) +
+              "px) translate(-50%, -50%) rotate(" +
+              ANGLE_DEG +
+              "deg)";
+          }
+        }
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to(state, { phase: 1, duration: duration, ease: "none", onUpdate: render }, 0);
+        render();
+
+        window.__timelines["rain"] = tl;
+      })();
+    </script>
+  </body>
+</html>
