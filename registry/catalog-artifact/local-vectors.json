@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e",
+  "revision": "973eda0eef98aed0e928080d20a64acacd8054e83611df7ed8b30ea96b25bf5b",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -179,6 +179,7 @@
     "logo-outro",
     "logo-sting",
     "logo-wall",
+    "lottie-character-walk",
     "lower-third-bild",
     "lt-accent-underline",
     "lt-bold-block",
