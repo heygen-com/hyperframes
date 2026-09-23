@@ -1068,7 +1068,7 @@
       rect: textRect,
       coveredFraction,
       fixHint:
-        "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+        "Give the text its own zone, or raise its stacking order above the covering element.",
     };
   }
 

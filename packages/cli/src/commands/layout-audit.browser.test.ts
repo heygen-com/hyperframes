@@ -2433,7 +2433,13 @@ describe("layout-audit.browser occlusion", () => {
       overlayStyle: { backgroundColor: "rgb(10, 10, 10)" },
       topmostId: "overlay",
     }).find((issue) => issue.code === "text_occluded");
-    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+    expect(occluded).toMatchObject({
+      selector: "#headline",
+      containerSelector: "#overlay",
+      fixHint:
+        "Give the text its own zone, or raise its stacking order above the covering element.",
+    });
+    expect(occluded?.fixHint).not.toContain("data-layout-allow-occlusion");
   });
 
   it("reports occlusion only on the covered text, not the text itself when on top", () => {
