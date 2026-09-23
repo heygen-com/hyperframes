@@ -35,15 +35,45 @@ import { addExternalFileReloadListener } from "./externalFileReloadBus";
  * before it left the browser — CSP `connect-src`, Private Network Access, an
  * extension rewriting `fetch` (rejects near-instantly, tab stays visible and
  * alive). Telemetry before this change could not tell the two apart.
+ *
+ * `absent` and `empty_file` split what `absent_or_empty` could not: the route
+ * answers `content: ""` both for a file it cannot find (the `optional=1` shim)
+ * and for a real 0-byte one, so the single label covered a composition nobody
+ * has written yet AND a path that does not resolve on this server. The route
+ * now marks the shim with `missing: true`. A server without that field still
+ * lands in `absent_or_empty`, so the old series stays honest rather than
+ * silently folding into one of the new ones.
+ *
+ * Measured on 0.8.62 before the split: 75 tabs hit this class and not one of
+ * them ever landed an SDK edit afterwards — it is terminal for the tab, while
+ * the tab itself keeps playing back and navigating, so nothing surfaces.
+ *
+ * `invalid_json` is a 200 whose body is not JSON at all — in production, an
+ * HTML page (`Unexpected token '<', "<!-- /*!"...`), i.e. an SPA fallback or a
+ * proxy answering in the route's place. `res.json()` rejected outside any
+ * catch until now, so it escaped this function and the effect's outer catch
+ * filed it as `stage: "open"` — which asserts the COMPOSITION failed to parse.
+ * Third label to make that same wrong claim, after `network` (#4240) and the
+ * fetch-rejection split; this one is the response shape, not the composition.
  */
 type ProjectFileReadFailure =
   | { ok: false; reason: "unsafe_path" }
   | { ok: false; reason: "http_error"; status: number; why?: string }
   | { ok: false; reason: "missing_content" }
   | { ok: false; reason: "absent_or_empty" }
+  | { ok: false; reason: "absent" }
+  | { ok: false; reason: "empty_file" }
+  | { ok: false; reason: "invalid_json"; contentType: string }
   | { ok: false; reason: "network"; elapsedMs: number; hidden: boolean };
 
 type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
+
+/** The three ways a 200 can carry no composition — old combined label plus its split. */
+const EMPTY_READ_REASONS = new Set<ProjectFileReadFailure["reason"]>([
+  "absent_or_empty",
+  "absent",
+  "empty_file",
+]);
 
 /**
  * Record a read that produced no usable content, and answer which project — if
@@ -73,12 +103,15 @@ function reportReadFailure(
     reason: read.reason,
     ...(read.reason === "http_error" ? { status: read.status, why: read.why } : {}),
     ...(read.reason === "network" ? { elapsed_ms: read.elapsedMs, hidden: read.hidden } : {}),
-    // Only meaningful for `absent_or_empty` — the graveyard-refuted "clear
+    ...(read.reason === "invalid_json" ? { content_type: read.contentType } : {}),
+    // Only meaningful for the empty-read reasons — the graveyard-refuted "clear
     // activeCompPath when it's not in the tree" fix's proposed next step,
     // scoped to instrumentation only. `null` while the tree hasn't loaded
     // yet: a false-negative there would read as "genuinely absent" when it is
-    // really "haven't looked".
-    ...(read.reason === "absent_or_empty" ? { path_in_tree: pathInTree } : {}),
+    // really "haven't looked". Carried on all three so the split keeps the
+    // signal that made it worth splitting: every measured case so far is
+    // `path_in_tree: true`, a file the tree lists and this read cannot get.
+    ...(EMPTY_READ_REASONS.has(read.reason) ? { path_in_tree: pathInTree } : {}),
   });
   if (read.reason !== "http_error") return null;
   return read.status === 404 ? projectId : null;
@@ -118,6 +151,30 @@ async function httpReadFailureWhy(res: Response): Promise<string | undefined> {
   return typeof body?.why === "string" ? body.why : undefined;
 }
 
+interface ProjectFileBody {
+  content?: string;
+  /** Present only from a server that separates its shim from a real 0-byte file. */
+  missing?: boolean;
+}
+
+/**
+ * Decide what a 200 with a JSON body actually delivered.
+ *
+ * `optional=1` answers a missing file with 200 + `content: ""`, so a non-string
+ * content is a response shape we did not expect, not absence. An empty string
+ * parses into a session with no elements, which declines every edit wholesale —
+ * not a session worth opening — and `missing` is the route saying which of the
+ * two empties it was. Without that field (older server) the combined label
+ * stands rather than guessing one and corrupting the series.
+ */
+function classifyProjectFileBody(data: ProjectFileBody): ProjectFileReadResult {
+  if (typeof data.content !== "string") return { ok: false, reason: "missing_content" };
+  if (data.content !== "") return { ok: true, content: data.content };
+  if (data.missing === true) return { ok: false, reason: "absent" };
+  if (data.missing === false) return { ok: false, reason: "empty_file" };
+  return { ok: false, reason: "absent_or_empty" };
+}
+
 /**
  * Read a project file's content (optional read — a missing file is not an
  * error). Replaces the removed SDK http adapter's `read()` — the only thing
@@ -146,16 +203,21 @@ async function readProjectFileOptional(
     const why = await httpReadFailureWhy(res);
     return { ok: false, reason: "http_error", status: res.status, ...(why ? { why } : {}) };
   }
-  const data = (await res.json()) as { content?: string };
-  // `optional=1` answers a missing file with 200 + `content: ""`, so a
-  // non-string here means a response shape we did not expect, not absence.
-  if (typeof data.content !== "string") return { ok: false, reason: "missing_content" };
-  // An empty body parses into a session with no elements, which declines every
-  // edit wholesale — not a session worth opening. The absent-file shim and a
-  // genuinely 0-byte file are the same 200 on the wire and cannot be told
-  // apart here, hence the name; for a composition it is always the former.
-  if (data.content === "") return { ok: false, reason: "absent_or_empty" };
-  return { ok: true, content: data.content };
+  // A 200 that is not JSON is a different failure from a JSON body missing its
+  // field: it means something other than this route answered — an SPA fallback
+  // or a proxy. Left unguarded, it rejected out of this function entirely and
+  // the effect's outer catch blamed the composition. See the type's comment.
+  let data: ProjectFileBody;
+  try {
+    data = (await res.json()) as ProjectFileBody;
+  } catch {
+    return {
+      ok: false,
+      reason: "invalid_json",
+      contentType: res.headers.get("content-type") ?? "",
+    };
+  }
+  return classifyProjectFileBody(data);
 }
 
 /**

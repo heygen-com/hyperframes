@@ -84,14 +84,6 @@ export function trackStudioRazorSplit(props: { mode: "single" | "all"; count: nu
   });
 }
 
-// Adoption signal for the inline timeline-expansion surface: edits applied to a
-// sub-composition child clip while its parent scene is expanded.
-export function trackStudioExpandedClipEdit(props: {
-  action: "move" | "resize" | "delete" | "split";
-}): void {
-  trackEvent("studio_expanded_clip_edit", { action: props.action });
-}
-
 // Adoption signal for the per-clip keyframe-lane caret toggle.
 export function trackStudioKeyframeLaneExpand(props: { expanded: boolean }): void {
   trackEvent("studio_keyframe_lane_expand", { expanded: props.expanded });

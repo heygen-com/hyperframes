@@ -104,7 +104,7 @@ describe("external file change coordinator", () => {
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(reloadSdkSession).not.toHaveBeenCalled();
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
-    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
   });
 
   it("accepts a matching content echo without a write token and suppresses every reload", async () => {
@@ -125,7 +125,7 @@ describe("external file change coordinator", () => {
     );
 
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
-    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
     expect(drainPendingChanges).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(reloadSdkSession).not.toHaveBeenCalled();
@@ -345,7 +345,34 @@ describe("external file change coordinator", () => {
 
       expect(drainPendingChanges).not.toHaveBeenCalled();
       expect(reloadPreview).not.toHaveBeenCalled();
-      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
+    });
+
+    it("hands the server's affected compositions to the thumbnail refresh", async () => {
+      const onAcceptedPersistedFileChange = vi.fn();
+      await mountCoordinator({ onAcceptedPersistedFileChange });
+
+      await act(async () =>
+        handler?.(
+          sseDelivery({
+            path: "compositions/scene-a.html",
+            version: "v3",
+            affectedCompositions: ["index.html", "compositions/scene-a.html"],
+          }),
+        ),
+      );
+      await act(async () =>
+        handler?.(
+          sseDelivery({ path: "assets/logo.svg", version: "v4", affectedCompositions: "all" }),
+        ),
+      );
+
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(
+        1,
+        "compositions/scene-a.html",
+        ["index.html", "compositions/scene-a.html"],
+      );
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(2, "assets/logo.svg", null);
     });
 
     it("reloads once when one watcher event reaches two subscribers", async () => {

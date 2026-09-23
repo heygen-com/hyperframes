@@ -45,6 +45,7 @@ import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
+import { initVfx, paintVfx } from "./vfx";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import {
@@ -3032,6 +3033,10 @@ export function initSandboxRuntimeModular(): void {
         // values) don't exist at the init-time binding pass — re-apply so
         // data-var-* / --{id} bindings inside them resolve. Idempotent.
         applyVariableBindings(document);
+        // A vfx host inside a sub-composition enters the DOM only now, so the
+        // init-time pass below never saw it. Re-scan before readiness is
+        // published: an unregistered chain paints nothing and logs nothing.
+        initVfx(document.body, state.canonicalFps);
         maybePublishRenderReady();
       });
   } else {
@@ -3057,6 +3062,8 @@ export function initSandboxRuntimeModular(): void {
     colorGrading.destroy();
     colorGradingRuntime = null;
   });
+  // Per-pixel effect chains: compile once here, repaint on every seek below.
+  initVfx(document.body, state.canonicalFps);
 
   const applyPlaybackRate = (nextRate: number) => {
     const parsed = Number(nextRate);
@@ -3153,6 +3160,7 @@ export function initSandboxRuntimeModular(): void {
       }
       syncMediaForCurrentState();
       colorGrading.redraw();
+      paintVfx(state.currentTime);
       postState(true);
     },
     renderSeek: (timeSeconds, options) => {
@@ -3176,6 +3184,7 @@ export function initSandboxRuntimeModular(): void {
       runAdapters("pause");
       syncMediaForCurrentState();
       colorGrading.redraw();
+      paintVfx(state.currentTime, { engineMode: true });
       postState(true);
     },
     getTime: () => clock.now(),

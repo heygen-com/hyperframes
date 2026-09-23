@@ -49,8 +49,11 @@ export function useStudioExternalFileChanges({
 }: UseStudioExternalFileChangesOptions) {
   const { flushPendingSourceSave, discardPendingSourceSave } = fileManager;
   const { drainPendingDomEditSaves, resetDomEditSaveQueueBreaker } = previewPersistence;
-  const bumpThumbnailContentRevision = usePlayerStore(
-    (state) => state.bumpThumbnailContentRevision,
+  const bumpThumbnailRevisions = usePlayerStore((state) => state.bumpThumbnailRevisions);
+  const onAcceptedPersistedFileChange = useCallback(
+    (_path: string, affectedCompositions: readonly string[] | null) =>
+      bumpThumbnailRevisions(affectedCompositions),
+    [bumpThumbnailRevisions],
   );
   const drainPendingChanges = useCallback(async () => {
     const source = await flushPendingSourceSave();
@@ -81,6 +84,6 @@ export function useStudioExternalFileChanges({
     readProjectFile: fileManager.readProjectFile,
     onUseExternalFile: fileManager.updateEditingFileContent,
     resetSaveQueues: resetDomEditSaveQueueBreaker,
-    onAcceptedPersistedFileChange: bumpThumbnailContentRevision,
+    onAcceptedPersistedFileChange,
   });
 }

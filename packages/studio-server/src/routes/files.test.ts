@@ -255,11 +255,35 @@ describe("registerFileRoutes", () => {
     const response = await app.request(
       "http://localhost/projects/demo/files/missing-file.txt?optional=1",
     );
-    const payload = (await response.json()) as { filename?: string; content?: string };
+    const payload = (await response.json()) as {
+      filename?: string;
+      content?: string;
+      missing?: boolean;
+    };
 
     expect(response.status).toBe(200);
     expect(payload.filename).toBe("missing-file.txt");
     expect(payload.content).toBe("");
+    expect(payload.missing).toBe(true);
+  });
+
+  // The shim and a real 0-byte file both answer `content: ""`. `missing` is
+  // the only thing separating them, and it has to be on BOTH answers — its
+  // presence is what tells a caller this server draws the distinction at all.
+  it("marks a real zero-byte file as present, not missing", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "empty.html"), "");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/files/empty.html?optional=1",
+    );
+    const payload = (await response.json()) as { content?: string; missing?: boolean };
+
+    expect(response.status).toBe(200);
+    expect(payload.content).toBe("");
+    expect(payload.missing).toBe(false);
   });
 
   it("still returns 404 for other missing files", async () => {

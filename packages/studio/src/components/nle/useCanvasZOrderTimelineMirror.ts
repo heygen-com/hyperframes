@@ -13,7 +13,6 @@ import { commitZMirrorLaneMove } from "../../player/components/timelineClipDragC
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 import { buildStableSelector, getSelectorIndex } from "../editor/domEditingDom";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
-import { forwardRebasedTimelineMoveElements } from "./TimelinePane";
 
 export interface MirrorZOrderInput {
   /** Timeline store key of the element the menu acted on (entry.key), if any. */
@@ -44,10 +43,9 @@ export interface MirrorZOrderInput {
  * renders and the resolver expects. No alternate row expansion is built here.
  *
  * The mirror persists through the SAME machinery as a timeline lane drag
- * (commitZMirrorLaneMove → persistMoveEdits → onMoveElements, with expanded
- * children rebased to local coords via forwardRebasedTimelineMoveElements) —
- * optimistic store update + rollback included, so the timeline reflects the
- * lane change without a reload. The deps below deliberately OMIT
+ * (commitZMirrorLaneMove → persistMoveEdits → onMoveElements) — optimistic
+ * store update + rollback included, so the timeline reflects the lane change
+ * without a reload. The deps below deliberately OMIT
  * `readZIndex`/`onStackingPatches`: the lane→z stacking sync
  * (syncStackingForEdit) must not fire and recompute the z values the user just
  * set — commitZMirrorLaneMove never calls it, and without these deps it would
@@ -160,16 +158,7 @@ function useMirrorLaneMoveCommit(): (
           elements: els,
           trackOrder: displayTrackOrder(els),
           updateElement: (key, updates) => usePlayerStore.getState().updateElement(key, updates),
-          onMoveElements: onMoveElements
-            ? (edits, coalesceKey2, operation, coalesceMs) =>
-                forwardRebasedTimelineMoveElements(
-                  edits,
-                  coalesceKey2,
-                  operation,
-                  onMoveElements,
-                  coalesceMs,
-                )
-            : undefined,
+          onMoveElements,
           // NO readZIndex / onStackingPatches: see the hook doc — the lane→z
           // stacking sync must not re-trigger and fight the just-set z values.
         },

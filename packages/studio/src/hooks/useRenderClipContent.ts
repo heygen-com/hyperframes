@@ -2,6 +2,7 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback, type ReactNode } from "react";
 import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
+import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
 import type { TimelineElement } from "../player";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { audioPillFlags } from "../player/components/audioClipLink";
@@ -9,6 +10,7 @@ import { AudioWaveform } from "../player/components/AudioWaveform";
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { usePlayerStore } from "../player/store/playerStore";
+import { thumbnailRevisionOf } from "../player/store/thumbnailSlice";
 import { effectiveThumbnailMode } from "../player/lib/thumbnailPolicy";
 
 export function normalizeCompositionSrc(
@@ -97,7 +99,7 @@ function renderAudioClip(
   });
 }
 
-interface UseRenderClipContentOptions {
+export interface UseRenderClipContentOptions {
   projectIdRef: { current: string | null };
   compIdToSrc: Map<string, string>;
   activePreviewUrl: string | null;
@@ -114,7 +116,7 @@ export function useRenderClipContent({
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
   const effectiveMode = effectiveThumbnailMode(thumbnailMode);
   const sessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
-  const contentRevision = usePlayerStore((s) => s.thumbnailContentRevision);
+  const thumbnailRevisions = usePlayerStore((s) => s.thumbnailRevisions);
   const elements = usePlayerStore((s) => s.elements);
   return useCallback(
     // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
@@ -159,7 +161,7 @@ export function useRenderClipContent({
           duration: el.duration,
           projectId: pid,
           sessionEpoch,
-          contentRevision,
+          contentRevision: thumbnailRevisionOf(thumbnailRevisions, compSrc),
           priority: context.priority,
           rich: context.rich,
         });
@@ -186,7 +188,10 @@ export function useRenderClipContent({
           duration: el.duration,
           projectId: pid,
           sessionEpoch,
-          contentRevision,
+          contentRevision: thumbnailRevisionOf(
+            thumbnailRevisions,
+            compositionPathOfPreviewUrl(activePreviewUrl),
+          ),
           priority: context.priority,
           rich: context.rich,
         });
@@ -239,7 +244,7 @@ export function useRenderClipContent({
           duration: el.duration,
           projectId: pid,
           sessionEpoch,
-          contentRevision,
+          contentRevision: thumbnailRevisionOf(thumbnailRevisions, "index.html"),
           priority: context.priority,
           rich: context.rich,
         });
@@ -254,7 +259,7 @@ export function useRenderClipContent({
       effectiveTimelineDuration,
       effectiveMode,
       sessionEpoch,
-      contentRevision,
+      thumbnailRevisions,
       elements,
     ],
   );

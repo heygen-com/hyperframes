@@ -4,7 +4,7 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 
-interface AudioWaveformProps {
+export interface AudioWaveformProps {
   audioUrl: string;
   waveformUrl?: string;
   label: string;

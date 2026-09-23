@@ -16,10 +16,9 @@ export function classifyZone(el: TimelineElement): TrackZone {
 }
 
 /** The "main track" is a convention, not a schema field: the first
- *  visual-zone display lane, matched only when it actually holds a visual
- *  clip and isn't an inline-expanded sub-composition child. */
+ *  visual-zone display lane, matched only when it actually holds a visual clip. */
 export function isMainTrackElement(el: TimelineElement): boolean {
-  return el.track === 0 && classifyZone(el) === "visual" && el.expandedParentStart == null;
+  return el.track === 0 && classifyZone(el) === "visual";
 }
 
 const keyOf = (el: TimelineElement) => el.key ?? el.id;

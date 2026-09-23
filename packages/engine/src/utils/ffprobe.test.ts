@@ -834,6 +834,139 @@ describe("ffprobe missing-binary fallback", () => {
     expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
   });
 
+  it("analyzeKeyframeIntervals flags a single-keyframe video as problematic, not healthy", async () => {
+    // A single-GOP file (one keyframe at t=0) is the worst case this check exists to catch.
+    // Regression for #3460, where fewer than 2 keyframes short-circuited to isProblematic:false.
+    // Real `csv=p=0` output has a trailing comma per row; parseFloat must tolerate it.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000,\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/single-gop.mp4", {
+        videoStreamDurationSeconds: 6.5,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 6.5,
+      maxIntervalSeconds: 6.5,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+  });
+
+  it("analyzeKeyframeIntervals leaves a single keyframe exactly at the 2s threshold healthy", async () => {
+    // isProblematic compares with a strict `>`, so exactly 2s must stay healthy.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/exactly-two-seconds.mp4", {
+        videoStreamDurationSeconds: 2,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 2,
+      maxIntervalSeconds: 2,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("analyzeKeyframeIntervals normalizes an absolute keyframe pts against a nonzero stream start", async () => {
+    // ffprobe's pts_time is absolute, not relative to stream start. A clip with
+    // start_time=5 and a keyframe at absolute pts 5.0 is still single-GOP end-to-end,
+    // so it must stay flagged, not cleared by subtracting duration from the raw pts.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "5.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/nonzero-start-single-gop.mp4", {
+        videoStreamDurationSeconds: 3,
+        videoStreamStartSeconds: 5,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 3,
+      maxIntervalSeconds: 3,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+  });
+
+  it("analyzeKeyframeIntervals leaves a short single-keyframe video healthy", async () => {
+    // The single-GOP span is measured off the duration the caller passes in, so
+    // a 1s video muxed with 10s of audio has to be probed with its video
+    // stream's duration; the container's would overstate the span and warn.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/short-video-long-audio.mp4", {
+        videoStreamDurationSeconds: 1,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 1,
+      maxIntervalSeconds: 1,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("analyzeKeyframeIntervals treats a single keyframe with an unknown (NaN) duration as healthy, not NaN", async () => {
+    // ffprobe reports "N/A" for duration on some containers, which parses to
+    // NaN upstream in extractMediaMetadata. Without a finite-duration guard,
+    // NaN propagates through Math.max unchanged into the returned interval.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/unknown-duration.mp4", {
+        videoStreamDurationSeconds: NaN,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("analyzeKeyframeIntervals reports a zero-keyframe video as healthy, ignoring the duration", async () => {
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/no-keyframes.mp4", {
+        videoStreamDurationSeconds: 6.5,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 0,
+      isProblematic: false,
+    });
+  });
+
   it("analyzeKeyframeIntervals surfaces a ffprobe-missing error verbatim", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
     hidePathBinaries();
@@ -842,9 +975,12 @@ describe("ffprobe missing-binary fallback", () => {
 
     const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
 
-    await expect(analyzeKeyframeIntervals("/tmp/no-such-video.mp4")).rejects.toThrow(
-      /ffprobe not found/,
-    );
+    await expect(
+      analyzeKeyframeIntervals("/tmp/no-such-video.mp4", {
+        videoStreamDurationSeconds: 10,
+        videoStreamStartSeconds: 0,
+      }),
+    ).rejects.toThrow(/ffprobe not found/);
     expect(calls.length).toBe(1);
     expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
   });
@@ -935,7 +1071,10 @@ describe("ffprobe option separator", () => {
 
     const { extractAudioMetadata, analyzeKeyframeIntervals } = await import("./ffprobe.js");
     await extractAudioMetadata("/tmp/-audio.wav");
-    await analyzeKeyframeIntervals("/tmp/-video.mp4");
+    await analyzeKeyframeIntervals("/tmp/-video.mp4", {
+      videoStreamDurationSeconds: 10,
+      videoStreamStartSeconds: 0,
+    });
 
     // Per call, not a flattened count. A total of 3 is satisfied by one call
     // emitting three `--` and two emitting none — i.e. it cannot fail for

@@ -474,6 +474,106 @@ describe("studio manual edits", () => {
     expect(frames).toHaveLength(0);
   });
 
+  it("does not reapply every frame while the player is paused over unpaused scene timelines", () => {
+    const window = new Window();
+    const frames: FrameRequestCallback[] = [];
+    let playing = false;
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __player: Record<string, unknown>;
+      __timelines: Record<string, Record<string, unknown>>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    previewWindow.__player = {
+      play: () => {
+        playing = true;
+      },
+      isPlaying: () => playing,
+    };
+    // A GSAP child of a paused master: not paused itself, inactive, time left.
+    const master = { paused: () => true };
+    previewWindow.__timelines = {
+      scene0: {
+        parent: master,
+        play: () => {},
+        paused: () => false,
+        isActive: () => false,
+        time: () => 0,
+        duration: () => 5,
+      },
+    };
+
+    expect(installStudioManualEditSeekReapply(previewWindow, () => {})).toBe(true);
+    expect(frames).toHaveLength(0);
+
+    (previewWindow.__player.play as () => void)();
+    expect(frames).toHaveLength(1);
+    playing = false;
+    frames.shift()?.(16);
+    expect(frames).toHaveLength(0);
+  });
+
+  it("tolerates a timeline whose parent chain loops", () => {
+    const window = new Window();
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __timelines: Record<string, Record<string, unknown>>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = () => 1;
+    const loop: Record<string, unknown> = { paused: () => false };
+    loop.parent = loop;
+    previewWindow.__timelines = {
+      scene0: {
+        parent: loop,
+        play: () => {},
+        paused: () => false,
+        time: () => 0,
+        duration: () => 5,
+      },
+    };
+
+    expect(() => installStudioManualEditSeekReapply(previewWindow, () => {})).not.toThrow();
+  });
+
+  it("keeps reapplying while Studio drives a timeline directly and the player reads idle", () => {
+    const window = new Window();
+    const frames: FrameRequestCallback[] = [];
+    let paused = true;
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __player: Record<string, unknown>;
+      __timeline: Record<string, unknown>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    previewWindow.__player = { play: () => {}, isPlaying: () => false };
+    previewWindow.__timeline = {
+      play: () => {
+        paused = false;
+      },
+      paused: () => paused,
+      isActive: () => !paused,
+      time: () => 1,
+      duration: () => 5,
+    };
+
+    expect(installStudioManualEditSeekReapply(previewWindow, () => {})).toBe(true);
+    (previewWindow.__timeline.play as () => void)();
+    frames.shift()?.(16);
+    expect(frames).toHaveLength(1);
+  });
+
   it("stops playback reapply after an unpaused timeline has completed", () => {
     const window = new Window();
     const frames: FrameRequestCallback[] = [];

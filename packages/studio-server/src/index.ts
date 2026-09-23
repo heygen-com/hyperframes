@@ -1,5 +1,6 @@
 export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
+export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export type {
   StudioApiAdapter,
   ResolvedProject,

@@ -80,6 +80,9 @@
   --timeline-clip-chip-audio-bg: rgba(25, 16, 38, 0.7);
   --timeline-clip-chip-text: #ffffff;
   --timeline-shortcut-bg: rgba(17, 23, 35, 0.84);
+  /* Composition and text clips draw their frame as it is, like video filmstrips; a host may dim them. */
+  --timeline-composition-thumbnail-opacity: 1;
+  --timeline-composition-thumbnail-blend: normal;
   --timeline-thumbnail-shimmer: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.02) 0%,

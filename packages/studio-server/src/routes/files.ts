@@ -2278,7 +2278,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     if (!existsSync(res.absPath)) {
       if (c.req.query("optional") === "1") {
-        return c.json({ filename: res.filePath, content: "" });
+        // `missing: true` separates the absent-file shim from a genuinely
+        // 0-byte file — both answer `content: ""`, and the caller could not
+        // tell them apart. That ambiguity hid the largest remaining class of
+        // SDK-session failures: a composition the file tree lists but this
+        // read answers empty for is either a placeholder nobody has written
+        // yet, or a path that does not resolve here at all, and those need
+        // different fixes. Additive, so an older client ignores it.
+        return c.json({ filename: res.filePath, content: "", missing: true });
       }
       return c.json({ error: "not found" }, 404);
     }
@@ -2286,7 +2293,16 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const content = readFileSync(res.absPath);
     const version = fileContentVersion(content);
     c.header("ETag", version);
-    return c.json({ filename: res.filePath, content: content.toString("utf-8"), version });
+    // `missing: false` on the read path too, so its PRESENCE is what tells a
+    // caller this server distinguishes the two empty answers at all. Without
+    // it here, a real 0-byte file from a new server looks exactly like either
+    // case from an old one, and the split above buys nothing.
+    return c.json({
+      filename: res.filePath,
+      content: content.toString("utf-8"),
+      version,
+      missing: false,
+    });
   });
 
   // ── Write (overwrite) ──

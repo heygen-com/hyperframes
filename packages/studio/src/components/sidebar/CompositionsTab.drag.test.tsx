@@ -18,7 +18,7 @@ afterEach(() => {
   if (root) act(() => root?.unmount());
   root = null;
   document.body.innerHTML = "";
-  usePlayerStore.setState({ thumbnailContentRevision: 0 });
+  usePlayerStore.setState({ thumbnailRevisions: {} });
 });
 
 function mount(onSelect = vi.fn(), onAddToTimeline = vi.fn()) {
@@ -68,7 +68,7 @@ describe("composition card drag", () => {
     act(() => thumbnail.dispatchEvent(new Event("error")));
     expect(host.textContent).toContain("Preview unavailable");
 
-    act(() => usePlayerStore.getState().bumpThumbnailContentRevision());
+    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
 
     const retry = host.querySelector<HTMLImageElement>('img[src*="/thumbnail/"]');
     expect(retry).not.toBeNull();

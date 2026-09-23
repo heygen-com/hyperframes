@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
@@ -64,6 +64,12 @@ export function buildCompositionThumbnailUrl({
     }
   }
   return thumbnailUrl.toString();
+}
+
+/** The composition a preview URL renders: `/preview/comp/<path>`, or the root for `/preview`. */
+export function compositionPathOfPreviewUrl(previewUrl: string): string {
+  const match = /\/preview\/comp\/([^?#]+)/.exec(previewUrl);
+  return match?.[1] ? decodeURIComponent(match[1]) : "index.html";
 }
 
 async function loadCompositionImage(url: string, signal: AbortSignal) {
@@ -153,7 +159,11 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
       {value && (
         <div
           className="absolute inset-0 flex"
-          style={{ animation: "hf-thumb-fade 200ms ease-out", mixBlendMode: "lighten" }}
+          style={{
+            animation: "hf-thumb-fade 200ms ease-out",
+            mixBlendMode:
+              "var(--timeline-composition-thumbnail-blend)" as CSSProperties["mixBlendMode"],
+          }}
         >
           {Array.from({ length: frameCount }, (_, index) => (
             <div
@@ -166,7 +176,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
                 alt=""
                 draggable={false}
                 className="absolute inset-0 h-full w-full object-cover"
-                style={{ opacity: 0.7 }}
+                style={{ opacity: "var(--timeline-composition-thumbnail-opacity)" }}
               />
             </div>
           ))}

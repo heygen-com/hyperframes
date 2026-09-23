@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { Tooltip } from "../ui/Tooltip";
 
@@ -388,7 +389,7 @@ export const CompositionsTab = memo(function CompositionsTab({
   isRendering,
   lintFindingsByFile,
 }: CompositionsTabProps) {
-  const contentRevision = usePlayerStore((state) => state.thumbnailContentRevision);
+  const thumbnailRevisions = usePlayerStore((state) => state.thumbnailRevisions);
   if (compositions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
@@ -411,7 +412,7 @@ export const CompositionsTab = memo(function CompositionsTab({
           onAddToTimeline={onAddToTimeline ? () => onAddToTimeline(comp) : undefined}
           isRendering={isRendering}
           lintInfo={lintFindingsByFile?.get(comp)}
-          contentRevision={contentRevision}
+          contentRevision={thumbnailRevisionOf(thumbnailRevisions, comp)}
         />
       ))}
     </div>

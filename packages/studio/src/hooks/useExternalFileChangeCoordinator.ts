@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import { readFileChangeField, readStudioFileChangePath } from "../components/editor/manualEdits";
+import {
+  readFileChangeAffectedCompositions,
+  readFileChangeField,
+  readStudioFileChangePath,
+} from "../components/editor/manualEdits";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
 import type { ExternalConflictSnapshot } from "../utils/externalConflictStorage";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
@@ -56,7 +60,10 @@ interface ExternalFileChangeCoordinatorOptions {
   readProjectFile: (path: string) => Promise<string>;
   onUseExternalFile?: (path: string, content: string) => void;
   resetSaveQueues?: () => void;
-  onAcceptedPersistedFileChange: (path: string) => void;
+  onAcceptedPersistedFileChange: (
+    path: string,
+    affectedCompositions: readonly string[] | null,
+  ) => void;
 }
 
 export interface ExternalFileChangeCoordinatorHandle {
@@ -253,7 +260,7 @@ export function useExternalFileChangeCoordinator({
         }
         if (!mountedRef.current || generation !== generationRef.current) return;
         setBlocked(null);
-        onAcceptedPersistedFileChange(path);
+        onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(payload));
         reloadAcceptedGeneration(path);
         return;
       }
@@ -377,7 +384,7 @@ export function useExternalFileChangeCoordinator({
       const ownWriteToken = consumeStudioWriteToken(token);
       const ownContentEcho = content != null && isSelfWriteEcho(path, content);
       if (ownWriteToken || ownContentEcho) {
-        onAcceptedPersistedFileChange(path);
+        onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(payload));
         logReload("suppressed", {
           path,
           why: ownWriteToken ? "own write token" : "own content echo",
@@ -430,7 +437,7 @@ export function useExternalFileChangeCoordinator({
       onUseExternalFile?.(path, external);
       await deleteConflictSnapshot?.(projectId, path);
       setBlocked(null);
-      onAcceptedPersistedFileChange(path);
+      onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(current.payload));
       reloadAcceptedGeneration(path);
     },
     [

@@ -11,7 +11,7 @@ HyperFrames can seek both `lottie-web` and dotLottie players through its `lottie
 
 - Load assets from local project files, usually under `assets/`.
 - Set `autoplay: false`.
-- Prefer `loop: false` unless the user explicitly wants a loop.
+- Use `loop: false` for a one-shot and `loop: true` for a cycle (walk, idle, spinner). A looping animation is seeked to composition time modulo its own length, so it keeps cycling for the whole scene; a one-shot holds its last frame. Always set `loop`: lottie-web treats a missing `loop` as `true`. A numeric `loop` count does not repeat under seeking; bake the repeats into the file.
 - Register every returned animation or player on `window.__hfLottie`.
 - Keep the Lottie container dimensions stable with CSS.
 
@@ -84,12 +84,25 @@ HyperFrames seeks them all to the same composition time.
 
 ## Composition Duration
 
-The render engine needs the composition's total length. GSAP timelines report duration automatically; a Lottie-only composition has no timeline object, so the runtime reads the registered animation's native length directly — `totalFrames / frameRate` for `lottie-web`, or the player's own `duration` for dotLottie. `data-duration` on the root element is optional for Lottie compositions: as long as every animation is registered on `window.__hfLottie` (per the contract above), the runtime has a finite duration to work with even when you set `loop: true`.
+The render engine needs the composition's total length. GSAP timelines report duration automatically; a Lottie-only composition has no timeline object, so the runtime reads the registered animation's native length directly — `totalFrames / frameRate` for `lottie-web`, or the player's own `duration` for dotLottie. `data-duration` on the root element is optional for Lottie compositions: as long as every animation is registered on `window.__hfLottie` (per the contract above), the runtime has a finite duration to work with. With `loop: true` that length is one cycle, so a looping Lottie in a longer scene needs `data-duration` or a GSAP timeline to set the scene length.
+
+## Characters
+
+For a character that walks, gestures or reacts (a mascot, a walk cycle, a jointed puppet), put the acting in one Lottie and the stage in GSAP:
+
+- **The Lottie owns the body.** Walk, stop, point and idle live in the file's own timeline, so limbs stay jointed and feet stay planted exactly as the animator made them.
+- **GSAP owns everything around it.** Cards, captions and camera moves go on the paused timeline, timed to the Lottie's beats. Read the beat times from the file's `markers` array (`tm` is in frames, divide by `fr`) or from the animator's notes.
+- **Every registered animation plays against composition time.** There is no per-animation start offset, so a gesture that should begin at 4 s must begin at 4 s inside its file. Author the whole performance as one Lottie, or offset the action inside the file, rather than stacking separate action files.
+- **A short cycle is fine.** A 1 s walk cycle with `loop: true` cycles for the whole scene. Move the character across the stage with GSAP `x` only if the cycle walks in place, and match the travel speed to the stride or the feet slide.
+- **License the character.** Use a file the user or their designer made, or one whose license allows redistribution, and say where it came from. Never ship a character ripped from a site.
+
+The `lottie-character-walk` registry block is a working example: a jointed flat character walks in on planted feet, stops, and points at a card that GSAP brings in on the point (`npx hyperframes add lottie-character-walk`).
 
 ## Good Uses
 
 - After Effects exports that are already known to render correctly in lottie-web.
 - Logo reveals, icon loops, decorative accents, and product UI motion.
+- Characters: walk cycles, mascots, gestures (see Characters above).
 - Translating Remotion Lottie usage into plain HyperFrames HTML.
 
 ## Avoid
