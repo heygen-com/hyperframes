@@ -9,10 +9,11 @@
  */
 
 import type { TimelineElement } from "../store/playerStore";
-import type { ClipManifestClip } from "./playbackTypes";
+import type { ClipManifestClip, IframeWindow, TimelineLike } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { groupInfoFor } from "./timelineGroupInfo";
+import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -75,6 +76,9 @@ export function createTimelineElementFromManifestClip(params: {
 }): TimelineElement {
   const { clip, fallbackIndex, doc } = params;
   let hostEl = params.hostEl ?? null;
+  const transitionLabels = doc
+    ? transitionLabelsForDocument(doc, (doc.defaultView as IframeWindow | null)?.__timelines)
+    : new Map<Element, string>();
   const label = getTimelineElementDisplayLabel({
     id: clip.id,
     label: clip.label,
@@ -108,6 +112,10 @@ export function createTimelineElementFromManifestClip(params: {
   const entry: TimelineElement = {
     id: identity.id,
     label,
+    transitionLabel:
+      (hostEl && transitionLabels.get(hostEl)) ||
+      hostEl?.getAttribute("data-transition-label") ||
+      undefined,
     key: identity.key,
     kind: clip.kind,
     tag: resolveClipTag(clip),
@@ -134,6 +142,10 @@ export function createTimelineElementFromManifestClip(params: {
 
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
+    if (!entry.src) {
+      const rawSrc = hostEl.getAttribute("src");
+      if (rawSrc) entry.src = new URL(rawSrc, hostEl.baseURI).href;
+    }
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
@@ -205,11 +217,19 @@ export function createTimelineElementFromManifestClip(params: {
  * Parse [data-start] elements from a Document into TimelineElement[].
  * Shared helper — used by onIframeLoad fallback, handleMessage, and enrichMissingCompositions.
  */
-export function parseTimelineFromDOM(doc: Document, rootDuration: number): TimelineElement[] {
+export function parseTimelineFromDOM(
+  doc: Document,
+  rootDuration: number,
+  timelines?: Readonly<Record<string, TimelineLike>>,
+): TimelineElement[] {
   const rootComp = doc.querySelector("[data-composition-id]");
   const nodes = doc.querySelectorAll("[data-start]");
   const els: TimelineElement[] = [];
   let trackCounter = 0;
+  const transitionLabels = transitionLabelsForDocument(
+    doc,
+    timelines ?? (doc.defaultView as IframeWindow | null)?.__timelines,
+  );
 
   // fallow-ignore-next-line complexity
   nodes.forEach((node) => {
@@ -252,6 +272,8 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     const entry: TimelineElement = {
       id: identity.id,
       label,
+      transitionLabel:
+        transitionLabels.get(el) ?? el.getAttribute("data-transition-label") ?? undefined,
       key: identity.key,
       kind:
         compId && compId !== rootComp?.getAttribute("data-composition-id")

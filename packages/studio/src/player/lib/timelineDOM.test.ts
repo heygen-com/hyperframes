@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import { gsap } from "gsap";
 import {
   createTimelineElementFromManifestClip,
   parseTimelineFromDOM,
@@ -20,6 +21,33 @@ function makeDoc(html: string): Document {
 }
 
 describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
+  it("bridges a real GSAP transition marker onto both named clips", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="root">
+        <img data-hf-id="outgoing" data-start="0" data-duration="2.5" data-track-index="0" />
+        <img data-hf-id="incoming" data-start="2" data-duration="2.5" data-track-index="0" />
+      </div>
+    `;
+    const timeline = gsap.timeline({ paused: true });
+    timeline.addLabel("hf:transition:outgoing:incoming:crossfade", 2);
+    const runtimeWindow = window as Window & {
+      __timelines?: Record<string, typeof timeline>;
+    };
+    runtimeWindow.__timelines = { main: timeline };
+
+    try {
+      const elements = parseTimelineFromDOM(document, 5);
+      expect(elements.map((element) => element.transitionLabel)).toEqual([
+        "hf:transition:outgoing:incoming:crossfade",
+        "hf:transition:outgoing:incoming:crossfade",
+      ]);
+    } finally {
+      delete runtimeWindow.__timelines;
+      timeline.kill();
+      document.body.innerHTML = "";
+    }
+  });
+
   it("harvests hfId from a data-start element that has data-hf-id", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">

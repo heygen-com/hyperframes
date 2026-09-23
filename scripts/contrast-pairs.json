@@ -42,8 +42,8 @@
         },
         {
           "id": "clip-label",
-          "foreground": "--timeline-track-label",
-          "background": ["--timeline-row-bg", "--timeline-clip-bg"],
+          "foreground": "--timeline-clip-chip-text",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-chip-bg"],
           "role": "text",
           "minimum": 4.5,
           "sources": [
@@ -52,16 +52,18 @@
           ]
         },
         {
-          "id": "active-clip-label",
-          "foreground": "--timeline-clip-label-active",
-          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-bg-active"],
+          "id": "audio-clip-label",
+          "foreground": "--timeline-clip-chip-text",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-audio-bg",
+            "--timeline-clip-chip-audio-bg"
+          ],
           "role": "text",
           "minimum": 4.5,
           "sources": [
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:223",
-            "packages/studio/src/styles/studio.css:297"
+            "packages/studio/src/styles/studio.css:230",
+            "packages/studio/src/styles/studio.css:300"
           ]
         },
         {
@@ -234,7 +236,7 @@
             "packages/studio/src/player/components/AudioWaveform.tsx:139",
             "packages/studio/src/player/components/AudioWaveform.tsx:145"
           ],
-          "opacity": 0.45,
+          "opacity": 0.64,
           "format": "rgb-channels"
         },
         {
@@ -253,8 +255,83 @@
             "packages/studio/src/player/components/AudioWaveform.tsx:139",
             "packages/studio/src/player/components/AudioWaveform.tsx:145"
           ],
-          "opacity": 0.45,
+          "opacity": 0.64,
           "format": "rgb-channels"
+        },
+        {
+          "id": "quiet-muted-waveform",
+          "foreground": "--timeline-waveform-muted-rgb",
+          "background": ["--timeline-row-bg", "--timeline-clip-audio-muted-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/studio.css:246",
+            "packages/studio/src/player/components/AudioWaveform.tsx:144"
+          ],
+          "opacity": 0.64,
+          "format": "rgb-channels"
+        }
+      ]
+    },
+    {
+      "id": "paper",
+      "selector": ":root[data-theme=\"paper\"]",
+      "canvas": "--timeline-shell-bg",
+      "pairs": [
+        {
+          "id": "quiet-waveform",
+          "foreground": "--timeline-waveform-bar-rgb",
+          "background": ["--timeline-row-bg", "--timeline-clip-audio-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/theme.css:336",
+            "packages/studio/src/player/components/AudioWaveform.tsx:144"
+          ],
+          "opacity": 0.64,
+          "format": "rgb-channels"
+        },
+        {
+          "id": "quiet-muted-waveform",
+          "foreground": "--timeline-waveform-muted-rgb",
+          "background": ["--timeline-row-bg", "--timeline-clip-audio-muted-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/theme.css:340",
+            "packages/studio/src/player/components/AudioWaveform.tsx:144"
+          ],
+          "opacity": 0.64,
+          "format": "rgb-channels"
+        }
+      ]
+    },
+    {
+      "id": "paper",
+      "selector": ":root[data-theme=\"paper\"]",
+      "canvas": "--timeline-row-bg",
+      "pairs": [
+        {
+          "id": "clip-label",
+          "foreground": "--timeline-clip-chip-text",
+          "background": ["--timeline-clip-bg", "--timeline-clip-chip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/theme.css",
+            "packages/studio/src/styles/studio.css"
+          ]
+        },
+        {
+          "id": "selected-outline",
+          "foreground": "--timeline-clip-selection",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/theme.css",
+            "packages/studio/src/styles/studio.css"
+          ]
         }
       ]
     }

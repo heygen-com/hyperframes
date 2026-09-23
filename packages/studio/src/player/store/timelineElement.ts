@@ -12,6 +12,7 @@ import type { ClipManifestClip } from "../lib/playbackTypes";
 export interface TimelineElement {
   id: string;
   label?: string;
+  transitionLabel?: string;
   key?: string;
   kind?: ClipManifestClip["kind"];
   tag: string;

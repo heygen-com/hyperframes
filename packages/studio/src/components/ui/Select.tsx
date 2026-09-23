@@ -6,6 +6,7 @@
 import { Select as BaseSelect } from "@base-ui/react/select";
 import { cn } from "./cn";
 import { fieldBase } from "./Input";
+import { floatingMotion } from "./Menu";
 import type { PreviewState } from "./Button";
 
 export interface SelectOption {
@@ -77,7 +78,12 @@ export function Select({
 
       <BaseSelect.Portal>
         <BaseSelect.Positioner sideOffset={4} alignItemWithTrigger={false}>
-          <BaseSelect.Popup className="min-w-[var(--anchor-width)] rounded-md border border-border bg-surface py-1 shadow-menu outline-hidden">
+          <BaseSelect.Popup
+            className={cn(
+              "min-w-[var(--anchor-width)] rounded-md border border-border bg-surface py-1 shadow-menu",
+              floatingMotion("duration-open"),
+            )}
+          >
             <BaseSelect.List>
               {options.map((option) => (
                 <BaseSelect.Item

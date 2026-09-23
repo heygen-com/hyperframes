@@ -1,6 +1,7 @@
 // Shared Puppeteer browser management and thumbnail generation for Studio dev server.
 
 import { existsSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, win32 as pathWin32 } from "node:path";
 import { thumbnailDeviceScaleFactor } from "@hyperframes/studio-server";
@@ -9,6 +10,7 @@ import { seekThumbnailPreview } from "./vite.thumbnail";
 
 let browser: import("puppeteer-core").Browser | null = null;
 let browserLaunch: Promise<import("puppeteer-core").Browser | null> | null = null;
+let browserDescription = "unknown browser";
 
 function systemChromePaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
   if (platform === "win32") {
@@ -43,6 +45,8 @@ function systemChromePaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): s
 function findPuppeteerCacheChrome(
   env: NodeJS.ProcessEnv,
   pathExists: (path: string) => boolean,
+  platform: NodeJS.Platform,
+  readDirectories: (path: string) => string[] = readdirSync,
 ): string | undefined {
   const chromeRoot = join(
     env["PUPPETEER_CACHE_DIR"] ?? join(homedir(), ".cache", "puppeteer"),
@@ -50,7 +54,7 @@ function findPuppeteerCacheChrome(
   );
   let versionDirs: string[];
   try {
-    versionDirs = readdirSync(chromeRoot);
+    versionDirs = readDirectories(chromeRoot);
   } catch {
     return undefined;
   }
@@ -59,12 +63,14 @@ function findPuppeteerCacheChrome(
       .split(".")
       .map((part) => Number.parseInt(part, 10) || 0)
       .reduce((order, part) => order * 100000 + part, 0);
-  const relativeCandidates = [
-    "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-    "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-    "chrome-linux64/chrome",
-    "chrome-win64/chrome.exe",
-  ];
+  const relativeCandidates =
+    platform === "win32"
+      ? ["chrome-win64/chrome.exe"]
+      : [
+          "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+          "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+          "chrome-linux64/chrome",
+        ];
   for (const directory of versionDirs.sort((left, right) => buildOrder(right) - buildOrder(left))) {
     for (const relativePath of relativeCandidates) {
       const executable = join(chromeRoot, directory, relativePath);
@@ -74,11 +80,34 @@ function findPuppeteerCacheChrome(
   return undefined;
 }
 
-/** Resolve explicit CLI overrides before system installs and Puppeteer's cache. */
+function browserVersion(
+  executable: string,
+  run: (file: string) => string = (file) => execFileSync(file, ["--version"], { encoding: "utf8" }),
+): string | undefined {
+  try {
+    return run(executable).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function supportedSystemChrome(
+  candidates: string[],
+  versionOf: (path: string) => string | undefined,
+): string | undefined {
+  return candidates.find((candidate) => {
+    const match = versionOf(candidate)?.match(/(?:Chrome|Chromium)[ /](\d+)/i);
+    return match ? Number(match[1]) >= 134 : false;
+  });
+}
+
+/** Resolve explicit overrides, Puppeteer's managed browser, then compatible system installs. */
 export function findSystemChrome(
   env: NodeJS.ProcessEnv = process.env,
   pathExists: (path: string) => boolean = existsSync,
   platform: NodeJS.Platform = process.platform,
+  versionOf: (path: string) => string | undefined = browserVersion,
+  readDirectories: (path: string) => string[] = readdirSync,
 ): string | undefined {
   const override = [
     env["HYPERFRAMES_BROWSER_PATH"],
@@ -89,8 +118,8 @@ export function findSystemChrome(
   ].find((candidate): candidate is string => Boolean(candidate) && pathExists(candidate));
   return (
     override ??
-    systemChromePaths(env, platform).find(pathExists) ??
-    findPuppeteerCacheChrome(env, pathExists)
+    findPuppeteerCacheChrome(env, pathExists, platform, readDirectories) ??
+    supportedSystemChrome(systemChromePaths(env, platform).filter(pathExists), versionOf)
   );
 }
 
@@ -101,19 +130,28 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
     const puppeteer = await import("puppeteer-core");
     const executablePath = findSystemChrome();
     if (!executablePath) return null;
-    browser = await puppeteer.default.launch({
-      headless: true,
-      executablePath,
-      args: [
-        "--no-sandbox",
-        "--disable-dev-shm-usage",
-        "--enable-webgl",
-        "--ignore-gpu-blocklist",
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-        "--enable-unsafe-swiftshader",
-      ],
-    });
+    browserDescription = `${executablePath}, ${browserVersion(executablePath) ?? "unknown version"}`;
+    try {
+      browser = await puppeteer.default.launch({
+        headless: true,
+        executablePath,
+        args: [
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--enable-webgl",
+          "--ignore-gpu-blocklist",
+          "--use-gl=angle",
+          "--use-angle=swiftshader",
+          "--enable-unsafe-swiftshader",
+        ],
+      });
+    } catch (error) {
+      console.warn(
+        `[Studio] Thumbnail browser launch failed (${browserDescription}):`,
+        error instanceof Error ? error.message : error,
+      );
+      throw error;
+    }
     return browser;
   })();
   browserLaunch = launch;
@@ -258,7 +296,7 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
   } catch (error) {
     if (!opts.signal.aborted) {
       console.warn(
-        "[Studio] Thumbnail generation failed:",
+        `[Studio] Thumbnail generation failed (${browserDescription}):`,
         error instanceof Error ? error.message : error,
       );
     }

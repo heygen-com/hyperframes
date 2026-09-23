@@ -32,6 +32,8 @@ export interface TimelineLike {
   time: () => number;
   duration: () => number;
   isActive: () => boolean;
+  labels?: Record<string, number>;
+  getLabels?: () => Record<string, number>;
 }
 
 export interface ClipManifestClip extends RuntimeTimelineClipIdentity {

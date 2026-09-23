@@ -41,6 +41,10 @@ const STORYBOARD_VIEW_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "scripts/test-reachability-baseline.json",
+    "Reachability now requires zero orphans and rejects baseline files.",
+  ],
+  [
     "packages/studio/src/player/hooks/useTimelineRowElements.ts",
     "D-834 removes the duplicate row-source hook; manifest elements are now the single timeline row owner",
   ],
@@ -359,6 +363,694 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/hooks/useProjectSignaturePoll.ts",
     "packages/studio/src/hooks/useStoryboard.ts",
   ].map((path) => [path, STORYBOARD_VIEW_REASON]),
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-basic.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-clear-dark.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-clear-light.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-grass.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-homebrew.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-man-page.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-novel.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-ocean.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-red-sands.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-silver-aerogel.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-apple-terminal-solid-colors.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-dark-plus.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-flight.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-high-contrast-light.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-high-contrast.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-light-2026.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-light-modern.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-light-plus.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-monokai.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-solarized-light.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-visual-studio-dark.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/code-snippet-visual-studio-light.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/liquid-glass-context-menu.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/catalog/blocks/liquid-glass-media-controls.mdx",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-basic.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-clear-dark.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-clear-light.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-grass.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-homebrew.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-man-page.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-novel.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-ocean.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-red-sands.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-silver-aerogel.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-apple-terminal-solid-colors.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-dark-plus.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-flight.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-high-contrast-light.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-high-contrast.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-light-2026.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-light-modern.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-light-plus.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-monokai.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-solarized-light.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-visual-studio-dark.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/code-snippet-visual-studio-light.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/liquid-glass-context-menu.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/blocks/liquid-glass-media-controls.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-dark-plus/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-dark-plus/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-high-contrast-light/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-high-contrast-light/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-high-contrast/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-high-contrast/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-light-2026/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-light-2026/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-light-modern/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-light-modern/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-light-plus/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-light-plus/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-monokai/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-monokai/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-solarized-light/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-solarized-light/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-visual-studio-dark/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-visual-studio-dark/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-visual-studio-light/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "docs/public/catalog/items/code-snippet-visual-studio-light/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-basic/code-snippet-apple-terminal-basic.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-basic/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-clear-dark/code-snippet-apple-terminal-clear-dark.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-clear-dark/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-clear-light/code-snippet-apple-terminal-clear-light.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-clear-light/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-grass/code-snippet-apple-terminal-grass.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-grass/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-homebrew/code-snippet-apple-terminal-homebrew.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-homebrew/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-man-page/code-snippet-apple-terminal-man-page.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-man-page/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-novel/code-snippet-apple-terminal-novel.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-novel/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-ocean/code-snippet-apple-terminal-ocean.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-ocean/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-red-sands/code-snippet-apple-terminal-red-sands.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-red-sands/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-silver-aerogel/code-snippet-apple-terminal-silver-aerogel.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-silver-aerogel/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-solid-colors/code-snippet-apple-terminal-solid-colors.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-apple-terminal-solid-colors/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-dark-plus/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-dark-plus/code-snippet-dark-plus.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-dark-plus/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-flight/code-snippet-flight.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-flight/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-high-contrast-light/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-high-contrast-light/code-snippet-high-contrast-light.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-high-contrast-light/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-high-contrast/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-high-contrast/code-snippet-high-contrast.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-high-contrast/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-2026/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-2026/code-snippet-light-2026.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-2026/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-modern/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-modern/code-snippet-light-modern.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-modern/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-plus/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-plus/code-snippet-light-plus.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-light-plus/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-monokai/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-monokai/code-snippet-monokai.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-monokai/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-solarized-light/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-solarized-light/code-snippet-solarized-light.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-solarized-light/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-visual-studio-dark/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-visual-studio-dark/code-snippet-visual-studio-dark.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-visual-studio-dark/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-visual-studio-light/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-visual-studio-light/code-snippet-visual-studio-light.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/code-snippet-visual-studio-light/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/liquid-glass-context-menu/lib/liquid-glass.iife.js",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/liquid-glass-context-menu/liquid-glass-context-menu.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/liquid-glass-context-menu/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/liquid-glass-media-controls/lib/liquid-glass.iife.js",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/liquid-glass-media-controls/liquid-glass-media-controls.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/blocks/liquid-glass-media-controls/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/airbnb-deck/DESIGN.md",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/airbnb-deck/index.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/airbnb-deck/sfx/advance.mp3",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/airbnb-deck/sfx/back.mp3",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/airbnb-deck/sfx/branch-enter.mp3",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/airbnb-deck/sfx/fragment.mp3",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/motion-blur/index.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/slideshow-demo/index.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/startup-pitch/demo.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/startup-pitch/index.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/DESIGN.md",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/background.jpeg",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-sequence-runtime.js",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-sequence.css",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-theme-registry.js",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/2026-dark.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/2026-light.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/LICENSE",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/dark_modern.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/dark_plus.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/dark_vs.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/hc_black.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/hc_light.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/light_modern.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/light_plus.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/light_vs.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/monokai-color-theme.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/assets/vscode-themes/solarized-light-color-theme.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/index.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/registry-item.json",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/dark-2026.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/dark-modern.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/dark-plus.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/high-contrast-light.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/high-contrast.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/light-2026.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/light-modern.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/light-plus.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/monokai.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/solarized-light.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/visual-studio-dark.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/render-entries/visual-studio-light.html",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/scripts/build-compositions.mjs",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
+  [
+    "registry/examples/vscode-theme-visualizer/scripts/build-theme-registry.mjs",
+    "removed in the 2026-09 low-use catalog cut, see the PR",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

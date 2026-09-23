@@ -2,10 +2,7 @@ import { JSDOM } from "jsdom";
 import { expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-const demoHtml = readFileSync(
-  resolve(__dirname, "../../../../registry/examples/airbnb-deck/demo.html"),
-  "utf8",
-);
+const demoHtml = readFileSync(resolve(__dirname, "./fixtures/deck-audio-demo.html"), "utf8");
 
 it("accepts only current-player sound names while preserving unlock and mute behavior", async () => {
   const clips: Array<{

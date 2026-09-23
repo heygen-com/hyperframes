@@ -40,9 +40,4 @@ skills/talking-head-recut/references/frames/polaroid.html
 # embedded), not hand-authored source; reformatting them is churn + risk. Listed
 # explicitly (not registry/examples/**/*.html) so hand-authored example HTML still
 # gets formatted.
-registry/examples/airbnb-deck/index.html
-registry/examples/airbnb-deck/demo.html
-registry/examples/startup-pitch/index.html
-registry/examples/startup-pitch/demo.html
-registry/examples/slideshow-demo/index.html
 registry/examples/warm-grain/compositions/captions.html

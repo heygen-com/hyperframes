@@ -269,4 +269,23 @@ describe("Studio file-change SSE", () => {
       expect(payload).toContain(encodedVersion("<html>agent</html>"));
     }
   });
+
+  // `/api/events` is one connection per SERVER, not per project: a tab left
+  // open from a `preview` run whose port was later reused by a DIFFERENT
+  // project shares this exact stream. Without `projectId` on the wire, that
+  // stale tab cannot tell "my project changed" from "the other project this
+  // server now serves changed" — see useExternalFileChangeCoordinator's
+  // cross-project filter, which reads this field.
+  it("labels every file-change with this server's project id", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, projectName: "demo-project" });
+    const streams = await subscribe(1);
+
+    writeFileSync(join(projectDir, "index.html"), "<html>agent</html>");
+    mockWatcher.emit("change", "change", "index.html");
+
+    const [payload] = await Promise.all(streams.map(nextEvent));
+    expect(payload).toContain('"projectId":"demo-project"');
+  });
 });

@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  clipWidthLadder,
+  defaultTimelineTheme,
   getClipHandleOpacity,
   getRenderedTimelineElement,
   getTimelineTrackStyle,
 } from "./timelineTheme";
 import { getTrackStyle } from "./timelineIcons";
+
+describe("clipWidthLadder", () => {
+  it("labels from 60px, keeps the picture below that, and uses one frame below 24px", () => {
+    expect(clipWidthLadder(200)).toBe("labeled");
+    expect(clipWidthLadder(60)).toBe("labeled");
+    expect(clipWidthLadder(59)).toBe("picture");
+    expect(clipWidthLadder(24)).toBe("picture");
+    expect(clipWidthLadder(23)).toBe("frame");
+    expect(defaultTimelineTheme.clipRadius).toBe("var(--timeline-clip-radius)");
+    expect(defaultTimelineTheme.audioClipRadius).toBe("var(--timeline-clip-audio-radius)");
+  });
+});
 
 describe("getTimelineTrackStyle", () => {
   it("uses one neutral clip style for every timeline tag", () => {

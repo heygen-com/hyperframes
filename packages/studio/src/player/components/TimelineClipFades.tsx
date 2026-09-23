@@ -192,13 +192,14 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
           viewBox={`0 0 ${Math.max(widthPx, 1)} 100`}
           preserveAspectRatio="none"
         >
-          {/* The shaded wedge is the gain that is NOT there: above the ramp. */}
+          {/* Keep the #4250 wedge geometry, but let the real waveform read through it. */}
           {showIn && (
             <>
               <polygon
                 data-testid="clip-fade-in"
                 points={`0,0 ${inPx},0 0,100`}
                 fill="var(--timeline-fade-shade)"
+                fillOpacity={0.35}
               />
               <line
                 x1={0}
@@ -218,6 +219,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
                 data-testid="clip-fade-out"
                 points={`${widthPx - outPx},0 ${widthPx},0 ${widthPx},100`}
                 fill="var(--timeline-fade-shade)"
+                fillOpacity={0.35}
               />
               <line
                 x1={widthPx - outPx}
@@ -235,51 +237,82 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
       )}
       {canEdit && (
         <>
-          <div
-            role="slider"
-            tabIndex={-1}
-            aria-label="Fade in"
-            aria-valuemin={0}
-            aria-valuemax={Math.max(0, el.duration - fades.fadeOut)}
-            aria-valuenow={fades.fadeIn}
-            aria-valuetext={`${formatFadeSeconds(fades.fadeIn)}s`}
-            data-testid="clip-fade-handle-in"
-            title={`Fade in: ${formatFadeSeconds(fades.fadeIn)}s — drag to change`}
+          <FadeHandle
+            direction="in"
+            value={fades.fadeIn}
+            max={Math.max(0, el.duration - fades.fadeOut)}
             style={handleStyle(inPx)}
+            dragging={dragging === "in"}
             onPointerDown={onHandlePointerDown("in")}
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
             onKeyDown={onHandleKeyDown}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <FadeDot active={dragging === "in"} />
-          </div>
-          <div
-            role="slider"
-            tabIndex={-1}
-            aria-label="Fade out"
-            aria-valuemin={0}
-            aria-valuemax={Math.max(0, el.duration - fades.fadeIn)}
-            aria-valuenow={fades.fadeOut}
-            aria-valuetext={`${formatFadeSeconds(fades.fadeOut)}s`}
-            data-testid="clip-fade-handle-out"
-            title={`Fade out: ${formatFadeSeconds(fades.fadeOut)}s — drag to change`}
+          />
+          <FadeHandle
+            direction="out"
+            value={fades.fadeOut}
+            max={Math.max(0, el.duration - fades.fadeIn)}
             style={handleStyle(widthPx - outPx)}
+            dragging={dragging === "out"}
             onPointerDown={onHandlePointerDown("out")}
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
             onKeyDown={onHandleKeyDown}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <FadeDot active={dragging === "out"} />
-          </div>
+          />
         </>
       )}
     </>
+  );
+}
+
+function FadeHandle({
+  direction,
+  value,
+  max,
+  style,
+  dragging,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onKeyDown,
+}: {
+  direction: "in" | "out";
+  value: number;
+  max: number;
+  style: CSSProperties;
+  dragging: boolean;
+  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
+  onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+}) {
+  const label = direction === "in" ? "Fade in" : "Fade out";
+  return (
+    <div
+      role="slider"
+      tabIndex={-1}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      aria-valuetext={`${formatFadeSeconds(value)}s`}
+      data-testid={`clip-fade-handle-${direction}`}
+      title={`${label}: ${formatFadeSeconds(value)}s — drag to change`}
+      style={style}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onKeyDown={onKeyDown}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <FadeDot active={dragging} />
+    </div>
   );
 }
 

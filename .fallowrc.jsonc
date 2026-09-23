@@ -89,6 +89,9 @@
     // Golden snapshot files: data consumed by toMatchFileSnapshot, not importable modules.
     "packages/**/__goldens__/**",
     "registry/**",
+    // Browser fixture HTML loads generated player bundles that exist only after the package build.
+    "packages/core/src/runtime/fixtures/deck-audio-demo.html",
+    // Browser test intentionally contains repeated inline scenarios for distinct failure paths.
     "examples/**",
     "packages/sdk/examples/**",
     ".github/workflows/fixtures/**",
@@ -467,6 +470,7 @@
       // retry semantics. The Plan v2 AWS adapter extends that existing symmetry;
       // extracting a shared cloud abstraction would couple independent packages.
       "packages/aws-lambda/src/handler.ts",
+      "packages/cli/src/registry/motionBlurShutter.browser.test.ts",
       "packages/aws-lambda/src/s3Transport.ts",
       // The GCP handler deliberately mirrors the AWS protocol lifecycle while
       // retaining provider-specific GCS, HTTP, and Cloud Workflows semantics.

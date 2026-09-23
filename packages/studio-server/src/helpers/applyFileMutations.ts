@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { replaceFileAtomically } from "./atomicFile.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "./backupJournal.js";
 import {
   clearFileWriteReceipt,
@@ -30,7 +31,8 @@ export function applyFileMutations(
   projectDir: string,
   mutations: readonly FileMutationInput[],
   requestToken?: string,
-  writeFile: (path: string, content: string, encoding: "utf-8") => void = writeFileSync,
+  writeFile: (path: string, content: string, encoding: "utf-8") => void = (path, content) =>
+    replaceFileAtomically(path, content, statSync(path).mode),
 ): AppliedFileMutation[] {
   const prepared = mutations.map((mutation) => ({
     ...mutation,

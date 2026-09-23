@@ -31,6 +31,10 @@ export interface TimelineTheme {
   panelResizeSeam: string;
   panelResizeActive: string;
   clipRadius: string;
+  audioClipRadius: string;
+  transitionZone: string;
+  transitionBadge: string;
+  transitionBadgeInk: string;
 }
 
 const TRACK_STYLE: TimelineTrackStyle = {
@@ -66,8 +70,21 @@ export const defaultTimelineTheme: TimelineTheme = {
   handleColor: "var(--timeline-handle)",
   panelResizeSeam: "var(--timeline-resize-seam)",
   panelResizeActive: "var(--timeline-resize-active)",
-  clipRadius: "var(--radius-lg)",
+  clipRadius: "var(--timeline-clip-radius)",
+  audioClipRadius: "var(--timeline-clip-audio-radius)",
+  transitionZone: "var(--timeline-transition-zone)",
+  transitionBadge: "var(--timeline-transition-badge)",
+  transitionBadgeInk: "var(--timeline-transition-badge-ink)",
 };
+
+export type ClipWidthLadder = "labeled" | "picture" | "frame";
+
+/** Label chip from 60px. Under 24px the clip is one cropped frame. */
+export function clipWidthLadder(widthPx: number): ClipWidthLadder {
+  if (widthPx < 24) return "frame";
+  if (widthPx < 60) return "picture";
+  return "labeled";
+}
 
 export function getTimelineTrackStyle(_tag: string): TimelineTrackStyle {
   return TRACK_STYLE;
