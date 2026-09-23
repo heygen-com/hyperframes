@@ -1188,6 +1188,19 @@ export function studioSummaryUrls(
   };
 }
 
+/** Builds the film's preview while the browser starts, so the player's first request is a cache read.
+ * A failed build is not lost: the player's own request builds again and reports it. */
+export function prebuildPreview(
+  fetchApp: (request: Request) => Response | Promise<Response>,
+  serverUrl: string,
+  projectName: string,
+): Promise<unknown> {
+  const previewUrl = `${serverUrl}/api/projects/${encodeURIComponent(projectName)}/preview`;
+  return Promise.resolve()
+    .then(() => fetchApp(new Request(previewUrl)))
+    .catch(() => undefined);
+}
+
 export function foregroundPreviewReadyPayload(
   projectName: string,
   serverUrl: string,
@@ -1619,6 +1632,7 @@ async function runEmbeddedMode(
     });
   }
   openStudioBrowser(url, pName, options);
+  void prebuildPreview(app.fetch, url, pName);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the
