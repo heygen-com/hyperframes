@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Fade Through",
   "description": "A calm transition primitive that fades one layer out, passes through a wash, and reveals the next layer",
-  "tags": ["motion-primitive", "transition", "fade", "scene"],
+  "tags": ["motion-primitive", "transition", "fade", "crossfade", "scene"],
   "files": [
     {
       "path": "fade-through.html",
