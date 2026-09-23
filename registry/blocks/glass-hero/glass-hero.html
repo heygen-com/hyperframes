@@ -24,7 +24,8 @@
       @font-face {
         font-family: "GH Caption";
         font-weight: 500;
-        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2) format("woff2");
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2)
+          format("woff2");
       }
       html,
       body {
@@ -73,7 +74,13 @@
       data-width="1920"
       data-height="1080"
     >
-      <canvas id="gh-canvas" class="clip" data-start="0" data-duration="5" data-track-index="1"></canvas>
+      <canvas
+        id="gh-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="5"
+        data-track-index="1"
+      ></canvas>
       <div id="gh-subline"></div>
     </div>
 
@@ -88,7 +95,11 @@
         } catch (error) {
           /* malformed declaration: the scene module falls back to its own defaults */
         }
-        var scoped = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        var scoped =
+          (window.__hyperframes &&
+            window.__hyperframes.getVariables &&
+            window.__hyperframes.getVariables()) ||
+          {};
         var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
         var root = document.getElementById("gh-root");
         var duration = Math.max(0.001, parseFloat(root.dataset.duration) || 5);
@@ -244,7 +255,11 @@
         // Rise and settle over the first 1.6 s, then keep turning; the turn never stops,
         // so a held frame still shows the type moving through the glass.
         const rise = easeOut(t / 1.8);
-        glass.position.set(Math.sin(t * 0.55) * 0.35, -3.2 * (1 - rise) + Math.sin(t * 0.9) * 0.06, 1.2);
+        glass.position.set(
+          Math.sin(t * 0.55) * 0.35,
+          -3.2 * (1 - rise) + Math.sin(t * 0.9) * 0.06,
+          1.2,
+        );
         glass.scale.setScalar(0.62 + 0.14 * rise);
         glass.rotation.set(
           lens ? Math.sin(t * 0.7) * 0.35 : 0.5 + t * 0.22,

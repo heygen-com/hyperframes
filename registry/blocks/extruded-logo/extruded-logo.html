@@ -23,7 +23,8 @@
       @font-face {
         font-family: "EL Inter";
         font-weight: 500;
-        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2) format("woff2");
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2)
+          format("woff2");
       }
       html,
       body {
@@ -74,7 +75,13 @@
       data-width="1920"
       data-height="1080"
     >
-      <canvas id="el-canvas" class="clip" data-start="0" data-duration="5" data-track-index="1"></canvas>
+      <canvas
+        id="el-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="5"
+        data-track-index="1"
+      ></canvas>
       <div id="el-tagline"></div>
     </div>
 
@@ -89,11 +96,16 @@
         } catch (error) {
           /* malformed declaration: the scene module falls back to its own defaults */
         }
-        var scoped = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        var scoped =
+          (window.__hyperframes &&
+            window.__hyperframes.getVariables &&
+            window.__hyperframes.getVariables()) ||
+          {};
         var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
         var root = document.getElementById("el-root");
         var duration = Math.max(0.001, parseFloat(root.dataset.duration) || 5);
-        if (/^#[0-9a-f]{6}$/i.test(String(vars.background))) root.style.setProperty("--el-bg", vars.background);
+        if (/^#[0-9a-f]{6}$/i.test(String(vars.background)))
+          root.style.setProperty("--el-bg", vars.background);
         var tagline = document.getElementById("el-tagline");
         tagline.textContent = vars.tagline || "";
 
@@ -151,7 +163,10 @@
       const studio = new THREE.Scene();
       studio.background = new THREE.Color(0x040406);
       const softbox = (w, h, x, y, z, color, power) => {
-        const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(power), side: THREE.DoubleSide });
+        const mat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(color).multiplyScalar(power),
+          side: THREE.DoubleSide,
+        });
         const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
         panel.position.set(x, y, z);
         panel.lookAt(0, 0, 0);
@@ -172,10 +187,19 @@
       bg.fillStyle = fade;
       bg.fillRect(0, 0, 1024, 256);
       bg.fillStyle = "#ffffff";
-      for (const [x, w] of [[150, 60], [430, 140], [760, 36]]) bg.fillRect(x, 0, w, 256);
+      for (const [x, w] of [
+        [150, 60],
+        [430, 140],
+        [760, 36],
+      ])
+        bg.fillRect(x, 0, w, 256);
       const mirror = new THREE.Mesh(
         new THREE.PlaneGeometry(22, 8),
-        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(bars), color: new THREE.Color(2.2, 2.2, 2.2), side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({
+          map: new THREE.CanvasTexture(bars),
+          color: new THREE.Color(2.2, 2.2, 2.2),
+          side: THREE.DoubleSide,
+        }),
       );
       mirror.position.set(0, 1, 9);
       mirror.lookAt(0, 1, 0);
@@ -205,7 +229,10 @@
       const font = await new FontLoader().loadAsync(
         "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/fonts/helvetiker_bold.typeface.json",
       );
-      const text = String(V.text || "NOVA").toUpperCase().slice(0, 8).split("");
+      const text = String(V.text || "NOVA")
+        .toUpperCase()
+        .slice(0, 8)
+        .split("");
       const SIZE = 1.5;
       const scale = SIZE / font.data.resolution;
       const tracking = 0.08;
@@ -256,7 +283,11 @@
       sg.fillRect(0, 0, 512, 512);
       const shadow = new THREE.Mesh(
         new THREE.PlaneGeometry(Math.min(width, 7.4) * 1.25, 1.4),
-        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shadowCanvas), transparent: true, depthWrite: false }),
+        new THREE.MeshBasicMaterial({
+          map: new THREE.CanvasTexture(shadowCanvas),
+          transparent: true,
+          depthWrite: false,
+        }),
       );
       shadow.rotation.x = -Math.PI / 2;
       shadow.position.y = -0.02;

@@ -26,7 +26,8 @@
       @font-face {
         font-family: "PT Caption";
         font-weight: 500;
-        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2) format("woff2");
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2)
+          format("woff2");
       }
       html,
       body {
@@ -74,7 +75,13 @@
       data-width="1920"
       data-height="1080"
     >
-      <canvas id="pt-canvas" class="clip" data-start="0" data-duration="6" data-track-index="1"></canvas>
+      <canvas
+        id="pt-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+      ></canvas>
       <div id="pt-caption"></div>
     </div>
 
@@ -89,7 +96,11 @@
         } catch (error) {
           /* malformed declaration: the scene module falls back to its own defaults */
         }
-        var scoped = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        var scoped =
+          (window.__hyperframes &&
+            window.__hyperframes.getVariables &&
+            window.__hyperframes.getVariables()) ||
+          {};
         var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
         var root = document.getElementById("pt-root");
         var duration = Math.max(0.001, parseFloat(root.dataset.duration) || 6);
@@ -249,12 +260,26 @@
 
       async function builtInCan() {
         const can = new THREE.Group();
-        const metal = new THREE.MeshStandardMaterial({ color: 0xd4d7dc, metalness: 1, roughness: 0.24 });
+        const metal = new THREE.MeshStandardMaterial({
+          color: 0xd4d7dc,
+          metalness: 1,
+          roughness: 0.24,
+        });
         // Lathe profile (radius, height): domed base, straight wall, necked shoulder, rolled lip.
         const profile = [
-          [0.0, 0.1], [0.46, 0.06], [0.6, 0.0], [0.66, 0.06], [0.67, 0.16],
-          [0.67, 2.02], [0.63, 2.14], [0.56, 2.24], [0.555, 2.29], [0.575, 2.31],
-          [0.56, 2.33], [0.5, 2.3], [0.0, 2.27],
+          [0.0, 0.1],
+          [0.46, 0.06],
+          [0.6, 0.0],
+          [0.66, 0.06],
+          [0.67, 0.16],
+          [0.67, 2.02],
+          [0.63, 2.14],
+          [0.56, 2.24],
+          [0.555, 2.29],
+          [0.575, 2.31],
+          [0.56, 2.33],
+          [0.5, 2.3],
+          [0.0, 2.27],
         ].map(([x, y]) => new THREE.Vector2(x, y));
         can.add(new THREE.Mesh(new THREE.LatheGeometry(profile, 128), metal));
         const labelMat = new THREE.MeshPhysicalMaterial({
@@ -264,7 +289,10 @@
           clearcoat: 1,
           clearcoatRoughness: 0.12,
         });
-        const label = new THREE.Mesh(new THREE.CylinderGeometry(0.674, 0.674, 1.8, 128, 1, true), labelMat);
+        const label = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.674, 0.674, 1.8, 128, 1, true),
+          labelMat,
+        );
         label.position.y = 1.1;
         can.add(label);
         // Pull tab: a thin rounded plate on the lid.

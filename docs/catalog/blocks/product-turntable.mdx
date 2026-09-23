@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Product Turntable"
   description="A product turns a full revolution on a studio plinth in a seamless loop. Drop in a GLB or glTF model, or keep the built-in drink can with your own label."
   variables={[{"id":"model_url","type":"string","role":"content","label":"Model URL (.glb or .gltf)","description":"Leave empty for the built-in drink can.","default":""},{"id":"product_name","type":"string","role":"content","label":"Label wordmark","default":"YUZU","maxLength":10},{"id":"flavor","type":"string","role":"content","label":"Label line","default":"Sparkling Citrus","maxLength":28},{"id":"caption","type":"string","role":"content","label":"Caption","default":"Sparkling Citrus · 355 ml","maxLength":40},{"id":"label_color","type":"color","role":"style","label":"Label color","default":"#f2c230"},{"id":"ink_color","type":"color","role":"style","label":"Label ink","default":"#1d2a24"},{"id":"background","type":"color","role":"style","label":"Backdrop","default":"#e8e4dc"},{"id":"turns","type":"number","role":"motion","label":"Turns per clip","default":1,"min":1,"max":4,"step":1}]}
-  meta={{"duration":6,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":309}}
+  meta={{"duration":6,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":337}}
   attribution={{"path":"registry/blocks/product-turntable","tags":["3d-object","three-js","webgl","product","turntable","glb","loop"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/product-turntable/product-turntable.html"
@@ -51,7 +51,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       @font-face {
         font-family: "PT Caption";
         font-weight: 500;
-        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2) format("woff2");
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2)
+          format("woff2");
       }
       html,
       body {
@@ -99,7 +100,13 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       data-width="1920"
       data-height="1080"
     >
-      <canvas id="pt-canvas" class="clip" data-start="0" data-duration="6" data-track-index="1"></canvas>
+      <canvas
+        id="pt-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+      ></canvas>
       <div id="pt-caption"></div>
     </div>
 
@@ -114,7 +121,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         } catch (error) {
           /* malformed declaration: the scene module falls back to its own defaults */
         }
-        var scoped = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        var scoped =
+          (window.__hyperframes &&
+            window.__hyperframes.getVariables &&
+            window.__hyperframes.getVariables()) ||
+          {};
         var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
         var root = document.getElementById("pt-root");
         var duration = Math.max(0.001, parseFloat(root.dataset.duration) || 6);
@@ -274,12 +285,26 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
       async function builtInCan() {
         const can = new THREE.Group();
-        const metal = new THREE.MeshStandardMaterial({ color: 0xd4d7dc, metalness: 1, roughness: 0.24 });
+        const metal = new THREE.MeshStandardMaterial({
+          color: 0xd4d7dc,
+          metalness: 1,
+          roughness: 0.24,
+        });
         // Lathe profile (radius, height): domed base, straight wall, necked shoulder, rolled lip.
         const profile = [
-          [0.0, 0.1], [0.46, 0.06], [0.6, 0.0], [0.66, 0.06], [0.67, 0.16],
-          [0.67, 2.02], [0.63, 2.14], [0.56, 2.24], [0.555, 2.29], [0.575, 2.31],
-          [0.56, 2.33], [0.5, 2.3], [0.0, 2.27],
+          [0.0, 0.1],
+          [0.46, 0.06],
+          [0.6, 0.0],
+          [0.66, 0.06],
+          [0.67, 0.16],
+          [0.67, 2.02],
+          [0.63, 2.14],
+          [0.56, 2.24],
+          [0.555, 2.29],
+          [0.575, 2.31],
+          [0.56, 2.33],
+          [0.5, 2.3],
+          [0.0, 2.27],
         ].map(([x, y]) => new THREE.Vector2(x, y));
         can.add(new THREE.Mesh(new THREE.LatheGeometry(profile, 128), metal));
         const labelMat = new THREE.MeshPhysicalMaterial({
@@ -289,7 +314,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           clearcoat: 1,
           clearcoatRoughness: 0.12,
         });
-        const label = new THREE.Mesh(new THREE.CylinderGeometry(0.674, 0.674, 1.8, 128, 1, true), labelMat);
+        const label = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.674, 0.674, 1.8, 128, 1, true),
+          labelMat,
+        );
         label.position.y = 1.1;
         can.add(label);
         // Pull tab: a thin rounded plate on the lid.

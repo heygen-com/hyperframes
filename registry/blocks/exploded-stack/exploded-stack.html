@@ -25,12 +25,14 @@
       @font-face {
         font-family: "ES Inter";
         font-weight: 500;
-        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2) format("woff2");
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.woff2)
+          format("woff2");
       }
       @font-face {
         font-family: "ES Inter";
         font-weight: 700;
-        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-700-normal.woff2) format("woff2");
+        src: url(https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-700-normal.woff2)
+          format("woff2");
       }
       html,
       body {
@@ -103,7 +105,13 @@
       data-width="1920"
       data-height="1080"
     >
-      <canvas id="es-canvas" class="clip" data-start="0" data-duration="6" data-track-index="1"></canvas>
+      <canvas
+        id="es-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+      ></canvas>
       <svg id="es-leaders" viewBox="0 0 1920 1080" aria-hidden="true"></svg>
       <div id="es-title"></div>
       <div id="es-labels"></div>
@@ -120,7 +128,11 @@
         } catch (error) {
           /* malformed declaration: the scene module falls back to its own defaults */
         }
-        var scoped = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        var scoped =
+          (window.__hyperframes &&
+            window.__hyperframes.getVariables &&
+            window.__hyperframes.getVariables()) ||
+          {};
         var vars = Object.assign({}, defaults, window.__hfVariables || {}, scoped);
         var hex = function (v, fallback) {
           return /^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : fallback;
@@ -151,7 +163,14 @@
         });
 
         var clock = { t: 0 };
-        var scene = { vars: vars, names: names, duration: duration, clock: clock, hex: hex, render: null };
+        var scene = {
+          vars: vars,
+          names: names,
+          duration: duration,
+          clock: clock,
+          hex: hex,
+          render: null,
+        };
         window.__explodedStack = scene;
         window.__hf = window.__hf || {};
         window.__hf.buildReady = window.__hf.buildReady || {};
@@ -196,7 +215,14 @@
       const scene = new THREE.Scene();
       // True isometric: orthographic, 45 degrees around Y, arctan(1/sqrt 2) down.
       const view = 5.9;
-      const camera = new THREE.OrthographicCamera((-view * 16) / 9, (view * 16) / 9, view, -view, 0.1, 100);
+      const camera = new THREE.OrthographicCamera(
+        (-view * 16) / 9,
+        (view * 16) / 9,
+        view,
+        -view,
+        0.1,
+        100,
+      );
       camera.position.set(10, 10.7, 10);
       camera.lookAt(0, 0.7, 0);
       // Slide along the camera's right axis so the stack sits left and labels get the right.
@@ -259,7 +285,11 @@
       sg.fillRect(0, 0, 256, 256);
       const shadow = new THREE.Mesh(
         new THREE.PlaneGeometry(7, 7),
-        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shadowCanvas), transparent: true, depthWrite: false }),
+        new THREE.MeshBasicMaterial({
+          map: new THREE.CanvasTexture(shadowCanvas),
+          transparent: true,
+          depthWrite: false,
+        }),
       );
       shadow.rotation.x = -Math.PI / 2;
       shadow.position.y = -2.4;
@@ -316,7 +346,8 @@
           const lx = ax + 90;
           labelEls[i].style.opacity = shown.toFixed(3);
           // Whole pixels: a fractional offset rasterises text differently by frame order.
-          labelEls[i].style.transform = `translate(${Math.round(lx + 24 + (1 - shown) * 16)}px, ${Math.round(ay - 22)}px)`;
+          labelEls[i].style.transform =
+            `translate(${Math.round(lx + 24 + (1 - shown) * 16)}px, ${Math.round(ay - 22)}px)`;
           lines[i].setAttribute("x1", ax.toFixed(1));
           lines[i].setAttribute("y1", ay.toFixed(1));
           lines[i].setAttribute("x2", (ax + 90 * shown).toFixed(1));
