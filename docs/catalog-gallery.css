@@ -52,13 +52,14 @@
 
 #navigation-items li[data-group-tag] { --catalog-desc:""; }
 #navigation-items li[data-group-tag]::after { content:var(--catalog-desc); display:block; padding:0 12px 8px 40px; font-size:11px; line-height:1.5; color:var(--hf-text-secondary); }
-#navigation-items li[data-title="3D motion"][data-group-tag] { --catalog-desc:"Three.js scenes: orbiting cards, particle fields, and depth-lit product shots."; }
+#navigation-items li[data-title="3D"][data-group-tag] { --catalog-desc:"Three.js scenes and objects: camera moves, product turntables, glass, exploded layers."; }
 #navigation-items li[data-title="Carousels"][data-group-tag] { --catalog-desc:"Image cards that circle, orbit, or sweep a path across the frame."; }
 #navigation-items li[data-title="Text & captions"][data-group-tag] { --catalog-desc:"Word-by-word caption reveals, highlights, and kinetic type."; }
 #navigation-items li[data-title="Code"][data-group-tag] { --catalog-desc:"Code snippets that type, diff, highlight, and morph on screen."; }
 #navigation-items li[data-title="Transitions"][data-group-tag] { --catalog-desc:"Cuts between shots: zooms, warps, glitches, light leaks."; }
 #navigation-items li[data-title="Data & charts"][data-group-tag] { --catalog-desc:"Bar, line, and progress charts that animate their own data in."; }
 #navigation-items li[data-title="Scenes & demos"][data-group-tag] { --catalog-desc:"Full scenes: app showcases, chat exchanges, product demos."; }
+#navigation-items li[data-title="Cursors"][data-group-tag] { --catalog-desc:"Pointers that glide, click, drag, select, and steer the eye across a UI."; }
 #navigation-items li[data-title="Motion & effects"][data-group-tag] { --catalog-desc:"General-purpose motion: hovers, pops, blurs, grids, paths."; }
 #navigation-items li[data-title="Surfaces"][data-group-tag] { --catalog-desc:"Background textures and screen treatments: grain, halftone, glass."; }
 #navigation-items li[data-title="Blocks"][data-group-tag] { --catalog-desc:"Flowcharts, sketched frames, speech bubbles, and outro cards."; }
