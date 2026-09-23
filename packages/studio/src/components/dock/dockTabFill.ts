@@ -19,12 +19,12 @@ function fillOf(list: HTMLElement): HTMLElement {
 type StripShape = { width: number; tab: HTMLElement | null; left: number; size: number };
 
 /**
- * True when the strip narrowed, came back from hidden, or its shown tab moved or resized. dockview
+ * True when the strip narrowed or its shown tab moved or resized since it was last visible. dockview
  * reveals a tab only when it is activated, and the user's own scrolling changes none of these.
  */
 function reshaped(before: StripShape | undefined, now: StripShape) {
   if (!before || now.width === 0) return false;
-  if (now.width < before.width || before.width === 0) return true;
+  if (now.width < before.width) return true;
   return now.tab !== before.tab || now.left !== before.left || now.size !== before.size;
 }
 
@@ -46,7 +46,8 @@ function measureFill(list: HTMLElement, shapes: WeakMap<HTMLElement, StripShape>
     size: tab?.offsetWidth ?? 0,
   };
   const reveal = tab !== null && reshaped(shapes.get(list), shape);
-  shapes.set(list, shape);
+  // A hidden strip (another group maximised) keeps its scroll, so it is compared with its last visible shape.
+  if (shape.width > 0) shapes.set(list, shape);
   const scrollLeft = list.scrollLeft;
   const target = reveal ? revealedScroll(shape, scrollLeft) : scrollLeft;
   return () => {

@@ -199,16 +199,43 @@ describe("dock tab fill", () => {
     expect(strip.scrollLeft).toBe(0);
   });
 
-  it("reveals the shown tab again when its strip comes back from hidden", async () => {
+  it("keeps a hand scroll through another group being maximised and restored", async () => {
     const strip = stripOf("design");
     if (!strip) throw new Error("no design strip");
     await activate("variables");
     Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
     act(() => resizeAll());
-    // Another group is maximised, hiding this strip; the browser drops a hidden strip's scroll.
+    strip.scrollLeft = 0;
+    // Hidden while another group is maximised; the browser keeps a hidden strip's scroll.
     Object.defineProperty(strip, "clientWidth", { value: 0, configurable: true });
     act(() => resizeAll());
+    Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
+    act(() => resizeAll());
+    expect(strip.scrollLeft).toBe(0);
+  });
+
+  it("leaves a hand scroll alone when its strip widens", async () => {
+    const strip = stripOf("design");
+    if (!strip) throw new Error("no design strip");
+    await activate("variables");
+    Object.defineProperty(strip, "clientWidth", { value: 150, configurable: true });
+    act(() => resizeAll());
     strip.scrollLeft = 0;
+    // Wider, but the shown tab is still out of view where the user left the strip.
+    Object.defineProperty(strip, "clientWidth", { value: 200, configurable: true });
+    act(() => resizeAll());
+    expect(strip.scrollLeft).toBe(0);
+  });
+
+  it("reveals the shown tab when its strip comes back narrower than it left", async () => {
+    const strip = stripOf("design");
+    if (!strip) throw new Error("no design strip");
+    await activate("variables");
+    strip.scrollLeft = 0;
+    Object.defineProperty(strip, "clientWidth", { value: 1000, configurable: true });
+    act(() => resizeAll());
+    Object.defineProperty(strip, "clientWidth", { value: 0, configurable: true });
+    act(() => resizeAll());
     Object.defineProperty(strip, "clientWidth", { value: 250, configurable: true });
     act(() => resizeAll());
     expect(strip.scrollLeft).toBe(3 * TAB_STEP + TAB_WIDTH + 1 - 250);
