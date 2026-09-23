@@ -412,6 +412,37 @@ describe("built preview reuse", () => {
     expect(bundle).toHaveBeenCalledTimes(2);
   });
 
+  it("shares one build between requests that arrive while it runs", async () => {
+    const projectDir = createProjectDir();
+    let finish: (html: string) => void = () => {};
+    const bundle = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)));
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const early = app.request("http://localhost/projects/demo/preview");
+    const player = app.request("http://localhost/projects/demo/preview");
+    await vi.waitFor(() => expect(bundle).toHaveBeenCalled());
+    finish(BUILT);
+    const [a, b] = await Promise.all([early, player]);
+    expect(await b.text()).toBe(await a.text());
+    expect(bundle).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not keep the disk fallback served after a failed build", async () => {
+    const projectDir = createProjectDir();
+    const bundle = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error("bundle failed"))
+      .mockResolvedValue(BUILT);
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    await app.request("http://localhost/projects/demo/preview");
+    const retry = await app.request("http://localhost/projects/demo/preview");
+    expect(await retry.text()).toContain("Preview");
+    expect(bundle).toHaveBeenCalledTimes(2);
+  });
+
   it("serves a restarted server from the document store unless the build changed", async () => {
     const projectDir = createProjectDir();
     const storeDir = join(projectDir, ".hyperframes", "preview");
