@@ -99,6 +99,31 @@ describe("createProjectWatcher", () => {
     expect(() => projectWatcher?.close()).not.toThrow();
   });
 
+  it("coalesces writes that keep arriving right after a flush", () => {
+    vi.useFakeTimers();
+    const projectWatcher = createProjectWatcher("/fake/project/dir");
+    const listener = vi.fn();
+    projectWatcher.addListener(listener);
+
+    mockWatcher.emit("change", "change", "a.html");
+    vi.advanceTimersByTime(30);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    mockWatcher.emit("change", "change", "b.html");
+    vi.advanceTimersByTime(100);
+    mockWatcher.emit("change", "change", "c.html");
+    vi.advanceTimersByTime(299);
+    expect(listener).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(listener.mock.calls.slice(1)).toEqual([["b.html"], ["c.html"]]);
+
+    vi.advanceTimersByTime(300);
+    mockWatcher.emit("change", "change", "d.html");
+    vi.advanceTimersByTime(30);
+    expect(listener).toHaveBeenLastCalledWith("d.html");
+    projectWatcher.close();
+  });
+
   // Regression: fs.watch can fail asynchronously (e.g. EMFILE from exhausted
   // OS watch handles) via an 'error' event, not a thrown exception. An
   // EventEmitter 'error' with no listener crashes the whole process — this
