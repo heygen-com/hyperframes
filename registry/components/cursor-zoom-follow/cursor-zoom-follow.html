@@ -340,7 +340,22 @@
           var H = root.clientHeight || 1080;
           var ZOOM = num(vars.zoom, 1.8, 1, 3);
           var accent = color(vars.accent, "rgb(79,91,255)");
-          var image = typeof vars.image === "string" ? vars.image.trim() : "";
+          // Mirrors @hyperframes/parsers' isSafeMediaUrl allowlist: this
+          // composition has no build step to import it from, so the same
+          // scheme rule (relative or http/https/blob/data:image only) is
+          // inlined rather than trusting the raw variable into img.src.
+          function safeImageUrl(value) {
+            var s = typeof value === "string" ? value.trim() : "";
+            if (s === "") return "";
+            var stripped = s.replace(/[\u0000-\u0020]/g, "");
+            var scheme = /^([a-z][a-z0-9+.-]*):/i.exec(stripped);
+            if (!scheme) return s;
+            var proto = scheme[1].toLowerCase();
+            if (proto === "https" || proto === "http" || proto === "blob") return s;
+            if (proto === "data") return /^data:image\//i.test(s) ? s : "";
+            return "";
+          }
+          var image = safeImageUrl(vars.image);
           var builtIn = image === "";
           if (!builtIn) {
             var img = document.getElementById("zf-img");
