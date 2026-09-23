@@ -1,10 +1,11 @@
 # Build Spec — square 1080 changelog master
 
-Single-doc `index.html`: scenes are absolutely-positioned `.slide` clips on
-track 1; the master timeline `tl` (MUST be named `tl` — seam-stamp emits
-`tl.*`) is paused, padded to total duration, registered as
-`window.__timelines["main"]`. See `examples/master-skeleton.html` for the
-verbatim scaffold.
+`index.html` hosts each scene on track 1 as a `.swrap` host (`#w-*`,
+`data-composition-src="compositions/<id>.html"`); each scene file carries its
+body and its own beats timeline. The master timeline `tl` (MUST be named `tl` —
+seam-stamp emits `tl.*`) is paused, padded to total duration, registered as
+`window.__timelines["main"]`. See `examples/master-skeleton.html` and
+`examples/scene-skeleton.html` for the verbatim scaffolds.
 
 ## Brand tokens (HeyGen for Developers)
 
@@ -81,9 +82,9 @@ otherwise) and must stay flat 2D (no 3D ancestors).
 ## Seams + internal life (doctrine mechanics)
 
 - `ledger.json`: every ordinary seam `cut-the-curve LEFT` (x, dir −1), exit
-  and entry selectors = the inner `.swrap` wrappers (`#w-*`), NEVER the `#s-*`
-  clip element — `gsap_animates_clip_element` is an error-severity lint rule and
-  every stamped seam writes `autoAlpha`. Outro entry `travel: 8`.
+  and entry selectors = the `.swrap` scene hosts (`#w-*`), which carry no
+  `class="clip"` — `gsap_animates_clip_element` is an error-severity lint rule
+  and every stamped seam writes `autoAlpha`. Outro entry `travel: 8`.
 - `seam-stamp.mjs --ledger ledger.json --write index.html` owns ALL wrapper
   entries/exits — author none yourself. Title (film open) authors its own
   entry only, and that entry MUST pass `immediateRender: false`: the stamped
@@ -91,10 +92,10 @@ otherwise) and must stay flat 2D (no 3D ancestors).
   so an entry without the flag captures 0 as its start and tweens 0 → 0. The
   symptom is `exit-visible … op 0.00` with `exit-vector` PASSING — moving but
   invisible. Neither a CSS opacity base nor a longer clip window fixes it.
-- Slides: the `.swrap` carries the CSS `opacity: 0` base, not the `.slide` clip
-  element; `data-start` = exactly the cut time.
+- Hosts: the `.swrap` carries the CSS `opacity: 0` base; `data-start` = exactly
+  the cut time.
 - Each scene's shell (chip, headline, mock chrome, initial state) is
-  COMPOSED at local t=0 — the wrapper flies it in. Internal reveals start
+  COMPOSED at local t=0 — the host flies it in. Internal reveals start
   ≥0.4s after the cut and end ≥0.45s before the next cut (stamped exits
   begin at cut −0.34s).
 - Every internal beat lands on a VO word from `vo-words.json`. Name each

@@ -1,0 +1,22 @@
+<!-- scene-skeleton — one changelog scene. Copy to compositions/<id>.html (title, t1..tN,
+     outro), set <ID> to the host's data-composition-id. The master's CSS classes
+     (.sec-chip, .sec-head, .glass) and fonts apply here. -->
+<template>
+  <div id="root" data-composition-id="<ID>" data-width="1080" data-height="1080">
+    <div class="sec-chip">01 · <THEME></div>
+    <div class="sec-head"><HEADLINE></div>
+    <!-- the mock, from references/visualization-registry.md, y ∈ [288, 944].
+         Prefix ids with the scene id (#t1-bar) so no two scenes share one.
+         Put data-layout-allow-overlap only on the text blocks that deliberately layer. -->
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      // Internal beats, in scene time (0 = this scene's cut): init states with
+      // gsap.set(...), motion with sequential tl.to(...) only. Shell composed at 0;
+      // beats ≥0.4s after 0, done ≥0.45s before the scene ends. Every beat lands on
+      // a vo-words.json timestamp minus the cut. One green (#5ef17c) moment.
+      window.__timelines["<ID>"] = tl;
+    })();
+  </script>
+</template>
