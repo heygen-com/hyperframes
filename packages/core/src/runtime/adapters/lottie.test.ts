@@ -141,13 +141,20 @@ describe("lottie adapter", () => {
       adapter.seek({ time: 5 });
       adapter.seek({ time: 8 });
       expect(cycle.goToAndStop.mock.calls).toEqual([
-        [1000, false],
-        [0, false],
+        [30, true],
+        [0, true],
       ]);
       expect(once.goToAndStop.mock.calls).toEqual([
         [119, true],
         [119, true],
       ]);
+    });
+
+    it("wraps a loop whose length is not a whole number of seconds without holding at the seam", () => {
+      const cycle = { ...createLottieWebAnim({ totalFrames: 901, frameRate: 30 }), loop: true };
+      lottieWindow.__hfLottie = [cycle];
+      createLottieAdapter().seek({ time: (9 * 901) / 30 });
+      expect(cycle.goToAndStop).toHaveBeenCalledWith(0, true);
     });
 
     it("holds a one-shot lottie-web animation on its last frame past its end", () => {
