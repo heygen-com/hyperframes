@@ -47,6 +47,27 @@ describe("createProjectWatcher on a real directory", () => {
     }
   });
 
+  it("reports Studio's manifest writes inside .hyperframes", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-watch-"));
+    mkdirSync(join(dir, ".hyperframes"));
+    const seen = await watchProject();
+
+    writeFileSync(join(dir, ".hyperframes", "studio-motion.json"), "{}");
+    await expectReported(seen, join(".hyperframes", "studio-motion.json"));
+  });
+
+  it("keeps watching a sibling whose name starts with a removed directory's", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-watch-"));
+    mkdirSync(join(dir, "scene"));
+    mkdirSync(join(dir, "scenes"));
+    const seen = await watchProject();
+
+    rmSync(join(dir, "scene"), { recursive: true });
+    await expectReported(seen, "scene");
+    writeFileSync(join(dir, "scenes", "a.html"), "v1");
+    await expectReported(seen, join("scenes", "a.html"));
+  });
+
   it("reports files in a directory created after it started", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-watch-"));
     const seen = await watchProject();
