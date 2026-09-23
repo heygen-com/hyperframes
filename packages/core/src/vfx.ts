@@ -9,6 +9,7 @@
  */
 
 import { FRACTAL_NOISE_FRAG } from "./vfx/fractalNoise.frag";
+import { DISPLACEMENT_MAP_FRAG } from "./vfx/displacementMap.frag";
 import { WAVE_WARP_FRAG } from "./vfx/waveWarp.frag";
 
 export const HF_VFX_ATTR = "data-vfx-chain";
@@ -84,6 +85,26 @@ export interface HfVfxDef {
   /** AE match name this def ports, for docs — e.g. "ADBE Fractal Noise". */
   ae?: string;
 }
+
+/**
+ * After Effects' channel selector, shared by both Displacement Map axes.
+ * Hue (6), Lightness (7) and Saturation (8) stay selectable and are read as
+ * Luminance by the kernel — folding them back to the param's default would
+ * mean Red on the horizontal axis, a much larger error.
+ */
+const DISPLACEMENT_CHANNELS = [
+  { value: 1, label: "Red" },
+  { value: 2, label: "Green" },
+  { value: 3, label: "Blue" },
+  { value: 4, label: "Alpha" },
+  { value: 5, label: "Luminance" },
+  { value: 6, label: "Hue" },
+  { value: 7, label: "Lightness" },
+  { value: 8, label: "Saturation" },
+  { value: 9, label: "Full" },
+  { value: 10, label: "Half" },
+  { value: 11, label: "Off" },
+] as const;
 
 /**
  * The def registry. Params come from the AE deep dives and retro-wave's
@@ -292,6 +313,75 @@ export const HF_VFX: readonly HfVfxDef[] = [
         step: 1,
         default: 0,
         animatable: true,
+      },
+    ],
+  },
+  {
+    id: "displacement-map",
+    label: "Displacement Map",
+    ae: "ADBE Displacement Map",
+    capture: "self",
+    frag: DISPLACEMENT_MAP_FRAG,
+    params: [
+      {
+        kind: "enum",
+        key: "useH",
+        label: "Use For Horizontal Displacement",
+        options: DISPLACEMENT_CHANNELS,
+        default: 1,
+        hint: "Hue, Lightness and Saturation are read as Luminance in v1.",
+      },
+      {
+        kind: "number",
+        key: "maxH",
+        label: "Max Horizontal Displacement",
+        unit: "px",
+        min: -32000,
+        max: 32000,
+        step: 1,
+        default: 5,
+        animatable: true,
+      },
+      {
+        kind: "enum",
+        key: "useV",
+        label: "Use For Vertical Displacement",
+        options: DISPLACEMENT_CHANNELS,
+        default: 2,
+        hint: "Hue, Lightness and Saturation are read as Luminance in v1.",
+      },
+      {
+        kind: "number",
+        key: "maxV",
+        label: "Max Vertical Displacement",
+        unit: "px",
+        min: -32000,
+        max: 32000,
+        step: 1,
+        default: 5,
+        animatable: true,
+      },
+      {
+        kind: "enum",
+        key: "behavior",
+        label: "Displacement Map Behavior",
+        options: [{ value: 1, label: "Center Map" }],
+        default: 1,
+        hint: "Only Center Map is implemented in v1.",
+      },
+      {
+        kind: "enum",
+        key: "edge",
+        label: "Edge Behavior",
+        options: [{ value: 0, label: "Off" }],
+        default: 0,
+        hint: "Only Off (transparent outside the layer) is implemented in v1.",
+      },
+      {
+        kind: "bool",
+        key: "expand",
+        label: "Expand Output",
+        default: true,
       },
     ],
   },

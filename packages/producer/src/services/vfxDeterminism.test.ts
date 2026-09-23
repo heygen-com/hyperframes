@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
+import { displacementMapSampleRef } from "../../../core/src/vfx/refs/displacementMap";
 import { waveWarpSampleRef } from "../../../core/src/vfx/refs/waveWarp";
 
 /**
@@ -31,16 +32,18 @@ interface CompositeWindow extends Window {
   __renderReady?: boolean;
 }
 
+function chainOf(type: string, params: Record<string, number | boolean>): string {
+  return JSON.stringify({ version: 1, nodes: [{ type, id: "n1", params }] });
+}
+
 function waveWarpChain(params: Record<string, number>): string {
-  return JSON.stringify({
-    version: 1,
-    nodes: [
-      {
-        type: "wave-warp",
-        id: "n1",
-        params: { waveType: 1, direction: 0, speed: 0, pinning: 1, phase: 0, ...params },
-      },
-    ],
+  return chainOf("wave-warp", {
+    waveType: 1,
+    direction: 0,
+    speed: 0,
+    pinning: 1,
+    phase: 0,
+    ...params,
   });
 }
 
@@ -83,8 +86,8 @@ interface OutSample {
   /** RGBA at a few probe points. */
   left: number[];
   right: number[];
-  /** `[first red x, last red x + 1]` in each requested row, or `null`. */
-  rows: ([number, number] | null)[];
+  /** Every `[start, end)` run of red pixels in each requested row. */
+  rows: [number, number][][];
   /** Alpha left behind in the capture canvas after the upload. */
   srcAlpha: number[];
 }
@@ -122,8 +125,23 @@ describe("data-vfx-chain in the browser", () => {
     await browser?.close();
   });
 
+  /**
+   * Loud-error collector per page. A chain the runtime refused — the shape a
+   * stale `dist/hyperframe.runtime.iife.js` takes, since a kernel it has never
+   * heard of is an unknown effect type — otherwise surfaces as an unreadable
+   * `expected false to be true` two helpers away.
+   */
+  const pageErrors = new Map<Page, string[]>();
+
   async function open(html: string): Promise<Page> {
     const page = await browser.newPage();
+    const errors: string[] = [];
+    pageErrors.set(page, errors);
+    page.on("console", (message) => {
+      const text = message.text();
+      if (text.includes("[HyperFrames] composition script error:")) errors.push(text);
+    });
+    page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewport({ width: 320, height: 240, deviceScaleFactor: 1 });
     await page.setContent(html);
     await page.addScriptTag({ content: runtime });
@@ -132,6 +150,7 @@ describe("data-vfx-chain in the browser", () => {
         (window as CompositeWindow).__playerReady === true &&
         (window as CompositeWindow).__renderReady === true,
     );
+    expect(errors).toEqual([]);
     return page;
   }
 
@@ -144,7 +163,7 @@ describe("data-vfx-chain in the browser", () => {
       (window as CompositeWindow).__player!.renderSeek(time);
       return (window as CompositeWindow).__hf_page_composite_pending === true;
     }, t);
-    expect(armed).toBe(true);
+    expect({ armed, errors: pageErrors.get(page) }).toEqual({ armed: true, errors: [] });
     await page.screenshot({ clip: { x: 0, y: 0, width: 1, height: 1 } });
     return page.evaluate(() => (window as CompositeWindow).__hf_page_composite_resolve!());
   }
@@ -159,17 +178,20 @@ describe("data-vfx-chain in the browser", () => {
         const i = (y * out.width + x) * 4;
         return [buf[i]!, buf[i + 1]!, buf[i + 2]!, buf[i + 3]!];
       };
-      // The block's two edges, not its width: a wave shifts both, but a shift
-      // that runs a red column off the frame would leave the width unchanged.
-      const redSpan = (y: number): [number, number] | null => {
-        let first = -1;
-        let last = -1;
-        for (let x = 0; x < out.width; x++) {
-          if (buf[(y * out.width + x) * 4]! <= 127) continue;
-          if (first < 0) first = x;
-          last = x;
+      // Runs, not a width: a displacement can split the block in two, and a
+      // shift that runs one edge off the frame leaves the width unchanged.
+      const redRuns = (y: number): [number, number][] => {
+        const runs: [number, number][] = [];
+        let start = -1;
+        for (let x = 0; x <= out.width; x++) {
+          const red = x < out.width && buf[(y * out.width + x) * 4]! > 127;
+          if (red && start < 0) start = x;
+          if (!red && start >= 0) {
+            runs.push([start, x]);
+            start = -1;
+          }
         }
-        return first < 0 ? null : [first, last + 1];
+        return runs;
       };
       const src = document.querySelector("canvas.hf-vfx-src") as HTMLCanvasElement;
       const sctx = src.getContext("2d")!;
@@ -178,7 +200,7 @@ describe("data-vfx-chain in the browser", () => {
         height: out.height,
         left: at(40, 60),
         right: at(120, 60),
-        rows: rowList.map(redSpan),
+        rows: rowList.map(redRuns),
         srcAlpha: [
           sctx.getImageData(40, 60, 1, 1).data[3]!,
           sctx.getImageData(120, 60, 1, 1).data[3]!,
@@ -196,11 +218,7 @@ describe("data-vfx-chain in the browser", () => {
       expect([s.width, s.height]).toEqual([HOST_W, HOST_H]);
       expect(s.left).toEqual([255, 0, 0, 255]);
       expect(s.right).toEqual([0, 0, 0, 0]);
-      expect(s.rows).toEqual([
-        [0, SQUARE_W],
-        [0, SQUARE_W],
-        [0, SQUARE_W],
-      ]);
+      expect(s.rows).toEqual([[[0, SQUARE_W]], [[0, SQUARE_W]], [[0, SQUARE_W]]]);
     } finally {
       await page.close();
     }
@@ -243,9 +261,40 @@ describe("data-vfx-chain in the browser", () => {
         // by −disp, and anything displaced off the source is transparent.
         const disp = waveWarpSampleRef({ x: 0, y }, 0, params).x;
         expect(Math.abs(disp)).toBeGreaterThan(1);
-        const [first, end] = s.rows[i]!;
+        expect(s.rows[i]).toHaveLength(1);
+        const [first, end] = s.rows[i]![0]!;
         expect(first).toBeCloseTo(Math.max(0, -disp), -0.5);
         expect(end).toBeCloseTo(Math.min(HOST_W, SQUARE_W - disp), -0.5);
+      }
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("displaces by its own pixels when the map layer is the layer itself", async () => {
+    // Use For Horizontal = Red, maxH = 20, maxV = 0. The block is opaque red
+    // (red = 1 ⇒ +20 px) and everything right of it is transparent
+    // (red = 0 ⇒ −20 px), so the output reads the source from two different
+    // directions and the block comes back split:
+    //   x < 80  reads x + 20 ⇒ red while x < 60
+    //   x ≥ 80  reads x − 20 ⇒ red while x < 100
+    const params = { useH: 1, useV: 2, maxH: 20, maxV: 0, behavior: 1, edge: 0, expand: true };
+    const page = await open(fixture(chainOf("displacement-map", params)));
+    try {
+      expect(await seekAndResolve(page, 0)).toBe(true);
+      const s = await sample(page, [30, 90]);
+
+      const opaqueRed = { r: 1, g: 0, b: 0, a: 1 };
+      const transparent = { r: 0, g: 0, b: 0, a: 0 };
+      const shiftInside = displacementMapSampleRef({ x: 0, y: 0 }, 0, params, () => opaqueRed).x;
+      const shiftOutside = displacementMapSampleRef({ x: 0, y: 0 }, 0, params, () => transparent).x;
+      expect([shiftInside, shiftOutside]).toEqual([20, -20]);
+
+      for (const runs of s.rows) {
+        expect(runs).toEqual([
+          [0, SQUARE_W - shiftInside],
+          [SQUARE_W, SQUARE_W - shiftOutside],
+        ]);
       }
     } finally {
       await page.close();
