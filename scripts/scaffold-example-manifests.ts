@@ -1,19 +1,6 @@
 #!/usr/bin/env tsx
-/**
- * Generate registry-item.json manifests for every example in registry/examples/,
- * without changing the top-level registry index.
- *
- * Reads the legacy registry/examples/templates.json (label + hint) and probes
- * each example's index.html for dimensions / duration data attributes.
- * Placeholder `__VIDEO_DURATION__` falls back to 10 (the init-time default).
- *
- * Idempotent — safe to re-run, but will overwrite any hand-edits. Intended as
- * one-shot scaffolding for PR 3.
- *
- * Usage:
- *   bun run scripts/scaffold-example-manifests.ts
- *   bun run scripts/scaffold-example-manifests.ts --only warm-grain
- */
+// Explicit scaffolding overwrites authored example manifests; indexing never runs it.
+// Usage: bun scripts/scaffold-example-manifests.ts [--only warm-grain]
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve, dirname } from "node:path";
