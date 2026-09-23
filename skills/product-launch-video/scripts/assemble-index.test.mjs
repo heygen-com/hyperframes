@@ -125,3 +125,36 @@ test(
     assert.equal(probe.stdout.trim(), "mp3");
   },
 );
+
+// Regression: a broadside-derived frame.md declares `ground {colors.ink-black}, text
+// {colors.cream}`; the name heuristic reads "ink-black" as text and "cream" as ground, so
+// assemble-index painted #root with the light color instead of the frame's real dark ground.
+test("#root ground color uses the preset's declared dark ground, not the name-heuristic guess", () => {
+  const { dir, r } = assembleWith({
+    audioMeta: { bgm: null, voices: [], sfx: [] },
+    beforeAssemble: (projectDir) => {
+      writeFileSync(
+        join(projectDir, "frame.md"),
+        [
+          "---",
+          "colors:",
+          '  ink-black: "#08090B"',
+          '  fire-orange: "#1A5FDF"',
+          '  cream: "#F5F6F7"',
+          "components:",
+          "  registers:",
+          '    dark: "ground {colors.ink-black}, text {colors.cream}, accent {colors.fire-orange}"',
+          "---",
+          "",
+        ].join("\n"),
+      );
+    },
+  });
+
+  assert.equal(r.status, 0, r.stderr);
+  const html = readFileSync(join(dir, "index.html"), "utf8");
+  const rootBlock = html.match(/#root\s*\{[^}]*\}/);
+  assert.ok(rootBlock, "expected a #root style block in index.html");
+  assert.match(rootBlock[0], /background:\s*#08090B/i);
+  assert.doesNotMatch(rootBlock[0], /#F5F6F7/i);
+});

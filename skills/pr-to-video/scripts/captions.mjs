@@ -406,7 +406,7 @@ function frameTokensCss(framePath, H) {
     const md = readFileSync(framePath, "utf8");
     const colors = parseColors(md);
     for (const [k, v] of colors) out.push(`      --${k}: ${v};`); // raw, for completeness
-    const sem = semanticColors(colors);
+    const sem = semanticColors(colors, md);
     if (sem.ink) out.push(`      --cap-ink: ${sem.ink};`);
     if (sem.canvas) out.push(`      --cap-canvas: ${sem.canvas};`);
     if (sem.accent) out.push(`      --cap-accent: ${sem.accent};`);

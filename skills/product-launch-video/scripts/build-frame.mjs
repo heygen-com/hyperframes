@@ -200,7 +200,7 @@ const summary = [];
 
 // ── color remix ───────────────────────────────────────────────────────────────
 if (brandColors.length && presetColors.length) {
-  const pr = semanticColors(presetColors);
+  const pr = semanticColors(presetColors, md);
   // Brand roles: prefer the function-based reading of capture colorStats (canvas =
   // largest background, accent = top interactive bg, ink = dominant contrasting text).
   // Fall back to the legacy luminance/chroma heuristic only when stats are absent —
@@ -224,14 +224,10 @@ if (brandColors.length && presetColors.length) {
       `  ⚠ accent ${br.accent} 彩度很低 (${chroma(br.accent)}) — 确认这是品牌色而非中性/默认色`,
     );
   }
-  // Map by LUMINANCE POLARITY. The preset's darker value takes the brand's darker value and
-  // the lighter takes the lighter — UNLESS the brand's GROUND polarity differs from the
-  // preset's. Every shipped preset is light-ground; a dark-mode brand (Linear, Vercel,
-  // Raycast…) has its canvas darker than its ink (colorStats already resolved the real
-  // ground as the largest-area background). On a polarity MISMATCH we INVERT the mapping so a
-  // light preset becomes the dark brand (canvas↔ink swap) instead of forcing the brand onto
-  // an off-brand light video; neutral/tint lightness is then mirrored (L→1−L) so the whole
-  // palette flips to the brand's ground. Same-polarity (the common case) is unchanged.
+  // Map by luminance polarity: the preset's darker value takes the brand's darker value,
+  // unless the brand's ground polarity differs (pr.ink/pr.canvas above already read a
+  // declared register when the preset has one, not just name/luminance). On a mismatch,
+  // invert — canvas<->ink swap, tint lightness mirrored L->1-L — instead of an off-brand ground.
   const darker = (a, b) => ((lum(a) ?? 0) <= (lum(b) ?? 0) ? a : b);
   const prDark = darker(pr.ink, pr.canvas);
   const prLight = prDark === pr.ink ? pr.canvas : pr.ink;
@@ -529,7 +525,7 @@ const outColors = parseColors(md);
 if (outColors.length !== presetColors.length) {
   die(`color keys changed (${presetColors.length}→${outColors.length}) — keys must be preserved`);
 }
-const outRoles = semanticColors(outColors);
+const outRoles = semanticColors(outColors, md);
 const li = lum(outRoles.ink),
   lc = lum(outRoles.canvas);
 // ink (type) and canvas (ground) must differ enough to READ — in EITHER direction. A

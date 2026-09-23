@@ -686,7 +686,8 @@ const framePath = join(hyperframesDir, "frame.md");
 let groundColor = null;
 if (existsSync(framePath)) {
   try {
-    const roles = semanticColors(parseColors(readFileSync(framePath, "utf8")));
+    const frameMd = readFileSync(framePath, "utf8");
+    const roles = semanticColors(parseColors(frameMd), frameMd);
     if (roles && roles.canvas) groundColor = roles.canvas;
   } catch {
     /* leave groundColor null — #root stays transparent over the body letterbox */
