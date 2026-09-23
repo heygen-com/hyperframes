@@ -652,7 +652,7 @@
               },
               {
                 "group": "Motion & effects",
-                "tag": "94",
+                "tag": "95",
                 "expanded": false,
                 "pages": [
                   {
@@ -694,7 +694,7 @@
                   },
                   {
                     "group": "Effects",
-                    "tag": "53",
+                    "tag": "54",
                     "expanded": false,
                     "pages": [
                       "catalog/components/avatar-cloud",
@@ -703,6 +703,7 @@
                       "catalog/components/camera-rig-depth-stack",
                       "catalog/components/comparison-split",
                       "catalog/components/confetti",
+                      "catalog/components/curtain-reveal",
                       "catalog/components/cut-the-curve",
                       "catalog/components/device-frame-stage",
                       "catalog/components/directional-wipe",

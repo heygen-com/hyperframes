@@ -1578,9 +1578,13 @@
     {
       "name": "warm-grain",
       "type": "hyperframes:example"
+    },
+    {
+      "name": "curtain-reveal",
+      "type": "hyperframes:component"
     }
   ],
   "catalogArtifact": {
-    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
+    "revision": "2c3b540afc2d8269393bf89f99386e2478305c35e21dcd6d497d9ba6dec257ea"
   }
 }
