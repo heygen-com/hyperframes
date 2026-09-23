@@ -86,12 +86,32 @@ interface VfxCaptureSource {
   texture: WebGLTexture;
 }
 
+/**
+ * Every uniform location one pass can bind, resolved once. `getUniformLocation`
+ * is a synchronous driver query, and the paint loop used to make one per
+ * uniform per param per pass per frame; the program is linked once at init, so
+ * the answers never change.
+ *
+ * `null` is the correct cached value for a uniform the linker optimised out —
+ * `gl.uniform*(null, …)` is a defined no-op, which is what the old per-frame
+ * query did with it too.
+ */
+interface PassLocations {
+  size: WebGLUniformLocation | null;
+  t: WebGLUniformLocation | null;
+  fps: WebGLUniformLocation | null;
+  src: WebGLUniformLocation | null;
+  /** Keyed by the def's param key, without the `u_` prefix. */
+  params: Record<string, WebGLUniformLocation | null>;
+}
+
 interface VfxPass {
   node: HfVfxNode;
   def: HfVfxDef;
   program: WebGLProgram;
   /** Chain params after clamp/defaults; CSS vars override per paint. */
   params: HfVfxParamValues;
+  locations: PassLocations;
 }
 
 /** Two colour targets a multi-node chain alternates between. */
@@ -206,6 +226,26 @@ function findOrCreateOut(host: HTMLElement): HTMLCanvasElement {
   return out;
 }
 
+function resolveUniformLocations(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  def: HfVfxDef,
+): PassLocations {
+  const params: Record<string, WebGLUniformLocation | null> = {};
+  for (const param of def.params) {
+    // `ref` params carry element ids, not numbers, and have no uniform.
+    if (param.kind === "ref") continue;
+    params[param.key] = gl.getUniformLocation(program, `u_${param.key}`);
+  }
+  return {
+    size: gl.getUniformLocation(program, "u_size"),
+    t: gl.getUniformLocation(program, "u_t"),
+    fps: gl.getUniformLocation(program, "u_fps"),
+    src: gl.getUniformLocation(program, "u_src"),
+    params,
+  };
+}
+
 function buildPasses(gl: WebGL2RenderingContext, chain: HfVfxChain): VfxPass[] | null {
   const passes: VfxPass[] = [];
   for (const node of enabledVfxNodes(chain)) {
@@ -219,7 +259,13 @@ function buildPasses(gl: WebGL2RenderingContext, chain: HfVfxChain): VfxPass[] |
       reportVfxError(`node "${node.id}" (${def.id}) has no usable program`);
       return null;
     }
-    passes.push({ node, def, program, params: normalizeVfxParams(def.id, node.params) });
+    passes.push({
+      node,
+      def,
+      program,
+      params: normalizeVfxParams(def.id, node.params),
+      locations: resolveUniformLocations(gl, program, def),
+    });
   }
   return passes;
 }
@@ -456,14 +502,15 @@ function setPassUniforms(
   width: number,
   height: number,
 ): void {
-  const { gl, program } = { gl: entry.gl, program: pass.program };
-  gl.uniform2f(gl.getUniformLocation(program, "u_size"), width, height);
-  gl.uniform1f(gl.getUniformLocation(program, "u_t"), t);
-  gl.uniform1f(gl.getUniformLocation(program, "u_fps"), registryFps);
+  const { gl } = entry;
+  const { locations } = pass;
+  gl.uniform2f(locations.size, width, height);
+  gl.uniform1f(locations.t, t);
+  gl.uniform1f(locations.fps, registryFps);
   for (const param of pass.def.params) {
     const value = paramUniformValue(param, pass, style);
     if (value === null) continue;
-    gl.uniform1f(gl.getUniformLocation(program, `u_${param.key}`), value);
+    gl.uniform1f(locations.params[param.key] ?? null, value);
   }
 }
 
@@ -479,7 +526,7 @@ function bindPass(entry: VfxEntry, index: number, last: number, ping: PingPong |
   if (!source) return;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, source);
-  gl.uniform1i(gl.getUniformLocation(entry.passes[index]!.program, "u_src"), 0);
+  gl.uniform1i(entry.passes[index]!.locations.src, 0);
 }
 
 function paintEntry(entry: VfxEntry, t: number): void {
