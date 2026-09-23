@@ -315,6 +315,13 @@
             return Math.max(lo, Math.min(hi, n));
           }
 
+          // Only a literal color syntax passes; anything else falls back rather than
+          // carrying an attacker-controlled string into a style property.
+          function color(value, fallback) {
+            var s = String(value == null ? "" : value);
+            return /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\([0-9.,%\sdeg]+\))$/.test(s) ? s : fallback;
+          }
+
           // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
           var compositionId = "cursor-zoom-follow";
           var duration = Math.max(
@@ -326,7 +333,7 @@
           var W = root.clientWidth || 1920;
           var H = root.clientHeight || 1080;
           var ZOOM = num(vars.zoom, 1.8, 1, 3);
-          var accent = String(vars.accent || "#4f5bff");
+          var accent = color(vars.accent, "#4f5bff");
           var image = typeof vars.image === "string" ? vars.image.trim() : "";
           var builtIn = image === "";
           if (!builtIn) {
