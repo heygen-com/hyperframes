@@ -1,6 +1,61 @@
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { closeSync, constants, fstatSync, openSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { replaceFileAtomically } from "./atomicFile.js";
+import { isInHiddenOrVendorDir, walkDir } from "./safePath.js";
+
+export const isCompositionSource = (html: string): boolean => /data-composition-id\s*=/.test(html);
+
+const STAMP_RECORD = join(".hyperframes", "hf-ids-stamped.json");
+
+const contentHash = (text: string): string => createHash("sha1").update(text).digest("base64url");
+
+/** Pins hf-ids into every composition in the project. A host runs it once before it serves or
+ * watches the project: an id write during a session reaches Studio as an outside edit and reloads it.
+ * A file whose content hash matches the last run's (kept in `.hyperframes`) is not parsed again. */
+export function stampProjectHfIds(projectDir: string): void {
+  const recordPath = join(projectDir, STAMP_RECORD);
+  let last: Record<string, string> = {};
+  try {
+    last = JSON.parse(readFileSync(recordPath, "utf-8"));
+  } catch {
+    // first run, or an unreadable record: parse everything
+  }
+  const next: Record<string, string> = {};
+  for (const file of walkDir(projectDir)) {
+    if (!file.endsWith(".html") || isInHiddenOrVendorDir(file)) continue;
+    const absPath = join(projectDir, file);
+    let html: string;
+    try {
+      html = readFileSync(absPath, "utf-8");
+    } catch {
+      continue; // unreadable now; the preview route stamps it when it is served
+    }
+    let hash = contentHash(html);
+    if (last[file] !== hash && isCompositionSource(html)) {
+      const stamped = stampFileHfIds(absPath);
+      if (stamped === null) continue;
+      hash = contentHash(stamped);
+    }
+    next[file] = hash;
+  }
+  try {
+    mkdirSync(dirname(recordPath), { recursive: true });
+    writeFileSync(recordPath, JSON.stringify(next));
+  } catch {
+    // read-only project: the next start parses again
+  }
+}
 
 /**
  * Ensure `html` has `data-hf-id` attributes minted, and write the result back
