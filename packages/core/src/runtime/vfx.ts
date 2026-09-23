@@ -31,6 +31,7 @@ import {
   type HfVfxParam,
   type HfVfxParamValues,
 } from "../vfx";
+import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isCanvasElement, isHtmlElement } from "./domRealm";
 
 /** The prefix `frameCapture.ts` matches to fail a render fast. */
@@ -588,7 +589,10 @@ async function capturePreviewThenPaint(
   seq: number,
   speculative: boolean,
 ): Promise<void> {
-  for (const entry of entries) await awaitCanvasPaint(entry.src!.canvas);
+  // In parallel, not in sequence: each wait costs up to two animation frames,
+  // so N hosts awaited one after another cost 2N — more slack than the CLI's
+  // post-barrier settle leaves, and the cost grows with the composition.
+  await Promise.all(entries.map((entry) => awaitCanvasPaint(entry.src!.canvas)));
   // A newer seek, or the engine's own resolve, owns these pixels now.
   if (seq !== paintSeq || resolvedSeq === seq) return;
   for (const entry of entries) {
@@ -608,6 +612,17 @@ async function capturePreviewThenPaint(
  * A chain with no capture paints inline. A capturing chain cannot: its texture
  * comes from `drawElementImage`, which needs a paint record that does not exist
  * yet at this point in the task.
+ *
+ * That deferred capture is REGISTERED INTO THE SHARED SEEK-COMPLETION BARRIER
+ * (`adapters/seek-dispatch.ts`) rather than left fire-and-forget, so the paths
+ * that already drain the barrier wait for it instead of racing it:
+ * `seekCompositionTimeline` awaits `window.__hfWaitForSeekCompletion` before
+ * its settle race and screenshot, which covers `snapshot`, `check`, `compare`,
+ * `validate` and `layout`. Racing it is the silent-blank-under-snapshot defect
+ * this module has already shipped once (dcfbda9fd) — there the capture never
+ * ran at all, here it ran too late, and both read as an unpainted layer. The
+ * engine path is unaffected: `frameCapture.ts` drains the same barrier after
+ * video injection and before its own composite resolve.
  */
 export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   lastPaintTime = t;
@@ -628,5 +643,5 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   // `__hf_page_composite_resolve` — so a `self` chain painted nothing there, in
   // silence. The runtime has to be able to finish its own frame.
   if (options?.engineMode) armPageComposite();
-  void capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true);
+  registerSeekCompletion(capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true));
 }

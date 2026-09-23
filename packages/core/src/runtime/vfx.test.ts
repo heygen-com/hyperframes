@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HfVfxCapture } from "../vfx";
+import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { initVfx, paintVfx } from "./vfx";
 
 /**
@@ -382,6 +383,9 @@ describe("vfx runtime — self capture", () => {
     installCanvasMock(() => gl);
     errors = [];
     override.capture = "self";
+    // `paintVfx` now registers its preview capture into the module-level
+    // seek-completion set; a leftover entry would stall the next test's barrier.
+    resetSeekDispatchState();
     delete compositeWindow().__hf_page_composite_pending;
     delete compositeWindow().__hf_page_composite_resolve;
     vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
@@ -395,6 +399,8 @@ describe("vfx runtime — self capture", () => {
     initVfx(document.body, 30);
     delete compositeWindow().__hf_page_composite_pending;
     delete compositeWindow().__hf_page_composite_resolve;
+    resetSeekDispatchState();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -527,5 +533,58 @@ describe("vfx runtime — self capture", () => {
 
     expect(ctx.drawn).toHaveLength(1);
     expect(compositeWindow().__hf_page_composite_pending).toBeUndefined();
+  });
+
+  /**
+   * `seekCompositionTimeline` — the seek every `snapshot`/`check`/`compare`/
+   * `validate`/`layout` run goes through — awaits
+   * `window.__hfWaitForSeekCompletion` (this function) and then screenshots.
+   * If the preview capture is not in that set, the screenshot is a race the
+   * host count decides.
+   *
+   * rAF is stubbed to never call back so the ONLY thing that can finish
+   * `awaitCanvasPaint` is a `paint` event; with the real one the barrier would
+   * resolve on a timer and the case would prove nothing.
+   */
+  it("holds the seek-completion barrier until every capture host has painted", async () => {
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    const ctxA = createMockCtx2d();
+    const ctxB = createMockCtx2d();
+    const srcOf = (host: HTMLElement): HTMLCanvasElement =>
+      host.querySelector("canvas.hf-vfx-src") as HTMLCanvasElement;
+    const a = makeCaptureHost(ctxA, "cap-a");
+    const b = makeCaptureHost(ctxB, "cap-b");
+    initVfx(document.body, 30);
+    const flush = (): Promise<void> => new Promise<void>((r) => setTimeout(r, 0));
+
+    paintVfx(0.5);
+    let resolved = false;
+    const barrier = waitForSeekCompletion().then(() => {
+      resolved = true;
+    });
+    await flush();
+    const beforeAnyPaint = resolved;
+
+    srcOf(a).dispatchEvent(new Event("paint"));
+    await flush();
+    // Still held: one host of two is not a finished frame.
+    const afterFirstPaint = resolved;
+
+    srcOf(b).dispatchEvent(new Event("paint"));
+    await flush();
+    await barrier;
+
+    expect({
+      beforeAnyPaint,
+      afterFirstPaint,
+      resolved,
+      drawn: [ctxA.drawn.length, ctxB.drawn.length],
+    }).toEqual({
+      beforeAnyPaint: false,
+      afterFirstPaint: false,
+      resolved: true,
+      drawn: [1, 1],
+    });
+    expect(errors).toEqual([]);
   });
 });

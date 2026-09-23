@@ -24,6 +24,10 @@ const HOST_W = 160;
 const HOST_H = 120;
 /** The red block fills the left half of `.hf-vfx-in`. */
 const SQUARE_W = 80;
+/** Clearance between the two hosts of `twoHostFixture`. */
+const GAP = 20;
+/** Opaque red — what a correctly painted identity chain puts at the probe point. */
+const red = [255, 0, 0, 255];
 
 interface CompositeWindow extends Window {
   __hf_page_composite_pending?: boolean;
@@ -207,6 +211,86 @@ async function renderSeekOnly(page: Page, t: number): Promise<void> {
   await page.evaluate((time: number) => {
     (window as CompositeWindow).__player!.renderSeek(time);
   }, t);
+}
+
+/**
+ * TWO `self` hosts, so a per-host sequential wait costs twice as many frames
+ * as a single-host one. One host can be painted by luck; two cannot.
+ */
+function twoHostFixture(chain: string): string {
+  const host = (side: string): string => `
+  <div id="host-${side}" class="vfx-host clip" data-start="0" data-duration="4"
+       data-vfx-chain='${chain}'>
+    <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in"><div class="square"></div></div></canvas>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>`;
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #0000ff; }
+  .vfx-host { position: absolute; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host-a { left: 0; }
+  #host-b { left: ${HOST_W + GAP}px; }
+  .vfx-host > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  .square {
+    position: absolute; left: 0; top: 0;
+    width: ${SQUARE_W}px; height: ${HOST_H}px; background: #ff0000;
+  }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4"
+     data-width="${HOST_W * 2 + GAP}" data-height="${HOST_H}">${host("a")}${host("b")}
+</div>`;
+}
+
+/**
+ * What `seekCompositionTimeline` does, by hand: dispatch the seek, drain the
+ * seek-completion barrier, then ONE settle race — `setTimeout(100)` against a
+ * double rAF, copied from the CLI's default `animationFrameSettle: "race"`
+ * (`packages/cli/src/capture/captureCompositionFrame.ts`). Whatever has not
+ * painted by the time this returns is what `hyperframes snapshot` screenshots
+ * as blank.
+ */
+async function seekAndDrainBarrier(page: Page, t: number): Promise<void> {
+  await page.evaluate((time: number) => {
+    (window as CompositeWindow).__player!.renderSeek(time);
+  }, t);
+  // Asserted, not optional-chained: a bundle that never exposed the barrier
+  // would make the whole case a no-op that passes.
+  const drained = await page.evaluate(async () => {
+    const wait = Reflect.get(window, "__hfWaitForSeekCompletion");
+    if (typeof wait !== "function") return false;
+    await Reflect.apply(wait, window, []);
+    return true;
+  });
+  expect(drained).toBe(true);
+}
+
+/**
+ * The CLI's default `animationFrameSettle: "race"`, copied verbatim from
+ * `packages/cli/src/capture/captureCompositionFrame.ts`: a 100 ms timeout
+ * against a double rAF, whichever lands first. This is all the slack a real
+ * snapshot leaves between the barrier and the screenshot.
+ */
+async function settleRace(page: Page): Promise<void> {
+  await page.evaluate(`new Promise(function(r) {
+      var settled = false;
+      function finish() { if (settled) return; settled = true; r(); }
+      window.setTimeout(finish, 100);
+      requestAnimationFrame(function() { requestAnimationFrame(finish); });
+    })`);
+}
+
+/** RGBA at one interior point of every `.hf-vfx-out` on the page. */
+async function sampleEveryOut(page: Page): Promise<number[][]> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll("canvas.hf-vfx-out")].map((node) => {
+      const gl = (node as HTMLCanvasElement).getContext("webgl2");
+      if (!gl) return [];
+      const px = new Uint8Array(4);
+      gl.readPixels(40, 60, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return [...px];
+    }),
+  );
 }
 
 /**
@@ -470,6 +554,51 @@ describe("data-vfx-chain in the browser", () => {
         await page.evaluate(() => (window as CompositeWindow).__hf_page_composite_pending),
       ).toBe(true);
       expect(pageErrors.get(page)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  /**
+   * The same snapshot-family path, but joined rather than raced. Every
+   * `hyperframes` seek caller (`snapshot`/`check`/`compare`/`validate`/
+   * `layout`) drains `__hfWaitForSeekCompletion` and then allows exactly one
+   * settle race before screenshotting. The preview-side capture used to be
+   * fire-and-forget AND sequential per host, so N hosts cost up to 2N frames
+   * while the settle bought about two — the screenshot landed on hosts that
+   * had not painted yet, and which ones varied run to run.
+   *
+   * Two hosts, so one host finishing in time cannot hide the defect. No
+   * `page.screenshot` before the read: that is the engine's phase-2 paint
+   * force, and taking one would test the engine protocol by the back door.
+   */
+  it("has every self-capture host painted the moment the CLI's seek barrier returns", async () => {
+    const page = await open(twoHostFixture(waveWarpChain({ height: 0, width: 93.4 })), {
+      width: HOST_W * 2 + GAP,
+      height: HOST_H + GAP,
+    });
+    try {
+      expect(await page.evaluate(() => document.querySelectorAll("[data-vfx-chain]").length)).toBe(
+        2,
+      );
+
+      await seekAndDrainBarrier(page, 0);
+
+      // Read immediately — no waitForFunction, no extra rAF. Measured on the
+      // pre-fix bundle this is `[[0,0,0,0],[0,0,0,0]]`: the barrier returned
+      // with neither host painted, and only the settle race that follows
+      // happened to cover them. That slack is not a guarantee — it is two
+      // frames against a cost that grows with host count — so the contract is
+      // pinned here, where the barrier's promise is the only thing holding.
+      const atBarrier = await sampleEveryOut(page);
+      await settleRace(page);
+      const atScreenshot = await sampleEveryOut(page);
+
+      expect({ atBarrier, atScreenshot, errors: pageErrors.get(page) }).toEqual({
+        atBarrier: [red, red],
+        atScreenshot: [red, red],
+        errors: [],
+      });
     } finally {
       await page.close();
     }
