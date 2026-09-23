@@ -428,6 +428,53 @@ describe("data-vfx-chain in the browser", () => {
     }
   }, 60_000);
 
+  /**
+   * `hyperframes snapshot` (and `check`/`compare`/`validate`/`layout`, and
+   * Studio's thumbnail capture) seek through the same `renderSeek` the engine
+   * does, but never read
+   * `__hf_page_composite_pending` and never call `__hf_page_composite_resolve`
+   * — so arming the protocol alone left every `self` chain unpainted and
+   * silent there. No `page.screenshot` in this case ON PURPOSE: a screenshot
+   * is the engine's phase-2 paint force, and taking one would test the engine
+   * protocol again by the back door instead of the runtime's own fallback.
+   */
+  it("paints a self-capture host when nobody ever resolves the composite", async () => {
+    const page = await open(fixture(waveWarpChain({ height: 0, width: 93.4 })));
+    try {
+      const armed = await page.evaluate(() => {
+        (window as CompositeWindow).__player!.renderSeek(0);
+        return (window as CompositeWindow).__hf_page_composite_pending === true;
+      });
+      expect({ armed, errors: pageErrors.get(page) }).toEqual({ armed: true, errors: [] });
+
+      await page.waitForFunction(
+        () => {
+          const out = document.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement;
+          const gl = out.getContext("webgl2");
+          if (!gl) return false;
+          const px = new Uint8Array(4);
+          gl.readPixels(40, 60, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+          return px[3] === 255;
+        },
+        { timeout: 5_000 },
+      );
+
+      const s = await sample(page, [10, 60, 90]);
+      expect([s.width, s.height]).toEqual([HOST_W, HOST_H]);
+      expect(s.left).toEqual([255, 0, 0, 255]);
+      expect(s.right).toEqual([0, 0, 0, 0]);
+      expect(s.rows).toEqual([[[0, SQUARE_W]], [[0, SQUARE_W]], [[0, SQUARE_W]]]);
+      // The engine contract is untouched: the flag stays armed, so a host that
+      // DOES run the three-phase protocol still gets its authoritative capture.
+      expect(
+        await page.evaluate(() => (window as CompositeWindow).__hf_page_composite_pending),
+      ).toBe(true);
+      expect(pageErrors.get(page)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
   it("captures a .hf-vfx-in that is a sub-composition mount", async () => {
     const page = await openMounted({
       "main.html": mountFixture(waveWarpChain({ height: 0, width: 93.4 })),

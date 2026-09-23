@@ -117,8 +117,15 @@ export type VfxRegistry = VfxEntry[];
 
 let registry: VfxRegistry = [];
 let registryFps = 30;
-/** The time the last `paintVfx` was given; engine mode paints later, on resolve. */
+/** The time the last `paintVfx` was given; a capturing chain paints later. */
 let lastPaintTime = 0;
+/**
+ * Monotonic seek token. Every `paintVfx` claims one; an async capture that
+ * comes back to find a newer token has been superseded and must not repaint.
+ */
+let paintSeq = 0;
+/** The token the page-composite resolver last completed, so a race can yield. */
+let resolvedSeq = -1;
 /** The resolver we installed, and whoever owned the slot when we wrapped it. */
 let vfxResolver: (() => boolean) | null = null;
 let priorResolver: (() => boolean) | null = null;
@@ -460,7 +467,7 @@ function uploadCaptureTexture(gl: WebGL2RenderingContext, src: VfxCaptureSource)
  * even though its children are not — leaving the captured frame in it would
  * show the unprocessed layer through every transparent pixel of `.hf-vfx-out`.
  */
-function captureEntry(entry: VfxEntry): boolean {
+function captureEntry(entry: VfxEntry, quiet = false): boolean {
   const src = entry.src;
   const size = deviceSize(entry.host);
   if (!src || !size) return false;
@@ -470,10 +477,17 @@ function captureEntry(entry: VfxEntry): boolean {
   try {
     src.ctx.drawElementImage(src.inner, 0, 0, size.width, size.height);
   } catch (err) {
-    reportVfxError(
-      `${describeHost(entry.host)}: drawElementImage failed: ${(err as Error).message} ` +
-        `In Studio, enable chrome://flags/#canvas-draw-element.`,
-    );
+    // A speculative capture is quiet on purpose: it is the engine path's SECOND
+    // attempt at the same frame, racing the host's own `resolve`, and "no cached
+    // paint record yet" there is expected, recoverable, and must not fail a
+    // render. The authoritative attempt (preview paint, or `resolveVfxCapture`)
+    // still owns the loud error contract.
+    if (!quiet) {
+      reportVfxError(
+        `${describeHost(entry.host)}: drawElementImage failed: ${(err as Error).message} ` +
+          `In Studio, enable chrome://flags/#canvas-draw-element.`,
+      );
+    }
     return false;
   }
   uploadCaptureTexture(entry.gl, src);
@@ -490,6 +504,12 @@ function resolveVfxCapture(): boolean {
     paintEntry(entry, lastPaintTime);
     painted = true;
   }
+  // Deliberately NOT idempotent: the engine resolves only after its own
+  // before-capture hooks have mutated the DOM (video frames injected as <img>,
+  // scenes cloned), so its capture is the authoritative one even when a
+  // fallback already painted this frame from the pre-hook DOM. Recording the
+  // token is what lets that earlier fallback stand down, not the reverse.
+  resolvedSeq = paintSeq;
   (window as CompositeWindow).__hf_page_composite_pending = false;
   return painted;
 }
@@ -543,10 +563,21 @@ function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<void> {
   });
 }
 
-async function capturePreviewThenPaint(entries: VfxEntry[], t: number): Promise<void> {
+async function capturePreviewThenPaint(
+  entries: VfxEntry[],
+  t: number,
+  seq: number,
+  speculative: boolean,
+): Promise<void> {
   for (const entry of entries) await awaitCanvasPaint(entry.src!.canvas);
+  // A newer seek, or the engine's own resolve, owns these pixels now.
+  if (seq !== paintSeq || resolvedSeq === seq) return;
   for (const entry of entries) {
-    if (captureEntry(entry)) paintEntry(entry, t);
+    // `initVfx` re-scans when a sub-composition mounts and releases the
+    // outgoing registry's programs and textures; painting a released entry is
+    // a silent GL error, not a frame.
+    if (!registry.includes(entry)) continue;
+    if (captureEntry(entry, speculative)) paintEntry(entry, t);
   }
 }
 
@@ -561,6 +592,7 @@ async function capturePreviewThenPaint(entries: VfxEntry[], t: number): Promise<
  */
 export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   lastPaintTime = t;
+  const seq = ++paintSeq;
   const capturing: VfxEntry[] = [];
   for (const entry of registry) {
     if (!isPaintableHost(entry.host)) continue;
@@ -568,9 +600,14 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
     else paintEntry(entry, t);
   }
   if (capturing.length === 0) return;
-  if (options?.engineMode) {
-    armPageComposite();
-    return;
-  }
-  void capturePreviewThenPaint(capturing, t);
+  // Engine mode arms the page-composite protocol AND the preview-side capture,
+  // then paints on whichever completes first. Arming alone was a bet that every
+  // capture host runs under `frameCapture.ts`, and it does not: `hyperframes
+  // snapshot` (and `check`/`compare`/`validate`/`layout`, and Studio's
+  // thumbnail capture) seek through the same `seekCompositionTimeline` →
+  // `renderSeek`, never read `__hf_page_composite_pending`, and never call
+  // `__hf_page_composite_resolve` — so a `self` chain painted nothing there, in
+  // silence. The runtime has to be able to finish its own frame.
+  if (options?.engineMode) armPageComposite();
+  void capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true);
 }
