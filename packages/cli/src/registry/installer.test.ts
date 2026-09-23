@@ -21,7 +21,7 @@ vi.mock("./remote.js", () => ({
   fetchItemFile: vi.fn(async () => Buffer.from(remote.contents)),
 }));
 
-const { hasLocalEdits, installItem } = await import("./installer.js");
+const { hasLocalEdits, installItem, prepareItem, publishItem } = await import("./installer.js");
 
 function project(): string {
   return mkdtempSync(join(tmpdir(), "hf-installer-"));
@@ -145,6 +145,21 @@ describe("installItem", () => {
 
     expect(again.written).toEqual([]);
     expect(again.preserved).toHaveLength(1);
+    expect(readFileSync(join(dir, target), "utf-8")).toBe("MY OWN COLOURS\n");
+  });
+
+  it("keeps an edit saved while the rest of the plan was still downloading", async () => {
+    const dir = project();
+    await installItem(item, { destDir: dir });
+    remote.contents = "REGISTRY VERSION 2\n";
+    const prepared = await prepareItem(item, { destDir: dir });
+    remote.contents = "REGISTRY VERSION\n";
+    writeFileSync(join(dir, target), "MY OWN COLOURS\n", "utf-8");
+
+    const result = publishItem(prepared);
+
+    expect(result.written).toEqual([]);
+    expect(result.preserved).toHaveLength(1);
     expect(readFileSync(join(dir, target), "utf-8")).toBe("MY OWN COLOURS\n");
   });
 

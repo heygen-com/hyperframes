@@ -103,6 +103,16 @@ export function hasLocalEdits(
   return installed !== digest(onDisk);
 }
 
+/** An install must leave this file alone: the project changed it, and `--force` was not given. */
+function keptByProject(
+  record: InstallRecord,
+  destPath: string,
+  target: string,
+  force: boolean | undefined,
+): boolean {
+  return !force && existsSync(destPath) && hasLocalEdits(record, target, readFileSync(destPath));
+}
+
 /**
  * Reject target paths that would escape `destDir`. Mirrors the pattern check
  * in `packages/core/schemas/registry-item.json#files.items.target`, but runs at
@@ -191,11 +201,7 @@ async function prepareOneFile(
   // Decided before fetching rather than after: a file we are going to keep
   // should never be overwritten and then put back, because a crash in
   // between would lose it for real.
-  if (
-    !options.force &&
-    existsSync(destPath) &&
-    hasLocalEdits(record, file.target, readFileSync(destPath))
-  ) {
+  if (keptByProject(record, destPath, file.target, options.force)) {
     return { destPath, target: file.target, preserved: true, hash: null, vars: null, bytes: null };
   }
 
@@ -233,6 +239,7 @@ export async function installItem(
 export interface PreparedItem {
   root: string;
   outcomes: FileOutcome[];
+  force: boolean;
 }
 
 /** Fetch and check every file of an item without writing, so a caller can refuse a whole plan. */
@@ -259,13 +266,19 @@ export async function prepareItem(
   );
   const invalid = outcomes.flatMap((o) => o.vars?.invalid ?? []);
   if (invalid.length > 0) throw new InvalidVariableValuesError(invalid);
-  return { root, outcomes };
+  return { root, outcomes, force: options.force ?? false };
 }
 
 /** Write a prepared item and record what landed. */
-export function publishItem({ root, outcomes }: PreparedItem): InstallResult {
+export function publishItem({ root, outcomes: prepared, force }: PreparedItem): InstallResult {
   // Read now, not at prepare time: another item published in between has recorded its own files.
   const record = readInstallRecord(root);
+  // Asked again at write time: a save made while the rest of the plan downloaded is still an edit.
+  const outcomes = prepared.map((o) =>
+    o.bytes && keptByProject(record, o.destPath, o.target, force)
+      ? { ...o, preserved: true, hash: null, vars: null, bytes: null }
+      : o,
+  );
   for (const outcome of outcomes) {
     if (outcome.bytes) publishRegistryFile(root, outcome.target, outcome.bytes);
   }
