@@ -98,7 +98,11 @@ COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 COPY packages/studio-server/package.json packages/studio-server/package.json
 COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
-RUN bun install --frozen-lockfile
+# A corrupt tarball extraction can print an error and then hang instead of
+# exiting (seen in Dockerfile.test, run 35468046055). Bound each attempt and
+# retry once, so a prod deploy build fails fast instead of hanging.
+RUN timeout 300 bun install --frozen-lockfile \
+    || timeout 300 bun install --frozen-lockfile
 
 # Fail the image build closed if the packaged executable cannot perform the
 # same BeginFrame operation the distributed renderer relies on. Generate the
@@ -111,6 +115,14 @@ RUN bun -e 'import { buildChromeArgs } from "./packages/engine/src/services/brow
     && bun packages/aws-lambda/scripts/probe-beginframe.ts \
       --executable-path /opt/chrome/chrome-headless-shell \
       --launch-args-json /tmp/hf-gcp-chrome-args.json
+
+# Reports whether this exact pinned binary gets a hardware WebGPU adapter. A software-only
+# host reports "no usable adapter" without failing the build; its WebGPU compositions refuse
+# to render at run time. A real script file, not an inline `bun -e` eval: the eval's
+# synthetic `/app/[eval]` path can't resolve the workspace-hoisted `puppeteer-core`.
+COPY packages/aws-lambda/scripts/probe-webgpu-adapter.ts packages/aws-lambda/scripts/probe-webgpu-adapter.ts
+RUN bun packages/aws-lambda/scripts/probe-webgpu-adapter.ts \
+      --executable-path /opt/chrome/chrome-headless-shell
 
 # CI targets `beginframe-contract` directly, so pin/probe changes do not need
 # the full monorepo build merely to verify browser capability. The deployable

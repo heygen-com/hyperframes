@@ -56,6 +56,9 @@ export {
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
 
+// Script ordering shared by the bundler and the producer coalescers
+export { inlineScriptRuns, type InlineScriptRun } from "./scriptRuns";
+
 // Static guard
 export {
   validateHyperframeHtmlContract,

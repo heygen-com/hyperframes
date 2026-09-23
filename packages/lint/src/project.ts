@@ -14,6 +14,7 @@ import {
   maskNonScannableRanges,
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
+  resolveProjectRelativeSrc,
 } from "@hyperframes/parsers/asset-resolution";
 import {
   collectLocalVideoCandidates,
@@ -21,7 +22,11 @@ import {
   lintVideoMediaStartPastEof,
 } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
-import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
+import type {
+  HyperframeLintFinding,
+  HyperframeLintResult,
+  HyperframeLinterOptions,
+} from "./types.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
 import { mediaSrcTagRe } from "./utils";
 
@@ -162,6 +167,7 @@ function resolveCssAssetCandidates(
 export async function lintProject(
   projectDir: string,
   entryFile?: string,
+  hostOptions: Pick<HyperframeLinterOptions, "host"> = {},
 ): Promise<ProjectLintResult> {
   const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
   if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
@@ -176,6 +182,7 @@ export async function lintProject(
 
   const rootHtml = readFileSync(indexPath, "utf-8");
   const rootResult = await lintHyperframeHtml(rootHtml, {
+    ...hostOptions,
     filePath: indexPath,
     externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
   });
@@ -215,6 +222,7 @@ export async function lintProject(
       // inlines snippet markup (or mentions the token in text) is still linted.
       if (isSnippetFragment(html)) continue;
       const result = await lintHyperframeHtml(html, {
+        ...hostOptions,
         filePath,
         isSubComposition: true,
         externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
@@ -355,7 +363,7 @@ function lintAudioSrcNotFound(
       const rootRelative = compSrcPath
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
-      if (!resolveLocalAssetCandidates(projectDir, rootRelative).some(existsSync)) {
+      if (!existsSync(resolveProjectRelativeSrc(rootRelative, projectDir))) {
         missingSrcs.push(src);
       }
     }

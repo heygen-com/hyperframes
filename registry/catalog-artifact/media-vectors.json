@@ -1,0 +1,205 @@
+{
+  "model": "bge-small-en-v1.5",
+  "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
+  "dimensions": 384,
+  "revision": "56598f057867f4e070ec88a9d7a65f7168827ce7019dd750e8a253cd9e393fb3",
+  "names": [
+    "chime",
+    "click",
+    "click-soft",
+    "error",
+    "glitch-1",
+    "glitch-2",
+    "glitch-3",
+    "impact-bass-1",
+    "impact-bass-2",
+    "key-press",
+    "notification",
+    "ping",
+    "pop",
+    "riser",
+    "sparkle",
+    "typing",
+    "whoosh",
+    "whoosh-cinematic",
+    "whoosh-short"
+  ],
+  "rows": [
+    {
+      "id": "chime",
+      "kind": "sfx",
+      "title": "chime",
+      "description": "Soft melodic chime — gentle positive beat: success/confirmation or a lighthearted transition. Sync to the visual moment.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/chime.mp3",
+      "duration": 2.5
+    },
+    {
+      "id": "click",
+      "kind": "sfx",
+      "title": "click",
+      "description": "Crisp UI click — button press, toggle, selection. Short accent, sync exactly to the on-screen action.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/click.mp3",
+      "duration": 0.37
+    },
+    {
+      "id": "click-soft",
+      "kind": "sfx",
+      "title": "click-soft",
+      "description": "Quiet short click — low-key UI tap / soft selection. Short accent, sync exactly to the on-screen action.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/click-soft.mp3",
+      "duration": 0.37
+    },
+    {
+      "id": "error",
+      "kind": "sfx",
+      "title": "error",
+      "description": "Negative / error tone — failure state, a 'wrong' beat, or a glitchy interruption.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/error.mp3",
+      "duration": 1.62
+    },
+    {
+      "id": "glitch-1",
+      "kind": "sfx",
+      "title": "glitch-1",
+      "description": "Punchy digital glitch — hard-cut accent or sudden reveal. Trigger on the hit; let the decay bleed into the next shot (J-cut).",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/glitch-1.mp3",
+      "duration": 2.64
+    },
+    {
+      "id": "glitch-2",
+      "kind": "sfx",
+      "title": "glitch-2",
+      "description": "Harsh, longer glitch — chaotic / jarring transition or a distorted reveal.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/glitch-2.mp3",
+      "duration": 3.5
+    },
+    {
+      "id": "glitch-3",
+      "kind": "sfx",
+      "title": "glitch-3",
+      "description": "Low-key glitch texture — subtle digital shift, minimal transition that sits under other audio.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/glitch-3.mp3",
+      "duration": 3.1
+    },
+    {
+      "id": "impact-bass-1",
+      "kind": "sfx",
+      "title": "impact-bass-1",
+      "description": "Bass impact hit — logo/hero snap, headline slam. Trigger on the visual landing; decay carries into the next shot (J-cut).",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/impact-bass-1.mp3",
+      "duration": 2.12
+    },
+    {
+      "id": "impact-bass-2",
+      "kind": "sfx",
+      "title": "impact-bass-2",
+      "description": "Bass impact with a short swell — brief anticipation then a deep hit. Place so the peak lands on the reveal.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/impact-bass-2.mp3",
+      "duration": 2.59
+    },
+    {
+      "id": "key-press",
+      "kind": "sfx",
+      "title": "key-press",
+      "description": "Single key press — one keystroke / terminal-input beat. Short accent, sync to the typed character.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/key-press.mp3",
+      "duration": 0.4
+    },
+    {
+      "id": "notification",
+      "kind": "sfx",
+      "title": "notification",
+      "description": "Notification chime — alert, message-in, toast/badge appears. Sync to the element entering.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/notification.mp3",
+      "duration": 2.46
+    },
+    {
+      "id": "ping",
+      "kind": "sfx",
+      "title": "ping",
+      "description": "Sharp electronic ping — punchy accent on a key reveal or data point. Sync to the beat.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/ping.mp3",
+      "duration": 1.32
+    },
+    {
+      "id": "pop",
+      "kind": "sfx",
+      "title": "pop",
+      "description": "Quick pop — element appear/spawn, chip/tag/badge in. Small precise accent, sync to the pop-in.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/pop.mp3",
+      "duration": 0.72
+    },
+    {
+      "id": "riser",
+      "kind": "sfx",
+      "title": "riser",
+      "description": "Long cinematic riser (~10s build, peak at the end). Trigger at (climax_time − 10.03s) so it crests exactly on the reveal.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/riser.mp3",
+      "duration": 10.03
+    },
+    {
+      "id": "sparkle",
+      "kind": "sfx",
+      "title": "sparkle",
+      "description": "Bright sparkle / shimmer — magical reveal or 'shine' highlight on a hero element. Sync to the highlight.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/sparkle.mp3",
+      "duration": 1.8
+    },
+    {
+      "id": "typing",
+      "kind": "sfx",
+      "title": "typing",
+      "description": "Typing burst (~1.5s of keys) — keyboard / code typing reveal, text-being-typed beat. Start as the text begins typing.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/typing.mp3",
+      "duration": 1.5
+    },
+    {
+      "id": "whoosh",
+      "kind": "sfx",
+      "title": "whoosh",
+      "description": "Punchy whoosh/impact — fast reveal or hard transition accent. Sync to the motion.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/whoosh.mp3",
+      "duration": 0.57
+    },
+    {
+      "id": "whoosh-cinematic",
+      "kind": "sfx",
+      "title": "whoosh-cinematic",
+      "description": "Cinematic whoosh build (~5.5s) — sweeping scene transition. Align so the swell peaks on the cut.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/whoosh-cinematic.mp3",
+      "duration": 5.54
+    },
+    {
+      "id": "whoosh-short",
+      "kind": "sfx",
+      "title": "whoosh-short",
+      "description": "Short whoosh — quick swipe/slide accent, fast element move, snappy transition. Sync to the motion.",
+      "tags": ["sfx"],
+      "file": "skills/media-use/audio/assets/sfx/whoosh-short.mp3",
+      "duration": 0.57
+    }
+  ],
+  "metadataRevision": "3bce17533129b251a93cf1587ea18174bef06e0680611040ee82c24ed2bea03f",
+  "credits": {
+    "file": "skills/media-use/audio/assets/sfx/CREDITS.md",
+    "sha256": "79590c7738b0427b10f362f76b02cfd2643158a40e1d5fd787f9ac6b33bcf4ce"
+  }
+}

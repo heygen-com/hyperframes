@@ -189,6 +189,41 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 
+  it("writes through the envelope instead of the attribute once volume is automated", () => {
+    const onSetAttribute = vi.fn();
+    const onCommitVolumeAt = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { volume: "1" } });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+          volumeAutomated
+          onCommitVolumeAt={onCommitVolumeAt}
+        />,
+      );
+    });
+    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    Object.defineProperty(volumeTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
+    });
+    expect(onCommitVolumeAt).toHaveBeenCalledTimes(1);
+    expect(onCommitVolumeAt.mock.calls[0][0]).toBeCloseTo(3.981072, 6);
+    expect(onSetAttribute).not.toHaveBeenCalledWith("volume", expect.anything());
+    act(() => root.unmount());
+  });
+
   it("commits a new rate value on slider track pointerdown", () => {
     const onSetAttribute = vi.fn();
     const element = makeVideoElement();
@@ -215,8 +250,8 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
       rateTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
       rateTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
     });
-    // min=25, max=300, ratio=1.0 -> raw=300 -> commit(300) -> 300/100=3 -> "3"
-    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "3");
+    // the speed slider is log-scaled 0.1x..10x, so the far end of the track is 10x
+    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "10");
     act(() => root.unmount());
   });
 
@@ -439,3 +474,175 @@ describe("FlatMediaSection — fit/position", () => {
     act(() => root.unmount());
   });
 });
+
+function makeAudioElement(dataAttributes: Record<string, string> = {}): DomEditSelection {
+  const el = document.createElement("audio");
+  el.setAttribute("src", "assets/music.wav");
+  return makeVideoElement({
+    element: el,
+    id: "music",
+    selector: "#music",
+    label: "Music",
+    tagName: "audio",
+    dataAttributes: { duration: "10", ...dataAttributes },
+  });
+}
+
+function renderWithRate(element: DomEditSelection, onSetAttribute = vi.fn()) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => {
+    root.render(
+      <FlatMediaSection
+        projectDir={null}
+        element={element}
+        styles={{}}
+        onSetStyle={vi.fn()}
+        onSetAttribute={onSetAttribute}
+        onSetHtmlAttribute={vi.fn()}
+        rate={{
+          automated: false,
+          automatedValue: undefined,
+          onAutomate: vi.fn(),
+          onRemoveAutomation: vi.fn(),
+          onCommitAt: vi.fn(),
+          canApplyPreset: true,
+          onApplyPreset: vi.fn(),
+        }}
+      />,
+    );
+  });
+  return { host, root, onSetAttribute };
+}
+
+function labelsOf(host: HTMLElement): string[] {
+  return [...host.querySelectorAll('[data-flat-slider-track="true"]')].map(
+    (track) => track.getAttribute("aria-label") ?? "",
+  );
+}
+
+describe("FlatMediaSection — audio clips", () => {
+  it("offers speed presets on video but not on audio", () => {
+    const video = renderWithRate(makeVideoElement({ dataAttributes: { duration: "10" } }));
+    expect(video.host.textContent).toContain("Speed preset");
+    act(() => video.root.unmount());
+
+    const audio = renderWithRate(makeAudioElement());
+    expect(audio.host.textContent).not.toContain("Speed preset");
+    act(() => audio.root.unmount());
+  });
+
+  it("shows Fade in / Fade out rows for audio, and for video only when it carries audio", () => {
+    const audio = renderWithRate(makeAudioElement());
+    expect(labelsOf(audio.host)).toEqual(
+      expect.arrayContaining(["Volume", "Speed", "Media start", "Fade in", "Fade out"]),
+    );
+    act(() => audio.root.unmount());
+
+    const silentVideo = renderWithRate(makeVideoElement({ dataAttributes: { duration: "10" } }));
+    expect(labelsOf(silentVideo.host)).not.toContain("Fade in");
+    act(() => silentVideo.root.unmount());
+
+    const audibleVideo = renderWithRate(
+      makeVideoElement({ dataAttributes: { duration: "10", "has-audio": "true" } }),
+    );
+    expect(labelsOf(audibleVideo.host)).toContain("Fade out");
+    act(() => audibleVideo.root.unmount());
+  });
+
+  it("reads the authored fades and writes data-fade-in from the slider, clearing it at zero", () => {
+    const { host, root, onSetAttribute } = renderWithRate(
+      makeAudioElement({ "fade-in": "0.5", "fade-out": "2" }),
+    );
+    const readouts = [...host.querySelectorAll('[data-flat-slider-value="true"]')].map(
+      (node) => node.textContent,
+    );
+    expect(readouts).toEqual(expect.arrayContaining(["0.50s", "2.00s"]));
+
+    const fadeInTrack = host.querySelector<HTMLElement>(
+      '[data-flat-slider-track="true"][aria-label="Fade in"]',
+    );
+    if (!fadeInTrack) throw new Error("expected a Fade in slider");
+    Object.defineProperty(fadeInTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    // The other fade reserves 2 s: a quarter of the remaining 8 s is 2 s.
+    act(() => {
+      fadeInTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 25 }));
+      fadeInTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 25 }));
+    });
+    expect(onSetAttribute).toHaveBeenCalledWith("fade-in", "2");
+    act(() => {
+      fadeInTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }));
+      fadeInTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 0 }));
+    });
+    // An empty write removes the attribute rather than leaving data-fade-in="0" behind.
+    expect(onSetAttribute).toHaveBeenCalledWith("fade-in", "");
+    act(() => root.unmount());
+  });
+
+  it.each([
+    ["Media start", "media-start", "45.00", {}, "9999"],
+    ["Fade in", "fade-in", "10", {}, "9999"],
+    ["Fade out", "fade-out", "10", {}, "9999"],
+    ["Fade in", "fade-in", "5", { "fade-out": "5" }, "8"],
+    ["Fade out", "fade-out", "5", { "fade-in": "5" }, "8"],
+  ] as const)("bounds typed %s to the slider limit", (label, attribute, expected, fades, typed) => {
+    const { host, root, onSetAttribute } = renderWithRate(
+      makeAudioElement({ "source-duration": "45", ...fades }),
+    );
+    const row = host.querySelector<HTMLElement>(
+      `[data-flat-slider-track="true"][aria-label="${label}"]`,
+    )?.parentElement;
+    const readout = row?.querySelector<HTMLElement>('[data-flat-slider-value="true"]');
+    if (!readout) throw new Error(`expected ${label} readout`);
+    act(() => readout.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const input = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
+    if (!input) throw new Error(`expected ${label} input`);
+    act(() => {
+      typeInto(input, typed);
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onSetAttribute.mock.calls).toEqual([[attribute, expected]]);
+    act(() => root.unmount());
+  });
+
+  it("commits a typed volume in dB and a typed fade in seconds", () => {
+    const { host, root, onSetAttribute } = renderWithRate(makeAudioElement());
+    const readouts = host.querySelectorAll<HTMLElement>('[data-flat-slider-value="true"]');
+    // Volume is the first slider row.
+    act(() => readouts[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const volumeInput = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
+    if (!volumeInput) throw new Error("expected the volume readout to open for typing");
+    act(() => {
+      typeInto(volumeInput, "-6 dB");
+      volumeInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    const [attr, value] = onSetAttribute.mock.calls.at(-1) ?? [];
+    expect(attr).toBe("volume");
+    expect(Number(value)).toBeCloseTo(10 ** (-6 / 20), 2);
+
+    const fadeOutRow = host.querySelector<HTMLElement>(
+      '[data-flat-slider-track="true"][aria-label="Fade out"]',
+    )?.parentElement;
+    const fadeOutReadout = fadeOutRow?.querySelector<HTMLElement>(
+      '[data-flat-slider-value="true"]',
+    );
+    act(() => fadeOutReadout?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const fadeInput = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
+    if (!fadeInput) throw new Error("expected the fade readout to open for typing");
+    act(() => {
+      typeInto(fadeInput, "1.25s");
+      fadeInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onSetAttribute).toHaveBeenLastCalledWith("fade-out", "1.25");
+    act(() => root.unmount());
+  });
+});
+
+function typeInto(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}

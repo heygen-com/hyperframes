@@ -2,6 +2,11 @@ import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import {
+  HTML_BODY_CSS_WIDTH_FIRST_RE,
+  HTML_BODY_CSS_HEIGHT_FIRST_RE,
+  VIEWPORT_META_SIZE_RE,
+} from "@hyperframes/parsers";
+import {
   readAttr,
   readDecodedAttr,
   truncateSnippet,
@@ -232,6 +237,80 @@ function findVisibleMarkupCommentLeak(source: string): string | null {
   return null;
 }
 
+type ScaffoldSize = { width: string; height: string };
+
+// Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
+// replace; lint only reads the digit groups (2 and 4).
+function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
+  const widthFirst = source.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  if (widthFirst) {
+    const [, , width = "", , height = ""] = widthFirst;
+    return { width, height };
+  }
+  const heightFirst = source.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  if (heightFirst) {
+    const [, , height = "", , width = ""] = heightFirst;
+    return { width, height };
+  }
+  return null;
+}
+
+function readViewportMetaSize(source: string): ScaffoldSize | null {
+  const match = source.match(VIEWPORT_META_SIZE_RE);
+  if (!match) return null;
+  const [, , width = "", , height = ""] = match;
+  return { width, height };
+}
+
+function describeSizeMismatch(
+  label: string,
+  size: ScaffoldSize | null,
+  dataWidth: string,
+  dataHeight: string,
+): string | null {
+  if (!size || (size.width === dataWidth && size.height === dataHeight)) return null;
+  return `${label} is ${size.width}x${size.height}`;
+}
+
+// Only html/body CSS actually clips the root; the CDP viewport comes from
+// data-width/data-height, not `<meta viewport>` — so a viewport-only drift gets distinct wording.
+function describeRootDimensionsDrift(
+  source: string,
+  dataWidth: string,
+  dataHeight: string,
+): { message: string; fixHint: string } | null {
+  const bodyCssMismatch = describeSizeMismatch(
+    "html/body CSS",
+    readHtmlBodyCssSize(source),
+    dataWidth,
+    dataHeight,
+  );
+  const viewportMismatch = describeSizeMismatch(
+    "the viewport meta",
+    readViewportMetaSize(source),
+    dataWidth,
+    dataHeight,
+  );
+  if (!bodyCssMismatch && !viewportMismatch) return null;
+
+  const declared = `Root composition declares data-width="${dataWidth}" data-height="${dataHeight}"`;
+  if (!bodyCssMismatch) {
+    return {
+      message: `${declared}, but ${viewportMismatch}. The viewport meta has no effect on capture — the renderer sizes the viewport from the root's own data-width/data-height — so this is stale metadata, not a clipping risk.`,
+      fixHint:
+        "update the meta viewport to match, or scaffold with `hyperframes init --resolution portrait`",
+    };
+  }
+  const mismatches = viewportMismatch
+    ? `${bodyCssMismatch} and ${viewportMismatch}`
+    : bodyCssMismatch;
+  return {
+    message: `${declared}, but ${mismatches}. The scaffolded body clips the composition at its old size.`,
+    fixHint:
+      "update html/body CSS and the meta viewport to match, or scaffold with `hyperframes init --resolution portrait`",
+  };
+}
+
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // id_requires_css_escape
   ({ tags }) => {
@@ -277,6 +356,42 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       });
     }
     return findings;
+  },
+
+  // root_dimensions_mismatch
+  //
+  // Render size and the runtime's forced #root size both read the root's own
+  // data-width/data-height, so they stay correct. But editing only those two
+  // attributes — rather than scaffolding with `hyperframes init --resolution`,
+  // which rewrites the scaffold's other copies of the resolution too — leaves
+  // the `html, body` CSS and the `<meta viewport>` at the old value, and a
+  // stale body with `overflow: hidden` visually clips the correctly-sized
+  // root. `hyperframes check`'s layout audits can't see it: they measure
+  // against the root's own (already-correct) rect, not the body's.
+  //
+  // Sub-compositions are exempt: loadExternalCompositions (packages/core/src/
+  // runtime/compositionLoader.ts) mounts only the matched <template>/<body>
+  // subtree, so a sub-comp's own <html>/<head>/<meta viewport> never reach
+  // the rendering document, even when it's a full standalone document.
+  ({ rootTag, source, options }) => {
+    if (!rootTag || options.isSubComposition) return [];
+    const dataWidth = readAttr(rootTag.raw, "data-width");
+    const dataHeight = readAttr(rootTag.raw, "data-height");
+    if (!dataWidth || !dataHeight) return [];
+
+    const drift = describeRootDimensionsDrift(source, dataWidth, dataHeight);
+    if (!drift) return [];
+
+    return [
+      {
+        code: "root_dimensions_mismatch",
+        severity: "warning",
+        message: drift.message,
+        elementId: readAttr(rootTag.raw, "id") || undefined,
+        fixHint: drift.fixHint,
+        snippet: truncateSnippet(rootTag.raw),
+      },
+    ];
   },
 
   // unbalanced_style_tags

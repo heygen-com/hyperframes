@@ -12,7 +12,7 @@ heygen auth login --oauth # OAuth = free subscription credits; --api-key bills A
 This unlocks the FREE path for bgm/sfx/image/icon catalog search, TTS (voice), and avatar videos. Sign in with `--oauth` — the free allowance rides on the OAuth session (an API key bills API credits instead). **media-use requires heygen >= v0.3.0 uniformly** (the OAuth free-usage path needs it), so `--doctor` nudges older CLIs to update even for API-key-only use. Before resolving anything, verify setup with:
 
 ```bash
-node <SKILL_DIR>/scripts/resolve.mjs --doctor
+npx hyperframes media-use resolve --doctor
 ```
 
 ## Providers

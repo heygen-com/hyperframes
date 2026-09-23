@@ -2,7 +2,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
 export const inputCls =
-  "w-full bg-neutral-900 border border-neutral-800 rounded px-1.5 py-0.5 text-2xs text-neutral-200 font-mono outline-none focus:border-studio-accent disabled:opacity-40 disabled:cursor-not-allowed";
+  "w-full bg-neutral-900 border border-neutral-800 rounded-sm px-1.5 py-0.5 text-2xs text-neutral-200 font-mono outline-hidden focus:border-studio-accent disabled:opacity-40 disabled:cursor-not-allowed";
 
 export function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -20,7 +20,7 @@ export function Section({ label, children }: { label: string; children: React.Re
 export function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-2xs text-neutral-600 w-14 text-right flex-shrink-0">{label}</span>
+      <span className="text-2xs text-neutral-600 w-14 text-right shrink-0">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
   );

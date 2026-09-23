@@ -183,7 +183,7 @@ export function Transform3DCube({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-neutral-800 bg-gradient-to-b from-neutral-900 to-neutral-950">
+    <div className="relative overflow-hidden rounded-lg border border-neutral-800 bg-linear-to-b from-neutral-900 to-neutral-950">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -294,7 +294,7 @@ export function Transform3DCube({
           onClick={onRecenter}
           title="Reset 3D orientation"
           aria-label="Reset 3D orientation"
-          className="absolute right-1.5 top-1.5 rounded p-0.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+          className="absolute right-1.5 top-1.5 rounded-sm p-0.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <circle cx="12" cy="12" r="9" strokeWidth="2" />

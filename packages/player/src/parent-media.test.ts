@@ -162,3 +162,16 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     expect(mgr.entries[0]).toBe(adopted);
   });
 });
+
+describe("ParentMediaManager clip window", () => {
+  it("plays a proxy inside its clip window and pauses it at the clip end instant", () => {
+    const mgr = makeManager({ isPaused: false, owner: "parent" });
+    const el = makeFakeAudio(false);
+    mgr.entries.push({ el, start: 1, duration: 2, driftSamples: 0 });
+
+    mgr.mirrorTime(2.999);
+    expect(el.paused).toBe(false);
+    mgr.mirrorTime(3);
+    expect(el.paused).toBe(true);
+  });
+});

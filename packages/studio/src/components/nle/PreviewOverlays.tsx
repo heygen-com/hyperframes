@@ -1,17 +1,18 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { useCaptionStore } from "../../captions/store";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { TopologyLens } from "../editor/TopologyLens";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
 import { SnapToolbar } from "../editor/SnapToolbar";
+import { GridOverlay } from "../editor/GridOverlay";
+import { usePreviewReadOnly } from "../editor/previewReadOnlyContext";
 import { useCompositionDimensions } from "../../hooks/useCompositionDimensions";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import {
   useDomEditActionsContext,
   useDomEditSelectionContext,
 } from "../../contexts/DomEditContext";
-import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { readHfId, type DomEditSelection } from "../editor/domEditing";
 import { buildStableSelector } from "../editor/domEditingDom";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
@@ -140,6 +141,8 @@ export function PreviewOverlays({
   const { activeCompPath, previewIframeRef } = useStudioShellContext();
   const { captionEditMode, compositionLoading, isPlaying } = useStudioPlaybackContext();
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
+  const readOnly = usePreviewReadOnly();
+  const previewCaptionEditMode = captionEditMode && !readOnly;
 
   // Caption edit mode is entered automatically when captions are detected;
   // these give the author an explicit way OUT (and back in). Without them the
@@ -179,17 +182,6 @@ export function PreviewOverlays({
   } = useDomEditActionsContext();
   const mirrorZOrderToTimeline = useCanvasZOrderTimelineMirror();
 
-  // fallow-ignore-next-line complexity
-  const [snapPrefs, setSnapPrefs] = useState(() => {
-    const p = readStudioUiPreferences();
-    return {
-      snapEnabled: p.snapEnabled ?? true,
-      gridVisible: p.gridVisible ?? false,
-      gridSpacing: p.gridSpacing ?? 50,
-      snapToGrid: p.snapToGrid ?? false,
-    };
-  });
-
   if (blockPreview) {
     return (
       <>
@@ -216,19 +208,19 @@ export function PreviewOverlays({
     );
   }
 
-  if (captionEditMode) {
+  if (previewCaptionEditMode) {
     return (
       <>
         <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
         <CaptionOverlay iframeRef={previewIframeRef} />
         {/* Mode indicator + explicit exit */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 rounded-full border border-studio-accent/40 bg-black/70 px-2.5 py-1">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-60 flex items-center gap-2 rounded-full border border-studio-accent/40 bg-black/70 px-2.5 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-studio-accent" aria-hidden="true" />
           <span className="text-2xs text-neutral-200">Editing captions</span>
           <button
             type="button"
             onClick={exitCaptionMode}
-            className="rounded text-2xs text-neutral-400 underline underline-offset-2 hover:text-neutral-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-studio-accent"
+            className="rounded-sm text-2xs text-neutral-400 underline underline-offset-2 hover:text-neutral-100 focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-studio-accent"
           >
             Exit
           </button>
@@ -236,13 +228,13 @@ export function PreviewOverlays({
         {captionSyncError && (
           <div
             role="alert"
-            className="absolute top-10 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 rounded-full border border-red-500/50 bg-red-950/90 px-2.5 py-1"
+            className="absolute top-10 left-1/2 -translate-x-1/2 z-60 flex items-center gap-2 rounded-full border border-red-500/50 bg-red-950/90 px-2.5 py-1"
           >
             <span className="text-2xs text-red-200">{captionSyncError}</span>
             <button
               type="button"
               onClick={() => useCaptionStore.getState().retrySave?.()}
-              className="rounded text-2xs text-red-100 underline underline-offset-2 hover:text-white"
+              className="rounded-sm text-2xs text-red-100 underline underline-offset-2 hover:text-white"
             >
               Retry
             </button>
@@ -250,7 +242,7 @@ export function PreviewOverlays({
               type="button"
               onClick={() => useCaptionStore.getState().setSyncError(null)}
               aria-label="Dismiss"
-              className="rounded px-0.5 text-2xs text-red-300/70 hover:text-red-100"
+              className="rounded-sm px-0.5 text-2xs text-red-300/70 hover:text-red-100"
             >
               ✕
             </button>
@@ -263,11 +255,14 @@ export function PreviewOverlays({
   return (
     <>
       <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
+      <GridOverlay />
       <DomEditOverlay
         iframeRef={previewIframeRef}
         activeCompositionPath={activeCompPath}
         hoverSelection={
-          !captionEditMode && !compositionLoading && !isPlaying ? domEditHoverSelection : null
+          !previewCaptionEditMode && !compositionLoading && !isPlaying
+            ? domEditHoverSelection
+            : null
         }
         selection={shouldShowSelectedDomBounds ? domEditSelection : null}
         groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
@@ -320,25 +315,25 @@ export function PreviewOverlays({
               }),
           }).catch(() => undefined);
         }}
-        gridVisible={snapPrefs.gridVisible}
-        gridSpacing={snapPrefs.gridSpacing}
         recordingState={recordingState}
         onToggleRecording={onToggleRecording}
         onMarqueeSelect={applyMarqueeSelection}
       />
-      <SnapToolbar onSnapChange={setSnapPrefs} />
-      <MotionPathOverlay
-        iframeRef={previewIframeRef}
-        selection={shouldShowMotionPath ? domEditSelection : null}
-        compositionSize={compositionDimensions}
-        isPlaying={isPlaying}
-      />
+      <SnapToolbar />
+      {!readOnly && (
+        <MotionPathOverlay
+          iframeRef={previewIframeRef}
+          selection={shouldShowMotionPath ? domEditSelection : null}
+          compositionSize={compositionDimensions}
+          isPlaying={isPlaying}
+        />
+      )}
       {gestureOverlay}
       {captionModelPresent && captionDismissed && (
         <button
           type="button"
           onClick={enterCaptionMode}
-          className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-2xs text-neutral-300 transition-colors hover:border-studio-accent/50 hover:text-studio-accent focus-visible:outline focus-visible:outline-1 focus-visible:outline-studio-accent"
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-60 rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-2xs text-neutral-300 transition-colors hover:border-studio-accent/50 hover:text-studio-accent focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-studio-accent"
         >
           Edit captions
         </button>

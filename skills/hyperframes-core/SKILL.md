@@ -18,18 +18,18 @@ This skill is the **technical contract** — how to build one hyperframes projec
 
 ## References
 
-| File                                    | Read it to…                                                                                               |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `references/minimal-composition.md`     | start from the smallest renderable composition skeleton                                                   |
-| `references/composition-patterns.md`    | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                 |
-| `references/data-attributes.md`         | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                   |
-| `references/tracks-and-clips.md`        | understand what `data-track-index` does (and does not) control, z-index, time a clip relative to another  |
-| `references/creator-editing-recipes.md` | copy truthful cut/trim/reorder/retime/freeze/camera/mask/crossfade/audio editing recipes and their limits |
-| `references/sub-compositions.md`        | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                |
-| `references/variables-and-media.md`     | declare variables; place `<video>`/`<audio>`, set volume, trim                                            |
-| `references/determinism-rules.md`       | build a seekable timeline; determinism bans; layout / text fit                                            |
-| `references/full-screen-motion.md`      | author full-frame motion with shared backgrounds                                                          |
-| `references/tailwind.md`                | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)              |
+| File                                    | Read it to…                                                                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/minimal-composition.md`     | start from the smallest renderable composition skeleton                                                                                                             |
+| `references/composition-patterns.md`    | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                                                                           |
+| `references/data-attributes.md`         | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                                                             |
+| `references/tracks-and-clips.md`        | understand what `data-track-index` does (and does not) control, z-index, time a clip relative to another; list every track and clip with `npx hyperframes timeline` |
+| `references/creator-editing-recipes.md` | copy truthful cut/trim/reorder/retime/freeze/camera/mask/crossfade/audio editing recipes and their limits                                                           |
+| `references/sub-compositions.md`        | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                                                                          |
+| `references/variables-and-media.md`     | declare variables; place `<video>`/`<audio>`, set volume, trim                                                                                                      |
+| `references/determinism-rules.md`       | build a seekable timeline; determinism bans; layout / text fit                                                                                                      |
+| `references/full-screen-motion.md`      | author full-frame motion with shared backgrounds                                                                                                                    |
+| `references/tailwind.md`                | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                                                                        |
 
 For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperframes-animation` → `adapters/<runtime>.md`.
 
@@ -81,6 +81,7 @@ Surfaced here; full rationale in the linked reference. Do not violate:
 ## Editing existing compositions
 
 - Read the files first. Preserve unrelated timing, tracks, IDs, variables, media paths.
+- To know what is on a project's timeline (tracks, clips, starts, ends, what plays), run `npx hyperframes timeline [--json]` instead of reading `index.html` and every sub-composition file.
 - Match existing composition IDs and timeline keys.
 - Adding a clip: set its `data-start`/`data-duration` intentionally against the clips around it. `data-track-index` is a Studio display lane, not a timing constraint, so it does not need to be free.
 - `data-hidden` on any composition element hides it in BOTH preview and render, overriding its time window; it is non-destructive/reversible and toggled by Studio's timeline eye icon.

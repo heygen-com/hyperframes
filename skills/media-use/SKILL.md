@@ -7,12 +7,12 @@ description: Agent Media OS, the single skill for every media need in a HyperFra
 
 The media OS for HyperFrames: resolve · generate · operate · remember — every media type, one skill, zero context noise.
 
-First run: install and sign in to the `heygen` CLI (the free-usage path), then verify with `node <SKILL_DIR>/scripts/resolve.mjs --doctor`. Setup and providers: `references/setup-providers.md`.
+First run: install and sign in to the `heygen` CLI (the free-usage path), then verify with `npx hyperframes media-use resolve --doctor`. Setup and providers: `references/setup-providers.md`.
 
 ## Resolve — the one verb
 
 ```bash
-node <SKILL_DIR>/scripts/resolve.mjs --type <type> --intent "<description>" --project <dir>
+npx hyperframes media-use resolve --type <type> --intent "<description>" --project <dir>
 ```
 
 Returns one line: `resolved <id> → <path> (<type>, <metadata>)`. All search noise stays on disk.

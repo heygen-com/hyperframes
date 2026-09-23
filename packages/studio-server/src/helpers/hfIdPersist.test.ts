@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "./hfIdPersist.js";
@@ -91,6 +91,15 @@ describe("stampFileHfIds", () => {
     const returned = stampFileHfIds(file);
     expect(returned).toContain('data-hf-id="hf-');
     expect(readFileSync(file, "utf-8")).toBe(returned);
+  });
+
+  it("replaces the stamped file and removes its temporary sibling", () => {
+    const file = tmpFile(`<div class="clip" data-start="0" data-end="3">Hi</div>`);
+
+    const returned = stampFileHfIds(file);
+
+    expect(readFileSync(file, "utf-8")).toBe(returned);
+    expect(readdirSync(file.replace(/\/[^/]+$/, ""))).toEqual(["scene.html"]);
   });
 
   it("does not rewrite an already-stamped file", () => {

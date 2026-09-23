@@ -1,0 +1,129 @@
+<!doctype html>
+<!--
+  text-match-cut demo. Four mounts of text-match-cut.html in a 2×2 grid, each
+  with a different mode, so one render shows the cut carried by scale, tracking,
+  and two slide directions. Non-default copy proves the variables flow through
+  the mount; every tile hard-cuts on the same frame (1.0 s).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Text Match Cut Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #262626;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #262626;
+      }
+
+      .mount {
+        position: absolute;
+        width: 912px;
+        height: 513px;
+        container-type: size;
+        overflow: hidden;
+        border-radius: 8px;
+      }
+
+      .q0 {
+        left: 24px;
+        top: 18px;
+      }
+      .q1 {
+        left: 984px;
+        top: 18px;
+      }
+      .q2 {
+        left: 24px;
+        top: 549px;
+      }
+      .q3 {
+        left: 984px;
+        top: 549px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="text-match-cut-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+      data-fps="30"
+    >
+      <div
+        id="tmc-mount-0"
+        class="mount q0 clip"
+        data-composition-id="text-match-cut"
+        data-composition-src="./text-match-cut.html"
+        data-variable-values='{"mode":"scale-down","text_a":"Ship the update","text_b":"Watch it land"}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+        data-width="912"
+        data-height="513"
+      ></div>
+      <div
+        id="tmc-mount-1"
+        class="mount q1 clip"
+        data-composition-id="text-match-cut"
+        data-composition-src="./text-match-cut.html"
+        data-variable-values='{"mode":"scale-up","text_a":"Ship the update","text_b":"Watch it land"}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="1"
+        data-width="912"
+        data-height="513"
+      ></div>
+      <div
+        id="tmc-mount-2"
+        class="mount q2 clip"
+        data-composition-id="text-match-cut"
+        data-composition-src="./text-match-cut.html"
+        data-variable-values='{"mode":"tracking-in","text_a":"Ship the update","text_b":"Watch it land"}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="2"
+        data-width="912"
+        data-height="513"
+      ></div>
+      <div
+        id="tmc-mount-3"
+        class="mount q3 clip"
+        data-composition-id="text-match-cut"
+        data-composition-src="./text-match-cut.html"
+        data-variable-values='{"mode":"slide-left","text_a":"Ship the update","text_b":"Watch it land"}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="3"
+        data-width="912"
+        data-height="513"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["text-match-cut-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

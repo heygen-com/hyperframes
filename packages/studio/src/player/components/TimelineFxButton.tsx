@@ -79,7 +79,7 @@ function GroupNameDialog({
       <div
         role="dialog"
         aria-label="This track cannot be grouped"
-        className="z-[200] w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] leading-snug text-white/75 shadow-xl"
+        className="z-200 w-64 rounded-md border border-[var(--timeline-tick-major)] bg-[var(--timeline-dialog-bg)] p-3 text-[11px] leading-snug text-[var(--timeline-text-soft)] shadow-xl"
         style={{ position: "fixed", ...groupDialogPosition(anchorRect) }}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
@@ -97,7 +97,7 @@ function GroupNameDialog({
     <div
       role="dialog"
       aria-label="Name this group"
-      className="z-[200] w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] text-white/75 shadow-xl"
+      className="z-200 w-64 rounded-md border border-[var(--timeline-tick-major)] bg-[var(--timeline-dialog-bg)] p-3 text-[11px] text-[var(--timeline-text-soft)] shadow-xl"
       style={{ position: "fixed", ...groupDialogPosition(anchorRect) }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
@@ -108,14 +108,14 @@ function GroupNameDialog({
         if (event.key === "Enter") confirm();
       }}
     >
-      <p className="mb-1.5 font-medium text-white">Name this group</p>
+      <p className="mb-1.5 font-medium text-[var(--timeline-text-solid)]">Name this group</p>
       <input
         ref={inputRef}
         type="text"
         aria-label="Group name"
         value={label}
         onChange={(event) => setLabel(event.currentTarget.value)}
-        className="w-full rounded border border-white/20 bg-black/30 px-1.5 py-1 text-[11px] text-white outline-none focus:border-[#3CE6AC]"
+        className="w-full rounded-sm border border-[var(--timeline-border-strong)] bg-[var(--timeline-input-bg)] px-1.5 py-1 text-[11px] text-[var(--timeline-text-solid)] outline-hidden focus:border-[var(--timeline-accent)]"
       />
       {/* The sentence. No jargon, and it names both things a bus does. */}
       <p className="mt-2 leading-snug">
@@ -125,14 +125,14 @@ function GroupNameDialog({
       <div className="mt-2.5 flex justify-end gap-1.5">
         <button
           type="button"
-          className="rounded border border-white/20 px-2 py-1 text-[10px] text-white/75 hover:bg-white/10"
+          className="rounded-sm border border-[var(--timeline-border-strong)] px-2 py-1 text-[10px] text-[var(--timeline-text-soft)] hover:bg-[var(--timeline-tick-major)]"
           onClick={onCancel}
         >
           Cancel
         </button>
         <button
           type="button"
-          className="rounded border border-[#3CE6AC] bg-[#3CE6AC]/15 px-2 py-1 text-[10px] font-semibold text-[#3CE6AC] hover:bg-[#3CE6AC]/25"
+          className="rounded-sm border border-[var(--timeline-accent)] bg-[var(--timeline-accent-button-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--timeline-accent)] hover:bg-[var(--timeline-accent-hover)]"
           onClick={confirm}
         >
           Group
@@ -212,7 +212,7 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
           ref={buttonRef}
           aria-label="Effects — group these clips first"
           title="Group these clips to add effects to all of them"
-          className="flex h-6 items-center justify-center rounded border-0 bg-transparent px-1 text-[10px] font-semibold text-white/35 hover:text-white/75"
+          className="flex h-6 items-center justify-center rounded-sm border-0 bg-transparent px-1 text-[10px] font-semibold text-[var(--timeline-text-faint)] hover:text-[var(--timeline-text-soft)]"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -253,7 +253,9 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
         aria-label={nodeCount > 0 ? `Effects — ${nodeCount} applied` : "Effects"}
         title="Effects"
         className={`flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[10px] font-semibold transition-colors ${
-          open || nodeCount > 0 ? "text-[#3CE6AC]" : "text-white/35 hover:text-white/75"
+          open || nodeCount > 0
+            ? "text-[var(--timeline-accent)]"
+            : "text-[var(--timeline-text-faint)] hover:text-[var(--timeline-text-soft)]"
         }`}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {

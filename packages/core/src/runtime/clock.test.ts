@@ -10,6 +10,14 @@ function createClock(opts?: ConstructorParameters<typeof TransportClock>[0]) {
   return { clock, advance, getMs: () => ms };
 }
 
+/** Advances `totalMs` in sub-threshold steps, reading `now()` each time (see clock.ts's stall policy). */
+function advancePolled(clock: TransportClock, advance: (deltaMs: number) => void, totalMs: number) {
+  for (let remaining = totalMs; remaining > 0; remaining -= 250) {
+    advance(Math.min(250, remaining));
+    clock.now();
+  }
+}
+
 describe("TransportClock", () => {
   describe("initial state", () => {
     it("starts paused at time 0", () => {
@@ -108,8 +116,8 @@ describe("TransportClock", () => {
       clock.seek(10);
       expect(clock.isPlaying()).toBe(true);
       expect(clock.now()).toBe(10);
-      advance(1000);
-      expect(clock.now()).toBe(11);
+      advancePolled(clock, advance, 1000);
+      expect(clock.now()).toBeCloseTo(11, 5);
     });
 
     it("clamps to 0", () => {
@@ -235,8 +243,8 @@ describe("TransportClock", () => {
       advance(5000);
       clock.seek(0);
       expect(clock.now()).toBe(0);
-      advance(1000);
-      expect(clock.now()).toBe(1);
+      advancePolled(clock, advance, 1000);
+      expect(clock.now()).toBeCloseTo(1, 5);
     });
   });
 
@@ -264,6 +272,21 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("monotonic");
     });
 
+    it("maps audio position back to composition time through a rate lane", () => {
+      const { clock } = createClock({ duration: 20 });
+      const rate = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 3 },
+        ],
+      };
+      const audioEl = createMockAudioEl(4, false);
+      clock.play();
+      clock.attachAudioSource({ el: audioEl, compositionStart: 1, mediaStart: 0, rate });
+      expect(clock.now()).toBeCloseTo(1 + 2 + (4 - 3.641) / 3, 2);
+    });
+
     it("accounts for compositionStart offset", () => {
       const { clock } = createClock({ duration: 20 });
       const audioEl = createMockAudioEl(2.0, false);
@@ -288,7 +311,7 @@ describe("TransportClock", () => {
       expect(clock.now()).toBe(5);
       clock.detachAudioSource();
       expect(clock.now()).toBeCloseTo(5, 1);
-      advance(1000);
+      advancePolled(clock, advance, 1000);
       expect(clock.now()).toBeCloseTo(6, 1);
       expect(clock.getSource()).toBe("monotonic");
     });

@@ -1,0 +1,74 @@
+<template id="mask-reveal-template">
+  <div data-composition-id="mask-reveal" data-width="1920" data-height="1080" data-duration="2">
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero {
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        color: var(--hg-fg);
+        white-space: nowrap;
+      }
+      .mask-wrap {
+        position: relative;
+        overflow: hidden;
+        padding: 0 60px;
+      }
+      .mask-clip {
+        clip-path: inset(0 100% 0 0);
+        will-change: clip-path;
+      }
+      .sweep {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 8px;
+        background: var(--hg-violet);
+        box-shadow:
+          0 0 40px var(--hg-violet),
+          0 0 80px var(--hg-violet);
+        left: 0;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+    </style>
+    <div class="stage">
+      <div class="mask-wrap">
+        <div class="hero mask-clip">REVEAL</div>
+        <div class="sweep"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(".mask-clip", { clipPath: "inset(0 100% 0 0)" }, 0);
+      tl.set(".sweep", { x: 0, opacity: 0 }, 0);
+      tl.to(".sweep", { opacity: 1, duration: 0.08, ease: "power2.out" }, 0.1);
+      tl.to(".sweep", { x: 1300, duration: 0.75, ease: "expo.out" }, 0.15);
+      tl.to(".mask-clip", { clipPath: "inset(0 0% 0 0)", duration: 0.75, ease: "expo.out" }, 0.18);
+      tl.to(".sweep", { opacity: 0, duration: 0.3, ease: "power2.in" }, 0.85);
+
+      window.__timelines["mask-reveal"] = tl;
+    </script>
+  </div>
+</template>

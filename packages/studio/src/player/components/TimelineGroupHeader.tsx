@@ -55,21 +55,24 @@ function GroupNameButton({
       // No `flex-1`: the row's control group owns the slack now (`ml-auto`), so
       // claiming it here would push the controls off the right edge — and the
       // count with them, since it rides inside this button.
-      className="flex h-6 min-w-0 items-center gap-1.5 rounded border-0 bg-transparent p-0 text-left text-[11px] text-white hover:text-[#3CE6AC] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+      className="flex h-6 min-w-0 items-center gap-1.5 rounded-sm border-0 bg-transparent p-0 text-left text-[11px] text-[var(--timeline-text-solid)] hover:text-[var(--timeline-accent)] focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[var(--timeline-accent)]"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
         onOpenFxRack();
       }}
     >
-      <span aria-hidden="true" className="shrink-0 text-[12px] leading-none text-white/50">
+      <span
+        aria-hidden="true"
+        className="shrink-0 text-[12px] leading-none text-[var(--timeline-track-label)]"
+      >
         ▤
       </span>
-      {/* Wraps rather than truncating — a name that needs a hover to be read
-          is no use in a column you scan. */}
-      <span className="min-w-0 break-words text-left font-medium leading-tight">{label}</span>
+      <span title={label} className="min-w-0 truncate text-left font-medium leading-tight">
+        {label}
+      </span>
       <span
-        className="shrink-0 rounded-full bg-white/10 px-1 text-[9px] leading-[14px] tabular-nums text-white/55"
+        className="shrink-0 rounded-full bg-[var(--timeline-tick-major)] px-1 text-[9px] leading-[14px] tabular-nums text-[var(--timeline-handle)]"
         aria-hidden="true"
         title={`${memberCount} tracks`}
       >
@@ -99,19 +102,17 @@ export function TimelineGroupHeader({
     <div
       role="rowheader"
       aria-colindex={1}
-      className="sticky left-0 z-[12] flex shrink-0 items-center gap-1.5 overflow-hidden px-1.5 text-[11px]"
+      className="sticky left-0 z-12 flex shrink-0 items-center gap-1.5 overflow-hidden px-1.5 text-[11px]"
       style={{
         width: columnWidth,
         height: TRACK_H,
-        color: "#ffffff",
+        color: "var(--timeline-text-solid)",
         background: theme.gutterBackground,
         borderRight: `1px solid ${theme.gutterBorder}`,
       }}
     >
       {/* One line, like a track header's: caret and name, then every control
-          anchored to the right edge. The name wraps and the controls are
-          `shrink-0`, so they hold the edge and the name gives way — no second
-          line needed to keep five controls off the label. */}
+          anchored to the right edge. */}
       <button
         type="button"
         tabIndex={-1}
@@ -121,8 +122,10 @@ export function TimelineGroupHeader({
         // 13px mono, matching the property panel's preset-run caret
         // (`hf-fx-preset-run-caret`) — the same disclosure, so the same glyph
         // at the same size rather than a smaller one unique to this row.
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 font-mono text-[13px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
-          isExpanded ? "text-white" : "text-white/55 hover:text-white"
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 font-mono text-[13px] focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[var(--timeline-accent)] ${
+          isExpanded
+            ? "text-[var(--timeline-text-solid)]"
+            : "text-[var(--timeline-handle)] hover:text-[var(--timeline-text-solid)]"
         }`}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
@@ -159,8 +162,10 @@ export function TimelineGroupHeader({
             aria-label={`${isLaneOpen ? "Hide" : "Show"} ${label} lanes`}
             title={`${isLaneOpen ? "Hide" : "Show"} lanes`}
             // Anchored right, matching every other header's lane toggle.
-            className={`ml-auto flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[11px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
-              isLaneOpen ? "text-[#3CE6AC]" : "text-white/55 hover:text-white"
+            className={`ml-auto flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[11px] leading-none focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[var(--timeline-accent)] ${
+              isLaneOpen
+                ? "text-[var(--timeline-accent)]"
+                : "text-[var(--timeline-handle)] hover:text-[var(--timeline-text-solid)]"
             }`}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -169,7 +174,9 @@ export function TimelineGroupHeader({
             }}
           >
             <span aria-hidden="true">∿</span>
-            <span className="text-[9px] tabular-nums text-white/55">{laneCount}</span>
+            <span className="text-[9px] tabular-nums text-[var(--timeline-handle)]">
+              {laneCount}
+            </span>
           </button>
         )}
       </div>

@@ -3,7 +3,7 @@
  * Handles inline style updates, attribute changes, and text content.
  */
 
-function escapeRegex(s: string): string {
+export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -420,7 +420,7 @@ function findMatchingClosingTagIndex(html: string, tagName: string, contentStart
   return -1;
 }
 
-const HTML_BOOLEAN_ATTRIBUTES = new Set([
+export const HTML_BOOLEAN_ATTRIBUTES = new Set([
   "loop",
   "muted",
   "autoplay",

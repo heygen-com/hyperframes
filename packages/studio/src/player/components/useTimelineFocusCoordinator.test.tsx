@@ -35,12 +35,16 @@ function Harness({
   mountedId,
   logicalRows = rows,
   projectId = "project-a",
+  lastScrollLeftRef: sharedLastScrollLeftRef,
 }: {
   mountedId?: string;
   logicalRows?: readonly TimelineLogicalRow[];
   projectId?: string;
+  lastScrollLeftRef?: React.RefObject<number>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ownLastScrollLeftRef = useRef(0);
+  const lastScrollLeftRef = sharedLastScrollLeftRef ?? ownLastScrollLeftRef;
   const rowGeometry = useMemo(() => {
     const rowKeys = [...new Set(logicalRows.map((row) => row.physicalTrackKey))];
     return createTimelineRowGeometry(
@@ -60,6 +64,7 @@ function Harness({
     projectId,
     sessionEpoch: 1,
     syncScrollViewport,
+    lastScrollLeftRef,
   });
   return (
     <div
@@ -170,5 +175,66 @@ describe("useTimelineFocusCoordinator", () => {
 
     expect(usePlayerStore.getState().timelineFocus?.id).toBe(nextRowId);
     expect(document.activeElement?.getAttribute("data-timeline-focus-id")).toBe(nextRowId);
+  });
+
+  it("keeps a request alive across a few renders where its target hasn't landed yet", async () => {
+    // A request issued the same tick as its own element's creation (a fresh
+    // drop) can race logicalRows by a render or two; it must not be dropped
+    // before the element actually appears.
+    usePlayerStore.getState().requestTimelineFocus(clipId);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const notYetRows: readonly TimelineLogicalRow[] = [{ ...rows[0]!, items: [] }];
+      await act(async () => root.render(<Harness logicalRows={notYetRows} />));
+    }
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(clipId);
+
+    await act(async () => root.render(<Harness logicalRows={rows} mountedId={clipId} />));
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(clipId);
+    expect(document.activeElement?.getAttribute("data-timeline-focus-id")).toBe(clipId);
+  });
+
+  it("gives up once a target never lands after its retry budget", async () => {
+    usePlayerStore.getState().requestTimelineFocus(clipId);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      // A fresh array reference each render, like a real re-render caused by
+      // unrelated state, or the memoized resolution never recomputes at all.
+      const neverRows: readonly TimelineLogicalRow[] = [{ ...rows[0]!, items: [] }];
+      await act(async () => root.render(<Harness logicalRows={neverRows} />));
+    }
+    expect(usePlayerStore.getState().timelineFocus).toBeNull();
+  });
+
+  it("clears an unresolved request on a timeout even if nothing else ever re-renders", async () => {
+    // The render-count retry budget can't advance without a rerun; if the
+    // target never lands and nothing else re-renders, only a wall-time
+    // backstop clears it — otherwise it sits forever, eligible to resolve
+    // against an unrelated element that later reuses its id.
+    vi.useFakeTimers();
+    try {
+      usePlayerStore.getState().requestTimelineFocus(clipId);
+      const neverRows: readonly TimelineLogicalRow[] = [{ ...rows[0]!, items: [] }];
+      await act(async () => root.render(<Harness logicalRows={neverRows} />));
+      expect(usePlayerStore.getState().timelineFocus?.id).toBe(clipId);
+
+      await act(async () => {
+        vi.advanceTimersByTime(4001);
+      });
+
+      expect(usePlayerStore.getState().timelineFocus).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps lastScrollLeftRef in sync with a reveal so a sibling restore effect doesn't undo it", async () => {
+    // Timeline.tsx's own "restore scroll after an edit re-derives the elements"
+    // effect reads this ref to decide what to scroll back to. A reveal that
+    // doesn't update it looks, to that effect, like scroll drift to undo.
+    const lastScrollLeftRef = { current: 999 };
+    usePlayerStore.getState().requestTimelineFocus(clipId);
+    await act(async () => root.render(<Harness lastScrollLeftRef={lastScrollLeftRef} />));
+    const scroll = host.firstElementChild as HTMLDivElement;
+
+    expect(lastScrollLeftRef.current).toBe(scroll.scrollLeft);
   });
 });

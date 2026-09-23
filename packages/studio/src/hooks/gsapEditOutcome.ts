@@ -2,6 +2,27 @@ import { editabilityForProvenance, type GsapAnimation } from "@hyperframes/core/
 
 export type GsapEditBlockReason = "no-selector" | "unroll-required" | "source-uneditable";
 
+/**
+ * Which of the nine situations produced a block. The user-facing `reason` stays
+ * coarse — three messages — but "source-uneditable" alone covers nine distinct
+ * causes, and `edit_blocked` telemetry could not tell them apart. That matters
+ * because the copy ("This animation is computed at runtime") is only literally
+ * true for `provenance-runtime-dynamic`; the others are parser or source-match
+ * limits, where the animation may well be plain authored source.
+ *
+ * Telemetry only. Nothing branches on it.
+ */
+export type GsapEditBlockDetail =
+  | "provenance-runtime-dynamic"
+  | "unresolved-keyframes"
+  | "unresolved-selector"
+  | "geometry-unresolved-source"
+  | "live-position-no-source-tween"
+  | "no-position-tween"
+  | "live-rotation-no-source-tween"
+  | "live-resize-no-source-tween"
+  | "zero-duration-tween";
+
 export type GsapEditOutcome =
   | {
       status: "persisted";
@@ -22,7 +43,7 @@ export type GsapEditOutcome =
        */
       ownsDragOffset?: boolean;
     }
-  | { status: "blocked"; reason: GsapEditBlockReason };
+  | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail };
 
 const COPY: Record<GsapEditBlockReason, string> = {
   "no-selector": "This layer needs a stable selector before Studio can save the edit.",
@@ -32,25 +53,32 @@ const COPY: Record<GsapEditBlockReason, string> = {
 };
 
 export class GsapEditBlockedError extends Error {
-  constructor(readonly reason: GsapEditBlockReason) {
+  constructor(
+    readonly reason: GsapEditBlockReason,
+    readonly detail?: GsapEditBlockDetail,
+  ) {
     super(COPY[reason]);
     this.name = "GsapEditBlockedError";
   }
 }
 
 export function assertGsapEditPersisted(outcome: GsapEditOutcome): void {
-  if (outcome.status === "blocked") throw new GsapEditBlockedError(outcome.reason);
+  if (outcome.status === "blocked") throw new GsapEditBlockedError(outcome.reason, outcome.detail);
 }
 
 function assertGsapAnimationDirectlyEditable(animation: GsapAnimation): void {
   const editability = editabilityForProvenance(animation.provenance);
   if (editability === "unroll") throw new GsapEditBlockedError("unroll-required");
-  if (
-    editability === "source" ||
-    animation.hasUnresolvedKeyframes ||
-    animation.hasUnresolvedSelector
-  ) {
-    throw new GsapEditBlockedError("source-uneditable");
+  // Same message for all three, but they are different problems: only the first
+  // is genuinely a runtime-computed value.
+  if (editability === "source") {
+    throw new GsapEditBlockedError("source-uneditable", "provenance-runtime-dynamic");
+  }
+  if (animation.hasUnresolvedKeyframes) {
+    throw new GsapEditBlockedError("source-uneditable", "unresolved-keyframes");
+  }
+  if (animation.hasUnresolvedSelector) {
+    throw new GsapEditBlockedError("source-uneditable", "unresolved-selector");
   }
 }
 
@@ -84,7 +112,8 @@ export function directEditOutcomeForProperties(
     }
     return { status: "persisted" };
   } catch (error) {
-    if (isGsapEditBlockedError(error)) return { status: "blocked", reason: error.reason };
+    if (isGsapEditBlockedError(error))
+      return { status: "blocked", reason: error.reason, detail: error.detail };
     throw error;
   }
 }

@@ -44,10 +44,9 @@ export function buildCompositionThumbnailUrl({
   /**
    * Capture density. Omitted, the route bounds the image to its preview cap —
    * right for the timeline, where thumbnails are small and numerous and their
-   * decoded bytes are budgeted. `"storyboard"` caps the longest side at a
-   * high-density review size; `"source"` uses the composition's own dimensions.
+   * decoded bytes are budgeted. `"source"` uses the composition's own dimensions.
    */
-  output?: "source" | "storyboard";
+  output?: "source";
   contentRevision?: number;
 }): string {
   const thumbnailBase = previewUrl
@@ -159,7 +158,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
           {Array.from({ length: frameCount }, (_, index) => (
             <div
               key={index}
-              className="relative h-full flex-shrink-0 overflow-hidden"
+              className="relative h-full shrink-0 overflow-hidden"
               style={{ width: frameW }}
             >
               <img

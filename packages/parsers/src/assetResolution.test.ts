@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, posix, win32 } from "node:path";
 import {
   collectSubCompositionSrcs,
   isUnresolvedAssetPlaceholder,
+  isWithinProjectRoot,
   maskNonScannableRanges,
+  resolveProjectRelativeSrc,
 } from "./assetResolution.js";
 
 describe("maskNonScannableRanges", () => {
@@ -111,5 +116,152 @@ describe("collectSubCompositionSrcs", () => {
   // of stray `<` must not be able to hang a render before it starts.
   it("stays fast on a megabyte of unterminated tag openings", () => {
     expect(collectSubCompositionSrcs("<".repeat(1024 * 1024))).toEqual([]);
+  });
+});
+
+// The browser clamps `..` at the origin root; path.join does not. One resolver must serve lint and render.
+describe("resolveProjectRelativeSrc — the one src resolver for lint and render", () => {
+  let tmp: string;
+
+  beforeAll(() => {
+    tmp = mkdtempSync(join(tmpdir(), "hf-resolver-"));
+    mkdirSync(join(tmp, "project", "assets"), { recursive: true });
+    writeFileSync(join(tmp, "project", "assets", "foo.mp4"), "");
+  });
+  afterAll(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns the literal join when the file exists at projectDir/src", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
+  it("resolves a browser root-absolute URL from the project root", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("/assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
+  it("clamps a leading `../` so `../assets/foo.mp4` resolves to assets/foo.mp4", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("../assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
+  it("clamps multiple leading `../../../` segments", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("../../../assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
+  it("clamps mid-path traversal that escapes baseDir (not just leading `..`)", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("assets/../../assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
+  it("returns the (non-existent) base-dir path on miss so callers get a stable error message", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("../assets/missing.mp4", projectDir)).toBe(
+      join(projectDir, "../assets/missing.mp4"),
+    );
+  });
+
+  it("prefers compiled-dir over base-dir when the file exists in both", () => {
+    const projectDir = join(tmp, "project");
+    const compiledDir = join(tmp, "compiled");
+    mkdirSync(join(compiledDir, "assets"), { recursive: true });
+    writeFileSync(join(compiledDir, "assets", "foo.mp4"), "");
+    expect(resolveProjectRelativeSrc("assets/foo.mp4", projectDir, compiledDir)).toBe(
+      join(compiledDir, "assets/foo.mp4"),
+    );
+  });
+
+  it("resolves percent-encoded non-Latin filenames across scripts", () => {
+    const projectDir = join(tmp, "project");
+    const cases = [
+      "%D9%87%D9%86%D8%A7-%D9%85%D8%B1%D9%88%D8%A7.mp4",
+      "%E6%97%A5%E6%9C%AC%E8%AA%9E.mp4",
+      "%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82.mp4",
+      "%ED%95%9C%EA%B8%80.mp4",
+    ];
+
+    for (const encodedFilename of cases) {
+      const filename = decodeURIComponent(encodedFilename);
+      writeFileSync(join(projectDir, "assets", filename), "");
+
+      expect(resolveProjectRelativeSrc(`assets/${encodedFilename}`, projectDir)).toBe(
+        join(projectDir, "assets", filename),
+      );
+    }
+  });
+
+  it("falls back to literal filenames when percent sequences are malformed", () => {
+    const projectDir = join(tmp, "project");
+    const filename = "100%-discount.mp4";
+    writeFileSync(join(projectDir, "assets", filename), "");
+
+    expect(resolveProjectRelativeSrc(`assets/${filename}`, projectDir)).toBe(
+      join(projectDir, "assets", filename),
+    );
+  });
+
+  it("ignores a query string or media fragment when locating the file", () => {
+    const projectDir = join(tmp, "project");
+    for (const src of ["assets/foo.mp4?v=2", "assets/foo.mp4#t=5", " assets/foo.mp4 "]) {
+      expect(resolveProjectRelativeSrc(src, projectDir)).toBe(join(projectDir, "assets/foo.mp4"));
+    }
+  });
+});
+
+// A CI runner is one OS. Injecting path.win32/path.posix exercises both
+// platforms' separator and drive-letter rules from here, so a regression in
+// either fails this suite regardless of which OS actually runs it.
+describe("isWithinProjectRoot", () => {
+  it("rejects a backslash traversal under path.win32", () => {
+    const root = "C:\\project";
+    const candidate = win32.join(root, "..\\secret.txt");
+    expect(isWithinProjectRoot(root, candidate, win32)).toBe(false);
+  });
+
+  it("rejects a mixed backslash/forward-slash traversal under path.win32", () => {
+    const root = "C:\\project";
+    const candidate = win32.join(root, "..\\../secret.txt");
+    expect(isWithinProjectRoot(root, candidate, win32)).toBe(false);
+  });
+
+  it("rejects a drive-letter path outside the root under path.win32", () => {
+    const root = "C:\\project";
+    const candidate = "D:\\secret.txt";
+    expect(isWithinProjectRoot(root, candidate, win32)).toBe(false);
+  });
+
+  it("allows a nested asset under path.win32", () => {
+    const root = "C:\\project";
+    const candidate = win32.join(root, "assets\\a.png");
+    expect(isWithinProjectRoot(root, candidate, win32)).toBe(true);
+  });
+
+  it("rejects a forward-slash traversal under path.posix", () => {
+    const root = "/project";
+    const candidate = posix.join(root, "../secret.txt");
+    expect(isWithinProjectRoot(root, candidate, posix)).toBe(false);
+  });
+
+  it("allows a nested asset under path.posix", () => {
+    const root = "/project";
+    const candidate = posix.join(root, "assets/a.png");
+    expect(isWithinProjectRoot(root, candidate, posix)).toBe(true);
+  });
+
+  it("allows the root itself", () => {
+    expect(isWithinProjectRoot("/project", "/project", posix)).toBe(true);
   });
 });

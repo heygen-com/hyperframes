@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   shouldUseSdkCutover,
   sdkCutoverPersist,
@@ -14,6 +14,7 @@ import {
 import { openComposition } from "@hyperframes/sdk";
 import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
 import type { PatchOperation } from "./sourcePatcher";
+import { StudioSaveNetworkError } from "./studioSaveDiagnostics";
 
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: true,
@@ -22,6 +23,8 @@ vi.mock("../components/editor/manualEditingAvailability", () => ({
 vi.mock("./studioTelemetry", () => ({
   trackStudioEvent: vi.fn(),
 }));
+
+import { trackStudioEvent } from "./studioTelemetry";
 
 const styleOp = (property: string, value: string): PatchOperation => ({
   type: "inline-style",
@@ -200,6 +203,46 @@ describe("sdkCutoverPersist", () => {
       deps,
     );
     expect(result.status).toBe("declined");
+  });
+
+  it("tags target_not_found with resolverDisagreement when dispatch could have resolved it", async () => {
+    // getElement is canonical-only for a bare id; resolveSnapshot mirrors what
+    // dispatch resolves (bare ids anywhere). An element present under a scoped
+    // id is dispatchable, so getElement refusing it is a resolver disagreement
+    // — and one the shadow event stays silent about.
+    const deps = makeDeps();
+    const session = makeSession(false);
+    (session as unknown as { getElements: () => unknown[] }).getElements = () => [
+      { id: "hf-abc", scopedId: "host/hf-abc" },
+    ];
+    const sel = { hfId: "hf-abc" } as never;
+
+    await sdkCutoverPersist(sel, [styleOp("color", "red")], "before", "/path.html", session, deps);
+
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "sdk_cutover_declined",
+      expect.objectContaining({ reason: "target_not_found", resolverDisagreement: true }),
+    );
+  });
+
+  it("does not tag resolverDisagreement when the element is genuinely absent", async () => {
+    const deps = makeDeps();
+    const session = makeSession(false);
+    (session as unknown as { getElements: () => unknown[] }).getElements = () => [
+      { id: "hf-other", scopedId: "hf-other" },
+    ];
+    const sel = { hfId: "hf-abc" } as never;
+    vi.mocked(trackStudioEvent).mockClear();
+
+    await sdkCutoverPersist(sel, [styleOp("color", "red")], "before", "/path.html", session, deps);
+
+    expect(trackStudioEvent).toHaveBeenLastCalledWith(
+      "sdk_cutover_declined",
+      expect.objectContaining({ reason: "target_not_found" }),
+    );
+    expect(vi.mocked(trackStudioEvent).mock.lastCall?.[1]).not.toHaveProperty(
+      "resolverDisagreement",
+    );
   });
 
   it("dispatches setStyle for inline-style ops", async () => {
@@ -605,6 +648,57 @@ window.__timelines = { main: tl };</script></div>
     expect(writeProjectFile).toHaveBeenCalledTimes(2);
     live.dispose();
     for (const candidate of published) candidate.dispose();
+  });
+
+  it("does not resurrect an element a prior REST write already deleted, even with a stale live session", async () => {
+    // A delete persists via the server REST path, then a same-gesture ripple
+    // move reaches an SDK-eligible batch persist while `live` was never
+    // reloaded. Prove the candidate rebases on the post-delete disk bytes.
+    const twoElementHtml = `<!DOCTYPE html><html data-composition-variables='[]'><body>
+<div data-hf-id="hf-stage" data-hf-root>
+<div data-hf-id="hf-a" data-start="0" data-duration="2"></div>
+<div data-hf-id="hf-b" data-start="5" data-duration="2"></div>
+</div>
+</body></html>`;
+    const live = await openComposition(twoElementHtml, { history: false });
+
+    // Disk already reflects hf-b's deletion — a separate write that completed
+    // before this persist started, exactly like the delete's own REST call
+    // that `handleTimelineElementsDelete` awaits before the ripple begins.
+    const postDelete = await openComposition(twoElementHtml, { history: false });
+    postDelete.removeElement("hf-b");
+    let disk = postDelete.serialize();
+    postDelete.dispose();
+    expect(disk).not.toContain("hf-b");
+
+    const writeProjectFile = vi.fn(async (_path: string, content: string) => {
+      disk = content;
+    });
+    const deps = {
+      editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+      writeProjectFile,
+      readProjectFile: vi.fn(async () => disk),
+      reloadPreview: vi.fn(),
+      publishSession: vi.fn().mockReturnValue("published"),
+    };
+
+    // The ripple: only survivors move, mirroring resolveShiftedElements — this
+    // never touches hf-b, which `live` (unlike disk) still believes exists.
+    const result = await persistSdkCandidateMutation(
+      live,
+      "/comp.html",
+      twoElementHtml,
+      deps,
+      (candidate) => candidate.setTiming("hf-a", { start: 3 }),
+    );
+
+    expect(result.status).toBe("committed");
+    expect(disk).not.toContain("hf-b");
+    const written = await openComposition(disk, { history: false });
+    expect(written.getElement("hf-a")?.start).toBe(3);
+    expect(written.getElement("hf-b")).toBeNull();
+    written.dispose();
+    live.dispose();
   });
 
   it("fails instead of cloning stale bytes when the authoritative queued read rejects", async () => {
@@ -1309,5 +1403,105 @@ gsap.timeline().to('[data-hf-id="hf-layer"]', { duration: 1, x: 100 });
     expect(written).toContain("data-hf-gsap");
     expect(written).toContain('data-position-mode="relative"');
     expect(written).toContain("gsap.timeline()");
+  });
+});
+
+describe("sdk_cutover_failed classification (error_kind)", () => {
+  const makeDeps = (overrides: Partial<Parameters<typeof sdkCutoverPersist>[5]> = {}) => ({
+    editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+    writeProjectFile: vi.fn().mockResolvedValue(undefined),
+    reloadPreview: vi.fn(),
+    ...candidateTestDeps(),
+    ...overrides,
+  });
+
+  const makeSession = () =>
+    ({
+      getElement: vi.fn().mockReturnValue({ inlineStyles: {} }),
+      dispatch: vi.fn(),
+      serialize: vi
+        .fn()
+        .mockReturnValueOnce("<html>before</html>")
+        .mockReturnValue("<html></html>"),
+      batch: vi.fn((fn: () => void) => fn()),
+    }) as unknown as Parameters<typeof sdkCutoverPersist>[4];
+
+  beforeEach(() => {
+    vi.mocked(trackStudioEvent).mockClear();
+  });
+
+  // The production gate event this fix exists for: a bare `TypeError` from an
+  // UNWRAPPED raw fetch (`readProjectFile`'s implementation in
+  // useProjectFileWriter.ts, or writeProjectFile's own preflight — neither
+  // wraps as StudioSaveNetworkError). Without the message-based fallback in
+  // `cutoverErrorKind`, this files as `error_kind: "sdk"` and trips the
+  // cutover-failure rollback gate on a network blip the SDK never owned.
+  it("classifies a bare fetch TypeError from readProjectFile as network", async () => {
+    const deps = makeDeps({
+      readProjectFile: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    });
+    const session = makeSession();
+    const sel = { hfId: "hf-abc" } as never;
+
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "sdk_cutover_failed",
+      expect.objectContaining({ family: "dom", error_kind: "network" }),
+    );
+  });
+
+  it("classifies StudioSaveNetworkError from writeProjectFile as network", async () => {
+    const deps = makeDeps({
+      writeProjectFile: vi.fn().mockRejectedValue(new StudioSaveNetworkError("Failed to save")),
+    });
+    const session = makeSession();
+    const sel = { hfId: "hf-abc" } as never;
+
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "sdk_cutover_failed",
+      expect.objectContaining({ family: "dom", error_kind: "network" }),
+    );
+  });
+
+  it("classifies a plain error as an sdk defect, not network", async () => {
+    const deps = makeDeps({
+      writeProjectFile: vi.fn().mockRejectedValue(new Error("disk full")),
+    });
+    const session = makeSession();
+    const sel = { hfId: "hf-abc" } as never;
+
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "sdk_cutover_failed",
+      expect.objectContaining({ family: "dom", error_kind: "sdk" }),
+    );
   });
 });

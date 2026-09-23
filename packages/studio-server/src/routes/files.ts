@@ -7,7 +7,6 @@ import { bodyLimit } from "hono/body-limit";
 import {
   closeSync,
   existsSync,
-  ftruncateSync,
   openSync,
   readFileSync,
   writeFileSync,
@@ -16,12 +15,14 @@ import {
   unlinkSync,
   rmSync,
   statSync,
+  fstatSync,
   renameSync,
   readdirSync,
 } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
+import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath, resolveWithinProject } from "../helpers/safePath.js";
@@ -31,6 +32,7 @@ import {
   fileContentVersion,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
+import { applyFileMutations } from "../helpers/applyFileMutations.js";
 import {
   findUnsafeDomPatchValues,
   findUnsafeMutationValues,
@@ -137,14 +139,28 @@ async function resolveProjectPath(
     return { error: c.json({ error: "not found" }, 404) } as const;
   }
 
+  // The CLI host's `resolveProject` is static (`id === projectId ? project : null`),
+  // so it keeps answering with this project even after its folder is renamed
+  // or deleted out from under a running `preview` — mount-time validation
+  // (`/api/projects/:id`) still passes, so nothing upstream catches this.
+  // Every subsequent read then failed closed inside `isSafePath` (its
+  // `realpathSync(base)` throws when the base itself is gone) and reported as
+  // `403 forbidden` — indistinguishable from a real path-traversal attempt.
+  // Checked here, once, so every route built on this shares the fix.
+  if (!existsSync(project.dir)) {
+    return {
+      error: c.json({ error: "not found", why: "project_dir_missing" }, 404),
+    } as const;
+  }
+
   const filePath = decodeURIComponent(c.req.path.replace(pathPrefix(project.id), ""));
   if (filePath.includes("\0")) {
-    return { error: c.json({ error: "forbidden" }, 403) } as const;
+    return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }
 
   const absPath = resolveWithinProject(project.dir, filePath);
   if (!absPath) {
-    return { error: c.json({ error: "forbidden" }, 403) } as const;
+    return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
   }
 
   if (opts?.mustExist && !existsSync(absPath)) {
@@ -201,12 +217,17 @@ interface AtomicCutTarget {
   playbackStart?: number;
   playbackRate?: number;
   isComposition?: boolean;
+  track?: number;
 }
 
 interface AtomicCutFileRequest {
   path: string;
   expectedVersion: string;
   targets: AtomicCutTarget[];
+}
+
+function isOptionalInteger(value: unknown): value is number | undefined {
+  return value === undefined || Number.isInteger(value);
 }
 
 function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
@@ -218,7 +239,8 @@ function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
     Number.isFinite(target.splitTime) &&
     Number.isFinite(target.elementStart) &&
     Number.isFinite(target.elementDuration) &&
-    Number(target.elementDuration) > 0
+    Number(target.elementDuration) > 0 &&
+    isOptionalInteger(target.track)
   );
 }
 
@@ -302,7 +324,9 @@ function foldElementPatches(
 export function commitElementPatchBatches(
   projectDir: string,
   batches: ElementPatchBatchRequest[],
-  writeFile: (path: string, content: string, encoding: "utf-8") => void = writeFileSync,
+  writeFile: (path: string, content: string, encoding: "utf-8") => void = (path, content) =>
+    replaceFileAtomically(path, content, statSync(path).mode),
+  requestToken?: string,
 ):
   | { error: "duplicate" | "forbidden" | "not-found"; sourceFile: string }
   | { durable: boolean; files: ElementPatchBatchFileResult[] } {
@@ -351,52 +375,25 @@ export function commitElementPatchBatches(
     };
   }
 
-  const files: ElementPatchBatchFileResult[] = [];
-  const attemptedWrites: typeof prepared = [];
-  try {
-    for (const file of prepared) {
-      if (file.after === file.before) {
-        files.push({
-          sourceFile: file.sourceFile,
-          changed: false,
-          matched: file.matched,
-          before: file.before,
-          after: file.before,
-        });
-        continue;
-      }
-      const backup = snapshotBeforeWrite(projectDir, file.absPath);
-      if (backup.error) {
-        throw new Error(`Failed to create backup for ${file.sourceFile}: ${backup.error}`);
-      }
-      attemptedWrites.push(file);
-      writeFile(file.absPath, file.after, "utf-8");
-      files.push({
-        sourceFile: file.sourceFile,
-        changed: true,
-        matched: file.matched,
-        before: file.before,
-        after: file.after,
-        backupPath: backupPathForResponse(projectDir, backup.backupPath),
-      });
-    }
-  } catch (error) {
-    const rollbackErrors: unknown[] = [];
-    for (const file of attemptedWrites.reverse()) {
-      try {
-        writeFile(file.absPath, file.before, "utf-8");
-      } catch (rollbackError) {
-        rollbackErrors.push(rollbackError);
-      }
-    }
-    if (rollbackErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...rollbackErrors],
-        "Element patch batch failed and rollback did not complete",
-      );
-    }
-    throw error;
-  }
+  const applied = applyFileMutations(
+    projectDir,
+    prepared.map(({ sourceFile, absPath, before, after }) => ({
+      sourceFile,
+      absPath,
+      before,
+      after,
+    })),
+    requestToken,
+    writeFile,
+  );
+  const files: ElementPatchBatchFileResult[] = applied.map((file, index) => ({
+    sourceFile: file.sourceFile,
+    changed: file.changed,
+    matched: prepared[index]?.matched ?? [],
+    before: file.before,
+    after: file.after,
+    backupPath: file.backupPath ?? undefined,
+  }));
   return { durable: true, files };
 }
 
@@ -405,16 +402,12 @@ function commitElementPatchBatchesWithReceipts(
   projectDir: string,
   batches: ElementPatchBatchRequest[],
 ): ReturnType<typeof commitElementPatchBatches> {
-  const result = commitElementPatchBatches(projectDir, batches);
-  if ("error" in result || !result.durable) return result;
-
-  for (const file of result.files) {
-    if (!file.changed) continue;
-    const absPath = resolveWithinProject(projectDir, file.sourceFile);
-    if (!absPath) throw new Error(`Committed element patch escaped project: ${file.sourceFile}`);
-    recordMutationReceipt(c, file.sourceFile, absPath, file.after);
-  }
-  return result;
+  return commitElementPatchBatches(
+    projectDir,
+    batches,
+    writeFileSync,
+    c.req.header("X-Hyperframes-Write-Token"),
+  );
 }
 
 /**
@@ -445,7 +438,7 @@ function writeFileWithReceipt(
   absPath: string,
   html: string,
 ): { version: string; writeToken: string } {
-  writeFileSync(absPath, html, "utf-8");
+  replaceFileAtomically(absPath, html, statSync(absPath).mode);
   // The synchronous write cannot yield before its receipt is recorded; keep this block await-free.
   return recordMutationReceipt(c, filePath, absPath, html);
 }
@@ -595,7 +588,7 @@ function updateReferences(projectDir: string, oldPath: string, newPath: string):
 
     const updated = content.split(oldPath).join(newPath);
     if (updated !== content) {
-      writeFileSync(file, updated, "utf-8");
+      replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;
     }
   }
@@ -2106,6 +2099,7 @@ async function foldAtomicCutFile(
       playbackStart: cut.playbackStart,
       playbackRate: cut.playbackRate,
       stampPlaybackStart: cut.isComposition,
+      track: cut.track,
     });
     if (!split.matched || !split.newId) {
       return c.json(
@@ -2351,7 +2345,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         closeSync(fd);
       }
     } else {
-      let fd: number;
+      let fd: number | null;
       try {
         fd = openSync(res.absPath, "r+");
       } catch (error) {
@@ -2384,10 +2378,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         }
         backup = snapshotBeforeWrite(res.project.dir, res.absPath);
         if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
-        ftruncateSync(fd, 0);
-        writeSync(fd, body, 0, body.length, 0);
-      } finally {
+        const mode = fstatSync(fd).mode;
         closeSync(fd);
+        fd = null;
+        replaceFileAtomically(res.absPath, body, mode);
+      } finally {
+        if (fd !== null) closeSync(fd);
       }
     }
     const version = fileContentVersion(body);
@@ -2673,7 +2669,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const written: FoldedAtomicCutFile[] = [];
       try {
         for (const file of prepared) {
-          writeFileSync(file.absPath, file.after, "utf-8");
+          replaceFileAtomically(file.absPath, file.after, statSync(file.absPath).mode);
           written.push(file);
           recordFileWriteReceipt(file.absPath, {
             path: file.path,
@@ -2690,7 +2686,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
               conflicts.push(file.path);
               continue;
             }
-            writeFileSync(file.absPath, file.before, "utf-8");
+            replaceFileAtomically(file.absPath, file.before, statSync(file.absPath).mode);
             recordFileWriteReceipt(file.absPath, {
               path: file.path,
               version: fileContentVersion(file.before),
@@ -2938,7 +2934,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           typeof r?.left === "number" &&
           Number.isFinite(r.left) &&
           typeof r?.top === "number" &&
-          Number.isFinite(r.top),
+          Number.isFinite(r.top) &&
+          isOptionalInteger(r?.track),
       );
     if (!allNumeric) {
       return c.json({ error: "bbox and rebase coordinates must be finite numbers" }, 400);
@@ -2992,8 +2989,21 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const ctx = await resolveFileMutationContext(c, adapter, "unwrap-elements");
     if ("error" in ctx) return ctx.error;
 
-    const parsed = await parseMutationBody<{ target?: MutationTarget }>(c);
+    const parsed = await parseMutationBody<{
+      target?: MutationTarget;
+      childTracks?: Array<{ target?: MutationTarget; track?: number }>;
+    }>(c);
     if ("error" in parsed) return parsed.error;
+
+    const rawChildTracks = parsed.body.childTracks ?? [];
+    if (!rawChildTracks.every((entry) => isOptionalInteger(entry?.track))) {
+      return c.json({ error: "childTracks track must be a finite integer" }, 400);
+    }
+    const childTracks = rawChildTracks
+      .filter((entry): entry is { target: MutationTarget; track?: number } =>
+        Boolean(entry?.target),
+      )
+      .map((entry) => ({ target: entry.target, track: entry.track }));
 
     let originalContent: string;
     try {
@@ -3001,7 +3011,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     } catch {
       return c.json({ error: "not found" }, 404);
     }
-    const result = unwrapElementsFromHtml(originalContent, parsed.target);
+    const result = unwrapElementsFromHtml(originalContent, parsed.target, childTracks);
     if (!result.unwrapped) {
       return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
     }
@@ -3218,7 +3228,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (current !== body.expected) {
       return c.json({ ok: true, restored: false, conflict: true });
     }
-    writeFileSync(res.absPath, body.restore, "utf-8");
+    replaceFileAtomically(res.absPath, body.restore, statSync(res.absPath).mode);
     return c.json({ ok: true, restored: true, conflict: false });
   });
 }

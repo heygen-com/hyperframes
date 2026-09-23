@@ -269,6 +269,7 @@ export {
 export {
   MEDIA_VISUAL_STYLE_PROPERTIES,
   copyMediaVisualStyles,
+  quantizeSeekTime,
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
@@ -318,14 +319,19 @@ export {
 // publishConfig entry points at a file the pack doesn't contain
 // (verify:packed-manifests catches exactly that).
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
+// Also exposed via the ./runtime/clip-window subpath; re-exported here for the same dist-emit reason.
+export { isClipVisibleAt, isInClipWindow } from "./runtime/clipWindow.js";
 export {
   normalizePlaybackRate,
+  normalizeRateSpec,
   parseStrictFiniteTimingNumber,
   readElementPlaybackRate,
+  readElementRateSpec,
   readMediaStart,
   resolveNaturalMediaTimelineDuration,
   resolveNaturalMediaTimelineDurationFromValues,
 } from "./runtime/playbackRate.js";
+export { shiftRateLane, sourceTimeAt, timeAtSourceTime, type RateSpec } from "./speedRamp.js";
 
 // Variable validation (CLI / tooling-side)
 export {

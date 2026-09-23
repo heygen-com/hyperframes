@@ -87,7 +87,7 @@ Read `../hyperframes-creative/references/story-spine.md` (hook language, value-b
 
 Use `story-design.md` for the explainer structure (concept / how-to / listicle / story), hook strategy, clarity techniques, emotional beats, the type-enum mapping, and `VO_MODE`. The video's sequence comes from **narrative design, not the input text's paragraph order** — reorder, merge, omit, compress. As a **soft guide**, consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`: for each beat, write the voiceover in the shape its candidate blueprint implies and tag that candidate `blueprint:` id when one fits. Teaching truth still decides which beats exist — never force a beat to fit a blueprint, and never invent a beat just because a proven shape is available. Faceless visuals are invented downstream, so frames do **not** carry an asset inventory: leave `asset_candidates` empty unless the user supplied a real `public/<basename>` image. Use the exact required fields from the storyboard and script references.
 
-After drafting, run the review loop's plan pass — `../hyperframes/references/review-loop.md` § 1: open the board (don't ask whether to), present the plan as a proposal, and ask the two questions — approve or change, and **sketches first** (recommended) or skip. Feedback loops through chat or the board's comments file until approved. This is a **checkpoint gate** (brief contract § 1): in autonomous mode there is no board and nothing to ask — post the same summary as a heads-up and proceed; sketches collapse into the build, and the one preview question comes at Step 6.
+After drafting, run the review loop's plan pass — `../hyperframes/references/review-loop.md` § 1: present the plan as a proposal, and ask the two questions — approve or change, and **sketches first** (recommended) or skip. Feedback arrives as a chat reply; loop until approved. This is a **checkpoint gate** (brief contract § 1): in autonomous mode there is nothing to ask — post the same summary as a heads-up and proceed; sketches collapse into the build, and the one preview question comes at Step 6.
 
 **Gate:** `STORYBOARD.md` exists, every frame has the required narrative fields, `SCRIPT.md` exists when narration is needed, and the user approved the frame-by-frame plan (autonomous: the summary was posted as a heads-up).
 
@@ -117,7 +117,7 @@ If there is no narration and no `SCRIPT.md`, skip voice generation. BGM may stil
 
 Goal: Add the visual direction, layout intent, and motion choices to each storyboard frame.
 
-**Sketch the board first (collaborative only).** The moment the plan is approved, run the sketch pass — `../hyperframes/references/review-loop.md` § 2 (don't wait on Step 3.1; sketches don't use timings): wireframe every frame yourself, mark each `built`, pause for the one layout question when the board is full, and revise only the sketches named until the board is confirmed. Only then write the visual design below onto the confirmed layouts. In autonomous mode, or when the user chose to skip sketches at Step 3, skip this pass — frames go straight from `outline` to `animated` at Step 5.
+**Sketch the storyboard sheet first (collaborative only).** The moment the plan is approved, run the sketch pass — `../hyperframes/references/review-loop.md` § 2 (don't wait on Step 3.1; sketches don't use timings): wireframe every frame yourself as a cell of `storyboard.html` (`../hyperframes-creative/references/storyboard-recipe.md` § 3), mark each `built`, pause for the one layout question when every frame is `built`, and revise only the sketches named until the sheet is confirmed. Only then write the visual design below onto the confirmed layouts. In autonomous mode, or when the user chose to skip sketches at Step 3, skip this pass — frames go straight from `outline` to `animated` at Step 5.
 
 Edit `STORYBOARD.md` in place. Do not create another storyboard. Use `frame.md` as source of truth for color, type, layout feel, and style.
 
@@ -129,7 +129,7 @@ For every frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `
 
 Do not change story, script, `transition_in`, or the source text. Do not write HTML in this step. There is **no asset-staging step** — faceless visuals are built by the workers in Step 5. If the user supplied a real `public/<basename>` image, reference it by path in the relevant frame's `focal`/`roles`; otherwise nothing to stage.
 
-**Gate:** every frame has a time-coded shot sequence whose reveals are paced to the voiceover (no front-loading); each frame names its invented `focal` and/or `roles`; `## Video direction` exists. Collaborative: the sketch board was confirmed.
+**Gate:** every frame has a time-coded shot sequence whose reveals are paced to the voiceover (no front-loading); each frame names its invented `focal` and/or `roles`; `## Video direction` exists. Collaborative: the sketch sheet was confirmed.
 
 ---
 
@@ -165,7 +165,7 @@ After audio timings exist, build captions in the background and assemble the ind
 
 `captions.mjs` uses the project's `.hyperframes/caption-skin.html` (copied in Step 2) as the caption look, injecting brand tokens from `frame.md`; with no skin present it renders the built-in default pill. `captions: skipped (<reason>)` is valid. Continue without captions when explicitly skipped.
 
-**Gate:** every frame is marked `animated` (collaborative: the sketch board was confirmed at Step 4), `index.html` exists, and captions are built or explicitly skipped.
+**Gate:** every frame is marked `animated` (collaborative: the sketch sheet was confirmed at Step 4), `index.html` exists, and captions are built or explicitly skipped.
 
 ---
 
@@ -191,7 +191,7 @@ If a command fails, surface stderr and stop — don't pile on recovery commands.
 
 **Known false-positive — do not chase it.** `check` may report a handful of `text_box_overflow` findings of ~1–4px on the **caption** highlight words (selector `#caption-word-*` / `.caption-line`). The caption pill uses a deliberately snug `line-height` (set once in `scripts/captions.mjs`) and has **no `overflow:hidden`**, so a heavy display glyph's ink spills a few px into the pill's own padding — nothing is actually clipped. Treat these as expected and proceed. Do **not** inflate the caption `line-height` (it balloons the pill, which is worse). Only act on a `text_box_overflow` when it names a **frame** element (`#el-NN-*`), not a caption word.
 
-After checks pass, pause for user review — the review loop's final look (`../hyperframes/references/review-loop.md` § 4): one question, on the Studio that has been open since Step 3 — render now, or what changes? (Autonomous: the one kept question, preview first or render.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
+After checks pass, pause for user review — the review loop's final look (`../hyperframes/references/review-loop.md` § 4): one question, on the final Studio preview — render now, or what changes? (Autonomous: the one kept question, preview first or render.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
 
 Preview: `npx hyperframes preview --background`
 

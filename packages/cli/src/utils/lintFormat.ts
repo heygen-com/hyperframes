@@ -58,10 +58,39 @@ export function formatLintFindings(
   if (showSummary) {
     const icon = totalErrors > 0 ? c.error("◇") : c.success("◇");
     lines.push("");
-    const summaryParts = [`${totalErrors} error(s)`, `${totalWarnings} warning(s)`];
-    if (verbose && totalInfos > 0) summaryParts.push(`${totalInfos} info(s)`);
-    lines.push(`${icon}  ${summaryParts.join(", ")}`);
+    lines.push(`${icon}  ${formatLintCounts(totalErrors, totalWarnings, totalInfos, verbose)}`);
   }
 
   return lines;
+}
+
+function formatLintCounts(
+  totalErrors: number,
+  totalWarnings: number,
+  totalInfos: number,
+  verbose: boolean,
+): string {
+  const parts = [`${totalErrors} error(s)`, `${totalWarnings} warning(s)`];
+  if (verbose && totalInfos > 0) parts.push(`${totalInfos} info(s)`);
+  return parts.join(", ");
+}
+
+/** Full findings in verbose mode, a one-line summary otherwise. `pointer` (summary
+ * mode) picks the hint: "cli" names --lint-verbose, "studio" also names the lint
+ * command, since preview's stdout may be read by an agent. */
+export type LintMessageMode =
+  | { kind: "verbose"; options?: LintFormatOptions }
+  | { kind: "summary"; pointer?: "cli" | "studio" };
+
+export function formatLintStartupMessage(
+  lintResult: ProjectLintResult,
+  mode: LintMessageMode,
+): string[] {
+  if (mode.kind === "verbose") return formatLintFindings(lintResult, mode.options);
+  const counts = formatLintCounts(lintResult.totalErrors, lintResult.totalWarnings, 0, false);
+  const hint =
+    mode.pointer === "studio"
+      ? "see the Lint badge in Studio, or run `hyperframes lint` for full output"
+      : "run with --lint-verbose for full output";
+  return [`  Lint: ${counts} — ${hint}.`];
 }

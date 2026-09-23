@@ -50,11 +50,15 @@ import {
   type Fps,
   type FpsInput,
   fpsToNumber,
+  HF_COLOR_GRADING_ATTR,
   redactTelemetryString,
   toFps,
 } from "@hyperframes/core";
+import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
+import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
 import {
   type EngineConfig,
+  extractMediaMetadata,
   resolveConfig,
   type ExtractionResult,
   type ExtractionPhaseBreakdown,
@@ -81,10 +85,13 @@ import {
   type StaticVerificationOutcome,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
+  compositionRequiresWebGpu,
   applyConcreteGpuScreenshotClamp,
   explainDrawElementDisabled,
+  chromeMajorCeiling,
   scaleProtocolTimeoutForComposition,
   classifyCaptureFailure,
+  type CaptureFailureKind,
   cloneCaptureWarning,
   isMemoryExhaustionError,
   isTransientBrowserError,
@@ -93,6 +100,7 @@ import {
   getDrawElementVerificationDetails,
   augmentProtocolTimeoutError,
   augmentPageNavigationTimeoutError,
+  type MotionBlurOptions,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { totalmem } from "node:os";
@@ -109,15 +117,26 @@ import { defaultLogger, type ProducerLogger } from "../logger.js";
 import {
   outputNeedsAlpha,
   outputSupportsPageSideShaderCompositing,
+  outputUsesH264Pipeline,
   type RenderOutputFormat,
 } from "./render/renderFormat.js";
+import {
+  resolveHlsEncoderGopLock,
+  resolveHlsSegmentSeconds,
+  validateHlsRenderConfig,
+} from "./render/hlsConfig.js";
 import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { RenderExecutionContext } from "./render/renderExecutionContext.js";
-import { ArtifactTransaction, commitArtifactTransaction } from "./render/artifactTransaction.js";
 import {
+  ArtifactTransaction,
+  buildArtifactExpectation,
+  commitArtifactTransaction,
+} from "./render/artifactTransaction.js";
+import {
+  capturePathForPlanKind,
   createCapturePlan,
   replanAfterFailure,
   streamingCaptureFailure,
@@ -125,6 +144,18 @@ import {
   type SdrDiskCapturePlan,
   type CaptureRouting,
 } from "./render/capturePlan.js";
+import { runCaptureSegmentedStage } from "./render/stages/captureSegmentedStage.js";
+import { resolveSegmentFrames } from "./render/segmentPlan.js";
+import { resolveSegmentBrowserRecycle } from "./render/segmentRecycle.js";
+import {
+  computeSegmentPlanHash,
+  probeSegmentFrameCount,
+  readSegmentManifest,
+  segmentDirFor,
+  validateCompletedSegments,
+  writeSegmentManifest,
+  type SegmentManifest,
+} from "./render/segmentManifest.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
 import { findRenderHdrAutoPromotionTrigger, resolveEffectiveHdrMode } from "./render/hdrMode.js";
@@ -175,8 +206,10 @@ import { runCaptureHdrStage } from "./render/stages/captureHdrStage.js";
 import { runEncodeStage } from "./render/stages/encodeStage.js";
 import { runAssembleStage } from "./render/stages/assembleStage.js";
 import { shouldUseLayeredComposite } from "./hdrCompositor.js";
+import { resolveCaptureImageFormat } from "./render/captureImageFormat.js";
+import { assertMotionBlurSupported } from "./render/motionBlurRoute.js";
 
-function sampleDirectoryBytes(dir: string): number {
+export function sampleDirectoryBytes(dir: string): number {
   let total = 0;
   const stack: string[] = [dir];
   while (stack.length > 0) {
@@ -276,6 +309,10 @@ export interface RenderConfig {
    */
   fps: Fps;
   quality: "draft" | "standard" | "high";
+  /** Segmented capture: reuse segments recorded in a matching manifest (Phase 2b). */
+  resumeSegments?: boolean;
+  /** Segmented capture: keep renders/.hf-segments/<planHash> after a successful render. */
+  keepSegments?: boolean;
   /**
    * Output container format. Defaults to `"mp4"`; existing renders are
    * unaffected unless this field is set explicitly.
@@ -304,6 +341,15 @@ export interface RenderConfig {
    *   / Fusion ingest, or when frames need post-processing before
    *   encoding. `outputPath` is treated as a directory; it is created if
    *   it doesn't exist.
+   * - `"hls"`: HLS VOD package — the same opaque H.264 + AAC encode as
+   *   `"mp4"`, stream-copied (no re-encode) into a directory of MPEG-TS
+   *   segments: `master.m3u8`, `video.m3u8` + `video_%05d.ts`, and
+   *   `audio.m3u8` + `audio_%05d.ts` when the composition has audio.
+   *   Segments are fixed-length (see {@link RenderConfig.hlsSegmentSeconds})
+   *   and every one starts on an IDR frame, because the encoder's GOP is
+   *   locked to `hlsSegmentSeconds × fps`. Like `"png-sequence"`,
+   *   `outputPath` is treated as a directory. SDR only, software encoder
+   *   only, and not available in distributed / Lambda / Cloud Run mode.
    *
    * Alpha output (`"webm"`, `"mov"`, `"png-sequence"`, `"gif"`) automatically
    * forces screenshot capture (Chrome's BeginFrame compositor does not
@@ -317,6 +363,22 @@ export interface RenderConfig {
   format?: RenderOutputFormat;
   /** GIF Netscape loop count. 0 means infinite looping. Only used with `format: "gif"`. */
   gifLoop?: number;
+  /**
+   * HLS target segment length in whole seconds. Defaults to 4. Only used with
+   * `format: "hls"`; ignored for every other format.
+   *
+   * Must be a positive integer — it is both ffmpeg's `-hls_time` and the
+   * encoder's GOP size (`round(fps × hlsSegmentSeconds)` frames), and whole
+   * seconds keep the integer `#EXT-X-TARGETDURATION` in the playlist honest.
+   * A non-integer value throws at the start of `executeRenderJob`.
+   */
+  hlsSegmentSeconds?: number;
+  /**
+   * Opt into sub-frame multi-sample motion blur. Absent means off and the capture path is
+   * unchanged. Forces PNG frame capture, because the samples are averaged pixel by pixel
+   * and JPEG samples would be averaged after a lossy quantization.
+   */
+  motionBlur?: MotionBlurOptions;
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
@@ -450,6 +512,14 @@ export interface RenderPerfSummary {
    * inside the orchestrator. Optional for the same back-compat reason.
    */
   peakHeapUsedMb?: number;
+  /** Chrome process memory aggregated across capture sessions (max of peaks, sum of samples). */
+  chromeMemory?: {
+    browserRssPeakMb?: number;
+    rendererRssPeakMb?: number;
+    rssLastMb?: number;
+    gpuProcessSeenLastSample?: boolean;
+    samples: number;
+  };
   hdrDiagnostics?: HdrDiagnostics;
   hdrPerf?: HdrPerfSummary;
   /**
@@ -513,6 +583,24 @@ export interface RenderPerfSummary {
     compositionElementCount?: number;
     /** Rough compiled-composition element-count provenance: "live" (probe DOM) | "static" (source scan, not trusted to open the band). */
     compositionElementCountSource?: "live" | "static";
+    /** Per-tag breakdown of the same static scan behind compositionElementCount, capped at MAX_REPORTED_ELEMENT_TAGS + an "other" bucket. Only set when the source above is "static" — the live path never runs this scan. */
+    compositionElementTags?: Readonly<Record<string, number>>;
+    /** `<video data-aroll="true">` elements from the same static scan. Only set when compositionElementCountSource is "static". */
+    arollVideoCount?: number;
+    /** `<video data-media-source="heygen">` elements from the same static scan. Only set when compositionElementCountSource is "static". */
+    heygenVideoCount?: number;
+    /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`), a live+static union, always set (possibly empty). */
+    adaptersUsed?: readonly string[];
+    /** Audio/image/sub-comp/color-grading counts, same static scan; only set when the source above is "static". */
+    audioCount?: number;
+    imageCount?: number;
+    subCompositionCount?: number;
+    audioGroupCount?: number;
+    colorGradingCount?: number;
+    hasLut?: boolean;
+    /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+    rootBodyMismatch?: boolean;
+    rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
     /** Short-comp band attribution: "applied" | "skipped_elements" | "unmeasured"; unset when the frame count made the band irrelevant. */
     shortBand?: "applied" | "skipped_elements" | "unmeasured";
     /** DE parallel-router outcome: "routed" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". Mutually exclusive with workerInversion. */
@@ -540,7 +628,7 @@ export interface RenderPerfSummary {
      * `fallbackReason` being set is the "any fallback fired" signal.
      */
     selfVerifyFallback: boolean;
-    /** What tripped the fallback retry: psnr | blank | oom | de_renderer_stall | capture_error. */
+    /** What tripped the fallback retry: psnr | blank | oom | de_renderer_stall | encoder_death | parallel_stall | capture_error. */
     fallbackReason?: string;
     /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for every other reason (no score exists). */
     fallbackFailedDb?: number;
@@ -895,6 +983,23 @@ export function resolveObservedCaptureMode(
 }
 
 /**
+ * Capture-mode label for the trace checkpoints when no probe session is open
+ * (the multi-worker path closes its probe before capture starts). Falls back
+ * to the platform rule rather than assuming BeginFrame, which labelled every
+ * non-Linux multi-worker render `"beginframe"` while its workers captured via
+ * screenshot. Pure; exported for tests.
+ */
+export function fallbackCaptureModeLabel(args: {
+  forceScreenshot: boolean;
+  useDrawElement: boolean;
+  platform?: NodeJS.Platform;
+}): CaptureSession["captureMode"] {
+  if (args.forceScreenshot) return "screenshot";
+  if (args.useDrawElement) return "drawelement";
+  return resolveObservedCaptureMode(false, args.platform);
+}
+
+/**
  * Build the observability patcher, re-deriving `captureMode` on every patch.
  *
  * Extracted and exported because the previous inline closure was where the
@@ -945,6 +1050,19 @@ export function resolveRenderWorkDirPrefix(
  * tab can't loop.
  */
 export const MAX_TRANSIENT_CAPTURE_RETRIES = 1;
+
+/** Single owner of the bounded transient-browser retry policy for both disk-capture paths. */
+export function isTransientCaptureRetryEligible(
+  failureKind: CaptureFailureKind,
+  missing: readonly FrameRange[],
+  retriesUsed: number,
+): boolean {
+  return (
+    missing.length > 0 &&
+    failureKind === "transient_browser" &&
+    retriesUsed < MAX_TRANSIENT_CAPTURE_RETRIES
+  );
+}
 
 /**
  * A retry only pays off if the attempt that just finished captured at least one
@@ -1185,18 +1303,11 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       // composition. Unlike the worker-halving retry below, this keeps the same
       // worker count (parallelism isn't the problem) and does NOT require
       // forward progress — a tab that dies before frame 0 is the exact case we
-      // want to recover. Bounded by MAX_TRANSIENT_CAPTURE_RETRIES so a
-      // deterministically-dying tab still fails instead of looping.
-      //
-      // Scope: this covers the parallel disk-capture path (the multi-worker
-      // renders where a contended host most often drops a tab). The sequential
-      // and streaming capture paths run a single stateful session/encoder and
-      // don't route through here; probeStage already has its own transient
-      // retry for the session-init phase they share.
+      // want to recover. Eligibility is shared with the sequential branch in
+      // captureStage.ts; streaming capture doesn't route through here.
       if (
         options.allowRetry &&
-        failure.kind === "transient_browser" &&
-        transientRetriesUsed < MAX_TRANSIENT_CAPTURE_RETRIES
+        isTransientCaptureRetryEligible(failure.kind, remaining, transientRetriesUsed)
       ) {
         transientRetriesUsed++;
         options.log.warn(
@@ -1344,35 +1455,96 @@ function replaceBodyWithRenderClone(body: HTMLElement, renderClone: Element): vo
   body.appendChild(renderClone);
 }
 
-export function shouldUseStreamingEncode(
-  cfg: Pick<EngineConfig, "enableStreamingEncode" | "streamingEncodeMaxDurationSeconds"> &
-    Partial<Pick<EngineConfig, "lowMemoryMode">>,
+export type StreamingEncodeGateReason =
+  | "disabled_by_config"
+  | "format_excluded"
+  | "invalid_duration"
+  | "duration_cap"
+  | "low_memory_mode"
+  | "parallel_forced"
+  | "single_worker"
+  | "multi_worker";
+
+export interface StreamingEncodeGateDecision {
+  enabled: boolean;
+  /** Why `enabled` is what it is. Logged as `reason` on the streaming-encode gate line. */
+  reason: StreamingEncodeGateReason;
+}
+
+type StreamingGateConfig = Pick<
+  EngineConfig,
+  "enableStreamingEncode" | "streamingEncodeMaxDurationSeconds"
+> &
+  Partial<Pick<EngineConfig, "lowMemoryMode" | "streamingEncodeDurationCapEnabled">>;
+
+/**
+ * Decide whether captured frames stream into ffmpeg (bounded scratch) or land
+ * on disk as raw RGBA (`frames × w × h × 4` bytes). Every `false` names the
+ * gate that fired so the log line and telemetry can attribute disk-path
+ * renders. Order matters and mirrors the historical predicate:
+ * config → format → duration validity → duration cap → parallel override →
+ * worker count.
+ */
+export function explainStreamingEncodeGate(
+  cfg: StreamingGateConfig,
   outputFormat: NonNullable<RenderConfig["format"]>,
   workerCount: number,
   // Composition timeline duration in seconds.
   durationSeconds: number,
-  // Per-render override (set by the DE parallel router) — see
-  // deParallelStreamForced's declaration in executeRenderJob for why this is
-  // a parameter instead of an env-var read.
+  // Per-render override (set by the DE parallel router or the non-DE
+  // parallel-stream router) — see deParallelStreamForced's declaration in
+  // executeRenderJob for why this is a parameter instead of an env-var read.
   forceParallelStream = false,
-): boolean {
-  if (!cfg.enableStreamingEncode) return false;
-  if (outputFormat === "png-sequence") return false;
-  if (outputFormat === "gif") return false;
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
+): StreamingEncodeGateDecision {
+  if (!cfg.enableStreamingEncode) return { enabled: false, reason: "disabled_by_config" };
+  if (outputFormat === "png-sequence" || outputFormat === "gif") {
+    return { enabled: false, reason: "format_excluded" };
+  }
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return { enabled: false, reason: "invalid_duration" };
+  }
+  // The duration cap is an operator opt-in (streamingEncodeDurationCapEnabled);
+  // its original reason — a total-render ffmpeg timeout — became an inactivity
+  // timeout in efc16a945, so by default long renders keep streaming.
+  const overCap =
+    cfg.streamingEncodeDurationCapEnabled === true &&
+    durationSeconds > cfg.streamingEncodeMaxDurationSeconds;
   // Low-memory mode already pins capture to one worker. Keep those renders on
   // the streaming path regardless of duration so captured frames are drained
   // directly into FFmpeg instead of accumulating hundreds of gigabytes of
-  // data URIs / disk frames until Chrome OOMs.
-  if (!cfg.lowMemoryMode && durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
+  // data URIs / disk frames until Chrome OOMs. It only bypasses the cap: an
+  // explicit `--workers N` under low-memory mode still falls to the
+  // worker-count gate below.
+  if (overCap && !cfg.lowMemoryMode) return { enabled: false, reason: "duration_cap" };
   // HF_DE_PARALLEL_STREAM (manual opt-in) / forceParallelStream (router):
-  // allow multi-worker streaming for the interleaved drawElement produce
-  // path. Contiguous-chunk parallel streaming stalls (worker k+1's first
-  // frame waits for ALL of worker k's), so this only makes sense with the
+  // allow multi-worker streaming for the interleaved produce paths.
+  // Contiguous-chunk parallel streaming stalls (worker k+1's first frame
+  // waits for ALL of worker k's), so this only makes sense with the
   // interleaved distribution the capture stage selects under the same
   // condition.
-  if (forceParallelStream || process.env.HF_DE_PARALLEL_STREAM === "true") return true;
-  return workerCount === 1;
+  if (forceParallelStream || process.env.HF_DE_PARALLEL_STREAM === "true") {
+    return { enabled: true, reason: "parallel_forced" };
+  }
+  if (workerCount === 1) {
+    return { enabled: true, reason: overCap ? "low_memory_mode" : "single_worker" };
+  }
+  return { enabled: false, reason: "multi_worker" };
+}
+
+export function shouldUseStreamingEncode(
+  cfg: StreamingGateConfig,
+  outputFormat: NonNullable<RenderConfig["format"]>,
+  workerCount: number,
+  durationSeconds: number,
+  forceParallelStream = false,
+): boolean {
+  return explainStreamingEncodeGate(
+    cfg,
+    outputFormat,
+    workerCount,
+    durationSeconds,
+    forceParallelStream,
+  ).enabled;
 }
 
 /**
@@ -1392,7 +1564,69 @@ export function envInt(name: string, fallback: number): number {
 }
 
 /**
- * Rough element count for compiled composition HTML.
+ * `scanElementTags`'s per-tag breakdown, capped so a pathological composition
+ * with thousands of distinct tag names can't inflate the telemetry payload:
+ * the top `MAX_REPORTED_ELEMENT_TAGS` tags by count survive as named keys,
+ * everything past the cap folds into `other`. `total` is unaffected by the
+ * cap — it is the sum of every match, capped or not.
+ */
+export interface ElementTagScan {
+  total: number;
+  byTag: Readonly<Record<string, number>>;
+  arollVideoCount: number;
+  heygenVideoCount: number;
+  audioCount: number;
+  imageCount: number;
+  subCompositionCount: number;
+  audioGroupCount: number;
+  colorGradingCount: number;
+  hasLut: boolean;
+  /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
+}
+
+const MAX_REPORTED_ELEMENT_TAGS = 50;
+
+/** First element carrying data-composition-id, the same root marker other `[data-composition-id]` queries here use. */
+const ROOT_COMPOSITION_TAG_RE =
+  /<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i;
+
+function bucketPxDelta(delta: number): NonNullable<ElementTagScan["rootBodyDeltaPxBucket"]> {
+  if (delta === 0) return "0";
+  if (delta <= 10) return "1-10";
+  if (delta <= 50) return "11-50";
+  return "51+";
+}
+
+/** Authored root size vs. the scaffold's html/body CSS size, a source-level fact this HTML
+ * string carries whether or not init.ts's runtime DOM correction ran. Undefined, not a false/"0"
+ * default, when either side can't be read; a lighter root-tag heuristic than lint's findRootTag. */
+function detectRootBodySizeMismatch(
+  html: string,
+): Pick<ElementTagScan, "rootBodyMismatch" | "rootBodyDeltaPxBucket"> {
+  const rootTag = html.match(ROOT_COMPOSITION_TAG_RE)?.[0];
+  const dataWidth = rootTag && Number(rootTag.match(/\bdata-width=["'](\d+)["']/i)?.[1]);
+  const dataHeight = rootTag && Number(rootTag.match(/\bdata-height=["'](\d+)["']/i)?.[1]);
+  if (!dataWidth || !dataHeight) return {};
+
+  // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
+  // replace; this read-only comparison only needs the digit groups (2 and 4).
+  const widthFirst = html.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  const heightFirst = widthFirst ? undefined : html.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const [cssWidth, cssHeight] = widthFirst
+    ? [Number(widthFirst[2]), Number(widthFirst[4])]
+    : heightFirst
+      ? [Number(heightFirst[4]), Number(heightFirst[2])]
+      : [undefined, undefined];
+  if (!cssWidth || !cssHeight) return {};
+
+  const delta = Math.max(Math.abs(dataWidth - cssWidth), Math.abs(dataHeight - cssHeight));
+  return { rootBodyMismatch: delta > 0, rootBodyDeltaPxBucket: bucketPxDelta(delta) };
+}
+
+/**
+ * Rough element count (and per-tag breakdown) for compiled composition HTML.
  *
  * Deliberately a string scan and not a `parseHTML` + `querySelectorAll` (the
  * `countAuthoredTimedClips` approach): this runs on EVERY render before the
@@ -1422,6 +1656,10 @@ export function envInt(name: string, fallback: number): number {
  * literal closing marker (`</`, a void name at a word boundary, or `/>`), so
  * ordinary JS comparisons and divisions don't qualify — verified by test.
  *
+ * Every other property derives from the SAME script/style-stripped markup as
+ * `total`, and the per-tag counts come from the SAME matched set, so one scan
+ * feeds everything this function returns and none of them can drift apart.
+ *
  * FALLBACK ONLY as of the live-DOM fix below — a string scan of the SOURCE
  * markup cannot see elements a composition's own script creates at runtime
  * (`document.createElement`), which is an unbounded undercount no regex can
@@ -1430,7 +1668,7 @@ export function envInt(name: string, fallback: number): number {
  * `resolveCompositionElementCount` prefers the initialized probe session's
  * live count and uses this only when no such session exists.
  */
-export function countElementTags(html: string): number {
+export function scanElementTags(html: string): ElementTagScan {
   // Strip inline <script>/<style> bodies BEFORE matching. Every alternation
   // below can fire on ordinary JS text — `const html = "</div>"` or a
   // template literal building `</span>` inflates the count once per
@@ -1451,10 +1689,96 @@ export function countElementTags(html: string): number {
     previous = markup;
     markup = markup.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
   }
-  const matches = markup.match(
-    /<\/[a-zA-Z]|<(?:img|br|hr|input|source|track|area|base|col|embed|link|meta|param|wbr)\b|<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\/>/gi,
+  let total = 0;
+  const counts = new Map<string, number>();
+  for (const m of markup.matchAll(
+    /<\/([a-zA-Z][-a-zA-Z0-9]*)|<(img|br|hr|input|source|track|area|base|col|embed|link|meta|param|wbr)\b|<([a-zA-Z][-a-zA-Z0-9]*)\b[^>]*\/>/gi,
+  )) {
+    total++;
+    const tag = (m[1] ?? m[2] ?? m[3] ?? "").toLowerCase();
+    counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const byTag: Record<string, number> = Object.fromEntries(
+    ranked.slice(0, MAX_REPORTED_ELEMENT_TAGS),
   );
-  return matches === null ? 0 : matches.length;
+  const otherCount = ranked
+    .slice(MAX_REPORTED_ELEMENT_TAGS)
+    .reduce((sum, [, count]) => sum + count, 0);
+  // `+=`, not `=`: a real (if exotic) tag literally named "other" could
+  // already occupy this key from the top-N slice above — adding preserves
+  // sum(byTag) === total in every case; overwriting would silently drop it.
+  if (otherCount > 0) byTag.other = (byTag.other ?? 0) + otherCount;
+  // `data-aroll="true"` is stamped on any media element type the composition
+  // generator emits (video/img/audio — see hyperframes.ts's isMediaElement
+  // gate), but this count is scoped to <video> only, matching its name: a-roll
+  // is a video-editing term for primary-take footage, and every real usage in
+  // this codebase's fixtures stamps it on video elements.
+  const arollVideoCount =
+    markup.match(/<video\b[^>]*\bdata-aroll=["']true["'][^>]*>/gi)?.length ?? 0;
+  // `data-media-source="heygen"` is the media-use skill's own provenance
+  // stamp (see resolve.md), written only when the mounted video's ledger
+  // record traces to the "heygen.video" provider — never any other provider
+  // or value, so a plain presence check is exact, not a substring guess.
+  const heygenVideoCount =
+    markup.match(/<video\b[^>]*\bdata-media-source=["']heygen["'][^>]*>/gi)?.length ?? 0;
+  // Uncapped `counts` Map, not `byTag`: 50+ distinct tags could push these
+  // into the "other" bucket, zeroing a named field the cap shouldn't affect.
+  const audioCount = counts.get("audio") ?? 0;
+  const imageCount = counts.get("img") ?? 0;
+  const audioGroupCount = counts.get(HF_AUDIO_GROUP_TAG) ?? 0;
+  // Not collectSubCompositionSrcs (@hyperframes/parsers/asset-resolution):
+  // that dedupes by src and drops placeholder/remote mounts, so its length is
+  // distinct resolvable sub-comps, not this field's mount-element count.
+  const subCompositionCount =
+    markup.match(/<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-src=["'][^"']*["']/gi)?.length ??
+    0;
+  let colorGradingCount = 0;
+  let hasLut = false;
+  for (const m of markup.matchAll(
+    new RegExp(`\\b${HF_COLOR_GRADING_ATTR}=(?:"([^"]*)"|'([^']*)')`, "gi"),
+  )) {
+    colorGradingCount++;
+    // Guarded, not unconditional: one LUT anywhere settles the flag, so the
+    // JSON parse stops running for every element after the first hit.
+    if (!hasLut) hasLut = colorGradingValueHasLut(m[1] ?? m[2] ?? "");
+  }
+  return {
+    total,
+    byTag,
+    arollVideoCount,
+    heygenVideoCount,
+    audioCount,
+    imageCount,
+    subCompositionCount,
+    audioGroupCount,
+    colorGradingCount,
+    hasLut,
+    ...detectRootBodySizeMismatch(html),
+  };
+}
+
+/** `data-color-grading`'s JSON `lut` field means "has a LUT" (see `HF_COLOR_GRADING_ATTR`).
+ * Decode is load-bearing: linkedom re-serializes this `&quot;`-escaped, or `JSON.parse` throws. */
+function colorGradingValueHasLut(rawAttributeValue: string): boolean {
+  const decoded = rawAttributeValue
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+  try {
+    const parsed: unknown = JSON.parse(decoded);
+    if (typeof parsed !== "object" || parsed === null || !("lut" in parsed)) return false;
+    const lut = parsed.lut;
+    // Mirrors normalizeLut (@hyperframes/core colorGrading.ts): a bare
+    // non-blank string, or an object with a non-blank string `src`, counts.
+    // null/absent/empty-string/blank-src does not.
+    if (typeof lut === "string") return lut.trim() !== "";
+    if (typeof lut !== "object" || lut === null) return false;
+    const src = (lut as { src?: unknown }).src;
+    return typeof src === "string" && src.trim() !== "";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1466,7 +1790,7 @@ export function countElementTags(html: string): number {
  * caption-word-span pattern above builds thousands of nodes from two source
  * tags).
  *
- * `static` — the `countElementTags` fallback. Emitted for diagnostics, but
+ * `static` — the `scanElementTags` fallback. Emitted for diagnostics, but
  * NOT trusted to open the band: the probe is conditional (see
  * `probeStage.ts`'s `needsBrowser` — only unknown duration, unresolved
  * compositions, or specific media cases launch one), so a known-duration,
@@ -1482,7 +1806,21 @@ export function countElementTags(html: string): number {
 export async function resolveCompositionElementCount(
   probeSession: Pick<CaptureSession, "isInitialized" | "page"> | null,
   html: string,
-): Promise<{ count: number; source: "live" | "static" }> {
+): Promise<{
+  count: number;
+  source: "live" | "static";
+  byTag?: Readonly<Record<string, number>>;
+  arollVideoCount?: number;
+  heygenVideoCount?: number;
+  audioCount?: number;
+  imageCount?: number;
+  subCompositionCount?: number;
+  audioGroupCount?: number;
+  colorGradingCount?: number;
+  hasLut?: boolean;
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: ElementTagScan["rootBodyDeltaPxBucket"];
+}> {
   if (probeSession?.isInitialized) {
     try {
       const liveCount = await probeSession.page.evaluate(
@@ -1499,7 +1837,145 @@ export async function resolveCompositionElementCount(
       // render on a routing-gate measurement.
     }
   }
-  return { count: countElementTags(html), source: "static" };
+  // Every field below `source` is static-only: the live path measures a real
+  // DOM node count and never runs this string scan, so it has nothing to
+  // report for any of them.
+  const scan = scanElementTags(html);
+  return {
+    count: scan.total,
+    source: "static",
+    byTag: scan.byTag,
+    arollVideoCount: scan.arollVideoCount,
+    heygenVideoCount: scan.heygenVideoCount,
+    audioCount: scan.audioCount,
+    imageCount: scan.imageCount,
+    subCompositionCount: scan.subCompositionCount,
+    audioGroupCount: scan.audioGroupCount,
+    colorGradingCount: scan.colorGradingCount,
+    hasLut: scan.hasLut,
+    rootBodyMismatch: scan.rootBodyMismatch,
+    rootBodyDeltaPxBucket: scan.rootBodyDeltaPxBucket,
+  };
+}
+
+/**
+ * All 12 real runtime adapters registered by `runtime/init.ts`, including the
+ * map/data-source ones (d3/leaflet/mapbox/maplibre/google-maps) alongside animation ones.
+ */
+const KNOWN_RUNTIME_ADAPTERS = [
+  "animejs",
+  "css",
+  "d3",
+  "google-maps",
+  "gsap",
+  "leaflet",
+  "lottie",
+  "mapbox",
+  "maplibre",
+  "three",
+  "typegpu",
+  "waapi",
+] as const;
+
+export type RuntimeAdapterName = (typeof KNOWN_RUNTIME_ADAPTERS)[number];
+
+/**
+ * Static, authoring-time signature per adapter. Most match the adapter's own
+ * `window.__hf<Name>` registration token; gsap/three/css/waapi match a library-specific shape.
+ */
+const ADAPTER_STATIC_SIGNATURES: Readonly<Record<RuntimeAdapterName, RegExp>> = {
+  animejs: /\b__hfAnime\b/,
+  css: /@keyframes\s+[\w-]/,
+  d3: /\b__hfD3\b/,
+  "google-maps": /\b__hfGoogleMaps\b/,
+  gsap: /\bgsap\.(timeline|to|from|fromTo|set)\s*\(/,
+  leaflet: /\b__hfLeaflet\b/,
+  lottie: /\b__hfLottie\b/,
+  mapbox: /\b__hfMapbox\b/,
+  maplibre: /\b__hfMaplibre\b/,
+  three:
+    /\bwindow\.THREE\b|\bTHREE\.(Scene|WebGLRenderer|PerspectiveCamera|DefaultLoadingManager)\b/,
+  typegpu: /\bdata-requires-webgpu\b|\b__hfTypegpuTime\b/,
+  waapi: /\.animate\s*\(\s*\[/,
+};
+
+/**
+ * Static regex fallback for `resolveAdaptersUsed`, the sole signal with no probe session.
+ * Scans inline `<script>` bodies too, unlike `scanElementTags`, which strips them.
+ */
+export function detectAdaptersStatic(html: string): RuntimeAdapterName[] {
+  return KNOWN_RUNTIME_ADAPTERS.filter((name) => ADAPTER_STATIC_SIGNATURES[name].test(html));
+}
+
+/**
+ * Live-DOM probe body for `resolveAdaptersUsed`. Self-contained since `page.evaluate` serializes it.
+ * css/waapi split verified against `runtime/adapters/css.ts` (happy-dom can't exercise it here).
+ */
+function probeAdaptersUsed(): string[] {
+  const used: string[] = [];
+  const w = window as unknown as Record<string, unknown>;
+  const isNonEmptyArray = (value: unknown): boolean => Array.isArray(value) && value.length > 0;
+  // Libraries the adapter auto-detects from their own global.
+  if (typeof w.gsap !== "undefined") used.push("gsap");
+  if (typeof w.THREE !== "undefined") used.push("three");
+  // Adapters whose authoring convention is to push each instance onto a
+  // `window.__hf<Name>` registration array.
+  if (isNonEmptyArray(w.__hfAnime)) used.push("animejs");
+  if (isNonEmptyArray(w.__hfD3)) used.push("d3");
+  if (isNonEmptyArray(w.__hfGoogleMaps)) used.push("google-maps");
+  if (isNonEmptyArray(w.__hfLeaflet)) used.push("leaflet");
+  if (isNonEmptyArray(w.__hfLottie)) used.push("lottie");
+  if (isNonEmptyArray(w.__hfMapbox)) used.push("mapbox");
+  if (isNonEmptyArray(w.__hfMaplibre)) used.push("maplibre");
+  // typegpu registers a scalar clock rather than an instance array.
+  if (
+    typeof w.__hfTypegpuTime === "number" ||
+    document.querySelector("[data-composition-id][data-requires-webgpu]")
+  ) {
+    used.push("typegpu");
+  }
+  let liveAnimations: Animation[] = [];
+  try {
+    if (typeof document.getAnimations === "function") liveAnimations = document.getAnimations();
+  } catch {
+    // Detached or mid-navigation document: leave the list empty so the
+    // adapters resolved above are still reported.
+  }
+  // The real "css" adapter only discovers @keyframes-driven animations, never
+  // CSS `transition:`. A `CSSTransition` instance is neither adapter-managed
+  // "css" nor an imperative "waapi" call, so it is excluded from both.
+  const isKeyframesCss = (animation: Animation): boolean =>
+    typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation;
+  const isTransition = (animation: Animation): boolean =>
+    typeof CSSTransition !== "undefined" && animation instanceof CSSTransition;
+  if (liveAnimations.some(isKeyframesCss)) used.push("css");
+  if (liveAnimations.some((animation) => !isKeyframesCss(animation) && !isTransition(animation))) {
+    used.push("waapi");
+  }
+  return used;
+}
+
+/**
+ * Runtime adapters a composition exercises. Unlike `resolveCompositionElementCount`
+ * (one source of truth, for gating), this is observational: unions live + static every render.
+ */
+export async function resolveAdaptersUsed(
+  probeSession: Pick<CaptureSession, "isInitialized" | "page"> | null,
+  html: string,
+): Promise<readonly RuntimeAdapterName[]> {
+  const staticAdapters = detectAdaptersStatic(html);
+  if (!probeSession?.isInitialized) return staticAdapters;
+  try {
+    const live = await probeSession.page.evaluate(probeAdaptersUsed);
+    if (!Array.isArray(live)) return staticAdapters;
+    const detected = new Set<string>([...staticAdapters, ...live]);
+    return KNOWN_RUNTIME_ADAPTERS.filter((name) => detected.has(name));
+  } catch {
+    // Probe page evaluate can fail (navigation mid-flight, detached frame,
+    // page crash), so fall back to the static-only signal rather than block
+    // the render on a purely observational telemetry probe.
+    return staticAdapters;
+  }
 }
 
 /**
@@ -1644,7 +2120,7 @@ export function shouldPreferSingleWorkerDrawElement(args: {
     args.useDrawElement &&
     !args.deCompileGate &&
     !args.forceScreenshot &&
-    args.outputFormat === "mp4" &&
+    outputUsesH264Pipeline(args.outputFormat) &&
     args.minFrames > 0 &&
     args.totalFrames >= args.minFrames &&
     args.singleWorkerStreamingOk &&
@@ -1766,9 +2242,12 @@ export function shouldPreferParallelDrawElement(args: {
    * (`shouldUseStreamingEncode` at the router's worker count with
    * forceParallelStream). The router's entire value is that path; without it
    * firing would pin workerCount to 3 and skip calibration while delivering
-   * none of the benefit — e.g. a composition longer than
-   * `streamingEncodeMaxDurationSeconds` (240 s default), where the duration
-   * cap disables streaming before the router's force flag is consulted.
+   * none of the benefit — e.g. png-sequence / gif output, streaming disabled
+   * by config, or — only when the operator opt-in
+   * `streamingEncodeDurationCapEnabled` is on — a composition longer than
+   * `streamingEncodeMaxDurationSeconds` (240 s), where the duration cap
+   * disables streaming before the router's force flag is consulted. With the
+   * cap off (the default) long compositions are eligible here too.
    */
   parallelStreamingAvailable: boolean;
   /** Machine RAM (os.totalmem, MB). */
@@ -1784,7 +2263,7 @@ export function shouldPreferParallelDrawElement(args: {
     args.useDrawElement &&
     !args.deCompileGate &&
     !args.forceScreenshot &&
-    args.outputFormat === "mp4" &&
+    outputUsesH264Pipeline(args.outputFormat) &&
     args.minFrames > 0 &&
     args.totalFrames >= args.minFrames &&
     !args.layeredOrEffectRoute &&
@@ -1905,6 +2384,14 @@ export function shouldRetryViaPinnedFallback(args: {
   /** The producer's no-progress watchdog tripped around a sequential capture call. */
   isSequentialCaptureStall?: boolean;
   /**
+   * The parallel streaming stage's watchdog tripped. Routing-independent
+   * like the sequential stall: on the non-drawElement router (default
+   * routing) it used to fail the render hard while promising a fallback.
+   */
+  isParallelCaptureStall?: boolean;
+  /** The streaming encoder died after frames had started — see isRetryableEncoderDeath. */
+  isEncoderDeath?: boolean;
+  /**
    * A transient browser failure around the capture call itself
    * (`classifyCaptureFailure` → `transient_browser`, e.g. a CDP
    * `Page.captureScreenshot` refusal). Routing-independent like the stalls
@@ -1917,6 +2404,7 @@ export function shouldRetryViaPinnedFallback(args: {
   if (args.isCancellation || args.isEncoderInterrupted) return false;
   if (args.isVerifyError || args.isDeCaptureError) return true;
   if (args.isDeRendererStall === true || args.isSequentialCaptureStall === true) return true;
+  if (args.isParallelCaptureStall === true || args.isEncoderDeath === true) return true;
   if (args.isTransientCaptureError === true) return true;
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
 }
@@ -1945,6 +2433,36 @@ export function isSequentialCaptureStallError(err: unknown): boolean {
       err.message,
     )
   );
+}
+
+/**
+ * The parallel streaming stage's no-progress watchdog tripped
+ * (`ParallelCaptureStallError`). Matched on name+message like the sequential
+ * one so it survives a boundary that rebuilds the error from its message.
+ */
+export function isParallelCaptureStallError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "ParallelCaptureStallError" ||
+    /^\[Render\] Parallel \S+ capture stalled/.test(err.message)
+  );
+}
+
+const ENCODER_DEATH_FRAME_RE = /^Streaming encoder exited before frame (\d+) was written/;
+
+/**
+ * The streaming encoder died mid-render in a way a fresh ffmpeg might not
+ * repeat: an inactivity kill, a crash, an ENOSPC that cleared. Death before
+ * frame 2 is the encoder rejecting its own arguments or input (bad codec
+ * params, unsupported pixel format, a broken user ffmpeg) and reproduces
+ * exactly, so retrying it only doubles the time to the same failure. A host
+ * lifecycle interruption is typed separately and is never retried here — the
+ * producer that owns the render is what retries that.
+ */
+export function isRetryableEncoderDeath(err: unknown): boolean {
+  if (!(err instanceof Error) || err instanceof EncoderInterruptedError) return false;
+  const match = ENCODER_DEATH_FRAME_RE.exec(err.message);
+  return match !== null && Number(match[1]) >= 2;
 }
 
 /**
@@ -1995,8 +2513,130 @@ export async function closeOrphanedProbeForRetry(
  * machinery; both DE predicates independently require useDrawElement, making
  * the two routers mutually exclusive by construction.
  */
+/**
+ * The capture mode each parallel worker will launch with, mirroring the
+ * engine's `preMode` (frameCapture.ts): BeginFrame only on Linux with
+ * chrome-headless-shell, at DPR 1, with no forced screenshot. The engine's
+ * `drawElementTransparent` term is absent because the router requires
+ * `!useDrawElement`.
+ *
+ * Deliberately stricter than {@link resolveObservedCaptureMode}, which knows
+ * only the platform and so calls Linux-with-system-Chrome and Linux-at-DPR>1
+ * "beginframe" when the engine actually launches screenshot. The default-on
+ * decision keys on this, so being stricter only narrows what is enabled by
+ * default. One case remains that this cannot see: the engine's concrete
+ * software-GPU clamp can still move a Linux headless-shell render to
+ * screenshot. Those renders are inside the cohort the default was measured
+ * on, since the telemetry label uses the looser predicate.
+ */
+export function resolveParallelCaptureMode(args: {
+  platform: NodeJS.Platform;
+  /** A chrome-headless-shell binary was resolved for this render. */
+  headlessShell: boolean;
+  forceScreenshot: boolean;
+  deviceScaleFactor?: number;
+}): "screenshot" | "beginframe" {
+  const supersampling = (args.deviceScaleFactor ?? 1) > 1;
+  return args.headlessShell && args.platform === "linux" && !args.forceScreenshot && !supersampling
+    ? "beginframe"
+    : "screenshot";
+}
+
+/**
+ * Non-DE parallel-stream router switch. Default ON for BeginFrame capture
+ * (Phase 1 of the long-form render plan): those multi-worker mp4/mov renders
+ * stream through the interleaved writer instead of writing raw RGBA frames to
+ * disk, and their opt-in cohort fails at 0.05%. Screenshot capture stays
+ * opt-in — its opt-in cohort fails at 5.5% against a ~1.1% baseline, in two
+ * classes the streaming path owns (the parallel stall watchdog hard-fails
+ * with no retry; a dying encoder surfaces as a bare write EPIPE). Flipping it
+ * waits on those being fixed.
+ *
+ * Off-spellings match {@link isDeParallelRouterEnabled} so the two kill
+ * switches cannot disagree; any other explicit value is an opt-in.
+ */
+export function isCaptureParallelStreamRouterEnabled(
+  env: Readonly<Record<string, string | undefined>>,
+  resolvedMode: "screenshot" | "beginframe",
+): boolean {
+  const raw = env.HF_CAPTURE_PARALLEL_STREAM?.trim().toLowerCase();
+  if (raw === undefined || raw === "") return resolvedMode === "beginframe";
+  if (raw === "false" || raw === "0" || raw === "off" || raw === "no") return false;
+  return true;
+}
+
+/**
+ * Whether this render distributes frames interleaved across its workers. The
+ * two routers set their flags; `HF_DE_PARALLEL_STREAM=true` is the manual
+ * opt-in the streaming stage also honours on its own. Folding all three into
+ * the plan is what keeps the plan, and so the retry target and telemetry, in
+ * agreement with the distribution the stage actually picks: before this, an
+ * env-opt-in render below the DE router's frame floor carried
+ * `forceParallelStream: false`, so its retry kept N workers, which the env
+ * var then re-interleaved instead of dropping to the hardened single-worker
+ * path. Pure; exported for tests.
+ */
+export function isParallelStreamForced(
+  env: Readonly<Record<string, string | undefined>>,
+  flags: { deParallelStreamForced: boolean; captureParallelStreamForced: boolean },
+): boolean {
+  return (
+    flags.deParallelStreamForced ||
+    flags.captureParallelStreamForced ||
+    env.HF_DE_PARALLEL_STREAM === "true"
+  );
+}
+
+/**
+ * The duration at which segmented capture is meant to become the default
+ * (spec §5 Phase 2d). Not the shipped default: that flip is its own release
+ * step, gated on the 40-minute soak, and shipping it alongside the rest of
+ * this work would change the route for every long render in the same release
+ * that introduced the route. Set `HF_SEGMENTED_MIN_SECONDS=600` to opt a
+ * fleet in ahead of the flip; flipping the constant below is the whole
+ * change when the soak passes.
+ */
+export const SEGMENTED_MIN_SECONDS_AFTER_SOAK = 600;
+
+/** No duration routes to segmented capture until the soak gate is cleared. */
+const DEFAULT_SEGMENTED_MIN_SECONDS = Number.POSITIVE_INFINITY;
+
+function resolveSegmentedMinSeconds(env: Readonly<Record<string, string | undefined>>): number {
+  const raw = env.HF_SEGMENTED_MIN_SECONDS;
+  if (raw === undefined || raw.trim() === "") return DEFAULT_SEGMENTED_MIN_SECONDS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SEGMENTED_MIN_SECONDS;
+}
+
+/**
+ * Whether this render captures in segments. The worker count is not an
+ * input: any count segments (Phase 2d), so nothing here consults it.
+ * `HF_SEGMENTED_CAPTURE=true`
+ * forces it at any duration and `=false` is the kill switch; otherwise it is
+ * the duration threshold above. The exclusions are the routes whose
+ * concat-copy or capture loop the segment contract does not cover: webm's VP9
+ * concat is fragile across ffmpeg versions, png-sequence and gif have no
+ * encoded video output, and HDR/shader-transition renders run their own
+ * compositor.
+ */
+export function shouldSegmentCapture(args: {
+  env: Readonly<Record<string, string | undefined>>;
+  durationSeconds: number;
+  outputFormat: string;
+  layeredOrEffectRoute: boolean;
+  /** shouldUseStreamingEncode(cfg, format, 1, duration) at the call site. */
+  streamingOk: boolean;
+}): boolean {
+  const raw = args.env.HF_SEGMENTED_CAPTURE?.trim().toLowerCase();
+  if (raw === "false" || raw === "0" || raw === "off" || raw === "no") return false;
+  if (!args.streamingOk || args.layeredOrEffectRoute) return false;
+  if (args.outputFormat !== "mp4" && args.outputFormat !== "mov") return false;
+  if (raw === "true") return true;
+  return args.durationSeconds >= resolveSegmentedMinSeconds(args.env);
+}
+
 export function shouldStreamParallelCapture(args: {
-  /** HF_CAPTURE_PARALLEL_STREAM === "true" — kill switch, default OFF. */
+  /** Router switch for this render — see isCaptureParallelStreamRouterEnabled. */
   routerEnabled: boolean;
   workerCount: number;
   /** cfg.useDrawElement AFTER resolveConfig clamps. */
@@ -2014,7 +2654,7 @@ export function shouldStreamParallelCapture(args: {
     args.routerEnabled &&
     args.workerCount > 1 &&
     !args.useDrawElement &&
-    args.outputFormat === "mp4" &&
+    outputUsesH264Pipeline(args.outputFormat) &&
     args.streamingOk &&
     !args.layeredOrEffectRoute
   );
@@ -2146,6 +2786,9 @@ export async function executeRenderJob(
   abortSignal?: AbortSignal,
   assertRenderActive?: () => void,
 ): Promise<void> {
+  // Ahead of the work dir / log file / execution context: a config the format
+  // cannot honor must fail before anything is written to disk.
+  validateHlsRenderConfig(job.config);
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const producerRoot = process.env.PRODUCER_RENDERS_DIR
     ? resolve(process.env.PRODUCER_RENDERS_DIR, "..")
@@ -2239,9 +2882,20 @@ async function executeRenderPipeline(input: {
   const outputFormat = job.config.format ?? ("mp4" as const);
   const isPngSequence = outputFormat === "png-sequence";
   const isGif = outputFormat === "gif";
+  const isHls = outputFormat === "hls";
+  // Segment length and the matching GOP, resolved once. Both encoder paths
+  // spread the same `hlsEncoderGopLock`, so they cannot disagree — a GOP that
+  // is not exactly `segmentSeconds × fps` frames silently produces
+  // variable-length segments instead of failing.
+  const hlsSegmentSeconds = isHls ? resolveHlsSegmentSeconds(job.config) : undefined;
+  const hlsEncoderGopLock = resolveHlsEncoderGopLock(
+    outputFormat,
+    job.config.fps,
+    job.config.hlsSegmentSeconds,
+  );
   const artifactTransaction = new ArtifactTransaction(
     outputPath,
-    isPngSequence ? "directory" : "file",
+    isPngSequence || isHls ? "directory" : "file",
   );
   const stagedOutputPath = artifactTransaction.stagingPath;
   const needsAlpha = outputNeedsAlpha(outputFormat);
@@ -2435,6 +3089,7 @@ async function executeRenderPipeline(input: {
           platform: process.platform,
           browserGpuMode: cfg.browserGpuMode,
           workerEncode: cfg.enableDrawElementWorkerEncode,
+          chromeCeiling: chromeMajorCeiling(),
         });
     // "inverted" = fired and held; "reverted" = fired but the self-verify
     // retry rolled back to the parallel path; undefined = never fired.
@@ -2810,14 +3465,19 @@ async function executeRenderPipeline(input: {
     });
     const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(composition.videos.length);
 
+    const captureImageFormat = resolveCaptureImageFormat({
+      needsAlpha,
+      motionBlur: job.config.motionBlur,
+    });
     const captureOptions: CaptureOptions = {
       width,
       height,
       fps: job.config.fps,
-      format: needsAlpha ? "png" : "jpeg",
-      quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
+      format: captureImageFormat,
+      quality: captureImageFormat === "png" ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,
       deviceScaleFactor,
+      motionBlur: job.config.motionBlur,
       ...(videoCaptureBeyondViewport !== undefined
         ? { captureBeyondViewport: videoCaptureBeyondViewport }
         : {}),
@@ -2843,6 +3503,21 @@ async function executeRenderPipeline(input: {
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,
+      requiresWebGpu: compositionRequiresWebGpu(compiled.html),
+      // Live route for Chrome memory (spec §5 Phase −1). The aggregate route
+      // through CapturePerfSummary only exists on success; a mid-capture
+      // target loss never builds one, and that is the case this telemetry is
+      // for. With parallel workers each session reports through the same
+      // callback, so the record holds the most recent session's stats.
+      onMemorySample: (stats) => {
+        updateCaptureObservability({
+          chromeBrowserRssPeakMb: stats.browserRssPeakMb,
+          chromeRendererRssPeakMb: stats.rendererRssPeakMb,
+          chromeRssLastMb: stats.rssLastMb,
+          chromeGpuProcessSeenLastSample: stats.gpuProcessSeenLastSample,
+          chromeMemorySamples: stats.samples,
+        });
+      },
     });
     // The URL-served frame path (PR #596) hands each injected `<img>` a
     // fileServer URL instead of a base64 data URI, on the theory that
@@ -2932,8 +3607,22 @@ async function executeRenderPipeline(input: {
     // compositions, or specific media cases), so a known-duration media-free
     // comp that builds its DOM in script has no live count available and the
     // static scan reads it as tiny. Only a `live` count may open the band.
-    const { count: compositionElementCount, source: compositionElementCountSource } =
-      await resolveCompositionElementCount(probeSession, compiled.html);
+    const {
+      count: compositionElementCount,
+      source: compositionElementCountSource,
+      byTag: compositionElementTags,
+      arollVideoCount,
+      heygenVideoCount,
+      audioCount,
+      imageCount,
+      subCompositionCount,
+      audioGroupCount,
+      colorGradingCount,
+      hasLut,
+      rootBodyMismatch,
+      rootBodyDeltaPxBucket,
+    } = await resolveCompositionElementCount(probeSession, compiled.html);
+    const adaptersUsed = await resolveAdaptersUsed(probeSession, compiled.html);
     // HF_DE_SHORT_MAX_ELEMENTS=0 is the documented kill switch (symmetric
     // with HF_DE_SHORT_MIN_FRAMES=0, which disables via the predicate's own
     // minFrames > 0 guard). Gated explicitly here too — without it, a fired
@@ -3074,8 +3763,9 @@ async function executeRenderPipeline(input: {
         process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true" ||
         process.env.HF_DE_PARALLEL_STREAM === "true",
       routerEnabled: deParallelRouterEnabled,
-      // Router pins 3 workers for the streaming path; don't pin when the
-      // duration cap (or any other streaming gate) would turn that path off.
+      // Router pins 3 workers for the streaming path; don't pin when a
+      // streaming gate (config, format, or the opt-in duration cap) would turn
+      // that path off.
       parallelStreamingAvailable: shouldUseStreamingEncode(
         cfg,
         outputFormat,
@@ -3115,22 +3805,20 @@ async function executeRenderPipeline(input: {
       get captureMode() {
         return (
           probeSession?.captureMode ??
-          (captureForceScreenshot
-            ? "screenshot"
-            : cfg.useDrawElement
-              ? "drawelement"
-              : "beginframe")
+          fallbackCaptureModeLabel({
+            forceScreenshot: captureForceScreenshot,
+            useDrawElement: cfg.useDrawElement,
+          })
         );
       },
       get captureOperation() {
         if ((job.framesRendered ?? 0) >= totalFrames) return "encode";
         const mode =
           probeSession?.captureMode ??
-          (captureForceScreenshot
-            ? "screenshot"
-            : cfg.useDrawElement
-              ? "drawelement"
-              : "beginframe");
+          fallbackCaptureModeLabel({
+            forceScreenshot: captureForceScreenshot,
+            useDrawElement: cfg.useDrawElement,
+          });
         if (mode === "screenshot") return "captureScreenshot";
         if (mode === "drawelement") return "drawElement";
         return "beginFrame";
@@ -3276,6 +3964,18 @@ async function executeRenderPipeline(input: {
       // perf shift can be split into "the new band did it" vs "unchanged".
       compositionElementCount,
       compositionElementCountSource,
+      compositionElementTags,
+      arollVideoCount,
+      heygenVideoCount,
+      adaptersUsed,
+      audioCount,
+      imageCount,
+      subCompositionCount,
+      audioGroupCount,
+      colorGradingCount,
+      hasLut,
+      rootBodyMismatch,
+      rootBodyDeltaPxBucket,
       deShortBand,
       // Same rationale as the counters above: carried on live capture
       // observability, not only the success-path perfSummary, so a crash /
@@ -3349,7 +4049,16 @@ async function executeRenderPipeline(input: {
     // (both DE predicates require useDrawElement; this requires its negation).
     // Reads `cfg.useDrawElement` after the clamp above, so it sees the
     // capture mode this render will actually use.
-    const captureParallelStreamRouterEnabled = process.env.HF_CAPTURE_PARALLEL_STREAM === "true";
+    const parallelCaptureMode = resolveParallelCaptureMode({
+      platform: process.platform,
+      headlessShell: resolveHeadlessShellPath(cfg) !== null,
+      forceScreenshot: captureForceScreenshot,
+      deviceScaleFactor: captureOptions.deviceScaleFactor,
+    });
+    const captureParallelStreamRouterEnabled = isCaptureParallelStreamRouterEnabled(
+      process.env,
+      parallelCaptureMode,
+    );
     const captureParallelStreamArgs = {
       workerCount,
       useDrawElement: cfg.useDrawElement,
@@ -3363,12 +4072,10 @@ async function executeRenderPipeline(input: {
     });
     if (captureParallelStreamEligible) {
       captureParallelStreamForced = true;
-      // Which mode will stream: the engine picks beginframe only on Linux with
-      // headless-shell and no forced screenshot (frameCapture.ts preMode);
-      // everything else is screenshot. Recorded for telemetry cohorting.
-      // Same predicate as the observability field — use the one helper so the
-      // two cannot drift if the router's modes ever change.
-      const captureParallelStream = resolveObservedCaptureMode(captureForceScreenshot);
+      // Which mode will stream — the same value the enablement decision used,
+      // so the routed cohort in telemetry cannot disagree with the predicate
+      // that routed it.
+      const captureParallelStream = parallelCaptureMode;
       log.info(
         `[Render] Parallel ${captureParallelStream} capture will stream to the encoder ` +
           `(interleaved, ${workerCount} workers) instead of the disk path. ` +
@@ -3383,11 +4090,11 @@ async function executeRenderPipeline(input: {
         `parallel ${captureParallelStream} capture routed to streaming`,
       );
     } else if (shouldStreamParallelCapture({ routerEnabled: true, ...captureParallelStreamArgs })) {
-      // The kill switch is the ONLY failed gate: emit a passive cohort-sizing
-      // signal (capture_parallel_stream = "eligible_off") so the default-off
-      // soak can measure how many fleet renders WOULD route before anyone
-      // enables the flag. Observability-only — no behavior change, no log
-      // noise on the default path.
+      // The router switch is the ONLY failed gate: emit a passive cohort-sizing
+      // signal (capture_parallel_stream = "eligible_off"). Post-split this is
+      // the screenshot-capture cohort held back by the default plus anyone who
+      // set the kill switch — i.e. exactly the population the Phase 1b flip
+      // would move. Observability-only, no log noise on the default path.
       updateCaptureObservability({ captureParallelStream: "eligible_off" });
     }
 
@@ -3401,16 +4108,19 @@ async function executeRenderPipeline(input: {
     // on for this multi-worker render (same formula as the early value above,
     // now including `captureParallelStreamForced`). This is the value the
     // rest of the pipeline (encode/writer selection, logging) uses.
-    useStreamingEncode = shouldUseStreamingEncode(
+    const streamingGate = explainStreamingEncodeGate(
       cfg,
       outputFormat,
       workerCount,
       job.duration,
       deParallelStreamForced || captureParallelStreamForced,
     );
+    useStreamingEncode = streamingGate.enabled;
     log.info("streaming-encode gate", {
       enabled: useStreamingEncode,
+      reason: streamingGate.reason,
       configFlag: cfg.enableStreamingEncode,
+      durationCapEnabled: cfg.streamingEncodeDurationCapEnabled,
       outputFormat,
       workerCount,
       durationSeconds: job.duration,
@@ -3421,12 +4131,17 @@ async function executeRenderPipeline(input: {
     // the encode/mux/faststart stages are skipped entirely. The empty extension
     // keeps `videoOnlyPath` (which is constructed below) sensible even though
     // it will not be written.
+    //
+    // hls is a directory output too, but it does run encode + assemble: the
+    // intermediate stays an MP4 and only the assemble stage changes container,
+    // stream-copying it into segments.
     const FORMAT_EXT: Record<string, string> = {
       mp4: ".mp4",
       webm: ".webm",
       mov: ".mov",
       "png-sequence": "",
       gif: ".gif",
+      hls: ".mp4",
     };
     const videoExt = FORMAT_EXT[outputFormat] ?? ".mp4";
     const videoOnlyPath = join(workDir, `video-only${videoExt}`);
@@ -3550,8 +4265,22 @@ async function executeRenderPipeline(input: {
     let capturePlan: CapturePlan = createCapturePlan({
       workerCount,
       forceScreenshot: captureForceScreenshot,
-      forceParallelStream: deParallelStreamForced || captureParallelStreamForced,
+      forceParallelStream: isParallelStreamForced(process.env, {
+        deParallelStreamForced,
+        captureParallelStreamForced,
+      }),
       useStreamingEncode,
+      // Segmented capture is opt-in in Phase 2a and single-worker only; the
+      // excluded routes are the ones whose concat-copy or capture loop the
+      // segment contract does not cover (webm VP9 concat is fragile, HDR and
+      // shader transitions run their own compositor).
+      useSegmentedCapture: shouldSegmentCapture({
+        env: process.env,
+        durationSeconds: job.duration,
+        outputFormat,
+        layeredOrEffectRoute: hasHdrContent || compiled.hasShaderTransitions,
+        streamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      }),
       useLayeredComposite,
       usePageSideCompositing: usePageSideCompositingForTransitions,
       hasHdrContent,
@@ -3559,6 +4288,9 @@ async function executeRenderPipeline(input: {
       routing: captureRouting,
     });
     const syncCapturePlan = (): void => {
+      // Every route the render can end up on passes through here, including the ones a
+      // replan lands on, so this is where motion blur's one supported-route answer belongs.
+      assertMotionBlurSupported(job.config.motionBlur, capturePlan.kind);
       workerCount = capturePlan.workerCount;
       captureForceScreenshot = capturePlan.forceScreenshot;
       useStreamingEncode = capturePlan.kind === "sdr_streaming";
@@ -3570,6 +4302,10 @@ async function executeRenderPipeline(input: {
       if (capturePlan.routing.kind === "parallel_router") {
         deParallelRouter = capturePlan.routing.state === "active" ? "routed" : "reverted";
       }
+      // Recorded here rather than beside the streaming-encode gate log: this
+      // runs for the initial plan AND every replan, so a render that falls
+      // back to disk reports the path it actually captured on.
+      updateCaptureObservability({ capturePath: capturePathForPlanKind(capturePlan.kind) });
     };
     syncCapturePlan();
     updateCaptureObservability({
@@ -3697,7 +4433,156 @@ async function executeRenderPipeline(input: {
       // streaming spawn fails (non-abort) the stage returns { success: false }
       // and we fall back to the disk path below.
       let streamingHandled = false;
-      if (capturePlan.kind === "sdr_streaming") {
+      if (capturePlan.kind === "sdr_segmented") {
+        const segmentedPlan = capturePlan;
+        const captureFrameStart = Date.now();
+        resetCaptureAttemptProgress(job);
+        const segmentFrames = resolveSegmentFrames(process.env);
+        // One binding for the hash and the encoder so the two cannot drift.
+        const segmentImageFormat = captureOptions.format || "jpeg";
+        const segmentPlanHash = computeSegmentPlanHash({
+          compositionHash: compositionHash ?? "",
+          cliVersion: process.env.npm_package_version ?? "dev",
+          totalFrames,
+          segmentFrames,
+          fps: job.config.fps,
+          width,
+          height,
+          codec: preset.codec,
+          preset: preset.preset,
+          quality: effectiveQuality,
+          bitrate: effectiveBitrate,
+          pixelFormat: preset.pixelFormat,
+          imageFormat: segmentImageFormat,
+          useGpu: job.config.useGpu === true,
+          // Device-scaled: the capture buffer, not the CSS composition size.
+          outputWidth: captureCompositionWidth ?? width,
+          outputHeight: captureCompositionHeight ?? height,
+          motionBlur: job.config.motionBlur ? JSON.stringify(job.config.motionBlur) : "",
+        });
+        const segmentDir = segmentDirFor(join(projectDir, "renders"), segmentPlanHash);
+        let completedSegments: ReadonlySet<number> = new Set<number>();
+        if (job.config.resumeSegments === true) {
+          const existing = readSegmentManifest(segmentDir);
+          if (existing) {
+            completedSegments = await validateCompletedSegments(existing, segmentPlanHash, (path) =>
+              probeSegmentFrameCount(path, extractMediaMetadata),
+            );
+            log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
+              segmentDir,
+            });
+          }
+          if (completedSegments.size === 0) {
+            rmSync(segmentDir, { recursive: true, force: true });
+          }
+        } else {
+          // Without --resume the directory is stale by definition: a previous
+          // run's segments must never be spliced into this output.
+          rmSync(segmentDir, { recursive: true, force: true });
+        }
+        const segmentManifest: SegmentManifest = readSegmentManifest(segmentDir) ?? {
+          version: 1,
+          planHash: segmentPlanHash,
+          totalFrames,
+          segmentFrames,
+          completed: [],
+        };
+        const segmentedRes = await observeRenderStage(
+          observability,
+          "capture_segmented",
+          captureStageObservationData(),
+          () =>
+            runCaptureSegmentedStage({
+              fileServer: activeFileServer,
+              workDir,
+              framesDir,
+              videoOnlyPath,
+              job,
+              totalFrames,
+              cfg,
+              plan: segmentedPlan,
+              log,
+              probeSession,
+              outputFormat,
+              streamingEncoderOptions: {
+                fps: job.config.fps,
+                width,
+                height,
+                codec: preset.codec,
+                preset: preset.preset,
+                quality: effectiveQuality,
+                bitrate: effectiveBitrate,
+                pixelFormat: preset.pixelFormat,
+                vp9CpuUsed: cfg.vp9CpuUsed,
+                useGpu: job.config.useGpu,
+                imageFormat: segmentImageFormat,
+                hdr: preset.hdr,
+                // No hlsEncoderGopLock here: each segment sets its own GOP to
+                // its own length, and hls never reaches this route.
+              },
+              buildCaptureOptions,
+              createRenderVideoFrameInjector,
+              abortSignal: executionSignal,
+              assertNotAborted,
+              onProgress,
+              dedupPerfs,
+              segmentFrames,
+              segmentDir,
+              workerCount: segmentedPlan.workerCount,
+              browserRecycleEverySegments: resolveSegmentBrowserRecycle(process.env),
+              completedSegments,
+              onSegmentComplete: (entry) => {
+                segmentManifest.completed = [
+                  ...segmentManifest.completed.filter((e) => e.index !== entry.index),
+                  { ...entry, completedAt: new Date().toISOString() },
+                ];
+                writeSegmentManifest(segmentDir, segmentManifest);
+              },
+              updateCaptureObservability,
+            }),
+        );
+        if (segmentedRes.success) {
+          streamingHandled = true;
+          workerCount = segmentedRes.workerCount;
+          updateCaptureObservability({ workerCount });
+          probeSession = segmentedRes.probeSession;
+          lastBrowserConsole = segmentedRes.lastBrowserConsole;
+          perfStages.captureMs = Date.now() - stage4Start;
+          perfStages.captureFrameMs = Date.now() - captureFrameStart;
+          perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - perfStages.captureFrameMs);
+          perfStages.encodeMs = segmentedRes.encodeMs;
+          log.info(
+            `[Render] Segmented capture complete: ${segmentedRes.segments} segment(s) concatenated.`,
+            {
+              segmentRetries: segmentedRes.segmentRetries,
+              browserRecycles: segmentedRes.browserRecycles,
+            },
+          );
+          updateCaptureObservability({ segmentRetries: segmentedRes.segmentRetries });
+          // Only after a successful capture: a failure leaves the directory
+          // in place, because that is exactly what --resume reads next time.
+          if (job.config.keepSegments !== true) {
+            rmSync(segmentDir, { recursive: true, force: true });
+          }
+        } else {
+          // Only the first segment's encoder can fail to spawn this way, so
+          // nothing was captured: drop to the plain streaming plan and let
+          // the branch below run the render normally.
+          capturePlan = replanAfterFailure(capturePlan, { kind: "streaming_unavailable" });
+          syncCapturePlan();
+          // The stage closed every session it opened in its own finally,
+          // including a reused probe. Drop the reference so the streaming
+          // branch below opens a fresh session instead of re-initialising a
+          // closed one and failing a stage later with a puzzling
+          // "page closed" (review finding on the Phase 2a PR).
+          probeSession = null;
+          observability.checkpoint(
+            "capture_segmented",
+            "segment encoder spawn failed; falling back to single-encoder streaming",
+          );
+        }
+      }
+      if (!streamingHandled && capturePlan.kind === "sdr_streaming") {
         const captureFrameStart = Date.now();
         const invokeStreaming = () => {
           if (capturePlan.kind !== "sdr_streaming") {
@@ -3735,6 +4620,11 @@ async function executeRenderPipeline(input: {
                   useGpu: job.config.useGpu,
                   imageFormat: captureOptions.format || "jpeg",
                   hdr: preset.hdr,
+                  // HLS only: force an IDR every `gopSize` frames so the
+                  // assemble stage's `-c copy` segmentation cuts exactly on
+                  // the segment boundary. Every other format leaves the
+                  // encoder's open-GOP output untouched.
+                  ...hlsEncoderGopLock,
                 },
                 buildCaptureOptions,
                 createRenderVideoFrameInjector,
@@ -3742,6 +4632,15 @@ async function executeRenderPipeline(input: {
                 assertNotAborted,
                 onProgress,
                 dedupPerfs,
+                // The plan's forceScreenshot is per attempt (a retry forces
+                // it), so it outranks the mode resolved before the router.
+                parallelCaptureLabel: streamingPlan.forceScreenshot
+                  ? "screenshot"
+                  : cfg.useDrawElement
+                    ? "drawElement"
+                    : parallelCaptureMode === "beginframe"
+                      ? "BeginFrame"
+                      : "screenshot",
               }),
           );
         };
@@ -3760,6 +4659,8 @@ async function executeRenderPipeline(input: {
           const isDeCaptureError = isDrawElementCaptureError(err);
           const isDeStall = isDeRendererStallError(err);
           const isSequentialStall = isSequentialCaptureStallError(err);
+          const isParallelStall = isParallelCaptureStallError(err);
+          const isEncoderDeath = isRetryableEncoderDeath(err);
           const isCancellation =
             err instanceof RenderCancelledError || executionSignal?.aborted === true;
           if (
@@ -3772,6 +4673,8 @@ async function executeRenderPipeline(input: {
               deParallelRouter,
               isDeRendererStall: isDeStall,
               isSequentialCaptureStall: isSequentialStall,
+              isParallelCaptureStall: isParallelStall,
+              isEncoderDeath,
               isTransientCaptureError: isTransientBrowserError(err),
             })
           )
@@ -3789,7 +4692,11 @@ async function executeRenderPipeline(input: {
               ? "oom"
               : isDeStall
                 ? "de_renderer_stall"
-                : "capture_error";
+                : isEncoderDeath
+                  ? "encoder_death"
+                  : isParallelStall
+                    ? "parallel_stall"
+                    : "capture_error";
           }
           log.warn(
             isVerifyError
@@ -3798,7 +4705,11 @@ async function executeRenderPipeline(input: {
                 ? "[Render] drawElement renderer stalled; re-rendering via screenshot"
                 : isSequentialStall
                   ? "[Render] sequential capture stalled; retrying on a fresh screenshot session"
-                  : "[Render] capture failed; re-rendering via a fresh screenshot session",
+                  : isParallelStall
+                    ? "[Render] parallel capture stalled; retrying on a fresh screenshot session"
+                    : isEncoderDeath
+                      ? "[Render] streaming encoder died mid-render; retrying on a fresh screenshot session"
+                      : "[Render] capture failed; re-rendering via a fresh screenshot session",
             { error: err instanceof Error ? err.message : String(err) },
           );
           observability.checkpoint(
@@ -3809,7 +4720,11 @@ async function executeRenderPipeline(input: {
                 ? "drawElement renderer stalled; retrying with forceScreenshot"
                 : isSequentialStall
                   ? "sequential capture stalled; retrying with a fresh screenshot session"
-                  : "capture failed; retrying with a fresh screenshot session",
+                  : isParallelStall
+                    ? "parallel capture stalled; retrying with a fresh screenshot session"
+                    : isEncoderDeath
+                      ? "streaming encoder died; retrying with a fresh screenshot session"
+                      : "capture failed; retrying with a fresh screenshot session",
           );
           const failedRouting = capturePlan.routing.kind;
           const failure = streamingCaptureFailure(
@@ -4060,6 +4975,7 @@ async function executeRenderPipeline(input: {
               width,
               height,
               needsAlpha,
+              captureImageFormat: captureOptions.format ?? "jpeg",
               hasAudio,
               audioOutputPath,
               isPngSequence,
@@ -4070,6 +4986,9 @@ async function executeRenderPipeline(input: {
               enableChunkedEncode,
               chunkedEncodeSize,
               engineConfig: cfg,
+              // Same value the streaming encoder above spreads — the disk and
+              // chunked-concat encoders need an identical GOP lock for HLS.
+              ...hlsEncoderGopLock,
               abortSignal: executionSignal,
               assertNotAborted,
               onProgress,
@@ -4112,7 +5031,8 @@ async function executeRenderPipeline(input: {
     // ── Stage 6: Assemble ───────────────────────────────────────────────
     // Skipped for formats with no mux/faststart step. png-sequence is a
     // directory deliverable, and gif is written directly to outputPath by the
-    // two-pass palette encoder.
+    // two-pass palette encoder. hls is a directory deliverable but still runs
+    // this stage — the HLS packaging IS its assemble step.
     if (!isPngSequence && !isGif) {
       const assembleRes = await observeRenderStage(
         observability,
@@ -4125,6 +5045,8 @@ async function executeRenderPipeline(input: {
             audioOutputPath,
             outputPath: stagedOutputPath,
             hasAudio,
+            format: outputFormat,
+            hlsSegmentSeconds,
             abortSignal: executionSignal,
             assertNotAborted,
             onProgress,
@@ -4136,13 +5058,12 @@ async function executeRenderPipeline(input: {
     }
 
     await artifactTransaction.validate(
-      !isPngSequence && !isGif && Number.isFinite(job.duration) && job.duration > 0
-        ? {
-            expectedDurationSeconds: job.duration,
-            fps: fpsToNumber(job.config.fps),
-            expectedFrames: captureTotalFrames,
-          }
-        : undefined,
+      buildArtifactExpectation({
+        outputFormat,
+        durationSeconds: job.duration,
+        fps: fpsToNumber(job.config.fps),
+        expectedFrames: captureTotalFrames,
+      }),
     );
 
     const totalElapsed = Date.now() - pipelineStart;
@@ -4186,6 +5107,18 @@ async function executeRenderPipeline(input: {
         preInversionWorkers: deWorkerInversion ? preRoutingWorkerCount : undefined,
         compositionElementCount,
         compositionElementCountSource,
+        compositionElementTags,
+        arollVideoCount,
+        heygenVideoCount,
+        adaptersUsed,
+        audioCount,
+        imageCount,
+        subCompositionCount,
+        audioGroupCount,
+        colorGradingCount,
+        hasLut,
+        rootBodyMismatch,
+        rootBodyDeltaPxBucket,
         shortBand: deShortBand,
         parallelRouter: deParallelRouter,
         preRouterWorkers: deParallelRouter ? preRoutingWorkerCount : undefined,
@@ -4217,10 +5150,11 @@ async function executeRenderPipeline(input: {
 
     if (job.config.debug) {
       // Copy output MP4 (or single-file alpha output) into the debug dir for
-      // easy access. Skipped for png-sequence: outputPath is a directory, not
-      // a single file — the captured frames already live in `framesDir` under
-      // workDir during a debug run anyway.
-      if (!isPngSequence && existsSync(stagedOutputPath)) {
+      // easy access. Skipped for the directory formats: outputPath is a
+      // directory, not a single file — the captured frames already live in
+      // `framesDir` under workDir during a debug run anyway, and an HLS
+      // render's pre-segmentation `video-only.mp4` is already in workDir.
+      if (!isPngSequence && !isHls && existsSync(stagedOutputPath)) {
         const debugOutput = join(workDir, `output${videoExt}`);
         copyFileSync(stagedOutputPath, debugOutput);
       }

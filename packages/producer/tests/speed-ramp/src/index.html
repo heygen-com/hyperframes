@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=640, height=360" />
+  <title>Speed ramp</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #111; }
+    #counter { position: absolute; inset: 0; width: 640px; height: 360px; object-fit: cover; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="speed-ramp" data-start="0" data-duration="4" data-width="640" data-height="360" data-fps="30">
+    <video id="counter" src="assets/counter.mp4" data-start="0" data-duration="4" muted playsinline
+      data-automation='{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":4},{"t":4,"v":0.5}]}]}'></video>
+    <audio id="sweep" src="assets/sweep.wav" data-start="0" data-duration="4" data-volume="1"
+      data-automation='{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":4},{"t":4,"v":0.5}]}]}'></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["speed-ramp"] = { duration: () => 4, time: () => 0, seek() {}, pause() {}, paused: () => true };</script>
+</body>
+</html>

@@ -49,7 +49,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Search */}
-      <div className="px-3 pt-2 pb-1 flex-shrink-0">
+      <div className="px-3 pt-2 pb-1 shrink-0">
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -59,7 +59,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
       </div>
 
       {/* Category pills */}
-      <div className="px-3 pt-1 pb-2 flex-shrink-0 overflow-x-auto">
+      <div className="px-3 pt-1 pb-2 shrink-0 overflow-x-auto">
         <div className="flex gap-1">
           <CategoryPill label="All" active={category === null} onClick={() => setCategory(null)} />
           {BLOCK_CATEGORIES.map((cat) => (
@@ -151,7 +151,7 @@ function CategoryPill({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex-shrink-0 px-2 py-1 rounded-full text-[10px] font-medium transition-colors active:scale-[0.98] ${
+      className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-medium transition-colors active:scale-[0.98] ${
         active
           ? colors
             ? `${colors.bg} ${colors.text}`
@@ -474,12 +474,12 @@ function BlockCard({
         {/* Badges */}
         <div className="absolute top-1 right-1 flex items-center gap-0.5 pointer-events-none">
           {needsWebGL && (
-            <span className="px-1 py-px rounded text-[7px] font-semibold text-purple-300 bg-purple-900/70">
+            <span className="px-1 py-px rounded-sm text-[7px] font-semibold text-purple-300 bg-purple-900/70">
               WebGL
             </span>
           )}
           {duration != null && (
-            <span className="px-1 py-px rounded text-[8px] font-medium text-white/80 bg-black/50">
+            <span className="px-1 py-px rounded-sm text-[8px] font-medium text-white/80 bg-black/50">
               {duration}s
             </span>
           )}
@@ -492,7 +492,7 @@ function BlockCard({
           {title}
         </div>
         <div className="flex items-center gap-1 mt-0.5">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${colors.dot}`} />
           <span className={`text-[8px] ${colors.text}`}>
             {BLOCK_CATEGORIES.find((c) => c.id === category)?.label}
           </span>

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.41",
+  "version": "0.8.62",
   "description": "",
   "repository": {
     "type": "git",
@@ -69,6 +69,12 @@
       "node": "./dist/mediaTiming.js",
       "import": "./src/mediaTiming.ts",
       "types": "./src/mediaTiming.ts"
+    },
+    "./composition-readiness": {
+      "bun": "./src/compositionReadiness.ts",
+      "node": "./dist/compositionReadiness.js",
+      "import": "./src/compositionReadiness.ts",
+      "types": "./src/compositionReadiness.ts"
     },
     "./editing": {
       "bun": "./src/editing/affordances.ts",
@@ -184,11 +190,29 @@
       "import": "./src/audioAutomation.ts",
       "types": "./src/audioAutomation.ts"
     },
+    "./clip-facts": {
+      "bun": "./src/clipFacts.ts",
+      "node": "./dist/clipFacts.js",
+      "import": "./src/clipFacts.ts",
+      "types": "./src/clipFacts.ts"
+    },
     "./audio-gain": {
       "bun": "./src/audioGain.ts",
       "node": "./dist/audioGain.js",
       "import": "./src/audioGain.ts",
       "types": "./src/audioGain.ts"
+    },
+    "./audio-fade": {
+      "bun": "./src/audioFade.ts",
+      "node": "./dist/audioFade.js",
+      "import": "./src/audioFade.ts",
+      "types": "./src/audioFade.ts"
+    },
+    "./speed-ramp": {
+      "bun": "./src/speedRamp.ts",
+      "node": "./dist/speedRamp.js",
+      "import": "./src/speedRamp.ts",
+      "types": "./src/speedRamp.ts"
     },
     "./color-grading": {
       "bun": "./src/colorGrading.ts",
@@ -245,6 +269,12 @@
       "import": "./src/runtime/protocol.ts",
       "types": "./src/runtime/protocol.ts"
     },
+    "./runtime/clip-window": {
+      "bun": "./src/runtime/clipWindow.ts",
+      "node": "./dist/runtime/clipWindow.js",
+      "import": "./src/runtime/clipWindow.ts",
+      "types": "./src/runtime/clipWindow.ts"
+    },
     "./runtime/stacking-context": {
       "bun": "./src/runtime/stackingContext.ts",
       "node": "./dist/runtime/stackingContext.js",
@@ -256,6 +286,12 @@
       "node": "./dist/runtime/webAudioRoute.js",
       "import": "./src/runtime/webAudioRoute.ts",
       "types": "./src/runtime/webAudioRoute.ts"
+    },
+    "./runtime/levelTap": {
+      "bun": "./src/runtime/levelTap.ts",
+      "node": "./dist/runtime/levelTap.js",
+      "import": "./src/runtime/levelTap.ts",
+      "types": "./src/runtime/levelTap.ts"
     },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
@@ -434,6 +470,10 @@
         "import": "./dist/mediaTiming.js",
         "types": "./dist/mediaTiming.d.ts"
       },
+      "./composition-readiness": {
+        "import": "./dist/compositionReadiness.js",
+        "types": "./dist/compositionReadiness.d.ts"
+      },
       "./editing": {
         "import": "./dist/editing/affordances.js",
         "types": "./dist/editing/affordances.d.ts"
@@ -510,9 +550,21 @@
         "import": "./dist/audioAutomation.js",
         "types": "./dist/audioAutomation.d.ts"
       },
+      "./clip-facts": {
+        "import": "./dist/clipFacts.js",
+        "types": "./dist/clipFacts.d.ts"
+      },
       "./audio-gain": {
         "import": "./dist/audioGain.js",
         "types": "./dist/audioGain.d.ts"
+      },
+      "./audio-fade": {
+        "import": "./dist/audioFade.js",
+        "types": "./dist/audioFade.d.ts"
+      },
+      "./speed-ramp": {
+        "import": "./dist/speedRamp.js",
+        "types": "./dist/speedRamp.d.ts"
       },
       "./color-grading": {
         "import": "./dist/colorGrading.js",
@@ -551,6 +603,10 @@
         "import": "./dist/runtime/protocol.js",
         "types": "./dist/runtime/protocol.d.ts"
       },
+      "./runtime/clip-window": {
+        "import": "./dist/runtime/clipWindow.js",
+        "types": "./dist/runtime/clipWindow.d.ts"
+      },
       "./runtime/stacking-context": {
         "import": "./dist/runtime/stackingContext.js",
         "types": "./dist/runtime/stackingContext.d.ts"
@@ -558,6 +614,10 @@
       "./runtime/web-audio-route": {
         "import": "./dist/runtime/webAudioRoute.js",
         "types": "./dist/runtime/webAudioRoute.d.ts"
+      },
+      "./runtime/levelTap": {
+        "import": "./dist/runtime/levelTap.js",
+        "types": "./dist/runtime/levelTap.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",

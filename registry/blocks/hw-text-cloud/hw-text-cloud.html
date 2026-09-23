@@ -228,8 +228,10 @@
         var svg = document.getElementById("hw-tc-svg");
         svg.setAttribute("viewBox", "0 0 " + CONFIG.w + " " + CONFIG.h);
         var d = cloudPath(CONFIG.w, CONFIG.h, CONFIG.tip, CONFIG.seed);
-        document.getElementById("hw-tc-fill").setAttribute("d", d);
-        document.getElementById("hw-tc-stroke").setAttribute("d", d);
+        var fillEl = document.getElementById("hw-tc-fill");
+        var stroke = document.getElementById("hw-tc-stroke");
+        fillEl.setAttribute("d", d);
+        stroke.setAttribute("d", d);
 
         var text = document.getElementById("hw-tc-text");
         text.style.left = CONFIG.w * 0.12 + "px";
@@ -249,7 +251,6 @@
         var tl = gsap.timeline({ paused: true });
 
         /* draw outline, fade fill, type text */
-        var stroke = document.getElementById("hw-tc-stroke");
         var len = stroke.getTotalLength();
         gsap.set(stroke, { strokeDasharray: len, strokeDashoffset: len });
         var t0 = CONFIG.animationIn ? 0.3 : 0;

@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkDisk, parseToolVersion, runEnvironmentChecks } from "./preflight.js";
+import {
+  checkDisk,
+  extractMajorVersion,
+  parseToolVersion,
+  resolveRenderBrowser,
+  runEnvironmentChecks,
+} from "./preflight.js";
 import * as manager from "./manager.js";
 import * as linuxDeps from "./linuxDeps.js";
 
@@ -49,12 +55,21 @@ describe("runEnvironmentChecks", () => {
     expect(result.outcomes.find((outcome) => outcome.name === "FFprobe")?.ok).toBe(true);
     expect(result.ffmpegPath).toBe(process.execPath);
     expect(result.ffprobePath).toBe(process.execPath);
+    expect(result.ffmpegVersionMajor).toBe(7);
     expect(runProcess).toHaveBeenCalledTimes(2);
     expect(runProcess).toHaveBeenCalledWith(
       process.execPath,
       ["-version"],
       expect.objectContaining({ timeoutMs: 5000 }),
     );
+  });
+
+  it("omits ffmpegVersionMajor when the version banner has no parseable number", async () => {
+    runProcess.mockResolvedValue({ stdout: "ffmpeg version unknown\n", stderr: "" });
+
+    const result = await runEnvironmentChecks();
+
+    expect(result.ffmpegVersionMajor).toBeUndefined();
   });
 
   it.skipIf(process.platform === "win32")(
@@ -74,10 +89,14 @@ describe("runEnvironmentChecks", () => {
         const deadline = Date.now() + 2_000;
         while (probePid === undefined && Date.now() < deadline) {
           try {
-            probePid = Number(readFileSync(pidPath, "utf8").trim());
+            // Shell `>` redirection creates (truncates) the file before `echo $$`
+            // writes to it — a read can land on that empty window and parse to 0.
+            const pid = Number(readFileSync(pidPath, "utf8").trim());
+            if (Number.isInteger(pid) && pid > 0) probePid = pid;
           } catch {
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            // pid file not created yet
           }
+          if (probePid === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
         }
         expect(probePid).toBeGreaterThan(0);
 
@@ -156,7 +175,10 @@ describe("runEnvironmentChecks", () => {
     expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
       ok: true,
       path: process.execPath,
+      versionMajor: 7,
     });
+    expect(result.browserVersionMajor).toBe(7);
+    expect(result.browserInstall).toMatchObject({ pathAscii: true });
   });
 
   it("reports Chrome as not found (no throw) when browser discovery throws on a corrupt cache", async () => {
@@ -300,6 +322,23 @@ describe("runEnvironmentChecks — Chrome shared libraries (Linux/WSL)", () => {
     const result = await runEnvironmentChecks({ includeBrowser: true });
     expect(result.outcomes.find((o) => o.name === "Chrome")).toMatchObject({ ok: true });
   });
+
+  it("resolveRenderBrowser returns the browser the render check found", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "system",
+    });
+    await expect(resolveRenderBrowser()).resolves.toMatchObject({
+      executablePath: process.execPath,
+    });
+  });
+
+  it("resolveRenderBrowser refuses with the Chrome check's own message when none resolves", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue(undefined);
+    await expect(resolveRenderBrowser()).rejects.toThrow(
+      /Chrome not found: Chrome Headless Shell is required.*npx hyperframes browser ensure/,
+    );
+  });
 });
 
 describe("parseToolVersion", () => {
@@ -307,6 +346,22 @@ describe("parseToolVersion", () => {
     expect(parseToolVersion("ffprobe version 7.1.1-essentials_build-www.gyan.dev Copyright")).toBe(
       "ffprobe 7.1.1-essentials_build-www.gyan.dev",
     );
+  });
+});
+
+describe("extractMajorVersion", () => {
+  it("reads the major from an ffmpeg banner", () => {
+    expect(extractMajorVersion("ffmpeg version 7.1.1-essentials_build")).toBe(7);
+  });
+
+  it("reads the major from a Chrome/HeadlessShell banner", () => {
+    expect(extractMajorVersion("Google Chrome 119.0.6045.105")).toBe(119);
+    expect(extractMajorVersion("HeadlessShell 119.0.6045.199")).toBe(119);
+  });
+
+  it("returns undefined when no X.Y-shaped number is present", () => {
+    expect(extractMajorVersion("ffmpeg version unknown")).toBeUndefined();
+    expect(extractMajorVersion("")).toBeUndefined();
   });
 });
 

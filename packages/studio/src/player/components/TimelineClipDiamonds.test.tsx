@@ -258,7 +258,9 @@ describe("TimelineClipDiamonds", () => {
     const selectedDiamond = host.querySelector<HTMLButtonElement>('button[title="60%"]');
     expect(playheadDiamond?.dataset.keyframeAtPlayhead).toBe("true");
     expect(playheadDiamond?.dataset.keyframeSelected).toBe("false");
-    expect(playheadDiamond?.querySelector("path:last-child")?.getAttribute("fill")).toBe("#a3a3a3");
+    expect(playheadDiamond?.querySelector("path:last-child")?.getAttribute("fill")).toBe(
+      "var(--timeline-diamond-muted)",
+    );
     expect(playheadDiamond?.querySelector('path[stroke="#4ba3d2"]')).not.toBeNull();
     expect(selectedDiamond?.dataset.keyframeAtPlayhead).toBe("false");
     expect(selectedDiamond?.dataset.keyframeSelected).toBe("true");
@@ -1275,7 +1277,8 @@ describe("TimelineClipDiamonds", () => {
     expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
     const ease = host.querySelector<HTMLButtonElement>("[data-keyframe-ease-button]")!;
     expect(ease.getAttribute("aria-label")).toBe("Edit none easing after 10s");
-    expect(ease.classList.contains("opacity-0")).toBe(true);
+    expect(ease.getAttribute("title")).toBe("Edit none easing");
+    expect(ease.classList.contains("opacity-40")).toBe(true);
     act(() => ease.click());
     expect(onSelectSegment).toHaveBeenCalledOnce();
     expect(usePlayerStore.getState().requestedSeekTime).toBeNull();
@@ -1315,6 +1318,17 @@ describe("TimelineClipDiamonds", () => {
     expect(ease).not.toBeNull();
     expect(ease?.className).not.toContain("before:h-6");
     expect(ease?.style.width).toBe("16px");
+    act(() => root.unmount());
+  });
+
+  it("keeps the ease button hover-only on a segment too narrow to show it at rest", () => {
+    // Same narrow clip as above: showing the button at rest here would sit on
+    // top of both diamonds instead of clear of them.
+    const { host, root } = renderSegmentLane(false, 40);
+    const ease = host.querySelector<HTMLButtonElement>("[data-keyframe-ease-button]");
+
+    expect(ease?.classList.contains("opacity-0")).toBe(true);
+    expect(ease?.classList.contains("opacity-40")).toBe(false);
     act(() => root.unmount());
   });
 

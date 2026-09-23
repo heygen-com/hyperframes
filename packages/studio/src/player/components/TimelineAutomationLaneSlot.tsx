@@ -13,7 +13,7 @@ import { TimelineAutomationLane } from "./TimelineAutomationLane";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { getTimelineLaneTop } from "./timelineLayout";
 import { groupAutomationLanes, isCarveLane } from "./automationLaneData";
-import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import type { TimelineElement } from "../store/playerStore";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
@@ -174,7 +174,9 @@ export function TimelineAutomationLaneSlot({
   currentTime,
   beatTimes,
 }: TimelineAutomationLaneSlotProps) {
-  const clips = elements.filter(isAudioTimelineElement);
+  // Broader than a raw-attribute check — a clip mid-edit (see the stale-
+  // selection test) has lanes in its live binding before the attribute commits.
+  const clips = elements.filter(isAudioOrVideoTimelineElement);
   const rowsByClip = new Map<string, ClipLaneRow[]>();
   groupAutomationLanes(clips).forEach((group, rowIndex) => {
     for (const entry of group.entries) {

@@ -400,6 +400,7 @@ function findRuntimeMediaSrcMutationFindings(ctx: LintContext): HyperframeLintFi
 
 export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   findNestedMediaStartBasisFindings,
+  findSpeedRampOnNonMediaFindings,
   // duplicate_media_id + duplicate_media_discovery_risk
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
@@ -911,6 +912,24 @@ function findVolumeDoubleAutomationFindings(ctx: LintContext): HyperframeLintFin
     });
   }
   return findings;
+}
+
+/** A `rate` lane only retimes video and audio; anywhere else it is silently inert. */
+function findSpeedRampOnNonMediaFindings(ctx: LintContext): HyperframeLintFinding[] {
+  return ctx.tags
+    .filter((tag) => tag.name !== "video" && tag.name !== "audio")
+    .filter((tag) =>
+      /"target"\s*:\s*"rate"/.test(readDecodedAttr(tag.raw, "data-automation") ?? ""),
+    )
+    .map((tag) => ({
+      code: "speed_ramp_on_non_media",
+      severity: "warning",
+      message: `<${tag.name}> has a speed-ramp lane, but only <video> and <audio> clips can be retimed. The lane does nothing here.`,
+      elementId: readAttr(tag.raw, "id") || undefined,
+      fixHint:
+        "Move the rate lane onto the <video> or <audio> clip, or retime an animation with a GSAP timeline instead.",
+      snippet: truncateSnippet(tag.raw),
+    }));
 }
 
 /**

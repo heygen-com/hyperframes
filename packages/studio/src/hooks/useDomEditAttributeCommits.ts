@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import type { PatchOperation } from "../utils/sourcePatcher";
+import { HTML_BOOLEAN_ATTRIBUTES, type PatchOperation } from "../utils/sourcePatcher";
 import {
   findElementForSelection,
   getDomEditTargetKey,
@@ -53,6 +53,14 @@ interface DataAttributeCommitOptions {
 
 function resolveFullAttrName(attr: string, prefixData: boolean | undefined): string {
   return prefixData && !attr.startsWith("data-") ? `data-${attr}` : attr;
+}
+
+// Matches sourcePatcher's own boolean handling: "false" means "remove" only
+// for HTML_BOOLEAN_ATTRIBUTES (loop, muted, ...), so the live preview node
+// ends up holding what persist() actually writes to disk.
+export function resolveOptimisticAttributeValue(attr: string, value: string | null): string | null {
+  if (value === null) return null;
+  return value === "false" && HTML_BOOLEAN_ATTRIBUTES.has(attr) ? null : value;
 }
 
 function setOrRemovePreviewAttribute(
@@ -393,8 +401,11 @@ export function useDomEditAttributeCommits({
         },
         apply: () => {
           if (!editedElement) return;
-          const nextValue = value === null || value === "false" ? null : value;
-          setOrRemovePreviewAttribute(editedElement, attr, nextValue);
+          setOrRemovePreviewAttribute(
+            editedElement,
+            attr,
+            resolveOptimisticAttributeValue(attr, value),
+          );
         },
         persist: () =>
           persistDomEditOperations(domEditSelection, [op], {

@@ -74,13 +74,18 @@ export {
 } from "./services/systemMemory.js";
 
 // ── Browser management ─────────────────────────────────────────────────────────
+export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 export {
   acquireBrowser,
   releaseBrowser,
   drainBrowserPool,
+  closeBrowserPool,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
   buildChromeArgs,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
+  WebGpuUnavailableError,
   ENABLE_BROWSER_POOL,
   BrowserLeasePool,
   type BuildChromeArgsOptions,
@@ -136,6 +141,10 @@ export {
   type CaptureFailureKind,
   type CaptureWorkerDiagnostic,
 } from "./services/captureFailure.js";
+export {
+  createChromeMemorySampler,
+  type ChromeMemoryStats,
+} from "./services/chromeMemorySampler.js";
 
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export {
@@ -158,13 +167,20 @@ export {
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
+  buildConcatArgs,
+  concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
   applyFaststart,
+  packageHls,
   detectGpuEncoder,
   ENCODER_PRESETS,
   getEncoderPreset,
+  HLS_MASTER_PLAYLIST,
+  HLS_VIDEO_PLAYLIST,
+  HLS_AUDIO_PLAYLIST,
   type GpuEncoder,
+  type PackageHlsOptions,
 } from "./services/chunkEncoder.js";
 export type { EncoderOptions, EncodeResult, MuxResult } from "./services/chunkEncoder.types.js";
 
@@ -219,6 +235,7 @@ export {
 
 export {
   resolveReferencedStart,
+  resolveReferencedDuration,
   type RefResolverEl,
   type RefResolverDoc,
 } from "./services/referenceResolver.js";
@@ -268,6 +285,8 @@ export {
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 export { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "@hyperframes/core";
+export { frameFileExtension } from "./services/frameCapture.js";
+export type { MotionBlurOptions, MotionBlurBlendSpace } from "./services/motionBlur.js";
 
 export {
   assertSwiftShader,

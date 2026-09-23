@@ -3,6 +3,7 @@ import {
   computeThumbnailStrip,
   encodePreviewPath,
   resolveMediaPreviewUrl,
+  quantizeThumbnailFrameCount,
   THUMBNAIL_CLIP_HEIGHT,
 } from "./thumbnailUtils";
 
@@ -17,6 +18,10 @@ describe("computeThumbnailStrip", () => {
     expect(frameW).toBe(THUMBNAIL_CLIP_HEIGHT);
     expect(frameCount).toBe(Math.ceil(500 / THUMBNAIL_CLIP_HEIGHT));
     expect(frameCount * frameW).toBeGreaterThanOrEqual(500);
+  });
+
+  it("paints tiles across the full clip past the shared visible-frame budget", () => {
+    expect(computeThumbnailStrip(14_400, 16 / 9).frameCount).toBeGreaterThan(33);
   });
 
   it("returns one tile when the container width is unknown", () => {
@@ -47,6 +52,18 @@ describe("computeThumbnailStrip", () => {
       frameW: 48,
       frameCount: 7,
     });
+  });
+});
+
+describe("quantizeThumbnailFrameCount", () => {
+  it("uses doubling buckets and never exceeds the 4K geometry ceiling", () => {
+    expect(quantizeThumbnailFrameCount(5)).toBe(8);
+    expect(quantizeThumbnailFrameCount(32)).toBe(32);
+    expect(quantizeThumbnailFrameCount(34)).toBe(33);
+  });
+
+  it("caps decode requests at the shared visible-frame budget", () => {
+    expect(quantizeThumbnailFrameCount(124)).toBe(33);
   });
 });
 

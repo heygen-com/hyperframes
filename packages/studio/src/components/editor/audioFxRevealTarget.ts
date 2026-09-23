@@ -37,6 +37,7 @@ export function audioFxRevealTarget(
   const parsed = parseAutomationTarget(target);
   if (!parsed) return null;
   if (parsed.kind === "volume") return { kind: "volume" };
+  if (parsed.kind === "rate") return null;
   if (parsed.kind === "preset") {
     // A preset-level lane names the preset, not a node inside it: find its run
     // by the first node that belongs to it, which is how `runKey` is built.

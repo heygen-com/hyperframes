@@ -468,3 +468,29 @@ describe("shouldClampResolvedMediaDuration", () => {
     expect(shouldClampResolvedMediaDuration("audio", 5, 1)).toBe(true);
   });
 });
+
+describe("rate lane in compiled media", () => {
+  const lane = {
+    version: 1,
+    lanes: [
+      {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 3 },
+        ],
+      },
+    ],
+  };
+  const encodings = [
+    ["single-quoted JSON", `data-automation='${JSON.stringify(lane)}'`],
+    ["entity-encoded JSON", `data-automation="${JSON.stringify(lane).replace(/"/g, "&quot;")}"`],
+  ];
+
+  it.each(encodings)("hands a %s rate lane to the unresolved element", (_name, attr) => {
+    const { unresolved } = compileTimingAttrs(
+      `<video id="v" src="a.mp4" data-start="0" ${attr}></video>`,
+    );
+    expect(unresolved[0]?.playbackRate).toMatchObject({ target: "rate" });
+  });
+});

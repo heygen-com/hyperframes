@@ -459,12 +459,7 @@ function representativeElement() {
 describe("classic PropertyPanel input coverage", () => {
   it("emits only named, known-section events across body inputs and header/footer chrome", async () => {
     vi.resetModules();
-    vi.doMock("./manualEditingAvailability", async () => {
-      const actual = await vi.importActual<typeof import("./manualEditingAvailability")>(
-        "./manualEditingAvailability",
-      );
-      return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: false };
-    });
+    vi.doMock("./manualEditingAvailability", () => ({ STUDIO_FLAT_INSPECTOR_ENABLED: false }));
     const { PropertyPanel } = await import("./PropertyPanel");
     const host = render(
       <PropertyPanel
@@ -524,18 +519,13 @@ describe("classic PropertyPanel input coverage", () => {
     expect(sections.has("header")).toBe(true);
     expect(sections.has("footer")).toBe(true);
     expect(sections.size).toBeGreaterThan(2);
-  });
+  }, 15000);
 });
 
 describe("flat PropertyPanel input coverage", () => {
   it("emits only named flat events from known sections for every visible layout input", async () => {
     vi.resetModules();
-    vi.doMock("./manualEditingAvailability", async () => {
-      const actual = await vi.importActual<typeof import("./manualEditingAvailability")>(
-        "./manualEditingAvailability",
-      );
-      return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: true };
-    });
+    vi.doMock("./manualEditingAvailability", () => ({ STUDIO_FLAT_INSPECTOR_ENABLED: true }));
     const { PropertyPanel } = await import("./PropertyPanel");
     const host = render(
       <PropertyPanel

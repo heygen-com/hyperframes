@@ -21,7 +21,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
   return (
     <nav
       aria-label="Composition navigation"
-      className="flex items-center gap-1 px-2 h-8 border-b border-neutral-800/50 bg-neutral-900/50 flex-shrink-0"
+      className="flex items-center gap-1 px-2 h-8 border-b border-neutral-800/50 bg-neutral-900/50 shrink-0"
     >
       {/* Back button — always goes to parent */}
       <button
@@ -33,7 +33,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
           });
           onNavigate(stack.length - 2);
         }}
-        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-[0.98] transition-colors"
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-[0.98] transition-colors"
         title="Back (Esc, or double-click empty timeline)"
         aria-label="Back to parent composition"
       >
@@ -45,7 +45,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
         const isLast = i === stack.length - 1;
         return (
           <span key={level.id} className="flex items-center gap-1">
-            {i > 0 && <CaretRight size={10} className="text-neutral-600 flex-shrink-0" />}
+            {i > 0 && <CaretRight size={10} className="text-neutral-600 shrink-0" />}
             {isLast ? (
               <span className="text-xs text-neutral-200 font-medium">{level.label}</span>
             ) : (

@@ -59,6 +59,17 @@ describe("createClipTree", () => {
     expect(child!.parentId).toBe("scene");
   });
 
+  it("keeps a timed image that starts at the end of the root, since it has its own default length", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="10" data-start="0" id="root">
+        <img id="late" data-start="10" />
+      </div>`;
+    const late = { resolveStartForElement: () => 10 };
+    expect(createClipTree({ ...params, startResolver: late }).roots.map((n) => n.id)).toContain(
+      "late",
+    );
+  });
+
   it.each([10, 11])(
     "does not replace a known zero media span with root duration (start=%s)",
     (start) => {

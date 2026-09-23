@@ -1,8 +1,8 @@
 import { useCallback, type ReactNode } from "react";
 import { Timeline } from "../../player";
-import type { TimelineElement } from "../../player";
+import type { TimelineElement, TimelineTimeRange } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
-import { TimelineResizeDivider } from "./TimelineResizeDivider";
+import { AudioMeterStrip } from "./AudioMeterStrip";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
 import { useNLEContext } from "./NLEContext";
@@ -78,6 +78,9 @@ export interface TimelinePaneProps {
   timelineToolbar?: ReactNode;
   /** Slot rendered below the timeline tracks */
   timelineFooter?: ReactNode;
+  /** Slot for a host's own overlay spanning the whole timeline area (e.g. a draft/ghost
+   *  clip), positioned absolutely the same way PreviewPane's previewOverlay is. */
+  timelineOverlay?: ReactNode;
   /** Custom clip content renderer for timeline (thumbnails, waveforms, etc.) */
   renderClipContent?: (
     element: TimelineElement,
@@ -102,12 +105,20 @@ export interface TimelinePaneProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  onRangeSelect?: (range: TimelineTimeRange | null) => void;
+  /** Copy/paste/duplicate act on the store's own selection, not a passed
+   *  element, so unlike onDeleteElement they need no composition-basis wrapper. */
+  onCopyClip?: () => boolean;
+  onPasteClip?: () => Promise<void>;
+  onDuplicateClip?: () => Promise<boolean>;
+  canPasteClip?: () => boolean;
 }
 
 // fallow-ignore-next-line complexity
 export function TimelinePane({
   timelineToolbar,
   timelineFooter,
+  timelineOverlay,
   renderClipContent,
   onFileDrop,
   onDeleteElement,
@@ -116,16 +127,17 @@ export function TimelinePane({
   onCompositionDrop,
   onBlockedEditAttempt,
   onSelectTimelineElement,
+  onRangeSelect,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
+  canPasteClip,
 }: TimelinePaneProps) {
   const {
     seek,
     handleDrillDown,
     compositionStack,
     updateCompositionStack,
-    timelineH,
-    setTimelineH,
-    persistTimelineH,
-    containerRef,
     timelineDisabled,
     timelineSessionEpoch,
   } = useNLEContext();
@@ -244,68 +256,69 @@ export function TimelinePane({
   );
 
   return (
-    <>
-      <TimelineResizeDivider
-        timelineH={timelineH}
-        setTimelineH={setTimelineH}
-        persistTimelineH={persistTimelineH}
-        containerRef={containerRef}
-        disabled={timelineDisabled}
-      />
-
-      {/* Timeline section — inner padding (not margin) keeps the divider's
-          height math exact while giving the panel a gap from the shell edges. */}
+    <div
+      className="relative flex h-full flex-col"
+      data-studio-timeline="true"
+      aria-disabled={timelineDisabled || undefined}
+    >
       <div
-        className="relative flex flex-col flex-shrink-0 px-px pb-px"
-        style={{ height: timelineH }}
-        aria-disabled={timelineDisabled || undefined}
+        className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
+        onDoubleClick={(e) => {
+          if ((e.target as HTMLElement).closest("[data-clip]")) return;
+          if (timelineDisabled) return;
+          if (compositionStack.length > 1) {
+            updateCompositionStack((prev) => prev.slice(0, -1));
+          }
+        }}
       >
-        <div
-          className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
-          onDoubleClick={(e) => {
-            if ((e.target as HTMLElement).closest("[data-clip]")) return;
-            if (timelineDisabled) return;
-            if (compositionStack.length > 1) {
-              updateCompositionStack((prev) => prev.slice(0, -1));
-            }
-          }}
-        >
-          <div className="flex-shrink-0">{timelineToolbar}</div>
-          <Timeline
-            sessionEpoch={timelineSessionEpoch}
-            onSeek={seek}
-            onDrillDown={handleDrillDown}
-            renderClipContent={renderClipContent}
-            onFileDrop={onFileDrop}
-            onDeleteElement={handleDeleteElement}
-            onAssetDrop={onAssetDrop}
-            onBlockDrop={onBlockDrop}
-            onCompositionDrop={onCompositionDrop}
-            onMoveElement={handleMoveElement}
-            onMoveElements={handleMoveElements}
-            onResizeElement={handleResizeElement}
-            onResizeElements={handleResizeElements}
-            onBlockedEditAttempt={onBlockedEditAttempt}
-            onSplitElement={handleSplitElement}
-            onSelectElement={onSelectTimelineElement}
-          />
-        </div>
-        {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
-        {timelineDisabled && (
-          <div
-            className="absolute inset-0 z-30 cursor-not-allowed bg-black/18 flex items-center justify-center"
-            data-testid="timeline-loading-disabled-overlay"
-            role="status"
-            onPointerDown={(event) => event.preventDefault()}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => event.preventDefault()}
-          >
-            <span className="rounded-md bg-neutral-900/90 px-2.5 py-1 text-[11px] text-neutral-400">
-              Loading composition…
-            </span>
+        <div className="shrink-0">{timelineToolbar}</div>
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1">
+            <Timeline
+              sessionEpoch={timelineSessionEpoch}
+              onSeek={seek}
+              onDrillDown={handleDrillDown}
+              renderClipContent={renderClipContent}
+              onFileDrop={onFileDrop}
+              onDeleteElement={handleDeleteElement}
+              onAssetDrop={onAssetDrop}
+              onBlockDrop={onBlockDrop}
+              onCompositionDrop={onCompositionDrop}
+              onMoveElement={handleMoveElement}
+              onMoveElements={handleMoveElements}
+              onResizeElement={handleResizeElement}
+              onResizeElements={handleResizeElements}
+              onBlockedEditAttempt={onBlockedEditAttempt}
+              onSplitElement={handleSplitElement}
+              onSelectElement={onSelectTimelineElement}
+              onRangeSelect={onRangeSelect}
+              onCopyClip={onCopyClip}
+              onPasteClip={onPasteClip}
+              onDuplicateClip={onDuplicateClip}
+              canPasteClip={canPasteClip}
+            />
           </div>
-        )}
+          <AudioMeterStrip />
+        </div>
       </div>
-    </>
+      {timelineFooter && <div className="shrink-0">{timelineFooter}</div>}
+      {timelineOverlay && (
+        <div className="pointer-events-none absolute inset-0 z-20">{timelineOverlay}</div>
+      )}
+      {timelineDisabled && (
+        <div
+          className="absolute inset-0 z-30 cursor-not-allowed bg-black/18 flex items-center justify-center"
+          data-testid="timeline-loading-disabled-overlay"
+          role="status"
+          onPointerDown={(event) => event.preventDefault()}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => event.preventDefault()}
+        >
+          <span className="rounded-md bg-neutral-900/90 px-2.5 py-1 text-[11px] text-neutral-400">
+            Loading composition…
+          </span>
+        </div>
+      )}
+    </div>
   );
 }

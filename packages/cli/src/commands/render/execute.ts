@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes } from "../../ui/format.js";
-import { formatLintFindings } from "../../utils/lintFormat.js";
+import { formatLintStartupMessage } from "../../utils/lintFormat.js";
 import {
   hasDefinitiveEntryMismatch,
   lintProject,
@@ -53,9 +53,10 @@ function renderLintShouldAbort(
   strictErrors: boolean,
   strictAll: boolean,
   lintResult: ProjectLintResult,
+  definitiveEntryMismatch: boolean,
 ): boolean {
   return (
-    hasDefinitiveEntryMismatch(lintResult) ||
+    definitiveEntryMismatch ||
     shouldBlockRender(strictErrors, strictAll, lintResult.totalErrors, lintResult.totalWarnings)
   );
 }
@@ -115,13 +116,33 @@ export async function executeRenderPlan(
     reportVariableIssues(issues, { strict: plan.strictVariables, quiet: plan.quiet });
   }
 
+  const options = renderOptionsFromPlan(plan, browserPath, variables);
+  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
+  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+}
+
+/**
+ * The plan -> RenderOptions hop for a single render. Pure and exported so the
+ * flags that cross it are pinned by a test: `--resume` / `--keep-segments`
+ * were once dropped exactly here and nothing but a manual gate noticed.
+ */
+export function renderOptionsFromPlan(
+  plan: RenderPlan,
+  browserPath: string | undefined,
+  variables: RenderOptions["variables"],
+): RenderOptions {
   const options: RenderOptions = {
     fps: plan.fps,
     quality: plan.quality,
     authoringSkill: plan.authoringSkill,
+    authoringSkillSource: plan.authoringSkillSource,
+    authoringSkillInvalid: plan.invalidAuthoringSkill,
+    hfEnvOverrides: plan.hfEnvOverrides,
     catalogUsage: plan.catalogUsage,
     format: plan.format,
     gifLoop: plan.gifLoop,
+    gifFpsCapped: plan.gifFpsCapped,
+    hlsSegmentSeconds: plan.hlsSegmentSeconds,
     workers: plan.workers,
     gpu: plan.useGpu,
     browserGpuMode: plan.browserGpuMode,
@@ -133,6 +154,8 @@ export async function executeRenderPlan(
     quiet: plan.quiet,
     browserPath,
     debug: plan.debug,
+    resumeSegments: plan.resumeSegments,
+    keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
     variables,
     entryFile: plan.entryFile,
@@ -149,8 +172,7 @@ export async function executeRenderPlan(
     options.pageSideCompositing = plan.pageSideCompositing;
     options.experimentalFastCapture = plan.experimentalFastCapture;
   }
-  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+  return options;
 }
 
 function assertRenderActive(cancellation?: RenderCancellationScope): void {
@@ -213,9 +235,15 @@ export async function runRenderLint(
       ? await runRenderLintInOwnedProcess(plan.project.dir, explicitEntry, signal)
       : await runLint(plan.project.dir, explicitEntry);
   if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
-  presentRenderLintFindings(lintResult, plan.effectiveQuiet);
   const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
-  if (renderLintShouldAbort(plan.strictErrors, plan.strictAll, lintResult)) {
+  const willAbort = renderLintShouldAbort(
+    plan.strictErrors,
+    plan.strictAll,
+    lintResult,
+    definitiveEntryMismatch,
+  );
+  presentRenderLintFindings(lintResult, plan.effectiveQuiet, plan.lintVerbose || willAbort);
+  if (willAbort) {
     presentRenderLintAbort(plan, definitiveEntryMismatch);
     failCommand();
   }
@@ -240,10 +268,15 @@ async function runRenderLintInOwnedProcess(
 function presentRenderLintFindings(
   lintResult: Awaited<ReturnType<typeof lintProject>>,
   quiet: boolean,
+  lintVerbose: boolean,
 ): void {
   if (quiet) return;
   console.log("");
-  for (const line of formatLintFindings(lintResult, { errorsFirst: true })) console.log(line);
+  for (const line of formatLintStartupMessage(
+    lintResult,
+    lintVerbose ? { kind: "verbose", options: { errorsFirst: true } } : { kind: "summary" },
+  ))
+    console.log(line);
 }
 
 function presentRenderLintAbort(plan: RenderPlan, definitiveEntryMismatch: boolean): void {
@@ -300,9 +333,14 @@ async function executeBatchRender(
     fps: plan.fps,
     quality: plan.quality,
     authoringSkill: plan.authoringSkill,
+    authoringSkillSource: plan.authoringSkillSource,
+    authoringSkillInvalid: plan.invalidAuthoringSkill,
+    hfEnvOverrides: plan.hfEnvOverrides,
     catalogUsage: plan.catalogUsage,
     format: plan.format,
     gifLoop: plan.gifLoop,
+    gifFpsCapped: plan.gifFpsCapped,
+    hlsSegmentSeconds: plan.hlsSegmentSeconds,
     workers: plan.workers,
     gpu: plan.useGpu,
     browserGpuMode: plan.browserGpuMode,
@@ -321,6 +359,8 @@ async function executeBatchRender(
     protocolTimeout: plan.protocolTimeout,
     playerReadyTimeout: plan.playerReadyTimeout,
     debug: plan.debug,
+    resumeSegments: plan.resumeSegments,
+    keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
     exitAfterComplete: false,
     throwOnError: true,

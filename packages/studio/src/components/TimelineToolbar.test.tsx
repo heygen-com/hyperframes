@@ -6,7 +6,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { makeSelection } from "../hooks/domSelectionTestHarness";
+import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
+import { readStudioUiPreferences } from "../utils/studioUiPreferences";
+import { AudioMeterStrip } from "./nle/AudioMeterStrip";
 import { TimelineToolbar } from "./TimelineToolbar";
+
+vi.mock("../contexts/StudioContext", () => ({
+  useStudioShellContext: () => ({
+    previewIframeRef: { current: null },
+    editHistory: { canUndo: false, canRedo: false },
+    handleUndo: vi.fn(),
+    handleRedo: vi.fn(),
+  }),
+}));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -162,5 +174,43 @@ describe("TimelineToolbar — keyframes on audio tracks", () => {
     );
     expect(button?.disabled).toBe(false);
     act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar audio meters", () => {
+  it("keeps fresh preferences hidden until the user opts in and persists the choice", () => {
+    localStorage.clear();
+    useAudioMetersVisible.setState(useAudioMetersVisible.getInitialState());
+    usePlayerStore.setState({
+      elements: [{ id: "music", key: "music", tag: "audio", start: 0, duration: 10, track: 1 }],
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      act(() =>
+        root.render(
+          <>
+            <TimelineToolbar />
+            <AudioMeterStrip />
+          </>,
+        ),
+      );
+      const button = host.querySelector<HTMLButtonElement>(
+        'button[aria-label="Toggle audio meters"]',
+      );
+      expect(readStudioUiPreferences().audioMetersVisible).toBeUndefined();
+      expect(button?.getAttribute("aria-pressed")).toBe("false");
+      expect(host.querySelector('[data-testid="audio-meter-strip"]')).toBeNull();
+      if (!button) throw new Error("audio meter toggle not rendered");
+      act(() => button.click());
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(host.querySelector('[data-testid="audio-meter-strip"]')).not.toBeNull();
+      expect(readStudioUiPreferences().audioMetersVisible).toBe(true);
+    } finally {
+      act(() => root.unmount());
+      useAudioMetersVisible.setState(useAudioMetersVisible.getInitialState());
+      localStorage.clear();
+    }
   });
 });

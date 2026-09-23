@@ -96,6 +96,8 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
 
   const findingsByElement = useMemo(() => groupFindings((f) => f.elementId), [groupFindings]);
   const findingsByFile = useMemo(() => groupFindings((f) => f.file), [groupFindings]);
+  // Reads the list the badge count reads: the manual result when present, else the background one.
+  const hasLintError = (lintModal ?? backgroundFindings).some((f) => f.severity === "error");
 
   // Sync lint findings directly to the player store — eliminates the
   // mirroring useEffect that was previously in App.tsx.
@@ -111,5 +113,6 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
     backgroundFindings,
     findingsByElement,
     findingsByFile,
+    hasLintError,
   };
 }

@@ -21,9 +21,10 @@
 import { parseNumeric } from "@hyperframes/parsers/composition-contract";
 import {
   parseStrictFiniteTimingNumber,
-  readElementPlaybackRate,
+  readElementRateSpec,
   readMediaStart,
 } from "../runtime/playbackRate.js";
+import type { RateSpec } from "../speedRamp.js";
 // ── Types ────────────────────────────────────────────────────────────────
 
 export interface UnresolvedElement {
@@ -34,7 +35,7 @@ export interface UnresolvedElement {
   end?: number;
   duration?: number;
   mediaStart: number;
-  playbackRate: number;
+  playbackRate: RateSpec;
   compositionSrc?: string;
 }
 
@@ -50,7 +51,7 @@ export interface ResolvedMediaElement {
   start: number;
   duration: number;
   mediaStart: number;
-  playbackRate: number;
+  playbackRate: RateSpec;
   loop: boolean;
 }
 
@@ -91,8 +92,25 @@ function getAttr(tag: string, attr: string): string | null {
   // made compileTag believe a Studio-stamped `data-hf-id`-only element already
   // had an `id`, so it skipped its `hf-video-N` injection — leaving the element
   // with no real `el.id`, which the render pipeline keys off of (blank wash).
-  const match = tag.match(new RegExp(`(?<![\\w-])${attr}=["']([^"']+)["']`));
-  return match ? (match[1] ?? null) : null;
+  const match = tag.match(new RegExp(`(?<![\\w-])${attr}=(?:"([^"]+)"|'([^']+)')`));
+  return match ? (match[1] ?? match[2] ?? null) : null;
+}
+
+/** An attribute reader over tag source that decodes the entities the DOM would, for JSON-valued attributes. */
+function tagAttrReader(tag: string): Pick<Element, "getAttribute"> {
+  return {
+    getAttribute: (name) => {
+      const raw = getAttr(tag, name);
+      return raw && name === "data-automation"
+        ? raw
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&amp;/g, "&")
+        : raw;
+    },
+  };
 }
 
 function hasAttr(tag: string, attr: string): boolean {
@@ -228,9 +246,9 @@ function compileTag(
     startStr = "0";
   }
   const start = parseNumeric(startStr);
-  const attrReader = { getAttribute: (name: string) => getAttr(result, name) };
+  const attrReader = tagAttrReader(result);
   const mediaStart = readMediaStart(attrReader);
-  const playbackRate = readElementPlaybackRate(attrReader);
+  const playbackRate = readElementRateSpec(attrReader);
 
   // 1. Compute data-end from data-start + data-duration. Skip relative id-refs.
   if (!hasAttr(result, "data-end")) {
@@ -374,7 +392,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
 
     const isVideo = /^<video/i.test(tag);
     const startStr = getAttr(tag, "data-start");
-    const attrReader = { getAttribute: (name: string) => getAttr(tag, name) };
+    const attrReader = tagAttrReader(tag);
 
     resolved.push({
       id,
@@ -383,7 +401,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
       start: parseNumeric(startStr) ?? 0,
       duration,
       mediaStart: readMediaStart(attrReader),
-      playbackRate: readElementPlaybackRate(attrReader),
+      playbackRate: readElementRateSpec(attrReader),
       loop: hasAttr(tag, "loop"),
     });
   }

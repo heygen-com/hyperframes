@@ -1,11 +1,18 @@
 import { swallow } from "./diagnostics";
+import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
-import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
+import { fadeGain, NO_FADES, readElementFades, type AudioFades } from "../audioFade.js";
+import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
+import { rateAt, sourceTimeAt, timeAtSourceTime, type RateSpec } from "../speedRamp.js";
 import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
-export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
+export {
+  readElementPlaybackRate,
+  readElementRateSpec,
+  resolveNaturalMediaTimelineDuration,
+} from "./playbackRate.js";
 
 export function readElementPlaybackStart(el: Element): number {
   return readMediaStart(el);
@@ -43,6 +50,8 @@ export type RuntimeMediaClip = {
   end: number;
   volume: number | null;
   playbackRate: number;
+  /** The rate lane when the clip has one; otherwise `playbackRate`. */
+  rate?: RateSpec;
   loop: boolean;
   /** Source media duration in seconds (from el.duration). Used for loop wrapping. */
   sourceDuration: number | null;
@@ -53,6 +62,8 @@ export type RuntimeMediaClip = {
    * race between the 60 Hz transport tick and GSAP's own seek.
    */
   volumeKeyframes?: VolumeKeyframe[];
+  /** Clip-edge fades from `data-fade-in` / `data-fade-out`; see audioFade.ts. */
+  fades?: AudioFades;
 };
 
 export function refreshRuntimeMediaCache(params?: {
@@ -94,6 +105,7 @@ export function refreshRuntimeMediaCache(params?: {
     if (!Number.isFinite(start)) continue;
     const mediaStart = readElementPlaybackStart(el);
     const playbackRate = readElementPlaybackRate(el);
+    const rate = readElementRateSpec(el);
     const loop = el.loop;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
     let duration =
@@ -101,7 +113,7 @@ export function refreshRuntimeMediaCache(params?: {
     if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {
       // Effective duration accounts for playback rate:
       // at 0.5x, a 10s source plays for 20s on the timeline
-      duration = Math.max(0, (sourceDuration - mediaStart) / playbackRate);
+      duration = Math.max(0, timeAtSourceTime(rate, sourceDuration - mediaStart));
     }
     const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
     const end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
@@ -114,8 +126,10 @@ export function refreshRuntimeMediaCache(params?: {
       end,
       volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       playbackRate,
+      rate,
       loop,
       sourceDuration,
+      fades: readElementFades(el),
     };
     mediaClips.push(clip);
     if (el.tagName === "VIDEO") videoClips.push(clip);
@@ -238,21 +252,31 @@ export function syncRuntimeMedia(params: {
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
+  /** Lets a video clip that runs to the composition end hold its last frame at the terminal time.
+   *  A thunk, because deriving the duration is only worth it for a clip past its own end. */
+  getCompositionDuration: () => number;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
-    let relTime = (params.timeSeconds - clip.start) * clip.playbackRate + clip.mediaStart;
+    const clipRate = clip.rate ?? clip.playbackRate;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
-    const isHeldVideoTail =
+    const inWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
+    // A video that runs to the composition end stays the visible frame at and past it, so it
+    // is held on the frame it shows at its own end rather than left on a stale one.
+    const isTerminalVideo =
       isNonLoopVideo &&
-      clip.sourceDuration != null &&
-      relTime >= clip.sourceDuration &&
-      params.timeSeconds >= clip.start &&
-      params.timeSeconds < clip.end;
+      !inWindow &&
+      params.timeSeconds >= clip.end &&
+      isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
+    let relTime =
+      sourceTimeAt(clipRate, Math.min(params.timeSeconds, clip.end) - clip.start) + clip.mediaStart;
+    const isHeldVideoTail =
+      isTerminalVideo ||
+      (isNonLoopVideo && clip.sourceDuration != null && relTime >= clip.sourceDuration && inWindow);
     if (isHeldVideoTail && clip.sourceDuration != null) {
-      relTime = clip.sourceDuration;
+      relTime = Math.min(relTime, clip.sourceDuration);
     }
     const previousRelativeTime = lastRelativeTime.get(el);
     const audioReenteredAfterBackwardSeek =
@@ -271,8 +295,7 @@ export function syncRuntimeMedia(params: {
     // video additionally remains an active visual through
     // its authored window, with tail seeks clamped to the final frame.
     const isActive =
-      params.timeSeconds >= clip.start &&
-      params.timeSeconds < clip.end &&
+      (inWindow || isTerminalVideo) &&
       relTime >= 0 &&
       (!el.ended || clip.loop || isHeldVideoTail || canSeekEndedMediaBackward);
     if (isActive) {
@@ -343,6 +366,12 @@ export function syncRuntimeMedia(params: {
         authorVolume = fallbackAuthorVolume;
       }
 
+      // Clip-local fade on top of the resolved level, matching render's afade-after-volume.
+      const fades = clip.fades ?? NO_FADES;
+      if (fades.fadeIn > 0 || fades.fadeOut > 0) {
+        authorVolume *= fadeGain(params.timeSeconds - clip.start, clip.duration, fades);
+      }
+
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops
       // it), so preview matches. Folded into the per-tick volume, not
       // el.muted (RULES trap: el.muted is the transport's ownership flag).
@@ -369,7 +398,7 @@ export function syncRuntimeMedia(params: {
       if (el.preload !== "auto") el.preload = "auto";
       try {
         // Per-element rate × global transport rate
-        el.playbackRate = clip.playbackRate * params.playbackRate;
+        el.playbackRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
       } catch (err) {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
@@ -517,8 +546,7 @@ export function syncRuntimeMedia(params: {
     // the next poll would mistake the cleared baseline for a fresh activation
     // and replay the tail. A real backward seek still decreases relTime, and a
     // true outside-window transition clears every baseline as before.
-    const remainsInsideAuthoredWindow =
-      params.timeSeconds >= clip.start && params.timeSeconds < clip.end;
+    const remainsInsideAuthoredWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
     evictMediaSyncState(el);
     if (remainsInsideAuthoredWindow) lastRelativeTime.set(el, relTime);
     if (!el.paused) el.pause();

@@ -6,6 +6,7 @@ import { shouldUseSdkCutover } from "../utils/sdkCutover";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { TimelineElement } from "../player";
 import type { UseDomEditSessionParams } from "./useDomEditSession";
 
 const styleOp = (property: string, value: string): PatchOperation => ({
@@ -97,6 +98,8 @@ function createSessionParams(
     syncPreviewHotkeys: vi.fn(),
     reloadPreview: vi.fn(),
     setRefreshKey: vi.fn(),
+    handleTimelineElementsDelete: vi.fn(),
+    readOnlyPreview: false,
     ...overrides,
   };
 }
@@ -105,6 +108,7 @@ vi.mock("../utils/sdkResolverShadow", () => ({
   runResolverShadow: vi.fn(),
   recordResolverParity: (...args: unknown[]) => recordResolverParity(...args),
 }));
+const handleDomEditElementsDeleteMock = vi.fn(async () => ({ ok: true }) as const);
 vi.mock("./useDomEditCommits", () => ({
   useDomEditCommits: (params: { onReorderShadow?: (targets: string[]) => void }) => {
     capturedOnReorderShadow.fn = params.onReorderShadow;
@@ -120,7 +124,7 @@ vi.mock("./useDomEditCommits", () => ({
       handleDomRemoveTextField: vi.fn(),
       handleDomBoxSizeCommit: vi.fn(),
       handleDomManualEditsReset: vi.fn(),
-      handleDomEditElementDelete: vi.fn(),
+      handleDomEditElementsDelete: handleDomEditElementsDeleteMock,
       handleDomZIndexReorderCommit: vi.fn(),
     };
   },
@@ -459,5 +463,91 @@ describe("handleGroupSelection with audio in the selection", () => {
   it("still groups a selection of layout elements", async () => {
     await group([sel("div"), sel("span")]);
     expect(groupSelectionSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Delete routing: a timeline row goes through the timeline's own delete op ──
+
+describe("handleDomEditElementDelete routing", () => {
+  const domSel = (id: string): DomEditSelection =>
+    ({
+      id,
+      element: document.createElement("div"),
+      sourceFile: "index.html",
+    }) as unknown as DomEditSelection;
+
+  async function deleteViaSession(
+    selection: DomEditSelection,
+    timelineElements: TimelineElement[],
+    options?: { expandGroup?: boolean; group?: DomEditSelection[] },
+  ) {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    handleDomEditElementsDeleteMock.mockClear();
+    domEditGroupSelectionsRef.current = options?.group ?? [];
+    const handleTimelineElementsDelete = vi.fn(async () => {});
+    const captured: {
+      fn?: (selection: DomEditSelection, options?: { expandGroup?: boolean }) => Promise<void>;
+    } = {};
+    function Probe() {
+      captured.fn = useDomEditSession(
+        createSessionParams({ timelineElements, handleTimelineElementsDelete }),
+      ).handleDomEditElementDelete;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(<Probe />));
+    await act(async () => captured.fn?.(selection, { expandGroup: options?.expandGroup }));
+    act(() => root.unmount());
+    domEditGroupSelectionsRef.current = [];
+    return { handleTimelineElementsDelete };
+  }
+
+  it("hands a selection that IS a timeline row to the timeline delete op, not the REST path", async () => {
+    const clip = {
+      id: "clip-a",
+      domId: "clip-a",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 0,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const { handleTimelineElementsDelete } = await deleteViaSession(domSel("clip-a"), [clip]);
+    expect(handleTimelineElementsDelete).toHaveBeenCalledWith([clip]);
+    expect(handleDomEditElementsDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it("falls through to the REST path for a selection with no timeline row of its own", async () => {
+    const { handleTimelineElementsDelete } = await deleteViaSession(domSel("nested-child"), []);
+    expect(handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(handleDomEditElementsDeleteMock).toHaveBeenCalledWith([domSel("nested-child")]);
+  });
+
+  it("expands a multi-member marquee group to the timeline op when every member resolves", async () => {
+    const clipA = {
+      id: "clip-a",
+      domId: "clip-a",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 0,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const clipB = {
+      id: "clip-b",
+      domId: "clip-b",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 2,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const group = [domSel("clip-a"), domSel("clip-b")];
+    const { handleTimelineElementsDelete } = await deleteViaSession(group[0], [clipA, clipB], {
+      expandGroup: true,
+      group,
+    });
+    expect(handleTimelineElementsDelete).toHaveBeenCalledWith([clipA, clipB]);
+    expect(handleDomEditElementsDeleteMock).not.toHaveBeenCalled();
   });
 });

@@ -37,6 +37,11 @@ The `data-title` attribute carries the value through. Code that originally
 read `props.title` reads `document.getElementById("stage").dataset.title`
 in HF.
 
+Inside a scene sub-composition file that lookup does not reach the root
+`#stage`. Pass a prop to a scene with `data-variable-values` on its host and
+read it there with `window.__hyperframes.getVariables()` (declare defaults with
+`data-composition-variables` on the scene's composition element).
+
 ## Async calculateMetadata (NOT translatable)
 
 ```tsx

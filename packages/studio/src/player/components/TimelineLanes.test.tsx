@@ -70,6 +70,9 @@ interface RenderLanesOptions {
   draggedClip?: DraggedClipState | null;
   onToggleTrackHidden?: TimelineEditCallbacks["onToggleTrackHidden"];
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
+  hoveredClip?: string | null;
+  renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
+  snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
 }
 
 function renderLanes(options: RenderLanesOptions = {}): {
@@ -135,9 +138,11 @@ function renderLanes(options: RenderLanesOptions = {}): {
           laneCounts={laneCounts}
           selectedElementId={null}
           selectedElementIds={next.selectedElementIds ?? new Set()}
-          hoveredClip={null}
+          hoveredClip={next.hoveredClip ?? null}
+          renderClipContent={next.renderClipContent}
           draggedClip={next.draggedClip ?? null}
           draggedElement={null}
+          snapGuide={next.snapGuide ?? null}
           multiDragPreview={next.multiDragPreview ?? null}
           blockedClipRef={createRef<BlockedClipState | null>()}
           suppressClickRef={{ current: false }}
@@ -175,6 +180,36 @@ function visibilityLabels(host: HTMLElement): (string | null)[] {
     button.getAttribute("aria-label"),
   );
 }
+
+/** The beat guide's own highlight div, keyed by the green glow every other beat lacks. */
+function beatHighlight(host: HTMLElement): HTMLElement | undefined {
+  return Array.from(host.querySelectorAll("div")).find((div) =>
+    (div.style.boxShadow ?? "").includes("34,197,94"),
+  );
+}
+
+describe("TimelineLanes beat guide", () => {
+  it("draws the beat highlight from snapGuide, not from the stale draggedClip prop", () => {
+    const view = renderLanes({
+      elements: [element("clip-a", TRACK_A)],
+      snapGuide: { time: 1.5, type: "beat" },
+    });
+
+    expect(beatHighlight(view.host)?.style.left).toBe("150px");
+    act(() => view.root.unmount());
+  });
+
+  it("clears the highlight once the trim it belonged to ends", () => {
+    const view = renderLanes({
+      elements: [element("clip-a", TRACK_A)],
+      snapGuide: { time: 1.5, type: "beat" },
+    });
+    view.rerender({ elements: [element("clip-a", TRACK_A)], snapGuide: null });
+
+    expect(beatHighlight(view.host)).toBeUndefined();
+    act(() => view.root.unmount());
+  });
+});
 
 describe("TimelineLanes track numbering", () => {
   // Screen readers literally announced "Hide track 0.16666666666666666".
@@ -392,6 +427,38 @@ describe("TimelineLanes selection", () => {
 
     expect(view.setSelectedElementId).toHaveBeenCalledWith(selected.id);
     expect(view.onSelectElement).toHaveBeenCalledWith(selected);
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes clip thumbnails", () => {
+  it("keeps thumbnail content inside a selected clip", () => {
+    const selected = element("clip-a", TRACK_A);
+    const view = renderLanes({
+      elements: [selected],
+      selectedElementIds: new Set([selected.id]),
+      renderClipContent: () => <div className="absolute inset-0 bg-neutral-900" data-thumbnail />,
+    });
+
+    const clip = view.host.querySelector('[data-el-id="clip-a"]');
+    expect(clip?.classList.contains("is-selected")).toBe(true);
+    expect(clip?.querySelector("[data-thumbnail]")).not.toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("asks for the same frames at rest, hovered and selected", () => {
+    const rich: unknown[] = [];
+    const renderClipContent = vi.fn(
+      (_el: TimelineElement, _style: unknown, context: { rich: boolean }) => {
+        rich.push(context.rich);
+        return null;
+      },
+    );
+    const elements = [element("clip-a", TRACK_A)];
+    const view = renderLanes({ elements, renderClipContent });
+    view.rerender({ elements, renderClipContent, hoveredClip: "clip-a" });
+    view.rerender({ elements, renderClipContent, selectedElementIds: new Set(["clip-a"]) });
+    expect(new Set(rich)).toEqual(new Set([false]));
     act(() => view.root.unmount());
   });
 });

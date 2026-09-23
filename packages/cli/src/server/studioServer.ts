@@ -29,6 +29,7 @@ import {
 } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { isDevMode } from "../utils/env.js";
+import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
@@ -48,9 +49,11 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
 import {
-  assertWebGpuRequirement,
+  assertWebGpuAdapterAvailable,
+  compositionRequiresWebGpu,
   resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
   type BrowserGpuMode,
@@ -58,6 +61,10 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+
+// Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
+// before that watchdog can fire and skip this file's browser cleanup.
+const RENDER_SHUTDOWN_WAIT_MS = 2_000;
 
 // Vite emits only content-hashed files under dist/assets; hand-authored
 // public/ files land at the dist root. The route is the signal because the
@@ -221,7 +228,9 @@ interface ThumbnailBrowserSession {
 
 async function getThumbnailBrowser(
   requestedGpuMode: BrowserGpuMode,
+  isShuttingDown: () => boolean,
 ): Promise<ThumbnailBrowserSession | null> {
+  if (isShuttingDown()) return null;
   if (
     _thumbnailBrowserLease?.browser.connected &&
     _thumbnailBrowserModes?.requested === requestedGpuMode
@@ -240,6 +249,7 @@ async function getThumbnailBrowser(
 
   _thumbnailBrowserInitializing = (async () => {
     try {
+      if (isShuttingDown()) return null;
       const { ensureBrowser } = await import("../browser/manager.js");
       const { acquireBrowser, buildChromeArgs } = await import("@hyperframes/engine");
       let executablePath: string | undefined;
@@ -284,7 +294,11 @@ async function getThumbnailBrowser(
   return _thumbnailBrowserInitializing;
 }
 
-export async function closeThumbnailBrowser(): Promise<void> {
+async function closeThumbnailBrowser(): Promise<void> {
+  // A launch kicked off just before this call isn't in _thumbnailBrowserLease
+  // yet; awaiting it here closes a browser that was mid-launch when the stop
+  // signal arrived, instead of leaving it running, unreferenced, after exit.
+  if (_thumbnailBrowserInitializing) await _thumbnailBrowserInitializing.catch(() => {});
   if (!_thumbnailBrowserLease) return;
   const lease = _thumbnailBrowserLease;
   _thumbnailBrowserLease = null;
@@ -313,6 +327,8 @@ export interface StudioServerOptions {
 export interface StudioServer {
   app: Hono;
   watcher: ProjectWatcher;
+  /** Cancels in-flight renders, then closes every browser this server owns. */
+  shutdown(): Promise<void>;
   /** Exposed for tests: the adapter handed to the shared studio API (carries
    * the resolved `autoProxy` flag the preview routes read). */
   adapter: PreviewApiAdapter;
@@ -387,6 +403,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     }
   });
 
+  const inFlightRenders = new Map<AbortController, Promise<void>>();
+  // Set synchronously by shutdown() before any await, so a render or
+  // thumbnail request already queued behind it sees the flag instead of
+  // launching a browser shutdown() has no way to know about and close.
+  let shuttingDown = false;
+
   const adapter: PreviewApiAdapter = {
     // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
     // otherwise honor the project's hyperframes.json media.autoProxy so every
@@ -450,14 +472,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return cachedProjectSignature;
     },
 
-    async lint(html: string, opts?: { filePath?: string }) {
+    async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
-      return await lintHyperframeHtml(html, opts);
+      return await lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
 
     async lintProject(dir: string) {
       const { lintProject } = await import("@hyperframes/lint");
-      return await lintProject(dir);
+      return await lintProject(dir, undefined, { host: "studio" });
     },
 
     runtimeUrl: "/api/runtime.js",
@@ -465,6 +487,15 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     rendersDir: () => join(projectDir, "renders"),
 
     startRender(opts): RenderJobState {
+      if (shuttingDown) {
+        return {
+          id: opts.jobId,
+          status: "failed",
+          progress: 0,
+          outputPath: opts.outputPath,
+          error: "Studio server is shutting down",
+        };
+      }
       // The render POST is a request boundary like any other. Without this an
       // already-open Studio tab keeps rendering under the posture cached when
       // the server booted.
@@ -480,7 +511,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
       // Run render asynchronously, mutating the state object
       const startTime = Date.now();
-      (async () => {
+      const run = (async () => {
         let renderJob: RenderJob | undefined;
         const removeCancelledOutput = () => {
           // User-initiated cancel: not a failure. Remove any output so the
@@ -499,15 +530,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         };
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
-          const { ensureBrowser } = await import("../browser/manager.js");
-
-          try {
-            const browser = await ensureBrowser({ preferManagedChrome: true });
-            if (browser.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-              process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
-            }
-          } catch {
-            // Continue without — acquireBrowser will try its own resolution
+          const browser = await resolveRenderBrowser(abortController.signal);
+          if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+            process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
           const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
@@ -573,6 +598,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           }
         }
       })();
+      inFlightRenders.set(abortController, run);
+      const forget = () => void inFlightRenders.delete(abortController);
+      run.then(forget, forget);
 
       return state;
     },
@@ -588,19 +616,20 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const session = await getThumbnailBrowser(browserGpuMode);
+      const session = await getThumbnailBrowser(browserGpuMode, () => shuttingDown);
       if (!session) {
-        console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
+        if (!shuttingDown) {
+          console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
+        }
         return null;
       }
       const sourcePath = join(opts.project.dir, opts.compPath);
-      if (existsSync(sourcePath)) {
-        assertWebGpuRequirement(
-          readFileSync(sourcePath, "utf-8"),
-          session.requestedGpuMode,
-          session.resolvedGpuMode,
-        );
-      }
+      // The shared browser launches once, before any composition is known,
+      // so it can't gain a WebGPU flag it didn't start with. Checked live
+      // below, against this page, after navigation — see assertWebGpuAdapterAvailable.
+      const requiresWebGpu = existsSync(sourcePath)
+        ? compositionRequiresWebGpu(readFileSync(sourcePath, "utf-8"))
+        : false;
       let page: import("puppeteer-core").Page | null = null;
       const closePage = () => void page?.close().catch(() => {});
       opts.signal.addEventListener("abort", closePage, { once: true });
@@ -615,6 +644,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           deviceScaleFactor: thumbnailDeviceScaleFactor(opts),
         });
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+        await assertWebGpuAdapterAvailable(page, requiresWebGpu);
         await page
           .waitForFunction(
             () => {
@@ -792,8 +822,20 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // identity for an unlabelled change, and without it every duplicate
         // delivery of one watcher event drains and reloads again.
         const receipt = version ? identifyFileWrite(absPath, version) : null;
+        // `projectId` so a stale tab — one still pointed at a project this
+        // server no longer serves, because `hyperframes preview` reused this
+        // port for a different folder (see ProjectUnreachableBanner's doc
+        // comment) — can tell "my project changed" from "some OTHER project,
+        // now served on this same connection, changed". Every subscriber on
+        // this port shares one `/api/events` stream regardless of which
+        // project their tab was opened for; without this field a stale tab
+        // reloads its preview and re-reads its composition on every save the
+        // CURRENT project makes, 404ing each time.
         stream
-          .writeSSE({ event: "file-change", data: JSON.stringify({ path, version, ...receipt }) })
+          .writeSSE({
+            event: "file-change",
+            data: JSON.stringify({ path, version, projectId: project.id, ...receipt }),
+          })
           .catch(() => {});
       };
       // Re-applied here because the watcher now also emits the signature
@@ -885,6 +927,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Studio SPA static files
   const serveStudioStaticFile = (cacheControl: string) => (c: Context) => {
     const filePath = resolve(studioDir, c.req.path.slice(1));
+    // Percent escapes can decode into separators and dot segments before this
+    // resolve, so a hostile request can name files above the bundle
+    // directory. Containment stays lexical on purpose: bundle assets may sit
+    // behind symlinked directories (same tradeoff as the preview asset
+    // route), but dot segments must never collapse outside the bundle root.
+    if (!isWithinProjectRoot(studioDir, filePath)) return c.text("not found", 404);
     const content = readBundleFile(filePath);
     if (content === null) return c.text("not found", 404);
     return new Response(content, {
@@ -995,5 +1043,25 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return c.html(html, 200, { "Cache-Control": "no-cache" });
   });
 
-  return { app, watcher, adapter };
+  const shutdown = async (): Promise<void> => {
+    shuttingDown = true;
+    const renders = [...inFlightRenders];
+    for (const [abortController] of renders) abortController.abort();
+    const { killTrackedProcesses, closeBrowserPool } = await import("@hyperframes/engine");
+    killTrackedProcesses();
+    // Browser close must not wait on renders: a render can outlast preview.ts's
+    // 3s watchdog, which exits without running this cleanup. closeBrowserPool
+    // (not drainBrowserPool) also refuses a still-unwinding render's acquire().
+    const closeBrowsers = Promise.allSettled([
+      closeThumbnailBrowser().catch(() => {}),
+      closeBrowserPool().catch(() => {}),
+    ]);
+    await Promise.race([
+      Promise.allSettled(renders.map(([, done]) => done)),
+      new Promise<void>((resolve) => setTimeout(resolve, RENDER_SHUTDOWN_WAIT_MS).unref()),
+    ]);
+    await closeBrowsers;
+  };
+
+  return { app, watcher, adapter, shutdown };
 }

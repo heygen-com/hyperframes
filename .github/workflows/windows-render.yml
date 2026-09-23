@@ -507,9 +507,30 @@ jobs:
     if: always() && (needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    permissions:
+      actions: read
     steps:
+      # On a PR, a cancelled lane passes only when a newer run of this workflow
+      # exists for the branch (concurrency cancelled this one). Push runs, a manual
+      # cancel of the latest run and any API error still fail.
       - name: Require all Windows test lanes
         if: needs.test-windows-lane.result != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_RESULT: ${{ needs.test-windows-lane.result }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
+          if [ "$LANE_RESULT" = "cancelled" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            api="repos/$GITHUB_REPOSITORY/actions"
+            HEAD_REPO=$(gh api "$api/runs/$GITHUB_RUN_ID" --jq .head_repository.full_name)
+            export HEAD_REPO
+            newer=$(gh api "$api/workflows/windows-render.yml/runs" -X GET \
+              -f event="$GITHUB_EVENT_NAME" -f branch="$BRANCH" -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.id > (env.GITHUB_RUN_ID | tonumber) and .head_repository.full_name == env.HEAD_REPO)] | length')
+            if [ "$newer" -gt 0 ]; then
+              echo "::notice::Superseded by a newer run; it reports the Windows result."
+              exit 0
+            fi
+          fi
           echo "::error::One or more Windows test lanes did not succeed."
           exit 1

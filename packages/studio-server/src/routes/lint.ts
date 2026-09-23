@@ -34,7 +34,7 @@ async function lintUncoveredHtml(
   for (const file of htmlFiles) {
     if (coveredFiles.has(file)) continue;
     const content = readFileSync(join(projectDir, file), "utf-8");
-    const result = await adapter.lint(content, { filePath: file });
+    const result = await adapter.lint(content, { filePath: file, isSubComposition: true });
     for (const finding of result?.findings ?? []) {
       findings.push({ ...finding, file });
     }

@@ -440,7 +440,6 @@
           var H = 1080;
           window.__timelines = window.__timelines || {};
           var tl = gsap.timeline({ paused: true });
-          window.__timelines[spec.id] = tl; // register synchronously
 
           var THREE = window.THREE;
           var renderer = new THREE.WebGLRenderer({
@@ -468,6 +467,10 @@
             window.addEventListener("beforeunload", function () {
               disposeGL(renderer, scene);
             });
+            window.__timelines[spec.id] = tl; // register AFTER setup completes
+            if (typeof window.__hfForceTimelineRebind === "function") {
+              window.__hfForceTimelineRebind(); // re-nest now that we are populated
+            }
           });
         }
 

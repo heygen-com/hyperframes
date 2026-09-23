@@ -157,7 +157,7 @@ export function ColorGradingSliderControl({
               event.stopPropagation();
               settings.onClick();
             }}
-            className={`relative flex h-5 w-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`relative flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40 ${
               settings.active ? "text-studio-accent" : "text-panel-text-5"
             }`}
             title={settings.label}
@@ -178,7 +178,7 @@ export function ColorGradingSliderControl({
               track("button", `Reset ${label}`);
               onReset();
             }}
-            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
             title={`Reset ${label}`}
           >
             <RotateCcw size={11} />
@@ -228,7 +228,7 @@ export function ColorGradingSliderControl({
       </div>
 
       <div className="flex min-w-0 items-center justify-end gap-1">
-        <div className="flex flex-shrink-0 items-center rounded-md bg-panel-input px-1.5 py-px">
+        <div className="flex shrink-0 items-center rounded-md bg-panel-input px-1.5 py-px">
           <input
             type="number"
             value={inputValue}
@@ -256,12 +256,12 @@ export function ColorGradingSliderControl({
                 nudge(-1);
               }
             }}
-            className="hf-color-grading-number h-4 w-[36px] bg-transparent text-right text-[10px] font-medium tabular-nums text-panel-text-1 outline-none disabled:cursor-not-allowed"
+            className="hf-color-grading-number h-4 w-[36px] bg-transparent text-right text-[10px] font-medium tabular-nums text-panel-text-1 outline-hidden disabled:cursor-not-allowed"
             title={displayValue}
           />
           {suffix && <span className="ml-0.5 text-[10px] text-panel-text-5">{suffix}</span>}
         </div>
-        <div className="flex flex-shrink-0 overflow-hidden rounded-md bg-panel-input">
+        <div className="flex shrink-0 overflow-hidden rounded-md bg-panel-input">
           <button
             type="button"
             disabled={disabled}

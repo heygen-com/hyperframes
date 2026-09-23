@@ -121,9 +121,8 @@ Chunk at natural pauses ≥ 250ms. A caption spanning a breath-break feels wrong
 
 ### 17. Safe zones per platform, always
 
-- 9:16 TikTok/IG/Shorts: caption zone `y ∈ [12%, 78%]` (bottom 22% is UI)
-- 16:9 broadcast: title-safe = center 80%
-- TV export: 5% margin on all sides
+- Use the safe boxes in `/hyperframes-studio` (Safe zones) for wide and vertical
+  framings; that skill owns the values.
 
 Bake into the layout solver. Never eyeball.
 

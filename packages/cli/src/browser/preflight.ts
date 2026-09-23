@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
+import { describeBrowserInstall, type BrowserInstallFacts } from "./installFacts.js";
 import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, getFFmpegInstallHint } from "./ffmpeg.js";
 import {
   chromeDepsInstallCommand,
@@ -22,6 +23,8 @@ export interface EnvironmentCheckOutcome {
   title?: string;
   hint?: string;
   path?: string;
+  /** Major version parsed from the tool's own `-version`/`--version` output, when available. */
+  versionMajor?: number;
 }
 
 export interface EnvironmentCheckResult {
@@ -29,6 +32,9 @@ export interface EnvironmentCheckResult {
   ffmpegPath?: string;
   ffprobePath?: string;
   browser?: BrowserResult;
+  browserInstall?: BrowserInstallFacts;
+  ffmpegVersionMajor?: number;
+  browserVersionMajor?: number;
 }
 
 export interface EnvironmentCheckOptions {
@@ -46,13 +52,21 @@ export function parseToolVersion(raw: string): string {
   return m ? `${m[1]} ${m[2]}` : raw.trim();
 }
 
+/** First `X.Y`-shaped number in a version banner (ffmpeg/ffprobe/Chrome all share this shape). */
+export function extractMajorVersion(raw: string): number | undefined {
+  const m = raw.match(/\b(\d+)\.\d+/);
+  return m?.[1] ? Number(m[1]) : undefined;
+}
+
 function configuredMissingDetail(envName: string): string | undefined {
   const configured = process.env[envName]?.trim();
   if (!configured || existsSync(configured)) return undefined;
   return `Configured path does not exist: ${envName}="${configured}"`;
 }
 
-type ToolVersionResult = { ok: true; detail: string } | { ok: false; detail: string };
+type ToolVersionResult =
+  | { ok: true; detail: string; majorVersion?: number }
+  | { ok: false; detail: string };
 
 // fallow-ignore-next-line complexity
 async function readToolVersion(
@@ -68,7 +82,11 @@ async function readToolVersion(
     ).stdout;
     const raw = output.split("\n")[0] ?? "";
     const version = parseToolVersion(raw);
-    return { ok: true, detail: version ? `${version} at ${binaryPath}` : binaryPath };
+    return {
+      ok: true,
+      detail: version ? `${version} at ${binaryPath}` : binaryPath,
+      majorVersion: extractMajorVersion(raw),
+    };
   } catch (error) {
     if (signal?.aborted) signal.throwIfAborted();
     const status =
@@ -108,7 +126,14 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
         path,
       };
     }
-    return { name: "FFmpeg", ok: true, level: "ok", detail: version.detail, path };
+    return {
+      name: "FFmpeg",
+      ok: true,
+      level: "ok",
+      detail: version.detail,
+      path,
+      versionMajor: version.majorVersion,
+    };
   }
 
   return {
@@ -229,12 +254,12 @@ async function chromeLaunchOutcome(
   const libraries = await chromeSharedLibOutcome(executablePath, found, signal);
   if (!libraries.ok) return libraries;
   try {
-    await runCancellableProcess(executablePath, ["--version"], {
+    const { stdout } = await runCancellableProcess(executablePath, ["--version"], {
       signal,
       timeoutMs: 5000,
       maxBufferBytes: 64 * 1024,
     });
-    return found;
+    return { ...found, versionMajor: extractMajorVersion(stdout) };
   } catch (error) {
     if (signal?.aborted) signal.throwIfAborted();
     const details = chromeLaunchFailureDetails(error);
@@ -318,6 +343,18 @@ async function checkChrome(
   };
 }
 
+/** Resolves the render browser the way `hyperframes render` does; a refusal carries the check's own message. */
+export async function resolveRenderBrowser(signal?: AbortSignal): Promise<BrowserResult> {
+  const { outcomes, browser } = await runEnvironmentChecks({ includeBrowser: true, signal });
+  if (browser) return browser;
+  const chrome = outcomes.find((outcome) => outcome.name === "Chrome");
+  const headline = [chrome?.title, chrome?.detail].filter(Boolean).join(": ");
+  throw new Error(
+    [headline, chrome?.hint].filter(Boolean).join(" ") ||
+      "Chrome Headless Shell could not be resolved for rendering.",
+  );
+}
+
 export function checkDisk(
   path = ".",
   freeDiskMb: (path: string) => number | null = getFreeDiskMb,
@@ -365,6 +402,7 @@ export async function runEnvironmentChecks(
   outcomes.push(ffprobe);
 
   let browser: BrowserResult | undefined;
+  let browserVersionMajor: number | undefined;
   if (options.includeBrowser) {
     const chrome = await checkChrome(options.browserPath, options.signal);
     outcomes.push(chrome);
@@ -374,6 +412,7 @@ export async function runEnvironmentChecks(
         source: options.browserPath ? "env" : "cache",
       };
     }
+    browserVersionMajor = chrome.versionMajor;
   }
 
   if (options.includeDisk) {
@@ -390,6 +429,8 @@ export async function runEnvironmentChecks(
     outcomes,
     ...(ffmpeg.ok && ffmpeg.path ? { ffmpegPath: ffmpeg.path } : {}),
     ...(ffprobe.path ? { ffprobePath: ffprobe.path } : {}),
-    ...(browser ? { browser } : {}),
+    ...(browser ? { browser, browserInstall: describeBrowserInstall(browser.executablePath) } : {}),
+    ...(ffmpeg.versionMajor != null ? { ffmpegVersionMajor: ffmpeg.versionMajor } : {}),
+    ...(browserVersionMajor != null ? { browserVersionMajor } : {}),
   };
 }

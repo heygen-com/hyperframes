@@ -1,4 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
+import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 /** Rendered height of a timeline-clip thumbnail strip, in CSS px. */
 export const THUMBNAIL_CLIP_HEIGHT = 66;
 
@@ -7,6 +8,12 @@ export interface ThumbnailStripLayout {
   frameW: number;
   /** Number of tiles needed to fill the container. */
   frameCount: number;
+}
+
+/** Quantize request identities so a pixel-by-pixel resize does not thrash the cache. */
+export function quantizeThumbnailFrameCount(frameCount: number): number {
+  const safeCount = Math.max(1, Number.isFinite(frameCount) ? Math.ceil(frameCount) : 1);
+  return Math.min(MAX_VISIBLE_THUMBNAIL_FRAMES, 2 ** Math.ceil(Math.log2(safeCount)));
 }
 
 /**

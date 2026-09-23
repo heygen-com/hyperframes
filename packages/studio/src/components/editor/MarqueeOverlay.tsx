@@ -19,7 +19,7 @@ export function MarqueeOverlay({ candidateRects, marqueeRect }: MarqueeOverlayPr
         <div
           key={i}
           aria-hidden="true"
-          className="pointer-events-none absolute rounded-sm border border-studio-accent bg-studio-accent/5"
+          className="pointer-events-none absolute rounded-xs border border-studio-accent bg-studio-accent/5"
           style={{ left: r.left, top: r.top, width: r.width, height: r.height }}
         />
       ))}

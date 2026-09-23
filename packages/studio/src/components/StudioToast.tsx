@@ -30,7 +30,7 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
         }}
       >
         <span
-          className={`min-w-0 break-words leading-5 ${isError ? "text-red-200" : "text-neutral-200"}`}
+          className={`min-w-0 wrap-break-word leading-5 ${isError ? "text-red-200" : "text-neutral-200"}`}
         >
           {message}
         </span>
@@ -38,7 +38,7 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
           <button
             type="button"
             onClick={onDismiss}
-            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
             aria-label="Dismiss"
           >
             <svg

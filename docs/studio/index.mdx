@@ -30,17 +30,42 @@ npx hyperframes preview
   />
 </Frame>
 
-- **Storyboard** shows the planned sequence, direction, voiceover, status, and
-  comments. Use it to review the story.
 - **Preview** shows the built project. The live frame is in the middle, the
   timeline is below, project tools are on the left, and the Inspector is on the
-  right.
-- **Code**, **Comps**, **Assets**, and **Catalog** expose the project source,
+  right. Drag any panel tab to move it, and use **Window** in the header to
+  reopen a closed panel or reset the layout. Studio remembers your layout for
+  each project.
+- **Code**, **Compositions**, **Assets**, and **Catalog** expose the project source,
   compositions, media, and reusable visuals. **Design**, **Layers**,
   **Variables**, and **Renders** control the selected work.
 
 You do not need to learn every panel. Choose the surface that matches the
 problem in front of you.
+
+## Compose preview guides in a host app
+
+Host apps can compose the same rulers, safe margins, grid, and snap toolbar that
+Studio uses over their own preview iframe. The provider owns the iframe geometry
+and shared preferences, so the host supplies its current iframe element and chooses the
+parts to render:
+
+```tsx
+import {
+  GridOverlay,
+  PreviewGuides,
+  PreviewOverlayProvider,
+  SnapToolbar,
+} from "@hyperframes/studio";
+function Preview({ iframe }: { iframe: HTMLIFrameElement | null }) {
+  return (
+    <PreviewOverlayProvider iframe={iframe}>
+      <PreviewGuides />
+      <GridOverlay />
+      <SnapToolbar />
+    </PreviewOverlayProvider>
+  );
+}
+```
 
 | You want to change                              | Start with                       |
 | ----------------------------------------------- | -------------------------------- |

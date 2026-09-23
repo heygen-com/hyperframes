@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shutter-slam",
+  "type": "hyperframes:component",
+  "title": "Shutter Slam",
+  "description": "One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to",
+  "tags": ["effect", "motion-blur", "shutter", "after-effects", "slam", "animation"],
+  "files": [
+    {
+      "path": "shutter-slam.html",
+      "target": "compositions/components/shutter-slam.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shutter-slam.png"
+  }
+}

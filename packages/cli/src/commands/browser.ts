@@ -15,7 +15,7 @@ import {
   ensureBrowser,
   findBrowser,
   clearBrowser,
-  CHROME_VERSION,
+  managedChromeVersion,
   CACHE_DIR,
   isLinuxArm,
 } from "../browser/manager.js";
@@ -78,7 +78,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
         if (pct > lastPct) {
           lastPct = pct;
           s.message(
-            `Downloading Chrome Headless Shell ${c.dim("v" + CHROME_VERSION)} — ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
+            `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())} — ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
           );
         }
       },
@@ -97,7 +97,9 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
   s.start("Purging cached download and re-downloading...");
 
   const downloadSpinner = clack.spinner();
-  downloadSpinner.start(`Downloading Chrome Headless Shell ${c.dim("v" + CHROME_VERSION)}...`);
+  downloadSpinner.start(
+    `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())}...`,
+  );
 
   let lastPct = -1;
   const result = await ensureBrowser({
@@ -108,7 +110,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
       if (pct > lastPct) {
         lastPct = pct;
         downloadSpinner.message(
-          `Downloading Chrome Headless Shell ${c.dim("v" + CHROME_VERSION)} — ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
+          `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())} — ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
         );
       }
     },

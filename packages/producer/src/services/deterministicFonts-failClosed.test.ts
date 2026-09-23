@@ -14,14 +14,20 @@
  * The tests inject `fetchImpl` so no real network call happens.
  */
 
-import { describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import {
+  _clearGoogleFontCssCacheForTests,
   FONT_FETCH_FAILED,
   FONT_FETCH_UNAVAILABLE,
   FontFetchError,
   FontFetchUnavailableError,
   injectDeterministicFontFaces,
 } from "./deterministicFonts.js";
+
+// The Google Fonts CSS cache is process-lifetime and keyed by URL; several
+// tests here request the same unresolved-font URL, so a leftover entry from
+// an earlier test would silently skip this test's own fetchImpl.
+beforeEach(() => _clearGoogleFontCssCacheForTests());
 
 // HTML that requests a font NOT in FONT_ALIASES, so the resolver falls
 // through to the Google Fonts fetch path. (Bundled fonts like Inter
