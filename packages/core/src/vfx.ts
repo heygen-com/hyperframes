@@ -10,6 +10,8 @@
 
 import { FRACTAL_NOISE_FRAG } from "./vfx/fractalNoise.frag";
 import { DISPLACEMENT_MAP_FRAG } from "./vfx/displacementMap.frag";
+import { LUMA_MATTE_FRAG } from "./vfx/lumaMatte.frag";
+import { NOISE_FRAG } from "./vfx/noise.frag";
 import { WAVE_WARP_FRAG } from "./vfx/waveWarp.frag";
 
 export const HF_VFX_ATTR = "data-vfx-chain";
@@ -381,6 +383,67 @@ export const HF_VFX: readonly HfVfxDef[] = [
         kind: "bool",
         key: "expand",
         label: "Expand Output",
+        default: true,
+      },
+    ],
+  },
+  {
+    id: "luma-matte",
+    label: "Matte",
+    // Not one AE effect: the runtime form of every matte the exporter cannot
+    // express as CSS — unsupported track-matte sources, stencils and
+    // silhouettes, Set Matte. Which element is the source and which the matte
+    // is the exporter's choice of what to wrap and what to name in `matte`.
+    capture: "self",
+    frag: LUMA_MATTE_FRAG,
+    params: [
+      { kind: "ref", key: "matte", label: "Matte Layer" },
+      {
+        kind: "enum",
+        key: "mode",
+        label: "Matte Mode",
+        options: [
+          { value: 1, label: "Alpha" },
+          { value: 2, label: "Alpha Inverted" },
+          { value: 3, label: "Luma" },
+          { value: 4, label: "Luma Inverted" },
+        ],
+        default: 1,
+      },
+    ],
+  },
+  {
+    id: "noise",
+    label: "Noise",
+    ae: "ADBE Noise",
+    // `self` on a content layer and `backdrop` on an adjustment layer are the
+    // same kernel reading the same `u_src`; the runtime resolves which from
+    // the DOM (a `data-vfx-for` wrapper), so the def declares only that a
+    // texture is needed.
+    capture: "self",
+    frag: NOISE_FRAG,
+    params: [
+      {
+        kind: "number",
+        key: "amount",
+        label: "Amount of Noise",
+        unit: "%",
+        min: 0,
+        max: 400,
+        step: 0.1,
+        default: 0,
+        animatable: true,
+      },
+      {
+        kind: "bool",
+        key: "useColorNoise",
+        label: "Use Color Noise",
+        default: false,
+      },
+      {
+        kind: "bool",
+        key: "clipping",
+        label: "Clip Result Values",
         default: true,
       },
     ],
