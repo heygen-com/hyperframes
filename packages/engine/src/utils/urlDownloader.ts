@@ -868,7 +868,11 @@ async function fetchToPartial(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const readableStream = Readable.fromWeb(response.body as any);
   const fileStream = createWriteStream(partialPath, { flags: "wx" });
-  await pipeline(readableStream, inspector, fileStream);
+  // The signal makes the attempt's deadline authoritative. Without it, the abort only
+  // reaches the fetch, and the pipeline depends on the web-to-Node bridge to pass it on:
+  // Bun 1.3.9's Readable.fromWeb can stop reading and never settle, and Bun 1.4.2's ends an
+  // aborted body as if it were complete, which a chunked response would publish truncated.
+  await pipeline(readableStream, inspector, fileStream, { signal: controller.signal });
   const localSize = statSync(partialPath).size;
   const sha256Bytes = sha256.digest();
   const localSha256 = sha256Bytes.toString("hex");

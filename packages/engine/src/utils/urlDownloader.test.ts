@@ -1129,6 +1129,55 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     expect(temporaryDownloadEntries(dir)).toEqual([]);
   });
 
+  it("keeps the deadline active when a stalled body never observes the abort", async () => {
+    // Bun 1.3.9's Readable.fromWeb can stop reading mid-body; the fetch abort then never
+    // reaches the pipeline. Model that with a body that neither ends nor errors on abort.
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        const stalledBody = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("partial"));
+          },
+        });
+        return new Response(stalledBody);
+      })
+      .mockResolvedValueOnce(new Response("complete"));
+    vi.stubGlobal("fetch", fetchMock);
+    const dir = makeTempDir();
+
+    const path = await downloadToTemp("https://cdn.example/unresponsive-body.mp4", dir, 20);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readFileSync(path, "utf8")).toBe("complete");
+    expect(temporaryDownloadEntries(dir)).toEqual([]);
+  });
+
+  it("does not publish a chunked body that ended because the deadline aborted it", async () => {
+    // Bun 1.4.2 ends an aborted fetch body as if it were complete. With no Content-Length
+    // there is no length check to catch the truncation.
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const truncatedBody = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("partial"));
+            init.signal?.addEventListener("abort", () => controller.close(), { once: true });
+          },
+        });
+        return new Response(truncatedBody);
+      })
+      .mockResolvedValueOnce(new Response("complete"));
+    vi.stubGlobal("fetch", fetchMock);
+    const dir = makeTempDir();
+
+    const path = await downloadToTemp("https://cdn.example/aborted-chunked-body.mp4", dir, 20);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readFileSync(path, "utf8")).toBe("complete");
+    expect(temporaryDownloadEntries(dir)).toEqual([]);
+  });
+
   it("retries a zero-byte 200 response without publishing it", async () => {
     const fetchMock = vi
       .fn()
