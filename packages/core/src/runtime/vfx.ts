@@ -173,13 +173,32 @@ function linkVfxProgram(gl: WebGL2RenderingContext, frag: string): WebGLProgram 
   return null;
 }
 
+/**
+ * The box the interface spec fixes for `.hf-vfx-out` ("it is `position:absolute;
+ * inset:0` and sized to the host's box"). It belongs to the ELEMENT, not to
+ * whoever created it, so an exporter-emitted canvas gets it too.
+ */
+const OUT_BOX = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
+
 /** The output canvas the exporter may already have emitted, else a new one. */
 function findOrCreateOut(host: HTMLElement): HTMLCanvasElement {
   const existing = host.querySelector("canvas.hf-vfx-out");
-  if (isCanvasElement(existing)) return existing;
+  if (isCanvasElement(existing)) {
+    // The exporter emits the canvas bare — `<canvas class="hf-vfx-out"></canvas>`
+    // — "for layout stability". Adopted untouched it keeps the default
+    // `position:static; display:inline`, so it is an inline box that wraps to
+    // the line AFTER the (layer-wide) `.hf-vfx-src` canvas and paints one full
+    // layer height below the host. Measured on retro-wave `#main-l6-text`:
+    // `.hf-vfx-src` rect top 315.1 h 93.0, `.hf-vfx-out` rect top 409.2 — a
+    // clean, unwarped second copy of the layer below where it belongs, with no
+    // error anywhere (ae-mcp findings §Task 3.5b). Prepending rather than
+    // assigning leaves any style the exporter DID write in the winning position.
+    existing.style.cssText = OUT_BOX + existing.style.cssText;
+    return existing;
+  }
   const out = document.createElement("canvas");
   out.className = "hf-vfx-out";
-  out.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
+  out.style.cssText = OUT_BOX;
   host.appendChild(out);
   return out;
 }

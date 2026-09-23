@@ -193,6 +193,25 @@ describe("vfx runtime", () => {
     expect(errors).toEqual([]);
   });
 
+  it("gives an exporter-emitted .hf-vfx-out the same box as one it creates", () => {
+    const a = makeHost(ONE_NODE, "a");
+    const b = makeHost(ONE_NODE, "b");
+    const preset = document.createElement("canvas");
+    preset.className = "hf-vfx-out";
+    b.appendChild(preset);
+
+    initVfx(document.body, 30);
+
+    const created = a.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement;
+    // The exporter emits the canvas bare (`<canvas class="hf-vfx-out"></canvas>`).
+    // Adopted untouched it stays `position:static; display:inline`, wraps to the
+    // line after the `.hf-vfx-src` canvas and paints one layer height below the
+    // host — measured on retro-wave `#main-l6-text` (findings Task 3.5b).
+    expect(preset.style.position).toBe("absolute");
+    expect(preset.style.cssText).toBe(created.style.cssText);
+    expect(errors).toEqual([]);
+  });
+
   it("reports an unsupported chain version loudly and registers nothing", () => {
     makeHost('{"version":2,"nodes":[]}');
 
