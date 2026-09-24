@@ -203,6 +203,25 @@ describe("createPickerModule", () => {
       }
     });
 
+    it("picks inside a composition opened on its own whose root sets pointer-events:none", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.head.innerHTML = "<style>#root { pointer-events: none }</style>";
+      document.body.innerHTML = `<div id="root" data-composition-id="intro"><div id="card">
+        <code id="code">tl.to()</code></div></div>`;
+      const at = (id: string) => document.getElementById(id)!;
+      const restore = emulateHitTest(() => [at("code"), at("card"), at("root")]);
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10).map((c: any) => c.selector)).toEqual([
+          "#code",
+          "#card",
+        ]);
+      } finally {
+        restore();
+      }
+    });
+
     it("adopts the override only for the hit test, leaving the DOM and a saved outerHTML untouched", () => {
       const adopted: CSSStyleSheet[] = [];
       Object.defineProperty(document, "adoptedStyleSheets", {

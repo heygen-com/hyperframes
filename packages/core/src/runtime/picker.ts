@@ -20,10 +20,12 @@ const PICKER_BLOCK_SELECTOR = [
   "[data-hyper-shader-loading]",
 ].join(",");
 
-// A section root's pointer-events:none (rescoped onto its inner root at mount) is about playback, not
-// editing, yet it inherits into the whole section. Inner roots take pointer events while the picker looks.
-// A host keeps its own none: that is the parent author making an overlay click-through.
-const PICKABLE_ROOTS_RULE = "[data-hf-inner-root]{pointer-events:auto!important}";
+// A composition root's pointer-events:none (rescoped onto its inner root at mount) is about playback, not
+// editing, yet it inherits into the whole section. Inner roots and the page's outermost composition root
+// take pointer events while the picker looks. A host keeps its own none: that is the parent author making
+// an overlay click-through.
+const PICKABLE_ROOTS = "[data-hf-inner-root],[data-composition-id]:not([data-composition-id] *)";
+const PICKABLE_ROOTS_RULE = `${PICKABLE_ROOTS}{pointer-events:auto!important}`;
 // A layered !important outranks every normal rule and every unlayered !important, whatever its specificity
 // (a mounted section's rescoped `#root { pointer-events: none !important }`). Ceiling: an author !important
 // inside the author's own layer, or inline, still wins; an adopted sheet's layer always orders last.
@@ -42,7 +44,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   let pickLastHoveredInfo: RuntimePickerElementInfo | null = null;
   let pickLastSelectedInfo: RuntimePickerElementInfo | null = null;
   let pickableRootsSheetCache: CSSStyleSheet | null | undefined;
-  // Inner roots that were pointer-events:none before the override: their content is pickable, never they.
+  // Roots that were pointer-events:none before the override: their content is pickable, never they.
   let passThroughRoots: ReadonlySet<Element> = new Set();
 
   function emitPickerRuntimeEvent(eventName: string, detail: RuntimeJson): void {
@@ -76,7 +78,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   // wake a paused transport on every hover) and a saved documentElement.outerHTML never contains it.
   function withPickableCompositionRoots<T>(run: () => T): T {
     passThroughRoots = new Set(
-      Array.from(document.querySelectorAll("[data-hf-inner-root]")).filter(
+      Array.from(document.querySelectorAll(PICKABLE_ROOTS)).filter(
         (root) => getComputedStyle(root).pointerEvents === "none",
       ),
     );
