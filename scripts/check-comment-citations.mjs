@@ -417,6 +417,128 @@ export function checkBlockRules(files, repo, touches = () => true) {
   return failures;
 }
 
+// `#` opens a comment only in Python; in TypeScript it opens a private field.
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
+const HASH_COMMENT_LINE = /^\s*#/;
+const isCommentLine = (line, ext) =>
+  COMMENT_LINE.test(line) || (ext === ".py" && HASH_COMMENT_LINE.test(line));
+
+// A TODO names who owns it or the issue that tracks it. Only a marker opening a comment line
+// counts; a sentence that mentions a TODO is prose.
+const TODO_MARK = /^\s*(?:TODO|FIXME|XXX)\s*[:(]/;
+// An owner is a person or an area (`jrs`, `player-perf`, `core follow-up`), or an issue.
+const OWNER = "(?:@?[A-Za-z][\\w .-]*|#\\d+)";
+const TODO_OWNED = new RegExp(`\\b(?:TODO|FIXME|XXX)\\s*\\(${OWNER}(?:,\\s*${OWNER})*\\)`);
+// Owner or issue go in the parentheses, `TODO(name):` or `TODO(#1234):`: a bare `#123456` could be a
+// colour. Otherwise the TODO's own line links the issue.
+const ISSUE_LINK = /github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/;
+const COPIED = /\b(?:copied|adapted|ported|borrowed) from\b/i;
+const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`)\]]*/g;
+// Loopback is left alone: comments describe dev servers and CORS origins by it, not as links.
+const LOOPBACK = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?:[:/]|$)/i;
+const PRIVATE_HOST =
+  /^(?:10(?:\.\d+){3}|192\.168(?:\.\d+){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d+){2}|169\.254(?:\.\d+){2})$|\.(?:local|internal|lan|corp|intranet)$/;
+const SIGNED_QUERY =
+  /[?&](?:X-Amz-Signature|X-Amz-Credential|X-Goog-Signature|Signature|sig|token|access_token|Key-Pair-Id)=/i;
+// prettier-ignore
+const STOP_WORDS = new Set([
+  "a", "an", "the", "this", "that", "these", "those", "to", "of", "for", "in", "on", "at", "by", "with",
+  "and", "or", "is", "are", "be", "it", "its", "we", "our", "if", "then", "else", "as", "from",
+]);
+const words = (text) =>
+  text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .match(/[a-z][a-z0-9]*/g) ?? [];
+
+// Why a URL in a comment cannot be followed by a reader, or null when it can. Placeholders
+// (`https://${host}`, `https://<host>`) are templates, not links.
+function urlProblem(raw) {
+  const cited = raw.replace(/[.,;:!?]+$/, "");
+  if (/^https?:\/\/$/.test(cited) || /[{}$*…]/.test(cited) || LOOPBACK.test(cited)) return null;
+  let url;
+  try {
+    url = new URL(cited);
+  } catch {
+    return "is not a well-formed URL";
+  }
+  if (PRIVATE_HOST.test(url.hostname.toLowerCase()))
+    return `points at a private host (${url.hostname})`;
+  if (SIGNED_QUERY.test(url.search)) return "carries a signature or token in its query";
+  return null;
+}
+
+const RESTATE_SHARE = 0.8;
+const DIVIDER = /[─━═]{2,}|-{4,}|={4,}/;
+
+// A standalone comment of one or two lines whose words are almost all names on the next code line.
+// Section dividers and JSDoc are left alone: they label and document, they do not narrate.
+function restatesCode(block, lines, extent, ext) {
+  if (block.length > 2 || !isCommentLine(lines[block[0].line - 1], ext)) return false;
+  if (/^\s*\/\*\*/.test(lines[extent.start - 1]) || block.some(({ text }) => DIVIDER.test(text))) {
+    return false;
+  }
+  const next = lines.slice(extent.end).find((line) => line.trim());
+  if (!next || isCommentLine(next, ext) || /^\s*}/.test(next)) return false;
+  const said = words(block.map((comment) => comment.text).join(" ")).filter(
+    (w) => !STOP_WORDS.has(w),
+  );
+  if (said.length < 2) return false;
+  const code = new Set(words(stripStrings(next)));
+  return said.filter((w) => code.has(w)).length / said.length >= RESTATE_SHARE;
+}
+
+// Findings for the checkable best-practice rules, each with the line range it rests on. Pure, so
+// the same function grades a PR and measures the whole tree.
+export function practiceFindings(source, ext) {
+  if (!CODE_EXT.has(ext)) return [];
+  const lines = source.split("\n");
+  const found = [];
+  for (const block of blocksOf(lines, ext)) {
+    const extent = physicalExtent(block, lines);
+    const joined = block.map((comment) => comment.text).join(" ");
+    const linked = /\bhttps?:\/\//.test(joined);
+    for (const { line, text } of block) {
+      const at = { from: line, to: line, cite: text.trim().slice(0, 100) };
+      if (TODO_MARK.test(text) && !TODO_OWNED.test(text) && !ISSUE_LINK.test(text)) {
+        found.push({
+          ...at,
+          rule: "todo",
+          why: 'a TODO names its owner, area or issue, "TODO(name):" or "TODO(#1234):", or links the issue.',
+        });
+      }
+      if (COPIED.test(text) && !linked) {
+        found.push({
+          ...at,
+          rule: "source",
+          warn: true,
+          why: "copied or adapted code links the original source.",
+        });
+      }
+      for (const [raw] of text.matchAll(URL_IN_TEXT)) {
+        const problem = urlProblem(raw);
+        if (problem)
+          found.push({
+            ...at,
+            rule: "url",
+            why: `${raw} ${problem}; link what every reader can open.`,
+          });
+      }
+    }
+    if (restatesCode(block, lines, extent, ext)) {
+      found.push({
+        from: extent.start,
+        to: extent.end,
+        cite: joined.trim().slice(0, 100),
+        rule: "restates",
+        warn: true,
+        why: "restates the next line of code. Say why, or delete it and let the names speak.",
+      });
+    }
+  }
+  return found;
+}
+
 function extractComments(source, ext) {
   const lines = source.split("\n");
   return withBlockContext(scanFor(lines, ext), lines, ext);
@@ -606,6 +728,18 @@ export function checkComments(root, files, scope = { kind: "all" }) {
   const { cited, examined } = collectCitations(files, repo, inScope);
   const warnings = [];
   const blockFailures = checkBlockRules(files, repo, touches);
+  // Line rules grade the lines the diff added; the restating rule grades the block it rests on.
+  for (const file of files.filter((name) => repo.has(name))) {
+    for (const finding of practiceFindings(repo.source(file), path.extname(file))) {
+      const graded =
+        finding.rule === "restates"
+          ? touches(file, finding.from, finding.to)
+          : inScope(file, finding.from);
+      if (!graded) continue;
+      const entry = { where: `${file}:${finding.from}`, cite: finding.cite, why: finding.why };
+      (finding.warn ? warnings : blockFailures).push(entry);
+    }
+  }
   const symbols = [...new Set(cited.filter((c) => c.kind === "symbol").map((c) => c.symbol))];
   const occurrences = repo.occurrencesOf(symbols);
   const missingPaths = new Set();
@@ -708,10 +842,6 @@ const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
 // One `git diff` answers three things: the lines each file gained, the lines a deleted comment line
 // sat between (so the block it left still counts as edited), and the names removed code used.
 // No pathspec: limiting it to the new paths stops git pairing a rename with its old path.
-// `#` opens a comment only in Python; in TypeScript it opens a private field.
-const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
-const HASH_COMMENT_LINE = /^\s*#/;
-
 function diffScope(root, base) {
   const added = new Map();
   const edited = new Map();
@@ -817,9 +947,9 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   }
   if (warnings.length > 0) {
     console.log(
-      `\n  ${warnings.length} of these. They are not on a line this diff touched, so they`,
+      `\n  ${warnings.length} warning(s). They do not fail the build; fixing one while you are in`,
     );
-    console.log(`  do not fail the build. Fixing one while you are in the file is still free.\n`);
+    console.log(`  the file is still free.\n`);
   }
   if (failures.length === 0) {
     console.log(`comments: OK (${examined} file(s) examined of ${files.length} in scope)`);

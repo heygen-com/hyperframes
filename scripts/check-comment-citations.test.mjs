@@ -437,7 +437,7 @@ test("a suppression pragma is not commented-out code", (t) => {
 
 test("a well-formed TODO that names a call is not commented-out code", (t) => {
   const { failures } = checkSubject(t, {
-    "src/subject.ts": oneLiner("// TODO: drop this once readCache(key) is memoised"),
+    "src/subject.ts": oneLiner("// TODO(jrs): drop this once readCache(key) is memoised"),
   });
   assert.deepEqual(failures, []);
 });
@@ -809,4 +809,138 @@ test("the built-in probe still carries a citation of each kind this checker refu
     "the path arm of the self-check reported nothing",
   );
   assert.match(why, /resolves nowhere/, "the symbol arm of the self-check reported nothing");
+});
+
+// --- Best-practice rules: TODO owner, source links, public URLs, restating the code ------------
+
+const failsWith = (t, comment, pattern) => {
+  const { failures } = checkSubject(t, { "src/subject.ts": oneLiner(comment) });
+  assert.equal(failures.length, 1, JSON.stringify(failures));
+  assert.match(failures[0].why, pattern);
+};
+const passes = (t, comment) => {
+  const { failures, warnings } = checkSubject(t, { "src/subject.ts": oneLiner(comment) });
+  assert.deepEqual([...failures, ...warnings], []);
+};
+
+test("a TODO with no owner or issue fails", (t) => failsWith(t, "// TODO: cache this", /TODO/));
+test("a TODO naming its owner passes", (t) => passes(t, "// TODO(jrs): cache this"));
+test("a TODO naming its issue passes", (t) => passes(t, "// FIXME(#4012): cache this"));
+test("a TODO naming an owner and an issue passes", (t) =>
+  passes(t, "// TODO(jrs, #4012): cache this"));
+test("a TODO naming an area passes", (t) =>
+  passes(t, "// TODO(core follow-up): re-export the marker"));
+test("a TODO whose parentheses name nobody fails", (t) => {
+  for (const marker of ["TODO(#)", "TODO(-)", "TODO(.)"])
+    failsWith(t, `// ${marker}: cache this`, /TODO/);
+});
+test("a TODO linking its issue passes", (t) =>
+  passes(t, "// TODO: cache this, https://github.com/heygen-com/hyperframes/issues/4012"));
+test("a colour on the TODO's own line does not stand in for its issue", (t) =>
+  failsWith(t, "// TODO: fix the border colour #123456", /TODO/));
+test("a sentence that mentions a TODO is prose", (t) =>
+  passes(t, "// This resolves the TODO in the audit."));
+
+test("an unowned TODO on a line the diff did not touch is not graded", (t) => {
+  const { failures } = checkSubject(
+    t,
+    { "src/subject.ts": oneLiner("// TODO: cache this") },
+    {},
+    { kind: "lines", added: new Set([2]) },
+  );
+  assert.deepEqual(failures, []);
+});
+
+test("a URL on a private network fails", (t) =>
+  failsWith(t, "// Dashboard: http://10.0.4.2/grafana", /private host/));
+test("a URL on an internal host fails", (t) =>
+  failsWith(t, "// Runbook: https://wiki.corp/render", /private host/));
+test("a signed URL fails", (t) =>
+  failsWith(
+    t,
+    "// Sample: https://bucket.s3.amazonaws.com/a.mp4?X-Amz-Signature=abc",
+    /signature/,
+  ));
+test("a malformed URL fails", (t) =>
+  failsWith(t, "// Docs: https://exa%mple.com/x", /well-formed/));
+test("a public URL passes", (t) => passes(t, "// Spec: https://www.w3.org/TR/webcodecs/"));
+test("a loopback dev-server URL passes", (t) =>
+  passes(t, "// The dev server listens on http://localhost:5173."));
+test("a URL template passes", (t) => passes(t, "// Resolves to https://${host}/assets/<name>."));
+
+test("copied code without a source link warns and does not fail", (t) => {
+  const { failures, warnings } = checkSubject(t, {
+    "src/subject.ts": oneLiner("// Adapted from the upstream easing implementation."),
+  });
+  assert.deepEqual(failures, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0].why, /original source/);
+});
+test("copied code with a source link passes", (t) =>
+  passes(t, "// Adapted from https://github.com/d3/d3-ease/blob/main/src/cubic.js."));
+
+const restating = ["// Count label", "const countLabel = 1;", ""].join("\n");
+test("a comment restating the next line warns and does not fail", (t) => {
+  const { failures, warnings } = checkSubject(t, { "src/subject.ts": restating });
+  assert.deepEqual(failures, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0].why, /restates the next line/);
+});
+test("a comment saying why is not a restatement", (t) => {
+  const { failures, warnings } = checkSubject(t, {
+    "src/subject.ts": [
+      "// One word, never a segment: captions count words.",
+      "const countLabel = 1;",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual([...failures, ...warnings], []);
+});
+test("a section divider is not a restatement", (t) => {
+  const { warnings } = checkSubject(t, {
+    "src/subject.ts": ["// ── Count label ──", "const countLabel = 1;", ""].join("\n"),
+  });
+  assert.deepEqual(warnings, []);
+});
+test("the CLI exits 0 on a restating comment and prints the warning", (t) => {
+  const { status, output } = runCli(t, KIT, { ...KIT, "src/subject.ts": restating });
+  assert.equal(status, 0, output);
+  assert.match(output, /restates the next line/);
+});
+test("the CLI fails an unowned TODO the diff adds", (t) => {
+  const { status, output } = runCli(t, KIT, {
+    ...KIT,
+    "src/subject.ts": oneLiner("// TODO: cache this"),
+  });
+  assert.equal(status, 1, output);
+  assert.match(output, /TODO/);
+});
+
+test("a colour elsewhere in the block does not stand in for a TODO's issue", (t) => {
+  const { failures } = checkSubject(t, {
+    "src/subject.ts": [
+      "// TODO: tune the ramp",
+      "// The base colour is #123456.",
+      "export const subject = 1;",
+      "",
+    ].join("\n"),
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0].why, /TODO/);
+});
+test("a public hostname that starts with a private-looking number passes", (t) =>
+  passes(t, "// Edge cache: https://10.cdn.example.com/assets/"));
+test("an ASCII section divider is not a restatement", (t) => {
+  const { warnings } = checkSubject(t, {
+    "src/subject.ts": ["// ---------- count label ----------", "const countLabel = 1;", ""].join(
+      "\n",
+    ),
+  });
+  assert.deepEqual(warnings, []);
+});
+test("a TypeScript private field is code, not a standalone comment", (t) => {
+  const { warnings } = checkSubject(t, {
+    "src/subject.ts": ["  #countLabel = 0; // count label", "  countLabel = 1;", ""].join("\n"),
+  });
+  assert.deepEqual(warnings, []);
 });
