@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { createProjectSignature, fileContentVersion } from "@hyperframes/studio-server";
+import {
+  createProjectSignature,
+  fileContentVersion,
+  HistoryBusyError,
+} from "@hyperframes/studio-server";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
@@ -149,6 +153,19 @@ describe("createStudioServer project history (D-491)", () => {
       interval: 200,
     });
     expect((await list()).entries[0]!.who.kind).toBe("outside");
+    await server.shutdown();
+  });
+
+  it("tries a history another process was holding again on the next request, instead of turning it off", async () => {
+    historyState.open = async () => {
+      historyState.open = null;
+      throw new HistoryBusyError(1);
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    expect((await server.app.request(historyUrl)).status).toBe(404);
+    expect((await server.app.request(historyUrl)).status).toBe(200);
     await server.shutdown();
   });
 

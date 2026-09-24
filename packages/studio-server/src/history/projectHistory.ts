@@ -13,6 +13,7 @@ import {
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { projectHistoryId } from "./historyId.js";
+import { takeHistoryOwnership } from "./ownerLock.js";
 import {
   START,
   foldOldest,
@@ -46,6 +47,8 @@ export interface ProjectHistoryOptions {
   budgetBytes?: number;
   /** A sweep or commit that a watcher or timer started failed. */
   onError?: (error: unknown) => void;
+  /** How long an open waits for another process to close the same history (default 5 s). */
+  ownerWaitMs?: number;
 }
 
 interface ClaimOptions {
@@ -734,8 +737,21 @@ class Engine {
 /** Opens a project's history: every write to its files becomes an entry that can be undone or restored. */
 export async function openProjectHistory(options: ProjectHistoryOptions): Promise<ProjectHistory> {
   const projectId = projectHistoryId(options.projectDir, options.historyRoot);
-  const blobs = await openBlobStore(join(options.historyRoot, projectId, "blobs"));
-  const engine = new Engine(options, projectId, blobs);
-  await engine.queue(() => engine.start());
-  return engine.api();
+  const release = await takeHistoryOwnership(
+    join(options.historyRoot, projectId),
+    options.ownerWaitMs ?? 5000,
+  );
+  try {
+    const blobs = await openBlobStore(join(options.historyRoot, projectId, "blobs"));
+    const engine = new Engine(options, projectId, blobs);
+    await engine.queue(() => engine.start());
+    const api = engine.api();
+    return {
+      ...api,
+      close: () => api.close().finally(release),
+    };
+  } catch (error) {
+    release();
+    throw error;
+  }
 }

@@ -10,6 +10,7 @@ export {
   type HistoryResult,
   type HistoryWindow,
 } from "./history/projectHistory.js";
+export { HistoryBusyError } from "./history/ownerLock.js";
 export {
   START as HISTORY_START,
   type HistoryEntry,
