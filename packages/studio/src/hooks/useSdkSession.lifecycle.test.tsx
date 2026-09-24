@@ -712,11 +712,13 @@ describe("useSdkSession unavailable telemetry", () => {
         ),
       );
       await flushAsyncEffects();
-      await act(async () =>
+      await act(async () => {
+        usePlayerStore.getState().beginTimelineSession("project-b");
+        usePlayerStore.getState().markPreviewBooted();
         root.render(
           <HandleProbe projectId="project-b" path="index.html" onAbsentRead={onAbsentRead} />,
-        ),
-      );
+        );
+      });
       await flushAsyncEffects();
 
       expect(onAbsentRead).toHaveBeenCalledTimes(2);

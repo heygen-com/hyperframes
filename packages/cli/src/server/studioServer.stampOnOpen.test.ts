@@ -64,18 +64,18 @@ describe("opening a film of external scenes", () => {
     fs.utimesSync(file, pinned, pinned);
     open();
     // What `cp -p` or rsync leaves: new content at the recorded size and mtime.
-    const { size } = fs.statSync(file);
-    const unstamped = fs
-      .readFileSync(file, "utf-8")
-      .replace(/ data-hf-id="[^"]*"/, "")
-      .padEnd(size, " ");
-    fs.writeFileSync(file, unstamped);
-    fs.utimesSync(file, pinned, pinned);
+    const stamped = fs.readFileSync(file, "utf-8");
+    const unstamped = stamped.replace(/ data-hf-id="[^"]*"/, "").padEnd(stamped.length, " ");
+    const fd = fs.openSync(file, "r+");
+    fs.writeSync(fd, unstamped, 0);
+    fs.futimesSync(fd, pinned, pinned);
+    fs.closeSync(fd);
 
     open();
 
-    expect(fs.readFileSync(file, "utf-8")).not.toBe(unstamped);
-    expect(fs.readFileSync(file, "utf-8").match(/data-hf-id=/g)?.length).toBe(
+    const reopened = fs.readFileSync(file, "utf-8");
+    expect(reopened).not.toBe(unstamped);
+    expect(reopened.match(/data-hf-id=/g)?.length).toBe(
       unstamped.match(/data-hf-id=/g)!.length + 1,
     );
   });
