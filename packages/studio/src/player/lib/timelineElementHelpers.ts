@@ -146,11 +146,21 @@ function isHtmlElement(el: Element): el is HTMLElement {
   return typeof HtmlElementCtor !== "undefined" && el instanceof HtmlElementCtor;
 }
 
+function isCompositionHost(el: Element): boolean {
+  return (
+    el.hasAttribute("data-composition-id") ||
+    el.hasAttribute("data-composition-src") ||
+    el.hasAttribute("data-composition-file")
+  );
+}
+
 export function resolveMediaElement(el: Element): HTMLMediaElement | HTMLImageElement | null {
   const win = el.ownerDocument.defaultView ?? window;
   const MediaElementCtor = win.HTMLMediaElement ?? globalThis.HTMLMediaElement;
   const ImageElementCtor = win.HTMLImageElement ?? globalThis.HTMLImageElement;
   if (el instanceof MediaElementCtor || el instanceof ImageElementCtor) return el;
+  // A composition's media belongs to its own timeline, not the clip's: its length would cap a trim.
+  if (isCompositionHost(el)) return null;
   const candidate = el.querySelector("video, audio, img");
   return candidate instanceof MediaElementCtor || candidate instanceof ImageElementCtor
     ? candidate
