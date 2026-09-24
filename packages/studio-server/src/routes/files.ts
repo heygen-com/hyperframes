@@ -89,7 +89,7 @@ import {
   insertCompositionIntoSource,
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
-import { projectSubPath } from "../helpers/projectSubPath.js";
+import { requestSubPath } from "../helpers/requestSubPath.js";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ async function resolveProjectPath(
     } as const;
   }
 
-  const filePath = projectSubPath(c.req.url, route);
+  const filePath = requestSubPath(c.req.url, `projects/:id/${route}`);
   if (filePath.includes("\0")) {
     return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }

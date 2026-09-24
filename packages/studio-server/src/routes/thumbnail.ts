@@ -18,7 +18,7 @@ import { compositionInputSignature } from "../helpers/compositionInputs.js";
 import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
-import { projectSubPath } from "../helpers/projectSubPath.js";
+import { requestSubPath } from "../helpers/requestSubPath.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
@@ -85,7 +85,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (!resolved) return c.json({ error: "not found" }, 404);
     const { project, signature: projectSignature } = resolved;
 
-    let compPath = projectSubPath(c.req.url, "thumbnail");
+    let compPath = requestSubPath(c.req.url, "projects/:id/thumbnail");
     if (compPath && !compPath.includes(".")) compPath += ".html";
     const htmlFile = resolveWithinProject(project.dir, compPath);
     if (!htmlFile) return c.json({ error: "not found" }, 404);
