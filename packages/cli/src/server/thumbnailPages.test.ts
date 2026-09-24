@@ -77,6 +77,26 @@ describe("createThumbnailPages", () => {
     }
   });
 
+  it("closes a page whose load fails, so failed loads leave no page open", async () => {
+    const { browser, pages } = fakeBrowser();
+    const thumbnails = createThumbnailPages();
+    const load = vi.fn(async () => {
+      throw new Error("navigation timeout");
+    });
+
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        thumbnails.withPage(browser, "/preview", "v1", load, async () => null),
+      ).rejects.toThrow("navigation timeout");
+    }
+    thumbnails.closeAll();
+
+    expect(pages).toHaveLength(3);
+    await vi.waitFor(() =>
+      expect(pages.every((page) => page.close.mock.calls.length > 0)).toBe(true),
+    );
+  });
+
   it("never closes a page under a frame that is still being taken", async () => {
     const { browser, pages } = fakeBrowser();
     const thumbnails = createThumbnailPages(1);

@@ -35,7 +35,13 @@ export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
     if (existing && existing.browser === browser && existing.version === version) return existing;
     drop(url);
     const page = browser.newPage().then(async (created) => {
-      await load(created);
+      try {
+        await load(created);
+      } catch (error) {
+        // The page never leaves this promise, so a failed load has to close it here.
+        await created.close().catch(() => {});
+        throw error;
+      }
       return created;
     });
     const entry: LoadedPage = { browser, version, page, queue: Promise.resolve() };
