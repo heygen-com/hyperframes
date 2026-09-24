@@ -351,11 +351,14 @@ export function inlineSubCompositions(
       const type = (scriptEl.getAttribute("type") || "").trim().toLowerCase();
       if (type === "importmap") {
         const map = parseImportMap(scriptEl.textContent || "", (url) => {
-          // An import map address must stay URL-like ("./x"), and the rebase drops the "./".
-          const rebased = resolveSubAssetPath(url);
-          return rebased === url.trim() || /^(\/|\.\.?\/|[a-z][a-z\d+.-]*:)/i.test(rebased)
+          // The rebase drops a leading "./" and a trailing "/"; an import map address needs both.
+          const authored = url.trim();
+          const rebased = resolveSubAssetPath(authored);
+          if (rebased === authored) return rebased;
+          const urlLike = /^(\/|\.\.?\/|[a-z][a-z\d+.-]*:)/i.test(rebased)
             ? rebased
             : `./${rebased}`;
+          return authored.endsWith("/") && !urlLike.endsWith("/") ? `${urlLike}/` : urlLike;
         });
         if (map) importMaps.push(map);
         else console.warn(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`);

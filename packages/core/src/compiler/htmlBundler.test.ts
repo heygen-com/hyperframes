@@ -208,11 +208,12 @@ describe("bundleToSingleHtml", () => {
   </div>
 </body></html>`,
       "compositions/blk/assets/three.js": "export const REVISION = 1;",
+      "compositions/blk/assets/addons/env.js": "export const ENV = 1;",
       "compositions/blk/assets/scene.js": 'import * as THREE from "three"; export const SCENE = 1;',
       "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
   <script type="module" src="./assets/scene.js"></script>
   <script type="module" src="https://cdn.test/mod.js"></script>
-  <script type="importmap">{ "imports": { "three": "./assets/three.js", "cdn": "https://cdn.test/x.js" } }</script>
+  <script type="importmap">{ "imports": { "three": "./assets/three.js", "three/addons/": "./assets/addons/", "cdn": "https://cdn.test/x.js" } }</script>
   <script type="module">import * as THREE from "three"; window.__url = __hyperframes.assetUrl("assets/leaf.webp");</script>
   <script>window.__classic = 1;</script>
 </div>`,
@@ -225,7 +226,11 @@ describe("bundleToSingleHtml", () => {
 
     expect(importMaps).toHaveLength(1);
     expect(JSON.parse(importMaps[0]!.textContent || "")).toEqual({
-      imports: { three: "./compositions/blk/assets/three.js", cdn: "https://cdn.test/x.js" },
+      imports: {
+        three: "./compositions/blk/assets/three.js",
+        "three/addons/": "./compositions/blk/assets/addons/",
+        cdn: "https://cdn.test/x.js",
+      },
     });
     expect(modules.map((m) => m.getAttribute("src")).filter(Boolean)).toEqual([
       "compositions/blk/assets/scene.js",
