@@ -1,4 +1,5 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
+import { onPreviewContentReplaced } from "../../player/sceneSwap";
 import {
   useEffect,
   useLayoutEffect,
@@ -119,8 +120,7 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
     const iframe = iframeRef.current;
     if (!iframe || !callId) return;
     const dismiss = () => studioEditLifecycle.dismiss(callId);
-    iframe.addEventListener("load", dismiss);
-    return () => iframe.removeEventListener("load", dismiss);
+    return onPreviewContentReplaced(iframe, dismiss);
   }, [callId, iframeRef, livePreviewIframe]);
 
   useEffect(() => {
