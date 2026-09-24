@@ -1490,6 +1490,18 @@ describe("check pipeline", () => {
       expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
     });
 
+    it("still judges the spread samples --at-transitions adds to an --at run", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 53.7),
+        getTransitionBoundaries: vi.fn(async () => [10, 20]),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+      const { report } = await runScenario(driver, { at: [51, 52.5], atTransitions: true });
+
+      expect(report.layout.samples).toEqual([10, 15, 20, 51, 52.5]);
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(true);
+    });
+
     it("does not flag intentional static content declared with data-no-timeline", async () => {
       const driver = fakeDriver({
         getDuration: vi.fn(async () => 6),

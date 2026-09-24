@@ -218,11 +218,11 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   }
   const pins = readPinnedHyperframesVersions(scripts);
   // A CLI older than the pin (e.g. a stale npx cache) misjudges every run, so this is never throttled.
-  const newerPins = pins.filter((v) => isNewerSemver(v, VERSION));
+  const newerPins = pins.filter((v) => isNewerSemver(v, VERSION)).sort(compareVersions);
   if (newerPins.length > 0) {
     process.stderr.write(
       `\n  This is hyperframes ${VERSION}, but this project pins hyperframes@${newerPins.join(", ")}.\n` +
-        `  Run it through the project's npm scripts, or npx hyperframes@${newerPins[0]}.\n\n`,
+        `  Run it through the project's npm scripts, or npx hyperframes@${newerPins.at(-1)}.\n\n`,
     );
     return;
   }
