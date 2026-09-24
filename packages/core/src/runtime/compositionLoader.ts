@@ -567,10 +567,13 @@ async function mountCompositionContent(params: {
       );
       injectedScript.textContent = map ? JSON.stringify(map) : scriptPayload.content;
     } else if (scriptPayload.type.toLowerCase() === "module") {
-      const moduleCompId = runtimeScopeCompositionId || scriptPayload.scopeCompositionId;
-      injectedScript.textContent =
-        (moduleCompId ? scopedModulePrelude(moduleCompId, params.compositionUrl?.href) : "") +
-        scriptPayload.content;
+      const prelude = scriptPayload.scopeCompositionId
+        ? scopedModulePrelude(
+            runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
+            params.compositionUrl?.href,
+          )
+        : "";
+      injectedScript.textContent = prelude + scriptPayload.content;
     } else if (scriptPayload.scopeCompositionId) {
       injectedScript.textContent = wrapScopedCompositionScript(
         scriptPayload.content,

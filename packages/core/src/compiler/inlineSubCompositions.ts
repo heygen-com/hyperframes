@@ -360,9 +360,10 @@ export function inlineSubCompositions(
         if (map) importMaps.push(map);
         else console.warn(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`);
       } else if (type === "module" && !externalSrc) {
-        const moduleCompId = runtimeCompId || scopeCompId || scriptCompositionId;
-        const source = scriptEl.textContent || "";
-        moduleScripts.push(moduleCompId ? scopedModulePrelude(moduleCompId, src) + source : source);
+        const prelude = scriptCompositionId
+          ? scopedModulePrelude(runtimeCompId || scopeCompId || scriptCompositionId, src)
+          : "";
+        moduleScripts.push(prelude + (scriptEl.textContent || ""));
       } else if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
