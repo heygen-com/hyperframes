@@ -20,6 +20,7 @@ export function useStudioSdkSessions(
   masterCompPath: string | null,
   fileTree: readonly string[] = [],
   fileTreeLoaded = false,
+  refreshFileTree?: () => void | Promise<void>,
 ) {
   // On the master view (no explicit comp) the schema panels target the project's
   // resolved main composition — the first `.html` in the tree, not a hardcoded
@@ -30,6 +31,7 @@ export function useStudioSdkSessions(
     activeCompPath ?? masterCompPath,
     fileTree,
     fileTreeLoaded,
+    refreshFileTree,
   );
   const editFlowSdkSession = activeCompPath ? sdkHandle.session : null;
   useEffect(() => {

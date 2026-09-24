@@ -8,6 +8,7 @@ import { StudioOverlays } from "./components/StudioOverlays";
 import { SaveQueuePausedBanner } from "./components/SaveQueuePausedBanner";
 import { ExternalFileConflictBanner } from "./components/ExternalFileConflictBanner";
 import { ProjectUnreachableBanner } from "./components/ProjectUnreachableBanner";
+import { CompositionMissingBanner } from "./components/CompositionMissingBanner";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { usePersistentEditHistory } from "./hooks/usePersistentEditHistory";
@@ -132,6 +133,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     masterCompPath,
     fileManager.fileTree,
     fileManager.fileTreeLoaded,
+    fileManager.refreshFileTree,
   );
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;
@@ -480,6 +482,9 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 <ExternalFileConflictBanner coordinator={externalFileChanges} />
                 {sdkHandle.unreachableProject && (
                   <ProjectUnreachableBanner projectId={sdkHandle.unreachableProject} />
+                )}
+                {sdkHandle.compositionMissing && activeCompPath && (
+                  <CompositionMissingBanner path={activeCompPath} />
                 )}
                 <EditorShell
                   readOnlyPreview={readOnlyPreview}

@@ -57,8 +57,8 @@
     "packages/studio/src/player/components/ShortcutsPanel.tsx": 7,
     "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
+    "packages/studio/src/styles/components.css": 48,
     "packages/studio/src/telemetry/client.ts": 1,
-    "packages/studio/src/styles/studio.css": 48,
     "packages/studio/src/webmcp/webmcpTestUtils.ts": 1
   }
 }

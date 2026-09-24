@@ -27,6 +27,16 @@
     return Math.round(value * 100) / 100;
   }
 
+  function horizontalOverflow(subject, container, tolerance) {
+    if (subject.width <= container.width + tolerance) return null;
+    const overflow = overflowFor(subject, container, tolerance);
+    if (!overflow) return null;
+    const horizontal = {};
+    if (overflow.left != null) horizontal.left = overflow.left;
+    if (overflow.right != null) horizontal.right = overflow.right;
+    return Object.keys(horizontal).length > 0 ? horizontal : null;
+  }
+
   function overflowFor(subject, container, tolerance, vTolerance) {
     // Horizontal axis uses `tolerance`; vertical axis uses `vTolerance` (defaults to the same).
     // A separate vertical tolerance lets text overflow checks absorb glyph ink that exceeds a
@@ -550,20 +560,40 @@
     return issues;
   }
 
+  function isNowrapTextChild(child) {
+    if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) return false;
+    if (getComputedStyle(child).whiteSpace !== "nowrap") return false;
+    return (child.textContent || "").trim().length > 0;
+  }
+
+  function hasNowrapTextChild(element) {
+    return Array.from(element.children).some(isNowrapTextChild);
+  }
+
   function containerOverflowIssues(root, time, tolerance) {
     const issues = [];
     const containers = Array.from(root.querySelectorAll("*")).filter((element) => {
       if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) return false;
       const style = getComputedStyle(element);
-      return clipsOverflow(style) || element.hasAttribute("data-layout-boundary");
+      return (
+        clipsOverflow(style) ||
+        element.hasAttribute("data-layout-boundary") ||
+        hasNowrapTextChild(element)
+      );
     });
 
     for (const container of containers) {
+      const style = getComputedStyle(container);
+      const checksEveryChild =
+        clipsOverflow(style) || container.hasAttribute("data-layout-boundary");
       const containerRect = toRect(container.getBoundingClientRect());
       for (const child of Array.from(container.children)) {
         if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) continue;
+        if (!checksEveryChild && !isNowrapTextChild(child)) continue;
         const childRect = toRect(child.getBoundingClientRect());
-        const overflow = overflowFor(childRect, containerRect, tolerance);
+        const overflow = checksEveryChild
+          ? overflowFor(childRect, containerRect, tolerance)
+          : horizontalOverflow(childRect, containerRect, tolerance);
         if (!overflow) continue;
         issues.push({
           code: "container_overflow",
@@ -571,7 +601,9 @@
           time,
           selector: selectorFor(child),
           containerSelector: selectorFor(container),
-          message: "Element extends outside a clipping layout container.",
+          message: checksEveryChild
+            ? "Element extends outside a clipping layout container."
+            : "Nowrap text is wider than its container.",
           rect: childRect,
           containerRect,
           overflow,
@@ -911,7 +943,7 @@
   }
 
   function hasAllowOcclusionFlag(element) {
-    return !!element.closest("[data-layout-allow-occlusion]");
+    return element.hasAttribute("data-layout-allow-occlusion");
   }
 
   // A foreign element is one painted independently of the text — not the text

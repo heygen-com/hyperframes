@@ -7,8 +7,10 @@ import { bodyLimit } from "hono/body-limit";
 import {
   closeSync,
   existsSync,
+  lstatSync,
   openSync,
   readFileSync,
+  readlinkSync,
   writeFileSync,
   writeSync,
   mkdirSync,
@@ -126,6 +128,46 @@ interface ResolvedGsapFile {
   absPath: string;
 }
 
+/**
+ * True only for a symlink that itself lives inside the project, whose target
+ * (once resolved against the link's own directory) also names a location
+ * inside the project, and does not exist anywhere — not for one that exists
+ * (that stays a real containment failure) and not for a plain missing path
+ * (the ordinary case `resolveWithinProject` already covers).
+ *
+ * Both containment checks matter, not just the second: a request can name a
+ * path lexically *outside* the project (reached via `..`) that happens to be
+ * a dangling symlink out there, or a real in-project symlink that points
+ * *outside* the project at a target that may or may not exist. Labeling
+ * either of those "not found" would leak, to anyone who can hit the route,
+ * whether an out-of-project path exists — the containment check exists
+ * precisely so that answer never depends on what's outside the project.
+ * `isSafePath` fails closed on a dangling in-project symlink by design (a
+ * write through it could later resolve outside the project once something
+ * creates the target) — this does not loosen that; it only tells the caller
+ * *why* the containment check refused, so the response can say "not found"
+ * instead of a path-traversal-shaped "forbidden" for a case that scans as
+ * broken plumbing, not an attack.
+ */
+function isDanglingSymlinkInProject(projectDir: string, lexicalPath: string): boolean {
+  if (!isSafePath(projectDir, dirname(lexicalPath))) return false;
+  let stats;
+  try {
+    stats = lstatSync(lexicalPath);
+  } catch {
+    return false;
+  }
+  if (!stats.isSymbolicLink()) return false;
+  const target = resolve(dirname(lexicalPath), readlinkSync(lexicalPath));
+  if (!isSafePath(projectDir, target)) return false;
+  try {
+    statSync(lexicalPath);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 /** Resolve project + safe absolute path for any project-scoped route. */
 async function resolveProjectPath(
   c: RouteContext,
@@ -160,6 +202,9 @@ async function resolveProjectPath(
 
   const absPath = resolveWithinProject(project.dir, filePath);
   if (!absPath) {
+    if (isDanglingSymlinkInProject(project.dir, resolve(project.dir, filePath))) {
+      return { error: c.json({ error: "not found", why: "dangling_symlink" }, 404) } as const;
+    }
     return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
   }
 
@@ -2276,7 +2321,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectFile(c, adapter);
     if ("error" in res) return res.error;
 
-    if (!existsSync(res.absPath)) {
+    // Opened once and checked/read through the same descriptor, not the path,
+    // so a directory-for-file swap (or anything else) between the check below
+    // and the read can't land a stale answer — both act on the identical inode.
+    let fd: number;
+    try {
+      fd = openSync(res.absPath, "r");
+    } catch {
       if (c.req.query("optional") === "1") {
         // `missing: true` separates the absent-file shim from a genuinely
         // 0-byte file — both answer `content: ""`, and the caller could not
@@ -2289,20 +2340,34 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       }
       return c.json({ error: "not found" }, 404);
     }
+    try {
+      // A listing built from `walkDir` can show a path that has since been
+      // replaced by a directory (a rename, or an agent overwriting a file
+      // with a folder of the same name) — opening it succeeds (POSIX allows
+      // O_RDONLY on a directory), and reading it would throw `EISDIR`, which
+      // Hono answers as a plain-text 500. The caller already handles a 404
+      // with `why`; this reports the same shape instead of an opaque server
+      // error for something that is not one.
+      if (!fstatSync(fd).isFile()) {
+        return c.json({ error: "not found", why: "not_a_file" }, 404);
+      }
 
-    const content = readFileSync(res.absPath);
-    const version = fileContentVersion(content);
-    c.header("ETag", version);
-    // `missing: false` on the read path too, so its PRESENCE is what tells a
-    // caller this server distinguishes the two empty answers at all. Without
-    // it here, a real 0-byte file from a new server looks exactly like either
-    // case from an old one, and the split above buys nothing.
-    return c.json({
-      filename: res.filePath,
-      content: content.toString("utf-8"),
-      version,
-      missing: false,
-    });
+      const content = readFileSync(fd);
+      const version = fileContentVersion(content);
+      c.header("ETag", version);
+      // `missing: false` on the read path too, so its PRESENCE is what tells a
+      // caller this server distinguishes the two empty answers at all. Without
+      // it here, a real 0-byte file from a new server looks exactly like either
+      // case from an old one, and the split above buys nothing.
+      return c.json({
+        filename: res.filePath,
+        content: content.toString("utf-8"),
+        version,
+        missing: false,
+      });
+    } finally {
+      closeSync(fd);
+    }
   });
 
   // ── Write (overwrite) ──

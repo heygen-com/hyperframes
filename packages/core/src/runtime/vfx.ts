@@ -30,9 +30,19 @@ import {
   type HfVfxNode,
   type HfVfxParam,
   type HfVfxParamValues,
+  type HfVfxRefParam,
 } from "../vfx";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isCanvasElement, isHtmlElement } from "./domRealm";
+
+/**
+ * Marks a `ref` wrapper whose element ALSO paints on its own — v1.1 assumed a
+ * matte source is invisible in After Effects and that is not always true
+ * (retro-wave `Logo Anim` layer 5 is layer 4's displacement map AND an enabled,
+ * fully opaque layer). Without it the runtime would clear the wrapper's bitmap
+ * after reading it and the layer would vanish from the page.
+ */
+const VFX_REF_VISIBLE_ATTR = "data-vfx-ref-visible";
 
 /** The prefix `frameCapture.ts` matches to fail a render fast. */
 const VFX_ERROR_LABEL = "[HyperFrames] composition script error:";
@@ -78,12 +88,36 @@ interface CompositeWindow extends Window {
   __hf_page_composite_resolve?: () => boolean;
 }
 
-/** Everything a `self` host needs to read its own pixels back. */
+/**
+ * One captured texture: the `<canvas layoutsubtree class="hf-vfx-src">` wrapper
+ * the exporter emitted, its single `.hf-vfx-in` child, and the GL texture the
+ * capture is uploaded into.
+ *
+ * The same shape serves all three sources a chain can read — the host's own
+ * pixels (`self`), everything below the host (`backdrop`), and a second element
+ * named by a `ref` param (`u_src2`) — because at capture time they differ only
+ * in WHICH element supplies the pixels.
+ */
 interface VfxCaptureSource {
   canvas: HTMLCanvasElement;
   inner: HTMLElement;
   ctx: DrawElementCtx;
   texture: WebGLTexture;
+  /**
+   * The wrapper was found through `data-vfx-for`, i.e. it wraps the layers
+   * BELOW the host rather than the host's own content. Such a wrapper lives
+   * outside the host, which is what makes a hidden host a pass-through rather
+   * than a hole (see `capturePassThrough`).
+   */
+  backdrop: boolean;
+  /**
+   * The wrapper carries `data-vfx-ref-visible`: its bitmap is a layer the page
+   * shows, not only a texture, so the capture keeps it and draws it at the
+   * REF's own box rather than the host's.
+   */
+  visible: boolean;
+  /** `.hf-vfx-in` measured 0×0 and that has already been reported once. */
+  emptyBoxReported: boolean;
 }
 
 /**
@@ -101,6 +135,10 @@ interface PassLocations {
   t: WebGLUniformLocation | null;
   fps: WebGLUniformLocation | null;
   src: WebGLUniformLocation | null;
+  /** Bound only for a def with a `ref` param (v1.1's second source). */
+  src2: WebGLUniformLocation | null;
+  /** 1 when this pass's optional ref actually resolved, 0 when it did not. */
+  hasSrc2: WebGLUniformLocation | null;
   /** Keyed by the def's param key, without the `u_` prefix. */
   params: Record<string, WebGLUniformLocation | null>;
 }
@@ -112,6 +150,16 @@ interface VfxPass {
   /** Chain params after clamp/defaults; CSS vars override per paint. */
   params: HfVfxParamValues;
   locations: PassLocations;
+  /** `u_src2`: the element this node's `ref` param named. Per NODE, not per
+   *  entry — two nodes in one chain may matte against different elements. */
+  ref?: VfxCaptureSource;
+  /**
+   * The `ref` param names this pass's OWN host — the self-referential stencil
+   * shape (`target === host` in `resolveRefSource`). There is no second
+   * texture to capture, so `bindPass` points `u_src2` at unit 0 explicitly
+   * instead of leaving it unbound.
+   */
+  selfRef?: boolean;
 }
 
 /** Two colour targets a multi-node chain alternates between. */
@@ -125,6 +173,13 @@ interface PingPong {
 export interface VfxEntry {
   host: HTMLElement;
   chain: HfVfxChain;
+  /**
+   * What this host RESOLVED to, not what its defs declare: `backdrop` when the
+   * wrapper was found through `data-vfx-for`, else the chain's own requirement.
+   * The two are the same kernel reading the same `u_src` — `self` and
+   * `backdrop` differ only in which element the exporter put inside the
+   * wrapper — so the DOM is the only place the distinction exists.
+   */
   capture: HfVfxCapture;
   out: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
@@ -242,12 +297,107 @@ function resolveUniformLocations(
     t: gl.getUniformLocation(program, "u_t"),
     fps: gl.getUniformLocation(program, "u_fps"),
     src: gl.getUniformLocation(program, "u_src"),
+    src2: gl.getUniformLocation(program, "u_src2"),
+    hasSrc2: gl.getUniformLocation(program, "u_hasSrc2"),
     params,
   };
 }
 
-function buildPasses(gl: WebGL2RenderingContext, chain: HfVfxChain): VfxPass[] | null {
+/**
+ * What a pass's `ref` param resolved to. A plain union return (rather than
+ * overloading `undefined`/`null`) is what lets `buildPasses` tell "no ref
+ * param on this def" apart from "ref param present, but self-referential" —
+ * `VfxPass.selfRef` needs that distinction to bind `u_src2` explicitly instead
+ * of relying on an unbound sampler's implicit unit-0 default.
+ */
+type RefResolution =
+  | { kind: "none" }
+  | { kind: "self" }
+  | { kind: "error" }
+  | { kind: "source"; source: VfxCaptureSource };
+
+/**
+ * The element a `ref` param names, wrapped in its own capture canvas.
+ *
+ * The exporter wraps a matte/map source the same way it wraps a `self` layer
+ * (the interface spec's v1.1: "the exporter wraps the referenced element in its
+ * own `.hf-vfx-src` canvas") — which is also why nothing is injected here. A
+ * runtime-created `<canvas layoutsubtree>` would be invisible to
+ * `detectRenderModeHints`, and the `htmlInCanvas` single-worker pin it derives
+ * from the SOURCE markup is what keeps concurrent `drawElementImage` off.
+ */
+/**
+ * A `ref` param with no id supplied. An optional ref left empty is the def's
+ * own fallback (displacement-map reads `u_src` as its map), not a broken
+ * chain; a mandatory one with nothing named is an authoring error.
+ */
+function resolveEmptyRefParam(
+  host: HTMLElement,
+  node: HfVfxNode,
+  def: HfVfxDef,
+  param: HfVfxRefParam,
+): RefResolution {
+  if (param.optional) return { kind: "none" };
+  reportVfxError(
+    `${describeHost(host)}: node "${node.id}" (${def.id}) needs a "${param.key}" ` +
+      `param naming the id of the element to read as its second source.`,
+  );
+  return { kind: "error" };
+}
+
+function resolveRefSource(
+  host: HTMLElement,
+  node: HfVfxNode,
+  def: HfVfxDef,
+  params: HfVfxParamValues,
+  gl: WebGL2RenderingContext,
+  cache: Map<HTMLElement, VfxCaptureSource>,
+): RefResolution {
+  const param = def.params.find((p): p is HfVfxRefParam => p.kind === "ref");
+  if (!param) return { kind: "none" };
+  const id = params[param.key];
+  if (typeof id !== "string" || id === "") return resolveEmptyRefParam(host, node, def, param);
+  const target = host.ownerDocument.getElementById(id);
+  if (!isHtmlElement(target)) {
+    reportVfxError(
+      `${describeHost(host)}: node "${node.id}" (${def.id}) names "${param.key}" element ` +
+        `#${id}, which is not in the composition.`,
+    );
+    return { kind: "error" };
+  }
+  // A ref naming its own host is the self-referential form — `u_src` already
+  // holds those pixels. Capturing it again would cost a second
+  // `drawElementImage` per frame for the same image, and on a `backdrop` host
+  // it would resolve the `data-vfx-for` sibling and read the layers BELOW as
+  // the map.
+  //
+  // An OPTIONAL ref (displacement-map's `map`) already has a shader-side
+  // branch keyed off `u_hasSrc2` for "nothing named" — self-reference means
+  // exactly the same thing to it as leaving the param empty, so it is folded
+  // into `"none"` rather than given its own kind: `u_hasSrc2` stays 0 and the
+  // shader's own fallback reads `u_src`, unchanged from before this type.
+  // A MANDATORY ref (luma-matte's `matte`) has no such branch — its shader
+  // always samples `u_src2` — so a real `"self"` kind is the only way `u_src2`
+  // gets bound at all; `bindPass` points it at `u_src`'s own texture unit.
+  if (target === host) return param.optional ? { kind: "none" } : { kind: "self" };
+  const cached = cache.get(target);
+  if (cached) return { kind: "source", source: cached };
+  const source = resolveCaptureSource(target, gl, `${describeHost(host)}: "${param.key}" source`);
+  if (!source) return { kind: "error" };
+  source.visible = source.canvas.hasAttribute(VFX_REF_VISIBLE_ATTR);
+  cache.set(target, source);
+  return { kind: "source", source };
+}
+
+function buildPasses(
+  gl: WebGL2RenderingContext,
+  chain: HfVfxChain,
+  host: HTMLElement,
+): VfxPass[] | null {
   const passes: VfxPass[] = [];
+  // One source per referenced ELEMENT: two nodes matting against the same
+  // matte capture it once and share the texture.
+  const refs = new Map<HTMLElement, VfxCaptureSource>();
   for (const node of enabledVfxNodes(chain)) {
     const def = getVfxDef(node.type);
     if (!def) {
@@ -259,12 +409,17 @@ function buildPasses(gl: WebGL2RenderingContext, chain: HfVfxChain): VfxPass[] |
       reportVfxError(`node "${node.id}" (${def.id}) has no usable program`);
       return null;
     }
+    const params = normalizeVfxParams(def.id, node.params);
+    const resolved = resolveRefSource(host, node, def, params, gl, refs);
+    if (resolved.kind === "error") return null;
     passes.push({
       node,
       def,
       program,
-      params: normalizeVfxParams(def.id, node.params),
+      params,
       locations: resolveUniformLocations(gl, program, def),
+      ...(resolved.kind === "source" ? { ref: resolved.source } : {}),
+      selfRef: resolved.kind === "self",
     });
   }
   return passes;
@@ -281,33 +436,82 @@ function createCaptureTexture(gl: WebGL2RenderingContext): WebGLTexture {
 }
 
 /**
- * The `<canvas layoutsubtree class="hf-vfx-src">` the exporter emits for a
- * `self` chain, plus its 2-D context. Never injected at runtime: the compiler
- * derives the `htmlInCanvas` render-mode hint from this canvas being in the
- * source, and that pin exists for a measured reason.
+ * The `backdrop` wrapper for `owner`: a `<canvas layoutsubtree class="hf-vfx-src"
+ * data-vfx-for="<owner id>">` among the owner's SIBLINGS, holding every layer
+ * below it (interface v1.1).
+ *
+ * Scoped to the parent rather than the document because that is where the
+ * exporter puts it — z-order is DOM order, so the wrapper is the host's own
+ * preceding sibling at whatever depth the host sits, stacked adjustment layers
+ * included. Read attribute-by-attribute instead of through a selector: an id
+ * goes into this comparison unescaped, and a `querySelector` built by
+ * concatenation would throw on an id a selector cannot spell.
+ */
+function findBackdropWrapper(owner: HTMLElement): HTMLCanvasElement | null {
+  const parent = owner.parentElement;
+  if (!parent || owner.id === "") return null;
+  const siblings = parent.children;
+  for (let i = 0; i < siblings.length; i++) {
+    const sibling = siblings.item(i);
+    if (!isCanvasElement(sibling)) continue;
+    if (!sibling.classList.contains("hf-vfx-src")) continue;
+    if (sibling.getAttribute("data-vfx-for") === owner.id) return sibling;
+  }
+  return null;
+}
+
+/**
+ * The `<canvas layoutsubtree class="hf-vfx-src">` that supplies `owner`'s
+ * pixels, plus its 2-D context. Never injected at runtime: the compiler derives
+ * the `htmlInCanvas` render-mode hint from this canvas being in the source, and
+ * that pin exists for a measured reason.
+ *
+ * Resolution order, per plan Task 2.6: a `data-vfx-for` sibling (the
+ * `backdrop` shape — the layers below) before the owner's own child (the
+ * `self` shape — its own content). A def's `capture` says only THAT the kernel
+ * needs a texture; which element fills it is the exporter's placement, and this
+ * is where the runtime reads that placement off the DOM.
+ *
+ * `.hf-vfx-in` must be the canvas's IMMEDIATE child: Chrome refuses anything
+ * else with "Only immediate children of the <canvas> element can be passed to
+ * DrawElementImage", so a deeper wrapper is a registration-time error here
+ * rather than a throw on every frame.
  */
 function resolveCaptureSource(
-  host: HTMLElement,
+  owner: HTMLElement,
   gl: WebGL2RenderingContext,
+  label: string,
 ): VfxCaptureSource | undefined {
-  const canvas = host.querySelector("canvas.hf-vfx-src");
-  const inner = canvas?.querySelector(".hf-vfx-in");
+  const backdrop = findBackdropWrapper(owner);
+  const canvas = backdrop ?? owner.querySelector("canvas.hf-vfx-src");
+  const inner = isCanvasElement(canvas) ? canvas.querySelector(":scope > .hf-vfx-in") : null;
   if (!isCanvasElement(canvas) || !isHtmlElement(inner)) {
     reportVfxError(
-      `${describeHost(host)}: a capturing chain needs ` +
-        `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in source.`,
+      `${label}: a capturing chain needs ` +
+        `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in ` +
+        `source — inside the element for its own pixels, or beside it with ` +
+        `data-vfx-for="${owner.id}" for the layers below it.`,
     );
     return undefined;
   }
   const ctx = canvas.getContext("2d") as DrawElementCtx | null;
   if (!ctx || typeof ctx.drawElementImage !== "function") {
     reportVfxError(
-      `${describeHost(host)}: drawElementImage is unavailable, so the layer cannot be ` +
+      `${label}: drawElementImage is unavailable, so the layer cannot be ` +
         `captured. In Studio, enable chrome://flags/#canvas-draw-element.`,
     );
     return undefined;
   }
-  return { canvas, inner, ctx, texture: createCaptureTexture(gl) };
+  return {
+    canvas,
+    inner,
+    ctx,
+    texture: createCaptureTexture(gl),
+    backdrop: backdrop !== null,
+    // Only a `ref` source may be visible; `resolveRefSource` sets it.
+    visible: false,
+    emptyBoxReported: false,
+  };
 }
 
 /**
@@ -340,15 +544,20 @@ function watchContextLoss(entry: VfxEntry): void {
   });
 }
 
-function registerVfxHost(host: HTMLElement): VfxEntry | null {
-  let chain: HfVfxChain;
+/** The host's chain, or `null` once the reason it is unusable has been said. */
+function readVfxChain(host: HTMLElement): HfVfxChain | null {
   try {
-    chain = parseVfxChain(host.getAttribute(HF_VFX_ATTR) ?? "");
+    return parseVfxChain(host.getAttribute(HF_VFX_ATTR) ?? "");
   } catch (err) {
     const detail = err instanceof VfxChainError ? err.message : String(err);
     reportVfxError(`${describeHost(host)}: ${detail}`);
     return null;
   }
+}
+
+function registerVfxHost(host: HTMLElement): VfxEntry | null {
+  const chain = readVfxChain(host);
+  if (!chain) return null;
   const out = findOrCreateOut(host);
   const gl = out.getContext("webgl2", GL_ATTRS);
   if (!gl) {
@@ -356,34 +565,94 @@ function registerVfxHost(host: HTMLElement): VfxEntry | null {
     out.remove();
     return null;
   }
-  const passes = buildPasses(gl, chain);
+  const passes = buildPasses(gl, chain, host);
   if (!passes) {
     out.remove();
     return null;
   }
-  const capture = chainCapture(chain);
-  const src = capture === "none" ? undefined : resolveCaptureSource(host, gl);
-  if (capture !== "none" && !src) {
+  const declared = chainCapture(chain);
+  const src = declared === "none" ? undefined : resolveCaptureSource(host, gl, describeHost(host));
+  if (declared !== "none" && !src) {
     out.remove();
     return null;
   }
+  const capture = src?.backdrop ? "backdrop" : declared;
   const entry: VfxEntry = { host, chain, capture, out, gl, passes, src, contextLost: false };
   watchContextLoss(entry);
   return entry;
 }
 
 /**
- * A hidden host has no paint record, so `drawElementImage` would throw on it —
- * and the clip runtime hides every host outside its `data-start`/`data-duration`
- * window, which would otherwise fail the render on each of those frames.
+ * Whether an element is on screen, and so whether it has a paint record at
+ * all: `drawElementImage` throws on a hidden subtree, and the clip runtime
+ * hides everything outside its `data-start`/`data-duration` window, which
+ * would otherwise fail the render on each of those frames.
+ *
+ * Asked of hosts (does this chain paint?) and of capture sources (is there
+ * anything to read?) alike.
  */
 function isPaintableHost(host: HTMLElement): boolean {
   const style = getComputedStyle(host);
   return style.display !== "none" && style.visibility !== "hidden";
 }
 
+/**
+ * Whether a source's `.hf-vfx-in` has a paint record to capture. `visibility`
+ * inherits, so one read at `inner` covers a matte hidden that way; `display`
+ * does NOT, so a ref whose OWNING element is `display:none` (the clip
+ * runtime's `data-hidden` and in-flow timed-leaf paths) still computes
+ * `display:block` at `inner` — and would wait out the paint ceiling, then fail
+ * as a misleading 0×0. Hence the ancestor walk. `checkVisibility()` and
+ * `offsetParent` would say the same in Chrome but are absent or always-null
+ * in the unit harness's DOM.
+ */
+function isPaintableSource(src: VfxCaptureSource): boolean {
+  if (getComputedStyle(src.inner).visibility === "hidden") return false;
+  for (let el: HTMLElement | null = src.inner; el; el = el.parentElement) {
+    if (getComputedStyle(el).display === "none") return false;
+  }
+  return true;
+}
+
 function describeHost(host: HTMLElement): string {
   return host.id ? `#${host.id}` : `<${host.tagName.toLowerCase()}>`;
+}
+
+/**
+ * Every texture this entry captures per frame, in binding order: `u_src`
+ * first, then each node's `u_src2`. A ref shared by two nodes appears once —
+ * `buildPasses` hands both passes the same source object.
+ */
+function entrySources(entry: VfxEntry): VfxCaptureSource[] {
+  const sources: VfxCaptureSource[] = entry.src ? [entry.src] : [];
+  for (const pass of entry.passes) {
+    if (pass.ref && !sources.includes(pass.ref)) sources.push(pass.ref);
+  }
+  return sources;
+}
+
+/**
+ * A chain whose source is the layers BELOW the host. Its wrapper is outside the
+ * host, so the host's own visibility does not decide whether those layers are
+ * on screen — `capturePassThrough` does.
+ */
+function isBackdropEntry(entry: VfxEntry): boolean {
+  return entry.src?.backdrop === true;
+}
+
+/**
+ * Every distinct VISIBLE ref this entry's passes read — element(s) that paint
+ * on the page independently of whether this entry's own kernel currently
+ * runs, exactly like `entrySources` but restricted to the sources whose
+ * bitmap is itself the frame (`VFX_REF_VISIBLE_ATTR`). A ref shared by two
+ * passes appears once, same rule as `entrySources`.
+ */
+function visibleRefSources(entry: VfxEntry): VfxCaptureSource[] {
+  const sources: VfxCaptureSource[] = [];
+  for (const pass of entry.passes) {
+    if (pass.ref?.visible && !sources.includes(pass.ref)) sources.push(pass.ref);
+  }
+  return sources;
 }
 
 /** Drop the GL objects the outgoing registry owns before replacing it. */
@@ -391,7 +660,7 @@ function releaseRegistry(): void {
   for (const entry of registry) {
     const { gl } = entry;
     for (const pass of entry.passes) gl.deleteProgram(pass.program);
-    if (entry.src) gl.deleteTexture(entry.src.texture);
+    for (const source of entrySources(entry)) gl.deleteTexture(source.texture);
     if (!entry.ping) continue;
     for (const texture of entry.ping.textures) gl.deleteTexture(texture);
     for (const framebuffer of entry.ping.framebuffers) gl.deleteFramebuffer(framebuffer);
@@ -507,6 +776,11 @@ function setPassUniforms(
   gl.uniform2f(locations.size, width, height);
   gl.uniform1f(locations.t, t);
   gl.uniform1f(locations.fps, registryFps);
+  // A def whose ref is optional needs to know which sampler holds its second
+  // input; on a shader without the uniform the location is null and this is a
+  // defined no-op. A self-referential ref counts as resolved too — `u_src2`
+  // reads real data, just from unit 0 rather than a second capture.
+  gl.uniform1f(locations.hasSrc2, pass.ref || pass.selfRef ? 1 : 0);
   for (const param of pass.def.params) {
     const value = paramUniformValue(param, pass, style);
     if (value === null) continue;
@@ -514,19 +788,51 @@ function setPassUniforms(
   }
 }
 
-/** Bind this pass's render target and its input texture. */
+/** Where this pass draws: the visible canvas for the last one, else the
+ *  ping-pong target the next pass will read. */
+function passTarget(index: number, last: number, ping: PingPong | null): WebGLFramebuffer | null {
+  if (index === last || !ping) return null;
+  return ping.framebuffers[index % 2] ?? null;
+}
+
+/** What this pass reads as `u_src`: the capture for the first pass, the
+ *  previous pass's target after that. */
+function passInput(entry: VfxEntry, index: number, ping: PingPong | null): WebGLTexture | null {
+  if (index === 0) return entry.src?.texture ?? null;
+  return ping?.textures[(index - 1) % 2] ?? null;
+}
+
+/** Bind this pass's render target and its input textures. */
 function bindPass(entry: VfxEntry, index: number, last: number, ping: PingPong | null): void {
   const { gl } = entry;
-  gl.bindFramebuffer(
-    gl.FRAMEBUFFER,
-    index === last || !ping ? null : (ping.framebuffers[index % 2] ?? null),
-  );
-  const source =
-    index === 0 ? (entry.src?.texture ?? null) : ping && ping.textures[(index - 1) % 2];
-  if (!source) return;
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, source);
-  gl.uniform1i(entry.passes[index]!.locations.src, 0);
+  const pass = entry.passes[index]!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, passTarget(index, last, ping));
+  const source = passInput(entry, index, ping);
+  if (source) bindSampler(gl, pass.locations.src, source, 0);
+  // Unit 1 for `u_src2`, then back to unit 0 so every other bind in this
+  // module — the next pass's, and `uploadCaptureTexture`'s — starts from the
+  // same active unit no matter which passes carry a ref.
+  if (pass.ref) {
+    bindSampler(gl, pass.locations.src2, pass.ref.texture, 1);
+    gl.activeTexture(gl.TEXTURE0);
+  } else if (pass.selfRef && source) {
+    // A `ref` param naming its own host: `u_src2` reads exactly what `u_src`
+    // just bound. Previously left unbound, which happened to read unit 0 by
+    // GLSL's default sampler binding — correct today, but implicit rather than
+    // stated.
+    gl.uniform1i(pass.locations.src2, 0);
+  }
+}
+
+function bindSampler(
+  gl: WebGL2RenderingContext,
+  location: WebGLUniformLocation | null,
+  texture: WebGLTexture,
+  unit: 0 | 1,
+): void {
+  gl.activeTexture(unit === 0 ? gl.TEXTURE0 : gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.uniform1i(location, unit);
 }
 
 function paintEntry(entry: VfxEntry, t: number): void {
@@ -551,6 +857,7 @@ function paintEntry(entry: VfxEntry, t: number): void {
 }
 
 function uploadCaptureTexture(gl: WebGL2RenderingContext, src: VfxCaptureSource): void {
+  gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, src.texture);
   // The full-screen triangle's `v_uv` is y-up and a canvas is y-down; the
   // kernels write premultiplied colour, so the source must arrive that way too.
@@ -562,18 +869,106 @@ function uploadCaptureTexture(gl: WebGL2RenderingContext, src: VfxCaptureSource)
 }
 
 /**
- * Read the host's own pixels into `u_src`. Both `clearRect`s matter: the first
- * because `drawElementImage` composites onto whatever is there, the second
- * because a `layoutsubtree` canvas's BITMAP is painted by the page compositor
- * even though its children are not — leaving the captured frame in it would
- * show the unprocessed layer through every transparent pixel of `.hf-vfx-out`.
+ * What a capture does with what it drew. Three combinations exist, and each
+ * one is a different kind of source:
+ *
+ * - texture only — an invisible source read as `u_src`/`u_src2`. The bitmap is
+ *   cleared after the upload because a `layoutsubtree` canvas's BITMAP is
+ *   painted by the page compositor even though its children are not, and
+ *   leaving the raw capture there would show through `.hf-vfx-out`.
+ * - bitmap only — a `backdrop` wrapper whose host is not painting this frame
+ *   (the bitmap IS the frame: it carries the layers below an adjustment layer
+ *   that is currently off), or a VISIBLE ref whose owning host is not
+ *   painting (the ref's own layer still has to show; no kernel will read the
+ *   texture this frame, so there is nothing to upload).
+ * - both — a `ref` source the exporter marked visible, captured while its
+ *   owning host IS painting. Its layer paints on its own AND feeds a kernel,
+ *   so the capture is uploaded and left on screen.
  */
-function captureEntry(entry: VfxEntry, quiet = false): boolean {
-  const src = entry.src;
-  const size = deviceSize(entry.host);
-  if (!src || !size) return false;
+interface CaptureMode {
+  upload: boolean;
+  keepBitmap: boolean;
+}
+
+const CAPTURE_TO_TEXTURE: CaptureMode = { upload: true, keepBitmap: false };
+const CAPTURE_PASS_THROUGH: CaptureMode = { upload: false, keepBitmap: true };
+const CAPTURE_VISIBLE_SOURCE: CaptureMode = { upload: true, keepBitmap: true };
+/**
+ * A visible ref captured while its owning entry's host is NOT painting: the
+ * ref's own layer still has to stay current on screen, but no kernel will run
+ * to read the texture this frame (`paintEntry` never fires), so the upload is
+ * skipped.
+ */
+const CAPTURE_VISIBLE_ONLY: CaptureMode = { upload: false, keepBitmap: true };
+
+/** Assigning `width`/`height` clears the bitmap, so only a real change does. */
+function resizeCaptureCanvas(src: VfxCaptureSource, size: { width: number; height: number }): void {
   if (src.canvas.width !== size.width) src.canvas.width = size.width;
   if (src.canvas.height !== size.height) src.canvas.height = size.height;
+}
+
+/**
+ * Read one source's pixels into its texture. Both `clearRect`s matter: the
+ * first because `drawElementImage` composites onto whatever is there, the
+ * second because a `layoutsubtree` canvas's BITMAP is painted by the page
+ * compositor even though its children are not — leaving the captured frame in
+ * it would show the unprocessed layer through every transparent pixel of
+ * `.hf-vfx-out`.
+ *
+ * `keepBitmap` inverts exactly that second clear: for a `backdrop` wrapper
+ * whose host is not painting this frame, where the bitmap IS the frame (see
+ * `capturePassThrough`), and for a VISIBLE ref whose owning host is not
+ * painting (see `captureVisibleRefsOnly`) — the ref's layer is on screen
+ * either way.
+ *
+ * Every source is drawn at the HOST's device size (`captureBox`'s default),
+ * so `u_src` and `u_src2` share one coordinate space with `.hf-vfx-out` and a
+ * kernel can read both at the same `v_uv`. A matte whose own box differs from
+ * the host's is therefore scaled into the host's box rather than placed in
+ * composition space — v1's semantic, recorded because After Effects places it
+ * in comp space. A VISIBLE ref is the one exception: `captureBox` draws it at
+ * its OWN box, since it is a layer on the page and must paint at its own
+ * size, not the host's.
+ */
+function captureSource(
+  entry: VfxEntry,
+  src: VfxCaptureSource,
+  size: { width: number; height: number },
+  quiet: boolean,
+  mode: CaptureMode,
+): boolean {
+  // A hidden source is an EMPTY capture, not a failure. The clip runtime hides
+  // a matte layer outside its own window (`visibility: hidden`, inherited by
+  // the `.hf-vfx-in` inside it), and a hidden subtree has no paint record:
+  // `drawElementImage` would throw "No cached paint record" on every one of
+  // those frames, and the `paint` wait before it would burn its whole ceiling
+  // first. An empty `u_src2` is also the right answer — under Alpha the layer
+  // it mattes disappears, under Alpha Inverted it passes, which is what After
+  // Effects does with a matte that is not there yet.
+  if (!isPaintableSource(src)) {
+    resizeCaptureCanvas(src, size);
+    src.ctx.clearRect(0, 0, size.width, size.height);
+    if (mode.upload) uploadCaptureTexture(entry.gl, src);
+    return true;
+  }
+  // The one capture failure Chrome does NOT report: inside a `layoutsubtree`
+  // canvas a child sized by `inset`/percentages measures 0×0, and
+  // `drawElementImage` then succeeds and draws nothing at all — no throw, no
+  // warning, a blank layer. Measured (vault `layoutsubtree-capture-rules`),
+  // so it is checked here and said out loud, once per source rather than once
+  // per frame.
+  if (deviceSize(src.inner) === null) {
+    if (!src.emptyBoxReported) {
+      src.emptyBoxReported = true;
+      reportVfxError(
+        `${describeHost(entry.host)}: the .hf-vfx-in wrapper measures 0×0, so its capture ` +
+          `would be empty. Inside a layoutsubtree canvas an inset or percentage box has no ` +
+          `size — the wrapper must state an explicit width and height in px.`,
+      );
+    }
+    return false;
+  }
+  resizeCaptureCanvas(src, size);
   src.ctx.clearRect(0, 0, size.width, size.height);
   try {
     src.ctx.drawElementImage(src.inner, 0, 0, size.width, size.height);
@@ -591,9 +986,103 @@ function captureEntry(entry: VfxEntry, quiet = false): boolean {
     }
     return false;
   }
-  uploadCaptureTexture(entry.gl, src);
-  src.ctx.clearRect(0, 0, size.width, size.height);
+  if (mode.upload) uploadCaptureTexture(entry.gl, src);
+  if (!mode.keepBitmap) src.ctx.clearRect(0, 0, size.width, size.height);
   return true;
+}
+
+/**
+ * The box one source is drawn at. The host's, so `u_src`, `u_src2` and
+ * `.hf-vfx-out` share a pixel grid — except for a VISIBLE ref, which is a
+ * layer on the page and must paint at its own size and resolution. Sampling is
+ * unaffected either way: `drawElementImage(el, 0, 0, w, h)` scales the element
+ * into the whole canvas, so normalized `v_uv` addresses the same point in the
+ * element's box whatever the bitmap's pixel size — which is the v1 rule, a
+ * ref scaled into the host's box rather than placed in composition space.
+ */
+function captureBox(
+  src: VfxCaptureSource,
+  hostSize: { width: number; height: number },
+): { width: number; height: number } {
+  if (!src.visible) return hostSize;
+  return deviceSize(src.inner) ?? hostSize;
+}
+
+/**
+ * Capture everything this entry's kernels read for one frame: `u_src`, then
+ * each node's `u_src2`. A source that fails does not stop the others — the
+ * failure is reported where it happened — but the frame is only "captured"
+ * when all of them are, so a half-captured paint never counts as authoritative.
+ */
+function captureEntry(entry: VfxEntry, quiet = false): boolean {
+  const size = deviceSize(entry.host);
+  const sources = entrySources(entry);
+  if (!size || sources.length === 0) return false;
+  let captured = true;
+  for (const source of sources) {
+    const mode = source.visible ? CAPTURE_VISIBLE_SOURCE : CAPTURE_TO_TEXTURE;
+    if (!captureSource(entry, source, captureBox(source, size), quiet, mode)) {
+      captured = false;
+    }
+  }
+  return captured;
+}
+
+/**
+ * A `backdrop` host that is not painting this frame — the clip runtime hides
+ * every host outside its `data-start`/`data-duration` window — still has to
+ * draw its source, because that source is every layer BELOW it and those
+ * layers are children of a `layoutsubtree` canvas: the page compositor paints
+ * the canvas bitmap and nothing else. Skipping the capture the way a `self`
+ * host is skipped would delete them from the frame instead of passing them
+ * through unprocessed.
+ *
+ * So: capture, keep the bitmap, paint no kernel. The adjustment layer is off,
+ * its input is on. Sized from the wrapper's own box when the host has none, so
+ * a host hidden with `display:none` (the timed-clip leaf path) still passes its
+ * layers through.
+ */
+function capturePassThrough(entry: VfxEntry, quiet = false): boolean {
+  const src = entry.src;
+  if (!src) return false;
+  const size = deviceSize(entry.host) ?? deviceSize(src.inner);
+  if (!size) return false;
+  return captureSource(entry, src, size, quiet, CAPTURE_PASS_THROUGH);
+}
+
+/**
+ * A host that is not painting this frame but owns a VISIBLE ref: that ref's
+ * AE layer can outlive the kernel host's own `data-start`/`data-duration`
+ * window (retro-wave `Logo Anim` layer 5 again — it is layer 4's displacement
+ * map AND a layer with its own, different, on-screen span), so its bitmap has
+ * to stay current even though no kernel reads it this frame. Capture only,
+ * never upload: nothing will bind the texture, since `paintEntry` does not
+ * run for a host that is not painting.
+ *
+ * A `hostSize` fallback of `{0, 0}` is safe here: `captureBox` only falls back
+ * to it when a VISIBLE source's own box (`deviceSize(src.inner)`) is null, and
+ * that is already reported by `captureSource`'s own 0×0 check.
+ */
+function captureVisibleRefsOnly(entry: VfxEntry, quiet = false): boolean {
+  let ok = true;
+  for (const ref of visibleRefSources(entry)) {
+    const size = captureBox(ref, { width: 0, height: 0 });
+    if (!captureSource(entry, ref, size, quiet, CAPTURE_VISIBLE_ONLY)) ok = false;
+  }
+  return ok;
+}
+
+/**
+ * A hidden host still needs capturing when it's a backdrop's layers-below
+ * source, or when one of its passes' ref sources paints visibly elsewhere —
+ * and a host can be BOTH (a backdrop whose displacement map is itself a
+ * visible layer), so this always runs whichever apply, not one or the other.
+ */
+function captureHiddenEntry(entry: VfxEntry): boolean {
+  let ok = false;
+  if (isBackdropEntry(entry) && capturePassThrough(entry)) ok = true;
+  if (visibleRefSources(entry).length > 0 && captureVisibleRefsOnly(entry)) ok = true;
+  return ok;
 }
 
 /** Phase 2 of the page-composite protocol: the paint records are valid now. */
@@ -601,7 +1090,11 @@ function resolveVfxCapture(): boolean {
   let painted = false;
   for (const entry of registry) {
     if (entry.contextLost) continue;
-    if (!entry.src || !isPaintableHost(entry.host)) continue;
+    if (entrySources(entry).length === 0) continue;
+    if (!isPaintableHost(entry.host)) {
+      if (captureHiddenEntry(entry)) painted = true;
+      continue;
+    }
     if (!captureEntry(entry)) continue;
     paintEntry(entry, lastPaintTime);
     painted = true;
@@ -703,6 +1196,64 @@ function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<"painted" | "timeo
   });
 }
 
+/** Every source's canvas, awaited together; `false` once a timeout has been
+ *  reported. In parallel because one canvas's wait does not inform another's. */
+async function awaitSourcePaints(entry: VfxEntry, sources: VfxCaptureSource[]): Promise<boolean> {
+  const outcomes = await Promise.all(sources.map((source) => awaitCanvasPaint(source.canvas)));
+  if (!outcomes.includes("timeout")) return true;
+  reportVfxError(
+    `${describeHost(entry.host)}: no paint arrived within ${CAPTURE_PAINT_TIMEOUT_MS}ms, so ` +
+      `this frame's capture was skipped (a BeginFrame-controlled compositor without a tick ` +
+      `for this frame is a known cause).`,
+  );
+  return false;
+}
+
+/**
+ * Which of an entry's three capture shapes this frame needs, decided once so
+ * every step of `capturePaintedHost` reads the same answer: the host's own
+ * kernel paint, the backdrop pass-through (which ALSO captures any visible
+ * ref the host owns — a backdrop's displacement map can itself be a layer
+ * with its own on-screen span), or — a host that is hidden and NOT a
+ * backdrop, but owns a visible ref whose own layer must keep showing — a
+ * ref-only capture that skips the kernel entirely.
+ */
+type FrameCaptureMode = "paint" | "passThrough" | "refOnly";
+
+function frameCaptureMode(entry: VfxEntry): FrameCaptureMode {
+  if (isPaintableHost(entry.host)) return "paint";
+  return isBackdropEntry(entry) ? "passThrough" : "refOnly";
+}
+
+/** The sources this frame needs: all of them to paint; the backdrop wrapper
+ *  plus any visible ref(s) to pass through (a backdrop host can itself own a
+ *  visible ref — its displacement map may be a layer with its own on-screen
+ *  span); or just the visible ref(s) alone to keep them current. */
+function sourcesForFrame(entry: VfxEntry, mode: FrameCaptureMode): VfxCaptureSource[] {
+  const sources =
+    mode === "passThrough"
+      ? [...(entry.src ? [entry.src] : []), ...visibleRefSources(entry)]
+      : mode === "refOnly"
+        ? visibleRefSources(entry)
+        : entrySources(entry);
+  // A hidden source never fires `paint`, and under a BeginFrame-controlled
+  // compositor the rAF fallback does not either — waiting on one would spend
+  // the whole ceiling, every frame, to arrive at the empty capture
+  // `captureSource` gives it for free.
+  return sources.filter(isPaintableSource);
+}
+
+/**
+ * Nothing has taken this frame over during the paint wait: no newer seek, no
+ * engine resolve that already owns the pixels, and no `initVfx` re-scan — that
+ * releases the outgoing registry's programs and textures, and painting a
+ * released entry is a silent GL error rather than a frame.
+ */
+function stillOwnsFrame(entry: VfxEntry, seq: number): boolean {
+  if (seq !== paintSeq || resolvedSeq === seq) return false;
+  return registry.includes(entry) && !entry.contextLost;
+}
+
 /**
  * Wait for one host's canvas to paint, then capture and paint that host.
  *
@@ -722,20 +1273,22 @@ async function capturePaintedHost(
   seq: number,
   speculative: boolean,
 ): Promise<void> {
-  if ((await awaitCanvasPaint(entry.src!.canvas)) === "timeout") {
-    reportVfxError(
-      `${describeHost(entry.host)}: no paint arrived within ${CAPTURE_PAINT_TIMEOUT_MS}ms, so ` +
-        `this frame's capture was skipped (a BeginFrame-controlled compositor without a tick ` +
-        `for this frame is a known cause).`,
-    );
+  // A pass-through frame needs the backdrop wrapper's paint record plus any
+  // visible ref's; a ref-only frame needs only the visible ref's; a painting
+  // frame needs one per source the kernels read. Records are per canvas, so
+  // the waits are too.
+  const mode = frameCaptureMode(entry);
+  if (!(await awaitSourcePaints(entry, sourcesForFrame(entry, mode)))) return;
+  if (!stillOwnsFrame(entry, seq)) return;
+  if (mode === "passThrough") {
+    capturePassThrough(entry, speculative);
+    captureVisibleRefsOnly(entry, speculative);
     return;
   }
-  // A newer seek, or the engine's own resolve, owns these pixels now.
-  if (seq !== paintSeq || resolvedSeq === seq) return;
-  // `initVfx` re-scans when a sub-composition mounts and releases the
-  // outgoing registry's programs and textures; painting a released entry is
-  // a silent GL error, not a frame.
-  if (!registry.includes(entry) || entry.contextLost) return;
+  if (mode === "refOnly") {
+    captureVisibleRefsOnly(entry, speculative);
+    return;
+  }
   if (captureEntry(entry, speculative)) paintEntry(entry, t);
 }
 
@@ -788,8 +1341,20 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   for (const entry of registry) {
     // Reported once, at the moment of loss; repeating it per frame is spam.
     if (entry.contextLost) continue;
-    if (!isPaintableHost(entry.host)) continue;
-    if (entry.src) capturing.push(entry);
+    if (!isPaintableHost(entry.host)) {
+      // A hidden `backdrop` host is an adjustment layer that is off, not a
+      // reason to drop the layers below it — those live in the wrapper
+      // OUTSIDE the host and are invisible until something draws them. A
+      // hidden non-backdrop host with a VISIBLE ref is the same shape one
+      // level removed: the ref's own AE layer can outlive this host's
+      // data-start/data-duration window, and skipping the whole entry would
+      // leave that layer missing (before its host's window) or stale (after
+      // it, since `CAPTURE_VISIBLE_SOURCE`/`CAPTURE_VISIBLE_ONLY` both keep
+      // the bitmap).
+      if (isBackdropEntry(entry) || visibleRefSources(entry).length > 0) capturing.push(entry);
+      continue;
+    }
+    if (entrySources(entry).length > 0) capturing.push(entry);
     else paintEntry(entry, t);
   }
   if (capturing.length === 0) return;

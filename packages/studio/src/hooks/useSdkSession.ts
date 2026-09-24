@@ -274,6 +274,16 @@ export interface SdkSessionHandle {
    * `missing_content` say nothing about the project at all.
    */
   unreachableProject: string | null;
+  /**
+   * True when the most recent read of `activeCompPath` reported `reason:
+   * "absent"` — the file tree lists this path and the server cannot get it.
+   * Proven 2026-09-23 to mean a stale tree: `refreshFileTree` only runs after
+   * Studio's own file operations, so an external change (an agent removing
+   * or replacing the file) updates the preview and this session but never
+   * the listing, and the file stays clickable forever. Every edit then fails
+   * silently with nothing to tell the user why — this is that signal.
+   */
+  compositionMissing: boolean;
 }
 
 interface SdkSessionOwner {
@@ -346,6 +356,12 @@ export function useSdkSession(
   // reports `null`, same as before the tree loads.
   fileTree: readonly string[] = [],
   fileTreeLoaded = false,
+  // Fallback for the SSE-driven refresh in useExternalFileChangeCoordinator:
+  // called at most once per (projectId, path) so the tree self-corrects even
+  // when that delivery is missed (server restart, a watcher event the SSE
+  // never sent). Optional for the same reason fileTree is: a secondary
+  // session has no tree of its own to refresh.
+  onAbsentRead?: (path: string) => void,
 ): SdkSessionHandle {
   const [ownedSession, setOwnedSession] = useState<OwnedSdkSession | null>(null);
   const ownedSessionRef = useRef<OwnedSdkSession | null>(null);
@@ -359,6 +375,35 @@ export function useSdkSession(
   const reloadTokenRef = useRef(reloadToken);
   reloadTokenRef.current = reloadToken;
   const [unreachableProject, setUnreachableProject] = useState<string | null>(null);
+  const [compositionMissing, setCompositionMissing] = useState(false);
+  // Keyed `${projectId}:${path}` so a refresh that doesn't fix it (the file
+  // really is gone) can't loop, and so it fires again for a genuinely
+  // different path or project.
+  const refreshedAbsentPathsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    refreshedAbsentPathsRef.current.clear();
+  }, [projectId]);
+
+  /**
+   * Update `unreachableProject`/`compositionMissing` for one failed read, and
+   * fire the once-per-path tree-refresh fallback on `absent`. Pulled out of
+   * the open effect's `.then` — the branching there was pushing that
+   * callback over the complexity threshold on its own.
+   */
+  function handleReadFailure(
+    read: ProjectFileReadFailure,
+    forProjectId: string,
+    forPath: string,
+  ): void {
+    const pathInTree = fileTreeLoaded ? fileTree.includes(forPath) : null;
+    setUnreachableProject(reportReadFailure(read, forProjectId, pathInTree));
+    setCompositionMissing(read.reason === "absent");
+    if (read.reason !== "absent") return;
+    const key = `${forProjectId}:${forPath}`;
+    if (refreshedAbsentPathsRef.current.has(key)) return;
+    refreshedAbsentPathsRef.current.add(key);
+    onAbsentRead?.(forPath);
+  }
 
   useEffect(
     () =>
@@ -382,6 +427,7 @@ export function useSdkSession(
 
     if (!projectId || !activeCompPath) {
       setUnreachableProject(null);
+      setCompositionMissing(false);
       return () => {
         cancelled = true;
       };
@@ -403,11 +449,11 @@ export function useSdkSession(
       .then(async (read) => {
         if (!read || cancelled) return;
         if (!read.ok) {
-          const pathInTree = fileTreeLoaded ? fileTree.includes(activeCompPath) : null;
-          setUnreachableProject(reportReadFailure(read, projectId, pathInTree));
+          handleReadFailure(read, projectId, activeCompPath);
           return;
         }
         setUnreachableProject(null);
+        setCompositionMissing(false);
         const content = read.content;
         // No persist queue: Studio's writeProjectFile (via sdkCutover's
         // persistSdkSerialize) is the SINGLE writer. Wiring the SDK persist
@@ -475,11 +521,13 @@ export function useSdkSession(
         disposeSdkSession(owned.session);
       }
     };
-    // fileTree/fileTreeLoaded deliberately excluded: they only annotate a
-    // read-failure event fired from this same effect run (the diagnostic
-    // "was the path in the last-loaded tree" snapshot), and re-running the
-    // whole open/dispose cycle on every tree refresh would drop and reopen a
-    // perfectly good session far more often than the tree actually changes.
+    // fileTree/fileTreeLoaded/onAbsentRead deliberately excluded: they only
+    // annotate or react to a read-failure event fired from this same effect
+    // run (the diagnostic "was the path in the last-loaded tree" snapshot,
+    // and the tree-refresh fallback), and re-running the whole open/dispose
+    // cycle on every tree refresh or on every render (callers are not
+    // required to memoize onAbsentRead) would drop and reopen a perfectly
+    // good session far more often than the tree actually changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activeCompPath, reloadToken]);
 
@@ -517,5 +565,5 @@ export function useSdkSession(
     ownedSession.reloadToken === reloadToken
       ? ownedSession.session
       : null;
-  return { session, publish, forceReload, unreachableProject };
+  return { session, publish, forceReload, unreachableProject, compositionMissing };
 }
