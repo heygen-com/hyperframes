@@ -19,6 +19,7 @@ import { createProjectSignature, resolveProjectAndSignature } from "../helpers/p
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 import { projectSubPath } from "../helpers/projectSubPath.js";
+import { resolveWithinProject } from "../helpers/safePath.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -86,6 +87,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
 
     let compPath = projectSubPath(c.req.url, "thumbnail");
     if (compPath && !compPath.includes(".")) compPath += ".html";
+    const htmlFile = resolveWithinProject(project.dir, compPath);
+    if (!htmlFile) return c.json({ error: "not found" }, 404);
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
     const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
 
@@ -121,7 +124,6 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     // edit, even on a hard reload. Keyed on content (like manualEdits/motion), not
     // just mtime, so a restore/copy with a preserved mtime can't serve stale.
     let sourceKey = "";
-    const htmlFile = join(project.dir, compPath);
     if (existsSync(htmlFile)) {
       const html = readFileSync(htmlFile, "utf-8");
       sourceKey = `_${createHash("sha1").update(html).digest("hex").slice(0, 16)}`;
@@ -148,10 +150,11 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       sourceMtime = Math.max(sourceMtime, Math.round(statSync(motionFile).mtimeMs));
     }
 
+    const projectUrl = `http://${c.req.header("host")}/api/projects/${encodeURIComponent(project.id)}`;
     const previewUrl =
       compPath === "index.html"
-        ? `http://${c.req.header("host")}/api/projects/${project.id}/preview`
-        : `http://${c.req.header("host")}/api/projects/${project.id}/preview/comp/${compPath}`;
+        ? `${projectUrl}/preview`
+        : `${projectUrl}/preview/comp/${compPath.split("/").map(encodeURIComponent).join("/")}`;
 
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");

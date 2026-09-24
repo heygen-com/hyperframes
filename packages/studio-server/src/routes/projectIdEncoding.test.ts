@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files.js";
 import { registerPreviewRoutes } from "./preview.js";
+import { registerThumbnailRoutes } from "./thumbnail.js";
+import { registerWaveformRoutes } from "./waveform.js";
+import { buildWaveformCacheKey } from "../helpers/waveform.js";
 import type { StudioApiAdapter } from "../types.js";
 
 // Project ids come from folder names, so any character a folder allows must survive the URL.
@@ -88,17 +91,36 @@ const RESERVED_NAMES = [
   "🎬 film",
 ];
 
-async function requestProject(projectId: string, route: string, subPath: string) {
+type ThumbnailCall = { compPath: string; previewUrl: string };
+
+async function requestProject(projectId: string, route: string, encodedSubPath: string) {
   const { dir, cleanup } = projectWithComposition();
+  writeFileSync(join(dir, "scenes", "voice.wav"), "RIFF");
+  // The waveform route's own cache hit, so no audio decoder runs.
+  const voice = statSync(join(dir, "scenes", "voice.wav"));
+  mkdirSync(join(dir, ".waveform-cache"));
+  writeFileSync(
+    join(dir, ".waveform-cache", buildWaveformCacheKey("scenes/voice.wav", voice)),
+    "[0.5]",
+  );
+  const thumbnails: ThumbnailCall[] = [];
+  const adapter = {
+    ...createAdapter(dir),
+    generateThumbnail: async (opts: ThumbnailCall) => {
+      thumbnails.push({ compPath: opts.compPath, previewUrl: opts.previewUrl });
+      return Buffer.from("jpeg");
+    },
+  } as StudioApiAdapter;
   try {
     const app = new Hono();
-    registerFileRoutes(app, createAdapter(dir));
-    registerPreviewRoutes(app, createAdapter(dir));
-    const encodedSubPath = subPath.split("/").map(encodeURIComponent).join("/");
+    registerFileRoutes(app, adapter);
+    registerPreviewRoutes(app, adapter);
+    registerThumbnailRoutes(app, adapter);
+    registerWaveformRoutes(app, adapter);
     const response = await app.request(
       `http://localhost/projects/${encodeURIComponent(projectId)}/${route}/${encodedSubPath}`,
     );
-    return { status: response.status, text: await response.text() };
+    return { status: response.status, text: await response.text(), thumbnails };
   } finally {
     cleanup();
   }
@@ -121,5 +143,47 @@ describe.each(RESERVED_NAMES)("project id %j", (projectId) => {
     const result = await requestProject(projectId, "preview/comp", "scenes/scene-1.html");
     expect(result.status).toBe(200);
     expect(result.text).toContain("SCENE ONE");
+  });
+
+  it("thumbnails a sub-composition through a preview URL that parses back to it", async () => {
+    const result = await requestProject(projectId, "thumbnail", "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.thumbnails).toHaveLength(1);
+    expect(result.thumbnails[0]?.compPath).toBe("scenes/scene-1.html");
+    const url = new URL(result.thumbnails[0]?.previewUrl ?? "");
+    expect(url.search + url.hash).toBe("");
+    const segments = url.pathname.split("/").map(decodeURIComponent);
+    expect(segments).toEqual([
+      "",
+      "api",
+      "projects",
+      projectId,
+      "preview",
+      "comp",
+      "scenes",
+      "scene-1.html",
+    ]);
+  });
+
+  it("serves an audio waveform", async () => {
+    const result = await requestProject(projectId, "waveform", "scenes/voice.wav");
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.text)).toEqual({ peaks: [0.5] });
+  });
+});
+
+// Encoded as one segment: a literal ../ is normalised away before routing.
+const OUTSIDE_PROJECT = encodeURIComponent(`${"../".repeat(24)}etc/hosts`);
+
+describe("a sub-path that decodes to a parent directory", () => {
+  it("is not thumbnailed", async () => {
+    const result = await requestProject("demo-project", "thumbnail", OUTSIDE_PROJECT);
+    expect(result.status).toBe(404);
+    expect(result.thumbnails).toHaveLength(0);
+  });
+
+  it("is not read for a waveform", async () => {
+    const result = await requestProject("demo-project", "waveform", OUTSIDE_PROJECT);
+    expect(result.status).toBe(404);
   });
 });

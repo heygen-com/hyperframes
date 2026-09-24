@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import {
@@ -16,7 +17,10 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
     if (!project) return c.json({ error: "not found" }, 404);
 
     const assetPath = projectSubPath(c.req.url, "waveform");
-    const audioPath = join(project.dir, assetPath);
+    const audioPath = resolve(project.dir, assetPath);
+    if (!isWithinProjectRoot(project.dir, audioPath)) {
+      return c.json({ error: "file not found" }, 404);
+    }
     const stats = statSync(audioPath, { throwIfNoEntry: false });
     if (!stats) return c.json({ error: "file not found" }, 404);
 
