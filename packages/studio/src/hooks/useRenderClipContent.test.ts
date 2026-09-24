@@ -7,6 +7,8 @@ import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
+import { buildCompositionThumbnailUrl } from "../player/components/CompositionThumbnail";
+import { compositionCardThumbnailUrl } from "../components/sidebar/CompositionsTab";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
 import { useRenderClipContent } from "./useRenderClipContent";
 
@@ -315,5 +317,29 @@ describe("useRenderClipContent", () => {
         contentRevision: 13,
       });
     }
+  });
+
+  it("asks for the same thumbnail as the composition's card, so one render serves both", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "adaptive",
+      thumbnailRevisions: { "compositions/scene-0.html": 3 },
+    });
+
+    const content = renderClipContent({
+      id: "scene-0",
+      tag: "div",
+      start: 10,
+      duration: 5,
+      track: 0,
+      compositionSrc: "compositions/scene-0.html",
+    });
+
+    expect(isValidElement(content)).toBe(true);
+    if (!isValidElement(content)) return;
+    const clipUrl = buildCompositionThumbnailUrl({
+      ...(content.props as Parameters<typeof buildCompositionThumbnailUrl>[0]),
+      origin: window.location.origin,
+    });
+    expect(clipUrl).toBe(compositionCardThumbnailUrl("my-project", "compositions/scene-0.html", 3));
   });
 });

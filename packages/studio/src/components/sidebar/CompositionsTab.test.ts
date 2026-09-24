@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  resolveCompositionPreviewScale,
-  resolveThumbnailSeekTime,
-  syncIframePlayback,
-} from "./CompositionsTab";
+import { resolveThumbnailSeekTime } from "../../player/components/CompositionThumbnail";
+import { resolveCompositionPreviewScale, syncIframePlayback } from "./CompositionsTab";
 
 describe("resolveCompositionPreviewScale", () => {
   it("scales a 16:9 stage to fit the composition card", () => {

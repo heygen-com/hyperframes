@@ -1,6 +1,10 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
+import {
+  buildCompositionThumbnailUrl,
+  resolveThumbnailSeekTime,
+  THUMBNAIL_SEEK_TIME_SECONDS,
+} from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
@@ -23,7 +27,6 @@ interface CompositionsTabProps {
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
 const CARD_W = 80;
 const CARD_H = 45;
-const THUMBNAIL_SEEK_TIME_SECONDS = 3;
 const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
 type PreviewWindow = Window & {
@@ -54,17 +57,18 @@ export function resolveCompositionPreviewScale(input: {
   return Math.min(scaleX, scaleY);
 }
 
-export function resolveThumbnailSeekTime(durationSeconds: number | null | undefined): number {
-  if (
-    Number.isFinite(durationSeconds) &&
-    durationSeconds != null &&
-    durationSeconds > 0 &&
-    durationSeconds < THUMBNAIL_SEEK_TIME_SECONDS
-  ) {
-    return durationSeconds / 2;
-  }
-
-  return THUMBNAIL_SEEK_TIME_SECONDS;
+export function compositionCardThumbnailUrl(
+  projectId: string,
+  comp: string,
+  contentRevision: number,
+): string {
+  return buildCompositionThumbnailUrl({
+    previewUrl: buildProjectApiPath(projectId, `/preview/comp/${comp}`),
+    seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
+    duration: 0,
+    origin: window.location.origin,
+    contentRevision,
+  });
 }
 
 function parsePositiveNumber(value: string | null): number | null {
@@ -182,13 +186,7 @@ function CompCard({
   };
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
   const previewUrl = buildProjectApiPath(projectId, `/preview/comp/${comp}`);
-  const thumbnailUrl = buildCompositionThumbnailUrl({
-    previewUrl,
-    seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
-    duration: 0,
-    origin: window.location.origin,
-    contentRevision,
-  });
+  const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
   const thumbnailFailed = failedThumbnailUrl === thumbnailUrl;
   const previewScale = resolveCompositionPreviewScale({
     cardWidth: CARD_W,
