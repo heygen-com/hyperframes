@@ -83,6 +83,10 @@ function renderPreview(
   previewSlots: Array<{ gen: number; role: "live" | "shadow"; url?: string }> = [
     { gen: 0, role: "live" },
   ],
+  {
+    box = { width: 800, height: 600 },
+    fillBox,
+  }: { box?: { width: number; height: number }; fillBox?: boolean } = {},
 ) {
   resizeCallbacks = [];
   const host = document.createElement("div");
@@ -102,6 +106,7 @@ function renderPreview(
         onShadowError: () => {},
         setShadowIframeNode: () => {},
         resetPreviewSlots: () => {},
+        fillBox,
       }),
     );
   });
@@ -111,7 +116,7 @@ function renderPreview(
   expect(viewport).toBeTruthy();
   expect(stage).toBeTruthy();
 
-  setRect(viewport, { width: 800, height: 600 });
+  setRect(viewport, box);
   act(() => {
     for (const fire of resizeCallbacks) fire();
   });
@@ -252,6 +257,19 @@ describe("NLEPreview", () => {
 
     expect(view.stage.style.transform).toContain("translate3d(30px, -24px, 0)");
     view.cleanup();
+  });
+
+  it("insets the picture by default and fills a same-shape box when fillBox is on", () => {
+    const box = { width: 640, height: 360 };
+    const inset = renderPreview(undefined, { box });
+    expect([inset.stage.style.width, inset.stage.style.height]).toEqual(["611.5556px", "344px"]);
+    expect(parseFloat(inset.stage.parentElement!.style.inset)).toBe(8);
+    inset.cleanup();
+
+    const filled = renderPreview(undefined, { box, fillBox: true });
+    expect([filled.stage.style.width, filled.stage.style.height]).toEqual(["640px", "360px"]);
+    expect(parseFloat(filled.stage.parentElement!.style.inset)).toBe(0);
+    filled.cleanup();
   });
 
   it("clips a shadow reload so its own loading overlay cannot paint over the live frame", () => {

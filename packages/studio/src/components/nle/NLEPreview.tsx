@@ -37,6 +37,8 @@ interface NLEPreviewProps {
   onStageRef?: (ref: React.RefObject<HTMLDivElement | null>) => void;
   /** Reports the authored composition size measured from the loaded preview. */
   onCompositionSizeChange?: (size: PreviewCompositionSize | null) => void;
+  /** Draws the picture edge to edge in this box, without Studio's inset band. */
+  fillBox?: boolean;
 }
 
 export function getPreviewPlayerKey({
@@ -51,7 +53,7 @@ export function getPreviewPlayerKey({
 
 const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
-const PREVIEW_STAGE_INSET_PX = 16;
+const PREVIEW_STAGE_INSET_PX = 8;
 
 // clip-path as well as visibility: the player's loading overlay sets its own
 // visibility:visible and would otherwise paint over the live frame.
@@ -88,9 +90,10 @@ export function resolvePreviewStageSize(
   compositionSize: PreviewCompositionSize | null,
   portrait: boolean | undefined,
   gutterPx = 0,
+  insetPx = PREVIEW_STAGE_INSET_PX,
 ): { width: number; height: number } {
-  const availableWidth = Math.max(0, viewportWidth - PREVIEW_STAGE_INSET_PX - 2 * gutterPx);
-  const availableHeight = Math.max(0, viewportHeight - PREVIEW_STAGE_INSET_PX - 2 * gutterPx);
+  const availableWidth = Math.max(0, viewportWidth - 2 * (insetPx + gutterPx));
+  const availableHeight = Math.max(0, viewportHeight - 2 * (insetPx + gutterPx));
   const aspectRatio =
     compositionSize && compositionSize.width > 0 && compositionSize.height > 0
       ? compositionSize.width / compositionSize.height
@@ -131,6 +134,7 @@ export const NLEPreview = memo(function NLEPreview({
   suppressLoadingOverlay,
   onStageRef,
   onCompositionSizeChange,
+  fillBox,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -167,6 +171,7 @@ export const NLEPreview = memo(function NLEPreview({
     [activeKey, directUrl, projectId],
   );
   const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
+  const insetPx = fillBox ? 0 : PREVIEW_STAGE_INSET_PX;
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
   const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
@@ -197,7 +202,14 @@ export const NLEPreview = memo(function NLEPreview({
     const updateStageSize = () => {
       const rect = viewport.getBoundingClientRect();
       setStageSize(
-        resolvePreviewStageSize(rect.width, rect.height, compositionSize, portrait, gutterPx),
+        resolvePreviewStageSize(
+          rect.width,
+          rect.height,
+          compositionSize,
+          portrait,
+          gutterPx,
+          insetPx,
+        ),
       );
     };
 
@@ -205,7 +217,7 @@ export const NLEPreview = memo(function NLEPreview({
     const observer = new ResizeObserver(updateStageSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [compositionSize, portrait, gutterPx]);
+  }, [compositionSize, portrait, gutterPx, insetPx]);
 
   const onCompositionSizeChangeRef = useRef(onCompositionSizeChange);
   onCompositionSizeChangeRef.current = onCompositionSizeChange;
@@ -483,11 +495,14 @@ export const NLEPreview = memo(function NLEPreview({
     <div className="flex flex-col h-full min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-[var(--studio-preview-bg,var(--color-neutral-950))]"
+        className="relative flex-1 flex items-center justify-center overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-[var(--studio-preview-bg,var(--color-neutral-950))]"
         tabIndex={0}
         aria-label="Composition preview"
       >
-        <div className="absolute inset-2 flex items-center justify-center pointer-events-none">
+        <div
+          className="absolute flex items-center justify-center pointer-events-none"
+          style={{ inset: insetPx }}
+        >
           <div
             ref={stageRef}
             className="relative shrink-0 pointer-events-auto"
