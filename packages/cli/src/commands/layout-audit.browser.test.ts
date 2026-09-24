@@ -1106,14 +1106,23 @@ describe("layout-audit.browser coordinate-frame findings", () => {
 
     // Serves any requested band: the pattern runs along the edge (padded with its last pixel),
     // painted into every column of the band's thickness, or only `inkAcross` when given.
-    function stubEdgeReads(line: Uint8ClampedArray, inkAcross?: number): ReturnType<typeof vi.fn> {
-      const drawImage = vi.fn();
+    // `inkAt(sx, sy)` limits the ink to the band drawn from that source origin.
+    function stubEdgeReads(
+      line: Uint8ClampedArray,
+      inkAcross?: number,
+      inkAt?: (sx: number, sy: number) => boolean,
+    ): ReturnType<typeof vi.fn> {
+      let origin: [number, number] = [0, 0];
+      const drawImage = vi.fn((_source: unknown, sx: number, sy: number) => {
+        origin = [sx, sy];
+      });
       const pixels = line.length / 4;
       vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
         drawImage,
         getImageData: (_x: number, _y: number, width: number, height: number) => {
           const vertical = height >= width;
           const data = new Uint8ClampedArray(width * height * 4);
+          if (inkAt && !inkAt(...origin)) return { data };
           for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
               const along = vertical ? y : x;
@@ -1164,6 +1173,16 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       mountCanvas(FULL_FRAME);
 
       expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(true);
+    });
+
+    it("names only the edge whose band holds the content", () => {
+      stubEdgeReads(CUT_TEXT, undefined, (sx, sy) => sx === 1916 && sy === 0);
+      mountCanvas(FULL_FRAME);
+
+      const issues = runAudit().filter((issue) => issue.code === "canvas_content_at_edge");
+      expect(issues.map((issue) => issue.message)).toEqual([
+        "Canvas content touches the frame edge (right).",
+      ]);
     });
 
     it("stays silent on a full-bleed gradient", () => {

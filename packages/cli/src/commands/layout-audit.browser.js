@@ -1360,7 +1360,8 @@
     }
   }
 
-  // ponytail: assumes an untransformed canvas; a rotated one maps its AABB, add a matrix inverse if that bites.
+  // ponytail: maps through the bounding box, exact for scale and translate; a rotated or skewed
+  // canvas reads the wrong pixels. Add a matrix inverse if that bites.
   function canvasEdgeIssues(root, rootRect, time, tolerance) {
     const issues = [];
     for (const canvas of Array.from(root.querySelectorAll("canvas"))) {
