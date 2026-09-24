@@ -1,5 +1,6 @@
-import type { CommandDef } from "citty";
-import { assertKnownFlags } from "./reject-unknown-flags.js";
+import { parseArgs } from "citty";
+import type { ArgsDef, CommandDef } from "citty";
+import { assertKnownFlags, guardSwallowedFlagValues } from "./reject-unknown-flags.js";
 
 // citty types subcommands as `CommandDef<any>` (SubCommandsDef); mirror that so
 // each command's specific args type is accepted without per-command generics.
@@ -53,7 +54,24 @@ function wrapCommand(cmd: AnyCommandDef): AnyCommandDef {
         cmd.subCommands != null &&
         firstPositional != null &&
         Object.prototype.hasOwnProperty.call(cmd.subCommands, firstPositional);
-      if (!delegatesToSub) assertKnownFlags(cmd, rawArgs);
+      if (!delegatesToSub) {
+        assertKnownFlags(cmd, rawArgs);
+        // A swallowed flag value (e.g. `catalog --query --json`) is detected
+        // from rawArgs, but citty already built `ctx.args` from the
+        // unswallowed rawArgs before this wrapper ran — when the guard
+        // rewrites (opt-in per flag; see guardSwallowedFlagValues), reflect
+        // that correction in both rawArgs and args so the command body (and
+        // any command, like check.ts, that re-derives its own args from
+        // ctx.rawArgs) sees the corrected parse either way.
+        const guarded = guardSwallowedFlagValues(cmd, rawArgs);
+        if (guarded.rewritten) {
+          ctx.rawArgs = guarded.rawArgs;
+          const argsDef = cmd.args;
+          if (argsDef && typeof argsDef === "object") {
+            ctx.args = parseArgs(guarded.rawArgs, argsDef as ArgsDef);
+          }
+        }
+      }
       return await run(ctx);
     };
   }

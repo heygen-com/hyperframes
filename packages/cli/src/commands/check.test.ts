@@ -10,6 +10,21 @@ vi.mock("../telemetry/events.js", () => ({
 
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand } from "./check.js";
+import { trackCommandFailures } from "../utils/command-failure-tracking.js";
+import type { CommandDef } from "citty";
+
+// The bare/rewrite handling for a string flag with no explicit value (e.g.
+// `--frame-check` followed by another flag) lives in the shared wrapCommand
+// gate (see command-failure-tracking.ts), not in check.ts's own `run()` -- so
+// exercising it requires the same wrapping cli.ts applies in production, not
+// a raw `runCommand` against the unwrapped command.
+async function runViaCli(
+  command: CommandDef<any>,
+  opts: Parameters<typeof runCommand>[1],
+): Promise<ReturnType<typeof runCommand>> {
+  const wrapped = await trackCommandFailures(() => Promise.resolve(command))();
+  return runCommand(wrapped, opts);
+}
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,
@@ -375,7 +390,7 @@ it("preserves caption-zone after bare --frame-check", async () => {
     withMeta: (value) => value,
   });
 
-  await runCommand(command, {
+  await runViaCli(command, {
     rawArgs: [
       "--frame-check",
       "--caption-zone",
@@ -410,7 +425,7 @@ it("preserves --json after bare --frame-check", async () => {
     withMeta: (value) => value,
   });
 
-  await runCommand(command, {
+  await runViaCli(command, {
     rawArgs: ["--snapshots", "--samples", "15", "--frame-check", "--json"],
   });
 
@@ -423,6 +438,48 @@ it("preserves --json after bare --frame-check", async () => {
     }),
   );
   expect(log).toHaveBeenCalledWith(expect.stringContaining('"ok"'));
+});
+
+it("prints a dash-prefixed --frame-check value's parse failure exactly once, not doubled", async () => {
+  // Regression: parseFrameCheck's dash-value error is always caught by this
+  // command's own run() try/catch (never escapes to cli.ts), which already
+  // prints and presents whatever it catches -- so this throw site must NOT
+  // also print (unlike guardSwallowedFlagValues's throw, which genuinely
+  // escapes to cli.ts and needs the printing variant).
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runViaCli(command, { rawArgs: ["--frame-check=--json"] });
+
+  expect(runPipeline).not.toHaveBeenCalled();
+  const matching = errorLog.mock.calls.filter(
+    ([arg]) => typeof arg === "string" && arg.includes("Missing value for --frame-check"),
+  );
+  expect(matching).toHaveLength(1);
+});
+
+it("no longer swallows --json after a --layout value (the wider bug class beyond --frame-check)", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await expect(runViaCli(command, { rawArgs: ["--layout", "--json"] })).rejects.toThrow(
+    /Missing value for --layout/,
+  );
+
+  expect(runPipeline).not.toHaveBeenCalled();
+  expect(log).not.toHaveBeenCalled();
 });
 
 it("includes local HDR auto-promotion attribution in --json output", async () => {
@@ -1545,7 +1602,7 @@ describe("frame-check flag grammar", () => {
     const { parseFrameCheck } = await import("./check.js");
 
     expect(() => parseFrameCheck("--json")).toThrow(
-      'Invalid --frame-check: value "--json" appears to have swallowed the next option; use --frame-check= or move --frame-check to the end',
+      'Missing value for --frame-check: value "--json" appears to have swallowed the next option; use --frame-check= or move --frame-check to the end',
     );
     expect(() => parseFrameCheck("severity")).toThrow("Invalid --frame-check");
   });

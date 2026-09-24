@@ -775,11 +775,12 @@ export default defineCommand({
       );
       failCommand();
     }
+    // A dash-prefixed --example value (e.g. `init --example --non-interactive`
+    // with no real value) is already rejected upstream, before this run() body
+    // executes at all, by the shared swallow guard in
+    // utils/reject-unknown-flags.ts's guardSwallowedFlagValues (wired into
+    // every command via command-failure-tracking.ts's wrapCommand).
     const exampleFlag = args.example;
-    if (exampleFlag?.startsWith("-")) {
-      console.error(c.error(`--example requires a value; received flag "${exampleFlag}" instead.`));
-      failCommand();
-    }
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
