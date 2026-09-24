@@ -550,12 +550,24 @@
     return issues;
   }
 
+  function hasNowrapTextChild(element) {
+    return Array.from(element.children).some((child) => {
+      if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) return false;
+      if (getComputedStyle(child).whiteSpace !== "nowrap") return false;
+      return (child.textContent || "").trim().length > 0;
+    });
+  }
+
   function containerOverflowIssues(root, time, tolerance) {
     const issues = [];
     const containers = Array.from(root.querySelectorAll("*")).filter((element) => {
       if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) return false;
       const style = getComputedStyle(element);
-      return clipsOverflow(style) || element.hasAttribute("data-layout-boundary");
+      return (
+        clipsOverflow(style) ||
+        element.hasAttribute("data-layout-boundary") ||
+        hasNowrapTextChild(element)
+      );
     });
 
     for (const container of containers) {

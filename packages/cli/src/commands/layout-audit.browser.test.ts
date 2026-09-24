@@ -272,6 +272,76 @@ describe("layout-audit.browser", () => {
     expect(issues[0]?.selector).toBe('[data-layout-name="headline"]');
   });
 
+  it("flags nowrap text wider than a container that does not clip", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+        word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+      },
+      { word: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    const overflow = runAudit().find((issue) => issue.code === "container_overflow");
+    expect(overflow).toMatchObject({
+      selector: "#word",
+      containerSelector: "#box",
+    });
+  });
+
+  it("clears nowrap container overflow when the container allows overflow", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box" data-layout-allow-overflow>
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+        word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+      },
+      { word: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag a container that does not clip when its text wraps", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+      word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+    });
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
   it("respects layout ignore and allow-overflow opt-outs", () => {
     document.body.innerHTML = `
       <div data-composition-id="main" data-width="640" data-height="360">
