@@ -68,7 +68,8 @@ export interface ProjectHistory {
   /**
    * For a writer that records after writing (Studio): takes in every write so far and moves the not yet committed
    * outside changes to `paths` into one entry of `who`'s. Claims with the same coalesceKey merge until a claim with
-   * another key, `idleMs` (default quietMs) without one, or any operation. Null when nothing was claimed.
+   * another key, `idleMs` (default quietMs) without one, or any operation. Null when nothing was claimed, or
+   * when a coalescing claim's writes net to nothing (a drag back to where it started).
    */
   claim(
     who: HistoryWho,
@@ -313,12 +314,16 @@ class Engine {
     return taken;
   }
 
-  holdClaim(group: Group, key: string, idleMs = this.options.quietMs ?? 2000): { id: string } {
+  holdClaim(
+    group: Group,
+    key: string,
+    idleMs = this.options.quietMs ?? 2000,
+  ): { id: string } | null {
     clearTimeout(this.claimed?.timer);
     const timer = setTimeout(() => this.background(() => this.commitClaim()), idleMs);
     timer.unref?.();
     this.claimed = { group, key, timer };
-    return { id: group.id };
+    return group.changes.size ? { id: group.id } : null;
   }
 
   async commitClaim(): Promise<void> {

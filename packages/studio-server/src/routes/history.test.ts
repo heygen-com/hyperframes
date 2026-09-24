@@ -68,7 +68,7 @@ describe("history routes", () => {
     writeFileSync(join(projectDir, "index.html"), "B");
     await call(`/window/${windowId}/close`, {});
     expect(await (await call("")).json()).toMatchObject({
-      back: { id: windowId, label: "Moved Title" },
+      back: { id: windowId, label: "Moved Title", paths: ["index.html"] },
       forward: null,
     });
 

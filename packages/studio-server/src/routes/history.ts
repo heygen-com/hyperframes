@@ -30,7 +30,9 @@ function idleOf(body: Record<string, unknown>): number | undefined {
 /** What Cmd+Z or Cmd+Shift+Z would revert next, so Studio can name it on its buttons. */
 function nextStep(entries: readonly HistoryEntry[], direction: "back" | "forward") {
   const target = stepTarget(entries, direction);
-  return target ? { id: target.id, label: target.label, endedAt: target.endedAt } : null;
+  if (!target) return null;
+  const paths = target.files.map((file) => file.path);
+  return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
 }
 
 /** Runs `task` on the project's history; no history is a 404, an engine refusal ("no longer kept") a 409. */

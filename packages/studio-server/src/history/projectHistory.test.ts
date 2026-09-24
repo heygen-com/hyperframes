@@ -334,6 +334,20 @@ describe("claim: a writer that records after writing", () => {
     expect(history.list()[0]).toMatchObject({ id: first!.id, files: [{ path: "index.html" }] });
   });
 
+  it("a coalescing claim whose writes net to nothing returns null and records nothing", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    write("index.html", "B");
+    expect(
+      await history.claim(you, "Dragged Title", ["index.html"], { coalesceKey: "drag" }),
+    ).not.toBeNull();
+    write("index.html", "A");
+    expect(
+      await history.claim(you, "Dragged Title", ["index.html"], { coalesceKey: "drag" }),
+    ).toBeNull();
+    await history.flush();
+    expect(history.list()).toEqual([]);
+  });
+
   it("a claim with another key, or its idle time, ends the coalescing claim", async () => {
     const { history, write } = await project({ "a.html": "A", "b.html": "B" });
     write("a.html", "A2");
