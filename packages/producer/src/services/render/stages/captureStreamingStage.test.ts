@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock, setSystemTime } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,6 +31,9 @@ let hangParallelUntilAbort = false;
 // a capture call (the watchdog's job); session_init = still booting (not).
 let hangParallelPhase: "session_init" | "frame_capture" = "frame_capture";
 let failWorkerTransient = false;
+// Parallel capture that reports this many frames, advancing the clock by parallelFrameMs each.
+let parallelFrames = 0;
+let parallelFrameMs = 0;
 let injectedWorkerFailure: Error | null = null;
 const reorderAbortCalls: unknown[] = [];
 let hangSequentialUntilStall = false;
@@ -138,6 +141,32 @@ mock.module("@hyperframes/engine", () => ({
         if (signal?.aborted) return fail();
         signal?.addEventListener("abort", fail, { once: true });
       });
+    }
+    if (parallelFrames > 0) {
+      const report = (capturedFrames: number, phase?: string) =>
+        onProgress?.({
+          totalFrames: parallelFrames,
+          capturedFrames,
+          activeWorkers: 2,
+          workerProgress: new Map(),
+          latestWorkerPhase: phase && {
+            workerId: 0,
+            phase,
+            browserExecutable: "chrome",
+            browserVersion: "Chrome/152.0.7977.30",
+            canvasDrawElement: true,
+            gpuBackend: "swiftshader",
+          },
+        });
+      report(0, "browser_launch");
+      report(0, "frame_capture");
+      let now = Date.now();
+      for (let frame = 1; frame <= parallelFrames; frame++) {
+        now += parallelFrameMs;
+        setSystemTime(now);
+        report(frame);
+      }
+      setSystemTime();
     }
     return [];
   },
@@ -378,6 +407,43 @@ describe("runCaptureStreamingStage", () => {
 
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).not.toContain("stalled");
+  });
+
+  async function streamParallelFrames(frames: number, frameMs: number): Promise<string[]> {
+    parallelFrames = frames;
+    parallelFrameMs = frameMs;
+    const stages: string[] = [];
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const baseInput = createInput({ forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 });
+    try {
+      await runCaptureStreamingStage({
+        ...baseInput,
+        totalFrames: frames,
+        plan: { ...baseInput.plan, workerCount: 2, forceParallelStream: true },
+        onProgress: (_job: unknown, stage: string) => {
+          stages.push(stage);
+        },
+      });
+    } finally {
+      parallelFrames = 0;
+    }
+    return stages;
+  }
+
+  it("reports browser warm-up and the first frame of a slow capture, then steadily", async () => {
+    const stages = await streamParallelFrames(40, 400);
+    expect(stages.slice(0, 3)).toEqual([
+      "Starting browsers (0/2 ready)",
+      "Streaming frame 1/40 (2 workers)",
+      "Streaming frame 2/40 (2 workers)",
+    ]);
+    expect(stages).toHaveLength(41);
+  });
+
+  it("does not flood the callback when frames arrive faster than the report interval", async () => {
+    const stages = await streamParallelFrames(300, 1);
+    expect(stages.filter((stage) => stage.startsWith("Streaming frame")).length).toBeLessThan(5);
+    expect(stages.at(-1)).toBe("Streaming frame 300/300 (2 workers)");
   });
 
   it("releases the writer with the dead worker's own error, not a stall", async () => {

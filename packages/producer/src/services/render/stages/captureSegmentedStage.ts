@@ -36,7 +36,7 @@ import type { ProducerLogger } from "../../../logger.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
-import { updateJobStatus } from "../shared.js";
+import { reportFrameProgress } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrSegmentedCapturePlan } from "../capturePlan.js";
 import { planSegments, type SegmentSlice } from "../segmentPlan.js";
@@ -212,14 +212,14 @@ async function captureSegmentFrames(
     ctx.job.framesRendered = i + 1;
     lastProgressAt = Date.now();
 
-    updateJobStatus(
+    reportFrameProgress(
       ctx.job,
-      "rendering",
       `Streaming frame ${i + 1}/${ctx.totalFrames} (segment ${segment.index + 1}/${ctx.segmentCount}` +
         (ctx.skipped > 0 ? `, skipped ${ctx.skipped}` : "") +
         ")",
       Math.round(25 + ((i + 1) / ctx.totalFrames) * 55),
       ctx.onProgress,
+      i + 1 === ctx.totalFrames,
     );
   }
 }
