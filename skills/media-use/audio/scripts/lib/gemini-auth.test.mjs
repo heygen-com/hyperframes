@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { pythonInvocation } from "./python.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { geminiAuth, geminiConfigured } from "./gemini-auth.mjs";
@@ -71,4 +74,13 @@ test("failed, malformed, or missing Python output cannot leak secrets or fall ba
       },
     );
   }
+});
+
+// Keep the Python credential-boundary suite reachable from the normal Node CI runner.
+test("Python service-account boundary validates credentials, scope, transport and errors", () => {
+  const { cmd, args } = pythonInvocation([
+    fileURLToPath(new URL("./gemini-auth_test.py", import.meta.url)),
+  ]);
+  const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 30_000 });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
 });

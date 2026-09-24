@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report a bug to help us improve
-labels: ["bug"]
+labels: ["bug", "triage/needs-triage"]
 body:
   - type: markdown
     attributes:
@@ -18,17 +18,15 @@ body:
     validations:
       required: true
 
-  - type: input
+  - type: textarea
     id: reproduction-link
     attributes:
-      label: Link to reproduction
+      label: Minimal reproduction
       description: |
-        A link to a **public** GitHub repository with a minimal reproduction of the issue.
+        Provide either a public repository URL or a self-contained example with the commands and assets needed to reproduce the issue. Synthetic assets are welcome; do not include credentials or private media.
 
-        Start from a clean project with `npx hyperframes init repro --non-interactive --example blank`, make only the changes needed to demonstrate the bug, push to a public repo, and paste the link here.
-
-        **Issues without a minimal reproduction may be closed.** A reproduction helps us diagnose and fix your issue faster — often in hours instead of days.
-      placeholder: "https://github.com/username/my-hyperframes-repro"
+        For a repository, start with `npx hyperframes init repro --non-interactive --example blank`, make only the changes needed to demonstrate the issue, and share the URL. For an inline example, include the complete minimal HTML/code and any asset-generation commands.
+      placeholder: "Repository URL, or a complete minimal example and setup commands"
     validations:
       required: true
 
@@ -36,9 +34,9 @@ body:
     id: reproduction
     attributes:
       label: Steps to reproduce
-      description: Step-by-step instructions using the linked reproduction.
+      description: Step-by-step instructions using the repository or inline example above.
       placeholder: |
-        1. Clone the repo above
+        1. Set up the reproduction above
         2. Run `npx hyperframes render`
         3. See error...
     validations:

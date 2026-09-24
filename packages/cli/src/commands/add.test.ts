@@ -156,6 +156,8 @@ const ITEM_BY_NAME: Record<string, RegistryItem> = {
   "my-example": EXAMPLE_ITEM,
 };
 
+const DEP_BLOCK_HTML = `<div data-composition-variables='[{ "id": "maths", "type": "boolean", "label": "Maths", "default": false }]'></div>`;
+
 function mockFetch(): void {
   vi.stubGlobal(
     "fetch",
@@ -171,6 +173,9 @@ function mockFetch(): void {
       }
       // File fetch — match `/<type-dir>/<name>/<rest>` and serve synthetic content.
       const f = /\/(examples|blocks|components)\/([^/]+)\/(.+)$/.exec(url);
+      if (f?.[3] === "dep-block.html") {
+        return new Response(DEP_BLOCK_HTML, { status: 200 });
+      }
       if (f) {
         return new Response(`/* ${f[3]} */\n`, { status: 200 });
       }
@@ -352,6 +357,20 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "src/fx/my-component/my-component.css"))).toBe(true);
       expect(existsSync(join(dir, "assets/my-component/mask.png"))).toBe(true);
       expect(result.snippet).toContain("src/fx/my-component/my-component.html");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a wrong-typed --vars before writing any item in the plan", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+      await expect(
+        runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true, vars: '{"maths":1}' }),
+      ).rejects.toThrow(/maths: expected boolean, got number/);
+      expect(existsSync(join(dir, "compositions/components/base-component"))).toBe(false);
+      expect(existsSync(join(dir, "hyperframes.lock.json"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -67,7 +67,9 @@ describe("createProjectWatcher", () => {
     mockWatcher.emit("change", "change", "scene-a.html");
     mockWatcher.emit("change", "change", "scene-b.html");
     mockWatcher.emit("change", "change", "scene-a.html");
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(29);
+    expect(listener).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
 
     expect(listener.mock.calls).toEqual([["scene-a.html"], ["scene-b.html"]]);
     projectWatcher.close();
@@ -95,6 +97,32 @@ describe("createProjectWatcher", () => {
       projectWatcher = createProjectWatcher("/fake/project/dir");
     }).not.toThrow();
     expect(() => projectWatcher?.close()).not.toThrow();
+  });
+
+  it("flushes at most once per 300 ms while writes keep coming", () => {
+    vi.useFakeTimers();
+    const projectWatcher = createProjectWatcher("/fake/project/dir");
+    const listener = vi.fn();
+    projectWatcher.addListener(listener);
+
+    mockWatcher.emit("change", "change", "a.html");
+    vi.advanceTimersByTime(30);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    mockWatcher.emit("change", "change", "b.html");
+    vi.advanceTimersByTime(100);
+    mockWatcher.emit("change", "change", "c.html");
+    vi.advanceTimersByTime(199);
+    expect(listener).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(listener.mock.calls.slice(1)).toEqual([["b.html"], ["c.html"]]);
+
+    // A save that lands late in the window waits only for quiet, not a whole window.
+    vi.advanceTimersByTime(290);
+    mockWatcher.emit("change", "change", "d.html");
+    vi.advanceTimersByTime(30);
+    expect(listener).toHaveBeenLastCalledWith("d.html");
+    projectWatcher.close();
   });
 
   // Regression: fs.watch can fail asynchronously (e.g. EMFILE from exhausted

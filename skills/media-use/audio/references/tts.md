@@ -106,8 +106,8 @@ Use the shared audio engine, not `hyperframes tts`. Authenticate with either:
 
 API keys take precedence over service accounts: unset both key variables to use
 OAuth. Never put credentials in a request file or composition. The helper
-obtains a fresh OAuth token for each generation with `cloud-platform` and
-`generative-language.retriever` scopes. The quota project resolves from
+obtains a fresh OAuth token for each generation with the
+`generative-language.retriever` scope. The quota project resolves from
 `GOOGLE_CLOUD_PROJECT`, then `GCLOUD_PROJECT_ID`, then the service-account JSON.
 User ADC files and metadata-server authentication are not supported.
 

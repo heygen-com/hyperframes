@@ -2,7 +2,10 @@
   "guards": {
     "scripts/check-media-use-copy-parity.test.mjs": [
       "skills/media-use/scripts/lib/**",
-      "packages/cli/src/media-use/lib/**"
+      "packages/cli/src/media-use/lib/**",
+      "scripts/generate-skill-module-copies.mjs",
+      "skills/hyperframes/scripts/lib/frame-packets-core.mjs",
+      "skills/media-use/audio/scripts/lib/bgm-volume.mjs"
     ],
     "scripts/check-test-reachability.test.mjs": [
       ".github/workflows/ci.yml",
@@ -32,7 +35,8 @@
       "skills/pr-to-video/scripts/build-frame.mjs",
       "skills/pr-to-video/scripts/captions.mjs",
       "skills/pr-to-video/scripts/lib/captured-fonts.mjs"
-    ]
+    ],
+    "scripts/check-skill-import-boundaries.test.mjs": ["skills/**"]
   },
   "runners": [
     {

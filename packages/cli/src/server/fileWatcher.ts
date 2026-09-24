@@ -26,7 +26,10 @@ const WATCHER_EXCLUDED_DIRS = new Set([
   "outputs",
   "renders",
 ]);
-const DEBOUNCE_MS = 300;
+// A save reaches the preview QUIET_MS after the writes go quiet, but at most once per BURST_MS,
+// so a checkout or a multi-file tool doesn't start a rebuild for every file.
+const QUIET_MS = 30;
+const BURST_MS = 300;
 
 export function shouldWatchProjectFile(filename: string): boolean {
   if (!filename) return false;
@@ -112,6 +115,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
   const listeners = new Set<FileChangeListener>();
   const pendingPaths = new Set<string>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFlushAt = Number.NEGATIVE_INFINITY;
   let closeTree: (() => void) | null = null;
 
   try {
@@ -130,16 +134,18 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
 
       pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);
+      const delay = Math.max(QUIET_MS, lastFlushAt + BURST_MS - Date.now());
       debounceTimer = setTimeout(() => {
         const changedPaths = [...pendingPaths];
         pendingPaths.clear();
         debounceTimer = null;
+        lastFlushAt = Date.now();
         for (const changedPath of changedPaths) {
           for (const fn of listeners) {
             fn(changedPath);
           }
         }
-      }, DEBOUNCE_MS);
+      }, delay);
     });
   } catch {
     // fs.watch may fail on some platforms — degrade gracefully (no auto-refresh)

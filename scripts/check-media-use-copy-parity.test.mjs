@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it } from "node:test";
+import { generateSkillModuleCopies } from "./generate-skill-module-copies.mjs";
 
 const skillLibDir = resolve("skills/media-use/scripts/lib");
 const cliLibDir = resolve("packages/cli/src/media-use/lib");
@@ -24,10 +25,6 @@ export const MEDIA_USE_COPY_NAMES = [
 ];
 
 export const INTENTIONAL_MEDIA_USE_DIVERGENCES = new Map([
-  [
-    "media-fetch.mjs",
-    "the standalone skill uses a shim because it cannot import the CLI package tree",
-  ],
   [
     "npx-sync.mjs",
     "the standalone skill stays self-contained while the CLI copy uses the shared audio helper",
@@ -75,4 +72,8 @@ describe("media-use source parity", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+it("keeps generated standalone modules equal to their owners", () => {
+  assert.deepEqual(generateSkillModuleCopies({ check: true }), []);
 });
