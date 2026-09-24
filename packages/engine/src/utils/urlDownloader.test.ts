@@ -112,14 +112,40 @@ function isoBmffMediaBytes(marker: string): Buffer {
   return Buffer.concat([ftyp, Buffer.from(marker)]);
 }
 
-// Fake only Date: downloadToTemp's deadlines read Date.now() around sync work, so a slow
-// runner can trip a false timeout with no timer-driven delay. Real timers keep firing, so
-// setTimeout-based races are unaffected.
+// Fake Date, and hold the 1_000 ms attempt deadline every test passes: on a slow runner one
+// attempt (hash, fsync, refetch) can outlast it and throw "Download timeout". A test that
+// needs the deadline calls fireAttemptDeadline(). Other timers (cache-lock poll, test
+// delays) stay real.
+const ATTEMPT_DEADLINE_MS = 1_000;
+const heldDeadlines = new Map<ReturnType<typeof setTimeout>, () => void>();
+let realSetTimeout: typeof setTimeout;
+
+function fireAttemptDeadline(): void {
+  for (const [handle, fire] of [...heldDeadlines]) {
+    heldDeadlines.delete(handle);
+    clearTimeout(handle);
+    fire();
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
+  realSetTimeout = globalThis.setTimeout;
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+    handler: () => void,
+    ms?: number,
+    ...args: unknown[]
+  ) => {
+    if (ms !== ATTEMPT_DEADLINE_MS) return realSetTimeout(handler, ms, ...args);
+    const handle = realSetTimeout(() => undefined, 2 ** 31 - 1);
+    heldDeadlines.set(handle, handler);
+    return handle;
+  }) as typeof setTimeout);
 });
 
 afterEach(() => {
+  vi.mocked(globalThis.setTimeout).mockRestore();
+  heldDeadlines.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   fsRaceControls.deleteBeforeLstatPath = undefined;
@@ -307,6 +333,23 @@ describe("fetchPublicHttpsText", () => {
 });
 
 describe("downloadToTemp atomic publication and bounded retry", () => {
+  it("does not race a real wall-clock deadline on a slow attempt", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+              once: true,
+            });
+            setTimeout(() => resolve(new Response("complete")), 1_200);
+          }),
+      ),
+    );
+    const path = await downloadToTemp("https://cdn.example/slow.mp4", makeTempDir(), 1_000);
+    expect(readFileSync(path, "utf8")).toBe("complete");
+  });
+
   it("follows a bounded redirect only after validating the next public HTTPS hop", async () => {
     const fetchMock = vi
       .fn()
@@ -988,9 +1031,35 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     }
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(message).toContain("transient network error");
+    expect(message).toBe("Download failed due to a transient network error (TypeError)");
     expect(message).not.toContain("customer-video");
     expect(message).not.toContain("super-secret-signature");
+  });
+
+  it("names the underlying error of a local failure without its message", async () => {
+    const signedUrl = "https://cdn.example/private/clip.mp4?X-Amz-Signature=super-secret-signature";
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(
+        Object.assign(new Error(`no space left writing ${signedUrl}`), { code: "ENOSPC" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(downloadToTemp(signedUrl, makeTempDir(), 1_000)).rejects.toMatchObject({
+      kind: "filesystem",
+      message: "Download failed while writing the local artifact (Error ENOSPC)",
+    });
+  });
+
+  it("drops an underlying name or code that is not a bare identifier", async () => {
+    const signedUrl = "https://cdn.example/private/clip.mp4?X-Amz-Signature=super-secret-signature";
+    const hostile = Object.assign(new Error("boom"), { code: signedUrl });
+    hostile.name = signedUrl;
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(hostile));
+
+    await expect(downloadToTemp(signedUrl, makeTempDir(), 1_000)).rejects.toMatchObject({
+      message: "Download failed while writing the local artifact",
+    });
   });
 
   it("cancels a streaming HTTP error body before retrying", async () => {
@@ -1122,7 +1191,10 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeTempDir();
 
-    const path = await downloadToTemp("https://cdn.example/stalled-body.mp4", dir, 20);
+    const pending = downloadToTemp("https://cdn.example/stalled-body.mp4", dir, 1_000);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireAttemptDeadline();
+    const path = await pending;
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readFileSync(path, "utf8")).toBe("complete");
@@ -1146,7 +1218,10 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeTempDir();
 
-    const path = await downloadToTemp("https://cdn.example/unresponsive-body.mp4", dir, 20);
+    const pending = downloadToTemp("https://cdn.example/unresponsive-body.mp4", dir, 1_000);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireAttemptDeadline();
+    const path = await pending;
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readFileSync(path, "utf8")).toBe("complete");
@@ -1171,7 +1246,10 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeTempDir();
 
-    const path = await downloadToTemp("https://cdn.example/aborted-chunked-body.mp4", dir, 20);
+    const pending = downloadToTemp("https://cdn.example/aborted-chunked-body.mp4", dir, 1_000);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireAttemptDeadline();
+    const path = await pending;
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readFileSync(path, "utf8")).toBe("complete");
@@ -1534,12 +1612,15 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       1_000,
       secondController.signal,
     );
-    firstController.abort();
-
-    await expect(first).rejects.toMatchObject({
+    const firstRejected = expect(first).rejects.toMatchObject({
       kind: "cancelled",
       retryable: false,
     } satisfies Partial<UrlDownloadError>);
+    firstController.abort();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireAttemptDeadline();
+
+    await firstRejected;
     const path = await second;
     expect(readFileSync(path, "utf8")).toBe("complete");
     expect(fetchMock).toHaveBeenCalledTimes(2);

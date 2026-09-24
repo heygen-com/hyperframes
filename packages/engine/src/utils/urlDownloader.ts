@@ -162,7 +162,7 @@ function classifyDownloadFailure(error: unknown): UrlDownloadError {
       return new UrlDownloadError(
         "network",
         true,
-        "Download failed due to a transient network error",
+        `Download failed due to a transient network error${describeCause(current)}`,
       );
     }
     current =
@@ -173,8 +173,18 @@ function classifyDownloadFailure(error: unknown): UrlDownloadError {
   return new UrlDownloadError(
     "filesystem",
     false,
-    "Download failed while writing the local artifact",
+    `Download failed while writing the local artifact${describeCause(error)}`,
   );
+}
+
+// Only the error's name and code: its message can carry the signed request URL.
+function describeCause(error: unknown): string {
+  const name = error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : "";
+  const rawCode =
+    typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+  const code = typeof rawCode === "string" && /^[A-Z0-9_]{1,40}$/.test(rawCode) ? rawCode : "";
+  const tag = [name, code].filter(Boolean).join(" ");
+  return tag ? ` (${tag})` : "";
 }
 
 const RETRYABLE_NETWORK_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN"]);
