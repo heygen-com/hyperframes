@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act } from "react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   makeAdapterWindow,
   makeFakeIframe,
@@ -56,5 +56,65 @@ it("does not start playback while a switched-to composition's preview is still l
   act(() => api.play());
   expect(next.adapter.play).not.toHaveBeenCalled();
   expect(usePlayerStore.getState().isPlaying).toBe(false);
+  act(() => root.unmount());
+});
+
+function postFromRuntime(win: object, data: Record<string, unknown>) {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: win as unknown as Window,
+        data: { source: "hf-preview", ...data },
+      }),
+    );
+  });
+}
+
+async function expectPlayStillOff() {
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(usePlayerStore.getState().timelineReady).toBe(false);
+}
+
+// Duration 0: the adapter cannot enable Play itself, so only the message path can, after the load step.
+it.each([30, 0])(
+  "waits for the preview's load step before a timeline message enables Play (adapter duration %i)",
+  async (duration) => {
+    const { api, root } = renderTimelinePlayerHarness();
+    const { win } = makeAdapterWindow({ duration });
+    act(() => {
+      api.iframeRef.current = makeFakeIframe(win);
+    });
+    // The runtime reports its timeline before the document's load event, as a film with large images does.
+    const clip = { id: "clip", label: "Clip", start: 0, duration: 1, track: 0, kind: "element" };
+    postFromRuntime(win, { type: "timeline", clips: [clip], durationInFrames: 30, fps: 30 });
+    await expectPlayStillOff();
+
+    act(() => api.onIframeLoad());
+    await vi.waitFor(() => expect(usePlayerStore.getState().timelineReady).toBe(true));
+    act(() => root.unmount());
+  },
+);
+
+it("does not let the blank page's load step enable Play for the preview that replaces it", async () => {
+  const { api, root } = renderTimelinePlayerHarness();
+  // The iframe's first load is about:blank, before the runtime exists; its load step waits for runtime messages.
+  const iframe = makeFakeIframe({ ...makeAdapterWindow().win, __player: undefined });
+  act(() => {
+    api.iframeRef.current = iframe;
+    api.onIframeLoad();
+  });
+
+  // The same iframe navigates to the preview, whose runtime reports ready before its own load event.
+  const { win } = makeAdapterWindow();
+  Object.defineProperty(iframe, "contentWindow", { value: win, configurable: true });
+  Object.defineProperty(iframe, "contentDocument", {
+    value: document.implementation.createHTMLDocument("preview"),
+    configurable: true,
+  });
+  postFromRuntime(win, { type: "state" });
+  await expectPlayStillOff();
+
+  act(() => api.onIframeLoad());
+  await vi.waitFor(() => expect(usePlayerStore.getState().timelineReady).toBe(true));
   act(() => root.unmount());
 });

@@ -343,8 +343,19 @@ describe("usePlayerStore", () => {
       const video = doc.createElement("video");
       Object.defineProperty(video, "readyState", { value: 0, configurable: true });
       doc.body.appendChild(video);
+      usePlayerStore.getState().markPreviewLoadStep(doc);
       return { doc, video };
     }
+
+    it("waits for the document's load step before marking it ready", async () => {
+      const doc = document.implementation.createHTMLDocument("composition");
+      usePlayerStore.getState().requestTimelineReady(doc);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(usePlayerStore.getState().timelineReady).toBe(false);
+
+      usePlayerStore.getState().markPreviewLoadStep(doc);
+      await vi.waitFor(() => expect(usePlayerStore.getState().timelineReady).toBe(true));
+    });
 
     it("resolves timelineReady once the doc's media settles", async () => {
       const { doc, video } = stalledVideoDoc();
