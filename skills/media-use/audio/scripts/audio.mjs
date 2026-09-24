@@ -113,7 +113,6 @@ const speed = Number(speedOverride ?? request.speed ?? 1.0) || 1.0;
 // ── env + HeyGen availability (the single switch) ─────────────────────────────
 loadEnvFromDir(hyperframesDir);
 const heygenOK = heygenCredential() !== null;
-const headers = heygenOK ? heygenAuthHeaders() : null;
 
 // ── merge base: preserve sections not selected by --only ──────────────────────
 const audioMeta = openAudioMeta(outPath);
@@ -212,7 +211,12 @@ if (only.has("bgm")) {
     console.error(`· bgm: disabled`);
   } else if (mode === "retrieve") {
     try {
-      bgm = await retrieveBgm({ query: request.bgm?.query, headers, hyperframesDir, hasVoice });
+      bgm = await retrieveBgm({
+        query: request.bgm?.query,
+        headers: heygenAuthHeaders(),
+        hyperframesDir,
+        hasVoice,
+      });
       if (bgm) {
         bgmFields.bgm_provider = "heygen";
         bgmFields.bgm_mode = "retrieve";
@@ -264,6 +268,7 @@ if (only.has("sfx")) {
       .map((name) => ({ id: String(l.id), name: String(name).trim() }))
       .filter((c) => c.name),
   );
+  const headers = heygenOK && cues.length ? heygenAuthHeaders() : null;
   const res = await resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxLibDir });
   sfx = res.sfx;
   anomalies.push(...res.anomalies);

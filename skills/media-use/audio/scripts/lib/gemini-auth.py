@@ -26,7 +26,6 @@ def authenticate():
         credentials = service_account.Credentials.from_service_account_info(
             info,
             scopes=[
-                "https://www.googleapis.com/auth/cloud-platform",
                 "https://www.googleapis.com/auth/generative-language.retriever",
             ],
         )
