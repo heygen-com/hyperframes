@@ -34,8 +34,8 @@ async function withHistory(
 
 /** Studio's history: list, Cmd+Z and Shift+Z, undo with the conflict choice, restore, peek, pin, edit windows. */
 export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): void {
-  // ponytail: a window whose close never arrives stays open until the server stops.
-  const windows = new Map<string, HistoryWindow>();
+  // ponytail: a window whose close never arrives ends itself when idle; its entry here stays until the server stops.
+  const windows = new Map<string, { history: ProjectHistory; window: HistoryWindow }>();
   const base = "/projects/:id/history";
 
   api.get(base, (c) => withHistory(adapter, c, (history) => ({ entries: history.list() })));
@@ -66,15 +66,18 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.post(`${base}/window`, (c) =>
     withHistory(adapter, c, async (history, body) => {
       const window = await history.beginWindow(YOU, text(body.label) ?? "Edited in Studio");
-      windows.set(window.id, window);
+      windows.set(window.id, { history, window });
+      // The window's id is the id of the entry it becomes.
       return { windowId: window.id };
     }),
   );
   api.post(`${base}/window/:windowId/close`, (c) =>
-    withHistory(adapter, c, async () => {
-      const window = windows.get(c.req.param("windowId") ?? "");
-      windows.delete(c.req.param("windowId") ?? "");
-      return { entry: window ? await window.close() : null };
+    withHistory(adapter, c, async (history) => {
+      const id = c.req.param("windowId") ?? "";
+      const held = windows.get(id);
+      if (held?.history !== history) throw new Error("That window is not open in this project.");
+      windows.delete(id);
+      return { entry: await held.window.close() };
     }),
   );
 }

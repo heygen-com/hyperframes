@@ -4,13 +4,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
@@ -218,10 +219,63 @@ describe("openProjectHistory", () => {
     expect(reopened.list().map((kept) => kept.label)).toEqual(["Second", "Third"]);
   });
 
+  it("mints its own id when the project's history-id is anything else, so a project cannot pick where history is written", async () => {
+    const projectDir = tempDir("hf-history-project-");
+    const historyRoot = tempDir("hf-history-root-");
+    const victim = tempDir("hf-history-victim-");
+    writeFileSync(join(projectDir, "index.html"), "v1");
+    writeFileSync(join(victim, "project.json"), '{"precious":true}');
+    mkdirSync(join(projectDir, ".hyperframes"));
+    writeFileSync(join(projectDir, ".hyperframes", "history-id"), relative(historyRoot, victim));
+
+    const history = await open(projectDir, historyRoot);
+    expect(history.projectId).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+    expect(readdirSync(victim)).toEqual(["project.json"]);
+    expect(readFileSync(join(victim, "project.json"), "utf-8")).toBe('{"precious":true}');
+    const idFile = join(projectDir, ".hyperframes", "history-id");
+    expect(readFileSync(idFile, "utf-8").trim()).toBe(history.projectId);
+  });
+
+  it("commits a window that is never closed when the history flushes, so Cmd+Z still reaches its writes", async () => {
+    const { history, write, read } = await project({ "index.html": "a" });
+    await history.beginWindow(agent, "never closed");
+    write("index.html", "b, an outside edit");
+    await history.flush();
+    expect(history.list()).toHaveLength(1);
+    expect(await history.step("back", you)).toMatchObject({
+      ok: true,
+      entry: { label: "Undid: never closed" },
+    });
+    expect(read("index.html")).toBe("a");
+  });
+
+  it("ends a window idle past its lifetime, so later writes are the outside's", async () => {
+    const { history, write } = await project({ "index.html": "a" });
+    const window = await history.beginWindow(agent, "Short", { idleMs: 40 });
+    write("index.html", "b");
+    await vi.waitFor(() => expect(history.list()).toHaveLength(1));
+    write("index.html", "c");
+    await history.flush();
+    expect(history.list().map((entry) => [entry.label, entry.who.kind])).toEqual([
+      ["Short", "agent"],
+      ["Changed outside the app", "outside"],
+    ]);
+    expect((await window.close())?.id).toBe(window.id);
+  });
+
+  it("keeps the history of a small edit in a project larger than its budget", async () => {
+    const { history, write } = await project(
+      { "media.bin": Buffer.alloc(4096, 1), "index.html": "a" },
+      { budgetBytes: 2048 },
+    );
+    await change(history, you, "Title", () => write("index.html", "b"));
+    expect(history.list()).toHaveLength(1);
+  });
+
   it("past its budget folds the oldest entries away and deletes their bytes, but never past a pin", async () => {
     const { history, write, read } = await project(
       { "index.html": "a".repeat(40) },
-      { budgetBytes: 100 },
+      { budgetBytes: 50 },
     );
     const pinned = await change(history, you, "B", () => write("index.html", "b".repeat(40)));
     history.pin(pinned.id, true);

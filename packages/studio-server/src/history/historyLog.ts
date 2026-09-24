@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { closeSync, constants, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 
@@ -80,8 +80,19 @@ function applyRecord(log: HistoryLog, record: LogRecord): void {
 
 /** Appends `record`, already applied to `log`; a log file that is gone is written whole, so a restart replays it. */
 export function saveRecord(file: string, log: HistoryLog, record: LogRecord): void {
-  if (existsSync(file)) appendFileSync(file, `${JSON.stringify(record)}\n`);
-  else writeLog(file, log);
+  let fd: number;
+  try {
+    // No O_CREAT: an append never creates a log that would lack its baseline.
+    fd = openSync(file, constants.O_WRONLY | constants.O_APPEND);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return writeLog(file, log);
+  }
+  try {
+    writeSync(fd, `${JSON.stringify(record)}\n`);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export function writeLog(file: string, log: HistoryLog): void {

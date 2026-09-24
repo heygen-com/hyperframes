@@ -11,6 +11,7 @@ export interface BlobStore {
   /** Writes the blob's bytes to `absPath` by clone-or-copy and rename, so a reader never sees half a file. */
   writeTo(hash: string, absPath: string): Promise<void>;
   bytes(): number;
+  size(hash: string): number;
   /** Deletes every blob not in `keep`. */
   prune(keep: ReadonlySet<string>): Promise<void>;
 }
@@ -64,6 +65,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     read: (hash) => readFile(pathOf(hash)),
     writeTo: (hash, absPath) => cloneOrCopy(pathOf(hash), absPath),
     bytes: () => total,
+    size: (hash) => sizes.get(hash) ?? 0,
     async prune(keep) {
       for (const [hash, size] of sizes) {
         if (keep.has(hash)) continue;

@@ -49,14 +49,22 @@ export type HistoryResult =
 
 export interface HistoryWindow {
   readonly id: string;
-  /** Records everything written since the window opened as one entry; null when nothing changed. */
+  /** Records everything written since the window opened as one entry (null when nothing changed); after the window
+   * ended by itself or by flush, returns the entry it became. */
   close(): Promise<HistoryEntry | null>;
 }
 
 export interface ProjectHistory {
   readonly projectId: string;
-  /** Writes until close() are this writer's, as one entry. ponytail: overlapping windows give a write to the newest. */
-  beginWindow(who: HistoryWho, label: string): Promise<HistoryWindow>;
+  /**
+   * Writes until close() are this writer's, as one entry whose id is the window's. A window with no write for
+   * `idleMs` (default maxGroupMs) ends by itself. ponytail: overlapping windows give a write to the newest.
+   */
+  beginWindow(
+    who: HistoryWho,
+    label: string,
+    options?: { idleMs?: number },
+  ): Promise<HistoryWindow>;
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
   list(): HistoryListItem[];
@@ -74,7 +82,7 @@ export interface ProjectHistory {
   readBlob(hash: string): Promise<Buffer>;
   pin(id: string, pinned: boolean): void;
   onEntry(listener: (entry: HistoryEntry) => void): () => void;
-  /** Takes in every pending write and closes the outside group. */
+  /** Takes in every pending write and commits every open window and the outside group. */
   flush(): Promise<void>;
   close(): Promise<void>;
 }
@@ -93,6 +101,10 @@ interface Group {
   label: string;
   startedAt: number;
   changes: Map<string, HistoryFileChange>;
+  /** Windows only: the idle lifetime, its timer, and the entry it became once ended. */
+  idleMs?: number;
+  idleTimer?: NodeJS.Timeout;
+  entry?: HistoryEntry | null;
 }
 
 /**
@@ -235,7 +247,9 @@ class Engine {
   }
 
   record(path: string, before: string | null, after: string | null): void {
-    const group = this.windows.at(-1) ?? this.outsideGroup();
+    const window = this.windows.at(-1);
+    if (window) this.touch(window);
+    const group = window ?? this.outsideGroup();
     const earlier = group.changes.get(path);
     const from = earlier ? earlier.before : before;
     if (from === after) group.changes.delete(path);
@@ -287,10 +301,18 @@ class Engine {
     return entry;
   }
 
+  /** Stored bytes beyond what the current files need: a project larger than the budget still keeps its history. */
+  historyBytes(): number {
+    let current = 0;
+    for (const hash of new Set([...this.tracked.values()].map((file) => file.hash)))
+      current += this.blobs.size(hash);
+    return this.blobs.bytes() - current;
+  }
+
   async keepWithinBudget(): Promise<void> {
     const budget = this.options.budgetBytes ?? 2 * 1024 ** 3;
     let folded = false;
-    while (this.blobs.bytes() > budget && foldOldest(this.log)) {
+    while (this.historyBytes() > budget && foldOldest(this.log)) {
       folded = true;
       await this.blobs.prune(referencedHashes(this.log, this.manifest()));
     }
@@ -317,22 +339,47 @@ class Engine {
     this.queue(task).catch((error) => this.options.onError?.(error));
   }
 
-  beginWindow(who: HistoryWho, label: string): Promise<HistoryWindow> {
+  beginWindow(who: HistoryWho, label: string, idleMs: number): Promise<HistoryWindow> {
     return this.queue(async () => {
       // Writes before the window opened are not this writer's.
       await this.sweep();
-      const group = this.newGroup(who, label);
-      this.windows.push(group);
-      return {
-        id: group.id,
-        close: () =>
-          this.queue(async () => {
-            await this.sweep();
-            this.windows = this.windows.filter((open) => open !== group);
-            return this.commit(group);
-          }),
-      };
+      const window = { ...this.newGroup(who, label), idleMs };
+      this.windows.push(window);
+      this.touch(window);
+      return { id: window.id, close: () => this.queue(() => this.sweepAndEnd(window)) };
     });
+  }
+
+  /** A window with no write for its idleMs ends, so a close that never comes cannot hold every later write. */
+  touch(window: Group): void {
+    clearTimeout(window.idleTimer);
+    if (window.idleMs === undefined || !Number.isFinite(window.idleMs)) return;
+    window.idleTimer = setTimeout(
+      () => this.background(() => this.sweepAndEnd(window)),
+      window.idleMs,
+    );
+    window.idleTimer.unref?.();
+  }
+
+  async sweepAndEnd(window: Group): Promise<HistoryEntry | null> {
+    await this.sweep();
+    return this.endWindow(window);
+  }
+
+  /** Commits an open window once; ending it again returns the entry it became. */
+  async endWindow(window: Group): Promise<HistoryEntry | null> {
+    if (!this.windows.includes(window)) return window.entry ?? null;
+    clearTimeout(window.idleTimer);
+    this.windows = this.windows.filter((open) => open !== window);
+    window.entry = await this.commit(window);
+    return window.entry;
+  }
+
+  /** Every pending write, open window and outside group, committed: for flush and close. */
+  async settleAll(): Promise<void> {
+    await this.sweep();
+    for (const window of [...this.windows]) await this.endWindow(window);
+    await this.commitOutside();
   }
 
   /** Writes `target` (path to hash, null deletes) as one entry of `who`'s. */
@@ -421,7 +468,8 @@ class Engine {
   api(): ProjectHistory {
     return {
       projectId: this.projectId,
-      beginWindow: (who, label) => this.beginWindow(who, label),
+      beginWindow: (who, label, options = {}) =>
+        this.beginWindow(who, label, options.idleMs ?? this.options.maxGroupMs ?? 30_000),
       noteChange: (path) => this.noteChange(path),
       list: () => {
         const undone = undoneIds(this.log.entries);
@@ -462,10 +510,10 @@ class Engine {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
       },
-      flush: () => this.queue(() => this.settle()),
+      flush: () => this.queue(() => this.settleAll()),
       close: async () => {
         if (this.notedTimer) clearTimeout(this.notedTimer);
-        await this.queue(() => this.settle());
+        await this.queue(() => this.settleAll());
       },
     };
   }

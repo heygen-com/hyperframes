@@ -3,10 +3,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ID_PATH = join(".hyperframes", "history-id");
+/** The only shape minted here; the id is project content and becomes a path, so nothing else is trusted. */
+const ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function readId(projectDir: string): string | null {
   try {
-    return readFileSync(join(projectDir, ID_PATH), "utf-8").trim() || null;
+    const id = readFileSync(join(projectDir, ID_PATH), "utf-8").trim();
+    return ID_SHAPE.test(id) ? id : null;
   } catch {
     return null;
   }
