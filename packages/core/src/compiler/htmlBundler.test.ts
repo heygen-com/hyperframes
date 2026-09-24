@@ -179,6 +179,25 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('document.getElementById("scene")');
   });
 
+  it("binds a mounted composition's scripts to its own file for __hyperframes.assetUrl", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <script>window.__envUrl = __hyperframes.assetUrl("assets/env.hdr");</script>
+</div>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
+  });
+
   it("inlines an in-project sub-composition script but not one reached through a symlink escaping the project root", async () => {
     // Security: a shared/cloned project may carry a symlink pointing outside the
     // root (e.g. ext -> /etc). The bundler reads+inlines local assets, so it must

@@ -36,6 +36,24 @@ describe("loadExternalCompositions", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("binds a fetched composition's scripts to its own URL for __hyperframes.assetUrl", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/blocks/blk/blk.html");
+    host.setAttribute("data-composition-id", "blk");
+    document.body.appendChild(host);
+    const compositionHtml =
+      `<div data-composition-id="blk"><script>window.__url = __hyperframes.assetUrl("assets/env.hdr");</scr` +
+      `ipt></div>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts.map((script) => script.textContent).join("")).toContain(
+      'var __hfCompositionSrc = "https://example.com/blocks/blk/blk.html";',
+    );
+  });
+
   it("fetches and mounts external composition HTML", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/comp.html");

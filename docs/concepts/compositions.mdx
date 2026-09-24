@@ -242,6 +242,30 @@ script, CLI overrides, and which value wins. If you are building tooling on
 `@hyperframes/core`, `extractCompositionMetadata()` reads the same
 `data-composition-variables` array — that is how Studio builds its editing UI.
 
+## Load a composition's own files from its script
+
+A mounted composition's `src` and `href` attributes are rewritten to where its
+file lives, so `<img src="assets/logo.png">` keeps working after the file is
+mounted into another composition. A path your script builds is a plain string
+and is never rewritten, so resolve it with `window.__hyperframes.assetUrl()`.
+It takes a path written relative to the composition's own file and returns a
+URL the page can load, whether the file is mounted, previewed or opened on its
+own.
+
+```html compositions/globe/globe.html
+<div data-composition-id="globe" data-width="1920" data-height="1080">
+  <script>
+    const texture = new THREE.TextureLoader().load(
+      __hyperframes.assetUrl("assets/earth.jpg"),
+    );
+  </script>
+</div>
+```
+
+A separate script file (`<script src="...">`) has no composition of its own to
+resolve against. Resolve the URLs in the composition's inline script and hand
+them over, for example on a global the file reads.
+
 ## See every composition in a project
 
 ```bash

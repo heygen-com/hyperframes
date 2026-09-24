@@ -89,6 +89,11 @@ Apply the correct template based on type. See [templates.md](templates.md) for c
 
 #### All types
 
+- **Load files the block ships through `__hyperframes.assetUrl("assets/...")`** whenever a script
+  builds the path (textures, fonts, JSON, models). Attributes like `src` and `href` are rebased
+  when the block is mounted; strings in a script are not, so a bare `"assets/..."` 404s once the
+  block lives under `compositions/<name>/`. A separate `.js` file gets the URLs from the block's
+  inline script.
 - **Placeholder content is monochrome** — read
   [placeholder-material.md](placeholder-material.md) before choosing a single colour. Stand-in
   screens, images, cards, avatars, logos and chart series use four alpha steps of the
