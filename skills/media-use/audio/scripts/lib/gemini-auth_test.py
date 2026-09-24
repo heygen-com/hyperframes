@@ -3,11 +3,18 @@
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import types
 import unittest
 from unittest.mock import Mock, patch
+
+
+# Keep the credential subprocess protocol UTF-8 on every platform.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors=_stream.errors)
 
 spec = importlib.util.spec_from_file_location("gemini_auth", Path(__file__).with_name("gemini-auth.py"))
 auth = importlib.util.module_from_spec(spec)
@@ -40,7 +47,7 @@ class AuthenticationTests(unittest.TestCase):
     def test_file_takes_precedence_over_json_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "service.json"
-            path.write_text(json.dumps({**self.info, "project_id": "file-project"}))
+            path.write_text(json.dumps({**self.info, "project_id": "file-project"}), encoding="utf-8")
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(path)
             os.environ["GCS_CREDS"] = "invalid-json"
             self.assertEqual(auth.authenticate()["project"], "file-project")

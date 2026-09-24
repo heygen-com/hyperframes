@@ -4,6 +4,11 @@ import json
 import os
 import sys
 
+# Keep the credential subprocess protocol UTF-8 on every platform.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors=_stream.errors)
+
 
 def authenticate():
     try:
