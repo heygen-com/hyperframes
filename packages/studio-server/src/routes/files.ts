@@ -89,6 +89,7 @@ import {
   insertCompositionIntoSource,
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
+import { requestSubPath } from "../helpers/requestSubPath.js";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ async function loadGsapParser() {
 interface RouteContext {
   req: {
     param: (name: string) => string;
-    path: string;
+    url: string;
     query: (name: string) => string | undefined;
     header: (name: string) => string | undefined;
   };
@@ -172,7 +173,7 @@ function isDanglingSymlinkInProject(projectDir: string, lexicalPath: string): bo
 async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
-  pathPrefix: (projectId: string) => string,
+  route: string,
   opts?: { mustExist?: boolean },
 ) {
   const id = c.req.param("id");
@@ -195,7 +196,7 @@ async function resolveProjectPath(
     } as const;
   }
 
-  const filePath = decodeURIComponent(c.req.path.replace(pathPrefix(project.id), ""));
+  const filePath = requestSubPath(c.req.url, `projects/:id/${route}`);
   if (filePath.includes("\0")) {
     return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }
@@ -220,11 +221,11 @@ function resolveProjectFile(
   adapter: StudioApiAdapter,
   opts?: { mustExist?: boolean },
 ) {
-  return resolveProjectPath(c, adapter, (id) => `/projects/${id}/files/`, opts);
+  return resolveProjectPath(c, adapter, "files", opts);
 }
 
 function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, operation: string) {
-  return resolveProjectPath(c, adapter, (id) => `/projects/${id}/file-mutations/${operation}/`);
+  return resolveProjectPath(c, adapter, `file-mutations/${operation}`);
 }
 
 type MutationTarget = {
@@ -3222,7 +3223,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── GSAP Animations (parse) ──
 
   api.get("/projects/:id/gsap-animations/*", async (c) => {
-    const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-animations/`, {
+    const res = await resolveProjectPath(c, adapter, "gsap-animations", {
       mustExist: true,
     });
     if ("error" in res) return res.error;
@@ -3251,7 +3252,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   });
 
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
-    const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
+    const res = await resolveProjectPath(c, adapter, "gsap-mutations", {
       mustExist: true,
     });
     if ("error" in res) return res.error;
@@ -3264,12 +3265,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   });
 
   api.post("/projects/:id/gsap-mutations-batch/*", async (c) => {
-    const res = await resolveProjectPath(
-      c,
-      adapter,
-      (id) => `/projects/${id}/gsap-mutations-batch/`,
-      { mustExist: true },
-    );
+    const res = await resolveProjectPath(c, adapter, "gsap-mutations-batch", { mustExist: true });
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as {
@@ -3289,12 +3285,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // mutation wrote. Keep compare + write in this synchronous server section so
   // another request cannot land between a client-side check and the restore.
   api.post("/projects/:id/gsap-mutation-rollback/*", async (c) => {
-    const res = await resolveProjectPath(
-      c,
-      adapter,
-      (id) => `/projects/${id}/gsap-mutation-rollback/`,
-      { mustExist: true },
-    );
+    const res = await resolveProjectPath(c, adapter, "gsap-mutation-rollback", { mustExist: true });
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as {

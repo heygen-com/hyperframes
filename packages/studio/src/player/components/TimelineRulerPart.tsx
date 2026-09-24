@@ -17,6 +17,7 @@ export function TimelineRulerPart() {
       beatAnalysis={props.beatAnalysis}
       contentOrigin={props.contentOrigin}
       renderTimeRange={props.rowsVirtualized ? props.renderTimeRange : undefined}
+      scrollRef={props.scrollRef}
     />
   );
 }
