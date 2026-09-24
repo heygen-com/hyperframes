@@ -235,6 +235,98 @@ describe("resolveProjectPath why", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ why: "outside_project" });
   });
+
+  // A listing (`walkDir`) can show a path that has since been replaced by a
+  // directory — a rename, or an agent overwriting a file with a folder of the
+  // same name. `existsSync` passes; `readFileSync` would throw `EISDIR`, which
+  // Hono answers as plain-text "Internal Server Error" — not JSON, and not a
+  // reason. This must read the same as any other missing-file 404.
+  it("reports a path replaced by a directory as 404, not a bare server error", async () => {
+    const { app, project } = fixture();
+    rmSync(join(project, "inside.txt"));
+    mkdirSync(join(project, "inside.txt"));
+
+    const response = await app.request(fileUrl("inside.txt"));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "not_a_file" });
+  });
+
+  // The dangling case: the link exists, its target does not, anywhere. This is
+  // broken plumbing (a stale symlink), not an attack — the read route should
+  // say so rather than reuse the path-traversal label.
+  it("reports a dangling symlink as 404, not 403", async (context) => {
+    const { app, project } = fixture();
+    linkOrSkip(context, join(project, "nope-target.html"), join(project, "dangling.html"), "file");
+
+    const response = await app.request(fileUrl("dangling.html"));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "dangling_symlink" });
+  });
+
+  // The containment guard must not weaken: a symlink that resolves to
+  // something real outside the project is still the traversal case, whether
+  // or not it happens to be broken in some OTHER way. Only a target that
+  // exists nowhere gets the new label.
+  it("still reports a symlink resolving outside the project as 403 outside_project", async (context) => {
+    const { app, project, outside } = fixture();
+    linkOrSkip(context, join(outside, "secret.txt"), join(project, "escape.html"), "file");
+
+    const response = await app.request(fileUrl("escape.html"));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "outside_project" });
+  });
+
+  // The "dangling_symlink" label must never apply to a path whose *own*
+  // location is outside the project (reached via `..`) — only to a symlink
+  // that lives inside the project. Otherwise the response leaks, to anyone
+  // who can hit the route, whether an out-of-project path happens to be a
+  // dangling symlink, which is exactly the containment guard's job to hide.
+  it("reports a dangling symlink reached by traversal as 403, not 404", async (context) => {
+    const { app, project, outside } = fixture();
+    linkOrSkip(context, join(outside, "nope-target.html"), join(outside, "dangling.html"), "file");
+
+    const response = await app.request(fileUrl(relative(project, join(outside, "dangling.html"))));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "outside_project" });
+  });
+
+  // Same leak, one level removed: the leaf name is lexically inside the
+  // project, but it's reached through a directory symlink that itself
+  // escapes the project. The dangling-ness of the leaf must not surface.
+  it("reports a dangling leaf behind an escaping directory symlink as 403, not 404", async (context) => {
+    const { app, project, outside } = fixture();
+    linkOrSkip(context, outside, join(project, "ext"), "dir");
+
+    const response = await app.request(fileUrl("ext/nope-target.html"));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "outside_project" });
+  });
+
+  // A symlink that lives inside the project but points *outside* it must
+  // read identically (403, same why) whether or not the outside target
+  // exists — the existence of an outside file is exactly what containment
+  // must never reveal, and `dangling_symlink` is a 404 an attacker could
+  // otherwise use to probe it.
+  it("does not distinguish an existing from a missing target across the project boundary", async (context) => {
+    const { app, project, outside } = fixture();
+    writeFileSync(join(outside, "b-target.txt"), "outside b");
+    linkOrSkip(context, join(outside, "a-missing.txt"), join(project, "a.html"), "file");
+    linkOrSkip(context, join(outside, "b-target.txt"), join(project, "b.html"), "file");
+
+    const [toMissing, toExisting] = await Promise.all([
+      app.request(fileUrl("a.html")),
+      app.request(fileUrl("b.html")),
+    ]);
+
+    expect(toMissing.status).toBe(toExisting.status);
+    expect(await toMissing.json()).toMatchObject({ why: "outside_project" });
+    expect(await toExisting.json()).toMatchObject({ why: "outside_project" });
+  });
 });
 
 describe("upload collision races", () => {
