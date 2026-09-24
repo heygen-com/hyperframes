@@ -1,4 +1,5 @@
-import { memo } from "react";
+import { memo, useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
+import { TIMELINE_SCROLL_SETTLE_MS } from "./useTimelineScrollViewport";
 import type { TimelineTheme } from "./timelineTheme";
 import { RULER_H, getTimelineBeatEntries } from "./timelineLayout";
 import { formatTimelineTickLabel } from "./timelineRulerGeometry";
@@ -19,7 +20,93 @@ interface TimelineRulerProps {
   beatAnalysis?: MusicBeatAnalysis | null;
   contentOrigin: number;
   renderTimeRange?: TimelineTimeRange;
+  scrollRef?: RefObject<HTMLDivElement | null>;
 }
+
+const TICK_LABEL_INSET_PX = 5;
+
+// Index of the major tick whose label starts under the track-header corner, which
+// covers ruler x < scrollLeft; -1 when none does.
+function tickIndexUnderHeader(major: number[], pps: number, scrollLeft: number): number {
+  let lo = 0;
+  let hi = major.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (major[mid]! * pps - 0.5 + TICK_LABEL_INSET_PX < scrollLeft) {
+      found = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return found;
+}
+
+/**
+ * Paints over the one label the header corner would slice, once a scroll settles. Moving it
+ * on every tick crossing cost 2-3x the scroll budget on a large timeline, so mid-scroll a
+ * fragment can still show.
+ */
+const HeaderSlicedLabelMask = memo(function HeaderSlicedLabelMask({
+  scrollRef,
+  major,
+  pps,
+  background,
+}: {
+  scrollRef: RefObject<HTMLDivElement | null>;
+  major: number[];
+  pps: number;
+  background: string;
+}) {
+  const scrollingRef = useRef(false);
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const el = scrollRef.current;
+      let settle: ReturnType<typeof setTimeout> | undefined;
+      const onScroll = () => {
+        if (!scrollingRef.current) {
+          scrollingRef.current = true;
+          onChange();
+        }
+        clearTimeout(settle);
+        settle = setTimeout(() => {
+          scrollingRef.current = false;
+          onChange();
+        }, TIMELINE_SCROLL_SETTLE_MS);
+      };
+      el?.addEventListener("scroll", onScroll, { passive: true });
+      return () => {
+        clearTimeout(settle);
+        el?.removeEventListener("scroll", onScroll);
+      };
+    },
+    [scrollRef],
+  );
+  const index = useSyncExternalStore(
+    subscribe,
+    () =>
+      scrollingRef.current
+        ? -1
+        : tickIndexUnderHeader(major, pps, scrollRef.current?.scrollLeft ?? 0),
+    () => -1,
+  );
+  if (index < 0) return null;
+  const labelLeft = major[index]! * pps - 0.5 + TICK_LABEL_INSET_PX;
+  const next = major[index + 1];
+  return (
+    <div
+      data-timeline-ruler-label-mask=""
+      className="absolute pointer-events-none"
+      style={{
+        left: labelLeft,
+        top: 4,
+        height: 12,
+        // Up to the next label, so only this label's text band is covered.
+        width: next === undefined ? 80 : (next - major[index]!) * pps - TICK_LABEL_INSET_PX,
+        background,
+      }}
+    />
+  );
+});
 
 export const TimelineRuler = memo(function TimelineRuler({
   major,
@@ -33,6 +120,7 @@ export const TimelineRuler = memo(function TimelineRuler({
   beatAnalysis,
   contentOrigin,
   renderTimeRange,
+  scrollRef,
 }: TimelineRulerProps) {
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const beatTimes = beatAnalysis?.beatTimes ?? [];
@@ -131,7 +219,7 @@ export const TimelineRuler = memo(function TimelineRuler({
                 className="absolute font-mono tabular-nums leading-none whitespace-nowrap"
                 style={{
                   color: theme.tickText,
-                  left: 5,
+                  left: TICK_LABEL_INSET_PX,
                   top: 5,
                   fontSize: 10,
                 }}
@@ -143,6 +231,14 @@ export const TimelineRuler = memo(function TimelineRuler({
               <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
             </div>
           ))}
+          {scrollRef && (
+            <HeaderSlicedLabelMask
+              scrollRef={scrollRef}
+              major={major}
+              pps={pps}
+              background={theme.shellBackground}
+            />
+          )}
         </div>
       </div>
     </>
