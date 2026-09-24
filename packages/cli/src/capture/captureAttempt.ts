@@ -5,9 +5,10 @@ import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
  * - Rich animation metadata for Claude Code to recreate
  */
 
-import { mkdirSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { noDrops } from "./assetDownloader.js";
+import { ensureCaptureDirSync } from "./captureFile.js";
 import type { IconCandidate } from "./faviconRanker.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import { setupAnimationCapture, startCdpAnimationCapture } from "./animationCataloger.js";
@@ -101,9 +102,9 @@ export async function captureWebsiteAttempt(
   loadEnvFile(outputDir);
 
   // Create output directories
-  mkdirSync(join(outputDir, "extracted"), { recursive: true });
-  mkdirSync(join(outputDir, "screenshots"), { recursive: true });
-  mkdirSync(join(outputDir, "assets"), { recursive: true });
+  ensureCaptureDirSync(outputDir, join(outputDir, "extracted"));
+  ensureCaptureDirSync(outputDir, join(outputDir, "screenshots"));
+  ensureCaptureDirSync(outputDir, join(outputDir, "assets"));
 
   // Launch browser
   progress("browser", "Launching headless Chrome...");

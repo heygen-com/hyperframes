@@ -1,5 +1,4 @@
-import { mkdirSync } from "node:fs";
-import { writeCaptureFileSync } from "./captureFile.js";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import { noDrops } from "./assetDownloader.js";
 import type {
@@ -74,9 +73,7 @@ export function writePartialCaptureBundle(
   lastPhase: CaptureResult["lastPhase"],
 ): CaptureResult {
   const hostname = new URL(opts.url).hostname.replace(/^www\./, "");
-  mkdirSync(opts.outputDir, { recursive: true });
-  const extractedDir = join(opts.outputDir, "extracted");
-  mkdirSync(extractedDir, { recursive: true });
+  const extractedDir = ensureCaptureDirSync(opts.outputDir, join(opts.outputDir, "extracted"));
   writeCaptureFileSync(join(extractedDir, "tokens.json"), serializeTokensForCapture(state.tokens));
   writeCaptureFileSync(
     join(extractedDir, "design-styles.json"),

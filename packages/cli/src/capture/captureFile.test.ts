@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { writeCaptureFileSync } from "./captureFile.js";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -120,5 +120,66 @@ describe("writeCaptureFileSync", () => {
     expect(() => writeCaptureFileSync(join(outputDir, "occupied"), "b")).toThrow();
 
     expect(readdirSync(outputDir).sort()).toEqual(["a.txt", "occupied"]);
+  });
+});
+
+describe("ensureCaptureDirSync", () => {
+  it("creates nested directories under the root, and accepts them again on a re-run", () => {
+    const { outputDir } = scratch();
+    const fonts = join(outputDir, "assets", "fonts");
+
+    expect(ensureCaptureDirSync(outputDir, fonts)).toBe(fonts);
+    expect(ensureCaptureDirSync(outputDir, fonts)).toBe(fonts);
+
+    expect(lstatSync(fonts).isDirectory()).toBe(true);
+  });
+
+  posixOnly("refuses a planted directory symlink and creates nothing in its target", () => {
+    const { outputDir } = scratch();
+    const outside = join(outputDir, "..", "outside");
+    mkdirSync(outside);
+    symlinkSync(outside, join(outputDir, "assets"));
+
+    expect(() => ensureCaptureDirSync(outputDir, join(outputDir, "assets", "fonts"))).toThrow(
+      /outside the capture directory/,
+    );
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  posixOnly("refuses a directory symlink even when it points elsewhere inside the root", () => {
+    const { outputDir } = scratch();
+    mkdirSync(join(outputDir, "extracted"));
+    symlinkSync(join(outputDir, "extracted"), join(outputDir, "assets"));
+
+    expect(() => ensureCaptureDirSync(outputDir, join(outputDir, "assets"))).toThrow(
+      /outside the capture directory/,
+    );
+  });
+
+  posixOnly("trusts a root that is itself a symlink, as /tmp is on macOS", () => {
+    const { outputDir } = scratch();
+    const linkedRoot = join(outputDir, "..", "linked-capture");
+    symlinkSync(outputDir, linkedRoot);
+
+    ensureCaptureDirSync(linkedRoot, join(linkedRoot, "assets", "svgs"));
+
+    expect(lstatSync(join(outputDir, "assets", "svgs")).isDirectory()).toBe(true);
+  });
+
+  it("refuses a file sitting where a directory belongs", () => {
+    const { outputDir } = scratch();
+    writeFileSync(join(outputDir, "assets"), "not a directory");
+
+    expect(() => ensureCaptureDirSync(outputDir, join(outputDir, "assets"))).toThrow(
+      /not a directory/,
+    );
+  });
+
+  it("refuses a directory that is not under the root", () => {
+    const { outputDir } = scratch();
+
+    expect(() => ensureCaptureDirSync(outputDir, join(outputDir, "..", "elsewhere"))).toThrow(
+      /outside the capture directory/,
+    );
   });
 });

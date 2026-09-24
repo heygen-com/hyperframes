@@ -1,5 +1,13 @@
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 type WriteOptions = Parameters<typeof writeFileSync>[2];
 
@@ -39,4 +47,52 @@ export function writeCaptureFileSync(
     return publishCaptureFileSync(path, data, normalized);
   }
   writeFileSync(path, data, { ...normalized, mode: 0o600 });
+}
+
+function isAlreadyThere(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
+}
+
+/**
+ * Creates `dir` inside the capture output root and returns it, refusing any directory whose real
+ * path is not the one it has under the root (#4304). `writeCaptureFileSync` only guards the last
+ * path entry; a directory in the path that is itself a planted symlink (`assets -> ~/somewhere`)
+ * would carry the staging directory and the rename, and so a filename the captured page chose,
+ * into wherever it points.
+ *
+ * The root is the user's own choice and is trusted as given, symlink included (`/tmp` on macOS is
+ * one). Everything below it is walked one level at a time, so a planted link is caught before
+ * anything is created inside its target. The check runs when a directory is created, not on every
+ * write: a link swapped in afterwards by a process racing the capture is beyond what it can stop.
+ */
+export function ensureCaptureDirSync(root: string, dir: string): string {
+  const rootPath = resolve(root);
+  const target = resolve(dir);
+  const rel = relative(rootPath, target);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error(
+      `Refusing to create ${target}: it is outside the capture directory ${rootPath}`,
+    );
+  }
+  mkdirSync(rootPath, { recursive: true });
+  let current = rootPath;
+  let expected = realpathSync(rootPath);
+  for (const segment of rel.split(sep).filter(Boolean)) {
+    current = join(current, segment);
+    expected = join(expected, segment);
+    try {
+      mkdirSync(current);
+    } catch (error) {
+      if (!isAlreadyThere(error)) throw error;
+    }
+    if (realpathSync(current) !== expected) {
+      throw new Error(
+        `Refusing to write into ${current}: it resolves outside the capture directory ${rootPath}`,
+      );
+    }
+    if (!statSync(current).isDirectory()) {
+      throw new Error(`Refusing to write into ${current}: it is not a directory`);
+    }
+  }
+  return target;
 }

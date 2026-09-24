@@ -9,8 +9,7 @@ import type { IconCandidate } from "./faviconRanker.js";
 import { startCdpAnimationCapture } from "./animationCataloger.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import { detectLibraries } from "./contentExtractor.js";
-import { mkdirSync } from "node:fs";
-import { writeCaptureFileSync } from "./captureFile.js";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import { extractHtml } from "./htmlExtractor.js";
 import { extractTokens } from "./tokenExtractor.js";
@@ -176,7 +175,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       if (discoveredLotties.length > 0 && remainingMs() > 0) {
         const lottieDir = join(outputDir, "assets", "lottie");
         if (!canWrite()) return;
-        mkdirSync(lottieDir, { recursive: true });
+        ensureCaptureDirSync(outputDir, lottieDir);
         const lottieBudget = { remainingMs, byteBudget: downloadByteBudget };
         const savedCount = await saveLottieAnimations(discoveredLotties, lottieDir, lottieBudget);
         // Generate manifest + preview thumbnails so the agent can SEE what each animation is

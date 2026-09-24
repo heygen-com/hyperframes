@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -738,6 +738,48 @@ describe("capture download security boundaries", () => {
       expect(result.css).toBe(source);
       expect(result.drops.unavailable).toBe(1);
       expect(readdirSync(join(dir, "assets/fonts"))).toEqual([]);
+    });
+  });
+});
+
+describe("a planted directory link inside the capture directory (#4304)", () => {
+  // Creating symlinks needs elevated rights on Windows.
+  const posixOnly = it.skipIf(process.platform === "win32");
+
+  function plantedAssetsLink(root: string): { outputDir: string; outside: string } {
+    const outputDir = join(root, "capture");
+    const outside = join(root, "outside");
+    mkdirSync(outputDir);
+    mkdirSync(outside);
+    symlinkSync(outside, join(outputDir, "assets"));
+    return { outputDir, outside };
+  }
+
+  posixOnly("refuses to write page-derived assets through a planted assets/ symlink", async () => {
+    await withTempDir(async (root) => {
+      const { outputDir, outside } = plantedAssetsLink(root);
+      const svgs = [
+        {
+          outerHTML: `<svg viewBox="0 0 10 10"><rect width="10" height="10" fill="#abc"/></svg>`,
+          isLogo: false,
+        },
+      ];
+
+      await expect(
+        downloadAssets({ svgs, sections: [], ogImage: "" } as unknown as DesignTokens, outputDir),
+      ).rejects.toThrow(/outside the capture directory/);
+      expect(readdirSync(outside)).toEqual([]);
+    });
+  });
+
+  posixOnly("refuses to create the fonts directory through a planted assets/ symlink", async () => {
+    await withTempDir(async (root) => {
+      const { outputDir, outside } = plantedAssetsLink(root);
+
+      await expect(downloadAndRewriteFonts("", outputDir)).rejects.toThrow(
+        /outside the capture directory/,
+      );
+      expect(readdirSync(outside)).toEqual([]);
     });
   });
 });
