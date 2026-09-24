@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Page } from "puppeteer-core";
 import type { CaptureSession } from "./frameCapture.js";
-import { recordSubTimelineWarning } from "./frameCapture.js";
+import { pollSubCompositionTimelines, recordSubTimelineWarning } from "./frameCapture.js";
 
 function makeSession(overrides: Partial<CaptureSession> = {}): CaptureSession {
   return {
@@ -79,5 +80,73 @@ describe("recordSubTimelineWarning", () => {
     expect(warning.code).toBe("sub_timeline_script_failure");
     expect(warning.message).toContain("https://example.test/scene.js");
     expect(warning.message).not.toContain("data-no-timeline");
+  });
+});
+
+// The warning text is only as good as the ids handed to it, and that handoff
+// lives in the poll, not in recordSubTimelineWarning. CI caught a TypeError
+// here that this file could not see: the enumerate step used to cast
+// page.evaluate's result with `as string[]`, so any caller whose evaluate did
+// not return an array crashed the DIAGNOSTIC path.
+describe("pollSubCompositionTimelines pending-id reporting", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // `data-composition-id` appears in the READINESS expression too, so a stub
+  // keyed on it answers the readiness poll with the enumerate payload and the
+  // poll returns "ready" before it ever enumerates. `m.push(` is unique to the
+  // enumerate step. `matched` then asserts the stub was really reached, so a
+  // later edit to that expression fails loudly instead of testing nothing.
+  function pageReturning(enumerateResult: unknown) {
+    const matched = { count: 0 };
+    const page = {
+      evaluate: vi.fn(async (expr: string) => {
+        if (!expr.includes("m.push(")) return false;
+        matched.count++;
+        return enumerateResult;
+      }),
+    } as unknown as Page;
+    return { page, matched };
+  }
+
+  it("reports the still-unregistered ids to onPending", async () => {
+    const seen: string[][] = [];
+    const probe = pageReturning(["scene-2", "scene-5"]);
+    const outcome = await pollSubCompositionTimelines(
+      probe.page,
+      60,
+      10,
+      () => [],
+      undefined,
+      (ids) => seen.push([...ids]),
+    );
+
+    expect(outcome).toBe("timeout");
+    expect(seen).toEqual([["scene-2", "scene-5"]]);
+    expect(probe.matched.count).toBeGreaterThan(0);
+  });
+
+  // `false` is what a blanket evaluate stub returns, and it is what CI hit: the
+  // enumerate result used to be cast with `as string[]`, so a non-array threw a
+  // TypeError on the very path that exists to report a problem.
+  it("degrades to no ids instead of throwing when the page returns a non-array", async () => {
+    const seen: string[][] = [];
+    const probe = pageReturning(false);
+    const outcome = await pollSubCompositionTimelines(
+      probe.page,
+      60,
+      10,
+      () => [],
+      undefined,
+      (ids) => seen.push([...ids]),
+    );
+
+    expect(outcome).toBe("timeout");
+    expect(seen).toEqual([[]]);
+    expect(probe.matched.count).toBeGreaterThan(0);
   });
 });

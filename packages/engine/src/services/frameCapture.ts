@@ -1798,7 +1798,7 @@ export async function pollSubCompositionTimelines(
   // reason — a script-failure bail used to skip this entirely, so a render
   // with multiple sub-compositions only named the failed script URL(s), not
   // which composition(s) it was still waiting on (review).
-  const missingIds = (await page.evaluate(`(function() {
+  const evaluated = await page.evaluate(`(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     var timelines = window.__timelines || {};
     var m = [];
@@ -1808,9 +1808,14 @@ export async function pollSubCompositionTimelines(
       if (id && !timelines[id]) m.push(id);
     }
     return m;
-  })()`)) as string[];
-  onPending?.(missingIds);
-  const missing = missingIds.join(", ");
+  })()`);
+  // This block exists to BUILD A WARNING, so it must never be the thing that
+  // throws. `page.evaluate` is loosely typed, and a caller that stubs it (or a
+  // runtime that returns nothing here) would turn a blind `as string[]` cast
+  // into a TypeError on the diagnostic path. Normalise instead of asserting.
+  const pendingIds = Array.isArray(evaluated) ? evaluated.map((id) => String(id)) : [];
+  onPending?.(pendingIds);
+  const missing = pendingIds.join(", ");
   if (scriptFailureBail) {
     console.warn(`[FrameCapture] Composition(s) still waiting on the failed script: ${missing}.`);
   } else {
