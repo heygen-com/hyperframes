@@ -25,6 +25,12 @@ beforeAll(() => {
   }
 });
 
+function ancestorsOf(el: Element): Element[] {
+  const chain: Element[] = [];
+  for (let at = el.parentElement; at; at = at.parentElement) chain.push(at);
+  return chain;
+}
+
 function createMockPostMessage() {
   return vi.fn();
 }
@@ -142,6 +148,42 @@ describe("createPickerModule", () => {
       const api = (window as any).__HF_PICKER_API;
       try {
         expect(api.getCandidatesAtPoint(10, 10)).toEqual([]);
+      } finally {
+        Object.defineProperty(document, "elementsFromPoint", {
+          configurable: true,
+          value: originalElementsFromPoint,
+        });
+      }
+    });
+
+    it("picks inside a mounted section whose root sets pointer-events:none", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      // The mount rescopes the section's own root rule onto its inner root.
+      document.head.innerHTML =
+        '<style>[data-composition-id="intro"] > [data-hf-inner-root] { pointer-events: none }' +
+        " .vignette { pointer-events: none }</style>";
+      document.body.innerHTML = `<div data-composition-id="intro" data-composition-src="intro.html">
+        <div data-hf-inner-root="true"><div class="card"><code id="code">tl.to()</code></div>
+        <div class="vignette" id="vignette"></div></div></div>`;
+      const code = document.getElementById("code")!;
+      // Paint order under the point, top first; like a browser, drop what has pointer-events:none.
+      const painted = [document.getElementById("vignette")!, code, code.parentElement!];
+      const originalElementsFromPoint = document.elementsFromPoint;
+      Object.defineProperty(document, "elementsFromPoint", {
+        configurable: true,
+        value: vi.fn(() =>
+          [...painted, ...ancestorsOf(code.parentElement!)].filter(
+            (el) => getComputedStyle(el).pointerEvents !== "none",
+          ),
+        ),
+      });
+
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10)[0]?.selector).toBe("#code");
+        expect(api.pickAtPoint(10, 10)?.selector).toBe("#code");
+        expect(document.head.querySelectorAll("style")).toHaveLength(1);
       } finally {
         Object.defineProperty(document, "elementsFromPoint", {
           configurable: true,

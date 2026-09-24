@@ -20,6 +20,23 @@ const PICKER_BLOCK_SELECTOR = [
   "[data-hyper-shader-loading]",
 ].join(",");
 
+// A composition root's pointer-events:none is about playback, not editing: it inherits into the whole section
+// and hides it from the hit test. Roots take pointer events again while the picker looks; an element that
+// sets pointer-events:none itself (a vignette, a cursor) still passes through.
+const PICKABLE_ROOTS_CSS =
+  "[data-composition-id],[data-hf-inner-root]{pointer-events:auto!important}";
+
+function withPickableCompositionRoots<T>(run: () => T): T {
+  const style = document.createElement("style");
+  style.textContent = PICKABLE_ROOTS_CSS;
+  (document.head ?? document.documentElement).appendChild(style);
+  try {
+    return run();
+  } finally {
+    style.remove();
+  }
+}
+
 export type PickerModule = {
   enablePickMode: () => void;
   disablePickMode: () => void;
@@ -183,14 +200,20 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     clientY: number,
     limit?: number,
   ): RuntimePickerElementInfo[] {
-    return getPickCandidatesFromPoint(clientX, clientY, limit).map(extractElementInfo);
+    return withPickableCompositionRoots(() =>
+      getPickCandidatesFromPoint(clientX, clientY, limit),
+    ).map(extractElementInfo);
   }
 
   function onPickMouseMove(event: MouseEvent): void {
     if (!pickModeActive) return;
-    const candidates = getPickCandidatesFromPoint(event.clientX, event.clientY, 1);
-    const target = candidates[0] ?? (isElementNode(event.target) ? event.target : null);
-    if (!isPickableElement(target)) return;
+    const target = withPickableCompositionRoots(() => {
+      const hit =
+        getPickCandidatesFromPoint(event.clientX, event.clientY, 1)[0] ??
+        (isElementNode(event.target) ? event.target : null);
+      return isPickableElement(hit) ? hit : null;
+    });
+    if (!target) return;
     if (pickModeHighlightEl === target) return;
     if (pickModeHighlightEl) {
       pickModeHighlightEl.classList.remove("__hf-pick-highlight");
