@@ -4,7 +4,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
+import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
 import { usePlayerStore } from "../store/playerStore";
 import { NLEProvider, useNLEContext, type NLEContextValue } from "../../components/nle/NLEContext";
 import {
@@ -15,6 +15,8 @@ import {
 } from "./timelinePlayerTestHarness";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const FULL_WAIT_MS = SHADOW_READY_TIMEOUT_MS * SHADOW_READY_BUDGETS;
 
 vi.mock("../../utils/gsapSoftReload", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/gsapSoftReload")>()),
@@ -258,7 +260,7 @@ describe("shadow reload readiness and failure", () => {
     const { getApi, live, root } = beginReload({ onPreviewReloadFailed });
     expect(getApi().previewSlots).toHaveLength(2);
 
-    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
 
     expect(getApi().previewSlots).toEqual([{ gen: 0, role: "live" }]);
     expect(getApi().iframeRef.current).toBe(live);
@@ -268,7 +270,7 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
-  it("keeps a slow shadow pending past 5s and fails it only at the single budget", () => {
+  it("keeps a slow shadow pending past 5s and fails it only once all budgets are spent", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();
@@ -283,8 +285,43 @@ describe("shadow reload readiness and failure", () => {
     expect(getApi().previewSlots).toHaveLength(2);
     expect(onPreviewReloadFailed).not.toHaveBeenCalled();
 
-    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS - 5001 - 1));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(1));
     expect(getApi().previewSlots).toEqual([{ gen: 0, role: "live" }]);
+    expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    unmount(root);
+  });
+
+  // A busy machine: the edit's shadow paints after one budget; dropping it left the stage on the pre-edit file.
+  it("promotes a shadow that paints after its first budget instead of dropping the edit", () => {
+    vi.useFakeTimers();
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+    });
+
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + 2000));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    act(() => getApi().onShadowReadyChange(gen, true));
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    unmount(root);
+  });
+
+  it("gives a reload that replaces a slow one its own full set of budgets", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + 1000));
+
+    act(() => getApi().refreshPlayer());
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS - 1));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(1));
     expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
     unmount(root);
   });
@@ -325,7 +362,7 @@ describe("shadow reload readiness and failure", () => {
     expect(onPreviewReloadFailed).not.toHaveBeenCalled();
 
     act(() => setVisibility("visible"));
-    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS - 1));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS - 1));
     expect(onPreviewReloadFailed).not.toHaveBeenCalled();
     act(() => void vi.advanceTimersByTime(1));
     expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
@@ -431,7 +468,7 @@ describe("shadow reload store ownership and readiness", () => {
     const { getApi, rerender, root } = setup({ onPreviewReloadFailed: first });
     expect(getApi().previewSlots).toHaveLength(2);
     rerender({ onPreviewReloadFailed: latest });
-    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
     expect(latest).toHaveBeenCalled();
     expect(first).not.toHaveBeenCalled();
     unmount(root);
