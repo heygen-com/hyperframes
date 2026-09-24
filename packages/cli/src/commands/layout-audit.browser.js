@@ -28,6 +28,7 @@
   }
 
   function horizontalOverflow(subject, container, tolerance) {
+    if (subject.width <= container.width + tolerance) return null;
     const overflow = overflowFor(subject, container, tolerance);
     if (!overflow) return null;
     const horizontal = {};
@@ -600,7 +601,9 @@
           time,
           selector: selectorFor(child),
           containerSelector: selectorFor(container),
-          message: "Element extends outside a clipping layout container.",
+          message: checksEveryChild
+            ? "Element extends outside a clipping layout container."
+            : "Nowrap text is wider than its container.",
           rect: childRect,
           containerRect,
           overflow,

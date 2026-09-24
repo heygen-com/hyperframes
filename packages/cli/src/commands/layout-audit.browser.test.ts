@@ -345,6 +345,29 @@ describe("layout-audit.browser", () => {
     expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
   });
 
+  it("does not flag a narrow nowrap label that sits outside a box that does not clip", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="badge">NEW</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 200, height: 80 }),
+        badge: rect({ left: 184, top: 0, width: 32, height: 20 }),
+      },
+      { badge: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
   it("does not flag an empty nowrap decoration beside a fitting label", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
