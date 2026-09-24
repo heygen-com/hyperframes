@@ -1315,7 +1315,10 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const rootId = readAttr(rootTag.raw, "id");
     const rootClasses = (readAttr(rootTag.raw, "class") || "").split(/\s+/).filter(Boolean);
 
-    const hits: Array<{ where: string; value: string; snippet: string }> = [];
+    // `truncateSnippet` returns undefined for an empty normalised input, and
+    // `Finding.snippet` is optional for exactly that reason — an absent snippet
+    // is absent, not "". Mirror that contract instead of coercing it away.
+    const hits: Array<{ where: string; value: string; snippet: string | undefined }> = [];
 
     const htmlTag = findHtmlTag(tags);
     const bodyTag = tags.find((tag) => tag.name.toLowerCase() === "body");
@@ -1352,8 +1355,10 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       }
     }
 
-    if (hits.length === 0) return [];
+    // `noUncheckedIndexedAccess` makes hits[0] `T | undefined`, and a length
+    // check does not narrow it — guard on the element itself.
     const hit = hits[0];
+    if (!hit) return [];
     const enlarging =
       !hit.value.startsWith("-") && parseFloat(hit.value) > (hit.value.includes("%") ? 100 : 1);
     return [
