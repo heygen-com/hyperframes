@@ -173,4 +173,31 @@ describe("ShortcutsPanel", () => {
     expect(listed(withoutSplit)).not.toContain("Split clip at playhead");
     expect(listed(withoutSplit)).toContain("Toggle fullscreen");
   });
+
+  it("renders an embedder list that repeats a key or a section title without key clashes", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = document.createElement("div");
+    document.body.append(host);
+    const sections = [
+      {
+        title: "Keys",
+        hints: [
+          { key: "S", label: "Select" },
+          { key: "S", label: "Snap" },
+        ],
+      },
+      { title: "Keys", hints: [{ key: "V", label: "Move" }] },
+    ];
+    act(() => {
+      mount(host).render(
+        <PlayerControls onTogglePlay={vi.fn()} onSeek={vi.fn()} shortcutSections={sections} />,
+      );
+    });
+    openPanel(host.querySelector<HTMLButtonElement>('button[aria-label="Shortcuts and tools"]')!);
+
+    expect(host.textContent).toContain("Select");
+    expect(host.textContent).toContain("Snap");
+    expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    errors.mockRestore();
+  });
 });

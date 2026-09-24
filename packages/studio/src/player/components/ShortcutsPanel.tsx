@@ -236,14 +236,14 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
           </div>
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
           <div className="px-3 pt-2.5 pb-3 flex flex-col gap-3">
-            {sections.map((section) => (
-              <div key={section.title}>
+            {sections.map((section, sectionIndex) => (
+              <div key={sectionIndex}>
                 <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
                   {section.title}
                 </p>
                 <div className="flex flex-col gap-1">
-                  {section.hints.map((hint) => (
-                    <div key={hint.key} className="flex items-center gap-3">
+                  {section.hints.map((hint, hintIndex) => (
+                    <div key={hintIndex} className="flex items-center gap-3">
                       <span
                         className="font-mono text-[10px] rounded-sm border border-neutral-700 px-1.5 py-0.5 text-neutral-300 min-w-[36px] text-center"
                         style={{ background: "rgba(255,255,255,0.05)" }}
