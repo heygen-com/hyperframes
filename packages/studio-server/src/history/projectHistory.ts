@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
@@ -8,10 +8,10 @@ import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { projectHistoryId } from "./historyId.js";
 import {
   START,
-  appendRecord,
   foldOldest,
   manifestAt,
   readLog,
+  saveRecord,
   referencedHashes,
   stepTarget,
   undoneIds,
@@ -131,7 +131,7 @@ class Engine {
     return join(this.home, "log.jsonl");
   }
 
-  now() {
+  now(): number {
     return (this.options.now ?? Date.now)();
   }
 
@@ -143,7 +143,11 @@ class Engine {
   }
 
   async start(): Promise<void> {
-    const log = readLog(this.logFile);
+    const log = readLog(this.logFile, (line) =>
+      this.options.onError?.(
+        new Error(`History log line ${line} could not be read and was skipped.`),
+      ),
+    );
     if (!log) return this.firstOpen();
     this.log = log;
     const cache = this.readStatCache();
@@ -184,6 +188,7 @@ class Engine {
 
   saveStatCache(): void {
     const files = JSON.stringify(Object.fromEntries(this.tracked));
+    mkdirSync(this.home, { recursive: true });
     replaceFileAtomically(join(this.home, "stat.json"), files, 0o644);
   }
 
@@ -229,7 +234,6 @@ class Engine {
     return known.hash !== hash || known.stat !== stat;
   }
 
-
   record(path: string, before: string | null, after: string | null): void {
     const group = this.windows.at(-1) ?? this.outsideGroup();
     const earlier = group.changes.get(path);
@@ -272,7 +276,12 @@ class Engine {
     const files = [...changes.values()].sort((a, b) => a.path.localeCompare(b.path));
     const entry: HistoryEntry = { ...rest, endedAt: this.now(), files, ...extra };
     this.log.entries.push(entry);
-    appendRecord(this.logFile, { type: "entry", entry });
+    try {
+      saveRecord(this.logFile, this.log, { type: "entry", entry });
+    } catch (error) {
+      this.log.entries.pop();
+      throw error;
+    }
     for (const listener of this.listeners) listener(entry);
     await this.keepWithinBudget();
     return entry;
@@ -385,7 +394,10 @@ class Engine {
     };
   }
 
-  conflict(entry: HistoryEntry, changed: HistoryFileChange[]) {
+  conflict(
+    entry: HistoryEntry,
+    changed: HistoryFileChange[],
+  ): { files: string[]; newer: string[] } {
     const paths = new Set(changed.map((file) => file.path));
     const after = this.log.entries.slice(this.log.entries.indexOf(entry) + 1);
     const newer = after.filter((later) => later.files.some((file) => paths.has(file.path)));
@@ -444,7 +456,7 @@ class Engine {
         this.entry(id);
         if (pinned) this.log.pins.add(id);
         else this.log.pins.delete(id);
-        appendRecord(this.logFile, { type: "pin", id, pinned });
+        saveRecord(this.logFile, this.log, { type: "pin", id, pinned });
       },
       onEntry: (listener) => {
         this.listeners.add(listener);

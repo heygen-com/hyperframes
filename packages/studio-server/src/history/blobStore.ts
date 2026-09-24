@@ -46,6 +46,8 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     async put(absPath) {
       // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
       const temp = join(dir, `incoming-${randomUUID()}`);
+      // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
+      await mkdir(dir, { recursive: true });
       await copyFile(absPath, temp, constants.COPYFILE_FICLONE);
       const hash = await hashFile(temp);
       if (sizes.has(hash)) {

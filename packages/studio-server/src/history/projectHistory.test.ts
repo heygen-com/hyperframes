@@ -189,6 +189,35 @@ describe("openProjectHistory", () => {
     expect(copied.list()).toEqual([]);
   });
 
+  it("rewrites a history folder removed while open, so a reopen still has the change", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    const earlier = await change(history, you, "Second", () => write("index.html", "v2"));
+    rmSync(historyRoot, { recursive: true, force: true });
+    const entry = await change(history, you, "Third", () => write("index.html", "v3"));
+    await history.close();
+
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.list().map((kept) => kept.id)).toEqual([earlier.id, entry.id]);
+    const hash = reopened.peek(entry.id)!["index.html"]!;
+    expect((await reopened.readBlob(hash)).toString()).toBe("v3");
+  });
+
+  it("reports a damaged log line and keeps every line around it", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    await change(history, you, "Third", () => write("index.html", "v3"));
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    const lines = readFileSync(logFile, "utf-8").split("\n");
+    writeFileSync(logFile, [lines[0], "{not json", ...lines.slice(1)].join("\n"));
+
+    const onError = vi.fn();
+    const reopened = await open(projectDir, historyRoot, { onError });
+    expect(onError).toHaveBeenCalledOnce();
+    expect(String(onError.mock.calls[0]![0])).toMatch(/line 2 /);
+    expect(reopened.list().map((kept) => kept.label)).toEqual(["Second", "Third"]);
+  });
+
   it("past its budget folds the oldest entries away and deletes their bytes, but never past a pin", async () => {
     const { history, write, read } = await project(
       { "index.html": "a".repeat(40) },

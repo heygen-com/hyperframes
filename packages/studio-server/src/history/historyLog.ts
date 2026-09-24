@@ -1,4 +1,5 @@
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 
 export interface HistoryWho {
@@ -44,7 +45,16 @@ type LogRecord =
   | { type: "entry"; entry: HistoryEntry }
   | { type: "pin"; id: string; pinned: boolean };
 
-export function readLog(file: string): HistoryLog | null {
+function parseRecord(line: string): LogRecord | null {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
+}
+
+/** `onUnreadable` hears of a damaged line; a torn last line (a crash mid-append) is expected and dropped quietly. */
+export function readLog(file: string, onUnreadable: (line: number) => void): HistoryLog | null {
   let text: string;
   try {
     text = readFileSync(file, "utf-8");
@@ -52,16 +62,12 @@ export function readLog(file: string): HistoryLog | null {
     return null;
   }
   const log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
-  for (const line of text.split("\n")) {
-    // A torn last line from a crash mid-append is dropped; every line before it is whole.
-    let record: LogRecord;
-    try {
-      record = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    applyRecord(log, record);
-  }
+  const lines = text.split("\n");
+  lines.forEach((line, index) => {
+    const record = line ? parseRecord(line) : null;
+    if (record) applyRecord(log, record);
+    else if (line && index < lines.length - 1) onUnreadable(index + 1);
+  });
   return log;
 }
 
@@ -72,8 +78,10 @@ function applyRecord(log: HistoryLog, record: LogRecord): void {
   else log.pins.delete(record.id);
 }
 
-export function appendRecord(file: string, record: LogRecord): void {
-  appendFileSync(file, `${JSON.stringify(record)}\n`);
+/** Appends `record`, already applied to `log`; a log file that is gone is written whole, so a restart replays it. */
+export function saveRecord(file: string, log: HistoryLog, record: LogRecord): void {
+  if (existsSync(file)) appendFileSync(file, `${JSON.stringify(record)}\n`);
+  else writeLog(file, log);
 }
 
 export function writeLog(file: string, log: HistoryLog): void {
@@ -82,6 +90,7 @@ export function writeLog(file: string, log: HistoryLog): void {
     ...log.entries.map((entry) => ({ type: "entry" as const, entry })),
     ...[...log.pins].map((id) => ({ type: "pin" as const, id, pinned: true })),
   ];
+  mkdirSync(dirname(file), { recursive: true });
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
 }
 
