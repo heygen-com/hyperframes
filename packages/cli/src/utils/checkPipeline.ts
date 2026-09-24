@@ -504,17 +504,19 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
  * same geometry+opacity fingerprint (see layout-audit.browser.js), the seek
  * never actually advanced the composition's timeline — every other green
  * verdict from this run is meaningless, not just a missed defect. Skips
- * short (<3s) compositions, single-sample runs (nothing to compare), and
- * runs where a `motion_frozen` finding already reported the same underlying
- * symptom (no double-reporting the one thing that's wrong).
+ * short (<3s) compositions, single-sample runs (nothing to compare), runs
+ * where a `motion_frozen` finding already reported the same underlying
+ * symptom (no double-reporting the one thing that's wrong), and `--at` runs:
+ * times the user picked can all land on a legitimately still stretch.
  */
 function detectSweepStatic(
   duration: number,
   geometrySignatures: string[],
   motionIssues: AnchoredLayoutIssue[],
   hasNoTimelineDeclaration: boolean,
+  userPickedTimes: boolean,
 ): AnchoredLayoutIssue[] {
-  if (hasNoTimelineDeclaration) return [];
+  if (hasNoTimelineDeclaration || userPickedTimes) return [];
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
   if (geometrySignatures.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
@@ -1094,6 +1096,7 @@ export async function runAuditGrid(
     collected.geometrySignatures,
     motionIssues,
     await driver.hasNoTimelineDeclaration(),
+    Boolean(options.at?.length),
   );
   const rotationFindings = detectRotationPivotDrift(
     collected.rotationSamples,

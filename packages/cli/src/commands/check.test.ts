@@ -1479,6 +1479,17 @@ describe("check pipeline", () => {
       ).toBe(true);
     });
 
+    it("does not flag --at times the user picked on a still end card", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 53.7),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+      const { report } = await runScenario(driver, { at: [51, 52.5] });
+
+      expect(report.layout.samples).toEqual([51, 52.5]);
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+    });
+
     it("does not flag intentional static content declared with data-no-timeline", async () => {
       const driver = fakeDriver({
         getDuration: vi.fn(async () => 6),
