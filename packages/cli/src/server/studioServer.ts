@@ -11,7 +11,6 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
-import { homedir } from "node:os";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -53,6 +52,7 @@ import {
   type RenderJobState,
   type BackgroundRemovalRender,
   stampProjectHfIds,
+  DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   type ProjectHistory,
 } from "@hyperframes/studio-server";
@@ -73,9 +73,6 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
-
-/** Where `hyperframes preview` keeps project histories: outside every project, so no tidy-up takes one away. */
-const DEFAULT_HISTORY_ROOT = join(homedir(), ".cache", "hyperframes", "history");
 
 // Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
 // before that watchdog can fire and skip this file's browser cleanup.
