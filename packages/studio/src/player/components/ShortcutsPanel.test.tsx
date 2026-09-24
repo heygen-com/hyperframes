@@ -3,6 +3,8 @@
 import React, { act, Profiler } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ShortcutsPanel } from "./ShortcutsPanel";
+import { PlayerControls } from "./PlayerControls";
+import { DEFAULT_SHORTCUT_SECTIONS, type ShortcutSection } from "./studioShortcuts";
 import { createHappyDomRootHarness } from "./testRootHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -148,5 +150,27 @@ describe("ShortcutsPanel", () => {
     // operable, so aria-modal would lie to assistive tech about inertness.
     expect(panel?.getAttribute("aria-modal")).toBeNull();
     expect(panel?.id).toBe(panelId);
+  });
+
+  it("lists what an embedder passes to PlayerControls instead of Studio's defaults", () => {
+    const listed = (sections?: readonly ShortcutSection[]) => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      act(() => {
+        mount(host).render(
+          <PlayerControls onTogglePlay={vi.fn()} onSeek={vi.fn()} shortcutSections={sections} />,
+        );
+      });
+      openPanel(host.querySelector<HTMLButtonElement>('button[aria-label="Shortcuts and tools"]')!);
+      return host.textContent ?? "";
+    };
+    const withoutSplit = DEFAULT_SHORTCUT_SECTIONS.map((section) => ({
+      ...section,
+      hints: section.hints.filter((hint) => hint.label !== "Split clip at playhead"),
+    }));
+
+    expect(listed()).toContain("Split clip at playhead");
+    expect(listed(withoutSplit)).not.toContain("Split clip at playhead");
+    expect(listed(withoutSplit)).toContain("Toggle fullscreen");
   });
 });
