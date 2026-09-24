@@ -64,7 +64,9 @@ try {
       if (!thumbnailsInFlight.delete(request)) return;
       lastThumbnailActivity = Date.now();
       const outcome = request.response()?.status() ?? request.failure()?.errorText;
-      thumbnailOutcomes.push(`${thumbnailLabel(request.url())} ${request.resourceType()} ${outcome}`);
+      thumbnailOutcomes.push(
+        `${thumbnailLabel(request.url())} ${request.resourceType()} ${outcome}`,
+      );
     });
   }
   const started = performance.now();

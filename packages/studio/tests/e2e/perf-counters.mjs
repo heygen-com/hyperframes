@@ -72,7 +72,6 @@ export async function startWorkCounters(browser, page, { pageActivity = true } =
   });
 
   return {
-    client,
     /** A flat snapshot of every counter so far; subtract two snapshots for a window. */
     async read() {
       const { metrics } = await client.send("Performance.getMetrics");

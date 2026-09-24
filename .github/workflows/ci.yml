@@ -849,6 +849,10 @@ jobs:
             if curl -sf "http://localhost:5315/" >/dev/null 2>&1; then break; fi
             sleep 1
           done
+          if ! curl -sf "http://localhost:5315/" >/dev/null 2>&1; then
+            echo "FAIL: studio dev server did not start on port 5315"
+            exit 1
+          fi
           STUDIO_URL="http://localhost:5315/#project/studio-open" \
             STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/studio-open" \
             node packages/studio/tests/e2e/studio-open-counts.mjs \
