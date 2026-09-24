@@ -1,5 +1,4 @@
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
-import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR, sceneScriptSwapRefusal } from "../sceneParts";
 /**
  * Shared sub-composition inlining logic.
  *
@@ -32,6 +31,18 @@ import {
   planCompositionAssembly,
   EXTRACTED_COMPOSITION_ASSET_SELECTOR,
 } from "./compositionAssembly";
+import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+
+// Anything a scene script can leave running or registered outside its timeline. Only the timeline
+// is torn down when a scene is swapped, so when unsure, refuse.
+const SIDE_EFFECT_RE =
+  /\b(addEventListener|requestAnimationFrame|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU|gpu|Worker|AudioContext|\w*Observer|fetch|import|eval|Function|lottie|THREE|__hf[A-Z]\w*)\b|\.on[a-z]+\s*=(?!=)/;
+
+/** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
+function sceneScriptSwapRefusal(script: string): string | null {
+  const match = SIDE_EFFECT_RE.exec(script);
+  return match ? `its script uses ${match[0].trim()}` : null;
+}
 
 // ---------------------------------------------------------------------------
 // Public interface
