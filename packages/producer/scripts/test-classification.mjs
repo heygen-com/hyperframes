@@ -30,6 +30,7 @@ const INTEGRATION_TEST_FILES = new Set([
   "src/services/htmlCompiler.naturalDuration.test.ts",
   "src/services/render/hlsRender.integration.test.ts",
   "src/services/render/stages/compileStage.mediaType.test.ts",
+  "src/services/videoFrameBorderClip.test.ts",
   "src/utils/audioRegression.test.ts",
   "src/utils/streamDurationParity.test.ts",
 ]);
