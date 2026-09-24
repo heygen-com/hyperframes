@@ -23,8 +23,11 @@ const PICKER_BLOCK_SELECTOR = [
 // A composition root's pointer-events:none is about playback, not editing: it inherits into the whole section
 // and hides it from the hit test. Roots take pointer events again while the picker looks; an element that
 // sets pointer-events:none itself (a vignette, a cursor) still passes through.
-const PICKABLE_ROOTS_CSS =
+const PICKABLE_ROOTS_RULE =
   "[data-composition-id],[data-hf-inner-root]{pointer-events:auto!important}";
+// A layered !important outranks every unlayered !important, whatever its specificity: a mounted section's
+// rescoped `#root { pointer-events: none !important }` would otherwise win.
+const PICKABLE_ROOTS_LAYERED = `@layer hf-picker{${PICKABLE_ROOTS_RULE}}`;
 
 export type PickerModule = {
   enablePickMode: () => void;
@@ -86,7 +89,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
       return null;
     try {
       const sheet = new CSSStyleSheet();
-      sheet.replaceSync(PICKABLE_ROOTS_CSS);
+      sheet.replaceSync(PICKABLE_ROOTS_LAYERED);
       pickableRootsSheetCache = sheet;
     } catch (err) {
       swallow("runtime.picker.site2", err);
@@ -101,10 +104,11 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     };
   }
 
-  // No constructable sheets (older engines, jsdom): a style element for the hit test only.
+  // No adoptedStyleSheets (engines older than cascade layers too, and jsdom): a style element for the hit
+  // test only. Adding it is a DOM mutation, so there a hover can wake the runtime's timing observer.
   function appendPickableRootsStyle(): () => void {
     const style = document.createElement("style");
-    style.textContent = PICKABLE_ROOTS_CSS;
+    style.textContent = PICKABLE_ROOTS_RULE;
     (document.head ?? document.documentElement).appendChild(style);
     return () => style.remove();
   }
