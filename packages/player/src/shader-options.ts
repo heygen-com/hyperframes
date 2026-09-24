@@ -154,11 +154,21 @@ export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
       normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
       getShaderModeFromElement(el),
     ),
-    runtimeSrcFromElement(el),
+    resolveRuntimeUrlFromElement(el),
   );
 }
 
-function runtimeSrcFromElement(el: Element): string {
+/**
+ * The runtime URL an element has asked for: `runtime-src` when it is set and
+ * safe, the pinned jsDelivr build otherwise.
+ *
+ * Shared by both embed paths. srcdoc puts this URL in the document head at
+ * parse time; an `src` embed hands it to the probe, which appends it as a
+ * `<script>` once it knows the composition needs the runtime. Resolving it in
+ * one place keeps the two paths on the same URL, so a `runtime-src` that works
+ * for srcdoc also works for src.
+ */
+export function resolveRuntimeUrlFromElement(el: Element): string {
   const configured = el.getAttribute(RUNTIME_SRC_ATTR)?.trim();
   if (!configured) return RUNTIME_CDN_URL;
   try {
