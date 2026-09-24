@@ -731,12 +731,15 @@ describe("syncRuntimeMedia", () => {
       expect(await barrierSettled(barrier)).toBe(true);
     });
 
-    it.each(["error", "emptied", "abort"])("releases the barrier when the seek ends in %s", async (type) => {
-      const clip = seekColdVideo();
-      const barrier = waitForSeekCompletion();
-      clip.el.dispatchEvent(new Event(type));
-      expect(await barrierSettled(barrier)).toBe(true);
-    });
+    it.each(["error", "emptied", "abort"])(
+      "releases the barrier when the seek ends in %s",
+      async (type) => {
+        const clip = seekColdVideo();
+        const barrier = waitForSeekCompletion();
+        clip.el.dispatchEvent(new Event(type));
+        expect(await barrierSettled(barrier)).toBe(true);
+      },
+    );
   });
 
   describe("play() storm guard (unplayable elements)", () => {
