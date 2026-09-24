@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 import { injectDeterministicFontFaces } from "@hyperframes/producer";
 import { runFontLocalize, stampFontVersions } from "./fontLocalize.js";
 import { PRODUCER_VERSION, VERSION } from "./version.js";
@@ -30,6 +29,7 @@ export async function localizeForPreviewBundle(html: string): Promise<string> {
 }
 
 /** Standalone-entry main; the bin wrapper owns the actual process exit code. */
+// fallow-ignore-next-line unused-export
 export async function main(): Promise<number> {
   return runFontLocalize(
     {
