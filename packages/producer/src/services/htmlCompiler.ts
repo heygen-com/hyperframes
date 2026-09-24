@@ -41,6 +41,7 @@ import {
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   ensureExternalScriptTag,
+  emitMountedModuleScripts,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
@@ -1081,6 +1082,13 @@ function inlineSubCompositions(
     const scriptEl = document.createElement("script");
     scriptEl.textContent = inlineScripts.join("\n;\n");
     body.appendChild(scriptEl);
+  }
+  if (body) {
+    emitMountedModuleScripts(
+      document as unknown as Document,
+      result.importMaps,
+      result.moduleScripts,
+    );
   }
 
   // Compile-time CSS custom properties (mirrors the preview bundler): root

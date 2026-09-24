@@ -4,6 +4,7 @@ import {
   readExternalScriptAttributes,
   type ExternalScriptAttributes,
 } from "./externalScripts";
+import { emitMountedModuleScripts } from "./importMaps";
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
@@ -1214,6 +1215,7 @@ export async function bundleToSingleHtml(
     );
     document.body.appendChild(compScript);
   }
+  emitMountedModuleScripts(document, subCompResult.importMaps, subCompResult.moduleScripts);
 
   emitRootCompositionVariableStyles(document, compVariablesByComp);
 

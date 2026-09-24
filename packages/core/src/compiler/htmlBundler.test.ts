@@ -198,6 +198,41 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
   });
 
+  it("keeps a mounted file's import map and module script as such, bound to that file", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/assets/three.js": "export const REVISION = 1;",
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <script type="importmap">{ "imports": { "three": "./assets/three.js", "cdn": "https://cdn.test/x.js" } }</script>
+  <script type="module">import * as THREE from "three"; window.__url = __hyperframes.assetUrl("assets/leaf.webp");</script>
+  <script>window.__classic = 1;</script>
+</div>`,
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const importMaps = [...document.querySelectorAll('script[type="importmap"]')];
+    const modules = [...document.querySelectorAll('script[type="module"]')];
+    const classic = [...document.querySelectorAll("script:not([type])")].map((s) => s.textContent);
+
+    expect(importMaps).toHaveLength(1);
+    expect(JSON.parse(importMaps[0]!.textContent || "")).toEqual({
+      imports: { three: "./compositions/blk/assets/three.js", cdn: "https://cdn.test/x.js" },
+    });
+    expect(modules).toHaveLength(1);
+    expect(modules[0]!.textContent).toMatch(/^const __hyperframes = /);
+    expect(modules[0]!.textContent).toContain('"compositions/blk/blk.html"');
+    expect(modules[0]!.textContent).toContain('import * as THREE from "three";');
+    expect(classic.join("")).toContain(".__classic = 1;");
+    expect(classic.join("")).not.toContain('"imports"');
+    expect(classic.join("")).not.toContain("import * as THREE");
+  });
+
   it("binds a <template> composition authored in a mounted file to that file", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
