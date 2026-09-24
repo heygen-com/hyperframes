@@ -27,6 +27,15 @@
     return Math.round(value * 100) / 100;
   }
 
+  function horizontalOverflow(subject, container, tolerance) {
+    const overflow = overflowFor(subject, container, tolerance);
+    if (!overflow) return null;
+    const horizontal = {};
+    if (overflow.left != null) horizontal.left = overflow.left;
+    if (overflow.right != null) horizontal.right = overflow.right;
+    return Object.keys(horizontal).length > 0 ? horizontal : null;
+  }
+
   function overflowFor(subject, container, tolerance, vTolerance) {
     // Horizontal axis uses `tolerance`; vertical axis uses `vTolerance` (defaults to the same).
     // A separate vertical tolerance lets text overflow checks absorb glyph ink that exceeds a
@@ -571,11 +580,18 @@
     });
 
     for (const container of containers) {
+      const style = getComputedStyle(container);
+      const checksEveryChild =
+        clipsOverflow(style) || container.hasAttribute("data-layout-boundary");
       const containerRect = toRect(container.getBoundingClientRect());
       for (const child of Array.from(container.children)) {
         if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) continue;
+        const childStyle = getComputedStyle(child);
+        if (!checksEveryChild && childStyle.whiteSpace !== "nowrap") continue;
         const childRect = toRect(child.getBoundingClientRect());
-        const overflow = overflowFor(childRect, containerRect, tolerance);
+        const overflow = checksEveryChild
+          ? overflowFor(childRect, containerRect, tolerance)
+          : horizontalOverflow(childRect, containerRect, tolerance);
         if (!overflow) continue;
         issues.push({
           code: "container_overflow",
