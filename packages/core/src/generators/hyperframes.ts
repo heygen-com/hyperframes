@@ -363,10 +363,8 @@ export function generateHyperframesHtml(
     elements.length > 0
       ? Math.max(...elements.map((el) => el.startTime + el.duration), totalDuration, maxZoomTime)
       : Math.max(totalDuration, maxZoomTime);
-  if (!Number.isFinite(calculatedDuration) || calculatedDuration <= 0) {
-    throw new Error(
-      "Composition duration must be positive; provide totalDuration or a timed element",
-    );
+  if (!Number.isFinite(calculatedDuration)) {
+    throw new Error("Composition duration must be finite");
   }
 
   const sortedElements = sortElements(elements);

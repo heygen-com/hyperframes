@@ -219,10 +219,15 @@ describe("generateHyperframesHtml", () => {
     expect(html).toContain('id="stage-zoom-container"');
   });
 
-  it("rejects a composition with no known duration", () => {
-    expect(() => generateHyperframesHtml([], 0)).toThrow(/Composition duration must be positive/);
+  it("preserves zero duration for an empty draft", () => {
+    const html = generateHyperframesHtml([], 0);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(doc.documentElement.getAttribute("data-composition-duration")).toBe("0");
+  });
+
+  it("rejects a non-finite duration", () => {
     expect(() => generateHyperframesHtml([], Number.NaN)).toThrow(
-      /Composition duration must be positive/,
+      /Composition duration must be finite/,
     );
   });
 
