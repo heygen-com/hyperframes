@@ -40,6 +40,11 @@ export interface ProjectHistoryOptions {
   onError?: (error: unknown) => void;
   /** How long an open waits for another process to close the same history (default 5 s). */
   ownerWaitMs?: number;
+  /**
+   * A window a writer began on an earlier open and never closed (a CLI turn): what changed since that open is
+   * filed to it, as the entry with its id, instead of to Outside. Ignored once an entry with that id is kept.
+   */
+  closedWindow?: { id: string; who: HistoryWho; label: string; startedAt: number };
 }
 
 /** Where HyperFrames keeps project histories: outside every project, so no tidy-up takes one away. */
@@ -197,8 +202,12 @@ class Engine {
       const cached = cache.get(path);
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
-    // What changed while the project was closed is one outside entry.
+    // What changed while the project was closed is one outside entry, or the closed window's.
+    const closed = this.options.closedWindow;
+    if (closed && !this.log.entries.some((entry) => entry.id === closed.id))
+      this.windows.push({ ...closed, changes: new Map() });
     await this.sweep();
+    for (const window of [...this.windows]) await this.endWindow(window);
     await this.commitOutside();
   }
 

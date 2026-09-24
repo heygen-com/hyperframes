@@ -19,6 +19,13 @@ async function bodyOf(c: Context): Promise<Record<string, unknown>> {
 
 const text = (value: unknown) => (typeof value === "string" && value ? value : null);
 
+/** An agent names itself (`who: {kind: "agent", name}`); anyone else is the person at Studio. */
+function whoOf(body: Record<string, unknown>): HistoryWho {
+  const who = body.who as { kind?: unknown; name?: unknown } | undefined;
+  const name = text(who?.name);
+  return who?.kind === "agent" && name ? { kind: "agent", name } : YOU;
+}
+
 /** How long a window or a coalescing claim may wait for its next write; past the cap a timer overflows. */
 function idleOf(body: Record<string, unknown>): number | undefined {
   const idleMs = body.idleMs;
@@ -71,11 +78,13 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
     withHistory(adapter, c, (history, body) => {
       const mode =
         body.mode === "just-this" || body.mode === "back-to-before" ? body.mode : undefined;
-      return history.undo(text(body.entryId) ?? "", { who: YOU, mode });
+      return history.undo(text(body.entryId) ?? "", { who: whoOf(body), mode });
     }),
   );
   api.post(`${base}/restore`, (c) =>
-    withHistory(adapter, c, (history, body) => history.restore(text(body.point) ?? "", YOU)),
+    withHistory(adapter, c, (history, body) =>
+      history.restore(text(body.point) ?? "", whoOf(body)),
+    ),
   );
   api.get(`${base}/peek/:point`, (c) =>
     withHistory(adapter, c, (history) => ({ files: history.peek(c.req.param("point")) })),
@@ -86,6 +95,15 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
       return { ok: true };
     }),
   );
+  api.get(`${base}/blob/:hash`, async (c) => {
+    const history = await historyOf(adapter, c);
+    const hash = c.req.param("hash") ?? "";
+    const missing = () =>
+      c.json({ error: "That file is not kept in this project's history." }, 404);
+    if (!history || !/^[0-9a-f]{64}$/.test(hash)) return missing();
+    const bytes = await history.readBlob(hash).catch(() => null);
+    return bytes ? c.body(new Uint8Array(bytes)) : missing();
+  });
   // Studio records after it writes: its edit claims the paths it just wrote, under the edit's label.
   api.post(`${base}/claim`, (c) =>
     withHistory(adapter, c, async (history, body) => {
@@ -104,7 +122,7 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
       // A drag's burst of writes keeps one window open; it ends itself after idleMs without a write.
       const idleMs = idleOf(body);
       const window = await history.beginWindow(
-        YOU,
+        whoOf(body),
         text(body.label) ?? "Edited in Studio",
         idleMs ? { idleMs } : undefined,
       );

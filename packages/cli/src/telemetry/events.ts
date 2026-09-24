@@ -964,6 +964,12 @@ export function trackCompareSheet(props: {
   });
 }
 
+// `hyperframes history` (a trial command): which subcommand ran, and whether through a running preview's
+// history or the project's history opened directly. Both low-cardinality.
+export function trackHistoryAction(props: { action: string; via: "preview" | "direct" }): void {
+  trackEvent("cli_history", props);
+}
+
 // A skills install was skipped because a required prerequisite binary is
 // absent from PATH (e.g. git on a fresh Windows box). Best-effort callers
 // (init) skip cleanly rather than crash, so the skip is otherwise invisible;
