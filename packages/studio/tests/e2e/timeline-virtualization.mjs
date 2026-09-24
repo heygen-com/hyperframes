@@ -24,6 +24,7 @@
 import { platform, arch } from "node:os";
 import puppeteer from "puppeteer-core";
 import { resolveChromeExecutable } from "./chrome-executable.mjs";
+import { diffCounts, startWorkCounters } from "./perf-counters.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
@@ -255,6 +256,8 @@ try {
     deviceScaleFactor: TIER === "high-dpr" ? 2 : 1,
   });
   const client = await page.createCDPSession();
+  // Page-activity observers stay off: they would run inside the timed scroll.
+  const workCounters = await startWorkCounters(browser, page, { pageActivity: false });
   if (TIER === "low-resource") {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   }
@@ -310,7 +313,15 @@ try {
   const frameIntervalLimitMs =
     TIER === "primary" ? budgets.frameIntervalP95Ms : budgets.constrainedFrameIntervalP95Ms;
   for (let index = 0; index < budgets.warmupRuns + budgets.measuredRuns; index += 1) {
+    const before = await workCounters.read();
     const run = await collectRun(page);
+    const work = diffCounts(await workCounters.read(), before);
+    run.workPerTick = Object.fromEntries(
+      ["reactCommits", "styleRecalcs", "layouts"].map((counter) => [
+        counter,
+        Math.round((work[counter] / run.scrollSampleCount) * 100) / 100,
+      ]),
+    );
     if (index >= budgets.warmupRuns) runs.push(run);
   }
   // Latency, long tasks and memory are product promises and hold for both
@@ -355,7 +366,21 @@ try {
         ? "approved"
         : "rejected",
   };
+  // The worst measured run per counter; perf-ratchet.mjs holds it under perf-ceilings.json.
+  const workCounts = {};
+  for (const run of runs) {
+    for (const [counter, perTick] of Object.entries(run.workPerTick)) {
+      const key = `${counter}PerTick`;
+      workCounts[key] = Math.max(workCounts[key] ?? 0, perTick);
+    }
+  }
+  const interactionP95Ms = percentile(
+    runs.map((run) => run.interactionP95Ms),
+    0.95,
+  );
   const evidence = {
+    journey: "timeline-scroll",
+    workCounts,
     environment: {
       browser: version,
       executablePath,
@@ -385,11 +410,9 @@ try {
     },
     directScrollGate,
     runs,
+    wallMs: interactionP95Ms,
     aggregate: {
-      interactionP95Ms: percentile(
-        runs.map((run) => run.interactionP95Ms),
-        0.95,
-      ),
+      interactionP95Ms,
       frameIntervalP95Ms: percentile(
         runs.map((run) => run.frameIntervalP95Ms),
         0.95,

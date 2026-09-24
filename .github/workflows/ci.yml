@@ -736,7 +736,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.studio == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -757,6 +757,8 @@ jobs:
           mkdir -p packages/studio/data/projects
           cp -R packages/studio/tests/e2e/fixtures/timeline-virtualization \
             packages/studio/data/projects/timeline-virtualization
+          cp -R packages/studio/tests/e2e/fixtures/studio-open \
+            packages/studio/data/projects/studio-open
       - name: Run both arms of the timeline viewport gate
         run: |
           set -euo pipefail
@@ -799,6 +801,10 @@ jobs:
           else
             DEFAULT_STATUS=1
           fi
+          COUNT_STATUS=0
+          node packages/studio/tests/e2e/perf-ratchet.mjs check \
+            packages/studio/tests/e2e/perf-ceilings.json timeline-scroll \
+            /tmp/timeline-gate-default.json || COUNT_STATUS=$?
           stop_server
 
           NODE_ENV=production \
@@ -823,12 +829,31 @@ jobs:
             echo "### Timeline viewport gate"
             echo "- Default arm exit: ${DEFAULT_STATUS}"
             echo "- Explicitly disabled arm exit: ${DISABLED_STATUS}"
+            echo "- Work per scroll tick against perf-ceilings.json exit: ${COUNT_STATUS}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 )); then
-            echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}"
+          if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 || COUNT_STATUS != 0 )); then
+            echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}, counts=${COUNT_STATUS}"
             exit 1
           fi
+      - name: Count the work of opening a film in Studio
+        # Counts, not ms: thumbnail renders, page loads and requests do not move
+        # with runner load, so perf-ceilings.json can hold them exactly.
+        run: |
+          set -euo pipefail
+          NODE_ENV=production bun run --cwd packages/studio dev -- --port 5315 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5315/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          STUDIO_URL="http://localhost:5315/#project/studio-open" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/studio-open" \
+            node packages/studio/tests/e2e/studio-open-counts.mjs \
+            | tee /tmp/studio-open-counts.json
+          node packages/studio/tests/e2e/perf-ratchet.mjs check \
+            packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -836,7 +861,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: timeline-viewport-gate-evidence
-          path: /tmp/timeline-gate-*.json
+          path: |
+            /tmp/timeline-gate-*.json
+            /tmp/studio-open-counts.json
           if-no-files-found: error
 
   smoke-global-install:
