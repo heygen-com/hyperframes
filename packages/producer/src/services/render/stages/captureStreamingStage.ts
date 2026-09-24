@@ -26,8 +26,7 @@
  *   - `lastBrowserConsole` is set to the buffer of whichever session
  *     was active last (probe close path, or sequential session finally).
  *   - `job.framesRendered` is updated per-frame; `Streaming frame N/M`
- *     `updateJobStatus` payloads fire at the same 30-frame and
- *     completion checkpoints (parallel) or every frame (sequential).
+ *     goes through `reportFrameProgress`.
  *   - Encoder close + result inspection happens inside the stage; a
  *     `Streaming encode failed: ...` error throws on `success: false`.
  *   - Defensive cleanup of `streamingEncoder` happens in the stage's
@@ -76,7 +75,7 @@ import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
 import { pushWorkerDedupPerfs } from "../perfSummary.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
-import { updateJobStatus } from "../shared.js";
+import { reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrStreamingCapturePlan } from "../capturePlan.js";
 
@@ -490,12 +489,12 @@ async function runWorkerEncodePipelineLoop(
     reorderBuffer.advanceTo(prev.idx + 1);
     job.framesRendered = prev.idx + 1;
     lastProgressAt = Date.now();
-    updateJobStatus(
+    reportFrameProgress(
       job,
-      "rendering",
       `Streaming frame ${prev.idx + 1}/${totalFrames}`,
       Math.round(25 + ((prev.idx + 1) / totalFrames) * 55),
       onProgress,
+      prev.idx + 1 === totalFrames,
     );
   };
 
@@ -517,12 +516,12 @@ async function runWorkerEncodePipelineLoop(
       reorderBuffer.advanceTo(item.idx + 1);
       job.framesRendered = item.idx + 1;
       lastProgressAt = Date.now();
-      updateJobStatus(
+      reportFrameProgress(
         job,
-        "rendering",
         `Streaming frame ${item.idx + 1}/${totalFrames}`,
         Math.round(25 + ((item.idx + 1) / totalFrames) * 55),
         onProgress,
+        item.idx + 1 === totalFrames,
       );
     }
   };
@@ -813,6 +812,7 @@ export async function runCaptureStreamingStage(
                 canvasDrawElement: phase.canvasDrawElement,
                 gpuBackend: phase.gpuBackend,
               });
+              if (progress.capturedFrames === 0) reportWorkerStartup(job, progress, onProgress);
               return;
             }
             if (progress.capturedFrames > lastCapturedFrames) {
@@ -822,20 +822,13 @@ export async function runCaptureStreamingStage(
             }
             job.framesRendered = progress.capturedFrames;
             const frameProgress = progress.capturedFrames / progress.totalFrames;
-            const progressPct = 25 + frameProgress * 55;
-
-            if (
-              progress.capturedFrames % 30 === 0 ||
-              progress.capturedFrames === progress.totalFrames
-            ) {
-              updateJobStatus(
-                job,
-                "rendering",
-                `Streaming frame ${progress.capturedFrames}/${progress.totalFrames} (${workerCount} workers)`,
-                Math.round(progressPct),
-                onProgress,
-              );
-            }
+            reportFrameProgress(
+              job,
+              `Streaming frame ${progress.capturedFrames}/${progress.totalFrames} (${workerCount} workers)`,
+              Math.round(25 + frameProgress * 55),
+              onProgress,
+              progress.capturedFrames === progress.totalFrames,
+            );
           },
           onFrameBuffer,
           // Interleaved DE workers each need their own browser PROCESS:
@@ -973,12 +966,12 @@ export async function runCaptureStreamingStage(
             // capture error wrapper below must remain separate from finally so it
             // can throw with the browser console before encoder cleanup runs.
             // fallow-ignore-next-line code-duplication
-            updateJobStatus(
+            reportFrameProgress(
               job,
-              "rendering",
               `Streaming frame ${i + 1}/${totalFrames}`,
               Math.round(progress),
               onProgress,
+              i + 1 === totalFrames,
             );
           }
         }
