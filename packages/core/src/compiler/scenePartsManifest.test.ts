@@ -40,4 +40,14 @@ describe("addScenePartsManifest", () => {
     const html = "<!doctype html><html><head></head><body><p>x</p></body></html>";
     expect(addScenePartsManifest(html)).toBe(html);
   });
+
+  it("changes the shared hash when scenes are reordered", () => {
+    const page = (first: string, second: string) => `<html><head></head><body><div id="main">
+<div data-hf-scene="${first}"><p>${first}</p></div><div data-hf-scene="${second}"><p>${second}</p></div>
+</div></body></html>`;
+    const ab = manifestOf(addScenePartsManifest(page("a", "b")));
+    const ba = manifestOf(addScenePartsManifest(page("b", "a")));
+    expect(ba.scenes).toEqual(ab.scenes);
+    expect(ba.shared).not.toBe(ab.shared);
+  });
 });

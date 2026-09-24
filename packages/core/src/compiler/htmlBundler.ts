@@ -662,29 +662,26 @@ function autoHealMissingCompositionIds(document: Document): void {
   }
 }
 
+/** Join stylesheets into one, moving every distinct `@import` to the front, where CSS allows it. */
+function joinCssHoistingImports(sheets: string[]): string {
+  const imports = new Set<string>();
+  const cssParts: string[] = [];
+  for (const sheet of sheets) {
+    const rest = sheet.trim().replace(CSS_IMPORT_RE, (match) => {
+      imports.add(match.trim());
+      return "";
+    });
+    if (rest.trim()) cssParts.push(rest.trim());
+  }
+  return [...imports, ...cssParts].join("\n\n").trim();
+}
+
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const headStyleEls = [...document.querySelectorAll("head style")].filter(
     (el) => !el.hasAttribute(SCENE_PART_ATTR),
   );
   if (headStyleEls.length > 1) {
-    const imports: string[] = [];
-    const cssParts: string[] = [];
-    const seenImports = new Set<string>();
-    for (const el of headStyleEls) {
-      const raw = (el.textContent || "").trim();
-      if (!raw) continue;
-      const nonImportCss = raw.replace(CSS_IMPORT_RE, (match) => {
-        const cleaned = match.trim();
-        if (!seenImports.has(cleaned)) {
-          seenImports.add(cleaned);
-          imports.push(cleaned);
-        }
-        return "";
-      });
-      const trimmed = nonImportCss.trim();
-      if (trimmed) cssParts.push(trimmed);
-    }
-    const merged = [...imports, ...cssParts].join("\n\n").trim();
+    const merged = joinCssHoistingImports(headStyleEls.map((el) => el.textContent || ""));
     if (merged) {
       headStyleEls[0]!.textContent = merged;
       for (let i = 1; i < headStyleEls.length; i++) headStyleEls[i]!.remove();
@@ -1238,7 +1235,7 @@ export async function bundleToSingleHtml(
   for (const [scene, chunks] of sceneStyleChunks) {
     const style = document.createElement("style");
     style.setAttribute(SCENE_PART_ATTR, scene);
-    style.textContent = chunks.join("\n\n");
+    style.textContent = joinCssHoistingImports(chunks);
     document.head.appendChild(style);
   }
   for (const [scene, chunks] of sceneScriptChunks) {

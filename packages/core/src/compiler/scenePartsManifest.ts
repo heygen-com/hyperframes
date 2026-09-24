@@ -18,9 +18,10 @@ export function addScenePartsManifest(html: string, ignore: readonly string[] = 
     const scene = el.getAttribute(SCENE_PART_ATTR) ?? "";
     byScene.set(scene, [...(byScene.get(scene) ?? []), el.outerHTML]);
   }
-  for (const el of [...parts, ...ignore.flatMap((sel) => [...doc.querySelectorAll(sel)])]) {
-    el.remove();
-  }
+  // A marker keeps each part's place in `shared`, so moving or reordering a scene changes it.
+  for (const el of parts)
+    el.replaceWith(doc.createComment(`hf-scene:${el.getAttribute(SCENE_PART_ATTR)}`));
+  for (const el of ignore.flatMap((sel) => [...doc.querySelectorAll(sel)])) el.remove();
   const manifest: SceneParts = {
     shared: hash(doc.toString()),
     scenes: Object.fromEntries([...byScene].map(([scene, html]) => [scene, hash(html.join("\n"))])),

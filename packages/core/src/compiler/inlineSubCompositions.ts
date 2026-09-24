@@ -1,4 +1,5 @@
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
+import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR, sceneScriptSwapRefusal } from "../sceneParts";
 /**
  * Shared sub-composition inlining logic.
  *
@@ -211,6 +212,7 @@ export function inlineSubCompositions(
   const seenLinkHrefs = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
 
+  const sceneHosts = new Map<string, Element>();
   const queue = hosts.map((element) => ({
     element,
     ancestry: [] as string[],
@@ -283,7 +285,16 @@ export function inlineSubCompositions(
     const scriptCompositionId = plan.scriptCompositionId || "";
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
     const scene = tagScenes ? (parentScene ?? (runtimeCompId || src)) : undefined;
-    if (scene && !parentScene) hostEl.setAttribute("data-hf-scene", scene);
+    if (scene && !parentScene) {
+      hostEl.setAttribute(SCENE_PART_ATTR, scene);
+      sceneHosts.set(scene, hostEl);
+    }
+    const refuseSwap = (reason: string | null) => {
+      const host = scene ? sceneHosts.get(scene) : undefined;
+      if (reason && host && !host.hasAttribute(SCENE_NO_SWAP_ATTR)) {
+        host.setAttribute(SCENE_NO_SWAP_ATTR, reason);
+      }
+    };
 
     // Variable merging (bundler feature). Read declared defaults from the
     // document element (full-document sub-comps) AND the inner composition root
@@ -357,6 +368,11 @@ export function inlineSubCompositions(
     // discarded on render while the mount path executed it.
     for (const scriptEl of plan.scriptSources) {
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
+      refuseSwap(
+        externalSrc
+          ? "it loads an external script"
+          : sceneScriptSwapRefusal(scriptEl.textContent || ""),
+      );
       if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
