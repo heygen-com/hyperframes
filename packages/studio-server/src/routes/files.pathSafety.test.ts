@@ -278,6 +278,55 @@ describe("resolveProjectPath why", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ why: "outside_project" });
   });
+
+  // The "dangling_symlink" label must never apply to a path whose *own*
+  // location is outside the project (reached via `..`) — only to a symlink
+  // that lives inside the project. Otherwise the response leaks, to anyone
+  // who can hit the route, whether an out-of-project path happens to be a
+  // dangling symlink, which is exactly the containment guard's job to hide.
+  it("reports a dangling symlink reached by traversal as 403, not 404", async (context) => {
+    const { app, project, outside } = fixture();
+    linkOrSkip(context, join(outside, "nope-target.html"), join(outside, "dangling.html"), "file");
+
+    const response = await app.request(fileUrl(relative(project, join(outside, "dangling.html"))));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "outside_project" });
+  });
+
+  // Same leak, one level removed: the leaf name is lexically inside the
+  // project, but it's reached through a directory symlink that itself
+  // escapes the project. The dangling-ness of the leaf must not surface.
+  it("reports a dangling leaf behind an escaping directory symlink as 403, not 404", async (context) => {
+    const { app, project, outside } = fixture();
+    linkOrSkip(context, outside, join(project, "ext"), "dir");
+
+    const response = await app.request(fileUrl("ext/nope-target.html"));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ why: "outside_project" });
+  });
+
+  // A symlink that lives inside the project but points *outside* it must
+  // read identically (403, same why) whether or not the outside target
+  // exists — the existence of an outside file is exactly what containment
+  // must never reveal, and `dangling_symlink` is a 404 an attacker could
+  // otherwise use to probe it.
+  it("does not distinguish an existing from a missing target across the project boundary", async (context) => {
+    const { app, project, outside } = fixture();
+    writeFileSync(join(outside, "b-target.txt"), "outside b");
+    linkOrSkip(context, join(outside, "a-missing.txt"), join(project, "a.html"), "file");
+    linkOrSkip(context, join(outside, "b-target.txt"), join(project, "b.html"), "file");
+
+    const [toMissing, toExisting] = await Promise.all([
+      app.request(fileUrl("a.html")),
+      app.request(fileUrl("b.html")),
+    ]);
+
+    expect(toMissing.status).toBe(toExisting.status);
+    expect(await toMissing.json()).toMatchObject({ why: "outside_project" });
+    expect(await toExisting.json()).toMatchObject({ why: "outside_project" });
+  });
 });
 
 describe("upload collision races", () => {

@@ -10,6 +10,7 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  readlinkSync,
   writeFileSync,
   writeSync,
   mkdirSync,
@@ -128,17 +129,28 @@ interface ResolvedGsapFile {
 }
 
 /**
- * True only for a symlink whose target does not exist anywhere — not for one
- * that exists but points outside the project (that stays a real containment
- * failure) and not for a plain missing path (that's the ordinary case
- * `resolveWithinProject` already covers). `isSafePath` fails closed on a
- * dangling symlink by design (a write through it could later resolve outside
- * the project once something creates the target) — this does not loosen that;
- * it only tells the caller *why* the containment check refused, so the
- * response can say "not found" instead of a path-traversal-shaped "forbidden"
- * for a case that scans as broken plumbing, not an attack.
+ * True only for a symlink that itself lives inside the project, whose target
+ * (once resolved against the link's own directory) also names a location
+ * inside the project, and does not exist anywhere — not for one that exists
+ * (that stays a real containment failure) and not for a plain missing path
+ * (the ordinary case `resolveWithinProject` already covers).
+ *
+ * Both containment checks matter, not just the second: a request can name a
+ * path lexically *outside* the project (reached via `..`) that happens to be
+ * a dangling symlink out there, or a real in-project symlink that points
+ * *outside* the project at a target that may or may not exist. Labeling
+ * either of those "not found" would leak, to anyone who can hit the route,
+ * whether an out-of-project path exists — the containment check exists
+ * precisely so that answer never depends on what's outside the project.
+ * `isSafePath` fails closed on a dangling in-project symlink by design (a
+ * write through it could later resolve outside the project once something
+ * creates the target) — this does not loosen that; it only tells the caller
+ * *why* the containment check refused, so the response can say "not found"
+ * instead of a path-traversal-shaped "forbidden" for a case that scans as
+ * broken plumbing, not an attack.
  */
-function isDanglingSymlink(lexicalPath: string): boolean {
+function isDanglingSymlinkInProject(projectDir: string, lexicalPath: string): boolean {
+  if (!isSafePath(projectDir, dirname(lexicalPath))) return false;
   let stats;
   try {
     stats = lstatSync(lexicalPath);
@@ -146,6 +158,8 @@ function isDanglingSymlink(lexicalPath: string): boolean {
     return false;
   }
   if (!stats.isSymbolicLink()) return false;
+  const target = resolve(dirname(lexicalPath), readlinkSync(lexicalPath));
+  if (!isSafePath(projectDir, target)) return false;
   try {
     statSync(lexicalPath);
     return false;
@@ -188,7 +202,7 @@ async function resolveProjectPath(
 
   const absPath = resolveWithinProject(project.dir, filePath);
   if (!absPath) {
-    if (isDanglingSymlink(resolve(project.dir, filePath))) {
+    if (isDanglingSymlinkInProject(project.dir, resolve(project.dir, filePath))) {
       return { error: c.json({ error: "not found", why: "dangling_symlink" }, 404) } as const;
     }
     return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
