@@ -25,8 +25,9 @@ const PICKER_BLOCK_SELECTOR = [
 // sets pointer-events:none itself (a vignette, a cursor) still passes through.
 const PICKABLE_ROOTS_RULE =
   "[data-composition-id],[data-hf-inner-root]{pointer-events:auto!important}";
-// A layered !important outranks every unlayered !important, whatever its specificity: a mounted section's
-// rescoped `#root { pointer-events: none !important }` would otherwise win.
+// A layered !important outranks every normal rule and every unlayered !important, whatever its specificity
+// (a mounted section's rescoped `#root { pointer-events: none !important }`). Ceiling: an author !important
+// inside the author's own layer, or inline, still wins; an adopted sheet's layer always orders last.
 const PICKABLE_ROOTS_LAYERED = `@layer hf-picker{${PICKABLE_ROOTS_RULE}}`;
 
 export type PickerModule = {
@@ -104,8 +105,9 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     };
   }
 
-  // No adoptedStyleSheets (engines older than cascade layers too, and jsdom): a style element for the hit
-  // test only. Adding it is a DOM mutation, so there a hover can wake the runtime's timing observer.
+  // No adoptedStyleSheets (older engines, and jsdom, whose layered !important order is reversed, so this
+  // rule stays unlayered): a style element for the hit test only. Adding it is a DOM mutation, so there a
+  // hover can wake the runtime's timing observer.
   function appendPickableRootsStyle(): () => void {
     const style = document.createElement("style");
     style.textContent = PICKABLE_ROOTS_RULE;
