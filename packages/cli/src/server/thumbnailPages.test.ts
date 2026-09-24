@@ -28,8 +28,8 @@ describe("createThumbnailPages", () => {
     };
 
     const frames = await Promise.all([
-      thumbnails.withPage(browser, "/preview", "v1", load, shot("t0")),
-      thumbnails.withPage(browser, "/preview", "v1", load, shot("t3")),
+      thumbnails.withPage(browser, "/preview", "v1", 0, load, shot("t0")),
+      thumbnails.withPage(browser, "/preview", "v1", 0, load, shot("t3")),
     ]);
 
     expect(frames).toEqual(["t0", "t3"]);
@@ -43,17 +43,17 @@ describe("createThumbnailPages", () => {
     const thumbnails = createThumbnailPages();
     const load = vi.fn(async () => {});
 
-    await thumbnails.withPage(browser, "/preview", "v1", load, async () => null);
-    await thumbnails.withPage(browser, "/preview", "v2", load, async () => null);
+    await thumbnails.withPage(browser, "/preview", "v1", 0, load, async () => null);
+    await thumbnails.withPage(browser, "/preview", "v2", 0, load, async () => null);
     expect(load).toHaveBeenCalledTimes(2);
     expect(pages[0]?.close).toHaveBeenCalled();
 
     await expect(
-      thumbnails.withPage(browser, "/preview", "v2", load, async () => {
+      thumbnails.withPage(browser, "/preview", "v2", 0, load, async () => {
         throw new Error("page crashed");
       }),
     ).rejects.toThrow("page crashed");
-    await thumbnails.withPage(browser, "/preview", "v2", load, async () => null);
+    await thumbnails.withPage(browser, "/preview", "v2", 0, load, async () => null);
     expect(load).toHaveBeenCalledTimes(3);
   });
 
@@ -64,13 +64,13 @@ describe("createThumbnailPages", () => {
       const thumbnails = createThumbnailPages(2, 10_000);
       const load = vi.fn(async () => {});
 
-      await thumbnails.withPage(browser, "/preview", "v1", load, async () => null);
+      await thumbnails.withPage(browser, "/preview", "v1", 0, load, async () => null);
       await vi.advanceTimersByTimeAsync(9_999);
       expect(pages[0]?.close).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(pages[0]?.close).toHaveBeenCalled();
 
-      await thumbnails.withPage(browser, "/preview", "v1", load, async () => null);
+      await thumbnails.withPage(browser, "/preview", "v1", 0, load, async () => null);
       expect(load).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
@@ -86,7 +86,7 @@ describe("createThumbnailPages", () => {
 
     for (let i = 0; i < 3; i++) {
       await expect(
-        thumbnails.withPage(browser, "/preview", "v1", load, async () => null),
+        thumbnails.withPage(browser, "/preview", "v1", 0, load, async () => null),
       ).rejects.toThrow("navigation timeout");
     }
     thumbnails.closeAll();
@@ -95,6 +95,24 @@ describe("createThumbnailPages", () => {
     await vi.waitFor(() =>
       expect(pages.every((page) => page.close.mock.calls.length > 0)).toBe(true),
     );
+  });
+
+  it("seeks a kept page only forward and loads a fresh one for an earlier time", async () => {
+    const { browser, pages } = fakeBrowser();
+    const thumbnails = createThumbnailPages();
+    const load = vi.fn(async () => {});
+    const frame = (time: number) =>
+      thumbnails.withPage(browser, "/preview", "v1", time, load, async (page) => page);
+
+    const first = await frame(10);
+    expect(await frame(20)).toBe(first);
+    expect(await frame(20)).toBe(first);
+
+    // Back to 10 s: taken on a newly loaded page, as a fresh open would, not on the page that showed 20 s.
+    const backward = await frame(10);
+    expect(backward).toBe(pages[1]);
+    expect(load).toHaveBeenLastCalledWith(pages[1]);
+    await vi.waitFor(() => expect(pages[0]?.close).toHaveBeenCalled());
   });
 
   it("never closes a page under a frame that is still being taken", async () => {
@@ -106,12 +124,13 @@ describe("createThumbnailPages", () => {
       browser,
       "/a",
       "v1",
+      0,
       load,
       () => new Promise<void>((r) => (finish = r)),
     );
     await vi.waitFor(() => expect(pages).toHaveLength(1));
 
-    await thumbnails.withPage(browser, "/b", "v1", load, async () => null);
+    await thumbnails.withPage(browser, "/b", "v1", 0, load, async () => null);
     expect(pages[0]?.close).not.toHaveBeenCalled();
     finish();
     await slow;

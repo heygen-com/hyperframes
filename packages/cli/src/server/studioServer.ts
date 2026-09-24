@@ -661,6 +661,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           session.browser,
           opts.previewUrl,
           projectSignature(opts.project.dir),
+          opts.seekTime,
           async (page) => {
             await page.setViewport(viewport);
             await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });

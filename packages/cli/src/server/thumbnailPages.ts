@@ -3,6 +3,8 @@ import type { Browser, Page } from "puppeteer-core";
 interface LoadedPage {
   browser: Browser;
   version: string;
+  /** The latest time scheduled on the page; its frames run in order, so this is where it ends up. */
+  shownUpTo: number;
   page: Promise<Page>;
   queue: Promise<unknown>;
   idleTimer?: ReturnType<typeof setTimeout>;
@@ -11,7 +13,8 @@ interface LoadedPage {
 /** One loaded preview page per document URL: a thumbnail is a seek and a screenshot on it, not a
  * fresh load of the whole composition. A new `version` (project content) reloads the page, calls on
  * one page run one at a time so their seeks never interleave, and a page unused for `idleMs` closes
- * so an idle Studio keeps no composition running. */
+ * so an idle Studio keeps no composition running. A page only seeks forward, as a render does: a
+ * composition need not draw the same frame when seeked back, so an earlier time gets a fresh page. */
 export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
   const pages = new Map<string, LoadedPage>();
   const drop = (url: string) => {
@@ -29,10 +32,19 @@ export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
     browser: Browser,
     url: string,
     version: string,
+    time: number,
     load: (page: Page) => Promise<void>,
   ): LoadedPage => {
     const existing = pages.get(url);
-    if (existing && existing.browser === browser && existing.version === version) return existing;
+    if (
+      existing &&
+      existing.browser === browser &&
+      existing.version === version &&
+      existing.shownUpTo <= time
+    ) {
+      existing.shownUpTo = time;
+      return existing;
+    }
     drop(url);
     const page = browser.newPage().then(async (created) => {
       try {
@@ -44,7 +56,7 @@ export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
       }
       return created;
     });
-    const entry: LoadedPage = { browser, version, page, queue: Promise.resolve() };
+    const entry: LoadedPage = { browser, version, shownUpTo: time, page, queue: Promise.resolve() };
     pages.set(url, entry);
     while (pages.size > maxPages) drop(pages.keys().next().value!);
     return entry;
@@ -62,10 +74,11 @@ export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
       browser: Browser,
       url: string,
       version: string,
+      time: number,
       load: (page: Page) => Promise<void>,
       use: (page: Page) => Promise<T>,
     ): Promise<T> {
-      const current = entryFor(browser, url, version, load);
+      const current = entryFor(browser, url, version, time, load);
       clearTimeout(current.idleTimer);
       const run = current.queue.then(async () => use(await current.page));
       current.queue = run.catch(() => {});
