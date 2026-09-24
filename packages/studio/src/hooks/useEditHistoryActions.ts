@@ -13,7 +13,6 @@ interface HistoryResult {
 }
 interface HistoryFileCallbacks {
   readFile: (path: string) => Promise<string>;
-  writeFile: (path: string, content: string) => Promise<void>;
   serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
 }
 export interface EditHistoryHandle {
@@ -40,7 +39,7 @@ export interface UseEditHistoryActionsOptions {
   forceReloadSdkSession?: () => void;
 }
 
-/** Applies one persisted file-history step: the single owner of undo/redo over project files. */
+/** Takes one step of the project's history: the single owner of undo/redo over project files. */
 export function useEditHistoryActions({
   editHistory,
   readOptionalProjectFile,
@@ -66,11 +65,10 @@ export function useEditHistoryActions({
 
   const apply = useCallback(
     async (direction: "undo" | "redo") => {
-      const [noun, verb] = direction === "undo" ? ["Undo", "Undid"] : ["Redo", "Redid"];
+      const noun = direction === "undo" ? "Undo" : "Redo";
       await waitForPendingDomEditSaves();
       const result = await editHistory[direction]({
         readFile: readHistoryFile,
-        writeFile: writeProjectFile,
         serialize: serializeHistoryFiles,
       });
       if (!result.ok && result.reason === "content-mismatch") {
@@ -83,7 +81,8 @@ export function useEditHistoryActions({
           forceReloadSdkSession?.();
         }
         await syncHistoryPreviewAfterApply({ paths: result.paths, files: result.files });
-        showToast(`${verb} ${result.label}`, "info");
+        // The history names the step itself ("Undid: Moved Title").
+        showToast(result.label, "info");
       }
     },
     [
@@ -92,7 +91,6 @@ export function useEditHistoryActions({
       showToast,
       syncHistoryPreviewAfterApply,
       waitForPendingDomEditSaves,
-      writeProjectFile,
       serializeHistoryFiles,
       onAfterUndoRedo,
       activeCompPath,

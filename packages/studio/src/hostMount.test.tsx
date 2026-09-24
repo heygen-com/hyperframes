@@ -8,8 +8,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Backend/storage mocking only, standing in for a host's own server and
 // persistence — not part of the host's integration code under test.
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createStudioApi,
+  openProjectHistory,
+  type StudioApiAdapter,
+} from "@hyperframes/studio-server";
 import { studioFileContentVersion } from "./utils/studioFileVersion";
-import { createMemoryEditHistoryStorage } from "./utils/editHistoryStorage";
 import {
   flushStudioPendingEdits,
   useTimelineEditing,
@@ -27,45 +34,66 @@ import {
 const ORIGINAL_HTML = '<div id="clip" data-start="0" data-track-index="0"></div>';
 
 let root: Root | null = null;
-afterEach(() => {
+const cleanups: Array<() => unknown> = [];
+afterEach(async () => {
   act(() => root?.unmount());
   document.body.innerHTML = "";
   vi.unstubAllGlobals();
+  for (const step of cleanups.splice(0).reverse()) await step();
 });
 
-/** A minimal disk with etag-guarded PUT, faithful enough to exercise a real
- *  conflict: a stale If-Match gets a 409 with the current version + content. */
-function stubHostProjectDisk(
+function tempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+/** A project folder with etag-guarded PUT, faithful enough to exercise a real
+ *  conflict: a stale If-Match gets a 409 with the current version + content.
+ *  History requests go to the real history routes over the real engine. */
+async function stubHostProjectDisk(
   initial: Record<string, string>,
   options?: { editElsewhereAfterFirstRead?: boolean },
 ) {
-  const content = { ...initial };
+  const dir = tempDir("hf-host-mount-");
+  for (const [path, text] of Object.entries(initial)) writeFileSync(join(dir, path), text);
+  const history = await openProjectHistory({
+    projectDir: dir,
+    historyRoot: tempDir("hf-host-mount-history-"),
+  });
+  cleanups.push(() => history.close());
+  const api = createStudioApi({
+    listProjects: () => [],
+    resolveProject: (id: string) => (id === "p1" ? { id, dir } : null),
+    history: () => history,
+  } as unknown as StudioApiAdapter);
   const readsSeen = new Set<string>();
+  const read = (path: string) => readFileSync(join(dir, path), "utf8");
   // The real backend's etag is a content hash (useProjectFileWriter derives
   // If-Match the same way) — an arbitrary counter here would make every
   // write from a host that hasn't just read the file look stale.
-  const versionOf = (path: string) => studioFileContentVersion(content[path]);
+  const versionOf = (path: string) => studioFileContentVersion(read(path));
 
   async function handlePut(path: string, init: RequestInit | undefined) {
     const ifMatch = new Headers(init?.headers).get("If-Match");
     const currentVersion = await versionOf(path);
     if (ifMatch && ifMatch !== currentVersion) {
-      return new Response(JSON.stringify({ currentVersion, currentContent: content[path] }), {
+      return new Response(JSON.stringify({ currentVersion, currentContent: read(path) }), {
         status: 409,
       });
     }
-    content[path] = String(init?.body ?? "");
+    writeFileSync(join(dir, path), String(init?.body ?? ""));
     return new Response(JSON.stringify({ version: await versionOf(path) }), { status: 200 });
   }
 
   async function handleGet(path: string) {
-    const served = content[path];
+    const served = read(path);
     // Simulates another writer landing between this read and the caller's
     // own write: content moves on right after being served once, so the
     // caller's hash of what it just read no longer matches disk.
     if (options?.editElsewhereAfterFirstRead && !readsSeen.has(path)) {
       readsSeen.add(path);
-      content[path] = `${served} <!--edited elsewhere-->`;
+      writeFileSync(join(dir, path), `${served} <!--edited elsewhere-->`);
     }
     return new Response(
       JSON.stringify({ content: served, version: await studioFileContentVersion(served) }),
@@ -74,12 +102,15 @@ function stubHostProjectDisk(
   }
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const match = String(input).match(/\/files\/([^?]+)/);
-    const path = match ? decodeURIComponent(match[1]) : "";
+    const url = String(input);
+    if (url.includes("/history")) return api.request(url.replace(/^\/api/, ""), init);
+    const match = url.match(/\/files\/([^?]+)/);
+    if (!match) return new Response("{}", { status: 404 });
+    const path = decodeURIComponent(match[1]);
     return (init?.method ?? "GET") === "PUT" ? handlePut(path, init) : handleGet(path);
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { content, fetchMock };
+  return { read, fetchMock };
 }
 
 type TimelineEditingHandle = {
@@ -108,13 +139,10 @@ function mountHost(
   const bannerHost = document.createElement("div");
   document.body.append(bannerHost);
   const bannerRoot = createRoot(bannerHost);
-  // Created once: a fresh storage object on every render would change
-  // usePersistentEditHistory's effect deps each time and loop forever.
-  const storage = createMemoryEditHistoryStorage();
 
   function Harness() {
     const writer = useProjectFileWriter({ projectId: "p1" });
-    const editHistory = usePersistentEditHistory({ projectId: "p1", storage });
+    const editHistory = usePersistentEditHistory({ projectId: "p1" });
     const historyActions = useEditHistoryActions({
       editHistory,
       readOptionalProjectFile: writer.readOptionalProjectFile,
@@ -170,7 +198,7 @@ function mountHost(
 
 describe("public export surface: a host mounting hand editing outside EditorShell", () => {
   it("writes a move through the history path and undo restores it", async () => {
-    const disk = stubHostProjectDisk({ "index.html": ORIGINAL_HTML });
+    const disk = await stubHostProjectDisk({ "index.html": ORIGINAL_HTML });
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
     iframe.contentDocument!.body.innerHTML = ORIGINAL_HTML;
@@ -187,16 +215,19 @@ describe("public export surface: a host mounting hand editing outside EditorShel
     await act(async () => {
       await timelineEditing.handleTimelineElementMove(clip, { start: 5, track: 0 });
     });
-    expect(disk.content["index.html"]).toContain('data-start="5"');
+    expect(disk.read("index.html")).toContain('data-start="5"');
 
     await act(async () => {
       await undo();
     });
-    expect(disk.content["index.html"]).toContain('data-start="0"');
+    expect(disk.read("index.html")).toContain('data-start="0"');
   });
 
   it("surfaces the conflict banner on a 409", async () => {
-    stubHostProjectDisk({ "index.html": ORIGINAL_HTML }, { editElsewhereAfterFirstRead: true });
+    await stubHostProjectDisk(
+      { "index.html": ORIGINAL_HTML },
+      { editElsewhereAfterFirstRead: true },
+    );
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
     iframe.contentDocument!.body.innerHTML = ORIGINAL_HTML;
