@@ -3001,6 +3001,31 @@ export function initSandboxRuntimeModular(): void {
     (err) => swallow("runtime.init.buildReady", err),
   );
 
+  // Caption overrides rewrite caption colours when caption-overrides.json arrives, which can be after
+  // the first frame rendered. Readiness waits for them. A rewritten tween that already finished only
+  // renders again when the playhead crosses it, so replay from 0 to where the film is, as a fresh load
+  // (overrides first, then the seek) would.
+  let captionOverridesPending: PromiseLike<void> | null = null;
+  const isCaptionOverridesSettled = createSettledTracker(
+    () => (captionOverridesPending ? [captionOverridesPending] : []),
+    () => {
+      if (!state.tornDown && state.capturedTimeline) {
+        const time = state.currentTime;
+        seekTimelineAndAdapters(0, { suppressEvents: true });
+        seekTimelineAndAdapters(time, { suppressEvents: true });
+      }
+      maybePublishRenderReady();
+    },
+    (err) => swallow("runtime.init.captionOverrides", err),
+  );
+  const applyBootCaptionOverrides = () => {
+    const landed = applyCaptionOverrides();
+    // A film without captions has nothing to wait for; keep its readiness synchronous.
+    if (!document.querySelector(".caption-group")) return;
+    captionOverridesPending = landed;
+    isCaptionOverridesSettled();
+  };
+
   if (!externalCompositionsReady) {
     const compositionLoaderParams = {
       injectedStyles: state.injectedCompStyles,
@@ -3028,7 +3053,7 @@ export function initSandboxRuntimeModular(): void {
         externalCompositionsReady = true;
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
-        applyCaptionOverrides();
+        applyBootCaptionOverrides();
         // Runtime-loaded sub-compositions (and their per-instance scoped
         // values) don't exist at the init-time binding pass — re-apply so
         // data-var-* / --{id} bindings inside them resolve. Idempotent.
@@ -3041,7 +3066,7 @@ export function initSandboxRuntimeModular(): void {
       });
   } else {
     // No external/inline compositions to load — apply caption overrides immediately
-    applyCaptionOverrides();
+    applyBootCaptionOverrides();
   }
 
   const picker = createPickerModule({
@@ -3392,7 +3417,7 @@ export function initSandboxRuntimeModular(): void {
       window.__renderReady = false;
       return;
     }
-    if (!isBuildReadinessSettled()) {
+    if (!isBuildReadinessSettled() || !isCaptionOverridesSettled()) {
       window.__renderReady = false;
       return;
     }

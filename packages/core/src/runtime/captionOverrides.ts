@@ -46,6 +46,7 @@ function parseCaptionOverridePayload(value: unknown): CaptionOverride[] {
 interface GsapTween {
   vars: Record<string, unknown>;
   startTime(): number;
+  invalidate?(): void;
 }
 
 interface GsapStatic {
@@ -113,14 +114,15 @@ function getOrCreateCaptionWrapper(el: HTMLElement): HTMLElement {
   return wrapper;
 }
 
-export function applyCaptionOverrides(): void {
+/** Applies caption-overrides.json to caption words; resolves once they have landed (or there are none). */
+export function applyCaptionOverrides(): Promise<void> {
   const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
-  if (!gsap) return;
+  if (!gsap) return Promise.resolve();
 
   // Only fetch overrides if the composition has caption groups
-  if (document.querySelectorAll(".caption-group").length === 0) return;
+  if (document.querySelectorAll(".caption-group").length === 0) return Promise.resolve();
 
-  fetch("caption-overrides.json")
+  return fetch("caption-overrides.json")
     .then((r) => {
       if (!r.ok) return null;
       return r.json();
@@ -183,11 +185,11 @@ export function applyCaptionOverrides(): void {
             const state =
               declaredCaptionState(tw) ??
               (String(tw.vars.color) === dimBaseline ? "dim" : "active");
-            if (state === "dim") {
-              if (override.dimColor) tw.vars.color = override.dimColor;
-            } else if (override.activeColor) {
-              tw.vars.color = override.activeColor;
-            }
+            const color = state === "dim" ? override.dimColor : override.activeColor;
+            if (!color) continue;
+            tw.vars.color = color;
+            // A tween that already rendered keeps the colour it recorded then; make it re-read vars.
+            tw.invalidate?.();
           }
 
           // Set current visible color (words start in dim state)

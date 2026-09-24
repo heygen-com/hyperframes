@@ -3004,6 +3004,62 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  describe("caption overrides at boot", () => {
+    function captionFilm(timeline: RuntimeTimelineLike) {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      root.innerHTML = '<div class="caption-group"><span>hi</span></div>';
+      document.body.appendChild(root);
+      window.__timelines = { main: timeline };
+      (window as unknown as { gsap: unknown }).gsap = {
+        set: () => {},
+        killTweensOf: () => {},
+        getTweensOf: () => [],
+      };
+      let answer: (r: Response) => void = () => {};
+      vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+        String(input).includes("caption-overrides")
+          ? new Promise<Response>((resolve) => (answer = resolve))
+          : Promise.resolve(new Response("", { status: 404 })),
+      );
+      return () => answer(Response.json([{ wordIndex: 0, dimColor: "#111" }]));
+    }
+    const flush = async () => {
+      for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    };
+    afterEach(() => {
+      delete (window as unknown as { gsap?: unknown }).gsap;
+    });
+
+    it("holds render readiness until caption overrides have landed", async () => {
+      const land = captionFilm(createMockTimeline(10));
+      initSandboxRuntimeModular();
+      await flush();
+      expect(window.__renderReady).toBe(false);
+      land();
+      await flush();
+      expect(window.__renderReady).toBe(true);
+    });
+
+    it("replays from 0 to the current time once caption overrides land, as a fresh load would", async () => {
+      const timeline = createMockTimeline(10);
+      const land = captionFilm(timeline);
+      initSandboxRuntimeModular();
+      await flush();
+      window.__player?.seek(3);
+      const renders = vi.spyOn(timeline, "totalTime");
+      land();
+      await flush();
+      const times = renders.mock.calls.map(([t]) => t);
+      expect(times.indexOf(0)).toBeGreaterThanOrEqual(0);
+      expect(times.lastIndexOf(3)).toBeGreaterThan(times.indexOf(0));
+    });
+  });
+
   it("settles window.__hf.buildReady with two or more registered keys", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
