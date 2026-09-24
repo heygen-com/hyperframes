@@ -2054,11 +2054,14 @@ export function initSandboxRuntimeModular(): void {
     window.addEventListener("unhandledrejection", runtimeUnhandledRejectionListener);
   };
 
+  const assetNodesWithDiagnostics = new WeakSet<Element>();
   const installAssetFailureDiagnostics = () => {
     const assetNodes = Array.from(
       document.querySelectorAll("img, video, audio, source, link[rel='stylesheet']"),
     );
     for (const node of assetNodes) {
+      if (assetNodesWithDiagnostics.has(node)) continue;
+      assetNodesWithDiagnostics.add(node);
       const onError = () => {
         if (!isElementNode(node)) {
           return;
@@ -2273,15 +2276,26 @@ export function initSandboxRuntimeModular(): void {
     if (isMediaElement(target)) reportWebAudioRoute(target);
   };
 
+  const unbindMedia = (mediaEl: HTMLMediaElement) => {
+    mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
+    mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
+    mediaEl.removeEventListener("error", onMediaErrorForProxy);
+    metadataBoundMedia.delete(mediaEl);
+  };
   const unbindMediaMetadataListeners = () => {
+    for (const mediaEl of metadataBoundMedia) unbindMedia(mediaEl);
+  };
+  // A remount detaches the scene's old media; stop it and drop its buffer.
+  const releaseDetachedMedia = () => {
     for (const mediaEl of metadataBoundMedia) {
-      mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
-      mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
-      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
-      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
-      mediaEl.removeEventListener("error", onMediaErrorForProxy);
+      if (mediaEl.isConnected) continue;
+      unbindMedia(mediaEl);
+      mediaEl.pause();
+      mediaEl.removeAttribute("src");
+      mediaEl.load();
     }
-    metadataBoundMedia.clear();
   };
 
   const bindMediaMetadataListeners = () => {
@@ -3025,22 +3039,22 @@ export function initSandboxRuntimeModular(): void {
       });
     },
   };
+  // Passes that must see a scene's DOM, which arrives only when it mounts (at boot or on a remount).
+  const settleMountedCompositions = () => {
+    bindMediaMetadataListeners();
+    installAssetFailureDiagnostics();
+    applyCaptionOverrides();
+    // Per-instance scoped values in mounted scenes: data-var-* / --{id} bindings. Idempotent.
+    applyVariableBindings(document);
+    // An unregistered vfx chain paints nothing and logs nothing, so re-scan the new DOM.
+    initVfx(document.body, state.canonicalFps);
+  };
   if (!externalCompositionsReady) {
     void loadExternalCompositions(compositionLoaderParams)
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
-        bindMediaMetadataListeners();
-        installAssetFailureDiagnostics();
-        applyCaptionOverrides();
-        // Runtime-loaded sub-compositions (and their per-instance scoped
-        // values) don't exist at the init-time binding pass — re-apply so
-        // data-var-* / --{id} bindings inside them resolve. Idempotent.
-        applyVariableBindings(document);
-        // A vfx host inside a sub-composition enters the DOM only now, so the
-        // init-time pass below never saw it. Re-scan before readiness is
-        // published: an unregistered chain paints nothing and logs nothing.
-        initVfx(document.body, state.canonicalFps);
+        settleMountedCompositions();
         maybePublishRenderReady();
       });
   } else {
@@ -3049,32 +3063,43 @@ export function initSandboxRuntimeModular(): void {
   }
 
   // Swap one edited or newly added scene in place: remount its host, then put its new timeline
-  // in the root at the host's start. Rejects when there is no such host; the caller reloads.
+  // in the root at the host's start. Rejects when it cannot do that exactly; the caller reloads.
   const remountComposition = async (src: string): Promise<void> => {
     const hosts = Array.from(
       document.querySelectorAll(`[data-composition-src="${CSS.escape(src)}"]`),
     );
     if (hosts.length === 0) throw new Error(`no scene host for ${src}`);
+    // The timeline registry is keyed by host id, so each remounted host needs its own.
+    const ids = hosts.map((host) => host.getAttribute("data-composition-id"));
+    const otherIds = new Set(
+      Array.from(document.querySelectorAll("[data-composition-id]"))
+        .filter((el) => !hosts.includes(el))
+        .map((el) => el.getAttribute("data-composition-id")),
+    );
+    if (ids.some((id) => !id || otherIds.has(id)) || new Set(ids).size !== ids.length) {
+      throw new Error(`scene host ids for ${src} are missing or shared`);
+    }
     const timelines = (window.__timelines ??= {}) as Record<
       string,
       RuntimeTimelineLike | undefined
     >;
-    const root = state.capturedTimeline as
-      | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
-      | null;
-    for (const host of hosts) {
-      const id = host.getAttribute("data-composition-id");
-      const previous = id ? timelines[id] : undefined;
-      if (id && previous) {
-        root?.remove?.(previous);
-        (previous as { kill?: () => void }).kill?.();
-        delete timelines[id];
-      }
-      await remountExternalComposition(host, compositionLoaderParams);
-    }
-    applyVariableBindings(document);
-    initVfx(document.body, state.canonicalFps);
-    bindMediaMetadataListeners();
+    const dropTimeline = (id: string) => {
+      const previous = timelines[id];
+      if (!previous) return;
+      const root = state.capturedTimeline as
+        | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
+        | null;
+      root?.remove?.(previous);
+      (previous as { kill?: () => void }).kill?.();
+      delete timelines[id];
+    };
+    await Promise.all(
+      hosts.map((host, i) =>
+        remountExternalComposition(host, compositionLoaderParams, () => dropTimeline(ids[i]!)),
+      ),
+    );
+    settleMountedCompositions();
+    releaseDetachedMedia();
     childrenBound = false;
     bindRootTimelineIfAvailable();
     const bound = state.capturedTimeline;
@@ -3083,6 +3108,8 @@ export function initSandboxRuntimeModular(): void {
       clock.setDuration(duration);
       bound.totalTime?.(Math.max(0, state.currentTime || 0), false);
     }
+    // The rebind above skips these when the root timeline object did not change.
+    applyPositionEdits(document);
     syncTimedElementVisibility(state.currentTime);
     postTimeline();
   };

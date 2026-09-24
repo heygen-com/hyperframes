@@ -652,19 +652,30 @@ export async function loadExternalCompositions(
 
 // What each external host's last mount injected, so a remount can take back exactly that.
 const mountedAssetsByHost = new WeakMap<Element, Element[]>();
+// Mounts of one host run one after another, so overlapping ones never interleave their DOM.
+const mountQueueByHost = new WeakMap<Element, Promise<unknown>>();
 
-async function loadExternalHost(
+function queueHostMount<T>(host: Element, step: () => Promise<T>): Promise<T> {
+  const run = (mountQueueByHost.get(host) ?? Promise.resolve()).then(step, step);
+  mountQueueByHost.set(
+    host,
+    run.catch(() => undefined),
+  );
+  return run;
+}
+
+async function mountAndRecord(
   host: Element,
   hostIdentity: HostCompositionIdentity | undefined,
   params: LoadExternalCompositionsParams,
-): Promise<void> {
+): Promise<boolean> {
   const own = {
     injectedStyles: [] as HTMLStyleElement[],
     injectedScripts: [] as HTMLScriptElement[],
     injectedLinks: [] as HTMLLinkElement[],
   };
   try {
-    await mountExternalHost(host, hostIdentity, { ...params, ...own });
+    return await mountExternalHost(host, hostIdentity, { ...params, ...own });
   } finally {
     params.injectedStyles.push(...own.injectedStyles);
     params.injectedScripts.push(...own.injectedScripts);
@@ -677,32 +688,47 @@ async function loadExternalHost(
   }
 }
 
+function loadExternalHost(
+  host: Element,
+  hostIdentity: HostCompositionIdentity | undefined,
+  params: LoadExternalCompositionsParams,
+): Promise<boolean> {
+  return queueHostMount(host, () => mountAndRecord(host, hostIdentity, params));
+}
+
 /**
- * Mount one external host again from its file: drop what its last mount injected, then fetch
- * and mount. The caller rebinds timelines. A host that was never mounted just mounts.
+ * Mount one external host again from its file, after any mount of it still in flight: drop what
+ * its last mount injected, run `beforeMount`, then fetch and mount. Rejects when the file cannot
+ * be loaded. The caller rebinds timelines. A host that was never mounted just mounts.
  */
-export async function remountExternalComposition(
+export function remountExternalComposition(
   host: Element,
   params: LoadExternalCompositionsParams,
+  beforeMount?: () => void,
 ): Promise<void> {
-  for (const el of mountedAssetsByHost.get(host) ?? []) {
-    el.remove();
-    for (const list of [params.injectedStyles, params.injectedScripts, params.injectedLinks]) {
-      const index = (list as Element[]).indexOf(el);
-      if (index >= 0) list.splice(index, 1);
+  return queueHostMount(host, async () => {
+    for (const el of mountedAssetsByHost.get(host) ?? []) {
+      el.remove();
+      for (const list of [params.injectedStyles, params.injectedScripts, params.injectedLinks]) {
+        const index = (list as Element[]).indexOf(el);
+        if (index >= 0) list.splice(index, 1);
+      }
     }
-  }
-  mountedAssetsByHost.delete(host);
-  await loadExternalHost(host, getHostCompositionIdentity(host), params);
+    mountedAssetsByHost.delete(host);
+    beforeMount?.();
+    if (!(await mountAndRecord(host, getHostCompositionIdentity(host), params))) {
+      throw new Error(`could not load ${host.getAttribute("data-composition-src")}`);
+    }
+  });
 }
 
 async function mountExternalHost(
   host: Element,
   hostIdentity: HostCompositionIdentity | undefined,
   params: LoadExternalCompositionsParams,
-): Promise<void> {
+): Promise<boolean> {
   const src = host.getAttribute("data-composition-src");
-  if (!src) return;
+  if (!src) return false;
   const authoredCompositionId = hostIdentity?.authoredCompositionId || null;
   const runtimeCompositionId = hostIdentity?.runtimeCompositionId || authoredCompositionId || null;
   let compositionUrl: URL | null = null;
@@ -735,7 +761,7 @@ async function mountExternalHost(
         parseDimensionPx: params.parseDimensionPx,
         onDiagnostic: params.onDiagnostic,
       });
-      return;
+      return true;
     }
     const response = await fetch(src);
     if (!response.ok) {
@@ -787,6 +813,7 @@ async function mountExternalHost(
       variableDeclarer: doc.documentElement,
       onDiagnostic: params.onDiagnostic,
     });
+    return true;
   } catch (error) {
     params.onDiagnostic?.({
       code: "external_composition_load_failed",
@@ -799,6 +826,7 @@ async function mountExternalHost(
     });
     // Keep host empty on load failures to avoid rendering escaped fallback HTML.
     resetCompositionHost(host);
+    return false;
   }
 }
 
