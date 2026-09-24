@@ -270,17 +270,22 @@ async function readCapped(response, budget) {
   return collector.bytes();
 }
 
+const isServerRetryable = (status) => status === 429 || status >= 500;
+
 // A 404 is final for almost anything — but for a GitHub attachment URL, right
 // after it was uploaded, it means "not replicated yet," not "does not exist."
 // Reproduced this week: the same asset URL 404'd, then 200'd minutes later
 // with no edit to the PR in between, and whichever asset had been attached
 // most recently was always the one that failed. Scoped to the attachment host
 // so a real 404 on any other URL (a typo'd link, a deleted gist) still fails fast.
-const isRetryableStatus = (status, url) => {
-  if (status === 429 || status >= 500) return true;
-  const parsed = status === 404 ? parseUrl(url) : null;
+const isRetryableAttachment404 = (status, url) => {
+  if (status !== 404) return false;
+  const parsed = parseUrl(url);
   return parsed !== null && isAttachmentUrl(parsed);
 };
+
+const isRetryableStatus = (status, url) =>
+  isServerRetryable(status) || isRetryableAttachment404(status, url);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** One attempt: the bytes, or a NonRetryable for a final status, or a plain Error for a retryable one. */
