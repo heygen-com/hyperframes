@@ -246,7 +246,11 @@ function firstRescalingZoom(css: string): string | null {
  * authoring and renders exactly as authored; only the canvas-level one
  * desynchronises painted content from the declared frame.
  */
-function targetsCanvasRoot(selector: string, rootId: string | null, rootClasses: string[]): boolean {
+function targetsCanvasRoot(
+  selector: string,
+  rootId: string | null,
+  rootClasses: string[],
+): boolean {
   const leftmost = selector.trim().split(/[\s>+~]+/)[0] ?? "";
   const bare = leftmost.toLowerCase();
   if (bare === "html" || bare === "body" || bare === ":root" || bare === "*") return true;
@@ -1338,7 +1342,11 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         for (const selector of header.split(",")) {
           const trimmed = selector.trim();
           if (!trimmed || !targetsCanvasRoot(trimmed, rootId, rootClasses)) continue;
-          hits.push({ where: `\`${trimmed}\``, value, snippet: truncateSnippet(`${trimmed} { zoom: ${value} }`) });
+          hits.push({
+            where: `\`${trimmed}\``,
+            value,
+            snippet: truncateSnippet(`${trimmed} { zoom: ${value} }`),
+          });
           break;
         }
       }
@@ -1346,7 +1354,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
 
     if (hits.length === 0) return [];
     const hit = hits[0];
-    const enlarging = !hit.value.startsWith("-") && parseFloat(hit.value) > (hit.value.includes("%") ? 100 : 1);
+    const enlarging =
+      !hit.value.startsWith("-") && parseFloat(hit.value) > (hit.value.includes("%") ? 100 : 1);
     return [
       {
         code: "root_zoom_rescales_a_fixed_canvas",

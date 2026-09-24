@@ -2281,7 +2281,9 @@ describe("composition rules", () => {
       </style></head><body>
         <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
       </body></html>`);
-      const finding = rescaling.findings.find((f) => f.code === "root_zoom_rescales_a_fixed_canvas");
+      const finding = rescaling.findings.find(
+        (f) => f.code === "root_zoom_rescales_a_fixed_canvas",
+      );
       expect(finding?.message).toContain("zoom: 2`");
     });
 
