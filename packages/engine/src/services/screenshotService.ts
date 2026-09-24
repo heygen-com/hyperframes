@@ -279,43 +279,61 @@ export async function captureScreenshotWithAlpha(
 }
 
 /**
- * Set the page background to transparent once for a dedicated HDR DOM session.
+ * Set the page background to transparent once for a session that captures
+ * alpha (`format: "png"`).
  *
  * Call this once after session initialization. Then use captureAlphaPng() per
  * frame instead of captureScreenshotWithAlpha() to skip the per-frame CDP
  * background override round-trips.
  *
- * Only use on sessions that are exclusively dedicated to transparent capture
- * (e.g., the HDR two-pass DOM layer session) — the background will stay
- * transparent for the lifetime of the session.
- *
  * NOTE on the injected stylesheet: `Emulation.setDefaultBackgroundColorOverride`
  * only replaces the *default* page background. Compositions almost always set
- * `body { background: ... }` and `#root { background: ... }`, which paint over
- * the override and ruin alpha capture for layered HDR compositing — the
- * composition root's full-frame background paints across the entire viewport
- * and wipes out HDR content captured beneath it.
+ * `html { background: ... }` / `body { background: ... }`, which paint over
+ * the override — we always force those two to transparent regardless of mode.
  *
- * We force `html`, `body`, and any element marked as a composition root
- * (`[data-composition-id]`) to transparent. In HDR layered compositing the HDR
- * video itself is the backdrop, so DOM layers must only contribute their
- * foreground UI pixels — never a page-spanning solid backdrop.
+ * Composition-id-bearing elements (`[data-composition-id]` — the top-level
+ * composition root, and any nested sub-composition root) are different: for a
+ * plain alpha export (MOV/ProRes4444, webm+alpha) an author's own background
+ * painted on one of these is real, intentional content that must survive into
+ * the output — clearing it silently drops it (see #822). But in HDR two-pass
+ * layered compositing, the HDR video itself is the backdrop and the DOM pass
+ * must contribute only foreground UI pixels, so these backgrounds have to be
+ * cleared there or they paint over the HDR content underneath. `options`
+ * makes each call site state which case it is; there's no safe shared default.
+ *
+ * Idempotent, but NOT append-once: calling this again on the same page
+ * rewrites the existing stylesheet's rule rather than skipping, so a later
+ * call always wins even when it passes a different `clearCompositionRoot`.
+ * This matters because `initializeSession()`'s own internal call only fires
+ * when this session's OWN capture format is `"png"` — an HDR-layered DOM
+ * session commonly captures `"jpeg"` (the final output doesn't itself need
+ * alpha), so its caller must also call this explicitly, since the internal
+ * call may not fire at all.
  */
 const TRANSPARENT_BG_STYLE_ID = "__hf_transparent_bg__";
 
-export async function initTransparentBackground(page: Page): Promise<void> {
+export async function initTransparentBackground(
+  page: Page,
+  options: { clearCompositionRoot: boolean },
+): Promise<void> {
   const client = await getCdpSession(page);
   await client.send("Emulation.setDefaultBackgroundColorOverride", {
     color: { r: 0, g: 0, b: 0, a: 0 },
   });
-  await page.evaluate((styleId: string) => {
-    if (document.getElementById(styleId)) return;
-    const style = document.createElement("style");
-    style.id = styleId;
-    style.textContent =
-      "html,body,[data-composition-id]{background:transparent !important;background-color:transparent !important;background-image:none !important;}";
-    document.head.appendChild(style);
-  }, TRANSPARENT_BG_STYLE_ID);
+  await page.evaluate(
+    (styleId: string, clearCompositionRoot: boolean) => {
+      const selector = clearCompositionRoot ? "html,body,[data-composition-id]" : "html,body";
+      let style = document.getElementById(styleId);
+      if (!style) {
+        style = document.createElement("style");
+        style.id = styleId;
+        document.head.appendChild(style);
+      }
+      style.textContent = `${selector}{background:transparent !important;background-color:transparent !important;background-image:none !important;}`;
+    },
+    TRANSPARENT_BG_STYLE_ID,
+    options.clearCompositionRoot,
+  );
 }
 
 /**

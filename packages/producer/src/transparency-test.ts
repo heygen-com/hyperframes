@@ -31,6 +31,8 @@ import { createRenderJob, executeRenderJob } from "./services/renderOrchestrator
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(moduleDir, "../tests/transparency-regression");
 const FIXTURE_SRC = join(FIXTURE_DIR, "src");
+const ROOT_BG_FIXTURE_DIR = resolve(moduleDir, "../tests/transparency-regression-root-bg");
+const ROOT_BG_FIXTURE_SRC = join(ROOT_BG_FIXTURE_DIR, "src");
 const SHADER_FIXTURE_DIR = resolve(moduleDir, "../tests/page-side-shader-compositor-render-compat");
 const SHADER_FIXTURE_SRC = join(SHADER_FIXTURE_DIR, "src");
 const SHADER_GOLDEN = join(SHADER_FIXTURE_DIR, "output", "output.mp4");
@@ -43,6 +45,12 @@ const TRANSPARENT_X = 10; // expected fully transparent
 const TRANSPARENT_Y = 10;
 const OPAQUE_X = 100; // inside the 50–150 red card
 const OPAQUE_Y = 100;
+// transparency-regression-root-bg: same 200x200 canvas + 50-150 red card, but
+// the composition ROOT div (not html/body) also paints rgb(0,0,255) across
+// the whole frame. (10,10) sits outside the card but inside the root — it
+// must decode as opaque blue, not transparent, in alpha-carrying output.
+const ROOT_BG_X = 10;
+const ROOT_BG_Y = 10;
 
 function pixelOffset(x: number, y: number, width: number): number {
   return (y * width + x) * 4;
@@ -52,7 +60,7 @@ function assertAlphaPixel(
   png: { data: Uint8Array; width: number; height: number },
   x: number,
   y: number,
-  expectAlpha: "transparent" | "opaque-red",
+  expectAlpha: "transparent" | "opaque-red" | "opaque-blue",
   label: string,
 ): void {
   assert.equal(png.width, WIDTH, `${label}: width mismatch`);
@@ -68,23 +76,25 @@ function assertAlphaPixel(
       0,
       `${label}: pixel (${x},${y}) expected fully transparent (alpha=0), got rgba(${r},${g},${b},${a})`,
     );
-  } else {
-    assert.equal(
-      a,
-      255,
-      `${label}: pixel (${x},${y}) expected fully opaque (alpha=255), got rgba(${r},${g},${b},${a})`,
-    );
+    return;
+  }
+  assert.equal(
+    a,
+    255,
+    `${label}: pixel (${x},${y}) expected fully opaque (alpha=255), got rgba(${r},${g},${b},${a})`,
+  );
+  const expectRed = expectAlpha === "opaque-red";
+  const dominantName = expectRed ? "red" : "blue";
+  const dominantValue = expectRed ? r : b;
+  const otherChannels = expectRed ? { green: g, blue: b } : { red: r, green: g };
+  assert.ok(
+    typeof dominantValue === "number" && dominantValue >= 240,
+    `${label}: pixel (${x},${y}) expected ${dominantName} >= 240, got rgba(${r},${g},${b},${a})`,
+  );
+  for (const [name, value] of Object.entries(otherChannels)) {
     assert.ok(
-      typeof r === "number" && r >= 240,
-      `${label}: pixel (${x},${y}) expected red >= 240, got rgba(${r},${g},${b},${a})`,
-    );
-    assert.ok(
-      typeof g === "number" && g <= 30,
-      `${label}: pixel (${x},${y}) expected green <= 30, got rgba(${r},${g},${b},${a})`,
-    );
-    assert.ok(
-      typeof b === "number" && b <= 30,
-      `${label}: pixel (${x},${y}) expected blue <= 30, got rgba(${r},${g},${b},${a})`,
+      typeof value === "number" && value <= 30,
+      `${label}: pixel (${x},${y}) expected ${name} <= 30, got rgba(${r},${g},${b},${a})`,
     );
   }
 }
@@ -185,6 +195,33 @@ async function runWebmCheck(workRoot: string): Promise<void> {
   assertAlphaPixel(decoded, TRANSPARENT_X, TRANSPARENT_Y, "transparent", "webm");
   assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "webm");
   console.log("[webm] PASS — transparent + opaque-red pixels verified");
+}
+
+async function runRootBackgroundCheck(workRoot: string): Promise<void> {
+  console.log("\n[root-bg] rendering transparency-regression-root-bg …");
+  const outDir = join(workRoot, "root-bg");
+  mkdirSync(outDir, { recursive: true });
+  const outPath = join(outDir, "out.webm");
+
+  const job = createRenderJob({
+    fps: FPS,
+    quality: "draft",
+    format: "webm",
+  });
+
+  await executeRenderJob(job, ROOT_BG_FIXTURE_SRC, outPath);
+  assert.equal(job.status, "complete", `root-bg render did not complete: status=${job.status}`);
+  assert.ok(existsSync(outPath), `root-bg output not written to ${outPath}`);
+
+  const framePng = join(outDir, "frame-0.png");
+  await extractFirstFrameFromWebm(outPath, framePng);
+  const decoded = decodePng(readFileSync(framePng));
+  // The composition root's own rgb(0,0,255) background must survive into the
+  // alpha output — this is the exact case that used to get force-cleared to
+  // transparent by initTransparentBackground's stylesheet.
+  assertAlphaPixel(decoded, ROOT_BG_X, ROOT_BG_Y, "opaque-blue", "root-bg");
+  assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "root-bg");
+  console.log("[root-bg] PASS — composition root background preserved in alpha output");
 }
 
 async function runGifCheck(workRoot: string): Promise<void> {
@@ -306,6 +343,9 @@ async function main(): Promise<void> {
   if (!existsSync(FIXTURE_SRC)) {
     throw new Error(`Fixture missing: ${FIXTURE_SRC}`);
   }
+  if (!existsSync(ROOT_BG_FIXTURE_SRC)) {
+    throw new Error(`Fixture missing: ${ROOT_BG_FIXTURE_SRC}`);
+  }
   if (!existsSync(SHADER_FIXTURE_SRC) || !existsSync(SHADER_GOLDEN)) {
     throw new Error(`Shader fixture or golden missing: ${SHADER_FIXTURE_DIR}`);
   }
@@ -315,6 +355,7 @@ async function main(): Promise<void> {
 
   try {
     await runWebmCheck(workRoot);
+    await runRootBackgroundCheck(workRoot);
     await runGifCheck(workRoot);
     await runGifShaderTransitionCheck(workRoot);
     await runPngSequenceCheck(workRoot);

@@ -92,6 +92,7 @@
     "three-boundary-deferred": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "timed-descendant-visibility": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "transparency-regression": "Not a harness fixture by design \u2014 its meta.json says it is exercised by `tsx src/transparency-test.ts`, which asserts a real alpha channel rather than comparing against a golden MP4.",
+    "transparency-regression-root-bg": "Not a harness fixture by design, same reason as its sibling `transparency-regression` \u2014 exercised by `tsx src/transparency-test.ts`, which asserts a real alpha channel rather than comparing against a golden MP4.",
     "video-hfid-no-id": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "webgl-video-texture-render-compat": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "wysiwyg-subcomp-css": "Rejected by the harness at load time (meta.json: maxAudioLagWindows must be >= 1), so it has never run despite looking scheduled-able. Fix the metadata, then schedule it."

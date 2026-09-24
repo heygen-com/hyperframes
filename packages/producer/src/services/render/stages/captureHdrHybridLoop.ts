@@ -123,12 +123,20 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
       const s = await createCaptureSession(
         fileServer.url,
         input.framesDir,
-        buildCaptureOptions(),
+        { ...buildCaptureOptions(), clearCompositionRootBackground: true },
         createRenderVideoFrameInjector(),
         cfg,
       );
       await initializeSession(s);
-      await initTransparentBackground(s.page);
+      // Same DOM-layer-over-HDR-backdrop session as domSession above — the
+      // composition root's own background must not paint over the HDR layer.
+      // initializeSession() only wires this up itself when this session's
+      // own capture format is "png" (true for an alpha-carrying final
+      // output); this stage's DOM sessions commonly capture "jpeg" (the
+      // final output doesn't need alpha, only the layered composite step
+      // does), so clearCompositionRootBackground alone doesn't guarantee it
+      // ran — call it explicitly.
+      await initTransparentBackground(s.page, { clearCompositionRoot: true });
       workerSessions.push(s);
     }
     const sessions: CaptureSession[] = [domSession, ...workerSessions];

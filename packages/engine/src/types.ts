@@ -161,6 +161,18 @@ export interface CaptureOptions {
   motionBlur?: MotionBlurOptions;
   deviceScaleFactor?: number;
   /**
+   * Only meaningful when `format === "png"`: controls whether the session's
+   * `initTransparentBackground()` call also clears the composition root's
+   * OWN background, not just html/body's page-chrome defaults.
+   *
+   * Leave `false`/undefined for a plain alpha export (webm+alpha, MOV
+   * ProRes4444) — an author's background painted on the composition root is
+   * real, intentional content and must survive into the output. Set `true`
+   * only for an HDR two-pass layered DOM session, where the HDR video itself
+   * is the backdrop and the root's background would otherwise paint over it.
+   */
+  clearCompositionRootBackground?: boolean;
+  /**
    * Opt into Chrome's capture-beyond-viewport screenshot path. Leave undefined
    * to let the engine pick the safe browser-specific default. Pass false only
    * when the caller explicitly wants Chrome's faster viewport-bound path.
