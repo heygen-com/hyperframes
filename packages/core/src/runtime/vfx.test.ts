@@ -912,6 +912,30 @@ describe("vfx runtime — ref (second source) params", () => {
     expect(matteCtx.drawn).toHaveLength(1);
   });
 
+  it("binds u_src2 explicitly when a MANDATORY ref names its own host", () => {
+    // Unlike displacement-map's optional `map` (self-reference there is
+    // treated exactly like "empty"), a mandatory ref like luma-matte's
+    // `matte` has no shader-side branch to fall back on — the shader always
+    // samples `u_src2`, so a self-reference needs u_src2 pointed at u_src's
+    // own texture unit rather than left to an unbound sampler's default.
+    const ctx = createMockCtx2d();
+    makeCaptureHost(
+      ctx,
+      "cap",
+      '{"version":1,"nodes":[{"type":"fractal-noise","id":"n1","params":{"matte":"cap"}}]}',
+    );
+
+    expect(initVfx(document.body, 30)).toHaveLength(1);
+    paintVfx(0, { engineMode: true });
+    compositeWindow().__hf_page_composite_resolve!();
+
+    // One capture only — no second `drawElementImage` for the same image.
+    expect(ctx.drawn).toHaveLength(1);
+    expect(gl!.uniforms["u_src2"]).toBe(0);
+    expect(gl!.uniforms["u_hasSrc2"]).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
   it("refuses a ref whose element carries no capture wrapper", () => {
     makeRefTarget(undefined, "matte-1", false);
     makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
@@ -1032,6 +1056,57 @@ describe("vfx runtime — ref (second source) params", () => {
       afterHostPaint: false,
       resolved: true,
       matte: 1,
+    });
+  });
+
+  it("still captures a visible ref while its own host is hidden", () => {
+    // retro-wave `Logo Anim` layer 5's own AE layer can outlive layer 4's (the
+    // kernel host's) data-start/data-duration window. Before the fix, a
+    // hidden non-backdrop host was dropped entirely, so this ref went missing
+    // before its host's window and stale (last captured frame) after it.
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    matte.querySelector("canvas.hf-vfx-src")!.setAttribute("data-vfx-ref-visible", "");
+    sizeHost(matte.querySelector(".hf-vfx-in") as HTMLElement, 640, 360);
+    const host = makeCaptureHost(ctx, "cap", REF_NODE);
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_pending).toBe(true);
+    expect(compositeWindow().__hf_page_composite_resolve!()).toBe(true);
+    expect(matteCtx.drawn).toEqual([{ el: matte.querySelector(".hf-vfx-in"), w: 640, h: 360 }]);
+    // Cleared once, before the draw — kept, not re-cleared after: the bitmap
+    // that is left is the ref's own on-page layer.
+    expect(matteCtx.cleared).toEqual([[640, 360]]);
+    // Never uploaded: no kernel runs for a hidden host, so nothing binds it.
+    // The hidden host's own (non-ref) capture never runs either.
+    expect({ ctx: ctx.drawn.length, calls: gl!.calls }).toEqual({ ctx: 0, calls: [] });
+    expect(errors).toEqual([]);
+  });
+
+  it("captures a visible ref through the preview path even while its host is hidden", async () => {
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    matte.querySelector("canvas.hf-vfx-src")!.setAttribute("data-vfx-ref-visible", "");
+    sizeHost(matte.querySelector(".hf-vfx-in") as HTMLElement, 640, 360);
+    const host = makeCaptureHost(ctx, "cap", REF_NODE);
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0.5);
+    // A ref-only frame waits on the REF's own canvas, never the hidden host's
+    // — the host's canvas fires no "paint" at all while it stays hidden.
+    matte.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+    await flushTasks();
+
+    expect({ matte: matteCtx.drawn.length, ctx: ctx.drawn.length, calls: gl!.calls }).toEqual({
+      matte: 1,
+      ctx: 0,
+      calls: [],
     });
   });
 });

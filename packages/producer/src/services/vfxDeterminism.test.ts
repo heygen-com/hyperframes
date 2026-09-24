@@ -1240,6 +1240,71 @@ describe("data-vfx-chain in the browser", () => {
         await page.close();
       }
     }, 60_000);
+
+    it("matches refs/noise.ts's hash byte-for-byte at several pixels", async () => {
+      // The three checks above (identity at amount 0, same-time determinism,
+      // different-time difference) hold for almost any hash function — none
+      // of them can tell a correct Jenkins-mix port from a subtly wrong one
+      // (see PR #4330's review). This pins actual measured bytes against
+      // refs/noise.ts, the same CPU reference fractal-noise's pixel test
+      // above compares against.
+      //
+      // Known, checked limitation: the seed is `floor(t * fps + 0.5)`, and
+      // this fixture's reachable t is bounded by data-duration="4" at this
+      // composition's ~30 fps, so the seed here is 0 — small enough that a
+      // mutation to `hfJenkinsMix`'s FIRST line (`a ^= (c >> 13u)`, which
+      // touches only the raw incoming seed, before anything has mixed it into
+      // a wrapped, effectively-random register) would not move any pixel
+      // this test reads: `seed >> 13` and `seed >> 14` are both 0 for any
+      // seed under 2^13, which every reachable (x, y, seed) in this fixture
+      // is. Confirmed by brute force over the full reachable input space
+      // (x<80, y<120, seed<=120): the review's own 13->14 mutation changes
+      // ZERO of the 1,161,600 possible outputs there. Every OTHER line of the
+      // mix — all 8 of them — differs on the very first input tried under
+      // the same one-bit-shift mutation, so this test is a real hash-pinning
+      // guard for 8 of the mix's 9 steps, not a restatement of the three
+      // invariant checks above.
+      const AMOUNT = 100;
+      const page = await open(fixture(chainOf("noise", { amount: AMOUNT })));
+      try {
+        expect(await seekAndResolve(page, 0)).toBe(true);
+        const buf = await readNoiseBuffer(page);
+        // [x, readback row (bottom-origin, as gl.readPixels indexes), R byte].
+        // Computed offline from noiseOffsetRef with the SAME flip the shader
+        // applies (its own y is top-origin, After Effects' convention; a
+        // readback row is bottom-origin/y-up, so topY = HOST_H - 1 - row) —
+        // see the flip line in noise.frag.ts and the doc comment on
+        // refs/noise.ts's noiseOffsetRef. Verified against a live measurement
+        // (not just derived): swapping the flip direction reproduces a
+        // DIFFERENT, also-internally-consistent set of values, so getting it
+        // backwards silently passes against the wrong ground truth — this
+        // set was checked against the actual runtime output, not only
+        // against its own formula. All points sit inside the opaque red
+        // square (x < 80) and well clear of the 0/255 clip bounds, so 8-bit
+        // rounding cannot mask a wrong hash.
+        const points: [x: number, row: number, expectedR: number][] = [
+          [4, 10, 160],
+          [5, 10, 192],
+          [6, 10, 135],
+          [0, 60, 162],
+          [2, 60, 145],
+          [4, 60, 200],
+          [0, 90, 142],
+          [1, 90, 201],
+          [3, 90, 182],
+        ];
+        for (const [x, row, expectedR] of points) {
+          const i = (row * buf.width + x) * 4;
+          // ±1 for GPU-vs-JS float rounding at the 8-bit conversion, not for
+          // hash tolerance: a mutated shift on any of the 8 reachable steps
+          // moves these by tens of levels, verified by brute force above.
+          expect(Math.abs(buf.data[i]! - expectedR)).toBeLessThanOrEqual(1);
+        }
+        expect(pageErrors.get(page)).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    }, 60_000);
   });
 
   /**
