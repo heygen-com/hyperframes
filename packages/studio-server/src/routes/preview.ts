@@ -47,6 +47,7 @@ import {
   resolvePreviewMediaCodecProbeCache,
   type PreviewApiAdapter,
 } from "../helpers/mediaProxyPreview.js";
+import { requestSubPath } from "../helpers/requestSubPath.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";
@@ -510,9 +511,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
-    const compPath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/preview/comp/`, "").split("?")[0] ?? "",
-    );
+    const compPath = requestSubPath(c.req.url, "projects/:id/preview/comp");
     const compFile = resolveWithinProject(project.dir, compPath);
     if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
       return c.text("not found", 404);
@@ -555,9 +554,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   api.get("/projects/:id/preview/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    const subPath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/preview/`, "").split("?")[0] ?? "",
-    );
+    const subPath = requestSubPath(c.req.url, "projects/:id/preview");
     // Assets are read-only and should mirror the renderer: permit a path that
     // is lexically inside the project even if an explicit project symlink
     // targets a shared directory outside it. Composition source files still

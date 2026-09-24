@@ -20,6 +20,7 @@ export const examples: Example[] = [
 ];
 import { resolve } from "node:path";
 import type { Hono } from "hono";
+import { requestSubPath } from "@hyperframes/studio-server";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
@@ -216,7 +217,7 @@ export async function registerCompositionRoute(
 
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
-    const reqPath = ctx.req.path.replace("/composition/", "");
+    const reqPath = requestSubPath(ctx.req.url, "composition");
     const filePath = resolve(project.dir, reqPath);
 
     // Security: don't allow path traversal outside project dir. isSafePath

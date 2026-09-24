@@ -29,6 +29,7 @@ import type {
   AudioElement,
   ExtractedFrames,
   ImageElement,
+  ParallelProgress,
   VideoElement,
 } from "@hyperframes/engine";
 import type { CompiledComposition } from "../htmlCompiler.js";
@@ -263,6 +264,65 @@ export function updateJobStatus(
             : "completed";
   }
   if (onProgress) void onProgress(job, stage);
+}
+
+const PROGRESS_REPORT_INTERVAL_MS = 250;
+const lastFrameReportAt = new WeakMap<RenderJob, number>();
+const lastStartupReportAt = new WeakMap<RenderJob, number>();
+
+// The job updates on every call; the callback fires on the first call per job, when forced,
+// and at most once per interval in between.
+function reportThrottled(
+  lastReportAt: WeakMap<RenderJob, number>,
+  job: RenderJob,
+  stage: string,
+  progress: number,
+  onProgress: ProgressCallback | undefined,
+  force: boolean,
+): void {
+  const now = Date.now();
+  const last = lastReportAt.get(job);
+  const due = force || last === undefined || now - last >= PROGRESS_REPORT_INTERVAL_MS;
+  if (due) lastReportAt.set(job, now);
+  updateJobStatus(job, "rendering", stage, progress, due ? onProgress : undefined);
+}
+
+/** Capture-loop progress: the first frame, the last frame, and at most four reports a second between. */
+export function reportFrameProgress(
+  job: RenderJob,
+  stage: string,
+  progress: number,
+  onProgress: ProgressCallback | undefined,
+  isLastFrame: boolean,
+): void {
+  reportThrottled(lastFrameReportAt, job, stage, progress, onProgress, isLastFrame);
+}
+
+const workerPhasesByJob = new WeakMap<RenderJob, Map<number, string>>();
+
+/** Browser warm-up before the first frame, from the parallel workers' phase events. */
+export function reportWorkerStartup(
+  job: RenderJob,
+  progress: ParallelProgress,
+  onProgress: ProgressCallback | undefined,
+): void {
+  const phase = progress.latestWorkerPhase;
+  if (!phase) return;
+  const phases = workerPhasesByJob.get(job) ?? new Map<number, string>();
+  workerPhasesByJob.set(job, phases);
+  phases.set(phase.workerId, phase.phase);
+  // ponytail: ids past a smaller retry's worker count are stale, so they are not counted
+  const ready = [...phases].filter(
+    ([id, p]) => id < progress.activeWorkers && (p === "frame_capture" || p === "frame_encode"),
+  ).length;
+  reportThrottled(
+    lastStartupReportAt,
+    job,
+    `Starting browsers (${ready}/${progress.activeWorkers} ready)`,
+    job.progress,
+    onProgress,
+    false,
+  );
 }
 
 /**
