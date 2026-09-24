@@ -596,6 +596,24 @@ function isPaintableHost(host: HTMLElement): boolean {
   return style.display !== "none" && style.visibility !== "hidden";
 }
 
+/**
+ * Whether a source's `.hf-vfx-in` has a paint record to capture. `visibility`
+ * inherits, so one read at `inner` covers a matte hidden that way; `display`
+ * does NOT, so a ref whose OWNING element is `display:none` (the clip
+ * runtime's `data-hidden` and in-flow timed-leaf paths) still computes
+ * `display:block` at `inner` — and would wait out the paint ceiling, then fail
+ * as a misleading 0×0. Hence the ancestor walk. `checkVisibility()` and
+ * `offsetParent` would say the same in Chrome but are absent or always-null
+ * in the unit harness's DOM.
+ */
+function isPaintableSource(src: VfxCaptureSource): boolean {
+  if (getComputedStyle(src.inner).visibility === "hidden") return false;
+  for (let el: HTMLElement | null = src.inner; el; el = el.parentElement) {
+    if (getComputedStyle(el).display === "none") return false;
+  }
+  return true;
+}
+
 function describeHost(host: HTMLElement): string {
   return host.id ? `#${host.id}` : `<${host.tagName.toLowerCase()}>`;
 }
@@ -927,7 +945,7 @@ function captureSource(
   // first. An empty `u_src2` is also the right answer — under Alpha the layer
   // it mattes disappears, under Alpha Inverted it passes, which is what After
   // Effects does with a matte that is not there yet.
-  if (!isPaintableHost(src.inner)) {
+  if (!isPaintableSource(src)) {
     resizeCaptureCanvas(src, size);
     src.ctx.clearRect(0, 0, size.width, size.height);
     if (mode.upload) uploadCaptureTexture(entry.gl, src);
@@ -1056,11 +1074,15 @@ function captureVisibleRefsOnly(entry: VfxEntry, quiet = false): boolean {
 
 /**
  * A hidden host still needs capturing when it's a backdrop's layers-below
- * source, or when one of its passes' ref sources paints visibly elsewhere.
+ * source, or when one of its passes' ref sources paints visibly elsewhere —
+ * and a host can be BOTH (a backdrop whose displacement map is itself a
+ * visible layer), so this always runs whichever apply, not one or the other.
  */
 function captureHiddenEntry(entry: VfxEntry): boolean {
-  if (isBackdropEntry(entry)) return capturePassThrough(entry);
-  return visibleRefSources(entry).length > 0 && captureVisibleRefsOnly(entry);
+  let ok = false;
+  if (isBackdropEntry(entry) && capturePassThrough(entry)) ok = true;
+  if (visibleRefSources(entry).length > 0 && captureVisibleRefsOnly(entry)) ok = true;
+  return ok;
 }
 
 /** Phase 2 of the page-composite protocol: the paint records are valid now. */
@@ -1190,8 +1212,10 @@ async function awaitSourcePaints(entry: VfxEntry, sources: VfxCaptureSource[]): 
 /**
  * Which of an entry's three capture shapes this frame needs, decided once so
  * every step of `capturePaintedHost` reads the same answer: the host's own
- * kernel paint, the backdrop pass-through, or — a host that is hidden and NOT
- * a backdrop, but owns a visible ref whose own layer must keep showing — a
+ * kernel paint, the backdrop pass-through (which ALSO captures any visible
+ * ref the host owns — a backdrop's displacement map can itself be a layer
+ * with its own on-screen span), or — a host that is hidden and NOT a
+ * backdrop, but owns a visible ref whose own layer must keep showing — a
  * ref-only capture that skips the kernel entirely.
  */
 type FrameCaptureMode = "paint" | "passThrough" | "refOnly";
@@ -1201,14 +1225,14 @@ function frameCaptureMode(entry: VfxEntry): FrameCaptureMode {
   return isBackdropEntry(entry) ? "passThrough" : "refOnly";
 }
 
-/** The sources this frame needs: all of them to paint, the backdrop wrapper
- *  alone to pass through, or just the visible ref(s) to keep them current. */
+/** The sources this frame needs: all of them to paint; the backdrop wrapper
+ *  plus any visible ref(s) to pass through (a backdrop host can itself own a
+ *  visible ref — its displacement map may be a layer with its own on-screen
+ *  span); or just the visible ref(s) alone to keep them current. */
 function sourcesForFrame(entry: VfxEntry, mode: FrameCaptureMode): VfxCaptureSource[] {
   const sources =
     mode === "passThrough"
-      ? entry.src
-        ? [entry.src]
-        : []
+      ? [...(entry.src ? [entry.src] : []), ...visibleRefSources(entry)]
       : mode === "refOnly"
         ? visibleRefSources(entry)
         : entrySources(entry);
@@ -1216,7 +1240,7 @@ function sourcesForFrame(entry: VfxEntry, mode: FrameCaptureMode): VfxCaptureSou
   // compositor the rAF fallback does not either — waiting on one would spend
   // the whole ceiling, every frame, to arrive at the empty capture
   // `captureSource` gives it for free.
-  return sources.filter((source) => isPaintableHost(source.inner));
+  return sources.filter(isPaintableSource);
 }
 
 /**
@@ -1249,14 +1273,16 @@ async function capturePaintedHost(
   seq: number,
   speculative: boolean,
 ): Promise<void> {
-  // A pass-through frame needs only the backdrop wrapper's paint record; a
-  // ref-only frame needs only the visible ref's; a painting frame needs one
-  // per source the kernels read. Records are per canvas, so the waits are too.
+  // A pass-through frame needs the backdrop wrapper's paint record plus any
+  // visible ref's; a ref-only frame needs only the visible ref's; a painting
+  // frame needs one per source the kernels read. Records are per canvas, so
+  // the waits are too.
   const mode = frameCaptureMode(entry);
   if (!(await awaitSourcePaints(entry, sourcesForFrame(entry, mode)))) return;
   if (!stillOwnsFrame(entry, seq)) return;
   if (mode === "passThrough") {
     capturePassThrough(entry, speculative);
+    captureVisibleRefsOnly(entry, speculative);
     return;
   }
   if (mode === "refOnly") {

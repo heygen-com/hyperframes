@@ -472,8 +472,8 @@ function makeCaptureHost(ctx: unknown, id = "cap", chain = ONE_NODE): HTMLElemen
  * layer below the host is the host's PRECEDING SIBLING, named by
  * `data-vfx-for`, not a child of the host.
  */
-function makeBackdropHost(ctx: unknown, id = "adj"): HTMLElement {
-  const host = makeHost(ONE_NODE, id);
+function makeBackdropHost(ctx: unknown, id = "adj", chain = ONE_NODE): HTMLElement {
+  const host = makeHost(chain, id);
   host.parentElement!.insertBefore(makeCaptureWrapper(ctx, id), host);
   return host;
 }
@@ -986,6 +986,31 @@ describe("vfx runtime — ref (second source) params", () => {
     expect(errors).toEqual([]);
   });
 
+  it("treats a matte whose OWNING element is display:none as hidden too", async () => {
+    // `display` does not inherit: `.hf-vfx-in` inside a `display:none` matte
+    // still computes `display:block`, so a check at `inner` alone calls it
+    // paintable, waits out the 2 s ceiling, then fails as a misleading 0×0.
+    // The clip runtime uses `display:none` for `data-hidden` and for in-flow
+    // timed leaves, so the ancestor walk has to find it.
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    const ctx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    const host = makeCaptureHost(ctx, "cap", REF_NODE);
+    initVfx(document.body, 30);
+    matte.style.display = "none";
+
+    paintVfx(0.5);
+    // Only the host's canvas paints — the matte's never will, and the frame
+    // must not wait on it.
+    host.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+    await flushTasks();
+
+    expect({ src: ctx.drawn.length, matte: matteCtx.drawn.length }).toEqual({ src: 1, matte: 0 });
+    expect(gl!.calls).toEqual(["useProgram", "screen", "draw:1"]);
+    expect(errors).toEqual([]);
+  });
+
   it("keeps a visible ref's bitmap and draws it at the ref's own box", async () => {
     // retro-wave `Logo Anim` layer 5 is layer 4's displacement map AND a layer
     // that paints: clearing its bitmap after the upload would delete it from
@@ -1107,6 +1132,54 @@ describe("vfx runtime — ref (second source) params", () => {
       matte: 1,
       ctx: 0,
       calls: [],
+    });
+  });
+
+  it("still captures a visible ref while its BACKDROP host is hidden", () => {
+    // The prior fix only covered a non-backdrop hidden host: captureHiddenEntry
+    // returned capturePassThrough(entry) for a backdrop and never reached
+    // captureVisibleRefsOnly, so an adjustment layer whose displacement map is
+    // itself a visible layer lost that layer outside the adjustment's window.
+    const belowCtx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    matte.querySelector("canvas.hf-vfx-src")!.setAttribute("data-vfx-ref-visible", "");
+    sizeHost(matte.querySelector(".hf-vfx-in") as HTMLElement, 640, 360);
+    const host = makeBackdropHost(belowCtx, "adj-1", REF_NODE);
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0, { engineMode: true });
+
+    expect(compositeWindow().__hf_page_composite_resolve!()).toBe(true);
+    // The pass-through still runs (the adjustment layer's own layers below).
+    expect(belowCtx.drawn).toHaveLength(1);
+    // ...and the visible ref, on a DIFFERENT element, still draws too.
+    expect(matteCtx.drawn).toEqual([{ el: matte.querySelector(".hf-vfx-in"), w: 640, h: 360 }]);
+    expect(errors).toEqual([]);
+  });
+
+  it("still captures a visible ref through the preview path while its BACKDROP host is hidden", async () => {
+    const belowCtx = createMockCtx2d();
+    const matteCtx = createMockCtx2d();
+    const matte = makeRefTarget(matteCtx);
+    matte.querySelector("canvas.hf-vfx-src")!.setAttribute("data-vfx-ref-visible", "");
+    sizeHost(matte.querySelector(".hf-vfx-in") as HTMLElement, 640, 360);
+    const host = makeBackdropHost(belowCtx, "adj-1", REF_NODE);
+    const below = document.querySelector('canvas[data-vfx-for="adj-1"]')!;
+    initVfx(document.body, 30);
+    host.style.visibility = "hidden";
+
+    paintVfx(0.5);
+    // A pass-through frame now waits on the backdrop wrapper AND the visible
+    // ref's own canvas, so both must paint before the barrier releases.
+    below.dispatchEvent(new Event("paint"));
+    matte.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+    await flushTasks();
+
+    expect({ below: belowCtx.drawn.length, matte: matteCtx.drawn.length }).toEqual({
+      below: 1,
+      matte: 1,
     });
   });
 });
