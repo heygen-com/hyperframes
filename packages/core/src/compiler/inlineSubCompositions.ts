@@ -130,14 +130,22 @@ export interface InlineSubCompositionsOptions {
    * Defaults to `console.warn`.
    */
   onMissingComposition?: (srcPath: string, reason?: string) => void;
+  /**
+   * Tag each top-level host with `data-hf-scene` and report which scene every style and inline
+   * script came from (nested sub-compositions belong to their top-level scene), so a preview can
+   * swap one scene's parts in place. Off for renders.
+   */
+  tagScenes?: boolean;
 }
 
 export interface InlineSubCompositionsResult {
   styles: string[];
+  /** With `tagScenes`: the scene each entry of `styles` belongs to. */
+  styleScenes: string[];
   scripts: string[];
   externalScriptSrcs: string[];
   scriptItems: Array<
-    | { kind: "inline"; content: string }
+    | { kind: "inline"; content: string; scene?: string }
     | ({ kind: "external"; src: string } & ExternalScriptAttributes)
   >;
   externalLinks: { href: string; rel: string; crossorigin?: string }[];
@@ -191,9 +199,11 @@ export function inlineSubCompositions(
     scriptErrorLabel = "[HyperFrames] composition script error:",
     onMissingComposition,
     assetExists,
+    tagScenes = false,
   } = options;
 
   const styles: string[] = [];
+  const styleScenes: string[] = [];
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
   const scriptItems: InlineSubCompositionsResult["scriptItems"] = [];
@@ -201,9 +211,13 @@ export function inlineSubCompositions(
   const seenLinkHrefs = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
 
-  const queue = hosts.map((element) => ({ element, ancestry: [] as string[] }));
+  const queue = hosts.map((element) => ({
+    element,
+    ancestry: [] as string[],
+    scene: undefined as string | undefined,
+  }));
   for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
-    const { element: hostEl, ancestry } = queue[queueIndex]!;
+    const { element: hostEl, ancestry, scene: parentScene } = queue[queueIndex]!;
     const src = hostEl.getAttribute("data-composition-src");
     if (!src) continue;
 
@@ -268,6 +282,8 @@ export function inlineSubCompositions(
     const scopeCompId = plan.authoredCompositionId || "";
     const scriptCompositionId = plan.scriptCompositionId || "";
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
+    const scene = tagScenes ? (parentScene ?? (runtimeCompId || src)) : undefined;
+    if (scene && !parentScene) hostEl.setAttribute("data-hf-scene", scene);
 
     // Variable merging (bundler feature). Read declared defaults from the
     // document element (full-document sub-comps) AND the inner composition root
@@ -332,6 +348,7 @@ export function inlineSubCompositions(
     // (GSAP from a CDN) has to run before the content scripts calling into it.
     for (const styleEl of plan.styleSources) {
       styles.push(scopeSubStyle(styleEl.textContent || ""));
+      if (scene) styleScenes.push(scene);
       styleEl.remove();
     }
 
@@ -361,7 +378,7 @@ export function inlineSubCompositions(
             )
           : wrapInlineScriptWithErrorBoundary(scriptEl.textContent || "", scriptErrorLabel);
         scripts.push(wrappedScript);
-        scriptItems.push({ kind: "inline", content: wrappedScript });
+        scriptItems.push({ kind: "inline", content: wrappedScript, ...(scene ? { scene } : {}) });
       }
       scriptEl.remove();
     }
@@ -456,9 +473,17 @@ export function inlineSubCompositions(
       onMissingComposition?.(skipped.src, skipped.reason);
     }
     for (const nestedHost of nested.hosts) {
-      queue.push({ element: nestedHost.host, ancestry: nestedAncestry });
+      queue.push({ element: nestedHost.host, ancestry: nestedAncestry, scene });
     }
   }
 
-  return { styles, scripts, externalScriptSrcs, scriptItems, externalLinks, variablesByComp };
+  return {
+    styles,
+    styleScenes,
+    scripts,
+    externalScriptSrcs,
+    scriptItems,
+    externalLinks,
+    variablesByComp,
+  };
 }

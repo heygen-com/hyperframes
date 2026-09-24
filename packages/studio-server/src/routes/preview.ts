@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
+  addScenePartsManifest,
   injectScriptsIntoHtml,
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
@@ -317,6 +318,7 @@ function resolveProjectMainHtml(
 export const PREVIEW_BUNDLE_OPTIONS = {
   runtime: "placeholder",
   inlineAssets: false,
+  sceneParts: true,
 } as const satisfies BundleOptions;
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
@@ -405,6 +407,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mainCompositionPath,
         mediaCodecProbeCache,
       );
+      // Last, so the manifest covers every transform above; the signature changes on every edit.
+      bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,

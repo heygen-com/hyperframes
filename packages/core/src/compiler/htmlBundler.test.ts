@@ -1889,3 +1889,57 @@ describe("bundleToSingleHtml script order", () => {
     }
   });
 });
+
+describe("bundleToSingleHtml sceneParts", () => {
+  const film = () =>
+    makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+  </div>
+  <script>window.__rootRan = true;</script>
+</body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a">
+  <style>.a-text { color: red; }</style><p class="a-text">A</p>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div>
+  <script>window.__aRan = true;</script>
+</div></template>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
+  <style>.n-text { color: blue; }</style><p class="n-text">N</p><script>window.__nRan = true;</script>
+</div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b">
+  <style>.b-text { color: green; }</style><p class="b-text">B</p><script>window.__bRan = true;</script>
+</div></template>`,
+    });
+  const partsOf = (doc: Document, scene: string) =>
+    [...doc.querySelectorAll(`[data-hf-scene="${scene}"]`)].map((el) => el.tagName.toLowerCase());
+
+  it("tags each top-level scene's host, styles and scripts, with nested scenes in their parent's parts", async () => {
+    const doc = parseHTML(await bundleToSingleHtml(film(), { sceneParts: true })).document;
+    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "style"]);
+    expect(partsOf(doc, "b").sort()).toEqual(["div", "script", "style"]);
+    expect(partsOf(doc, "n")).toEqual([]);
+    const aStyle = doc.querySelector('style[data-hf-scene="a"]')?.textContent ?? "";
+    const aScript = doc.querySelector('script[data-hf-scene="a"]')?.textContent ?? "";
+    expect(aStyle).toContain("a-text");
+    expect(aStyle).toContain("n-text");
+    expect(aScript).toContain("__aRan");
+    expect(aScript).toContain("__nRan");
+    expect(aScript).not.toContain("__bRan");
+    const shared = [
+      ...doc.querySelectorAll("style:not([data-hf-scene]), script:not([data-hf-scene])"),
+    ]
+      .map((el) => el.textContent ?? "")
+      .join("\n");
+    expect(shared).not.toMatch(/a-text|b-text|__aRan|__bRan/);
+    expect(shared).toContain("__rootRan");
+  });
+
+  it("leaves renders untagged", async () => {
+    const html = await bundleToSingleHtml(film());
+    expect(html).not.toContain("data-hf-scene");
+    expect(html).toContain("__aRan");
+  });
+});

@@ -1,4 +1,5 @@
 import { inlineScriptRuns } from "./scriptRuns";
+import { SCENE_PART_ATTR } from "../sceneParts";
 import {
   ensureExternalScriptTag,
   readExternalScriptAttributes,
@@ -662,7 +663,9 @@ function autoHealMissingCompositionIds(document: Document): void {
 }
 
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
-  const headStyleEls = [...document.querySelectorAll("head style")];
+  const headStyleEls = [...document.querySelectorAll("head style")].filter(
+    (el) => !el.hasAttribute(SCENE_PART_ATTR),
+  );
   if (headStyleEls.length > 1) {
     const imports: string[] = [];
     const cssParts: string[] = [];
@@ -688,7 +691,8 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     }
   }
 
-  const isPinned = (el: Element) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR);
+  const isPinned = (el: Element) =>
+    el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute(SCENE_PART_ATTR);
   for (const { members, anchor } of inlineScriptRuns(
     [...document.querySelectorAll("body script")],
     isPinned,
@@ -796,6 +800,11 @@ export interface BundleOptions {
    * inline a LUT that this option has already excluded.
    */
   inlineAssets?: boolean;
+  /**
+   * Emit each scene's host, styles and scripts as separately tagged parts (`data-hf-scene`) so
+   * the Studio preview can swap one edited scene in place. Off for renders.
+   */
+  sceneParts?: boolean;
 }
 
 /**
@@ -993,6 +1002,7 @@ export async function bundleToSingleHtml(
       return resolved !== null && existsSync(resolved);
     },
     flattenInnerRoot: prepareFlattenedInnerRoot,
+    tagScenes: options?.sceneParts === true,
     readVariableDefaults: readDeclaredDefaults,
     parseHostVariables: parseHostVariableValues,
     buildScopeSelector: (compId: string) => cssAttributeSelector("data-composition-id", compId),
@@ -1003,7 +1013,17 @@ export async function bundleToSingleHtml(
       );
     },
   });
-  const compStyleChunks: string[] = [...subCompResult.styles];
+  // With sceneParts, a scene's own styles and inline scripts are emitted as their own tagged parts.
+  const sceneStyleChunks = new Map<string, string[]>();
+  const sceneScriptChunks = new Map<string, string[]>();
+  const addScenePart = (parts: Map<string, string[]>, scene: string, chunk: string) =>
+    parts.set(scene, [...(parts.get(scene) ?? []), chunk]);
+  const compStyleChunks: string[] = subCompResult.styleScenes.length
+    ? []
+    : [...subCompResult.styles];
+  subCompResult.styleScenes.forEach((scene, i) =>
+    addScenePart(sceneStyleChunks, scene, subCompResult.styles[i]!),
+  );
   const compScriptChunks: DeferredScriptChunk[] = [];
   const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
@@ -1012,7 +1032,8 @@ export async function bundleToSingleHtml(
   const seenCompScriptSrcs = new Set<string>();
   for (const scriptItem of subCompResult.scriptItems) {
     if (scriptItem.kind === "inline") {
-      compScriptChunks.push(scriptItem.content);
+      if (scriptItem.scene) addScenePart(sceneScriptChunks, scriptItem.scene, scriptItem.content);
+      else compScriptChunks.push(scriptItem.content);
       continue;
     }
     const extSrc = scriptItem.src;
@@ -1213,6 +1234,18 @@ export async function bundleToSingleHtml(
       compScriptChunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
     );
     document.body.appendChild(compScript);
+  }
+  for (const [scene, chunks] of sceneStyleChunks) {
+    const style = document.createElement("style");
+    style.setAttribute(SCENE_PART_ATTR, scene);
+    style.textContent = chunks.join("\n\n");
+    document.head.appendChild(style);
+  }
+  for (const [scene, chunks] of sceneScriptChunks) {
+    const script = document.createElement("script");
+    script.setAttribute(SCENE_PART_ATTR, scene);
+    script.textContent = joinJsChunks(chunks);
+    document.body.appendChild(script);
   }
 
   emitRootCompositionVariableStyles(document, compVariablesByComp);
