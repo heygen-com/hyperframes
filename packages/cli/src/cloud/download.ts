@@ -74,7 +74,10 @@ export async function downloadToFile(
   const stage = mkdtempSync(join(dirname(destination), ".hf-download-"));
   const stagedFile = join(stage, "download");
   let bytes = 0;
+  let writerClosed: Promise<void> | undefined;
   try {
+    const writer = createWriteStream(stagedFile, { flags: "wx" });
+    writerClosed = new Promise<void>((resolveClose) => writer.once("close", resolveClose));
     await pipeline(
       async function* () {
         for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
@@ -89,7 +92,7 @@ export async function downloadToFile(
           );
         }
       },
-      createWriteStream(stagedFile, { flags: "wx" }),
+      writer,
       { signal: options.signal },
     );
     options.signal?.throwIfAborted();
@@ -100,6 +103,8 @@ export async function downloadToFile(
     if (options.signal?.aborted && reason instanceof Error) throw reason;
     throw error;
   } finally {
+    // An early source error can reject pipeline before the writer's async open finishes.
+    await writerClosed;
     rmSync(stage, { recursive: true, force: true });
   }
   return { path: destPath, bytes };
