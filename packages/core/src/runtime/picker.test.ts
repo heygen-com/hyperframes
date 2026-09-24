@@ -182,8 +182,15 @@ describe("createPickerModule", () => {
       const api = (window as any).__HF_PICKER_API;
       try {
         expect(api.getCandidatesAtPoint(10, 10)[0]?.selector).toBe("#code");
+        const override = document.head.querySelectorAll("style")[1] as HTMLStyleElement;
+        expect(override.sheet?.disabled).toBe(true);
+        // Later hit tests reuse the sheet: no DOM mutation for observers to hear on every hover.
+        const observer = new MutationObserver(() => {});
+        observer.observe(document, { childList: true, subtree: true, attributes: true });
         expect(api.pickAtPoint(10, 10)?.selector).toBe("#code");
-        expect(document.head.querySelectorAll("style")).toHaveLength(1);
+        expect(observer.takeRecords()).toEqual([]);
+        observer.disconnect();
+        expect(document.head.querySelectorAll("style")).toHaveLength(2);
       } finally {
         Object.defineProperty(document, "elementsFromPoint", {
           configurable: true,

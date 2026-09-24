@@ -26,17 +26,6 @@ const PICKER_BLOCK_SELECTOR = [
 const PICKABLE_ROOTS_CSS =
   "[data-composition-id],[data-hf-inner-root]{pointer-events:auto!important}";
 
-function withPickableCompositionRoots<T>(run: () => T): T {
-  const style = document.createElement("style");
-  style.textContent = PICKABLE_ROOTS_CSS;
-  (document.head ?? document.documentElement).appendChild(style);
-  try {
-    return run();
-  } finally {
-    style.remove();
-  }
-}
-
 export type PickerModule = {
   enablePickMode: () => void;
   disablePickMode: () => void;
@@ -49,6 +38,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   let pickModeStyleEl: HTMLStyleElement | null = null;
   let pickLastHoveredInfo: RuntimePickerElementInfo | null = null;
   let pickLastSelectedInfo: RuntimePickerElementInfo | null = null;
+  let pickableRootsStyleEl: HTMLStyleElement | null = null;
 
   function emitPickerRuntimeEvent(eventName: string, detail: RuntimeJson): void {
     try {
@@ -75,6 +65,23 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
       isPickMode: pickModeActive,
       timestamp: Date.now(),
     });
+  }
+
+  // One sheet, enabled only for the hit test. Toggling a sheet is not a DOM mutation, so the runtime's and
+  // Studio's MutationObservers stay quiet on every hover.
+  function withPickableCompositionRoots<T>(run: () => T): T {
+    if (!pickableRootsStyleEl?.isConnected) {
+      pickableRootsStyleEl = document.createElement("style");
+      pickableRootsStyleEl.textContent = PICKABLE_ROOTS_CSS;
+      (document.head ?? document.documentElement).appendChild(pickableRootsStyleEl);
+    }
+    const sheet = pickableRootsStyleEl.sheet;
+    if (sheet) sheet.disabled = false;
+    try {
+      return run();
+    } finally {
+      if (sheet) sheet.disabled = true;
+    }
   }
 
   function isEffectivelyHidden(el: HTMLElement): boolean {
