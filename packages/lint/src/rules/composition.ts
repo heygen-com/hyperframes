@@ -286,6 +286,44 @@ function inlineCanvasZoomHits(rootTag: OpenTag, tags: OpenTag[]): CanvasZoomHit[
   return hits;
 }
 
+/**
+ * The first selector in a comma list that targets the canvas, or null. Only the
+ * first matters: the rest of the list describes the same declaration block, so
+ * one hit per RULE is what the caller wants.
+ */
+function firstCanvasSelector(
+  header: string,
+  rootId: string | null,
+  rootClasses: string[],
+): string | null {
+  for (const selector of header.split(",")) {
+    const trimmed = selector.trim();
+    if (trimmed && targetsCanvasRoot(trimmed, rootId, rootClasses)) return trimmed;
+  }
+  return null;
+}
+
+/** A canvas-level rescaling `zoom` declared by one CSS rule, or null. */
+function canvasZoomInRule(
+  header: string,
+  body: string,
+  rootId: string | null,
+  rootClasses: string[],
+): CanvasZoomHit | null {
+  const trimmedHeader = header.trim();
+  // An at-rule's "header" is `@media ...`, not a selector list.
+  if (!trimmedHeader || trimmedHeader.startsWith("@")) return null;
+  const value = firstRescalingZoom(body);
+  if (!value) return null;
+  const selector = firstCanvasSelector(trimmedHeader, rootId, rootClasses);
+  if (!selector) return null;
+  return {
+    where: `\`${selector}\``,
+    value,
+    snippet: truncateSnippet(`${selector} { zoom: ${value} }`),
+  };
+}
+
 function stylesheetCanvasZoomHits(
   styles: ExtractedBlock[],
   rootId: string | null,
@@ -293,26 +331,11 @@ function stylesheetCanvasZoomHits(
 ): CanvasZoomHit[] {
   const hits: CanvasZoomHit[] = [];
   for (const style of styles) {
-    const noComments = stripCssComments(style.content);
     const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
     let match: RegExpExecArray | null;
-    while ((match = ruleWithBody.exec(noComments)) !== null) {
-      const header = (match[1] ?? "").trim();
-      if (!header || header.startsWith("@")) continue;
-      const value = firstRescalingZoom(match[2] ?? "");
-      if (!value) continue;
-      // One hit per RULE: the first selector in the comma list that targets the
-      // canvas is enough to establish it, and the rest describe the same block.
-      for (const selector of header.split(",")) {
-        const trimmed = selector.trim();
-        if (!trimmed || !targetsCanvasRoot(trimmed, rootId, rootClasses)) continue;
-        hits.push({
-          where: `\`${trimmed}\``,
-          value,
-          snippet: truncateSnippet(`${trimmed} { zoom: ${value} }`),
-        });
-        break;
-      }
+    while ((match = ruleWithBody.exec(stripCssComments(style.content))) !== null) {
+      const hit = canvasZoomInRule(match[1] ?? "", match[2] ?? "", rootId, rootClasses);
+      if (hit) hits.push(hit);
     }
   }
   return hits;
