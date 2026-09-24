@@ -156,6 +156,18 @@ describe("ensureCaptureDirSync", () => {
     );
   });
 
+  posixOnly("refuses a dangling or looping directory symlink with the same message", () => {
+    const { outputDir } = scratch();
+    symlinkSync(join(outputDir, "..", "missing"), join(outputDir, "assets"));
+    symlinkSync(join(outputDir, "screenshots"), join(outputDir, "screenshots"));
+
+    for (const name of ["assets", "screenshots"]) {
+      expect(() => ensureCaptureDirSync(outputDir, join(outputDir, name))).toThrow(
+        /outside the capture directory/,
+      );
+    }
+  });
+
   posixOnly("trusts a root that is itself a symlink, as /tmp is on macOS", () => {
     const { outputDir } = scratch();
     const linkedRoot = join(outputDir, "..", "linked-capture");

@@ -49,8 +49,26 @@ export function writeCaptureFileSync(
   writeFileSync(path, data, { ...normalized, mode: 0o600 });
 }
 
-function isAlreadyThere(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
+function hasCode(error: unknown, ...codes: string[]): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    codes.includes(error.code)
+  );
+}
+
+// The JS `realpathSync`, deliberately not `realpathSync.native`: native returns the on-disk case
+// on macOS/Windows, so an existing `Assets/` asked for as `assets` would be falsely refused. The
+// JS walk only rewrites the components that are links, which is exactly what is being checked.
+function resolvedPath(path: string): string | undefined {
+  try {
+    return realpathSync(path);
+  } catch (error) {
+    // A dangling or looping link resolves nowhere: refuse it like any other escaping link.
+    if (hasCode(error, "ENOENT", "ELOOP")) return undefined;
+    throw error;
+  }
 }
 
 /**
@@ -83,9 +101,9 @@ export function ensureCaptureDirSync(root: string, dir: string): string {
     try {
       mkdirSync(current);
     } catch (error) {
-      if (!isAlreadyThere(error)) throw error;
+      if (!hasCode(error, "EEXIST")) throw error;
     }
-    if (realpathSync(current) !== expected) {
+    if (resolvedPath(current) !== expected) {
       throw new Error(
         `Refusing to write into ${current}: it resolves outside the capture directory ${rootPath}`,
       );

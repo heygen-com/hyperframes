@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { writeCaptureFileSync } from "./captureFile.js";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import {
   downloadAssets,
@@ -404,7 +404,9 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
           // so sites like huly.io that only use external SVGs still get a grid
           const svgsDir = join(outputDir, "assets", "svgs");
           const assetsRootDir = join(outputDir, "assets");
-          const svgOutputPath = existsSync(svgsDir)
+          const hasSvgsDir = existsSync(svgsDir);
+          if (hasSvgsDir) ensureCaptureDirSync(outputDir, svgsDir);
+          const svgOutputPath = hasSvgsDir
             ? join(outputDir, "assets", "svgs", "contact-sheet.jpg")
             : join(outputDir, "assets", "contact-sheet-svgs.jpg");
           const svgSheets = await createSvgContactSheet(
