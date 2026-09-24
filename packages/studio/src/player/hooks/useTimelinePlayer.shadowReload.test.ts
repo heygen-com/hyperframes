@@ -224,6 +224,91 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  it("keeps a playing film playing through a reload, from where the live frame had reached", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    const { adapter: liveAdapter, win } = makeAdapterWindow();
+    act(() => {
+      getApi().iframeRef.current = makeFakeIframe(win);
+      getApi().onIframeLoad();
+    });
+    usePlayerStore.setState({ timelineReady: true });
+    act(() => getApi().play());
+    liveAdapter.pause.mockClear();
+    liveAdapter.seek(4.2);
+
+    act(() => getApi().refreshPlayer());
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(liveAdapter.pause).not.toHaveBeenCalled();
+
+    liveAdapter.seek(5.5);
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    expect(liveAdapter.pause).toHaveBeenCalled();
+    expect(shadow.adapter.getTime()).toBe(5.5);
+    expect(shadow.adapter.isPlaying()).toBe(true);
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    unmount(root);
+  });
+
+  it("keeps where a film was paused while the reload loaded", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    const { adapter: liveAdapter, win } = makeAdapterWindow();
+    act(() => {
+      getApi().iframeRef.current = makeFakeIframe(win);
+      getApi().onIframeLoad();
+    });
+    usePlayerStore.setState({ timelineReady: true });
+    act(() => getApi().play());
+    liveAdapter.seek(4.2);
+    act(() => getApi().refreshPlayer());
+
+    liveAdapter.seek(7);
+    act(() => getApi().pause());
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    expect(shadow.adapter.getTime()).toBe(7);
+    expect(shadow.adapter.isPlaying()).toBe(false);
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
+    unmount(root);
+  });
+
+  it("stops a playing film at the new end when the edit cut it short of the live time", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    const { adapter: liveAdapter, win } = makeAdapterWindow();
+    act(() => {
+      getApi().iframeRef.current = makeFakeIframe(win);
+      getApi().onIframeLoad();
+    });
+    usePlayerStore.setState({ timelineReady: true });
+    act(() => getApi().play());
+    act(() => getApi().refreshPlayer());
+
+    liveAdapter.seek(12);
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shorter = makeAdapterWindow({ duration: 10 });
+    act(() => {
+      getApi().setShadowIframeNode(makeFakeIframe(shorter.win));
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(shorter.adapter.getTime()).toBe(10);
+    expect(shorter.adapter.isPlaying()).toBe(false);
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
+    unmount(root);
+  });
+
   it("does not promote a shadow whose loader is still up, and promotes once it clears", () => {
     const { getApi, live, gen, root } = beginReload();
     const shadow = makeShadowWithSpies();

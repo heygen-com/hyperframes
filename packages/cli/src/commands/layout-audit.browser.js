@@ -1274,6 +1274,121 @@
     return issues;
   }
 
+  // Pixels drawn into a <canvas> have no DOM box, so text the frame edge cuts is invisible to
+  // canvas_overflow. Read a thin band just inside each covered frame edge and count sharp steps.
+  const CANVAS_EDGE_STEP = 96;
+  const CANVAS_EDGE_MIN_STEPS = 2;
+  // Monospace and bitmap glyph cells end in a gap, so the outermost column alone can read empty.
+  const CANVAS_EDGE_BAND_PX = 4;
+
+  function coveredFrameEdges(rect, rootRect, tolerance) {
+    const top = Math.max(rect.top, rootRect.top);
+    const bottom = Math.min(rect.bottom, rootRect.bottom);
+    const left = Math.max(rect.left, rootRect.left);
+    const right = Math.min(rect.right, rootRect.right);
+    if (bottom - top < CANVAS_EDGE_BAND_PX || right - left < CANVAS_EDGE_BAND_PX) return [];
+    const band = CANVAS_EDGE_BAND_PX;
+    const rows = { y: top, height: bottom - top, width: band, vertical: true };
+    const cols = { x: left, width: right - left, height: band, vertical: false };
+    const edges = [];
+    if (rect.left <= rootRect.left + tolerance) edges.push({ side: "left", x: left, ...rows });
+    if (rect.right >= rootRect.right - tolerance)
+      edges.push({ side: "right", x: right - band, ...rows });
+    if (rect.top <= rootRect.top + tolerance) edges.push({ side: "top", y: top, ...cols });
+    if (rect.bottom >= rootRect.bottom - tolerance)
+      edges.push({ side: "bottom", y: bottom - band, ...cols });
+    return edges;
+  }
+
+  // Draw the band into a scratch canvas (never getContext on the film's own canvas, which would
+  // claim it as 2D). A WebGL canvas without preserveDrawingBuffer reads blank: no finding.
+  function canvasEdgeBand(canvas, rect, edge) {
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const off = document.createElement("canvas");
+    off.width = Math.max(1, Math.round(edge.width * scaleX));
+    off.height = Math.max(1, Math.round(edge.height * scaleY));
+    const ctx = off.getContext("2d");
+    if (!ctx) return null;
+    const sx = Math.max(0, Math.floor((edge.x - rect.left) * scaleX));
+    const sy = Math.max(0, Math.floor((edge.y - rect.top) * scaleY));
+    ctx.drawImage(canvas, sx, sy, off.width, off.height, 0, 0, off.width, off.height);
+    return {
+      data: ctx.getImageData(0, 0, off.width, off.height).data,
+      width: off.width,
+      height: off.height,
+    };
+  }
+
+  // Collapse the band across its thickness (brightest wins), then count steps along the edge:
+  // luma over black plus alpha, compared two pixels back so anti-aliased glyph edges still step.
+  function sharpSteps(band, vertical) {
+    const length = vertical ? band.height : band.width;
+    const thickness = vertical ? band.width : band.height;
+    const levels = [];
+    for (let along = 0; along < length; along++) {
+      let luma = 0;
+      let alpha = 0;
+      for (let across = 0; across < thickness; across++) {
+        const i = 4 * (vertical ? along * band.width + across : across * band.width + along);
+        const a = band.data[i + 3];
+        const l =
+          (0.299 * band.data[i] + 0.587 * band.data[i + 1] + 0.114 * band.data[i + 2]) * (a / 255);
+        luma = Math.max(luma, l);
+        alpha = Math.max(alpha, a);
+      }
+      levels.push([luma, alpha]);
+    }
+    let steps = 0;
+    for (let i = 2; i < levels.length; i++) {
+      const [luma, alpha] = levels[i];
+      const [backLuma, backAlpha] = levels[i - 2];
+      if (Math.max(Math.abs(luma - backLuma), Math.abs(alpha - backAlpha)) < CANVAS_EDGE_STEP)
+        continue;
+      steps++;
+      i += 2;
+    }
+    return steps;
+  }
+
+  function canvasEdgeHasContent(canvas, rect, edge) {
+    try {
+      const band = canvasEdgeBand(canvas, rect, edge);
+      return !!band && sharpSteps(band, edge.vertical) >= CANVAS_EDGE_MIN_STEPS;
+    } catch {
+      return false;
+    }
+  }
+
+  // ponytail: maps through the bounding box, exact for scale and translate; a rotated or skewed
+  // canvas reads the wrong pixels. Add a matrix inverse if that bites.
+  function canvasEdgeIssues(root, rootRect, time, tolerance) {
+    const issues = [];
+    for (const canvas of Array.from(root.querySelectorAll("canvas"))) {
+      if (!isVisibleElement(canvas) || hasAllowOverflowFlag(canvas)) continue;
+      if (!canvas.width || !canvas.height) continue;
+      const rect = toRect(canvas.getBoundingClientRect());
+      if (!rect.width || !rect.height) continue;
+      const sides = coveredFrameEdges(rect, rootRect, tolerance)
+        .filter((edge) => canvasEdgeHasContent(canvas, rect, edge))
+        .map((edge) => edge.side);
+      if (sides.length === 0) continue;
+      issues.push({
+        code: "canvas_content_at_edge",
+        severity: "warning",
+        time,
+        selector: selectorFor(canvas),
+        containerSelector: selectorFor(root),
+        message: `Canvas content touches the frame edge (${sides.join(", ")}).`,
+        rect,
+        containerRect: rootRect,
+        fixHint:
+          "Keep drawn text inside the visible part of the canvas, or mark intentional full-bleed art with data-layout-allow-overflow.",
+      });
+    }
+    return issues;
+  }
+
   // Soft prior only — the counterfactual attach test (below) is what makes detachment a finding.
   const CONNECTOR_NAME = /\b(conn(ector)?|arrow|edge|link|flow|wire)\b/i;
   const CONNECTOR_SKIP_CONTAINERS = "defs, marker, clipPath, mask, symbol, pattern";
@@ -1646,6 +1761,7 @@
     const escaped = escapedContainerIssues(root, time);
     issues.push(...escaped.issues);
     issues.push(...panelOutOfCanvasIssues(root, rootRect, time, tolerance, escaped.flagged));
+    issues.push(...canvasEdgeIssues(root, rootRect, time, tolerance));
     issues.push(...connectorDetachmentIssues(root, rootRect, time));
     issues.push(...connectorOrphanIssues(root, rootRect, time));
     return issues;

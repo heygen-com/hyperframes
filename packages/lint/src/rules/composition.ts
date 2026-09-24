@@ -21,6 +21,11 @@ import {
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.
+// packages/cli/src/utils/compositionViewport.ts MAX_VIEWPORT_DIMENSION. Kept as a
+// literal rather than imported: @hyperframes/lint must not depend on the CLI, and
+// the number is a property of the capture path we are warning about, not of lint.
+const INSPECTION_VIEWPORT_CAP = 4096;
+
 const MAX_COMPOSITION_LINES = 300;
 const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
@@ -205,6 +210,155 @@ function rootClassStyledSelectors(styles: ExtractedBlock[], rootClasses: string[
   return offenders;
 }
 
+// A `zoom` declaration and its value. The lookbehind keeps custom properties
+// out: `--panel-zoom: 2` and `--zoom: 0.5` are author variables, not the CSS
+// `zoom` property, and a plain \b would flag both.
+const ZOOM_DECLARATION = /(?<![\w-])zoom\s*:\s*([^;}]+)/gi;
+
+/** zoom values that leave the canvas alone; anything else rescales it. */
+function isIdentityZoom(rawValue: string): boolean {
+  const value = rawValue
+    .trim()
+    .replace(/!\s*important\s*$/i, "")
+    .trim()
+    .toLowerCase();
+  return (
+    value === "" ||
+    value === "normal" ||
+    value === "unset" ||
+    value === "initial" ||
+    value === "revert" ||
+    value === "1" ||
+    value === "1.0" ||
+    value === "100%"
+  );
+}
+
+/** First rescaling `zoom` value in a declaration block, or null. */
+function firstRescalingZoom(css: string): string | null {
+  ZOOM_DECLARATION.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ZOOM_DECLARATION.exec(css)) !== null) {
+    const value = (match[1] ?? "").trim();
+    if (!isIdentityZoom(value)) return value.replace(/!\s*important\s*$/i, "").trim();
+  }
+  return null;
+}
+
+/**
+ * Does this selector's leftmost compound target the canvas itself — the
+ * composition root, or an ancestor of it? A zoom on a DESCENDANT is ordinary
+ * authoring and renders exactly as authored; only the canvas-level one
+ * desynchronises painted content from the declared frame.
+ */
+function targetsCanvasRoot(
+  selector: string,
+  rootId: string | null,
+  rootClasses: string[],
+): boolean {
+  const leftmost = selector.trim().split(/[\s>+~]+/)[0] ?? "";
+  const bare = leftmost.toLowerCase();
+  if (bare === "html" || bare === "body" || bare === ":root" || bare === "*") return true;
+  if (rootId && leftmostCompoundId(selector) === rootId) return true;
+  return leftmostCompoundClasses(selector).some((cls) => rootClasses.includes(cls));
+}
+
+/**
+ * A rescaling canvas-level `zoom`, with where it was declared. Collected in
+ * priority order — inline on the root, then <html>, then <body>, then
+ * stylesheet rules — because the rule reports the FIRST one it finds.
+ *
+ * `truncateSnippet` returns undefined for an empty normalised input, and
+ * `Finding.snippet` is optional for exactly that reason: an absent snippet is
+ * absent, not "". This mirrors that contract rather than coercing it away.
+ */
+type CanvasZoomHit = { where: string; value: string; snippet: string | undefined };
+
+function inlineCanvasZoomHits(rootTag: OpenTag, tags: OpenTag[]): CanvasZoomHit[] {
+  const hits: CanvasZoomHit[] = [];
+  const htmlTag = findHtmlTag(tags);
+  const bodyTag = tags.find((tag) => tag.name.toLowerCase() === "body");
+  for (const [label, tag] of [
+    ["the root element's inline style", rootTag],
+    ["<html>'s inline style", htmlTag],
+    ["<body>'s inline style", bodyTag],
+  ] as const) {
+    if (!tag) continue;
+    const inline = readAttr(tag.raw, "style");
+    const value = inline ? firstRescalingZoom(inline) : null;
+    if (value) hits.push({ where: label, value, snippet: truncateSnippet(tag.raw) });
+  }
+  return hits;
+}
+
+/**
+ * The first selector in a comma list that targets the canvas, or null. Only the
+ * first matters: the rest of the list describes the same declaration block, so
+ * one hit per RULE is what the caller wants.
+ */
+function firstCanvasSelector(
+  header: string,
+  rootId: string | null,
+  rootClasses: string[],
+): string | null {
+  for (const selector of header.split(",")) {
+    const trimmed = selector.trim();
+    if (trimmed && targetsCanvasRoot(trimmed, rootId, rootClasses)) return trimmed;
+  }
+  return null;
+}
+
+/** A canvas-level rescaling `zoom` declared by one CSS rule, or null. */
+function canvasZoomInRule(
+  header: string,
+  body: string,
+  rootId: string | null,
+  rootClasses: string[],
+): CanvasZoomHit | null {
+  const trimmedHeader = header.trim();
+  // An at-rule's "header" is `@media ...`, not a selector list.
+  if (!trimmedHeader || trimmedHeader.startsWith("@")) return null;
+  const value = firstRescalingZoom(body);
+  if (!value) return null;
+  const selector = firstCanvasSelector(trimmedHeader, rootId, rootClasses);
+  if (!selector) return null;
+  return {
+    where: `\`${selector}\``,
+    value,
+    snippet: truncateSnippet(`${selector} { zoom: ${value} }`),
+  };
+}
+
+function stylesheetCanvasZoomHits(
+  styles: ExtractedBlock[],
+  rootId: string | null,
+  rootClasses: string[],
+): CanvasZoomHit[] {
+  const hits: CanvasZoomHit[] = [];
+  for (const style of styles) {
+    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = ruleWithBody.exec(stripCssComments(style.content))) !== null) {
+      const hit = canvasZoomInRule(match[1] ?? "", match[2] ?? "", rootId, rootClasses);
+      if (hit) hits.push(hit);
+    }
+  }
+  return hits;
+}
+
+function canvasZoomHits(
+  rootTag: OpenTag,
+  tags: OpenTag[],
+  styles: ExtractedBlock[],
+  rootId: string | null,
+  rootClasses: string[],
+): CanvasZoomHit[] {
+  return [
+    ...inlineCanvasZoomHits(rootTag, tags),
+    ...stylesheetCanvasZoomHits(styles, rootId, rootClasses),
+  ];
+}
+
 /** Declared variable ids from an <html> tag's raw text; null when the JSON is unparseable. */
 function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
   const declared = new Set<string>();
@@ -262,6 +416,54 @@ function isInsideInertTemplate(tag: OpenTag, tags: readonly OpenTag[]): boolean 
       tag.index > candidate.index &&
       tag.index < candidate.closeIndex,
   );
+}
+
+// `(?<![\w-])` not `\b`: the hyphen in a custom property is a word break, so a
+// plain boundary matches `--z-index: -1` and `--panel-z-index: -1`, which
+// declare variables and stack nothing. `-0` is excluded because it is not a
+// negative stacking level; `-01` and `-0.5` are.
+const NEGATIVE_Z_INDEX = /(?<![\w-])z-index\s*:\s*-(?!0(?:\s*[;}]|\s*$))([\d.]+)/g;
+
+// Name the selector that owns the declaration so the finding points at
+// something the author can search for.
+function cssOwnerSelector(content: string, matchIndex: number): string | undefined {
+  const blockStart = content.lastIndexOf("{", matchIndex);
+  if (blockStart === -1) return undefined;
+  const previousBlockEnd = content.lastIndexOf("}", blockStart);
+  const lines = content
+    .slice(previousBlockEnd + 1, blockStart)
+    .trim()
+    .split("\n");
+  return lines[lines.length - 1]?.trim() || undefined;
+}
+
+function elementSelector(tag: OpenTag): string | undefined {
+  const elementId = readAttr(tag.raw, "id");
+  return elementId ? `#${elementId}` : undefined;
+}
+
+function negativeZIndexFinding(
+  match: RegExpExecArray,
+  selector: string | undefined,
+): HyperframeLintFinding {
+  const level = match[1] ?? "";
+  return {
+    code: "negative_z_index",
+    severity: "warning",
+    ...(selector ? { selector } : {}),
+    message:
+      `\`z-index: -${level}\` paints the element behind its nearest stacking context's own content. ` +
+      "With no stacking-context ancestor that context is the composition root itself, so an opaque " +
+      "background there hides it entirely: in the DOM, laid out, and absent from the picture. " +
+      "A transparent root leaves it visible. Siblings at `z-index: 0` or above are unaffected.",
+    fixHint:
+      "Give the element's parent a stacking context - `isolation: isolate` is the cheapest, and " +
+      "`transform`, `filter`, `opacity` below 1, `contain: paint` and `will-change` all work too. " +
+      "The negative-z child then paints above that parent's background and renders normally. " +
+      "Or express paint order through DOM order - an earlier sibling paints behind a " +
+      "later one - and raise the elements that should sit in front rather than lowering this one.",
+    snippet: truncateSnippet(match[0]),
+  };
 }
 
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
@@ -652,6 +854,60 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         snippet: truncateSnippet(rootTag.raw),
       },
     ];
+  },
+
+  // negative_z_index
+  // An element at a negative z-index is silently absent from both `snapshot`
+  // and `render`, while siblings differing only in the sign of z-index render
+  // exactly (heygen-com/hyperframes#4366). lint, validate and render all exit 0
+  // and report nothing, so the first suspicion falls on the author's own CSS.
+  // NOT A RENDERER DEFECT -- ORDINARY CSS PAINTING ORDER, measured at 0.8.72.
+  // The element is PAINTED; it is simply painted beneath something opaque. Remove
+  // every opaque background above it and the same `z-index: -1` band renders at
+  // full coverage, identically to the same band with `z-index` deleted. A negative-z
+  // descendant paints at step 2 of its nearest stacking context -- above that
+  // context root's own background, but below the context's positioned in-flow
+  // content -- so a `position: relative` composition root with an opaque background
+  // paints over it. That is the shape #4366 reports; nothing is dropped and the
+  // renderer has no say in it.
+  //
+  // Kept as a warning because authors hit it and nothing explains why: the element
+  // is in the DOM, laid out, and invisible. The message therefore names the CAUSE
+  // and the remedy rather than implying the tool failed.
+  //
+  // THE CONDITION IS LOAD-BEARING AND THE MESSAGE STATES IT. The element is only
+  // dropped when its nearest ancestor stacking context is the composition root,
+  // which is the shape #4366 reports. Give any ancestor a stacking context and it
+  // renders correctly: measured at 0.8.72 on ONE frame carrying the same
+  // `z-index: -1` band under six triggers -- isolation:isolate, transform,
+  // opacity below 1, filter, contain:paint, will-change -- all six PRESENT at full
+  // coverage, against the no-stacking-context control ABSENT at zero coverage.
+  // That is ordinary CSS painting order: a negative-z child paints above its
+  // stacking context root's own background, so only the root case is hidden.
+  //
+  // This rule matches CSS TEXT and does not resolve the cascade, so it cannot know
+  // whether an ancestor forms a stacking context and fires on both shapes. That is
+  // why the message is CONDITIONAL rather than an assertion of absence: an
+  // unconditional "silently dropped" is false for every isolated case, and a lint
+  // message that overclaims is how authors learn to disregard the rule.
+  ({ tags, styles }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const style of styles) {
+      const content = stripCssComments(style.content);
+      NEGATIVE_Z_INDEX.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = NEGATIVE_Z_INDEX.exec(content)) !== null) {
+        findings.push(negativeZIndexFinding(match, cssOwnerSelector(content, match.index)));
+      }
+    }
+    for (const tag of tags) {
+      const inline = readAttr(tag.raw, "style");
+      if (!inline) continue;
+      NEGATIVE_Z_INDEX.lastIndex = 0;
+      const match = NEGATIVE_Z_INDEX.exec(inline);
+      if (match) findings.push(negativeZIndexFinding(match, elementSelector(tag)));
+    }
+    return findings;
   },
 
   // requestanimationframe_in_composition
@@ -1226,6 +1482,117 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           `the source or scope them into their own per-transition sub-composition. If an ` +
           `overlay is genuinely inert for the whole clip, use display:none so it never enters ` +
           `the render tree. Field ref ts=1784040753 (#hyperframes-cli-feedback).`,
+      },
+    ];
+  },
+
+  // root_zoom_rescales_a_fixed_canvas
+  //
+  // The capture frame is sized from the root's data-width/data-height, which are
+  // LAYOUT pixels. CSS `zoom` on the canvas itself (the root, or html/body above
+  // it) rescales the painted content inside that frame without changing the frame,
+  // so the two disagree and the author gets neither of the two things they might
+  // have meant.
+  //
+  // Measured at 0.8.71 on an 800x400 composition holding two 100x100 boxes at
+  // left:100 and left:600, rendered to a PNG sequence and the boxes located by
+  // colour:
+  //
+  //   root zoom:0.5  canvas stays 800x400; boxes paint at (50,25) and (300,25),
+  //                  each 50x50 -- the composition occupies the top-left quarter
+  //                  and the rest of every frame is dead space.
+  //   root zoom:2    canvas stays 800x400; the left:100 box paints at (200,100)
+  //                  at 200x200, and the left:600 box renders ZERO PIXELS --
+  //                  scaled to x=1200, outside a frame that is still 800 wide.
+  //
+  // The second case is the one worth an error: content that is inside the declared
+  // composition silently does not exist in the output, with nothing else in lint,
+  // check or the render log naming it.
+  //
+  // Deliberately NOT flagged: `zoom` on a descendant. Measured in the same run --
+  // a child at left:100 with zoom:2 paints at (200,100) at 200x200, which is
+  // exactly what CSS `zoom` specifies. It is honoured, not ignored, so a rule that
+  // fired on every `zoom` would be flagging correct authoring.
+  ({ rootTag, tags, styles }) => {
+    if (!rootTag) return [];
+    const rootId = readAttr(rootTag.raw, "id");
+    const rootClasses = (readAttr(rootTag.raw, "class") || "").split(/\s+/).filter(Boolean);
+    const hits = canvasZoomHits(rootTag, tags, styles, rootId, rootClasses);
+
+    // `noUncheckedIndexedAccess` makes hits[0] `T | undefined`, and a length
+    // check does not narrow it — guard on the element itself.
+    const hit = hits[0];
+    if (!hit) return [];
+    const enlarging =
+      !hit.value.startsWith("-") && parseFloat(hit.value) > (hit.value.includes("%") ? 100 : 1);
+    return [
+      {
+        code: "root_zoom_rescales_a_fixed_canvas",
+        severity: "error",
+        message:
+          `\`zoom: ${hit.value}\` on ${hit.where} rescales the painted composition inside a frame that does not rescale with it. ` +
+          `The capture frame is sized from the root's data-width/data-height in LAYOUT pixels, and \`zoom\` changes only what is painted inside it, so ` +
+          (enlarging
+            ? `content past the frame's edge renders zero pixels — it is inside the declared composition and absent from the output, with nothing else reporting it.`
+            : `the composition paints into part of the frame and the remainder of every output frame is dead space.`),
+        fixHint:
+          `Author the composition at its real size — set data-width/data-height (and the root's width/height) to the dimensions you want — and drop the canvas-level \`zoom\`. ` +
+          `To scale the OUTPUT without changing layout, pass \`--output-resolution\` to render, which supersamples. ` +
+          `\`zoom\` on descendants is fine and is not flagged: it is honoured exactly as specified.`,
+        snippet: hit.snippet,
+      },
+    ];
+  },
+
+  // composition_exceeds_inspection_viewport_cap
+  //
+  // packages/cli/src/utils/compositionViewport.ts caps a parsed data-width /
+  // data-height at MAX_VIEWPORT_DIMENSION (4096) with a plain Math.min and no
+  // warning. captureCompositionFrame resolves its viewport through that helper,
+  // and check, validate, snapshot, compare and layout all capture through it;
+  // layout and motionShot carry their own independent Math.min(..., 4096).
+  //
+  // `render` does NOT go through it, and that asymmetry is the whole finding.
+  // Measured at 0.8.71 on a 5000x400 composition with 100x100 boxes at left:100
+  // and left:4500:
+  //
+  //   render    -> 5000x400 output, both boxes present.
+  //   snapshot  -> 4096x400 frame, the left:4500 box ABSENT.
+  //
+  // So the video is correct and the tools an author would reach for to check it
+  // silently cannot see the last 904 px. The failure direction is the awkward
+  // one: `check` comes back clean on a region it never rendered, and someone
+  // debugging a missing element through `snapshot` chases a difference that
+  // exists only in the instrument.
+  //
+  // A warning, not an error: the deliverable is fine, and a composition wider
+  // than 4096 can be entirely deliberate.
+  ({ rootTag }) => {
+    if (!rootTag) return [];
+    const over: string[] = [];
+    for (const attr of ["data-width", "data-height"] as const) {
+      const raw = readAttr(rootTag.raw, attr);
+      if (!raw) continue;
+      const value = Number.parseInt(raw, 10);
+      if (Number.isFinite(value) && value > INSPECTION_VIEWPORT_CAP) {
+        over.push(`${attr}=${value}`);
+      }
+    }
+    if (over.length === 0) return [];
+    return [
+      {
+        code: "composition_exceeds_inspection_viewport_cap",
+        severity: "warning",
+        message:
+          `${over.join(" and ")} exceeds the ${INSPECTION_VIEWPORT_CAP}px viewport cap that check, validate, snapshot, compare and layout clamp to. ` +
+          `render is unaffected and produces the full size, so the video is correct — but every inspection command captures a ${INSPECTION_VIEWPORT_CAP}px-wide frame, ` +
+          `and anything beyond that is missing from what they report. Measured at 0.8.71: a 5000x400 composition renders 5000x400 with all content, ` +
+          `while snapshot returns 4096x400 with the element at left:4500 absent.`,
+        fixHint:
+          `Keep the authored size if the output needs it, and verify the region past ${INSPECTION_VIEWPORT_CAP}px from a render rather than from check/snapshot/compare — ` +
+          `a clean inspection result does not cover it. If the large canvas is only there to gain resolution, author at the layout size and pass ` +
+          `\`--output-resolution\` to render instead, which supersamples without changing layout.`,
+        snippet: truncateSnippet(rootTag.raw),
       },
     ];
   },

@@ -2559,8 +2559,8 @@ describe("initSandboxRuntimeModular", () => {
     expect(getContextSpy).toHaveBeenCalledTimes(1);
     expect(document.getElementById("first")?.style.visibility).toBe("visible");
     expect(document.getElementById("second")?.style.visibility).toBe("hidden");
-    expect(futureComposition.style.visibility).toBe("");
-    expect(futureComposition.style.display).toBe("");
+    expect(futureComposition.style.visibility).toBe("hidden");
+    expect(futureComposition.style.display).toBe("none");
 
     window.__player?.seek(3);
 
@@ -2803,6 +2803,59 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__playerReady).toBe(true);
     expect(window.__renderReady).toBe(true);
     expect(window.__player).toBeDefined();
+  });
+
+  function mountRootWithClip(start: string): HTMLElement {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    return appendClip(root, start);
+  }
+
+  function appendClip(parent: Element, start: string): HTMLElement {
+    const clip = document.createElement("div");
+    clip.className = "clip";
+    clip.setAttribute("data-start", start);
+    clip.setAttribute("data-duration", "2");
+    clip.setAttribute("data-track-index", "1");
+    parent.appendChild(clip);
+    return clip;
+  }
+
+  it("publishes render readiness with out-of-window clips already hidden, no seek needed", () => {
+    const caption = mountRootWithClip("5");
+    window.__timelines = { main: createMockTimeline(10) };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(caption.style.visibility).toBe("hidden");
+  });
+
+  it("paints clips mounted before readiness at the time sought before readiness", () => {
+    mountRootWithClip("0");
+    const root = document.querySelector("[data-composition-id='main']")!;
+    window.__timelines = { main: createMockTimeline(10) };
+    window.__hfTimelinesBuilding = true;
+
+    initSandboxRuntimeModular();
+    expect(window.__renderReady).toBe(false);
+    window.__player?.seek(6);
+    const inWindow = appendClip(root, "5");
+    const outOfWindow = appendClip(root, "0");
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getTime()).toBe(6);
+    expect([inWindow.style.visibility, outOfWindow.style.visibility]).toEqual([
+      "visible",
+      "hidden",
+    ]);
   });
 
   it("waits for GSAP batching to finish before publishing render readiness", () => {
