@@ -24,10 +24,34 @@ function fixture() {
     data,
     {} as ViteDevServer,
     createProjectSignatureCache({ compute: () => "test" }),
+    join(root, "history"),
   );
   const app = createStudioApi(adapter);
   return { root, data, sessions, adapter, app };
 }
+
+describe("Studio's dev server keeps each project's history", () => {
+  it("serves it, so an edit Studio claims is the next undo, and opens it once per project", async () => {
+    const { data, adapter, app } = fixture();
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "A");
+    const project = adapter.resolveProject("demo")!;
+    const history = await adapter.history!(project);
+    expect(await adapter.history!(project)).toBe(history);
+    try {
+      writeFileSync(join(data, "demo", "index.html"), "B");
+      const claim = await app.request("http://localhost/projects/demo/history/claim", {
+        method: "POST",
+        body: JSON.stringify({ label: "Moved Title", paths: ["index.html"] }),
+      });
+      expect(await claim.json()).toMatchObject({ claimed: { id: expect.any(String) } });
+      const list = await app.request("http://localhost/projects/demo/history");
+      expect(await list.json()).toMatchObject({ back: { label: "Moved Title" } });
+    } finally {
+      await history?.close();
+    }
+  });
+});
 
 describe("Vite project resolution boundary", () => {
   it.each(["C%3A", "C%3Ademo", "..%2Fsessions", "a%2Fb", "a%5Cb", "%2E%2E%2Fsessions", "a%00b"])(

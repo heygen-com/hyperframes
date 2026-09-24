@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { hashVersion, recordFileWriteReceipt } from "../helpers/fileVersion.js";
@@ -23,6 +24,9 @@ import {
   type HistoryWho,
   type Manifest,
 } from "./historyLog.js";
+
+/** Where hosts keep project histories unless told otherwise: outside every project, so no tidy-up takes one away. */
+export const DEFAULT_HISTORY_ROOT = join(homedir(), ".cache", "hyperframes", "history");
 
 export interface ProjectHistoryOptions {
   projectDir: string;
