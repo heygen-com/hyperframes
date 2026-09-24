@@ -250,4 +250,76 @@ describe("__hfSwapScenes", () => {
     expect(captionFetches()).toBe(atBoot + 1);
     delete (window as unknown as { gsap?: unknown }).gsap;
   });
+
+  it("rejects a scene the bundler marked as not swappable, naming why", async () => {
+    const { root } = trackingRoot();
+    const marked = (s: Scene): Scene => ({
+      ...s,
+      extraAttrs: ' data-hf-scene-no-swap="its script uses addEventListener"',
+    });
+    boot([marked(A1), B], root);
+    await tick();
+    await expect(window.__hfSwapScenes!(preview([marked(A2), B]).html)).rejects.toThrow(
+      "scene a cannot be swapped: its script uses addEventListener",
+    );
+    expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it("rejects a scene with more than one host rather than dropping one", async () => {
+    const { root } = trackingRoot();
+    boot([A1, B], root);
+    await tick();
+    const twoHosts = preview([A2, B]).html.replace(
+      '<div data-composition-id="b"',
+      '<div data-hf-scene="a"><p>second</p></div><div data-composition-id="b"',
+    );
+    await expect(window.__hfSwapScenes!(twoHosts)).rejects.toThrow("no single host");
+  });
+
+  it("keeps the swapped scene's style where the old one was", async () => {
+    const { root } = trackingRoot();
+    boot([A1, B], root);
+    await tick();
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect(cssText().indexOf(".a{color:green}")).toBeLessThan(cssText().indexOf(".b{color:blue}"));
+  });
+
+  it("puts the swapped scene's CSS animations under the playhead", async () => {
+    const { root } = trackingRoot();
+    const animation = { currentTime: null as number | null, pause: vi.fn(), play: vi.fn() };
+    const proto = HTMLElement.prototype as unknown as { getAnimations?: () => unknown[] };
+    proto.getAnimations = function (this: HTMLElement) {
+      return this.textContent === "A two" ? [animation] : [];
+    };
+    try {
+      boot([A1, B], root);
+      await tick();
+      const animated: Scene = {
+        ...A2,
+        body: '<p style="animation-name: spin; animation-duration: 2s">A two</p>',
+      };
+      await window.__hfSwapScenes!(preview([animated, B]).html);
+      expect(animation.currentTime).toBeTypeOf("number");
+      expect(animation.pause).toHaveBeenCalled();
+    } finally {
+      delete proto.getAnimations;
+    }
+  });
+
+  it("rejects a swap the preview was torn down during", async () => {
+    const { root } = trackingRoot();
+    (window as unknown as { gsap: unknown }).gsap = { set: () => {} };
+    const captions: Scene = { ...A2, body: '<div class="caption-group"><span>w</span></div>' };
+    let answer: (r: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => (answer = resolve)),
+    );
+    boot([A1, B], root);
+    await tick();
+    const swapping = window.__hfSwapScenes!(preview([captions, B]).html);
+    window.__hfRuntimeTeardown?.();
+    answer(new Response("null", { status: 404 }));
+    await expect(swapping).rejects.toThrow("torn down");
+    delete (window as unknown as { gsap?: unknown }).gsap;
+  });
 });

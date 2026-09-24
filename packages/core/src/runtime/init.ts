@@ -42,7 +42,12 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
-import { SCENE_PART_ATTR, SCENE_PARTS_META, type SceneParts } from "../sceneParts";
+import {
+  SCENE_NO_SWAP_ATTR,
+  SCENE_PART_ATTR,
+  SCENE_PARTS_META,
+  type SceneParts,
+} from "../sceneParts";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
@@ -3096,12 +3101,20 @@ export function initSandboxRuntimeModular(): void {
       const isHost = (el: Element) => el.tagName !== "STYLE" && el.tagName !== "SCRIPT";
       const oldParts = partsIn(document);
       const newParts = partsIn(next);
-      const oldHost = oldParts.find(isHost);
-      const newHost = newParts.find(isHost);
-      // A duplicated scene's script also registers under its shared original id; reload instead.
-      if (!oldHost || !newHost || oldHost.hasAttribute("data-hf-original-composition-id")) {
-        throw new Error(`scene ${name} cannot be swapped`);
+      const oldHosts = oldParts.filter(isHost);
+      const newHosts = newParts.filter(isHost);
+      const oldHost = oldHosts[0];
+      const newHost = newHosts[0];
+      if (!oldHost || !newHost || oldHosts.length > 1 || newHosts.length > 1) {
+        throw new Error(`scene ${name} cannot be swapped: it has no single host`);
       }
+      // A duplicated scene's script also registers under its shared original id.
+      if (oldHost.hasAttribute("data-hf-original-composition-id")) {
+        throw new Error(`scene ${name} cannot be swapped: it is a duplicated instance`);
+      }
+      const refusal =
+        oldHost.getAttribute(SCENE_NO_SWAP_ATTR) ?? newHost.getAttribute(SCENE_NO_SWAP_ATTR);
+      if (refusal !== null) throw new Error(`scene ${name} cannot be swapped: ${refusal}`);
       return { oldParts, newParts, oldHost, newHost };
     });
     const timelines = (window.__timelines ??= {}) as Record<
@@ -3121,12 +3134,18 @@ export function initSandboxRuntimeModular(): void {
         (previous as { kill?: () => void }).kill?.();
         delete timelines[id];
       }
+      // New styles take the old ones' place: same-named @keyframes resolve by order.
+      const oldStyles = oldParts.filter((el) => el.tagName === "STYLE");
+      const newStyles = newParts
+        .filter((el) => el.tagName === "STYLE")
+        .map((el) => document.importNode(el, true));
+      if (oldStyles[0]) oldStyles[0].before(...newStyles);
+      else document.head.append(...newStyles);
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
       oldHost.replaceWith(host);
       captions ||= host.querySelector(".caption-group") !== null;
       for (const el of newParts) {
-        if (el.tagName === "STYLE") document.head.appendChild(document.importNode(el, true));
         if (el.tagName !== "SCRIPT") continue;
         // An imported <script> never runs; a created one does.
         const script = document.createElement("script");
@@ -3139,18 +3158,18 @@ export function initSandboxRuntimeModular(): void {
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
       ?.setAttribute("content", JSON.stringify(nextParts));
     await settleSceneDom(captions);
-    if (state.tornDown) return;
+    if (state.tornDown) throw new Error("the preview was torn down during the swap");
     releaseDetachedMedia();
     childrenBound = false;
     bindRootTimelineIfAvailable();
-    const bound = state.capturedTimeline;
-    const duration = getSafeTimelineDurationSeconds(bound, 0);
-    if (bound && duration > 0) {
-      clock.setDuration(duration);
-      bound.totalTime?.(Math.max(0, state.currentTime || 0), false);
-    }
+    const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (duration > 0) clock.setDuration(duration);
+    // Adapters drive only the elements they found at discover time; the new scene's are new.
+    runAdapters("discover", state.currentTime);
     // The rebind above skips these when the root timeline object did not change.
     applyPositionEdits(document);
+    // Redraw the current frame as a seek does, forcing a render at an unchanged time.
+    transport.seek(state.currentTime, { keepPlaying: true });
     syncTimedElementVisibility(state.currentTime);
     postTimeline();
   };
