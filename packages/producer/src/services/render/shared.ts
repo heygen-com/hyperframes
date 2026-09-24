@@ -266,13 +266,28 @@ export function updateJobStatus(
   if (onProgress) void onProgress(job, stage);
 }
 
-const FRAME_PROGRESS_INTERVAL_MS = 250;
+const PROGRESS_REPORT_INTERVAL_MS = 250;
 const lastFrameReportAt = new WeakMap<RenderJob, number>();
+const lastStartupReportAt = new WeakMap<RenderJob, number>();
 
-/**
- * Capture-loop progress: the job updates on every call, the callback fires on
- * the first call, the last frame, and at most once per 250 ms in between.
- */
+// The job updates on every call; the callback fires on the first call per job, when forced,
+// and at most once per interval in between.
+function reportThrottled(
+  lastReportAt: WeakMap<RenderJob, number>,
+  job: RenderJob,
+  stage: string,
+  progress: number,
+  onProgress: ProgressCallback | undefined,
+  force: boolean,
+): void {
+  const now = Date.now();
+  const last = lastReportAt.get(job);
+  const due = force || last === undefined || now - last >= PROGRESS_REPORT_INTERVAL_MS;
+  if (due) lastReportAt.set(job, now);
+  updateJobStatus(job, "rendering", stage, progress, due ? onProgress : undefined);
+}
+
+/** Capture-loop progress: the first frame, the last frame, and at most four reports a second between. */
 export function reportFrameProgress(
   job: RenderJob,
   stage: string,
@@ -280,11 +295,7 @@ export function reportFrameProgress(
   onProgress: ProgressCallback | undefined,
   isLastFrame: boolean,
 ): void {
-  const now = Date.now();
-  const last = lastFrameReportAt.get(job);
-  const due = isLastFrame || last === undefined || now - last >= FRAME_PROGRESS_INTERVAL_MS;
-  if (due) lastFrameReportAt.set(job, now);
-  updateJobStatus(job, "rendering", stage, progress, due ? onProgress : undefined);
+  reportThrottled(lastFrameReportAt, job, stage, progress, onProgress, isLastFrame);
 }
 
 const workerPhasesByJob = new WeakMap<RenderJob, Map<number, string>>();
@@ -304,7 +315,8 @@ export function reportWorkerStartup(
   const ready = [...phases].filter(
     ([id, p]) => id < progress.activeWorkers && (p === "frame_capture" || p === "frame_encode"),
   ).length;
-  reportFrameProgress(
+  reportThrottled(
+    lastStartupReportAt,
     job,
     `Starting browsers (${ready}/${progress.activeWorkers} ready)`,
     job.progress,

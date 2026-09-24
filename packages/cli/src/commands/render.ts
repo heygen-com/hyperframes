@@ -1649,6 +1649,8 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
 export function normalizeStageCode(stage: string): string {
   const known = KNOWN_STAGE_CODES[stage];
   if (known) return known;
+  // The producer's "Starting browsers (k/n ready)" carries live counts; keep one code for it.
+  if (stage.startsWith("Starting browsers")) return "starting_browsers";
   const slug = stage
     .trim()
     .toLowerCase()

@@ -442,8 +442,11 @@ describe("runCaptureStreamingStage", () => {
 
   it("does not flood the callback when frames arrive faster than the report interval", async () => {
     const stages = await streamParallelFrames(300, 1);
-    expect(stages.filter((stage) => stage.startsWith("Streaming frame")).length).toBeLessThan(5);
-    expect(stages.at(-1)).toBe("Streaming frame 300/300 (2 workers)");
+    const frames = stages.filter((stage) => stage.startsWith("Streaming frame"));
+    expect(frames.length).toBeLessThan(5);
+    // Frame 1 lands 1 ms after the start-up report and is still reported.
+    expect(frames[0]).toBe("Streaming frame 1/300 (2 workers)");
+    expect(frames.at(-1)).toBe("Streaming frame 300/300 (2 workers)");
   });
 
   it("releases the writer with the dead worker's own error, not a stall", async () => {
