@@ -258,6 +258,79 @@ function targetsCanvasRoot(
   return leftmostCompoundClasses(selector).some((cls) => rootClasses.includes(cls));
 }
 
+/**
+ * A rescaling canvas-level `zoom`, with where it was declared. Collected in
+ * priority order — inline on the root, then <html>, then <body>, then
+ * stylesheet rules — because the rule reports the FIRST one it finds.
+ *
+ * `truncateSnippet` returns undefined for an empty normalised input, and
+ * `Finding.snippet` is optional for exactly that reason: an absent snippet is
+ * absent, not "". This mirrors that contract rather than coercing it away.
+ */
+type CanvasZoomHit = { where: string; value: string; snippet: string | undefined };
+
+function inlineCanvasZoomHits(rootTag: OpenTag, tags: OpenTag[]): CanvasZoomHit[] {
+  const hits: CanvasZoomHit[] = [];
+  const htmlTag = findHtmlTag(tags);
+  const bodyTag = tags.find((tag) => tag.name.toLowerCase() === "body");
+  for (const [label, tag] of [
+    ["the root element's inline style", rootTag],
+    ["<html>'s inline style", htmlTag],
+    ["<body>'s inline style", bodyTag],
+  ] as const) {
+    if (!tag) continue;
+    const inline = readAttr(tag.raw, "style");
+    const value = inline ? firstRescalingZoom(inline) : null;
+    if (value) hits.push({ where: label, value, snippet: truncateSnippet(tag.raw) });
+  }
+  return hits;
+}
+
+function stylesheetCanvasZoomHits(
+  styles: ExtractedBlock[],
+  rootId: string | null,
+  rootClasses: string[],
+): CanvasZoomHit[] {
+  const hits: CanvasZoomHit[] = [];
+  for (const style of styles) {
+    const noComments = stripCssComments(style.content);
+    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = ruleWithBody.exec(noComments)) !== null) {
+      const header = (match[1] ?? "").trim();
+      if (!header || header.startsWith("@")) continue;
+      const value = firstRescalingZoom(match[2] ?? "");
+      if (!value) continue;
+      // One hit per RULE: the first selector in the comma list that targets the
+      // canvas is enough to establish it, and the rest describe the same block.
+      for (const selector of header.split(",")) {
+        const trimmed = selector.trim();
+        if (!trimmed || !targetsCanvasRoot(trimmed, rootId, rootClasses)) continue;
+        hits.push({
+          where: `\`${trimmed}\``,
+          value,
+          snippet: truncateSnippet(`${trimmed} { zoom: ${value} }`),
+        });
+        break;
+      }
+    }
+  }
+  return hits;
+}
+
+function canvasZoomHits(
+  rootTag: OpenTag,
+  tags: OpenTag[],
+  styles: ExtractedBlock[],
+  rootId: string | null,
+  rootClasses: string[],
+): CanvasZoomHit[] {
+  return [
+    ...inlineCanvasZoomHits(rootTag, tags),
+    ...stylesheetCanvasZoomHits(styles, rootId, rootClasses),
+  ];
+}
+
 /** Declared variable ids from an <html> tag's raw text; null when the JSON is unparseable. */
 function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
   const declared = new Set<string>();
@@ -1314,46 +1387,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (!rootTag) return [];
     const rootId = readAttr(rootTag.raw, "id");
     const rootClasses = (readAttr(rootTag.raw, "class") || "").split(/\s+/).filter(Boolean);
-
-    // `truncateSnippet` returns undefined for an empty normalised input, and
-    // `Finding.snippet` is optional for exactly that reason — an absent snippet
-    // is absent, not "". Mirror that contract instead of coercing it away.
-    const hits: Array<{ where: string; value: string; snippet: string | undefined }> = [];
-
-    const htmlTag = findHtmlTag(tags);
-    const bodyTag = tags.find((tag) => tag.name.toLowerCase() === "body");
-    for (const [label, tag] of [
-      ["the root element's inline style", rootTag],
-      ["<html>'s inline style", htmlTag],
-      ["<body>'s inline style", bodyTag],
-    ] as const) {
-      if (!tag) continue;
-      const inline = readAttr(tag.raw, "style");
-      const value = inline ? firstRescalingZoom(inline) : null;
-      if (value) hits.push({ where: label, value, snippet: truncateSnippet(tag.raw) });
-    }
-
-    for (const style of styles) {
-      const noComments = stripCssComments(style.content);
-      const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
-      let match: RegExpExecArray | null;
-      while ((match = ruleWithBody.exec(noComments)) !== null) {
-        const header = (match[1] ?? "").trim();
-        if (!header || header.startsWith("@")) continue;
-        const value = firstRescalingZoom(match[2] ?? "");
-        if (!value) continue;
-        for (const selector of header.split(",")) {
-          const trimmed = selector.trim();
-          if (!trimmed || !targetsCanvasRoot(trimmed, rootId, rootClasses)) continue;
-          hits.push({
-            where: `\`${trimmed}\``,
-            value,
-            snippet: truncateSnippet(`${trimmed} { zoom: ${value} }`),
-          });
-          break;
-        }
-      }
-    }
+    const hits = canvasZoomHits(rootTag, tags, styles, rootId, rootClasses);
 
     // `noUncheckedIndexedAccess` makes hits[0] `T | undefined`, and a length
     // check does not narrow it — guard on the element itself.
