@@ -9,6 +9,34 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.73"
+  description="Released - 2026-09-24"
+  tags={["Release", "Studio", "Engine", "CLI"]}
+>
+Trimming a scene in Studio keeps its length, and an edit reaches the preview even when a reload is slow. Renders report progress from the first frame, and projects whose names contain @, %, #, & or ? now load.
+
+## Features
+
+- **Studio:** An embedder can change what the shortcuts panel lists ([881481f56](https://github.com/heygen-com/hyperframes/commit/881481f56b2682a62dc64b75a1237bc5e06a9bb7), [#4416](https://github.com/heygen-com/hyperframes/pull/4416)).
+
+## Fixes
+
+- **Studio:** Trimming a scene no longer shrinks it to the length of a video inside ([a3d7736d4](https://github.com/heygen-com/hyperframes/commit/a3d7736d40ab5a4273fa1dda40d27a66bdad1bcf), [#4421](https://github.com/heygen-com/hyperframes/pull/4421)).
+- **Engine:** Download tests stop racing real deadlines, and failures name their cause ([cbaddec51](https://github.com/heygen-com/hyperframes/commit/cbaddec51a45e836b498a56c32c2901b33d806ff), [#4419](https://github.com/heygen-com/hyperframes/pull/4419)).
+- Serve projects and assets whose names contain @ % # & or ? ([fed45bac7](https://github.com/heygen-com/hyperframes/commit/fed45bac7c1623fd2b2979b9d2d86f647cd980b4), [#4415](https://github.com/heygen-com/hyperframes/pull/4415)).
+- **Studio:** An edit still reaches the preview when its reload is slow ([1926903b6](https://github.com/heygen-com/hyperframes/commit/1926903b6a5707d47de09b00faf9421bb8d94d08), [#4418](https://github.com/heygen-com/hyperframes/pull/4418)).
+- **CLI:** Stop check --at false alarms and name a stale CLI version ([7e8d2bd1f](https://github.com/heygen-com/hyperframes/commit/7e8d2bd1f3ea434ac9401e27c627efe8689da411), [#4417](https://github.com/heygen-com/hyperframes/pull/4417)).
+- **Producer:** Report render progress from the first frame, at most four times a second ([6c9216e8f](https://github.com/heygen-com/hyperframes/commit/6c9216e8fd32d69d901ca51d188c8877d3a5ea2b), [#4414](https://github.com/heygen-com/hyperframes/pull/4414)).
+- **Studio:** A timeline at 00:00 stays at 00:00 when the window resizes or the zoom is set ([aa2c2c68f](https://github.com/heygen-com/hyperframes/commit/aa2c2c68fe08bcce62f63ab02189038ba60687bc), [#4411](https://github.com/heygen-com/hyperframes/pull/4411)).
+
+## Internal
+
+- Editing a PR's text no longer cancels its running checks ([096a586b4](https://github.com/heygen-com/hyperframes/commit/096a586b41236d54d61e5b59eeae7e2ef8e65d30), [#4420](https://github.com/heygen-com/hyperframes/pull/4420)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.72...v0.8.73).
+</Update>
+
+<Update
   label="HyperFrames v0.8.72"
   description="Released - 2026-09-24"
   tags={["Release", "Studio", "Core"]}

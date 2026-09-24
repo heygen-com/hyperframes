@@ -2795,8 +2795,13 @@ describe("HyperframesPlayer asset-ready gate", () => {
     play(): void;
     pause(): void;
     seek(timeInSeconds: number): void;
-    shaderLoader: { showAssetsLoading(): void };
+    shaderLoader: {
+      showAssetsLoading(): void;
+      hide(): void;
+      update(status: { loading: boolean; ready: boolean }, mode: string): void;
+    };
     _settleAssetsReady(generation: number): void;
+    assetsLoadingUi: "player" | "none";
   };
 
   beforeEach(async () => {
@@ -3024,6 +3029,142 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player.hasAttribute("assets-loading")).toBe(false);
     expect(player._pendingPlay).toBe(false);
     expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("keeps a play queued before a same-origin iframe load and starts it once the wait settles", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    // First ready's asset wait, a play() while it is pending, then the document's own load event.
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+    player._onIframeLoad();
+    post(player, { type: "timeline", durationInFrames: 60 });
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._paused).toBe(false);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("drops a queued play when the host points the player at a different composition", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+    player.setAttribute("srcdoc", "<p>another composition</p>");
+
+    expect(player._pendingPlay).toBe(false);
+
+    player.remove();
+  });
+
+  it("keeps a queued play through a shader-options reload of the same composition", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    player.setAttribute("shader-loading", "player");
+
+    expect(player._pendingPlay).toBe(true);
+
+    player.remove();
+  });
+
+  it("never raises the loading card with assets-loading-ui=none, and still reports every asset event", async () => {
+    const player = await createConnectedPlayer();
+    player.setAttribute("assets-loading-ui", "none");
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("assets-loading")).toBe(true);
+    expect(showSpy).not.toHaveBeenCalled();
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toEqual(["assetsready", "painted"]);
+    expect(player.hasAttribute("assets-loading")).toBe(false);
+
+    player.remove();
+  });
+
+  it("hides a loading card already up when assets-loading-ui switches to none", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    const hideSpy = vi.spyOn(player.shaderLoader, "hide");
+    expect(player.assetsLoadingUi).toBe("player");
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(showSpy).toHaveBeenCalledTimes(1);
+    player.assetsLoadingUi = "none";
+
+    expect(player.getAttribute("assets-loading-ui")).toBe("none");
+    expect(hideSpy).toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("keeps a shader load drawn over the loading card when assets-loading-ui switches to none", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    player.shaderLoader.update({ loading: true, ready: false }, "player");
+    player.assetsLoadingUi = "none";
+
+    const loader = player.shadowRoot?.querySelector(".hfp-shader-loader");
+    expect(loader?.classList.contains("hfp-visible")).toBe(true);
+    expect(loader?.getAttribute("aria-label")).toBe("Preparing scene transitions");
+
+    player.remove();
+  });
+
+  it("leaves a shader load on screen when assets settle, and reports painted once it is gone", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    player.shaderLoader.update({ loading: true, ready: false }, "player");
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    const loader = player.shadowRoot?.querySelector(".hfp-shader-loader");
+    expect(loader?.classList.contains("hfp-visible")).toBe(true);
+    expect(events).toEqual(["assetsready"]);
+
+    player.shaderLoader.update({ loading: false, ready: true }, "player");
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(events).toEqual(["assetsready", "painted"]);
 
     player.remove();
   });
