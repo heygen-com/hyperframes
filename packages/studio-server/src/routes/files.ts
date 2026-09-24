@@ -2321,7 +2321,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectFile(c, adapter);
     if ("error" in res) return res.error;
 
-    if (!existsSync(res.absPath)) {
+    // Opened once and checked/read through the same descriptor, not the path,
+    // so a directory-for-file swap (or anything else) between the check below
+    // and the read can't land a stale answer — both act on the identical inode.
+    let fd: number;
+    try {
+      fd = openSync(res.absPath, "r");
+    } catch {
       if (c.req.query("optional") === "1") {
         // `missing: true` separates the absent-file shim from a genuinely
         // 0-byte file — both answer `content: ""`, and the caller could not
@@ -2334,30 +2340,34 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       }
       return c.json({ error: "not found" }, 404);
     }
+    try {
+      // A listing built from `walkDir` can show a path that has since been
+      // replaced by a directory (a rename, or an agent overwriting a file
+      // with a folder of the same name) — opening it succeeds (POSIX allows
+      // O_RDONLY on a directory), and reading it would throw `EISDIR`, which
+      // Hono answers as a plain-text 500. The caller already handles a 404
+      // with `why`; this reports the same shape instead of an opaque server
+      // error for something that is not one.
+      if (!fstatSync(fd).isFile()) {
+        return c.json({ error: "not found", why: "not_a_file" }, 404);
+      }
 
-    // A listing built from `walkDir` can show a path that has since been
-    // replaced by a directory (a rename, or an agent overwriting a file with
-    // a folder of the same name) — `existsSync` passes, and `readFileSync`
-    // below would throw `EISDIR`, which Hono answers as a plain-text 500. The
-    // caller already handles a 404 with `why`; this reports the same shape
-    // instead of an opaque server error for something that is not one.
-    if (!statSync(res.absPath).isFile()) {
-      return c.json({ error: "not found", why: "not_a_file" }, 404);
+      const content = readFileSync(fd);
+      const version = fileContentVersion(content);
+      c.header("ETag", version);
+      // `missing: false` on the read path too, so its PRESENCE is what tells a
+      // caller this server distinguishes the two empty answers at all. Without
+      // it here, a real 0-byte file from a new server looks exactly like either
+      // case from an old one, and the split above buys nothing.
+      return c.json({
+        filename: res.filePath,
+        content: content.toString("utf-8"),
+        version,
+        missing: false,
+      });
+    } finally {
+      closeSync(fd);
     }
-
-    const content = readFileSync(res.absPath);
-    const version = fileContentVersion(content);
-    c.header("ETag", version);
-    // `missing: false` on the read path too, so its PRESENCE is what tells a
-    // caller this server distinguishes the two empty answers at all. Without
-    // it here, a real 0-byte file from a new server looks exactly like either
-    // case from an old one, and the split above buys nothing.
-    return c.json({
-      filename: res.filePath,
-      content: content.toString("utf-8"),
-      version,
-      missing: false,
-    });
   });
 
   // ── Write (overwrite) ──
