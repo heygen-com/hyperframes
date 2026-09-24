@@ -405,6 +405,16 @@ describe("buildZeroDurationDiagnostic", () => {
     expect(message).toContain("window.__hf.buildReady never resolved for: heavy-mesh");
     expect(message).toContain("window.__hf.buildReady rejected for: shader-warmup");
   });
+
+  it("explains when a registered timeline has no duration", () => {
+    const message = buildZeroDurationDiagnostic({
+      ...baseDiag,
+      renderReady: true,
+      declaredDuration: -1,
+    });
+    expect(message).toContain("A GSAP timeline is registered but has no positive duration");
+    expect(message).toContain('add data-duration="<seconds>"');
+  });
 });
 
 describe("HF_READY_DIAGNOSTIC_EXPR (evaluated as real JS, not via a fake fixture)", () => {

@@ -335,14 +335,6 @@ ${initialPositionSets ? initialPositionSets + "\n" : ""}    tl.to({}, { duration
   return gsapScript;
 }
 
-/**
- * Fallback root duration (seconds) emitted when a composition would otherwise
- * compute a zero/NaN total (no elements and totalDuration 0). Mirrors the GSAP
- * timeline spacer's `totalDuration || 1` so the root never declares a zero
- * duration, which the renderer treats as a permanent hard-fail.
- */
-export const DEFAULT_COMPOSITION_DURATION_SECONDS = 1;
-
 /** Generate a document for trusted authors. Authored CSS and animation __raw: expressions retain their executable capabilities. Context encoding is not a sandbox: do not supply untrusted code-bearing options or serve untrusted compositions in a privileged origin. Text uses the inline-formatting sanitizer; parseHtml flattens inner formatting to text. */
 export function generateHyperframesHtml(
   elements: TimelineElement[],
@@ -367,20 +359,15 @@ export function generateHyperframesHtml(
       ? Math.max(...stageZoomKeyframes.map((kf) => kf.time))
       : 0;
 
-  const rawCalculatedDuration =
+  const calculatedDuration =
     elements.length > 0
       ? Math.max(...elements.map((el) => el.startTime + el.duration), totalDuration, maxZoomTime)
       : Math.max(totalDuration, maxZoomTime);
-  // A composition must always declare a positive root duration. A zero (a
-  // single-scene, no-narration comp with no elements and totalDuration 0 —
-  // e.g. an RTL logo-reveal) emits data-composition-duration="0", which makes
-  // the renderer's browser probe read "Composition has zero duration" and
-  // hard-fail permanently (authoring-classed, never retried). Mirror the GSAP
-  // spacer's `totalDuration || 1` fallback so the root duration is never
-  // 0/NaN; any positive value is preserved exactly, so narrated / multi-scene
-  // comps are unaffected.
-  const calculatedDuration =
-    rawCalculatedDuration > 0 ? rawCalculatedDuration : DEFAULT_COMPOSITION_DURATION_SECONDS;
+  if (!Number.isFinite(calculatedDuration) || calculatedDuration <= 0) {
+    throw new Error(
+      "Composition duration must be positive; provide totalDuration or a timed element",
+    );
+  }
 
   const sortedElements = sortElements(elements);
 
