@@ -350,6 +350,8 @@ describe("__hfSwapScenes", () => {
     });
     boot([words(A1, "a"), words(B, "b")], root);
     for (let i = 0; i < 5; i++) await tick();
+    const atBoot = set.mock.calls.map(([el]) => (el as Element).textContent);
+    expect(atBoot).toEqual(expect.arrayContaining(["a", "b"]));
     set.mockClear();
     await window.__hfSwapScenes!(
       preview([{ ...words(A2, "a2"), hash: "hw2" }, words(B, "b")]).html,

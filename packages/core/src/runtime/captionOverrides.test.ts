@@ -213,6 +213,27 @@ describe("caption state declaration", () => {
     expect(tweens[1].color).toBe("#eee");
   });
 
+  it("invalidates each colour tween it rewrites, so one that already rendered takes the new colour", async () => {
+    const tween = (color: string, at: number) => ({
+      vars: { color },
+      startTime: () => at,
+      invalidate: vi.fn(),
+    });
+    const rendered = [tween("#222", 0), tween("#fff", 1)];
+    const gsap = { set() {}, killTweensOf() {}, getTweensOf: () => rendered };
+    Object.defineProperty(window, "gsap", { configurable: true, value: gsap });
+    installCaptionOverrideFetch([{ wordIndex: 0, dimColor: "#111", activeColor: "#eee" }]);
+    document.body.innerHTML = `<div class="caption-group"><span id="w0">Hi</span></div>`;
+
+    applyCaptionOverrides();
+    await flushCaptionOverrides();
+
+    expect(rendered.map((tw) => [tw.vars.color, tw.invalidate.mock.calls.length])).toEqual([
+      ["#111", 1],
+      ["#eee", 1],
+    ]);
+  });
+
   it("prefers the declaration over the colour heuristic when they disagree", async () => {
     // Declared order is deliberately the reverse of what colour-equality would infer.
     const tweens = installGsapMockWithTweens([

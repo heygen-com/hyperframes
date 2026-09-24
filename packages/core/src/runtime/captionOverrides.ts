@@ -46,6 +46,7 @@ function parseCaptionOverridePayload(value: unknown): CaptionOverride[] {
 interface GsapTween {
   vars: Record<string, unknown>;
   startTime(): number;
+  invalidate?(): void;
 }
 
 interface GsapStatic {
@@ -184,11 +185,11 @@ export function applyCaptionOverrides(within?: readonly Element[]): Promise<void
             const state =
               declaredCaptionState(tw) ??
               (String(tw.vars.color) === dimBaseline ? "dim" : "active");
-            if (state === "dim") {
-              if (override.dimColor) tw.vars.color = override.dimColor;
-            } else if (override.activeColor) {
-              tw.vars.color = override.activeColor;
-            }
+            const color = state === "dim" ? override.dimColor : override.activeColor;
+            if (!color) continue;
+            tw.vars.color = color;
+            // A tween that already rendered keeps the colour it recorded then; make it re-read vars.
+            tw.invalidate?.();
           }
 
           // Set current visible color (words start in dim state)
