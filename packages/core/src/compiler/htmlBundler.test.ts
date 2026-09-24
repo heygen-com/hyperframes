@@ -2028,6 +2028,18 @@ describe("bundleToSingleHtml sceneParts", () => {
       'el["onclick"] = f',
       "document.head.appendChild(s)",
       "document.body.append(s)",
+      "new WebGPURenderer()",
+      'customElements.define("x-a", A)',
+      "CSS.registerProperty(p)",
+      "new WebSocket(u)",
+      "new EventSource(u)",
+      "Draggable.create(el)",
+      "anime({ loop: true })",
+      'document.documentElement.style.setProperty("--x", "1")',
+      'document.getElementsByTagName("head")[0]',
+      'document.querySelector("body").append(s)',
+      "gsap.to(el, { x: 1, repeat: -1 })",
+      "onresize = f",
     ];
     const files: Record<string, string> = {};
     const hosts = leaks
@@ -2070,5 +2082,26 @@ describe("bundleToSingleHtml sceneParts", () => {
       true,
     );
     expect(shared(await bundleToSingleHtml(dir)).startsWith("@import")).toBe(true);
+  });
+
+  it("does not refuse a scene for words that only look like side effects", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="1">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="1"></div>
+  </div></body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><p id="nt-ticker-track">A</p>
+  <script>
+    // animate the title in, then hold
+    const tl = gsap.timeline({ paused: true, onComplete: () => {} });
+    tl.to("#nt-ticker-track", { x: 10, className: "fade-animate" });
+    window.__timelines = window.__timelines || {};
+    window.__timelines["a"] = tl;
+  </script></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    expect(
+      doc.querySelector('div[data-hf-scene="a"]')?.getAttribute("data-hf-scene-no-swap"),
+    ).toBeNull();
   });
 });

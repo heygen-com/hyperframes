@@ -680,7 +680,7 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const allHeadStyles = [...document.querySelectorAll("head style")];
   const headStyleEls = allHeadStyles.filter((el) => !el.hasAttribute(SCENE_PART_ATTR));
   // Counting scene parts keeps the shared style's @import hoist the same as without them.
-  if (allHeadStyles.length > 1 && headStyleEls.length > 0) {
+  if (allHeadStyles.length > 1) {
     const merged = joinCssHoistingImports(headStyleEls.map((el) => el.textContent || ""));
     if (merged) {
       headStyleEls[0]!.textContent = merged;
