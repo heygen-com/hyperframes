@@ -11,6 +11,24 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/**
+ * Preview bundling is a best-effort preview, not a distributed render: it has no
+ * byte-identical-output requirement across workers, so an unresolved font should
+ * substitute (and log via warnUnresolvedFonts) rather than hard-fail the whole
+ * activity. failClosedFontFetch=true is for the distributed-render compiler, where
+ * non-deterministic substitution really would be a correctness bug.
+ */
+export async function localizeForPreviewBundle(html: string): Promise<string> {
+  const localized = await injectDeterministicFontFaces(html, {
+    failClosedFontFetch: false,
+    allowSystemFontCapture: false,
+  });
+  return stampFontVersions(localized, {
+    producer: PRODUCER_VERSION,
+    localizer: VERSION,
+  });
+}
+
 /** Standalone-entry main; the bin wrapper owns the actual process exit code. */
 export async function main(): Promise<number> {
   return runFontLocalize(
@@ -19,15 +37,6 @@ export async function main(): Promise<number> {
       writeOutput: (value) => process.stdout.write(value),
       writeError: (value) => process.stderr.write(value),
     },
-    async (html) => {
-      const localized = await injectDeterministicFontFaces(html, {
-        failClosedFontFetch: true,
-        allowSystemFontCapture: false,
-      });
-      return stampFontVersions(localized, {
-        producer: PRODUCER_VERSION,
-        localizer: VERSION,
-      });
-    },
+    localizeForPreviewBundle,
   );
 }
