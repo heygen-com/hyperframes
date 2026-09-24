@@ -269,3 +269,20 @@ describe("handleRuntimeMessage assets-ready", () => {
     expect(callbacks.onRuntimeAssetsReady).toHaveBeenCalledWith(true);
   });
 });
+
+describe("handleRuntimeMessage state", () => {
+  it("passes the runtime's buffering hold to the player", () => {
+    const frameWindow = {} as Window;
+    const callbacks = { ...makeCallbacks(), setBuffering: vi.fn() };
+    const state = (buffering?: boolean) =>
+      ({
+        source: frameWindow,
+        data: { source: "hf-preview", type: "state", frame: 60, isPlaying: false, buffering },
+      }) as unknown as MessageEvent;
+
+    handleRuntimeMessage(state(true), frameWindow, callbacks);
+    handleRuntimeMessage(state(), frameWindow, callbacks);
+
+    expect(callbacks.setBuffering.mock.calls).toEqual([[true], [false]]);
+  });
+});

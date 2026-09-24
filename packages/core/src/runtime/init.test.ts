@@ -92,6 +92,47 @@ function createManualRaf() {
   };
 }
 
+/** A root film whose scenes load from files that arrive only when the test delivers them. */
+function mountStreamedFilm(
+  duration: number,
+  scenes: Array<[id: string, start: number, length: number]>,
+) {
+  document.body.innerHTML = `
+    <div data-composition-id="main" data-root="true" data-start="0" data-duration="${duration}" data-width="1920" data-height="1080">
+      ${scenes
+        .map(
+          ([id, start, length]) =>
+            `<div data-composition-id="${id}" data-composition-src="https://example.com/${id}.html" data-start="${start}" data-duration="${length}"></div>`,
+        )
+        .join("")}
+    </div>`;
+  const responders = new Map<string, (response: Response) => void>();
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input) =>
+      new Promise<Response>((resolve) =>
+        responders.set(new URL(String(input)).pathname.slice(1, -".html".length), resolve),
+      ),
+  );
+  window.__timelines = { main: createMockTimeline(duration) };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  return {
+    /** Stands in for the scene script: its timeline registers as the file mounts. */
+    deliver: async (id: string, status = 200) => {
+      await vi.waitFor(() => expect(responders.has(id)).toBe(true));
+      const length = scenes.find(([sceneId]) => sceneId === id)?.[2] ?? 0;
+      if (status === 200) window.__timelines![id] = createMockTimeline(length);
+      responders.get(id)!(
+        new Response(
+          `<template id="${id}-template"><div data-composition-id="${id}">${id}</div></template>`,
+          { status },
+        ),
+      );
+      await settle();
+      await settle();
+    },
+  };
+}
+
 function withStudioIframe(run: () => void): void {
   const originalParent = window.parent;
   Object.defineProperty(window, "parent", {
@@ -192,6 +233,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__player;
     delete window.__playerReady;
     delete window.__renderReady;
+    delete window.__playReady;
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
@@ -1078,6 +1120,265 @@ describe("initSandboxRuntimeModular", () => {
     player?.renderSeek(2);
 
     expect(child.style.visibility).toBe("visible");
+  });
+
+  it("is ready to play once the opening scenes attach, and ready to render once all do", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    for (const [id, start] of [
+      ["opening", "0"],
+      ["later", "5"],
+    ] as const) {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", id);
+      host.setAttribute("data-composition-src", `https://example.com/${id}.html`);
+      host.setAttribute("data-start", start);
+      host.setAttribute("data-duration", "5");
+      root.appendChild(host);
+    }
+    let deliverLater: (response: Response) => void = () => {};
+    const later = new Promise<Response>((resolve) => (deliverLater = resolve));
+    const scene = (id: string) =>
+      new Response(
+        `<template id="${id}-template"><div data-composition-id="${id}">${id}</div></template>`,
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      String(input).includes("later") ? later : Promise.resolve(scene("opening")),
+    );
+    window.__timelines = {
+      main: createMockTimeline(10),
+      opening: createMockTimeline(5),
+      later: createMockTimeline(5),
+    };
+
+    initSandboxRuntimeModular();
+    await vi.waitFor(() => expect(window.__playReady).toBe(true));
+    expect(window.__renderReady).toBe(false);
+
+    deliverLater(scene("later"));
+    await vi.waitFor(() => expect(window.__renderReady).toBe(true));
+  });
+
+  it("holds playback before a scene that has not arrived, then resumes from the held frame", async () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+    document.body.innerHTML = `
+      <div data-composition-id="main" data-root="true" data-start="0" data-duration="4" data-width="1920" data-height="1080">
+        <div data-composition-id="opening" data-composition-src="https://example.com/opening.html" data-start="0" data-duration="2"></div>
+        <div data-composition-id="later" data-composition-src="https://example.com/later.html" data-start="2" data-duration="2"></div>
+      </div>`;
+    let deliverLater: (response: Response) => void = () => {};
+    const later = new Promise<Response>((resolve) => (deliverLater = resolve));
+    const scene = (id: string) =>
+      new Response(
+        `<template id="${id}-template"><div data-composition-id="${id}">${id}</div></template>`,
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      String(input).includes("later") ? later : Promise.resolve(scene("opening")),
+    );
+    window.__timelines = {
+      main: createMockTimeline(4),
+      opening: createMockTimeline(2),
+      later: createMockTimeline(2),
+    };
+    const posted = vi.spyOn(window, "postMessage");
+
+    initSandboxRuntimeModular();
+    await vi.waitFor(() => expect(window.__playReady).toBe(true));
+    window.__player?.play();
+    for (let i = 0; i < 180; i++) raf.step(16);
+
+    const held = window.__player?.getTime() ?? 0;
+    expect(held).toBeGreaterThan(1.9);
+    expect(held).toBeLessThan(2);
+    expect(posted.mock.calls.some(([data]) => (data as { buffering?: boolean }).buffering)).toBe(
+      true,
+    );
+
+    deliverLater(scene("later"));
+    await vi.waitFor(() => expect(window.__renderReady).toBe(true));
+    for (let i = 0; i < 10; i++) raf.step(16);
+    expect(window.__player?.getTime()).toBeGreaterThan(2);
+  });
+
+  describe("streamed scenes", () => {
+    let raf: ReturnType<typeof createManualRaf>;
+    let posted: ReturnType<typeof vi.spyOn>;
+    const lastBuffering = () =>
+      posted.mock.calls
+        .map(([data]) => data as { type?: string; buffering?: boolean })
+        .filter((data) => data.type === "state")
+        .at(-1)?.buffering;
+    const run = (frames: number) => {
+      for (let i = 0; i < frames; i++) raf.step(16);
+    };
+
+    beforeEach(() => {
+      raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      posted = vi.spyOn(window, "postMessage");
+    });
+
+    it("waits for the scene under the playhead, not whichever scene arrives next", async () => {
+      const film = mountStreamedFilm(9, [
+        ["opening", 0, 3],
+        ["middle", 3, 3],
+        ["last", 6, 3],
+      ]);
+      initSandboxRuntimeModular();
+      await film.deliver("opening");
+      window.__player?.play();
+      run(240);
+      const held = window.__player!.getTime();
+      expect(held).toBeGreaterThan(2.9);
+      expect(held).toBeLessThan(3);
+
+      const postsBeforeLast = posted.mock.calls.length;
+      await film.deliver("last");
+      run(30);
+      expect(window.__player!.getTime()).toBe(held);
+      expect(lastBuffering()).toBe(true);
+      expect(
+        posted.mock.calls
+          .slice(postsBeforeLast)
+          .some(([data]) => (data as { isPlaying?: boolean }).isPlaying),
+      ).toBe(false);
+
+      await film.deliver("middle");
+      run(30);
+      expect(window.__player!.getTime()).toBeGreaterThan(3);
+      expect(window.__player!.isPlaying()).toBe(true);
+      expect(lastBuffering()).toBe(false);
+    });
+
+    it("stays paused when the viewer pauses during a hold", async () => {
+      const film = mountStreamedFilm(4, [
+        ["opening", 0, 2],
+        ["later", 2, 2],
+      ]);
+      initSandboxRuntimeModular();
+      await film.deliver("opening");
+      window.__player?.play();
+      run(180);
+      const held = window.__player!.getTime();
+
+      window.__player?.pause();
+      await film.deliver("later");
+      run(30);
+
+      expect(window.__player!.isPlaying()).toBe(false);
+      expect(window.__player!.getTime()).toBe(held);
+      expect(lastBuffering()).toBe(false);
+    });
+
+    it("keeps the last drawn frame while a seek target loads, then lands on the newest target", async () => {
+      const film = mountStreamedFilm(9, [
+        ["opening", 0, 3],
+        ["middle", 3, 3],
+        ["last", 6, 3],
+      ]);
+      initSandboxRuntimeModular();
+      await film.deliver("opening");
+      await film.deliver("middle");
+
+      window.__player?.seek(1);
+      window.__player?.seek(7);
+      expect(window.__player!.getTime()).toBe(1);
+      expect(lastBuffering()).toBe(true);
+
+      await film.deliver("last");
+      expect(window.__player!.getTime()).toBe(7);
+      expect(window.__player!.isPlaying()).toBe(false);
+      expect(lastBuffering()).toBe(false);
+    });
+
+    it("drops a pending seek once a later seek lands on a scene that is here", async () => {
+      const film = mountStreamedFilm(9, [
+        ["opening", 0, 3],
+        ["middle", 3, 3],
+        ["last", 6, 3],
+      ]);
+      initSandboxRuntimeModular();
+      await film.deliver("opening");
+
+      window.__player?.seek(7);
+      window.__player?.seek(1);
+      await film.deliver("last");
+      await film.deliver("middle");
+
+      expect(window.__player!.getTime()).toBe(1);
+    });
+
+    it("plays on past a scene that failed to load, as a film without streaming does", async () => {
+      const film = mountStreamedFilm(6, [
+        ["opening", 0, 2],
+        ["broken", 2, 2],
+        ["tail", 4, 2],
+      ]);
+      initSandboxRuntimeModular();
+      await film.deliver("opening");
+      window.__player?.play();
+      run(180);
+      expect(lastBuffering()).toBe(true);
+
+      await film.deliver("broken", 503);
+      run(30);
+
+      expect(window.__player!.getTime()).toBeGreaterThan(2);
+      expect(window.__renderReady).toBe(false);
+      await film.deliver("tail");
+      expect(window.__renderReady).toBe(true);
+      expect(
+        posted.mock.calls.some(
+          ([data]) => (data as { code?: string }).code === "external_composition_load_failed",
+        ),
+      ).toBe(true);
+    });
+
+    it("nests a scene into the film before playback resumes into it", async () => {
+      const film = mountStreamedFilm(4, [
+        ["opening", 0, 2],
+        ["short", 2, 1],
+        ["last", 3, 1],
+      ]);
+      const add = vi.fn();
+      window.__timelines!.main.add = add;
+      initSandboxRuntimeModular();
+      await film.deliver("opening");
+      window.__player?.play();
+      run(180);
+
+      await film.deliver("short");
+
+      expect(add).toHaveBeenCalledWith(window.__timelines!.short, 2);
+      expect(window.__player!.isPlaying()).toBe(true);
+    });
+
+    it("is not ready to play until every scene starting in the next two seconds is here", async () => {
+      const film = mountStreamedFilm(6, [
+        ["opening", 0, 1],
+        ["soon", 1, 1],
+        ["later", 3, 3],
+      ]);
+      initSandboxRuntimeModular();
+      await film.deliver("opening");
+      expect(window.__playReady).toBe(false);
+
+      await film.deliver("soon");
+      expect(window.__playReady).toBe(true);
+      expect(window.__renderReady).toBe(false);
+    });
   });
 
   it("removes external composition head links during runtime teardown", async () => {

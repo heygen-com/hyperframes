@@ -820,7 +820,22 @@ export function initSandboxRuntimeModular(): void {
       }
     }
   }
+  window.__playReady = false;
+  window.__renderReady = false;
   let externalCompositionsReady = !hasExternalCompositions && !hasInlineTemplateCompositions;
+  const PLAYABLE_WINDOW_SECONDS = 2;
+  let inlineCompositionsReady = !hasInlineTemplateCompositions;
+  // Scene hosts still loading, keyed to their [start, end) on the root timeline.
+  const pendingScenes = new Map<Element, readonly [number, number]>();
+  let buffered: { kind: "playback" | "seek"; time: number; resume: boolean } | null = null;
+  const pendingSceneAt = (time: number, lookahead = 0): Element | null => {
+    for (const [host, [start, end]] of pendingScenes) {
+      if (time < end && (lookahead > 0 ? start < time + lookahead : start <= time)) return host;
+    }
+    return null;
+  };
+  const playbackTarget = () => buffered?.time ?? state.currentTime;
+  const targetSceneReady = () => inlineCompositionsReady && !pendingSceneAt(playbackTarget());
 
   const getTimelineDurationSeconds = (timeline: RuntimeTimelineLike | null): number | null => {
     if (!timeline || typeof timeline.duration !== "function") return null;
@@ -1741,7 +1756,7 @@ export function initSandboxRuntimeModular(): void {
     // init runs early, but if GSAP wasn't ready then (load-order race) it's a
     // no-op with no retry — so re-assert here, at the render site. Idempotent.
     ensureStudioCustomEase();
-    if (!externalCompositionsReady) return false;
+    if (!targetSceneReady()) return false;
     const currentTimeline = state.capturedTimeline;
     const currentDuration = getTimelineDurationSeconds(currentTimeline);
     const currentTimelineUsable = isUsableTimelineDuration(currentDuration);
@@ -2835,6 +2850,7 @@ export function initSandboxRuntimeModular(): void {
       type: "state",
       frame,
       isPlaying: state.isPlaying,
+      buffering: buffered !== null,
       muted: state.bridgeMuted,
       playbackRate: state.playbackRate,
     });
@@ -3022,22 +3038,69 @@ export function initSandboxRuntimeModular(): void {
         });
       },
     };
-    void loadExternalCompositions(compositionLoaderParams)
-      .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
-      .finally(() => {
-        externalCompositionsReady = true;
-        bindMediaMetadataListeners();
-        installAssetFailureDiagnostics();
-        applyCaptionOverrides();
-        // Runtime-loaded sub-compositions (and their per-instance scoped
-        // values) don't exist at the init-time binding pass — re-apply so
-        // data-var-* / --{id} bindings inside them resolve. Idempotent.
-        applyVariableBindings(document);
-        // A vfx host inside a sub-composition enters the DOM only now, so the
-        // init-time pass below never saw it. Re-scan before readiness is
-        // published: an unregistered chain paints nothing and logs nothing.
-        initVfx(document.body, state.canonicalFps);
+    const sceneStarts = createRuntimeStartTimeResolver({
+      timelineRegistry: (window.__timelines ?? {}) as Record<
+        string,
+        RuntimeTimelineLike | undefined
+      >,
+      includeAuthoredTimingAttrs: true,
+    });
+    const sceneStart = (host: Element) => sceneStarts.resolveStartForElement(host, 0);
+    for (const host of document.querySelectorAll("[data-composition-src]")) {
+      const start = sceneStart(host);
+      pendingScenes.set(host, [
+        start,
+        start + (sceneStarts.resolveDurationForElement(host) ?? Infinity),
+      ]);
+    }
+    const onSceneSettled = (host: Element) => {
+      if (state.tornDown) return;
+      pendingScenes.delete(host);
+      childrenBound = false;
+      bindMediaMetadataListeners();
+      installAssetFailureDiagnostics();
+      applyCaptionOverrides();
+      // Runtime-loaded sub-compositions (and their per-instance scoped
+      // values) don't exist at the init-time binding pass — re-apply so
+      // data-var-* / --{id} bindings inside them resolve. Idempotent.
+      applyVariableBindings(document);
+      // A vfx host inside a sub-composition enters the DOM only now, so the
+      // init-time pass never saw it. An unregistered chain paints nothing.
+      initVfx(document.body, state.canonicalFps);
+      maybePublishRenderReady();
+      releaseHoldIfArrived();
+    };
+    const releaseHoldIfArrived = () => {
+      const waiting = buffered;
+      if (!waiting || pendingSceneAt(waiting.time)) return;
+      buffered = null;
+      if (waiting.kind === "seek") transport.seek(waiting.time);
+      if (waiting.resume) transport.play();
+      else postState(true);
+    };
+    // Root-level inline templates are part of the opening, so they mount first. The second
+    // pass mounts templates that only arrived inside a scene file.
+    void loadInlineTemplateCompositions(compositionLoaderParams)
+      .then(() => {
+        if (state.tornDown) return;
+        inlineCompositionsReady = true;
         maybePublishRenderReady();
+        return loadExternalCompositions({
+          ...compositionLoaderParams,
+          startOf: sceneStart,
+          prioritize: (host) => host === pendingSceneAt(playbackTarget()),
+          onSettled: onSceneSettled,
+        }).then(() => loadInlineTemplateCompositions(compositionLoaderParams));
+      })
+      .finally(() => {
+        if (state.tornDown) return;
+        // A loader that threw still publishes, as it did before streaming: nothing stays held.
+        inlineCompositionsReady = true;
+        pendingScenes.clear();
+        externalCompositionsReady = true;
+        childrenBound = false;
+        maybePublishRenderReady();
+        releaseHoldIfArrived();
       });
   } else {
     // No external/inline compositions to load — apply caption overrides immediately
@@ -3090,6 +3153,16 @@ export function initSandboxRuntimeModular(): void {
 
   const transport: RuntimePlayerTransport = {
     play: () => {
+      if (buffered) {
+        buffered.resume = true;
+        postState(true);
+        return;
+      }
+      if (pendingSceneAt(state.currentTime)) {
+        buffered = { kind: "playback", time: state.currentTime, resume: true };
+        postState(true);
+        return;
+      }
       const tl = state.capturedTimeline;
       if (clock.isPlaying()) return;
       const dur = getSafeTimelineDurationSeconds(tl, 0);
@@ -3122,6 +3195,10 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     pause: () => {
+      if (buffered) {
+        buffered.resume = false;
+        postState(true);
+      }
       if (!clock.isPlaying()) return;
       webAudio.stopAll();
       clock.detachAudioSource();
@@ -3142,10 +3219,22 @@ export function initSandboxRuntimeModular(): void {
         Math.max(0, Number(timeSeconds) || 0),
         state.canonicalFps,
       );
+      const wasPlaying = buffered?.resume ?? clock.isPlaying();
+      buffered = null;
+      if (pendingSceneAt(quantized)) {
+        transport.pause();
+        buffered = {
+          kind: "seek",
+          time: quantized,
+          resume: options?.keepPlaying === true && wasPlaying,
+        };
+        maybePublishRenderReady();
+        postState(true);
+        return;
+      }
       webAudio.stopAll();
       clock.detachAudioSource();
-      const wasPlaying = clock.isPlaying();
-      if (wasPlaying) clock.pause();
+      if (clock.isPlaying()) clock.pause();
       clock.seek(quantized);
       state.currentTime = clock.now();
       state.isPlaying = false;
@@ -3164,6 +3253,7 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     renderSeek: (timeSeconds, options) => {
+      buffered = null;
       renderCaptureSeekStarted = true;
       const quantized = quantizeSeekTime(
         Math.max(0, Number(timeSeconds) || 0),
@@ -3344,7 +3434,8 @@ export function initSandboxRuntimeModular(): void {
     // __renderReady = timeline binding attempted, safe for deterministic seeking.
     // Set after any GSAP batching has completed. renderSeek works with or
     // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
-    window.__renderReady = true;
+    window.__renderReady = externalCompositionsReady;
+    window.__playReady = !pendingSceneAt(playbackTarget(), PLAYABLE_WINDOW_SECONDS);
     postTimeline();
     postState(true);
   };
@@ -3367,12 +3458,12 @@ export function initSandboxRuntimeModular(): void {
   });
 
   maybePublishRenderReady = () => {
-    if (!externalCompositionsReady) {
-      window.__renderReady = false;
-      return;
-    }
+    if (state.tornDown) return;
+    window.__playReady = false;
+    window.__renderReady = false;
+    // Binding waits only for the scene under the playhead; __playReady also waits for the lookahead.
+    if (!targetSceneReady()) return;
     if (window.__hfTimelinesBuilding) {
-      window.__renderReady = false;
       waitForTimelinesBuilt();
       return;
     }
@@ -3382,14 +3473,7 @@ export function initSandboxRuntimeModular(): void {
     // bootstrap discover. Discover is idempotent in every adapter, so a
     // second call here is cheap.
     runAdapters("discover", state.currentTime);
-    if (!isAdapterReadinessSettled()) {
-      window.__renderReady = false;
-      return;
-    }
-    if (!isBuildReadinessSettled()) {
-      window.__renderReady = false;
-      return;
-    }
+    if (!isAdapterReadinessSettled() || !isBuildReadinessSettled()) return;
     publishRenderReadyAfterTimelineBinding();
   };
 
@@ -3916,6 +4000,14 @@ export function initSandboxRuntimeModular(): void {
         }
       } else if (clock.hasAudioSource()) {
         clock.detachAudioSource();
+      }
+
+      const nextTime = clock.now();
+      if (clock.isPlaying() && pendingSceneAt(nextTime)) {
+        clock.seek(state.currentTime);
+        transport.pause();
+        buffered = { kind: "playback", time: nextTime, resume: true };
+        postState(true);
       }
 
       const t = clock.now();

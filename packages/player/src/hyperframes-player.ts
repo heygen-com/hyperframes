@@ -959,6 +959,11 @@ class HyperframesPlayer extends HTMLElement {
       },
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
+      setBuffering: (buffering) => {
+        if (this.hasAttribute("buffering") === buffering) return;
+        this.toggleAttribute("buffering", buffering);
+        this.dispatchEvent(new CustomEvent("buffering", { detail: { buffering } }));
+      },
       onRuntimeReady: () => {
         this._runtimeBridgeReady = true;
         this._replayBridgeState();

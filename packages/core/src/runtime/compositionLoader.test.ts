@@ -36,6 +36,93 @@ describe("loadExternalCompositions", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("requests scenes in playback order and reports each one as it attaches", async () => {
+    for (const [id, start] of [
+      ["third", 10],
+      ["first", 0],
+      ["second", 5],
+    ] as const) {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", `https://example.com/${id}.html`);
+      host.setAttribute("data-composition-id", id);
+      host.setAttribute("data-start", String(start));
+      document.body.appendChild(host);
+    }
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => new Response(`<div>${String(input)}</div>`));
+    const attached: string[] = [];
+
+    await loadExternalCompositions({
+      ...defaultParams,
+      startOf: (host) => Number(host.getAttribute("data-start")),
+      onSettled: (host) => attached.push(host.getAttribute("data-composition-id") ?? ""),
+    });
+
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://example.com/first.html",
+      "https://example.com/second.html",
+      "https://example.com/third.html",
+    ]);
+    expect(attached.sort()).toEqual(["first", "second", "third"]);
+  });
+
+  it("keeps later scenes queued so the scene under the playhead can jump ahead", async () => {
+    const ids = ["s1", "s2", "s3", "s4", "s5", "s6"];
+    ids.forEach((id, index) => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", `https://example.com/${id}.html`);
+      host.setAttribute("data-composition-id", id);
+      host.setAttribute("data-start", String(index));
+      document.body.appendChild(host);
+    });
+    const responders: Array<() => void> = [];
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        (input) =>
+          new Promise<Response>((resolve) =>
+            responders.push(() => resolve(new Response(`<div>${String(input)}</div>`))),
+          ),
+      );
+    const requested = () => fetchSpy.mock.calls.map(([url]) => String(url).slice(20, 22));
+
+    let playheadScene = "s1";
+    const loading = loadExternalCompositions({
+      ...defaultParams,
+      startOf: (host) => Number(host.getAttribute("data-start")),
+      prioritize: (host) => host.getAttribute("data-composition-id") === playheadScene,
+    });
+    await vi.waitFor(() => expect(requested()).toEqual(["s1", "s2", "s3", "s4"]));
+
+    playheadScene = "s6";
+    responders[0]();
+    await vi.waitFor(() => expect(requested()).toHaveLength(5));
+    expect(requested()[4]).toBe("s6");
+
+    responders.slice(1).forEach((respond) => respond());
+    await vi.waitFor(() => expect(requested()).toHaveLength(6));
+    responders[5]();
+    await loading;
+  });
+
+  it("settles a scene that failed to load, leaving it empty", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/missing.html");
+    document.body.appendChild(host);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("gone", { status: 503 }));
+    const settled = vi.fn();
+    const onDiagnostic = vi.fn();
+
+    await loadExternalCompositions({ ...defaultParams, onSettled: settled, onDiagnostic });
+
+    expect(settled).toHaveBeenCalledWith(host);
+    expect(host.childNodes).toHaveLength(0);
+    expect(onDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "external_composition_load_failed" }),
+    );
+  });
+
   it("fetches and mounts external composition HTML", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/comp.html");

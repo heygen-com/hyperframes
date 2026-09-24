@@ -46,9 +46,9 @@ const BAN_SPECS: BanSpec[] = [
 const GUARD_SPECS: GuardSpec[] = [
   {
     id: "external_compositions_gate",
-    description: "Do not bind timelines before external compositions are loaded",
+    description: "Do not bind timelines before the scene under the playhead is loaded",
     filePath: "src/runtime/init.ts",
-    pattern: /if\s*\(\s*!externalCompositionsReady\s*\)\s*return\s+false;/,
+    pattern: /if\s*\(\s*!targetSceneReady\(\)\s*\)\s*return\s+false;/,
   },
   {
     id: "child_timeline_activation",
