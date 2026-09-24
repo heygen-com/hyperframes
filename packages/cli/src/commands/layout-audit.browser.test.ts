@@ -2481,6 +2481,25 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("still flags covered text when only an ancestor allows occlusion", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="node-top" data-layout-allow-occlusion>
+          <div id="headline">Typed Answers</div>
+        </div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    const occluded = runAudit().find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+  });
+
   it("does not treat a visible container as painted text when its only text child is hidden", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">

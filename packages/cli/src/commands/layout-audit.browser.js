@@ -911,7 +911,7 @@
   }
 
   function hasAllowOcclusionFlag(element) {
-    return !!element.closest("[data-layout-allow-occlusion]");
+    return element.hasAttribute("data-layout-allow-occlusion");
   }
 
   // A foreign element is one painted independently of the text — not the text
