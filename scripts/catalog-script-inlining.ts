@@ -227,6 +227,9 @@ ${gsapLoaderJs(vendorUrls)}
 }
 
 function inlineGlassScripts(html: string, projectDir: string): string {
+  if (html.includes(`href="assets/ferndale_studio_01_1k.hdr"`)) {
+    throw new Error("catalog-script-inlining: glass-shard-title's hdr <link> was not inlined.");
+  }
   const glassText = readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8");
   const bootstrap = `<script>(0,eval)(${jsStringLiteral(glassText)});</script>`;
   return replaceOnce(
