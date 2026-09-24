@@ -7,6 +7,7 @@ import { normalizeHfColorGrading } from "@hyperframes/core/color-grading";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { useColorGradingController } from "./useColorGradingController";
+import { sceneSwapFor } from "../../player/sceneSwap";
 import type { DomEditSelection } from "./domEditing";
 
 function brightPopGrading() {
@@ -385,6 +386,30 @@ describe("useColorGradingController", () => {
     expect(getState().grading.preset).toBe("neutral");
     act(() => vi.advanceTimersByTime(500));
     expect(onSetAttributeLive).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("re-sends the grade to the preview after edited scenes are swapped in", async () => {
+    vi.useFakeTimers();
+    const { contentWindow, iframe } = createPreviewFrame();
+    (contentWindow as unknown as { __hfSwapScenes: () => Promise<void> }).__hfSwapScenes =
+      async () => {};
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html></html>"));
+    const postMessage = vi.spyOn(contentWindow, "postMessage");
+    const { root, getState } = renderHook(vi.fn(), makeElement(), { current: iframe });
+    act(() => getState().commitColorGrading(brightPopGrading()));
+    // Let the blank frame's own late load replay first, so only the swap can replay below.
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await vi.runAllTimersAsync();
+    });
+    postMessage.mockClear();
+
+    await act(() => sceneSwapFor(iframe)!("/preview", () => true));
+    const replayed = colorGradingMessages(postMessage.mock.calls);
+    expect(replayed.at(-1)?.grading).toMatchObject({ preset: "bright-pop" });
 
     act(() => root.unmount());
     vi.useRealTimers();

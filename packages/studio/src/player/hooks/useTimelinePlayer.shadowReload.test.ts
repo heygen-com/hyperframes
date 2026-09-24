@@ -569,4 +569,41 @@ describe("useTimelinePlayer scene swap", () => {
     expect(swap.mock.calls).toEqual([["<html>v3</html>"]]);
     expect(roles(getApi())).toEqual(["live"]);
   });
+
+  it("drops a pending swap's fallback once the preview was replaced, e.g. by a composition switch", async () => {
+    let refuse!: (e: Error) => void;
+    const swap = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi } = liveFilm(swap);
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(swap).toHaveBeenCalledTimes(1);
+    act(() => getApi().resetPreviewSlots());
+    const next = makeFakeIframe(makeAdapterWindow().win);
+    next.src = "http://localhost/api/projects/demo/preview/comp/compositions/intro.html";
+    act(() => {
+      getApi().iframeRef.current = next;
+      getApi().onIframeLoad();
+    });
+    refuse(new Error("the preview was torn down during the swap"));
+    await settle();
+    expect(roles(getApi())).toEqual(["live"]);
+  });
+
+  it("skips the swap for an edit made while a full reload is in flight", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi } = liveFilm(async () => {
+      throw new Error("the film changed outside its scenes");
+    });
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(roles(getApi())).toEqual(["live", "shadow"]);
+    const firstShadow = getApi().previewSlots[1]!.gen;
+    fetchSpy.mockClear();
+    act(() => getApi().refreshPlayer());
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(getApi().previewSlots[1]!.gen).toBeGreaterThan(firstShadow);
+  });
 });

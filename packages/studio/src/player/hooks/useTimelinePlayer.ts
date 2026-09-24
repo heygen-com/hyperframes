@@ -387,6 +387,7 @@ export function useTimelinePlayer({
     setShadowIframeNode,
     beginShadowReload,
     resetPreviewSlots,
+    previewGeneration,
   } = useShadowPreviewReload({
     iframeRef,
     getAdapter,
@@ -446,16 +447,19 @@ export function useTimelinePlayer({
     url.searchParams.set("_t", String(Date.now()));
     applyPreviewVariablesToUrl(url);
     const gen = ++refreshGenRef.current;
+    const slot = previewGeneration();
+    // A newer edit, or anything replacing the live preview (a reload, a composition switch), wins.
+    const isCurrent = () => gen === refreshGenRef.current && slot === previewGeneration();
     const swap = sceneSwapFor(iframe);
     // A full reload already in flight replaces the live preview anyway.
     if (!swap || isRefreshingRef.current) return reloadWholeFilm(url.toString());
     // Swap only the edited scenes into the live preview; anything else reloads the film.
-    swap(url.toString(), () => gen === refreshGenRef.current).catch((error: unknown) => {
-      if (gen !== refreshGenRef.current) return;
+    swap(url.toString(), isCurrent).catch((error: unknown) => {
+      if (!isCurrent()) return;
       logReload("scene-swap-refused", { reason: String(error) });
       reloadWholeFilm(url.toString());
     });
-  }, [reloadWholeFilm]);
+  }, [reloadWholeFilm, previewGeneration]);
   const getAdapterRef = useRef(getAdapter);
   getAdapterRef.current = getAdapter;
 
