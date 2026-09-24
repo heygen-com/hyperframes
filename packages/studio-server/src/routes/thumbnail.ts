@@ -88,7 +88,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     let compPath = requestSubPath(c.req.url, "projects/:id/thumbnail");
     if (compPath && !compPath.includes(".")) compPath += ".html";
     const htmlFile = resolveWithinProject(project.dir, compPath);
-    if (!htmlFile) return c.json({ error: "not found" }, 404);
+    if (!htmlFile || statSync(htmlFile, { throwIfNoEntry: false })?.isDirectory()) {
+      return c.json({ error: "not found" }, 404);
+    }
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
     const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
 

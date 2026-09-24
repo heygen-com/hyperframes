@@ -182,6 +182,12 @@ describe("a sub-path that decodes to a parent directory", () => {
     expect(result.thumbnails).toHaveLength(0);
   });
 
+  it("thumbnails nothing for the project folder itself", async () => {
+    const result = await requestProject("demo-project", "thumbnail", "");
+    expect(result.status).toBe(404);
+    expect(result.thumbnails).toHaveLength(0);
+  });
+
   it("is not read for a waveform", async () => {
     const result = await requestProject("demo-project", "waveform", OUTSIDE_PROJECT);
     expect(result.status).toBe(404);
