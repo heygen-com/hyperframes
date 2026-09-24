@@ -25,6 +25,32 @@ export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
       .then((page) => page.close())
       .catch(() => {});
   };
+  const entryFor = (
+    browser: Browser,
+    url: string,
+    version: string,
+    load: (page: Page) => Promise<void>,
+  ): LoadedPage => {
+    const existing = pages.get(url);
+    if (existing && existing.browser === browser && existing.version === version) return existing;
+    drop(url);
+    const page = browser.newPage().then(async (created) => {
+      await load(created);
+      return created;
+    });
+    const entry: LoadedPage = { browser, version, page, queue: Promise.resolve() };
+    pages.set(url, entry);
+    while (pages.size > maxPages) drop(pages.keys().next().value!);
+    return entry;
+  };
+  const armIdleClose = (url: string, entry: LoadedPage) => {
+    if (pages.get(url) !== entry) return;
+    clearTimeout(entry.idleTimer);
+    entry.idleTimer = setTimeout(() => {
+      if (pages.get(url) === entry) drop(url);
+    }, idleMs);
+    entry.idleTimer.unref?.();
+  };
   return {
     async withPage<T>(
       browser: Browser,
@@ -33,21 +59,7 @@ export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
       load: (page: Page) => Promise<void>,
       use: (page: Page) => Promise<T>,
     ): Promise<T> {
-      let entry = pages.get(url);
-      if (entry && (entry.browser !== browser || entry.version !== version)) {
-        drop(url);
-        entry = undefined;
-      }
-      if (!entry) {
-        const page = browser.newPage().then(async (created) => {
-          await load(created);
-          return created;
-        });
-        entry = { browser, version, page, queue: Promise.resolve() };
-        pages.set(url, entry);
-        while (pages.size > maxPages) drop(pages.keys().next().value!);
-      }
-      const current = entry;
+      const current = entryFor(browser, url, version, load);
       clearTimeout(current.idleTimer);
       const run = current.queue.then(async () => use(await current.page));
       current.queue = run.catch(() => {});
@@ -57,13 +69,7 @@ export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
         if (pages.get(url) === current) drop(url);
         throw error;
       } finally {
-        if (pages.get(url) === current) {
-          clearTimeout(current.idleTimer);
-          current.idleTimer = setTimeout(() => {
-            if (pages.get(url) === current) drop(url);
-          }, idleMs);
-          current.idleTimer.unref?.();
-        }
+        armIdleClose(url, current);
       }
     },
     closeAll(): void {

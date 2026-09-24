@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 import { constants, setPriority } from "node:os";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
 import { lintProject } from "./utils/lintProject.js";
