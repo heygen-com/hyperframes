@@ -1,5 +1,5 @@
 import { useOwnPreviewIframe, usePreviewIframeStore } from "./player/store/previewIframeStore";
-import { notePreviewReload } from "./player/sceneRemount";
+import { usePreviewReloadKey } from "./player/sceneRemount";
 import { buildProjectApiPath } from "./utils/projectRouting";
 import { useState, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { useDismissingTabSetter, useRightPanelIntent } from "./hooks/useRightPanelIntents";
@@ -82,7 +82,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const previewIframe = useOwnPreviewIframe();
   const [compositionLoading, setCompositionLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const { refreshKey, setRefreshKey, reloadPreview } = usePreviewReloadKey();
   const [previewDocumentVersion, refreshPreviewDocumentVersion] = usePreviewDocumentVersion();
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -107,10 +107,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
-  const reloadPreview = useCallback((changedPaths?: readonly string[]) => {
-    notePreviewReload(Array.isArray(changedPaths) ? changedPaths : undefined);
-    setRefreshKey((k) => k + 1);
-  }, []);
   const fileManager = useFileManager({
     projectId,
     showToast,

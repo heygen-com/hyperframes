@@ -1,3 +1,5 @@
+import { useCallback, useState, type SetStateAction } from "react";
+
 // Which files the next preview reload is for. A reload with no paths reloads the whole film.
 let pendingPaths: Set<string> | "film" | null = null;
 
@@ -47,4 +49,21 @@ function resolveUrl(path: string, base: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The preview reload counter. `reloadPreview(paths)` names the scene files that changed; every other
+ * bump, including `setRefreshKey`, reloads the whole film.
+ */
+export function usePreviewReloadKey() {
+  const [refreshKey, setKey] = useState(0);
+  const setRefreshKey = useCallback((update: SetStateAction<number>) => {
+    notePreviewReload();
+    setKey(update);
+  }, []);
+  const reloadPreview = useCallback((changedPaths?: readonly string[]) => {
+    notePreviewReload(Array.isArray(changedPaths) ? changedPaths : undefined);
+    setKey((key) => key + 1);
+  }, []);
+  return { refreshKey, setRefreshKey, reloadPreview };
 }
