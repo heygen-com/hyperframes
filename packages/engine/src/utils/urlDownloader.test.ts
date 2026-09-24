@@ -1031,9 +1031,35 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     }
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(message).toContain("transient network error");
+    expect(message).toBe("Download failed due to a transient network error (TypeError)");
     expect(message).not.toContain("customer-video");
     expect(message).not.toContain("super-secret-signature");
+  });
+
+  it("names the underlying error of a local failure without its message", async () => {
+    const signedUrl = "https://cdn.example/private/clip.mp4?X-Amz-Signature=super-secret-signature";
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(
+        Object.assign(new Error(`no space left writing ${signedUrl}`), { code: "ENOSPC" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(downloadToTemp(signedUrl, makeTempDir(), 1_000)).rejects.toMatchObject({
+      kind: "filesystem",
+      message: "Download failed while writing the local artifact (Error ENOSPC)",
+    });
+  });
+
+  it("drops an underlying name or code that is not a bare identifier", async () => {
+    const signedUrl = "https://cdn.example/private/clip.mp4?X-Amz-Signature=super-secret-signature";
+    const hostile = Object.assign(new Error("boom"), { code: signedUrl });
+    hostile.name = signedUrl;
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(hostile));
+
+    await expect(downloadToTemp(signedUrl, makeTempDir(), 1_000)).rejects.toMatchObject({
+      message: "Download failed while writing the local artifact",
+    });
   });
 
   it("cancels a streaming HTTP error body before retrying", async () => {
