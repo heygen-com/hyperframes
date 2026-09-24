@@ -38,9 +38,7 @@ function escapeRegExp(value: string): string {
 }
 
 function hasAttrName(tagSource: string, attr: string): boolean {
-  const escaped = escapeRegExp(attr);
-  const attrs = tagSource.replace(/^<\s*[a-z][\w:-]*/i, "");
-  return new RegExp(`(?:^|\\s)${escaped}(?:\\s*=|\\s|/?>)`, "i").test(attrs);
+  return readDecodedAttr(tagSource, attr) !== null;
 }
 
 const IMAGE_SRC_EXT = new Set([
