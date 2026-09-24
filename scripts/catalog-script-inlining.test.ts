@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { withHostedRefs } from "./catalog-script-inlining.ts";
+import { inlineCatalogScripts, withHostedRefs } from "./catalog-script-inlining.ts";
 
 const CDN = "https://static.example.com/registry-assets";
 
@@ -50,5 +50,42 @@ describe("withHostedRefs", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("glass-shard-title payload", () => {
+  const scriptTag = `<script src="assets/glass-main.js"></script>`;
+  const withGlassMain = (fn: (dir: string) => void) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-inlining-"));
+    try {
+      mkdirSync(join(dir, "assets"));
+      writeFileSync(join(dir, "assets/glass-main.js"), "window.GLASS = 1;");
+      fn(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("inlines glass-main.js once the hdr link is a data URL", () => {
+    withGlassMain((dir) => {
+      const html = `<link id="gst-hdr" href="data:image/vnd.radiance;base64,AA">${scriptTag}`;
+      const out = inlineCatalogScripts("glass-shard-title", html, dir, {});
+      assert.ok(out.includes("window.GLASS = 1;"));
+      assert.ok(!out.includes(scriptTag));
+    });
+  });
+
+  it("refuses a payload whose hdr link still points at the local file", () => {
+    withGlassMain((dir) => {
+      for (const link of [
+        `<link id="gst-hdr" href="assets/ferndale_studio_01_1k.hdr">`,
+        `<link id='gst-hdr' href='assets/ferndale_studio_01_1k.hdr'>`,
+      ]) {
+        assert.throws(
+          () => inlineCatalogScripts("glass-shard-title", link + scriptTag, dir, {}),
+          /hdr <link> was not inlined/,
+        );
+      }
+    });
   });
 });
