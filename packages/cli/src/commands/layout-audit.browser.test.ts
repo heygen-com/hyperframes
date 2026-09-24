@@ -1117,7 +1117,10 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         origin = [sx, sy];
       });
       const pixels = line.length / 4;
-      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+        mockReturnValue(value: CanvasRenderingContext2D): void;
+      };
+      getContextSpy.mockReturnValue({
         drawImage,
         getImageData: (_x: number, _y: number, width: number, height: number) => {
           const vertical = height >= width;
