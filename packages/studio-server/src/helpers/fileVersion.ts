@@ -15,7 +15,12 @@ const receipts = new Map<string, StoredReceipt[]>();
 
 /** Strong content version used as both the JSON version and HTTP ETag. */
 export function fileContentVersion(content: string | Uint8Array): string {
-  return `"sha256:${createHash("sha256").update(content).digest("hex")}"`;
+  return hashVersion(createHash("sha256").update(content).digest("hex"));
+}
+
+/** The version of content whose sha256 is `hex`. */
+export function hashVersion(hex: string): string {
+  return `"sha256:${hex}"`;
 }
 
 /** A validator from a file's inode, change time and size, or null while the change is under three
