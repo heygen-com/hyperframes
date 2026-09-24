@@ -12,12 +12,6 @@ import {
 } from "./useCanvasZOrderTimelineMirror";
 import { makeLifecycleOpsParams } from "../../hooks/elementLifecycleOpsTestUtils";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
-import {
-  buildEditHistoryEntry,
-  createEmptyEditHistory,
-  pushEditHistoryEntry,
-  type EditHistoryState,
-} from "../../utils/editHistory";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -61,45 +55,40 @@ interface HarnessApi {
   mirror: (input: MirrorZOrderInput) => Promise<boolean>;
 }
 
+interface RecordedWrite {
+  label: string;
+  kind: "manual" | "timeline";
+  coalesceKey: string;
+  after: string;
+}
+
 /**
  * Mount the REAL wiring pair PreviewOverlays composes — handleDomZIndexReorderCommit
- * (z persist) + useCanvasZOrderTimelineMirror (lane mirror) — over a shared,
- * real editHistory reducer so the undo-fold assertion exercises the actual
- * pushEditHistoryEntry coalescing:
+ * (z persist) + useCanvasZOrderTimelineMirror (lane mirror). The server (not this
+ * test) owns folding two records that share a coalesceKey into one undo entry
+ * (projectHistory.ts, "claim: a writer that records after writing"), so this harness
+ * only captures what Studio sends on each write:
  *
  * - the z sink mimics commitDomEditPatchBatches' recordEdit call verbatim
  *   (kind "manual", options.coalesceKey — see useDomEditCommits.ts), and
  * - the move sink mimics persistTimelineBatchEdit → saveProjectFilesWithHistory
  *   (kind "timeline", the coalesceKey forwarded through onMoveElements — see
- *   timelineEditingHelpers.ts / studioFileHistory.ts),
- *
- * with a deterministic clock inside the reducer's 300ms coalesce window.
+ *   timelineEditingHelpers.ts / studioFileHistory.ts).
  */
 function mountMirrorHarness(history: {
-  state: EditHistoryState;
-  now: () => number;
   fileContent: { current: string };
   moveCoalesceKeys: string[];
+  records: RecordedWrite[];
 }) {
   const record = (
     label: string,
     kind: "manual" | "timeline",
     coalesceKey: string,
-    coalesceMs: number | undefined,
+    _coalesceMs: number | undefined,
     after: string,
   ) => {
-    const entry = buildEditHistoryEntry({
-      id: `e-${history.now()}`,
-      projectId: "p",
-      label,
-      kind,
-      coalesceKey,
-      coalesceMs,
-      now: history.now(),
-      files: { "index.html": { before: history.fileContent.current, after } },
-    });
+    history.records.push({ label, kind, coalesceKey, after });
     history.fileContent.current = after;
-    history.state = pushEditHistoryEntry(history.state, entry);
   };
 
   const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (
@@ -135,17 +124,10 @@ function mountMirrorHarness(history: {
 }
 
 function makeHistory() {
-  let tick = 1000;
   return {
-    state: createEmptyEditHistory(),
-    // Deterministic clock: consecutive records land 400ms apart — PAST the
-    // reducer's default 300ms coalesce window, as in the live flow where the
-    // mirror is dispatched only after the z persist's server round-trip
-    // resolves (real network latency exceeds 300ms). The fold must therefore
-    // ride the gesture's explicit coalesceMs window, not the default.
-    now: () => (tick += 400),
     fileContent: { current: "A-original" },
     moveCoalesceKeys: [] as string[],
+    records: [] as RecordedWrite[],
   };
 }
 
@@ -208,13 +190,12 @@ describe("useCanvasZOrderTimelineMirror", () => {
 
     // The move persist received the EXACT z coalesce key…
     expect(history.moveCoalesceKeys).toEqual([coalesceKey]);
-    // …and the real reducer folded the two records into one undo entry spanning
-    // pre-z "before" → post-move "after". One Cmd+Z reverts both writes.
-    expect(history.state.undo).toHaveLength(1);
-    expect(history.state.undo[0].files["index.html"]).toMatchObject({
-      before: "A-original",
-      after: "C-move",
-    });
+    // …and both writes carry that SAME non-empty coalesceKey: that is what lets
+    // the server (projectHistory.ts) fold them into one undo entry. One Cmd+Z
+    // then reverts both writes.
+    expect(history.records.map((r) => r.coalesceKey)).toEqual([coalesceKey, coalesceKey]);
+    expect(history.records[0]?.after).toBe("B-z");
+    expect(history.records[1]?.after).toBe("C-move");
     // Timeline UI reflects the lane change without a reload: optimistic store update.
     const t = usePlayerStore.getState().elements.find((e) => e.key === "index.html#t");
     expect(t?.track).toBe(0);
@@ -265,8 +246,10 @@ describe("useCanvasZOrderTimelineMirror", () => {
     }
 
     expect(keys[0]).not.toBe(keys[1]); // fresh key per gesture
-    // Each gesture folded its own z+move pair, but the two gestures stayed apart.
-    expect(history.state.undo).toHaveLength(2);
+    // Each gesture's z+move pair shares that gesture's own key, so the server folds
+    // each pair on its own — but the two gestures never share a key, so they stay apart.
+    expect(history.records).toHaveLength(4);
+    expect(history.records.map((r) => r.coalesceKey)).toEqual([keys[0], keys[0], keys[1], keys[1]]);
     expect(history.moveCoalesceKeys).toEqual(keys);
   });
 
@@ -299,7 +282,7 @@ describe("useCanvasZOrderTimelineMirror", () => {
     });
 
     expect(history.moveCoalesceKeys).toEqual([]); // no lane persist dispatched
-    expect(history.state.undo).toHaveLength(1); // just the z entry
+    expect(history.records).toHaveLength(1); // just the z write
     const t = usePlayerStore.getState().elements.find((e) => e.key === "index.html#t");
     expect(t?.track).toBe(1); // lane unchanged
   });

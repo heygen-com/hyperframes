@@ -5,9 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
-import { createPersistentEditHistoryStore } from "./usePersistentEditHistory";
-import { createEmptyEditHistory } from "../utils/editHistory";
-import type { EditHistoryStorageAdapter } from "../utils/editHistoryStorage";
+import type { RecordEditInput } from "./timelineEditingHelpers";
 import { createSplitFetchMock, mountProbe } from "./useRazorSplit.testHelpers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -164,20 +162,14 @@ describe("useRazorSplit — sub-comp coordinate rebasing", () => {
 
 // ── Bug 1: split must resync the SDK session so undo isn't refused ────────────
 
-const memoryStorage = (): EditHistoryStorageAdapter => {
-  const store = new Map<string, string>();
-  return {
-    load: async (k) => store.get(k) ?? null,
-    save: async (k, v) => {
-      store.set(k, v);
-    },
-  } as unknown as EditHistoryStorageAdapter;
-};
-
 interface UndoHarness {
   singleRef: { current: SingleSplit | undefined };
   disk: Record<string, string>;
-  store: ReturnType<typeof createPersistentEditHistoryStore>;
+  // What the split recorded, so the server (projectHistory.ts) could fold and
+  // later undo it — recording, folding and undo mismatch guards are the
+  // server's own tested behaviour (projectHistory.test.ts,
+  // usePersistentEditHistory.test.ts), not re-proven here via a reducer.
+  records: RecordEditInput[];
   forceReloadSdkSession: ReturnType<typeof vi.fn>;
   root: ReturnType<typeof mountProbe>;
 }
@@ -186,13 +178,7 @@ function mountRazorSplitWithHistory(): UndoHarness {
   const disk: Record<string, string> = {
     [ROOT_FILE]: `<div class="clip" id="root-clip" data-start="0" data-duration="10"></div>`,
   };
-  const store = createPersistentEditHistoryStore({
-    projectId: "p1",
-    storage: memoryStorage(),
-    initialState: createEmptyEditHistory(),
-    now: () => Date.now(),
-    onChange: () => {},
-  });
+  const records: RecordEditInput[] = [];
   const forceReloadSdkSession = vi.fn();
 
   const fetchMock = createSplitFetchMock(disk);
@@ -207,7 +193,9 @@ function mountRazorSplitWithHistory(): UndoHarness {
       writeProjectFile: async (path, content) => {
         disk[path] = content;
       },
-      recordEdit: (input) => store.recordEdit(input),
+      recordEdit: async (input) => {
+        records.push(input);
+      },
       reloadPreview: () => {},
       forceReloadSdkSession,
     });
@@ -215,7 +203,7 @@ function mountRazorSplitWithHistory(): UndoHarness {
     return null;
   }
   const root = mountProbe(Component);
-  return { singleRef, disk, store, forceReloadSdkSession, root };
+  return { singleRef, disk, records, forceReloadSdkSession, root };
 }
 
 describe("useRazorSplit — undo integrity after split (Bug 1)", () => {
@@ -227,13 +215,6 @@ describe("useRazorSplit — undo integrity after split (Bug 1)", () => {
     act(() => h.root.unmount());
   });
 
-  const readFile = () => ({
-    readFile: async (p: string) => h.disk[p],
-    writeFile: async (p: string, c: string) => {
-      h.disk[p] = c;
-    },
-  });
-
   it("resyncs the SDK session after a split (matches every other server-write path)", async () => {
     await act(async () => {
       await h.singleRef.current!(rootElement, 4);
@@ -241,25 +222,14 @@ describe("useRazorSplit — undo integrity after split (Bug 1)", () => {
     expect(h.forceReloadSdkSession).toHaveBeenCalledTimes(1);
   });
 
-  it("applies undo after a split without an external-change refusal", async () => {
+  it("records the split as one entry whose file carries the exact pre/post-split bytes a real undo restores", async () => {
+    const before = h.disk[ROOT_FILE];
     await act(async () => {
       await h.singleRef.current!(rootElement, 4);
     });
-    const result = await h.store.undo(readFile());
-    expect(result.ok).toBe(true);
-    expect(result.reason).toBeUndefined();
-    // The file is restored to its pre-split bytes.
-    expect(h.disk[ROOT_FILE]).not.toContain("<!--split-->");
-  });
-
-  it("still trips the guard when the file is edited externally after a split", async () => {
-    await act(async () => {
-      await h.singleRef.current!(rootElement, 4);
-    });
-    // Simulate the user editing the file in their own editor after the split.
-    h.disk[ROOT_FILE] = `${h.disk[ROOT_FILE]}<!--hand-edit-->`;
-    const result = await h.store.undo(readFile());
-    expect(result.ok).toBe(false);
-    expect(result.reason).toBe("content-mismatch");
+    expect(h.disk[ROOT_FILE]).toContain("<!--split-->");
+    expect(h.records).toHaveLength(1);
+    expect(h.records[0]).toMatchObject({ label: "Split timeline clip" });
+    expect(h.records[0]!.files[ROOT_FILE]).toEqual({ before, after: h.disk[ROOT_FILE] });
   });
 });
