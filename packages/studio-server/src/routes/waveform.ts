@@ -8,15 +8,14 @@ import {
   writeWaveformCache,
   isWaveformCacheDirectory,
 } from "../helpers/waveform.js";
+import { projectSubPath } from "../helpers/projectSubPath.js";
 
 export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/waveform/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
-    const assetPath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/waveform/`, "").split("?")[0] ?? "",
-    );
+    const assetPath = projectSubPath(c.req.url, "waveform");
     const audioPath = join(project.dir, assetPath);
     const stats = statSync(audioPath, { throwIfNoEntry: false });
     if (!stats) return c.json({ error: "file not found" }, 404);

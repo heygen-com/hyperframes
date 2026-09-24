@@ -18,6 +18,7 @@ import { compositionInputSignature } from "../helpers/compositionInputs.js";
 import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
+import { projectSubPath } from "../helpers/projectSubPath.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -83,9 +84,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (!resolved) return c.json({ error: "not found" }, 404);
     const { project, signature: projectSignature } = resolved;
 
-    let compPath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/thumbnail/`, "").split("?")[0] ?? "",
-    );
+    let compPath = projectSubPath(c.req.url, "thumbnail");
     if (compPath && !compPath.includes(".")) compPath += ".html";
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
     const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);

@@ -4,27 +4,10 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files.js";
+import { registerPreviewRoutes } from "./preview.js";
 import type { StudioApiAdapter } from "../types.js";
 
-/**
- * Pins the path-resolution contract of the project-file read that Studio's SDK
- * session depends on. If this route fails, `openComposition` never runs and
- * every edit in that project silently falls back to the server path.
- *
- * The shapes here are the ones that looked most likely to break it, because
- * `resolveProjectPath` strips a prefix built from the *decoded* `project.id`
- * out of `c.req.path`, and the CLI derives that id straight from the folder
- * name (`projectId = projectName || basename(projectDir)`). A folder named with
- * a space or non-ASCII character therefore produces an id that percent-encodes,
- * and sub-compositions — the house pattern, one per scene — put a separator in
- * the file path that encodes as %2F.
- *
- * All of them pass today: Hono hands `c.req.path` over already decoded. These
- * are regression tests, not a reproduction — they were written while hunting a
- * production failure (`stage: read`) that turned out to be something else, and
- * they are kept because the decoded/encoded seam is a real latent hazard that a
- * refactor of `resolveProjectPath` could reopen silently.
- */
+// Project ids come from folder names, so any character a folder allows must survive the URL.
 function createAdapter(projectDir: string): StudioApiAdapter {
   return {
     listProjects: () => [],
@@ -90,5 +73,53 @@ describe("project ids that percent-encode in a URL", () => {
     const result = await readComposition("demo-project", "scenes/scene-1.html");
     expect(result.status).toBe(200);
     expect(result.content).toContain("SCENE ONE");
+  });
+});
+
+// A Home sentence with an @ mention names the project; Hono leaves %40 %25 %23 %26 %3F encoded in c.req.path.
+const RESERVED_NAMES = [
+  "A @HyperFrames launch",
+  "50% off",
+  "#2 take",
+  "Tom & Jerry",
+  "why?",
+  "two  spaces",
+  "café crème",
+  "🎬 film",
+];
+
+async function requestProject(projectId: string, route: string, subPath: string) {
+  const { dir, cleanup } = projectWithComposition();
+  try {
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(dir));
+    registerPreviewRoutes(app, createAdapter(dir));
+    const encodedSubPath = subPath.split("/").map(encodeURIComponent).join("/");
+    const response = await app.request(
+      `http://localhost/projects/${encodeURIComponent(projectId)}/${route}/${encodedSubPath}`,
+    );
+    return { status: response.status, text: await response.text() };
+  } finally {
+    cleanup();
+  }
+}
+
+describe.each(RESERVED_NAMES)("project id %j", (projectId) => {
+  it("reads a project file", async () => {
+    const result = await readComposition(projectId, "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.content).toContain("SCENE ONE");
+  });
+
+  it("serves a preview asset", async () => {
+    const result = await requestProject(projectId, "preview", "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.text).toContain("SCENE ONE");
+  });
+
+  it("serves a preview sub-composition", async () => {
+    const result = await requestProject(projectId, "preview/comp", "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.text).toContain("SCENE ONE");
   });
 });
