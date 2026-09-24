@@ -14,6 +14,7 @@ import {
 } from "./useTimelineSyncCallbacks";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
+import { usePlayerStore } from "../store/playerStore";
 
 // The single wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
 // leaves about 6.5s for the document load and runtime boot. Nothing shorter may fail the swap.
@@ -191,6 +192,8 @@ export function useShadowPreviewReload({
     shadowIframeRef.current = null;
     isRefreshingRef.current = false;
     pendingSeekRef.current = null;
+    // The new composition's preview isn't playable yet; its load step marks it ready again.
+    usePlayerStore.getState().setTimelineReady(false);
     setPreviewSlots(planShadowDiscard);
     thumbnailScheduler.setPreviewReloading(false);
   }, [stopPendingShadow, isRefreshingRef, pendingSeekRef]);

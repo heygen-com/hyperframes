@@ -38,3 +38,23 @@ it("does not start playback before the timeline is ready, so iframe load cannot 
   expect(usePlayerStore.getState().isPlaying).toBe(true);
   act(() => root.unmount());
 });
+
+it("does not start playback while a switched-to composition's preview is still loading", () => {
+  const { api, root } = renderTimelinePlayerHarness();
+  act(() => {
+    api.iframeRef.current = makeFakeIframe(makeAdapterWindow().win);
+    api.onIframeLoad();
+    usePlayerStore.setState({ timelineReady: true });
+  });
+
+  // Drill into another composition: a fresh preview whose runtime is up but whose load step hasn't run.
+  const next = makeAdapterWindow();
+  act(() => {
+    api.resetPreviewSlots();
+    api.iframeRef.current = makeFakeIframe(next.win);
+  });
+  act(() => api.play());
+  expect(next.adapter.play).not.toHaveBeenCalled();
+  expect(usePlayerStore.getState().isPlaying).toBe(false);
+  act(() => root.unmount());
+});
