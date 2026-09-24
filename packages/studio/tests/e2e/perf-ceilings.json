@@ -1,9 +1,9 @@
 {
   "studio-open": {
-    "thumbnailRenders": 20,
+    "thumbnailRenders": 13,
     "total.frameNavigations": 7,
     "total.requests.document": 2,
-    "total.requests.thumbnail": 20
+    "total.requests.thumbnail": 13
   },
   "timeline-scroll": {
     "reactCommitsPerTick": 0.86,
