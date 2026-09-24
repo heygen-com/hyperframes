@@ -87,7 +87,7 @@ describe("token gate", () => {
   });
 
   it("accepts variants, static utilities and Studio's own CSS classes", async () => {
-    // `timeline-clip` is a plain rule in `studio.css`, not a utility.
+    // `timeline-clip` is a plain rule in `components.css`, not a utility.
     const source = `<div className="hover:bg-surface/50 text-center border-dashed timeline-clip" />`;
 
     expect(await unresolved(new Map([["a.tsx", source]]))).toEqual([]);

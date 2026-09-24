@@ -5,4 +5,4 @@ export { DEFAULT_REGISTRY_URL } from "./remote.js";
 
 export { listRegistryItems, loadAllItems, resolveItemsByTag } from "./resolver.js";
 
-export { installItem } from "./installer.js";
+export { installItem, prepareItem, publishItem, type PreparedItem } from "./installer.js";

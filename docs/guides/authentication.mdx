@@ -74,9 +74,37 @@ Run `npx hyperframes doctor` to check which local dependencies are installed.
 The media workflows run `hyperframes auth status` before generation and tell
 you which path they will use.
 
+For Gemini narration, explicitly ask your agent to use Gemini TTS. The shared
+audio workflow supports 3.8 Flash and Flash-Lite, 3.1 Flash Preview, and 2.5 Pro
+and Flash Preview. Gemini remains an explicit choice; configuring credentials
+does not change the automatic voice-provider order above.
+
+Choose one authentication method:
+
+- **API key:** set `GEMINI_API_KEY` or `GOOGLE_API_KEY` in your environment or
+  project `.env`. This path needs no Python dependencies.
+- **Service account:** install `google-auth` and `requests` in your Python 3
+  environment, then set `GOOGLE_APPLICATION_CREDENTIALS` to the absolute path
+  of your service-account JSON file. Alternatively, inject the JSON through
+  `GCS_CREDS` from your secret manager. Set `GOOGLE_CLOUD_PROJECT` to the quota
+  project when it differs from the service account's project.
+
+Credentials resolve in that order: Gemini key, Google key, service-account file,
+then JSON environment variable. Unset API keys when choosing service-account
+OAuth. The helper obtains a fresh token for each generation using the
+`generative-language.retriever` scope. Keys and tokens
+are never placed in compositions or saved audio metadata.
+
+Both methods call the Gemini Developer Interactions API. Your project needs
+access to that API and the requested model. Cloud Text-to-Speech and Vertex AI
+have separate model availability. This helper accepts service-account JSON,
+not user ADC files or metadata-server credentials.
+
+See [Gemini voiceover](/prompting/media-and-audio#gemini-voiceover).
+
 <Note>
   `npx hyperframes tts` itself is the local Kokoro CLI. Hosted HeyGen and
-  ElevenLabs voices are selected by the bundled media workflow helpers, not by
+  ElevenLabs and Gemini voices are selected by the bundled media workflow helpers, not by
   that command.
 </Note>
 
@@ -112,7 +140,9 @@ to a shared space with `--space`.
 | `HEYGEN_API_URL` | API base URL (default `https://api.heygen.com`). |
 | `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. |
-| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Lyria music generation (and capture descriptions). |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Explicit Gemini TTS selection and Lyria music generation; capture descriptions use `GEMINI_API_KEY`. |
+| `GOOGLE_APPLICATION_CREDENTIALS` / `GCS_CREDS` | Gemini TTS service-account JSON file path / injected JSON. Used when neither API key is set. |
+| `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT_ID` | Gemini OAuth quota project; first set value wins, then the service account project. |
 | `OPENROUTER_API_KEY` | Capture descriptions; takes priority over Gemini for that step. |
 
 ## Related topics

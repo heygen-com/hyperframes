@@ -14,7 +14,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 | `sfx`   | Sound effects                    | Bundled 19-file library + HeyGen catalog                     |
 | `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)                           |
 | `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                              |
-| `logo`  | Official brand marks             | svgl → simple-icons → GitHub org avatar → domain favicon     |
+| `logo`  | Official brand marks             | theSVG → GitHub org avatar → domain favicon                  |
 | `voice` | TTS voiceover                    | HeyGen TTS free-usage path; optional local Kokoro            |
 | `grade` | HyperFrames color-grading blocks | Core preset → look index params/CDN LUT → deterministic cube |
 | `lut`   | Reusable `.cube` LUT files       | Look index params/CDN LUT → deterministic cube               |

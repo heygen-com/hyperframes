@@ -21,7 +21,7 @@ vi.mock("./remote.js", () => ({
   fetchItemFile: vi.fn(async () => Buffer.from(remote.contents)),
 }));
 
-const { hasLocalEdits, installItem } = await import("./installer.js");
+const { hasLocalEdits, installItem, prepareItem, publishItem } = await import("./installer.js");
 
 function project(): string {
   return mkdtempSync(join(tmpdir(), "hf-installer-"));
@@ -148,6 +148,21 @@ describe("installItem", () => {
     expect(readFileSync(join(dir, target), "utf-8")).toBe("MY OWN COLOURS\n");
   });
 
+  it("keeps an edit saved while the rest of the plan was still downloading", async () => {
+    const dir = project();
+    await installItem(item, { destDir: dir });
+    remote.contents = "REGISTRY VERSION 2\n";
+    const prepared = await prepareItem(item, { destDir: dir });
+    remote.contents = "REGISTRY VERSION\n";
+    writeFileSync(join(dir, target), "MY OWN COLOURS\n", "utf-8");
+
+    const result = publishItem(prepared);
+
+    expect(result.written).toEqual([]);
+    expect(result.preserved).toHaveLength(1);
+    expect(readFileSync(join(dir, target), "utf-8")).toBe("MY OWN COLOURS\n");
+  });
+
   it("keeps a file that was there before any install", async () => {
     const dir = project();
     mkdirSync(join(dir, "components"), { recursive: true });
@@ -235,4 +250,43 @@ describe("installing several items, as a dependency plan does", () => {
     expect(untouched.written).toHaveLength(1);
     expect(readFileSync(join(dir, target), "utf-8")).toBe("EDITED DEPENDENCY\n");
   });
+});
+
+describe("installing with --vars the item cannot take", () => {
+  const declaration = `<div data-composition-id="demo" data-composition-variables='[{"id":"maths","type":"boolean","label":"Maths","default":false}]'></div>`;
+  const block = {
+    name: "demo-block",
+    title: "Demo block",
+    description: "Block",
+    dimensions: { width: 100, height: 100 },
+    duration: 1,
+    type: "hyperframes:block",
+    files: [
+      {
+        path: "demo-block.html",
+        target: "compositions/demo-block.html",
+        type: "hyperframes:composition",
+      },
+    ],
+  } as unknown as RegistryItem;
+
+  it.each([
+    ["block", block, "compositions/demo-block.html"],
+    ["component", item, target],
+  ])(
+    "refuses a wrong-typed value for a %s and writes nothing",
+    async (_kind, installable, file) => {
+      const dir = project();
+      remote.contents = declaration;
+      try {
+        await expect(
+          installItem(installable, { destDir: dir, variableValues: { maths: 1 } }),
+        ).rejects.toThrow(/maths: expected boolean, got number/);
+        expect(existsSync(join(dir, file))).toBe(false);
+      } finally {
+        remote.contents = "REGISTRY VERSION\n";
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

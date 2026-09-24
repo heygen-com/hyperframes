@@ -22,8 +22,15 @@ import {
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
-import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
-import { enumerateNestedCompositionHosts, planCompositionAssembly } from "./compositionAssembly";
+import {
+  checkSubCompositionUsability,
+  resolveSubCompositionContent,
+} from "@hyperframes/parsers/sub-composition-validity";
+import {
+  enumerateNestedCompositionHosts,
+  planCompositionAssembly,
+  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+} from "./compositionAssembly";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -154,7 +161,7 @@ function defaultBuildScopeSelector(compId: string): string {
  * Inline sub-compositions into a document. For each host element in `hosts`:
  *
  * 1. Resolve the sub-composition HTML via `options.resolveHtml`
- * 2. Parse it, find `<template>` or `<body>` content
+ * 2. Parse it, resolve template, body, or bare-fragment content
  * 3. Find the inner `[data-composition-id]` root
  * 4. Extract `<style>` elements, scope CSS, collect them
  * 5. Extract `<script>` elements, wrap inline scripts, collect them
@@ -234,9 +241,7 @@ export function inlineSubCompositions(
       runtimeCompId = compId || "";
     }
 
-    // Find content: prefer <template>, fall back to <body>
-    const contentRoot = compDoc.querySelector("template");
-    const contentHtml = contentRoot ? contentRoot.innerHTML || "" : compDoc.body?.innerHTML || "";
+    const { contentHtml, hasTemplate } = resolveSubCompositionContent(compHtml, compDoc);
     if (!contentHtml.trim()) {
       onMissingComposition?.(src);
       continue;
@@ -255,7 +260,7 @@ export function inlineSubCompositions(
       contentNode: contentDoc,
       head: compDoc.head,
       documentElement: compDoc.documentElement,
-      hasTemplate: Boolean(contentRoot),
+      hasTemplate,
       compositionId: compId,
     });
     const innerRoot = plan.innerRoot;
@@ -308,7 +313,7 @@ export function inlineSubCompositions(
 
     // <link> hoisting is unconditional. A templated sub-composition's webfont
     // link is as load-bearing as a non-templated one's, and the mount path has
-    // always hoisted both; gating this on `!contentRoot` dropped a templated
+    // always hoisted both; gating this on `!hasTemplate` dropped a templated
     // composition's font from the render while preview kept it.
     for (const link of plan.linkSources) {
       const href = resolveSubAssetPath(link.getAttribute("href"));
@@ -408,7 +413,8 @@ export function inlineSubCompositions(
     // Inject content into the host element
     if (innerRoot) {
       innerRoot.setAttribute("data-composition-file", src);
-      for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
+      for (const child of [...innerRoot.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR)])
+        child.remove();
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
         if (!compId && scopeCompId) {
@@ -432,7 +438,8 @@ export function inlineSubCompositions(
         }
       }
     } else {
-      for (const child of [...contentDoc.querySelectorAll("style, script")]) child.remove();
+      for (const child of [...contentDoc.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR)])
+        child.remove();
       // linkedom fragment parsing: when content is `<div data-composition-id="X">...</div>`,
       // the div becomes documentElement and body is empty. Fall back to documentElement.outerHTML
       // to preserve the composition wrapper.

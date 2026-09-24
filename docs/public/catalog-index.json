@@ -2613,6 +2613,25 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/logo-wall.png"
   },
   {
+    "name": "lottie-character-walk",
+    "type": "block",
+    "title": "Lottie Character Walk",
+    "description": "A jointed flat character walks in on planted feet, stops and points at a card; the body acting is a Lottie file and the stage is GSAP.",
+    "tags": [
+      "character",
+      "character-animation",
+      "mascot",
+      "walk-cycle",
+      "gesture",
+      "pointing",
+      "puppet",
+      "lottie",
+      "explainer"
+    ],
+    "href": "/catalog/blocks/lottie-character-walk",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lottie-character-walk.png"
+  },
+  {
     "name": "lower-third-bild",
     "type": "block",
     "title": "Lower Third \u2014 BILD Style",

@@ -84,11 +84,20 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
 
       for (const anim of instances) {
         try {
+          const loops = anim.loop === true;
           if (isLottieWebAnimation(anim)) {
             // lottie-web: AnimationItem
             // goToAndStop(value, isFrame) — isFrame=true means frame number, false means time in ms
-            // We use isFrame=false and pass time in ms for precision.
-            anim.goToAndStop(time * 1000, false);
+            // lottie-web draws nothing past the file's end, so a loop wraps and a finished one-shot
+            // holds its last frame; both seek by whole-file frame number to avoid float drift.
+            const frame = time * anim.frameRate;
+            if (anim.totalFrames > 0 && loops) {
+              anim.goToAndStop(wrapFrame(frame, anim.totalFrames), true);
+            } else if (anim.totalFrames > 0 && frame >= anim.totalFrames) {
+              anim.goToAndStop(anim.totalFrames - 1, true);
+            } else {
+              anim.goToAndStop(time * 1000, false);
+            }
           } else if (isDotLottiePlayer(anim)) {
             // @lottiefiles/dotlottie-web: DotLottie
             // .seek(frame) — frame is 0-100 percentage OR frame number depending on version
@@ -97,7 +106,8 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
               // dotlottie-web v2+: direct frame setter
               const totalFrames = anim.totalFrames ?? 0;
               const fps = anim.frameRate ?? 30;
-              const frame = time * fps;
+              const frame =
+                loops && totalFrames > 0 ? wrapFrame(time * fps, totalFrames) : time * fps;
               if (totalFrames > 0) {
                 anim.setCurrentRawFrameValue(Math.min(frame, totalFrames - 1));
               }
@@ -105,7 +115,10 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
               // dotlottie-web v1: seek(percentage 0-100)
               const duration = anim.duration ?? 0;
               if (Number.isFinite(duration) && duration > 0) {
-                const percentage = Math.min(100, (time / duration) * 100);
+                const percentage = Math.min(
+                  100,
+                  ((loops ? time % duration : time) / duration) * 100,
+                );
                 anim.seek(percentage);
               }
             }
@@ -164,6 +177,12 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
       return sawAny ? maxSeconds : null;
     },
   };
+}
+
+/** `frame` wrapped into [0, total); a float hair under a whole cycle is the next cycle's first frame. */
+function wrapFrame(frame: number, total: number): number {
+  const wrapped = frame % total;
+  return total - wrapped < 1e-6 ? 0 : wrapped;
 }
 
 /** A finite, positive number in seconds derived from a frame count + rate, or null. */
@@ -225,6 +244,7 @@ interface LottieWebAnimation {
   goToAndPlay: (value: number, isFrame: boolean) => void;
   totalFrames: number;
   frameRate: number;
+  loop?: boolean | number;
 }
 
 interface LottieWebGlobal {
@@ -240,6 +260,7 @@ interface DotLottiePlayer {
   totalFrames?: number;
   frameRate?: number;
   duration?: number;
+  loop?: boolean;
 }
 
 interface LottieWindow extends Window {

@@ -47,8 +47,8 @@
           "role": "text",
           "minimum": 4.5,
           "sources": [
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:286"
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:238"
           ]
         },
         {
@@ -62,8 +62,8 @@
           "role": "text",
           "minimum": 4.5,
           "sources": [
-            "packages/studio/src/styles/studio.css:230",
-            "packages/studio/src/styles/studio.css:300"
+            "packages/studio/src/styles/components.css:182",
+            "packages/studio/src/styles/components.css:252"
           ]
         },
         {
@@ -73,8 +73,8 @@
           "role": "text",
           "minimum": 4.5,
           "sources": [
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:305"
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:257"
           ]
         },
         {
@@ -84,9 +84,9 @@
           "role": "text",
           "minimum": 4.5,
           "sources": [
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:305"
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:257"
           ]
         },
         {
@@ -96,8 +96,8 @@
           "role": "graphic",
           "minimum": 3,
           "sources": [
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:204",
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:156",
             "packages/studio/src/player/components/TimelineLanes.tsx:270"
           ],
           "paintBacking": ["--timeline-row-bg", "--timeline-clip-bg"]
@@ -109,8 +109,8 @@
           "role": "graphic",
           "minimum": 3,
           "sources": [
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:219",
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:171",
             "packages/studio/src/player/components/TimelineLanes.tsx:270"
           ],
           "paintBacking": ["--timeline-row-bg", "--timeline-clip-bg"]
@@ -122,7 +122,7 @@
           "role": "graphic",
           "minimum": 3,
           "sources": [
-            "packages/studio/src/styles/studio.css:251",
+            "packages/studio/src/styles/components.css:203",
             "packages/studio/src/player/components/TimelineLanes.tsx:270"
           ]
         },
@@ -136,7 +136,7 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:86",
-            "packages/studio/src/styles/studio.css:203"
+            "packages/studio/src/styles/components.css:155"
           ],
           "opacity": 0.492
         },
@@ -150,9 +150,9 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:86",
-            "packages/studio/src/styles/studio.css:203",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:223"
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:175"
           ],
           "opacity": 0.492
         },
@@ -166,7 +166,7 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:87",
-            "packages/studio/src/styles/studio.css:243"
+            "packages/studio/src/styles/components.css:195"
           ],
           "opacity": 0.456
         },
@@ -184,9 +184,9 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:87",
-            "packages/studio/src/styles/studio.css:243",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:223"
+            "packages/studio/src/styles/components.css:195",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:175"
           ],
           "opacity": 0.456
         },
@@ -200,7 +200,7 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:85",
-            "packages/studio/src/styles/studio.css:261"
+            "packages/studio/src/styles/components.css:213"
           ],
           "opacity": 0.57
         },
@@ -218,9 +218,9 @@
             "packages/studio/src/player/components/TimelineClip.tsx:160",
             "packages/studio/src/player/components/TimelineClip.tsx:161",
             "packages/studio/src/player/components/timelineTheme.ts:85",
-            "packages/studio/src/styles/studio.css:261",
-            "packages/studio/src/styles/studio.css:213",
-            "packages/studio/src/styles/studio.css:223"
+            "packages/studio/src/styles/components.css:213",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:175"
           ],
           "opacity": 0.57
         },
@@ -231,8 +231,8 @@
           "role": "graphic",
           "minimum": 3,
           "sources": [
-            "packages/studio/src/styles/studio.css:230",
-            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/styles/components.css:182",
+            "packages/studio/src/styles/components.css:165",
             "packages/studio/src/player/components/AudioWaveform.tsx:139",
             "packages/studio/src/player/components/AudioWaveform.tsx:145"
           ],
@@ -250,8 +250,8 @@
           "role": "graphic",
           "minimum": 3,
           "sources": [
-            "packages/studio/src/styles/studio.css:230",
-            "packages/studio/src/styles/studio.css:213",
+            "packages/studio/src/styles/components.css:182",
+            "packages/studio/src/styles/components.css:165",
             "packages/studio/src/player/components/AudioWaveform.tsx:139",
             "packages/studio/src/player/components/AudioWaveform.tsx:145"
           ],
@@ -265,11 +265,44 @@
           "role": "graphic",
           "minimum": 3,
           "sources": [
-            "packages/studio/src/styles/studio.css:246",
+            "packages/studio/src/styles/components.css:198",
             "packages/studio/src/player/components/AudioWaveform.tsx:144"
           ],
           "opacity": 0.64,
           "format": "rgb-channels"
+        },
+        {
+          "id": "dock-tab-label",
+          "foreground": "--color-text-2",
+          "background": ["--panel-strip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:13",
+            "packages/studio/src/components/dock/dock.css:15"
+          ]
+        },
+        {
+          "id": "dock-shown-tab-label",
+          "foreground": "--color-text-1",
+          "background": ["--panel-card-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:12",
+            "packages/studio/src/components/dock/dock.css:14"
+          ]
+        },
+        {
+          "id": "dock-hovered-tab-label",
+          "foreground": "--color-text-1",
+          "background": ["--panel-strip-bg", "--panel-tab-bg-hover"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:100",
+            "packages/studio/src/components/dock/dock.css:102"
+          ]
         }
       ]
     },
@@ -319,7 +352,7 @@
           "minimum": 4.5,
           "sources": [
             "packages/studio/src/styles/theme.css",
-            "packages/studio/src/styles/studio.css"
+            "packages/studio/src/styles/components.css"
           ]
         },
         {
@@ -330,7 +363,7 @@
           "minimum": 3,
           "sources": [
             "packages/studio/src/styles/theme.css",
-            "packages/studio/src/styles/studio.css"
+            "packages/studio/src/styles/components.css"
           ]
         }
       ]

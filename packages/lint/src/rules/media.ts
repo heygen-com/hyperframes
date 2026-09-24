@@ -1,7 +1,7 @@
 import type { LintContext, HyperframeLintFinding, OpenTag } from "../context";
 import { readAttr, readDecodedAttr, stripJsComments, truncateSnippet, isMediaTag } from "../utils";
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
-import { extractMediaSrcMutations } from "@hyperframes/parsers";
+import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
 
 /**

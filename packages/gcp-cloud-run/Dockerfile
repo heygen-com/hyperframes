@@ -78,7 +78,7 @@ WORKDIR /app
 # the container runs `bun dist/server.js` and relies on bun's ESM `require`
 # interop to load the producer bundle, so a future bun release changing that
 # behaviour shouldn't silently break the next image rebuild. Bump deliberately.
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.9"
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
 ENV PATH="/root/.bun/bin:$PATH"
 
 # Install workspace dependencies. Copy manifests first for layer caching.

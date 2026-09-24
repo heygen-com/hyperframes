@@ -68,6 +68,26 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(result.scripts).toHaveLength(0);
   });
 
+  it("hoists stylesheet and preconnect links from a bare fragment", () => {
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => `<link rel="stylesheet" href="theme.css">
+<link rel="preconnect" href="https://fonts.example" crossorigin>
+<link rel="icon" href="favicon.ico">
+<div data-composition-id="intro"><link rel="stylesheet" href="nested.css"><link rel="icon" href="keep.ico"><div class="title">Hello</div></div>`,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(result.externalLinks).toEqual([
+      { href: "theme.css", rel: "stylesheet", crossorigin: undefined },
+      { href: "https://fonts.example", rel: "preconnect", crossorigin: "" },
+      { href: "nested.css", rel: "stylesheet", crossorigin: undefined },
+    ]);
+    expect(host.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(0);
+    expect(host.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+  });
+
   it("passes the failure reason through to onMissingComposition", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;

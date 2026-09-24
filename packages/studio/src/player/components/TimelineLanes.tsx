@@ -32,8 +32,8 @@ import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
-import { deriveTimelineTransitionSeams } from "./timelineTransitionSeams";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
+import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
 
 export function TimelineLanes({
   pps,
@@ -106,8 +106,9 @@ export function TimelineLanes({
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
-  const allTransitionElements = useMemo(
-    () => tracks.flatMap(([, elements]) => elements.map(getPreviewElement)),
+  const transitionSeamsByTrack = useMemo(
+    () =>
+      deriveTimelineTransitionSeamsByTrack(tracks.flatMap(([, els]) => els.map(getPreviewElement))),
     [getPreviewElement, tracks],
   );
   // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
@@ -224,9 +225,6 @@ export function TimelineLanes({
           // right only while it is collapsed and the row is nothing but bar.
           const clipBarHeight = rowExpanded ? TRACK_H - 2 * CLIP_Y : undefined;
           const automationElements = els.map(getPreviewElement);
-          const transitionSeams = deriveTimelineTransitionSeams(allTransitionElements).filter(
-            (seam) => seam.incoming.track === trackNum,
-          );
           // Minted here because this is the only place that sees BOTH ends of
           // the disclosure: the caret in the sticky header and the diamond lanes
           // on the canvas. Keyed by display row, not by `trackNum`, which is a
@@ -555,7 +553,9 @@ export function TimelineLanes({
                   })
                 }
                 <TimelineTransitionOverlays
-                  seams={transitionSeams}
+                  seams={transitionSeamsByTrack.get(trackNum) ?? []}
+                  rowElements={draggedClip?.started ? [] : automationElements}
+                  rowBackground={rowBackground}
                   pixelsPerSecond={pps}
                   rowHeight={rowHeight}
                   clipBarHeight={clipBarHeight}

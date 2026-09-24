@@ -1,9 +1,11 @@
-// Fails when the committed docs/public/catalog, which the docs build serves as-is, differs from generator output.
-import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
+// Source PRs validate generated output; the publish PR also checks its committed snapshot.
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdirSync, readdirSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { generateCatalog } from "./generate-catalog.ts";
+import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
 import { runAsCommand } from "./entrypoint.ts";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,40 +36,40 @@ export function treeDifferences(generatedRoot: string, committedRoot: string): s
   ];
 }
 
-function generateInto(outRoot: string): number {
-  const run = spawnSync("npx", ["tsx", "scripts/generate-catalog-payloads.ts"], {
-    cwd: repoRoot,
-    env: { ...process.env, CATALOG_PAYLOAD_ROOT: outRoot },
-    stdio: ["ignore", "ignore", "inherit"],
-  });
-  return run.status ?? 1;
-}
-
-/** The catalog as `git` holds it, so a file the working tree has but a .gitignore rule keeps out cannot hide drift. */
-function extractCommittedCatalog(into: string): string {
-  const archive = spawnSync("git", ["archive", "HEAD", "docs/public/catalog"], {
-    cwd: repoRoot,
-    maxBuffer: 2 ** 31 - 1,
-  });
-  if (archive.status !== 0) throw new Error("git archive of docs/public/catalog failed.");
-  mkdirSync(into, { recursive: true });
-  const untar = spawnSync("tar", ["-x", "-C", into], { input: archive.stdout });
-  if (untar.status !== 0) throw new Error("could not unpack the committed catalog.");
-  return join(into, "docs/public/catalog");
-}
-
 async function main(): Promise<void> {
+  await generateCatalog();
+  for (const script of [
+    "scripts/check-docs-catalog.mjs",
+    "scripts/catalog/check-artifact-coverage.ts",
+  ])
+    execFileSync("bun", [script], { cwd: repoRoot, stdio: "inherit" });
+  if (process.argv.includes("--committed")) checkCommittedCatalog();
+  else
+    console.log("Catalog sources generate successfully; derived files belong to the publish PR.");
+}
+
+function checkCommittedCatalog(): void {
   const base = mkdtempSync(join(tmpdir(), "catalog-drift-"));
-  const outRoot = join(base, "generated");
   try {
-    if (generateInto(outRoot) !== 0) throw new Error("The catalog payload generator failed.");
-    const committedRoot = extractCommittedCatalog(join(base, "committed"));
-    const differences = treeDifferences(outRoot, committedRoot);
-    if (differences.length === 0) return console.log("docs/public/catalog matches the generator.");
-    const listed = differences.slice(0, MAX_LISTED).map((line) => `  ${line}`);
-    throw new Error(
-      `docs/public/catalog differs from the generator in ${differences.length} file(s):\n${listed.join("\n")}\nRegenerate with \`tsx scripts/generate-catalog-payloads.ts\` and commit the result.`,
-    );
+    const committed = join(base, "committed");
+    const generated = join(base, "generated");
+    mkdirSync(committed);
+    mkdirSync(generated);
+    const archive = execFileSync("git", ["archive", "HEAD", ...GENERATED_CATALOG_PATHS], {
+      cwd: repoRoot,
+      maxBuffer: 2 ** 31 - 1,
+    });
+    execFileSync("tar", ["-x", "-C", committed], { input: archive });
+    for (const path of GENERATED_CATALOG_PATHS) {
+      mkdirSync(dirname(join(generated, path)), { recursive: true });
+      cpSync(join(repoRoot, path), join(generated, path), { recursive: true });
+    }
+    const differences = treeDifferences(generated, committed);
+    if (differences.length > 0)
+      throw new Error(
+        `Published catalog differs from generation:\n${differences.slice(0, MAX_LISTED).join("\n")}`,
+      );
+    console.log("Committed catalog matches generation.");
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

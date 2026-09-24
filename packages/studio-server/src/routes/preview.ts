@@ -3,7 +3,11 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
+import {
+  injectScriptsIntoHtml,
+  stripEmbeddedRuntimeScripts,
+  type BundleOptions,
+} from "@hyperframes/core/compiler";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
@@ -19,6 +23,7 @@ import {
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
+import { settledFileTag } from "../helpers/fileVersion.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
@@ -307,6 +312,13 @@ function resolveProjectMainHtml(
   return null;
 }
 
+/** The bundler options every adapter's `bundle()` uses. This route serves project files under a
+ * `<base href>`, so assets keep their URLs: inlined base64 multiplies the document per reference. */
+export const PREVIEW_BUNDLE_OPTIONS = {
+  runtime: "placeholder",
+  inlineAssets: false,
+} as const satisfies BundleOptions;
+
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({
     "Cache-Control": "private, no-cache",
@@ -550,15 +562,13 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       }
     }
 
-    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}${proxyEtagSalt(proxyVariant)}"`;
+    const tag = settledFileTag(stat);
+    const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant)}"`;
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
-      : {
-          "Cache-Control": "private, no-cache",
-          ETag: etag,
-        };
+      : { "Cache-Control": "private, no-cache", ...(etag && { ETag: etag }) };
 
-    if (!isText) {
+    if (!isText && etag) {
       const ifNoneMatch = c.req.header("If-None-Match");
       if (ifNoneMatch === etag) {
         return new Response(null, { status: 304, headers: cacheHeaders });

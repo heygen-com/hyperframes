@@ -1,0 +1,19 @@
+<link rel="stylesheet" href="scene.css" />
+<style>
+  .square {
+    position: absolute;
+    left: 20px;
+    top: 50px;
+    width: 80px;
+    height: 80px;
+  }
+</style>
+<div data-composition-id="scene" data-width="320" data-height="180" data-duration="2">
+  <div class="square"></div>
+</div>
+<script>
+  window.__timelines = window.__timelines || {};
+  window.__timelines.scene = gsap
+    .timeline({ paused: true })
+    .to(".square", { x: 160, duration: 2, ease: "none" });
+</script>

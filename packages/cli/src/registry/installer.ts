@@ -14,7 +14,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
 import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
-import { applyVariableDefaults, type ApplyResult } from "./variableDefaults.js";
+import {
+  applyVariableDefaults,
+  InvalidVariableValuesError,
+  type ApplyResult,
+} from "./variableDefaults.js";
 
 export interface InstallOptions {
   /** Project root where files land. Every target resolves relative to this. */
@@ -40,7 +44,6 @@ export interface InstallResult {
   variablesApplied: string[];
   /** Ids the item does not declare, and ids it declares but cannot accept. */
   variablesUnknown: string[];
-  variablesInvalid: { id: string; reason: string }[];
 }
 
 /**
@@ -100,6 +103,16 @@ export function hasLocalEdits(
   return installed !== digest(onDisk);
 }
 
+/** An install must leave this file alone: the project changed it, and `--force` was not given. */
+function keptByProject(
+  record: InstallRecord,
+  destPath: string,
+  target: string,
+  force: boolean | undefined,
+): boolean {
+  return !force && existsSync(destPath) && hasLocalEdits(record, target, readFileSync(destPath));
+}
+
 /**
  * Reject target paths that would escape `destDir`. Mirrors the pattern check
  * in `packages/core/schemas/registry-item.json#files.items.target`, but runs at
@@ -144,16 +157,37 @@ function addRegistryItemMarker(source: string, item: RegistryItem): string {
   return `<!-- hyperframes-registry-item: ${item.name} -->\n${source}`;
 }
 
-interface FileOutcome {
+export interface FileOutcome {
   destPath: string;
   target: string;
   preserved: boolean;
   hash: string | null;
   vars: ApplyResult | null;
+  /** What to write; null for a preserved file. */
+  bytes: Buffer | null;
 }
 
-/** Fetch, write and post-process one file. Extracted so installItem stays readable. */
-async function installOneFile(
+/**
+ * Check `--vars` against the file that declares them. A block's values ride on
+ * its mount, so only a component's own declaration is rewritten.
+ */
+function bakeVariables(
+  item: RegistryItem,
+  file: FileTarget,
+  bytes: Buffer,
+  values: Record<string, unknown> | null | undefined,
+): { bytes: Buffer; vars: ApplyResult | null } {
+  const component = isInstalledComponentSnippet(item, file);
+  if (!values || !(component || isInstalledRegistryBlockComposition(item, file))) {
+    return { bytes, vars: null };
+  }
+  const vars = applyVariableDefaults(bytes.toString("utf8"), values);
+  const rewrite = component && vars.applied.length > 0;
+  return { bytes: rewrite ? Buffer.from(vars.html) : bytes, vars };
+}
+
+/** Fetch and post-process one file; publishItem writes it once the whole plan is ready. */
+async function prepareOneFile(
   item: RegistryItem,
   file: FileTarget,
   destDir: string,
@@ -167,32 +201,26 @@ async function installOneFile(
   // Decided before fetching rather than after: a file we are going to keep
   // should never be overwritten and then put back, because a crash in
   // between would lose it for real.
-  if (
-    !options.force &&
-    existsSync(destPath) &&
-    hasLocalEdits(record, file.target, readFileSync(destPath))
-  ) {
-    return { destPath, target: file.target, preserved: true, hash: null, vars: null };
+  if (keptByProject(record, destPath, file.target, options.force)) {
+    return { destPath, target: file.target, preserved: true, hash: null, vars: null, bytes: null };
   }
 
   let bytes = await fetchItemFile(item, file, baseUrl, budget);
   if (isInstalledRegistryBlockComposition(item, file)) {
     bytes = Buffer.from(addRegistryItemMarker(bytes.toString("utf8"), item));
   }
-  let vars: ApplyResult | null = null;
-  if (options.variableValues && isInstalledComponentSnippet(item, file)) {
-    vars = applyVariableDefaults(bytes.toString("utf8"), options.variableValues);
-    if (vars.applied.length > 0) bytes = Buffer.from(vars.html);
-  }
-  publishRegistryFile(destDir, file.target, bytes);
-  // Hash what actually landed, marker and baked defaults included, or the
-  // next install reads its own output as the project's edit.
+  const baked = bakeVariables(item, file, bytes, options.variableValues);
+  bytes = baked.bytes;
+  const vars = baked.vars;
+  // Hash what will land, marker and baked defaults included, or the next
+  // install reads its own output as the project's edit.
   return {
     destPath,
     target: file.target,
     preserved: false,
     hash: digest(bytes),
     vars,
+    bytes,
   };
 }
 
@@ -204,6 +232,21 @@ export async function installItem(
   item: RegistryItem,
   options: InstallOptions,
 ): Promise<InstallResult> {
+  return publishItem(await prepareItem(item, options));
+}
+
+/** An item fetched and checked, with nothing written yet. */
+export interface PreparedItem {
+  root: string;
+  outcomes: FileOutcome[];
+  force: boolean;
+}
+
+/** Fetch and check every file of an item without writing, so a caller can refuse a whole plan. */
+export async function prepareItem(
+  item: RegistryItem,
+  options: InstallOptions,
+): Promise<PreparedItem> {
   if (!validRegistryItem(item, item.name, item.type)) throw new Error("Invalid registry item");
   const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
   const destDir = resolve(options.destDir);
@@ -219,8 +262,26 @@ export async function installItem(
   const budget = { remainingBytes: 512 * 1024 * 1024 };
 
   const outcomes = await installFileBatches(item.files, (file) =>
-    installOneFile(item, file, root, baseUrl, record, options, budget),
+    prepareOneFile(item, file, root, baseUrl, record, options, budget),
   );
+  const invalid = outcomes.flatMap((o) => o.vars?.invalid ?? []);
+  if (invalid.length > 0) throw new InvalidVariableValuesError(invalid);
+  return { root, outcomes, force: options.force ?? false };
+}
+
+/** Write a prepared item and record what landed. */
+export function publishItem({ root, outcomes: prepared, force }: PreparedItem): InstallResult {
+  // Read now, not at prepare time: another item published in between has recorded its own files.
+  const record = readInstallRecord(root);
+  // Asked again at write time: a save made while the rest of the plan downloaded is still an edit.
+  const outcomes = prepared.map((o) =>
+    o.bytes && keptByProject(record, o.destPath, o.target, force)
+      ? { ...o, preserved: true, hash: null, vars: null, bytes: null }
+      : o,
+  );
+  for (const outcome of outcomes) {
+    if (outcome.bytes) publishRegistryFile(root, outcome.target, outcome.bytes);
+  }
 
   const written = outcomes.filter((o) => !o.preserved).map((o) => o.destPath);
   const preserved = outcomes.filter((o) => o.preserved).map((o) => o.destPath);
@@ -245,7 +306,6 @@ export async function installItem(
           vars[0]!.unknown,
         )
       : [],
-    variablesInvalid: vars.flatMap((v) => v.invalid),
   };
 }
 
@@ -267,11 +327,11 @@ function validatePhysicalTargets(root: string, files: FileTarget[]): void {
 
 async function installFileBatches(
   files: FileTarget[],
-  install: (file: FileTarget) => Promise<FileOutcome>,
+  prepare: (file: FileTarget) => Promise<FileOutcome>,
 ): Promise<FileOutcome[]> {
   const outcomes: FileOutcome[] = [];
   for (let at = 0; at < files.length; at += 4) {
-    const batch = await Promise.allSettled(files.slice(at, at + 4).map(install));
+    const batch = await Promise.allSettled(files.slice(at, at + 4).map(prepare));
     for (const result of batch) {
       if (result.status === "rejected") throw result.reason;
       outcomes.push(result.value);

@@ -140,7 +140,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     usePlayerStore.getState().reset();
   });
 
-  it("defers rich clip content while scrolling without replacing the clip shell", async () => {
+  it("keeps a clip's picture on screen while the timeline scrolls", async () => {
     const [{ Timeline }, { usePlayerStore }] = await Promise.all([
       import("./Timeline"),
       import("../store/playerStore"),
@@ -167,17 +167,62 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
       expect(scroller).not.toBeNull();
       expect(clip).not.toBeNull();
       expect(clip?.title).toBe("Clip 0 • 0.0s – 10.0s");
-      expect(host.querySelector("[data-rich-content]")).not.toBeNull();
+      const picture = host.querySelector("[data-rich-content]");
+      expect(picture).not.toBeNull();
 
       if (scroller) await dispatchScroll(scroller);
       expect(host.querySelector('[data-el-id="clip-0"]')).toBe(clip);
-      expect(host.querySelector("[data-rich-content]")).toBeNull();
+      expect(host.querySelector("[data-rich-content]")).toBe(picture);
 
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 110));
       });
       expect(host.querySelector('[data-el-id="clip-0"]')).toBe(clip);
-      expect(host.querySelector("[data-rich-content]")).not.toBeNull();
+      expect(host.querySelector("[data-rich-content]")).toBe(picture);
+    } finally {
+      act(() => root.unmount());
+      usePlayerStore.getState().reset();
+    }
+  });
+
+  it("gives a clip that appears mid-scroll its picture once the scroll settles", async () => {
+    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
+      import("./Timeline"),
+      import("../store/playerStore"),
+    ]);
+    const clip = (id: string, start: number) => ({
+      id,
+      label: id,
+      tag: "div",
+      start,
+      duration: 5,
+      track: 0,
+    });
+    usePlayerStore.setState({ duration: 60, timelineReady: true, elements: [clip("clip-0", 0)] });
+
+    const { host, root } = await mountTimeline(
+      React.createElement(Timeline, {
+        renderClipContent: (element: { id: string }) =>
+          React.createElement("span", { "data-rich-content": element.id }),
+      }),
+    );
+    try {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 110));
+      });
+      const scroller = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]");
+      if (scroller) await dispatchScroll(scroller);
+      act(() => {
+        usePlayerStore.setState({ elements: [clip("clip-0", 0), clip("clip-1", 5)] });
+      });
+      expect(host.querySelector('[data-el-id="clip-1"]')).not.toBeNull();
+      expect(host.querySelector('[data-rich-content="clip-1"]')).toBeNull();
+      expect(host.querySelector('[data-rich-content="clip-0"]')).not.toBeNull();
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 110));
+      });
+      expect(host.querySelector('[data-rich-content="clip-1"]')).not.toBeNull();
     } finally {
       act(() => root.unmount());
       usePlayerStore.getState().reset();

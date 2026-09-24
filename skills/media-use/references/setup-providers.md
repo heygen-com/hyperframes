@@ -31,7 +31,7 @@ see the ladder and override.
 | image     | heygen search free-usage path; optional local mflux; codex `image_gen` upsell                                                                                                 |
 | voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                                                                                       |
 | icon      | heygen asset search free-usage path                                                                                                                                           |
-| logo      | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)                                                                                               |
+| logo      | theSVG (thesvg.org), then GitHub org avatar, then domain favicon (all free)                                                                                                   |
 | grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                                                                                              |
 | video     | heygen avatar video free-usage path (sign-in nudge on auth failure); optional local LTX (`videogen` ladder). Image-to-video / photo-avatar / dub stay manual `heygen` recipes |
 

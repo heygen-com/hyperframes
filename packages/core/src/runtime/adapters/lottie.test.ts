@@ -133,6 +133,65 @@ describe("lottie adapter", () => {
       expect(player.seek.mock.calls).toEqual([[50], [0], [100]]);
     });
 
+    it("wraps a looping lottie-web animation into its own cycle and clamps a one-shot", () => {
+      const cycle = { ...createLottieWebAnim({ totalFrames: 120, frameRate: 30 }), loop: true };
+      const once = createLottieWebAnim({ totalFrames: 120, frameRate: 30 });
+      lottieWindow.__hfLottie = [cycle, once];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 5 });
+      adapter.seek({ time: 8 });
+      expect(cycle.goToAndStop.mock.calls).toEqual([
+        [30, true],
+        [0, true],
+      ]);
+      expect(once.goToAndStop.mock.calls).toEqual([
+        [119, true],
+        [119, true],
+      ]);
+    });
+
+    it("wraps a loop whose length is not a whole number of seconds without holding at the seam", () => {
+      const cycle = { ...createLottieWebAnim({ totalFrames: 901, frameRate: 30 }), loop: true };
+      lottieWindow.__hfLottie = [cycle];
+      createLottieAdapter().seek({ time: (9 * 901) / 30 });
+      expect(cycle.goToAndStop).toHaveBeenCalledWith(0, true);
+    });
+
+    it.each([
+      [24, 23.976, 85],
+      [30, 25, 17],
+    ])(
+      "starts cycle %s-frame @ %s fps number %s on frame 0 despite float error",
+      (frames, fps, k) => {
+        const cycle = {
+          ...createLottieWebAnim({ totalFrames: frames, frameRate: fps }),
+          loop: true,
+        };
+        lottieWindow.__hfLottie = [cycle];
+        createLottieAdapter().seek({ time: (k * frames) / fps });
+        expect(cycle.goToAndStop).toHaveBeenCalledWith(0, true);
+      },
+    );
+
+    it("holds a one-shot lottie-web animation on its last frame past its end", () => {
+      const anim = createLottieWebAnim({ totalFrames: 30, frameRate: 30 });
+      lottieWindow.__hfLottie = [anim];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 0.5 });
+      adapter.seek({ time: 2.5 });
+      expect(anim.goToAndStop.mock.calls).toEqual([
+        [500, false],
+        [29, true],
+      ]);
+    });
+
+    it("wraps a looping dotlottie player into its own cycle", () => {
+      const player = { ...createDotLottiePlayer({ totalFrames: 60, frameRate: 30 }), loop: true };
+      lottieWindow.__hfLottie = [player];
+      createLottieAdapter().seek({ time: 3 });
+      expect(player.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
+    });
+
     it("does nothing with no instances", () => {
       const adapter = createLottieAdapter();
       expect(() => adapter.seek({ time: 1 })).not.toThrow();

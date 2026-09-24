@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
+import { compositionInputSignature } from "../helpers/compositionInputs.js";
 import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
@@ -86,6 +87,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       c.req.path.replace(`/projects/${project.id}/thumbnail/`, "").split("?")[0] ?? "",
     );
     if (compPath && !compPath.includes(".")) compPath += ".html";
+    // Keyed on what this composition renders from, so editing one scene leaves the others cached.
+    const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
 
     const url = new URL(c.req.url, `http://${c.req.header("host") || "localhost"}`);
     const rawSeekTime = url.searchParams.get("t");
@@ -159,14 +162,14 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`
       : "";
-    const projectSignatureKey = `_${createHash("sha1").update(projectSignature).digest("hex").slice(0, 16)}`;
+    const inputSignatureKey = `_${createHash("sha1").update(inputSignature).digest("hex").slice(0, 16)}`;
     const outputScale =
       outputMode === "source"
         ? 1
         : Math.min(1, THUMBNAIL_MAX_OUTPUT_WIDTH / compW, THUMBNAIL_MAX_OUTPUT_HEIGHT / compH);
     const outputWidth = Math.max(1, Math.round(compW * outputScale));
     const outputHeight = Math.max(1, Math.round(compH * outputScale));
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${projectSignatureKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${inputSignatureKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
     const cachePath = join(cacheDir, cacheKey);
     if (!prunedCacheDirs.has(cacheDir)) {
       prunedCacheDirs.add(cacheDir);
@@ -202,12 +205,13 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
           });
           if (!generated) return null;
           const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
-          const freshSignature = createProjectSignature(project.dir);
+          const inputsUnchanged = (signature: string) =>
+            compositionInputSignature(project.dir, compPath, signature) === inputSignature;
+          // Both the adapter's signature and a fresh one: the adapter's can lag the watcher.
           if (
-            !afterGeneration ||
-            afterGeneration.project.dir !== project.dir ||
-            afterGeneration.signature !== projectSignature ||
-            freshSignature !== projectSignature
+            afterGeneration?.project.dir !== project.dir ||
+            !inputsUnchanged(afterGeneration.signature) ||
+            !inputsUnchanged(createProjectSignature(project.dir))
           ) {
             // The browser may have rendered content written after this request
             // captured its cache identity. Return the pixels to this caller,

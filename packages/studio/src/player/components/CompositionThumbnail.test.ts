@@ -137,6 +137,13 @@ describe("CompositionThumbnail", () => {
     const tiles = [...host.querySelectorAll("img")];
     expect(tiles.length).toBeGreaterThan(0);
     expect(tiles.every((tile) => !tile.classList.contains("hidden"))).toBe(true);
+    // Pictures read untinted by default, like video filmstrips; the theme tokens own any dimming.
+    expect(
+      tiles.every((tile) => tile.style.opacity === "var(--timeline-composition-thumbnail-opacity)"),
+    ).toBe(true);
+    expect(tiles[0]?.parentElement?.parentElement?.style.mixBlendMode).toBe(
+      "var(--timeline-composition-thumbnail-blend)",
+    );
   });
 
   it("aborts its scheduled off-DOM image probe when unmounted", async () => {

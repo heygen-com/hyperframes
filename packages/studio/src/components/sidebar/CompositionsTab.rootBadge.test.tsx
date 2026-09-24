@@ -18,7 +18,7 @@ afterEach(() => {
   if (root) act(() => root?.unmount());
   root = null;
   document.body.innerHTML = "";
-  usePlayerStore.setState({ thumbnailContentRevision: 0 });
+  usePlayerStore.setState({ thumbnailRevisions: {} });
 });
 
 function mount(compositions: string[], masterCompositionPath: string | null) {

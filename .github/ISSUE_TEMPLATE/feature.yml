@@ -1,6 +1,6 @@
 name: Feature Request
 description: Suggest an idea for Hyperframes
-labels: ["enhancement"]
+labels: ["enhancement", "triage/needs-triage"]
 body:
   - type: markdown
     attributes:

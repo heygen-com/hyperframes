@@ -1,6 +1,11 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  changedItems,
   declaresWebgpu,
   itemsFromDiff,
   withoutAbortedMedia,
@@ -87,4 +92,29 @@ describe("withoutAbortedMedia", () => {
     const aborted = "request failed: https://cdn.example/x.mp4 (net::ERR_ABORTED)";
     assert.deepEqual(withoutAbortedMedia([aborted, ...kept]), kept);
   });
+});
+
+it("browser selection includes regenerated edits and new untracked payloads", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "catalog-selection-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root });
+  mkdirSync(join(root, "docs/public/catalog/blocks"), { recursive: true });
+  const old = join(root, "docs/public/catalog/blocks/old.json");
+  writeFileSync(old, "{}");
+  git("init", "-q");
+  git("add", ".");
+  git(
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-qm",
+    "fixture",
+  );
+  writeFileSync(old, '{"html":"updated"}');
+  writeFileSync(join(root, "docs/public/catalog/blocks/new.json"), "{}");
+  assert.deepEqual([...changedItems("HEAD", root)].sort(), ["new", "old"]);
 });

@@ -813,7 +813,7 @@
               },
               {
                 "group": "Blocks",
-                "tag": "13",
+                "tag": "14",
                 "expanded": false,
                 "pages": [
                   "catalog/blocks/flowchart",
@@ -822,6 +822,7 @@
                   "catalog/blocks/hw-pipeline",
                   "catalog/blocks/hw-text-cloud",
                   "catalog/blocks/logo-outro",
+                  "catalog/blocks/lottie-character-walk",
                   "catalog/blocks/mk-background",
                   "catalog/blocks/mk-placeholder-grid",
                   "catalog/blocks/mk-progress-stat",
@@ -887,6 +888,7 @@
               "concepts/frame-adapters",
               "concepts/determinism",
               "guides/html-in-canvas",
+              "guides/vfx-chain",
               "guides/figma"
             ]
           },

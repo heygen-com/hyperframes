@@ -368,7 +368,7 @@ test("manifest hit for a non-heygen provider omits authMethod entirely", () => {
     id: "logo_001",
     type: "logo",
     path: ".media/images/logo_001.svg",
-    provenance: { provider: "svgl", prompt: "acme logo" },
+    provenance: { provider: "thesvg", prompt: "acme logo" },
   });
   appendRecord(tmp, record);
   const filePath = join(tmp, record.path);

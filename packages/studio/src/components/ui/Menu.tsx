@@ -220,6 +220,22 @@ export function MenuRadioItem({ className, children, ...props }: MenuRadioItemPr
   );
 }
 
+/** An on/off row; the tick renders only while `checked`. */
+export function MenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: StyledProps<typeof BaseMenu.CheckboxItem>) {
+  return (
+    <BaseMenu.CheckboxItem className={cn(itemBase, className)} {...props}>
+      <span className="truncate">{children}</span>
+      <span className="flex size-3 shrink-0 items-center justify-center text-accent">
+        <BaseMenu.CheckboxItemIndicator>✓</BaseMenu.CheckboxItemIndicator>
+      </span>
+    </BaseMenu.CheckboxItem>
+  );
+}
+
 /** A hairline between two groups of items. */
 export function MenuSeparator({ className, ...props }: StyledProps<typeof BaseMenu.Separator>) {
   return <BaseMenu.Separator className={cn("my-1 h-px bg-hairline", className)} {...props} />;

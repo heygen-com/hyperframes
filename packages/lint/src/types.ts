@@ -5,6 +5,9 @@ export type HyperframeLintFinding = {
   severity: HyperframeLintSeverity;
   message: string;
   file?: string;
+  /** One-based coordinates in the original source; absent when no unique location exists. */
+  line?: number;
+  column?: number;
   selector?: string;
   elementId?: string;
   fixHint?: string;
@@ -37,7 +40,7 @@ export type HyperframeLintResult = {
 export type HyperframeLinterOptions = {
   filePath?: string;
   isSubComposition?: boolean;
-  externalStyles?: Array<{ href: string; content: string }>;
+  externalStyles?: Array<{ href: string; content: string; file?: string }>;
   /**
    * Set to `true` when linting compositions destined for distributed / Lambda
    * rendering, where system-font capture (`allowSystemFontCapture`) is

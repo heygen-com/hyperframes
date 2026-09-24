@@ -4,6 +4,7 @@ import {
   fileContentVersion,
   recordFileWriteReceipt,
   resetFileWriteReceipts,
+  settledFileTag,
 } from "./fileVersion";
 
 afterEach(resetFileWriteReceipts);
@@ -77,5 +78,21 @@ describe("file versions and write receipts", () => {
     recordFileWriteReceipt("/project/index.html", newer);
 
     expect(identifyFileWrite("/project/index.html", version)).toEqual(newer);
+  });
+});
+
+describe("settledFileTag", () => {
+  it("tags a file only once its last change is three seconds old", () => {
+    const now = 1_000_000;
+    expect(settledFileTag({ ino: 7, ctimeMs: now - 2999, size: 10 }, now)).toBeNull();
+    expect(settledFileTag({ ino: 7, ctimeMs: now - 3000, size: 10 }, now)).toBe(
+      [7, now - 3000, 10].map((n) => n.toString(36)).join("-"),
+    );
+  });
+
+  it("gives a file replaced at the same size and change time a new tag", () => {
+    const now = 1_000_000;
+    const before = settledFileTag({ ino: 7, ctimeMs: now - 5000, size: 10 }, now);
+    expect(settledFileTag({ ino: 8, ctimeMs: now - 5000, size: 10 }, now)).not.toBe(before);
   });
 });

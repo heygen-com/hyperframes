@@ -14,6 +14,16 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { DraggedClipState, BlockedClipState } from "./useTimelineClipDrag";
+import * as transitionSeams from "./timelineTransitionSeams";
+
+vi.mock("./timelineTransitionSeams", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./timelineTransitionSeams")>();
+  return {
+    ...actual,
+    deriveTimelineTransitionSeams: vi.fn(actual.deriveTimelineTransitionSeams),
+    deriveTimelineTransitionSeamsByTrack: vi.fn(actual.deriveTimelineTransitionSeamsByTrack),
+  };
+});
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -459,6 +469,59 @@ describe("TimelineLanes clip thumbnails", () => {
     view.rerender({ elements, renderClipContent, hoveredClip: "clip-a" });
     view.rerender({ elements, renderClipContent, selectedElementIds: new Set(["clip-a"]) });
     expect(new Set(rich)).toEqual(new Set([false]));
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes clip joins", () => {
+  const at = (id: string, start: number, duration: number): TimelineElement => ({
+    ...element(id, TRACK_A),
+    start,
+    duration,
+  });
+
+  it("draws one row-coloured hairline where clips touch, and leaves the clips where they are", () => {
+    const view = renderLanes({
+      elements: [at("clip-a", 0, 2), at("clip-b", 2, 1.5), at("clip-c", 4, 1)],
+    });
+
+    const joins = view.host.querySelectorAll<HTMLElement>("[data-timeline-clip-join]");
+    expect(joins).toHaveLength(1);
+    expect(joins[0]?.style.left).toBe("200px");
+    expect(joins[0]?.style.width).toBe("1px");
+    expect(joins[0]?.style.background).toBe(defaultTimelineTheme.rowBackground);
+    const clipB = view.host.querySelector<HTMLElement>('[data-el-id="clip-b"]');
+    expect(clipB?.style.left).toBe("200px");
+    expect(clipB?.style.width).toBe("150px");
+    act(() => view.root.unmount());
+  });
+
+  it("draws no join while a clip is being moved, since the moved clip is drawn elsewhere", () => {
+    const clipA = at("clip-a", 0, 2);
+    const view = renderLanes({
+      elements: [clipA, at("clip-b", 2, 1.5)],
+      draggedClip: { element: clipA, started: true } as DraggedClipState,
+    });
+
+    expect(view.host.querySelectorAll("[data-timeline-clip-join]")).toHaveLength(0);
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes transition seams", () => {
+  it("derives transition seams once for every row, not once per row", () => {
+    const derivations = [
+      transitionSeams.deriveTimelineTransitionSeams,
+      transitionSeams.deriveTimelineTransitionSeamsByTrack,
+    ].map((derive) => vi.mocked(derive));
+    for (const derive of derivations) derive.mockClear();
+
+    const view = renderLanes({
+      elements: [element("clip-a", 0), element("clip-b", TRACK_A), element("clip-c", TRACK_B)],
+    });
+
+    expect(view.host.querySelectorAll("[data-timeline-row]").length).toBeGreaterThanOrEqual(3);
+    expect(derivations.reduce((calls, derive) => calls + derive.mock.calls.length, 0)).toBe(1);
     act(() => view.root.unmount());
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deriveTimelineTransitionSeams } from "./timelineTransitionSeams";
+import {
+  deriveTimelineTransitionSeams,
+  deriveTimelineTransitionSeamsByTrack,
+} from "./timelineTransitionSeams";
 import type { TimelineElement } from "../store/playerStore";
 
 const clip = (
@@ -44,5 +47,22 @@ describe("deriveTimelineTransitionSeams", () => {
   it("rejects crisp gaps and touching edges", () => {
     expect(deriveTimelineTransitionSeams([clip("a", 0, 2), clip("b", 2.04, 1)])).toEqual([]);
     expect(deriveTimelineTransitionSeams([clip("a", 0, 2), clip("b", 2, 1)])).toEqual([]);
+  });
+});
+
+describe("deriveTimelineTransitionSeamsByTrack", () => {
+  it("finds each track's transitions even when another track's clip starts between them", () => {
+    const label = "hf:transition:out:in:crossfade";
+    const other = "hf:transition:a:b:wipe";
+    const byTrack = deriveTimelineTransitionSeamsByTrack([
+      clip("out", 0, 2, 0, label),
+      clip("in", 1.8, 2, 0, label),
+      clip("a", 5, 2, 2, other),
+      clip("b", 6.5, 2, 2, other),
+      clip("alone", 0, 3, 1),
+    ]);
+    expect(byTrack.get(0)?.map((seam) => seam.incoming.id)).toEqual(["in"]);
+    expect(byTrack.get(2)?.map((seam) => seam.incoming.id)).toEqual(["b"]);
+    expect(byTrack.has(1)).toBe(false);
   });
 });

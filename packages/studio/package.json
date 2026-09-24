@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.8.62",
+  "version": "0.8.70",
   "description": "",
   "repository": {
     "type": "git",
@@ -27,6 +27,7 @@
       "types": "./src/styles/tailwind-preset.ts"
     },
     "./theme.css": "./src/styles/theme.css",
+    "./components.css": "./src/styles/components.css",
     "./styles.css": "./src/styles/studio.css",
     "./package.json": "./package.json"
   },
@@ -42,6 +43,7 @@
         "types": "./dist/styles/tailwind-preset.d.ts"
       },
       "./theme.css": "./src/styles/theme.css",
+      "./components.css": "./src/styles/components.css",
       "./styles.css": "./dist/styles.css",
       "./package.json": "./package.json"
     },

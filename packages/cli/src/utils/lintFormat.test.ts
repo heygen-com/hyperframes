@@ -239,3 +239,10 @@ describe("formatLintStartupMessage", () => {
     expect(lines.length).toBeGreaterThan(1);
   });
 });
+
+it("prints source coordinates for a single-file finding", () => {
+  const result = project([
+    { file: "index.html", findings: [finding("error", { line: 5, column: 3 })] },
+  ]);
+  expect(formatLintFindings(result)[0]).toContain("index.html:5:3");
+});

@@ -74,9 +74,44 @@ describe("external file change coordinator", () => {
       onAcceptedPersistedFileChange: () => order.push("thumbnail"),
       reloadPreview: () => order.push("preview"),
       reloadSdkSession: () => order.push("sdk"),
+      refreshFileTree: () => {
+        order.push("tree");
+      },
     });
     await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
-    expect(order).toEqual(["drain", "thumbnail", "preview", "sdk"]);
+    expect(order).toEqual(["drain", "thumbnail", "preview", "sdk", "tree"]);
+    expect(captured.handle?.blocked).toBeNull();
+  });
+
+  // The file tree (useFileTree) is only ever refreshed from Studio's own file
+  // operations (create/delete/rename/upload) — never on an external change.
+  // Without this call, an agent removing or replacing a composition updates
+  // the preview and the SDK session but leaves the listing stale forever.
+  it("refreshes the file tree on an accepted external change", async () => {
+    const refreshFileTree = vi.fn();
+    await mountCoordinator({ refreshFileTree });
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+    expect(refreshFileTree).toHaveBeenCalledOnce();
+  });
+
+  it("does not refresh the tree for a suppressed self-write echo", async () => {
+    const refreshFileTree = vi.fn();
+    await mountCoordinator({ refreshFileTree });
+    markStudioWriteToken("studio-write-1");
+    await act(async () =>
+      handler?.({
+        path: "index.html",
+        content: "studio",
+        version: "v2",
+        writeToken: "studio-write-1",
+      }),
+    );
+    expect(refreshFileTree).not.toHaveBeenCalled();
+  });
+
+  it("is optional — an accepted change with no refreshFileTree collaborator does not throw", async () => {
+    const { captured } = await mountCoordinator({ refreshFileTree: undefined });
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
     expect(captured.handle?.blocked).toBeNull();
   });
 
@@ -104,7 +139,7 @@ describe("external file change coordinator", () => {
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(reloadSdkSession).not.toHaveBeenCalled();
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
-    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
   });
 
   it("accepts a matching content echo without a write token and suppresses every reload", async () => {
@@ -125,7 +160,7 @@ describe("external file change coordinator", () => {
     );
 
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
-    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
     expect(drainPendingChanges).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(reloadSdkSession).not.toHaveBeenCalled();
@@ -345,7 +380,34 @@ describe("external file change coordinator", () => {
 
       expect(drainPendingChanges).not.toHaveBeenCalled();
       expect(reloadPreview).not.toHaveBeenCalled();
-      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
+    });
+
+    it("hands the server's affected compositions to the thumbnail refresh", async () => {
+      const onAcceptedPersistedFileChange = vi.fn();
+      await mountCoordinator({ onAcceptedPersistedFileChange });
+
+      await act(async () =>
+        handler?.(
+          sseDelivery({
+            path: "compositions/scene-a.html",
+            version: "v3",
+            affectedCompositions: ["index.html", "compositions/scene-a.html"],
+          }),
+        ),
+      );
+      await act(async () =>
+        handler?.(
+          sseDelivery({ path: "assets/logo.svg", version: "v4", affectedCompositions: "all" }),
+        ),
+      );
+
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(
+        1,
+        "compositions/scene-a.html",
+        ["index.html", "compositions/scene-a.html"],
+      );
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(2, "assets/logo.svg", null);
     });
 
     it("reloads once when one watcher event reaches two subscribers", async () => {

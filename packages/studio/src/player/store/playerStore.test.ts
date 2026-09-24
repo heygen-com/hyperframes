@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { usePlayerStore, liveTime, type TimelineElement } from "./playerStore";
+import { thumbnailRevisionOf } from "./thumbnailSlice";
 
 /** The playback/selection state `reset()` restores (persistent prefs asserted separately). */
 function expectResettableDefaults(state: ReturnType<typeof usePlayerStore.getState>): void {
@@ -32,25 +33,38 @@ describe("usePlayerStore", () => {
   });
 
   describe("thumbnail content revision", () => {
-    it("advances once per accepted persisted file event", () => {
-      const before = usePlayerStore.getState().thumbnailContentRevision;
+    const revisionOf = (path: string) =>
+      thumbnailRevisionOf(usePlayerStore.getState().thumbnailRevisions, path);
 
-      usePlayerStore.getState().bumpThumbnailContentRevision();
+    it("advances only the compositions an accepted file event names", () => {
+      const scene = revisionOf("compositions/scene-a.html");
+      const sibling = revisionOf("compositions/scene-b.html");
 
-      expect(usePlayerStore.getState().thumbnailContentRevision).toBe(before + 1);
+      usePlayerStore.getState().bumpThumbnailRevisions(["compositions/scene-a.html"]);
+
+      expect(revisionOf("compositions/scene-a.html")).toBe(scene + 1);
+      expect(revisionOf("compositions/scene-b.html")).toBe(sibling);
+    });
+
+    it("advances every composition when the event names none", () => {
+      const sibling = revisionOf("compositions/scene-b.html");
+
+      usePlayerStore.getState().bumpThumbnailRevisions(null);
+
+      expect(revisionOf("compositions/scene-b.html")).toBe(sibling + 1);
     });
 
     it("remains monotonic across soft resets while project identity stays with the session epoch", () => {
       const store = usePlayerStore.getState();
       store.beginTimelineSession("project-a");
-      store.bumpThumbnailContentRevision();
-      const revision = usePlayerStore.getState().thumbnailContentRevision;
+      store.bumpThumbnailRevisions(null);
+      const revision = revisionOf("index.html");
       const firstEpoch = usePlayerStore.getState().timelineSessionEpoch;
 
       store.reset();
-      expect(usePlayerStore.getState().thumbnailContentRevision).toBe(revision);
+      expect(revisionOf("index.html")).toBe(revision);
       store.beginTimelineSession("project-b");
-      expect(usePlayerStore.getState().thumbnailContentRevision).toBe(revision);
+      expect(revisionOf("index.html")).toBe(revision);
       expect(usePlayerStore.getState().timelineSessionEpoch).toBe(firstEpoch + 1);
     });
   });

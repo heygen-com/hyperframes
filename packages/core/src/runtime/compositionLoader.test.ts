@@ -127,6 +127,28 @@ describe("loadExternalCompositions", () => {
     expect(host.querySelector("p")?.textContent).toBe("Scene");
   });
 
+  it.each(["scene", "different-host-id"])(
+    "hoists fragment stylesheets once for %s",
+    async (hostId) => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+      host.setAttribute("data-composition-id", hostId);
+      document.body.appendChild(host);
+      const html = `<div data-composition-id="scene">
+<link rel="stylesheet" href="scene.css"><link rel="icon" href="icon.svg"><p>Styled scene</p></div>`;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(html, { status: 200 }));
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      expect(
+        document.head.querySelectorAll('link[href="https://example.com/compositions/scene.css"]'),
+      ).toHaveLength(1);
+      expect(host.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(0);
+      expect(host.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+      expect(host.querySelector("p")?.textContent).toBe("Styled scene");
+    },
+  );
+
   it("preserves head stylesheets when an external composition uses a template", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");

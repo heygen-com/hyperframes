@@ -16,6 +16,9 @@ import {
 } from "dockview-react";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { installDockAccessibility } from "./dockAccessibility";
+import { DockStripActions } from "./DockStripActions";
+import { DockTab } from "./DockTab";
+import { installTabFill } from "./dockTabFill";
 import { addRegisteredPanel, applySideMinimums, buildEditLayout } from "./dockLayout";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
 import { useDockLayoutStore, type DockController, type DockSnapshot } from "./dockLayoutStore";
@@ -150,6 +153,7 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       applySideMinimums(api);
       const root = api.groups[0]?.element.closest<HTMLElement>(".hf-dock");
       const disposeAccessibility = root ? installDockAccessibility(api, root) : () => {};
+      const disposeTabFill = root ? installTabFill(api, root) : () => {};
       // The dock spans the window (buildEditLayout sizes against it too); its own box lags a resize.
       const resizeObserver = new ResizeObserver(() => applySideMinimums(api, window.innerWidth));
       if (root) resizeObserver.observe(root);
@@ -189,6 +193,7 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
         clearTimeout(timer);
         for (const subscription of subscriptions) subscription.dispose();
         disposeAccessibility();
+        disposeTabFill();
         resizeObserver.disconnect();
         useDockLayoutStore.getState().detach();
       };
@@ -202,8 +207,11 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
         key={projectId ?? ""}
         className="hf-dock flex-1 min-h-0"
         components={COMPONENTS}
+        defaultTabComponent={DockTab}
+        rightHeaderActionsComponent={DockStripActions}
         defaultRenderer="always"
         disableFloatingGroups
+        disableTabsOverflowList
         onReady={onReady}
       />
       {children}

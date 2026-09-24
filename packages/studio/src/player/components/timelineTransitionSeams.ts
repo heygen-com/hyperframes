@@ -34,3 +34,24 @@ export function deriveTimelineTransitionSeams(
   }
   return seams;
 }
+
+/**
+ * Transition seams keyed by track, derived once for every row. Pairs are found within a track, so a clip on
+ * another track that starts between a transition's two clips cannot hide it.
+ */
+export function deriveTimelineTransitionSeamsByTrack(
+  elements: readonly TimelineElement[],
+): ReadonlyMap<number, readonly TimelineTransitionSeam[]> {
+  const tracks = new Map<number, TimelineElement[]>();
+  for (const element of elements) {
+    const track = tracks.get(element.track);
+    if (track) track.push(element);
+    else tracks.set(element.track, [element]);
+  }
+  const byTrack = new Map<number, readonly TimelineTransitionSeam[]>();
+  for (const [track, trackElements] of tracks) {
+    const seams = deriveTimelineTransitionSeams(trackElements);
+    if (seams.length > 0) byTrack.set(track, seams);
+  }
+  return byTrack;
+}

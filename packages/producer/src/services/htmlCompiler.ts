@@ -163,7 +163,7 @@ class EmptyCompositionError extends Error {
       `${problems.length} composition file${problems.length === 1 ? "" : "s"} referenced by ` +
         `data-composition-src cannot be rendered:\n${lines.join("\n")}\n\n` +
         "Check that each file referenced by data-composition-src contains valid HTML with a " +
-        "<template> or <body> containing a [data-composition-id] element. If a scene-authoring " +
+        "[data-composition-id] element in a <template>, <body>, or bare fragment. If a scene-authoring " +
         "step is still running, wait for it to finish before referencing the file.",
     );
     this.name = "EmptyCompositionError";
@@ -2097,32 +2097,33 @@ export async function compileForRender(
 
   // Advisory video checks (sparse keyframes, VFR). Fire-and-forget — these spawn
   // ffprobe subprocesses and should not block compilation since they only produce warnings.
+  // The two probes run in sequence rather than in parallel: the keyframe analysis needs
+  // the video stream's own duration to classify a single-keyframe (single-GOP) file.
   for (const video of videos) {
     if (isHttpUrl(video.src)) continue;
     const videoPath = resolve(projectDir, video.src);
     const reencode = `ffmpeg -i "${video.src}" -c:v libx264 -r 30 -g 30 -keyint_min 30 -movflags +faststart -c:a copy output.mp4`;
-    Promise.all([
-      withMediaProbeSlot(() => analyzeKeyframeIntervals(videoPath)),
-      withMediaProbeSlot(() => extractMediaMetadata(videoPath)),
-    ])
-      .then(([analysis, metadata]) => {
-        if (analysis.isProblematic) {
-          defaultLogger.warn(
-            `[Compiler] WARNING: Video "${video.id}" has sparse keyframes (max interval: ${analysis.maxIntervalSeconds}s). ` +
-              `This causes seek failures and frame freezing. Re-encode with: ${reencode}`,
-          );
-        }
-        if (metadata.isVFR) {
-          // defaultLogger (stderr), not console.info (stdout) — matches the sibling
-          // warning above; a stdout line here corrupts `check --json` / `validate --json`.
-          defaultLogger.warn(
-            `[Compiler] Video "${video.id}" is variable frame rate (VFR); ` +
-              `the engine will normalize it to CFR before frame extraction. ` +
-              `If rendering feels slow on this video, pre-encode once with: ${reencode}`,
-          );
-        }
-      })
-      .catch(() => {});
+    (async () => {
+      const metadata = await withMediaProbeSlot(() => extractMediaMetadata(videoPath));
+      const analysis = await withMediaProbeSlot(() =>
+        analyzeKeyframeIntervals(videoPath, metadata),
+      );
+      if (analysis.isProblematic) {
+        defaultLogger.warn(
+          `[Compiler] WARNING: Video "${video.id}" has sparse keyframes (max interval: ${analysis.maxIntervalSeconds}s). ` +
+            `This causes seek failures and frame freezing. Re-encode with: ${reencode}`,
+        );
+      }
+      if (metadata.isVFR) {
+        // defaultLogger (stderr), not console.info (stdout) — matches the sibling
+        // warning above; a stdout line here corrupts `check --json` / `validate --json`.
+        defaultLogger.warn(
+          `[Compiler] Video "${video.id}" is variable frame rate (VFR); ` +
+            `the engine will normalize it to CFR before frame extraction. ` +
+            `If rendering feels slow on this video, pre-encode once with: ${reencode}`,
+        );
+      }
+    })().catch(() => {});
   }
 
   // Read dimensions from root composition element using DOM parser

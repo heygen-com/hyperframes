@@ -1,4 +1,7 @@
-import { planCompositionAssembly } from "../compiler/compositionAssembly";
+import {
+  planCompositionAssembly,
+  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+} from "../compiler/compositionAssembly";
 import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/compositionScoping";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
@@ -193,7 +196,7 @@ function resetCompositionHost(host: Element) {
  * inline-template path, and mutating it would leave a remount with no styles.
  */
 function stripExtractedCompositionAssets(node: ParentNode): void {
-  for (const el of Array.from(node.querySelectorAll("style, script"))) {
+  for (const el of Array.from(node.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR))) {
     el.remove();
   }
 }
@@ -533,6 +536,7 @@ async function mountCompositionContent(params: {
     params.host.appendChild(mountedContent);
   } else {
     params.host.innerHTML = params.fallbackBodyInnerHtml;
+    stripExtractedCompositionAssets(params.host);
   }
 
   // Stash the per-instance variables BEFORE running scripts. The scoped

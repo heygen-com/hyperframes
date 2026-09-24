@@ -272,6 +272,172 @@ describe("layout-audit.browser", () => {
     expect(issues[0]?.selector).toBe('[data-layout-name="headline"]');
   });
 
+  it("flags nowrap text wider than a container that does not clip", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+        word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+      },
+      { word: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    const overflow = runAudit().find((issue) => issue.code === "container_overflow");
+    expect(overflow).toMatchObject({
+      selector: "#word",
+      containerSelector: "#box",
+    });
+  });
+
+  it("clears nowrap container overflow when the container allows overflow", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box" data-layout-allow-overflow>
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+        word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+      },
+      { word: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag font-height spill from nowrap text that fits its width", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="hi">Hi</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 150, height: 64 }),
+        hi: rect({ left: 0, top: -4, width: 60.44, height: 72 }),
+      },
+      { hi: { whiteSpace: "nowrap", fontSize: "64px" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag a narrow nowrap label that sits outside a box that does not clip", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="badge">NEW</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 200, height: 80 }),
+        badge: rect({ left: 184, top: 0, width: 32, height: 20 }),
+      },
+      { badge: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag an empty nowrap decoration beside a fitting label", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="label">OK</span>
+          <div id="decoration"></div>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 150, height: 40 }),
+        label: rect({ left: 0, top: 0, width: 40, height: 20 }),
+        decoration: rect({ left: 0, top: 0, width: 240, height: 20 }),
+      },
+      { label: { whiteSpace: "nowrap" }, decoration: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag a wrapping sibling because another child is nowrap", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="label">OK</span>
+          <span id="body">a wrapping line</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 150, height: 80 }),
+        label: rect({ left: 0, top: 0, width: 40, height: 20 }),
+        body: rect({ left: 0, top: 24, width: 240, height: 40 }),
+      },
+      { label: { whiteSpace: "nowrap" }, body: { whiteSpace: "normal" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag a container that does not clip when its text wraps", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+      word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+    });
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
   it("respects layout ignore and allow-overflow opt-outs", () => {
     document.body.innerHTML = `
       <div data-composition-id="main" data-width="640" data-height="360">
@@ -2479,6 +2645,25 @@ describe("layout-audit.browser occlusion", () => {
       topmostId: "overlay",
     });
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("still flags covered text when only an ancestor allows occlusion", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="node-top" data-layout-allow-occlusion>
+          <div id="headline">Typed Answers</div>
+        </div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    const occluded = runAudit().find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
   });
 
   it("does not treat a visible container as painted text when its only text child is hidden", () => {

@@ -18,6 +18,18 @@ export function fileContentVersion(content: string | Uint8Array): string {
   return `"sha256:${createHash("sha256").update(content).digest("hex")}"`;
 }
 
+/** A validator from a file's inode, change time and size, or null while the change is under three
+ * seconds old. Change time, not mtime: copy tools (`cp -p`, rsync, robocopy) set mtime back but not
+ * ctime, which Node reads from NTFS ChangeTime on Windows. A same-size rewrite within one tick keeps
+ * both, so only a settled file is tagged. */
+export function settledFileTag(
+  stat: { ino: number; ctimeMs: number; size: number },
+  now = Date.now(),
+): string | null {
+  if (now - stat.ctimeMs < 3000) return null;
+  return [stat.ino, stat.ctimeMs, stat.size].map((n) => n.toString(36)).join("-");
+}
+
 export function createWriteToken(requestToken?: string): string {
   const token = requestToken?.trim();
   return token && token.length <= 200 ? token : randomUUID();

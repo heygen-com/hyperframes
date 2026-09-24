@@ -17,16 +17,16 @@ npx hyperframes media-use resolve --type <type> --intent "<description>" --proje
 
 Returns one line: `resolved <id> → <path> (<type>, <metadata>)`. All search noise stays on disk.
 
-| Type    | One-line intent                                                                     |
-| ------- | ----------------------------------------------------------------------------------- |
-| `bgm`   | background music (HeyGen catalog, 10k+ tracks)                                      |
-| `sfx`   | sound effects (bundled 19-file library + catalog)                                   |
-| `image` | photos, backgrounds (HeyGen asset search, 75k+ vectors)                             |
-| `icon`  | icons, symbols (transparent)                                                        |
-| `logo`  | official brand marks (svgl → simple-icons → GitHub avatar → favicon; never redrawn) |
-| `voice` | TTS voiceover (HeyGen free-usage path; optional local Kokoro)                       |
-| `grade` | measured correction candidate; broad polish/stylization follows Media Treatments    |
-| `lut`   | user-provided or explicitly chosen reusable validated `.cube` file                  |
+| Type    | One-line intent                                                                  |
+| ------- | -------------------------------------------------------------------------------- |
+| `bgm`   | background music (HeyGen catalog, 10k+ tracks)                                   |
+| `sfx`   | sound effects (bundled 19-file library + catalog)                                |
+| `image` | photos, backgrounds (HeyGen asset search, 75k+ vectors)                          |
+| `icon`  | icons, symbols (transparent)                                                     |
+| `logo`  | official brand marks (theSVG → GitHub avatar → favicon; never redrawn)           |
+| `voice` | TTS voiceover (HeyGen free-usage path; optional local Kokoro)                    |
+| `grade` | measured correction candidate; broad polish/stylization follows Media Treatments |
+| `lut`   | user-provided or explicitly chosen reusable validated `.cube` file               |
 
 Before resolving fresh, list reusable candidates with `--candidates` and judge fit yourself — reuse rules, all flags, ingest (`--from`), and adopt are in `references/resolve.md`.
 

@@ -20,6 +20,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { heygenAuthHeaders, heygenCredential, heygenJSON } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
+import { synthesizeGemini } from "./gemini-tts.mjs";
+import { geminiConfigured } from "./gemini-auth.mjs";
 
 // ── provider detection ────────────────────────────────────────────────────────
 export function heygenAvailable() {
@@ -37,8 +39,12 @@ export function elevenlabsAvailable() {
 // First available provider wins; an explicit choice is honored (and validated).
 export function pickProvider(userProvider) {
   if (userProvider) {
-    if (!["heygen", "elevenlabs", "kokoro"].includes(userProvider))
-      throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro)`);
+    if (!["heygen", "elevenlabs", "kokoro", "gemini"].includes(userProvider))
+      throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro | gemini)`);
+    if (userProvider === "gemini" && !geminiConfigured())
+      throw new Error(
+        "provider=gemini needs GEMINI_API_KEY or GOOGLE_API_KEY, or service-account credentials (GOOGLE_APPLICATION_CREDENTIALS or GCS_CREDS)",
+      );
     if (userProvider === "heygen" && !heygenAvailable())
       throw new Error(
         "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `npx hyperframes auth login`)",
@@ -56,6 +62,7 @@ export function pickProvider(userProvider) {
 // their own defaults.
 export async function resolveVoiceId({ provider, userVoice, lang = "en" }) {
   if (userVoice) return userVoice;
+  if (provider === "gemini") return "Kore";
   if (provider === "elevenlabs") return "21m00Tcm4TlvDq8ikWAM"; // Rachel
   if (provider === "kokoro") {
     if (lang === "en") return "am_michael";
@@ -248,10 +255,14 @@ export async function synthesizeOne({
   voiceId,
   lang = "en",
   speed = 1.0,
+  model,
+  style,
   wavAbs,
   hyperframesDir,
 }) {
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
+  if (provider === "gemini")
+    return synthesizeGemini({ text, voiceId, model, style, speed, wavAbs });
   if (provider === "elevenlabs") {
     // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
     // and kokoro (the `hyperframes tts` CLI), it does NOT create the parent dir,

@@ -1,4 +1,5 @@
 name: CI
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Checks (catalog_publish={0})', inputs.catalog_publish) || '' }}
 
 permissions:
   contents: read
@@ -10,6 +11,12 @@ env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
 on:
+  workflow_dispatch:
+    inputs:
+      catalog_publish:
+        description: "Run required checks for a generated catalog publication."
+        type: boolean
+        default: false
   pull_request:
     # `edited` is required so the workflow re-fires when a PR's base ref is
     # set back to `main` after a Graphite stack restack momentarily flips
@@ -56,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.filter.outputs.code }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
@@ -80,11 +87,12 @@ jobs:
           token: ""
           filters: |
             catalog_index:
-              - "registry/registry.json"
+              - "registry/**"
               - "registry/catalog-artifact/**"
               - "skills/media-use/audio/assets/sfx/**"
               - "scripts/catalog/check-artifact-coverage.ts"
             docs_catalog:
+              - "skills/media-use/audio/assets/sfx/**"
               - "docs/**"
               - "registry/**"
               - "scripts/*catalog*"
@@ -109,8 +117,11 @@ jobs:
               - "bun.lock"
               - ".github/workflows/ci.yml"
             skills:
+              - "scripts/generate-captured-font-copies.mjs"
               - "packages/cli/src/media-use/**"
               - "scripts/check-media-use-copy-parity.test.mjs"
+              - "scripts/check-skill-import-boundaries.test.mjs"
+              - "scripts/generate-skill-module-copies.mjs"
               - "skills/**"
               - ".claude/skills/**"
               - ".agents/skills/**"
@@ -202,8 +213,8 @@ jobs:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun scripts/generate-registry-items.ts
       - run: bun run lint
-      - run: bun run check:docs-catalog
 
   # Loads every catalog payload a PR changes in headless Chrome. A static scan of the
   # markup cannot see an asset a script fetches, and the docs host serves only fonts,
@@ -226,8 +237,26 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
+      - name: Keep catalog source PRs source-only
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-catalog-source-pr.mjs origin/main
+      - name: Generate and validate catalog
+        env:
+          PUBLISH_PR: ${{ (github.head_ref || github.ref_name) == 'bot/catalog-publish' }}
+        run: |
+          if [ "$PUBLISH_PR" = "true" ]; then
+            bun run check:catalog-drift --committed
+          else
+            bun run check:catalog-drift
+          fi
       - run: bun run verify:catalog-payloads --changed origin/main
-      - run: bun run check:catalog-drift
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: catalog-index
+          path: |
+            registry/registry.json
+            registry/catalog-artifact/local-vectors.json
+            registry/catalog-artifact/local-vectors.bin
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
   # the changed files. The default `--gate new-only` means existing legacy
@@ -411,6 +440,8 @@ jobs:
         uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
         with:
           chrome-version: stable
+      - run: bun run generate:catalog
+        if: needs.changes.outputs.docs_catalog == 'true'
       - run: bun run test:scripts
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.catalog-chrome.outputs.chrome-path }}
@@ -418,23 +449,28 @@ jobs:
 
   test:
     name: Test
-    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support]
+    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support, test-skills]
     # Keep the existing required `Test` context authoritative for producer
     # failures too. It also fails closed if any package shard fails or is cancelled.
-    if: always() && needs.changes.outputs.code == 'true'
+    if: always() && (needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - name: Require producer source tests
-        if: needs.producer-source-tests.result != 'success'
+        if: needs.changes.outputs.code == 'true' && needs.producer-source-tests.result != 'success'
         run: |
           echo "::error::Producer unit/integration tests did not succeed."
           exit 1
       - name: Require package test shards
-        if: needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success'
+        if: needs.changes.outputs.code == 'true' && (needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success')
         run: |
           echo "::error::A package test shard did not succeed."
           echo "studio=${{ needs.test-studio.result }} runtime=${{ needs.test-runtime.result }} support=${{ needs.test-support.result }}"
+          exit 1
+      - name: Require skills tests
+        if: needs.changes.outputs.skills == 'true' && needs.test-skills.result != 'success'
+        run: |
+          echo "::error::Skills tests did not succeed."
           exit 1
 
   producer-source-tests:
@@ -485,6 +521,9 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Verify standalone skill imports
+        run: bun test scripts/check-skill-import-boundaries.test.mjs
       - name: Discover and run skills tests
         # We expand the test list via bash so the job fails loudly when the
         # matcher comes back empty, rather than silently no-op'ing (which
@@ -525,16 +564,17 @@ jobs:
   # drift. bun runs the TS script directly, no install needed.
   catalog-index-coverage:
     name: "Catalog: search index covers the registry"
-    needs: changes
+    needs: [changes, catalog-payloads]
     if: needs.changes.outputs.catalog_index == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      # Comparing two name lists needs neither the embedding model nor a
-      # network call, so this stays a seconds-long gate. Regenerating the
-      # vectors does need the model, which is why CI checks rather than fixes.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: catalog-index
+          path: registry
       - name: Verify every searchable registry item has a vector
         run: bun scripts/catalog/check-artifact-coverage.ts
 
@@ -1040,23 +1080,54 @@ jobs:
 
   semantic-pr-title:
     name: Semantic PR title
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      PR_TITLE_TYPES: |
+        feat
+        fix
+        docs
+        style
+        refactor
+        perf
+        test
+        build
+        ci
+        chore
+        revert
     steps:
-      - uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+      - if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          types: |
-            feat
-            fix
-            docs
-            style
-            refactor
-            perf
-            test
-            build
-            ci
-            chore
-            revert
+          types: ${{ env.PR_TITLE_TYPES }}
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - if: github.event_name == 'workflow_dispatch'
+        id: pr
+        run: node scripts/ci/resolve-workflow-pr.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: amannn/action-semantic-pull-request
+          ref: e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+          path: .semantic-pr-action
+          persist-credentials: false
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - if: github.event_name == 'workflow_dispatch'
+        name: Validate PR title
+        run: GITHUB_EVENT_PATH="$PR_EVENT_PATH" node .semantic-pr-action/dist/index.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_EVENT_PATH: ${{ steps.pr.outputs.event_path }}
+          INPUT_GITHUBBASEURL: ${{ github.api_url }}
+          INPUT_TYPES: ${{ env.PR_TITLE_TYPES }}

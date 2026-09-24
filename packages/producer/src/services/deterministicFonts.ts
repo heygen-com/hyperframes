@@ -1448,6 +1448,17 @@ function resolveFontFetchRetryPolicy(
   };
 }
 
+/**
+ * Last in document order: a stylesheet declared after the deterministic faces would win the
+ * cascade for the same family whenever it had loaded, so early frames could differ between renders.
+ */
+function placeAfterEveryStylesheet(document: Document, head: Element, styleEl: Element): void {
+  const stylesheets = document.querySelectorAll("style, link[rel~=stylesheet]");
+  const lastStylesheet = stylesheets[stylesheets.length - 1];
+  if (lastStylesheet) lastStylesheet.after(styleEl);
+  else head.appendChild(styleEl);
+}
+
 export async function injectDeterministicFontFaces(
   html: string,
   options: InjectDeterministicFontFacesOptions = {},
@@ -1508,7 +1519,7 @@ export async function injectDeterministicFontFaces(
   const styleEl = document.createElement("style");
   styleEl.setAttribute("data-hyperframes-deterministic-fonts", "true");
   styleEl.textContent = css;
-  head.insertBefore(styleEl, head.firstChild);
+  placeAfterEveryStylesheet(document, head, styleEl);
 
   defaultLogger.info(
     `[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`,

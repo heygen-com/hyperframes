@@ -2,7 +2,10 @@
   "guards": {
     "scripts/check-media-use-copy-parity.test.mjs": [
       "skills/media-use/scripts/lib/**",
-      "packages/cli/src/media-use/lib/**"
+      "packages/cli/src/media-use/lib/**",
+      "scripts/generate-skill-module-copies.mjs",
+      "skills/hyperframes/scripts/lib/frame-packets-core.mjs",
+      "skills/media-use/audio/scripts/lib/bgm-volume.mjs"
     ],
     "scripts/check-test-reachability.test.mjs": [
       ".github/workflows/ci.yml",
@@ -20,7 +23,20 @@
       "scripts/**",
       "packages/producer/**"
     ],
-    "scripts/generate-catalog-payloads.test.ts": ["registry/**", "scripts/**"]
+    "scripts/generate-catalog-payloads.test.ts": ["registry/**", "scripts/**"],
+    "skills/product-launch-video/scripts/build-frame-subsets.test.mjs": [
+      "scripts/generate-captured-font-copies.mjs",
+      "skills/product-launch-video/scripts/build-frame.mjs",
+      "skills/product-launch-video/scripts/captions.mjs",
+      "skills/product-launch-video/scripts/lib/captured-fonts.mjs",
+      "skills/faceless-explainer/scripts/build-frame.mjs",
+      "skills/faceless-explainer/scripts/captions.mjs",
+      "skills/faceless-explainer/scripts/lib/captured-fonts.mjs",
+      "skills/pr-to-video/scripts/build-frame.mjs",
+      "skills/pr-to-video/scripts/captions.mjs",
+      "skills/pr-to-video/scripts/lib/captured-fonts.mjs"
+    ],
+    "scripts/check-skill-import-boundaries.test.mjs": ["skills/**"]
   },
   "runners": [
     {
@@ -45,7 +61,7 @@
       ],
       "sources": {
         "packages/producer/scripts/run-test-lane.mjs": "bff02680f19eebcce0df72cdeedbbc05edfdcede3f3f60658fc0cb18ed8c59f6",
-        "packages/producer/scripts/test-classification.mjs": "f7a1129f49d86fe4a1429dc8b9b75168b25540e1c63242fc79376ae02cf5d0de",
+        "packages/producer/scripts/test-classification.mjs": "040fd35bae0ec736c61b78c74c6836ee0f49d4ff3860a95dc75fa52f1c939822",
         ".github/workflows/ci.yml#job#producer-source-tests": "3709c6ac6c9f5c7c66f57fc6c1c106aec4ffe906f919eb7cdf2a6ce1d4e0974c",
         "packages/producer/package.json#script#test:unit": "ae6beda8319d166774be958ea5593cd27dbf7f6c9bce1d787a3fe28dfc3477b1",
         "packages/producer/package.json#script#test:integration": "008589f37d026877595a13501cbb66abd5cbe50e21fdcac6904f45466c3f475d",

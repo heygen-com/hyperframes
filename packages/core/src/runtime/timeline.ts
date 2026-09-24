@@ -27,6 +27,11 @@ import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
 
+/** A root timeline this long is an endless loop, not a film: GSAP reports 1e10 s for `repeat: -1`.
+ *  Studio's sanitizeDurationSeconds rejects the same length. Animations that simply end past the
+ *  voiceover are real duration, and the runtime player already plays them. */
+const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
+
 export function isRuntimeElementVisibleAt(
   rawNode: HTMLElement,
   options: {
@@ -368,7 +373,7 @@ export function collectRuntimeTimelinePayload(params: {
   const timelineLooksLoopInflated =
     timelineDurationCandidate != null &&
     finiteWindowFloor != null &&
-    timelineDurationCandidate > finiteWindowFloor + 1;
+    timelineDurationCandidate >= LOOP_INFLATED_TIMELINE_SECONDS;
   // Prefer explicit authored root duration first.
   // If absent, guard against loop-inflated GSAP durations by trusting finite media window.
   const preferredRootDuration =
@@ -690,16 +695,13 @@ export function collectRuntimeTimelinePayload(params: {
   // payload duration down to the last visible clip end, the controls jump even
   // though playback still runs for the full authored root duration.
   const safeDuration = Math.max(1, maxEnd || 1, rootCompositionDuration ?? 0);
-  const shouldEmitNonDeterministicInf = timelineLooksLoopInflated && attrDurationCandidate == null;
-  const durationInFrames = shouldEmitNonDeterministicInf
-    ? Number.POSITIVE_INFINITY
-    : Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
+  const durationInFrames = Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
   return {
     ...runtimeProtocolMetadata(params.canonicalFps),
     source: "hf-preview",
     type: "timeline",
     compositionContractVersion: COMPOSITION_CONTRACT_VERSION,
-    durationSeconds: shouldEmitNonDeterministicInf ? Number.POSITIVE_INFINITY : safeDuration,
+    durationSeconds: safeDuration,
     durationInFrames,
     clips,
     scenes,

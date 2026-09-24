@@ -71,6 +71,15 @@ The Lottie adapter seeks the existing animation frame by frame, so the
 designer's work renders exactly as authored. Asking the agent to recreate it in
 GSAP throws away the source and lands somewhere approximate.
 
+Characters work the same way. A mascot that walks in, stops and points is a
+Lottie file with the acting in it; the agent builds the scene around it in GSAP:
+
+> Use this character Lottie (`assets/mascot.json`): it walks in and points right at 5.2s. Bring the title card in on the point.
+
+A short walk cycle with `loop: true` keeps cycling for the whole scene. The
+[`lottie-character-walk`](/catalog/blocks/lottie-character-walk) block is a
+working starting point.
+
 ## Simple UI and text motion → the default
 
 Fades, slides, staggers, counters, kinetic type, hover-style reveals — the

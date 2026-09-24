@@ -440,7 +440,9 @@ describe("useSdkSession unavailable telemetry", () => {
   // so this is what "the composition genuinely is not there" looks like on the
   // wire — previously indistinguishable from a broken request. The shim and a
   // real 0-byte file are the same response, hence the name.
-  it("separates a file that is not on disk", async () => {
+  // An older server sends no `missing` field, so the combined label stays —
+  // rather than guessing one of the two and quietly corrupting the series.
+  it("keeps the combined label when the server does not say which empty this is", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => ({ content: "" }) }) as Response),
@@ -456,6 +458,81 @@ describe("useSdkSession unavailable telemetry", () => {
       reason: "absent_or_empty",
       path_in_tree: null,
     });
+    await act(async () => root.unmount());
+  });
+
+  // `missing: true` is the route's shim — nothing resolved at that path.
+  it("reports a file the server could not find as absent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => ({ ok: true, json: async () => ({ content: "", missing: true }) }) as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "absent",
+      path_in_tree: null,
+    });
+    await act(async () => root.unmount());
+  });
+
+  // `missing: false` with empty content is a real 0-byte file on disk — a
+  // placeholder somebody created and has not written yet, not a bad path.
+  it("reports a real zero-byte file separately from an absent one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => ({ ok: true, json: async () => ({ content: "", missing: false }) }) as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "empty_file",
+      path_in_tree: null,
+    });
+    await act(async () => root.unmount());
+  });
+
+  // A 200 carrying HTML is an SPA fallback or a proxy answering in the route's
+  // place. Before this, `res.json()` rejected outside any catch and the outer
+  // catch filed it as `stage: "open"` — blaming the user's composition for a
+  // response the composition had nothing to do with.
+  it("reports a non-JSON 200 as a read failure, not a composition parse failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            headers: { get: () => "text/html; charset=utf-8" },
+            json: async () => {
+              throw new SyntaxError(`Unexpected token '<', "<!-- /*!"... is not valid JSON`);
+            },
+          }) as unknown as Response,
+      ),
+    );
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+
+    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
+      stage: "read",
+      reason: "invalid_json",
+      content_type: "text/html; charset=utf-8",
+    });
+    expect(trackMock).not.toHaveBeenCalledWith(
+      "sdk_session_unavailable",
+      expect.objectContaining({ stage: "open" }),
+    );
     await act(async () => root.unmount());
   });
 
@@ -508,6 +585,152 @@ describe("useSdkSession unavailable telemetry", () => {
       path_in_tree: true,
     });
     await act(async () => rootB.unmount());
+  });
+
+  // `compositionMissing` and the once-per-path refresh fallback: proven
+  // 2026-09-23 that `absent` means a stale tree (refreshFileTree only runs
+  // after Studio's own file ops, never on an external change), so an `absent`
+  // read is the one signal that should make the tree self-correct even when
+  // the SSE-driven refresh in useExternalFileChangeCoordinator is missed.
+  describe("compositionMissing and the absent-read refresh fallback", () => {
+    function HandleProbe({
+      projectId,
+      path,
+      onAbsentRead,
+    }: {
+      projectId: string;
+      path: string;
+      onAbsentRead?: (path: string) => void;
+    }) {
+      captured.handle = useSdkSession(projectId, path, [], false, onAbsentRead);
+      return null;
+    }
+    const captured: { handle: SdkSessionHandle | null } = { handle: null };
+
+    it("sets compositionMissing and calls onAbsentRead once for an absent read", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            ({ ok: true, json: async () => ({ content: "", missing: true }) }) as Response,
+        ),
+      );
+      const onAbsentRead = vi.fn();
+      const root = createRoot(document.createElement("div"));
+      await act(async () =>
+        root.render(
+          <HandleProbe projectId="project-a" path="index.html" onAbsentRead={onAbsentRead} />,
+        ),
+      );
+      await flushAsyncEffects();
+
+      expect(captured.handle?.compositionMissing).toBe(true);
+      expect(onAbsentRead).toHaveBeenCalledOnce();
+      expect(onAbsentRead).toHaveBeenCalledWith("index.html");
+
+      // A second absent read for the SAME path must not refresh again — the
+      // refresh already ran and didn't fix it (the file really is gone).
+      await act(async () => {
+        captured.handle?.forceReload();
+      });
+      await flushAsyncEffects();
+      expect(onAbsentRead).toHaveBeenCalledOnce();
+
+      await act(async () => root.unmount());
+    });
+
+    it("calls onAbsentRead again for a different path", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            ({ ok: true, json: async () => ({ content: "", missing: true }) }) as Response,
+        ),
+      );
+      const onAbsentRead = vi.fn();
+      const root = createRoot(document.createElement("div"));
+      await act(async () =>
+        root.render(
+          <HandleProbe projectId="project-a" path="scenes/a.html" onAbsentRead={onAbsentRead} />,
+        ),
+      );
+      await flushAsyncEffects();
+      await act(async () =>
+        root.render(
+          <HandleProbe projectId="project-a" path="scenes/b.html" onAbsentRead={onAbsentRead} />,
+        ),
+      );
+      await flushAsyncEffects();
+
+      expect(onAbsentRead).toHaveBeenCalledTimes(2);
+      expect(onAbsentRead).toHaveBeenNthCalledWith(1, "scenes/a.html");
+      expect(onAbsentRead).toHaveBeenNthCalledWith(2, "scenes/b.html");
+      await act(async () => root.unmount());
+    });
+
+    it("resets the guard on project change, so the same path can refresh again", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            ({ ok: true, json: async () => ({ content: "", missing: true }) }) as Response,
+        ),
+      );
+      const onAbsentRead = vi.fn();
+      const root = createRoot(document.createElement("div"));
+      await act(async () =>
+        root.render(
+          <HandleProbe projectId="project-a" path="index.html" onAbsentRead={onAbsentRead} />,
+        ),
+      );
+      await flushAsyncEffects();
+      await act(async () =>
+        root.render(
+          <HandleProbe projectId="project-b" path="index.html" onAbsentRead={onAbsentRead} />,
+        ),
+      );
+      await flushAsyncEffects();
+
+      expect(onAbsentRead).toHaveBeenCalledTimes(2);
+      await act(async () => root.unmount());
+    });
+
+    it("clears compositionMissing once a later read succeeds", async () => {
+      const fetchMock = vi.fn(
+        async () => ({ ok: true, json: async () => ({ content: "", missing: true }) }) as Response,
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      openComposition.mockResolvedValue(fakeSession());
+      const root = createRoot(document.createElement("div"));
+      await act(async () => root.render(<HandleProbe projectId="project-a" path="index.html" />));
+      await flushAsyncEffects();
+      expect(captured.handle?.compositionMissing).toBe(true);
+
+      fetchMock.mockImplementation(async () => response("PROJECT_A"));
+      await act(async () => {
+        captured.handle?.forceReload();
+      });
+      await flushAsyncEffects();
+
+      expect(captured.handle?.compositionMissing).toBe(false);
+      await act(async () => root.unmount());
+    });
+
+    it("does not throw when onAbsentRead is not supplied", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            ({ ok: true, json: async () => ({ content: "", missing: true }) }) as Response,
+        ),
+      );
+      const root = createRoot(document.createElement("div"));
+      await act(async () => root.render(<HandleProbe projectId="project-a" path="index.html" />));
+      await flushAsyncEffects();
+
+      expect(captured.handle?.compositionMissing).toBe(true);
+      await act(async () => root.unmount());
+    });
   });
 
   it("reports a parse failure with its message", async () => {

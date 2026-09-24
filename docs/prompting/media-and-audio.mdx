@@ -38,6 +38,26 @@ agent choose.
 - ❌ `add a voice`
 - ✅ `warm, unhurried female narration of the quoted script` — tone and pace are what actually change the delivery
 
+### Gemini voiceover
+
+Choose Gemini when you want to direct a narrator's delivery with a description.
+Configure [Gemini credentials](/guides/authentication#providers-used-by-agent-workflows),
+then ask your agent:
+
+> Use Gemini 3.8 Flash TTS with the Kore voice to narrate this script. Make the
+> delivery warm and unhurried. Use the media-use audio engine, transcribe the
+> generated audio, and sync the captions and visual reveals to the spoken words.
+
+The shared audio workflow supports 3.8 Flash and Flash-Lite TTS,
+3.1 Flash TTS Preview, and 2.5 Pro and Flash TTS Preview. Gemini is an explicit choice; it does not replace
+the automatic provider order above. Keep the script separate from delivery
+instructions. The helper uses structured style metadata for 3.8 and a delivery
+prompt for older models; review the generated speech for accidental directions.
+
+The agent saves the voiceover locally and obtains word timings through a
+separate transcription pass. Check names, numbers, and pauses against the
+audio before the final render. A new narration take needs new timings.
+
 ## Background music
 
 Music resolves from a large catalog by mood. It should almost always sit *under*

@@ -1,3 +1,4 @@
+import { gsapCallOffset, containingCallOffset } from "../scriptPositions";
 interface LintParsedGsap {
   animations: Array<{
     targetSelector: string;
@@ -530,8 +531,12 @@ function scanScriptsForRegexMatches(
   scripts: LintContext["scripts"],
   pattern: RegExp,
   options: { stripComments: boolean; contextBefore: number; contextAfter: number },
-): Array<{ match: RegExpExecArray; snippet: string }> {
-  const hits: Array<{ match: RegExpExecArray; snippet: string }> = [];
+): Array<{ match: RegExpExecArray; snippet: string; script: LintContext["scripts"][number] }> {
+  const hits: Array<{
+    match: RegExpExecArray;
+    snippet: string;
+    script: LintContext["scripts"][number];
+  }> = [];
   for (const script of scripts) {
     const content = options.stripComments ? stripJsComments(script.content) : script.content;
     const regex = new RegExp(pattern.source, pattern.flags);
@@ -542,7 +547,7 @@ function scanScriptsForRegexMatches(
         content.length,
         match.index + match[0].length + options.contextAfter,
       );
-      hits.push({ match, snippet: content.slice(contextStart, contextEnd) });
+      hits.push({ match, snippet: content.slice(contextStart, contextEnd), script });
     }
   }
   return hits;
@@ -1534,7 +1539,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_infinite_repeat
-  ({ scripts, rootTag }) => {
+  ({ scripts, rootTag, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     const declaredDuration = Number.parseFloat(
       rootTag ? (readAttr(rootTag.raw, "data-duration") ?? "") : "",
@@ -1542,12 +1547,13 @@ export const gsapRules: LintRule<LintContext>[] = [
     const hasFiniteCompositionWindow = Number.isFinite(declaredDuration) && declaredDuration > 0;
     // Match repeat: -1 in GSAP tweens or timeline configs
     const pattern = /repeat\s*:\s*-1(?!\d)/g;
-    for (const { snippet } of scanScriptsForRegexMatches(scripts, pattern, {
+    for (const { snippet, match, script } of scanScriptsForRegexMatches(scripts, pattern, {
       stripComments: true,
       contextBefore: 60,
       contextAfter: 60,
     })) {
       findings.push({
+        ...locate(script, containingCallOffset(script, match.index)),
         code: "gsap_infinite_repeat",
         severity: hasFiniteCompositionWindow ? "warning" : "error",
         message: hasFiniteCompositionWindow
@@ -1566,17 +1572,18 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_repeat_ceil_overshoot
-  ({ scripts }) => {
+  ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     // Match patterns like: repeat: Math.ceil(duration / X) - 1
     // or repeat: Math.ceil(totalDuration / cycleDuration) - 1
     const pattern = /repeat\s*:\s*Math\.ceil\s*\([^)]+\)\s*-\s*1/g;
-    for (const { snippet } of scanScriptsForRegexMatches(scripts, pattern, {
+    for (const { snippet, match, script } of scanScriptsForRegexMatches(scripts, pattern, {
       stripComments: false,
       contextBefore: 40,
       contextAfter: 40,
     })) {
       findings.push({
+        ...locate(script, containingCallOffset(script, match.index)),
         code: "gsap_repeat_ceil_overshoot",
         severity: "warning",
         message:
@@ -1593,18 +1600,19 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_repeat_floor_unclamped
-  ({ scripts }) => {
+  ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     // A direct floor-minus-one expression becomes GSAP's infinite -1 sentinel when
     // the visible duration is shorter than one full cycle. Math.max-wrapped forms
     // intentionally do not match because `repeat:` is followed by Math.max, not Math.floor.
     const pattern = /repeat\s*:\s*Math\.floor\s*\([^)]+\)\s*-\s*1/g;
-    for (const { snippet } of scanScriptsForRegexMatches(scripts, pattern, {
+    for (const { snippet, match, script } of scanScriptsForRegexMatches(scripts, pattern, {
       stripComments: false,
       contextBefore: 40,
       contextAfter: 40,
     })) {
       findings.push({
+        ...locate(script, containingCallOffset(script, match.index)),
         code: "gsap_repeat_floor_unclamped",
         severity: "warning",
         message:
@@ -1620,7 +1628,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_timeline_not_registered
-  ({ scripts, rawSource, options }) => {
+  ({ scripts, rawSource, options, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     const canInheritFromHost =
       options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template");
@@ -1633,6 +1641,7 @@ export const gsapRules: LintRule<LintContext>[] = [
         TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(content);
       if (hasRegistration || canInheritFromHost) continue;
       findings.push({
+        ...locate(script, gsapCallOffset(script, "timeline")),
         code: "gsap_timeline_not_registered",
         severity: "error",
         message:

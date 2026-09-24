@@ -1,41 +1,51 @@
-import { fetchMedia, isPublicMediaUrl } from "./media-fetch.mjs";
-import { writeFileSync, copyFileSync, mkdirSync } from "node:fs";
+import { fetchMedia, isPublicMediaUrl, readCappedBody } from "./media-fetch.mjs";
+import { sanitizeSvg } from "./svg-sanitize.mjs";
+import { writeFileSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 // ponytail: bound the download so a hostile/runaway URL can't fill the disk.
 // 256MB covers any real media asset; raise if 4K video sources ever exceed it.
 const MAX_FREEZE_BYTES = 256 * 1024 * 1024;
+// Bounds only the wait for response headers; a large video body may stream for minutes.
+const FREEZE_HEADERS_TIMEOUT_MS = 10_000;
+
+const isSvgPath = (destPath) => /\.svg$/i.test(destPath);
+
+// Every logo/icon SVG comes from a third-party host (theSVG, a --from URL, a local file), so it
+// passes the Figma import's sanitizeSvg allowlist before it touches disk.
+function writeFrozen(destPath, buffer) {
+  mkdirSync(dirname(destPath), { recursive: true });
+  const bytes = isSvgPath(destPath) ? Buffer.from(sanitizeSvg(buffer.toString("utf8"))) : buffer;
+  writeFileSync(destPath, bytes);
+  return bytes.byteLength;
+}
 
 export async function freezeUrl(url, destPath) {
   const where = String(url).slice(0, 80);
-  const res = await fetchMedia(url);
+  const headerWait = new AbortController();
+  const timer = setTimeout(
+    () =>
+      headerWait.abort(
+        new Error(`freeze failed: no response within ${FREEZE_HEADERS_TIMEOUT_MS} ms for ${where}`),
+      ),
+    FREEZE_HEADERS_TIMEOUT_MS,
+  );
+  const res = await fetchMedia(url, { signal: headerWait.signal }).finally(() =>
+    clearTimeout(timer),
+  );
   if (!res.ok) throw new Error(`freeze failed: HTTP ${res.status} for ${where}`);
 
-  // Fail fast on an advertised oversize body before reading a single byte.
-  const declared = Number(res.headers.get("content-length"));
-  if (declared > MAX_FREEZE_BYTES)
-    throw new Error(
-      `freeze failed: ${declared} bytes exceeds ${MAX_FREEZE_BYTES} cap for ${where}`,
-    );
+  const body = await readCappedBody(res, MAX_FREEZE_BYTES, `freeze failed for ${where}`);
+  if (body.byteLength === 0) throw new Error(`freeze failed: empty response for ${where}`);
 
-  // Stream and abort once the cap is crossed, so a lying/chunked hostile URL
-  // can't buffer the whole payload into memory before the check (M1).
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of res.body) {
-    total += chunk.length;
-    if (total > MAX_FREEZE_BYTES)
-      throw new Error(`freeze failed: stream exceeds ${MAX_FREEZE_BYTES} cap for ${where}`);
-    chunks.push(chunk);
-  }
-  if (total === 0) throw new Error(`freeze failed: empty response for ${where}`);
-
-  mkdirSync(dirname(destPath), { recursive: true });
-  writeFileSync(destPath, Buffer.concat(chunks, total));
-  return total;
+  return writeFrozen(destPath, body);
 }
 
 export function freezeLocalFile(srcPath, destPath) {
+  if (isSvgPath(destPath)) {
+    writeFrozen(destPath, readFileSync(srcPath));
+    return;
+  }
   mkdirSync(dirname(destPath), { recursive: true });
   copyFileSync(srcPath, destPath);
 }
