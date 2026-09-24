@@ -2020,6 +2020,11 @@ describe("normalizeStageCode", () => {
     expect(normalizeStageCode("pipeline")).toBe("pipeline");
   });
 
+  it("keeps one code for the producer's browser start-up counts", () => {
+    expect(normalizeStageCode("Starting browsers (0/6 ready)")).toBe("starting_browsers");
+    expect(normalizeStageCode("Starting browsers (5/6 ready)")).toBe("starting_browsers");
+  });
+
   it("slugifies an unrecognized stage string instead of bucketing it as unknown", () => {
     expect(normalizeStageCode("Some New Stage!")).toBe("some_new_stage");
   });
