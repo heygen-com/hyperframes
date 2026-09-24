@@ -25,6 +25,23 @@ beforeAll(() => {
   }
 });
 
+function ancestorsOf(el: Element): Element[] {
+  const chain: Element[] = [];
+  for (let at = el.parentElement; at; at = at.parentElement) chain.push(at);
+  return chain;
+}
+
+// Like a browser: the paint stack under the point, top first, minus computed pointer-events:none.
+function emulateHitTest(painted: () => Element[]): () => void {
+  const original = document.elementsFromPoint;
+  Object.defineProperty(document, "elementsFromPoint", {
+    configurable: true,
+    value: vi.fn(() => painted().filter((el) => getComputedStyle(el).pointerEvents !== "none")),
+  });
+  return () =>
+    Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: original });
+}
+
 function createMockPostMessage() {
   return vi.fn();
 }
@@ -147,6 +164,163 @@ describe("createPickerModule", () => {
           configurable: true,
           value: originalElementsFromPoint,
         });
+      }
+    });
+
+    it("picks inside a mounted section whose root sets pointer-events:none", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      // The mount rescopes the section's own root rule onto its inner root.
+      document.head.innerHTML =
+        '<style>[data-composition-id="intro"] > [data-hf-inner-root] { pointer-events: none }' +
+        " .vignette { pointer-events: none }</style>";
+      document.body.innerHTML = `<div data-composition-id="intro" data-composition-src="intro.html">
+        <div data-hf-inner-root="true"><div class="card"><code id="code">tl.to()</code></div>
+        <div class="vignette" id="vignette"></div></div></div>`;
+      const code = document.getElementById("code")!;
+      // Paint order under the point, top first; like a browser, drop what has pointer-events:none.
+      const painted = [document.getElementById("vignette")!, code, code.parentElement!];
+      const originalElementsFromPoint = document.elementsFromPoint;
+      Object.defineProperty(document, "elementsFromPoint", {
+        configurable: true,
+        value: vi.fn(() =>
+          [...painted, ...ancestorsOf(code.parentElement!)].filter(
+            (el) => getComputedStyle(el).pointerEvents !== "none",
+          ),
+        ),
+      });
+
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10)[0]?.selector).toBe("#code");
+        expect(api.pickAtPoint(10, 10)?.selector).toBe("#code");
+        expect(document.head.querySelectorAll("style")).toHaveLength(1);
+      } finally {
+        Object.defineProperty(document, "elementsFromPoint", {
+          configurable: true,
+          value: originalElementsFromPoint,
+        });
+      }
+    });
+
+    it("picks inside a composition opened on its own whose root sets pointer-events:none", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.head.innerHTML = "<style>#root { pointer-events: none }</style>";
+      document.body.innerHTML = `<div id="root" data-composition-id="intro"><div id="card">
+        <code id="code">tl.to()</code></div></div>`;
+      const at = (id: string) => document.getElementById(id)!;
+      const restore = emulateHitTest(() => [at("code"), at("card"), at("root")]);
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10).map((c: any) => c.selector)).toEqual([
+          "#code",
+          "#card",
+        ]);
+      } finally {
+        restore();
+      }
+    });
+
+    it("adopts the override only for the hit test, leaving the DOM and a saved outerHTML untouched", () => {
+      const adopted: CSSStyleSheet[] = [];
+      Object.defineProperty(document, "adoptedStyleSheets", {
+        configurable: true,
+        get: () => adopted.slice(),
+        set: (next: CSSStyleSheet[]) => adopted.splice(0, adopted.length, ...next),
+      });
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML =
+        '<div data-composition-id="intro"><div data-hf-inner-root="true" style="pointer-events: none">' +
+        '<span id="t">hi</span></div></div>';
+      const during: string[][] = [];
+      const originalElementsFromPoint = document.elementsFromPoint;
+      Object.defineProperty(document, "elementsFromPoint", {
+        configurable: true,
+        value: vi.fn(() => {
+          during.push(adopted.flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText)));
+          return [document.getElementById("t")!];
+        }),
+      });
+      const observer = new MutationObserver(() => {});
+      observer.observe(document, { childList: true, subtree: true, attributes: true });
+      const html = document.documentElement.outerHTML;
+
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        // jsdom ignores adopted sheets for style, so this checks the sheet's lifecycle, not what it picks.
+        api.getCandidatesAtPoint(10, 10);
+        api.pickAtPoint(10, 10);
+        expect(during).toHaveLength(2);
+        expect(during[0]?.join()).toContain("pointer-events: auto !important");
+        expect(adopted).toEqual([]);
+        expect(observer.takeRecords()).toEqual([]);
+        expect(document.documentElement.outerHTML).toBe(html);
+        // With no pass-through root there is nothing to override, so nothing is adopted and nothing restyles.
+        (document.querySelector("[data-hf-inner-root]") as HTMLElement).style.pointerEvents = "";
+        api.getCandidatesAtPoint(10, 10);
+        expect(during.at(-1)).toEqual([]);
+      } finally {
+        observer.disconnect();
+        Object.defineProperty(document, "elementsFromPoint", {
+          configurable: true,
+          value: originalElementsFromPoint,
+        });
+        delete (document as { adoptedStyleSheets?: unknown }).adoptedStyleSheets;
+      }
+    });
+
+    it("keeps a click-through overlay host passing through to what is under it", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<div id="root" data-composition-id="main"><video id="aroll"></video>
+        <div id="ovl" data-composition-id="intro_outro" data-composition-src="intro.html"
+          style="pointer-events: none"><div data-hf-inner-root="true"><h1 id="t">Hi</h1></div></div></div>`;
+      const at = (id: string) => document.getElementById(id)!;
+      const inner = document.querySelector("[data-hf-inner-root]")!;
+      const restore = emulateHitTest(() => [at("t"), inner, at("ovl"), at("aroll"), at("root")]);
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10).map((c: any) => c.selector)).toEqual([
+          "#aroll",
+          "#root",
+        ]);
+      } finally {
+        restore();
+      }
+    });
+
+    it("a section background click picks the host, and an inner root never gets a bare tag selector", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.head.innerHTML =
+        '<style>[data-composition-id="intro"] > [data-hf-inner-root] { pointer-events: none }</style>';
+      document.body.innerHTML = `<div id="root" data-composition-id="main"><div id="host"
+        data-composition-id="intro" data-composition-src="intro.html"><div data-hf-inner-root="true">
+        </div></div><div data-composition-id="outro"><div data-hf-inner-root="true"></div></div></div>`;
+      const [intro, outro] = Array.from(document.querySelectorAll("[data-hf-inner-root]"));
+      const api = (window as any).__HF_PICKER_API;
+      let restore = emulateHitTest(() => [
+        intro!,
+        intro!.parentElement!,
+        document.getElementById("root")!,
+      ]);
+      try {
+        expect(api.getCandidatesAtPoint(10, 10).map((c: any) => c.selector)).toEqual([
+          "#host",
+          "#root",
+        ]);
+      } finally {
+        restore();
+      }
+      restore = emulateHitTest(() => [outro!, outro!.parentElement!]);
+      try {
+        expect(api.getCandidatesAtPoint(10, 10)[0]?.selector).toBe(
+          '[data-composition-id="outro"] > [data-hf-inner-root]',
+        );
+      } finally {
+        restore();
       }
     });
 

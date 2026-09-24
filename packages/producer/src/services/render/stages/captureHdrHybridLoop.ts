@@ -55,7 +55,7 @@ import {
   partitionTransitionFrames,
   seekInjectAndQueryStacking,
 } from "./captureHdrFrameShared.js";
-import { updateJobStatus } from "../shared.js";
+import { reportFrameProgress } from "../shared.js";
 
 export interface HybridLoopInput {
   job: RenderJob;
@@ -189,16 +189,13 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
       reorderBuffer.advanceTo(frameIdx + 1);
       framesWritten += 1;
       job.framesRendered = framesWritten;
-      if (framesWritten % 10 === 0 || framesWritten === totalFrames) {
-        const frameProgress = framesWritten / totalFrames;
-        updateJobStatus(
-          job,
-          "rendering",
-          `Layered composite frame ${framesWritten}/${job.totalFrames}`,
-          Math.round(25 + frameProgress * 55),
-          onProgress,
-        );
-      }
+      reportFrameProgress(
+        job,
+        `Layered composite frame ${framesWritten}/${job.totalFrames}`,
+        Math.round(25 + (framesWritten / totalFrames) * 55),
+        onProgress,
+        framesWritten === totalFrames,
+      );
     };
     const poolRef = shaderPool;
 

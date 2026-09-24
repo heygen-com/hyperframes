@@ -75,7 +75,8 @@ export function useTimelinePlayhead({
     // it true and the next toolbar zoom would wrongly skip center-anchoring.
     const skip = skipCenterAnchorRef.current;
     skipCenterAnchorRef.current = false;
-    if (!scroll || pps === prevPps || skip) return;
+    // A view at the start stays there: a resize or a host zoom must not hide 00:00.
+    if (!scroll || pps === prevPps || skip || scroll.scrollLeft < 1) return;
     const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
       pointerX: scroll.clientWidth / 2,
       currentScrollLeft: scroll.scrollLeft,
