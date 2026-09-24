@@ -15,10 +15,12 @@ import {
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 
-// The single wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
+// One wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
 // leaves about 6.5s for the document load and runtime boot. Nothing shorter may fail the swap.
 // It only runs while the tab is visible: readiness is frame-driven, and a hidden tab renders none.
 export const SHADOW_READY_TIMEOUT_MS = 15_000;
+// A busy machine can need more than one budget; the shadow keeps loading for this many before it is dropped.
+export const SHADOW_READY_BUDGETS = 3;
 
 function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
@@ -61,6 +63,7 @@ export function useShadowPreviewReload({
   const onReloadFailedRef = useRef(onReloadFailed);
   onReloadFailedRef.current = onReloadFailed;
   const readyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const budgetsSpentRef = useRef(0);
   // The shadow still owed a wait budget, so a hidden tab can resume it when it becomes visible.
   const budgetGenRef = useRef<number | null>(null);
   const cancelPendingLoadRef = useRef<() => void>(() => {});
@@ -160,10 +163,16 @@ export function useShadowPreviewReload({
     (gen: number) => {
       clearTimeout(readyTimerRef.current);
       if (isDocumentHidden()) return;
-      readyTimerRef.current = setTimeout(
-        () => failShadow(gen, "it took too long to load"),
-        SHADOW_READY_TIMEOUT_MS,
-      );
+      readyTimerRef.current = setTimeout(() => {
+        if (gen !== shadowGenRef.current) return;
+        budgetsSpentRef.current += 1;
+        if (budgetsSpentRef.current < SHADOW_READY_BUDGETS) {
+          logReload("shadow-slow", { budgetsSpent: budgetsSpentRef.current });
+          armReadyTimerRef.current(gen);
+          return;
+        }
+        failShadow(gen, "it took too long to load");
+      }, SHADOW_READY_TIMEOUT_MS);
     },
     [failShadow],
   );
@@ -176,6 +185,7 @@ export function useShadowPreviewReload({
       const gen = shadowGenRef.current;
       stopPendingShadow();
       budgetGenRef.current = gen;
+      budgetsSpentRef.current = 0;
       armReadyTimer(gen);
       setPreviewSlots((prev) => planShadowReload(prev, gen, url));
       // Thumbnails of the edit wait for the new preview instead of competing with it.
