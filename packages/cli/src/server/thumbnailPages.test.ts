@@ -115,6 +115,28 @@ describe("createThumbnailPages", () => {
     await vi.waitFor(() => expect(pages[0]?.close).toHaveBeenCalled());
   });
 
+  it("closes a kept page a second after its last frame, once a burst of thumbnails is over", async () => {
+    vi.useFakeTimers();
+    try {
+      const { browser, pages } = fakeBrowser();
+      const thumbnails = createThumbnailPages();
+      await thumbnails.withPage(
+        browser,
+        "/preview",
+        "v1",
+        0,
+        vi.fn(async () => {}),
+        async () => null,
+      );
+      await vi.advanceTimersByTimeAsync(999);
+      expect(pages[0]?.close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(pages[0]?.close).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("never closes a page under a frame that is still being taken", async () => {
     const { browser, pages } = fakeBrowser();
     const thumbnails = createThumbnailPages(1);

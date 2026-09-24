@@ -15,7 +15,7 @@ interface LoadedPage {
  * one page run one at a time so their seeks never interleave, and a page unused for `idleMs` closes
  * so an idle Studio keeps no composition running. A page only seeks forward, as a render does: a
  * composition need not draw the same frame when seeked back, so an earlier time gets a fresh page. */
-export function createThumbnailPages(maxPages = 2, idleMs = 10_000) {
+export function createThumbnailPages(maxPages = 2, idleMs = 1_000) {
   const pages = new Map<string, LoadedPage>();
   const drop = (url: string) => {
     const entry = pages.get(url);
