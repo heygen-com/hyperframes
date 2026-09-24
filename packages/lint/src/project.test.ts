@@ -47,6 +47,26 @@ afterEach(() => {
   dirs = [];
 });
 
+describe("missing_data_no_timeline", () => {
+  it("surfaces bare nested composition hosts through project lint", async () => {
+    const project = makeProject(`<!doctype html><html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <section id="alpha" data-composition-id="alpha"></section>
+    <section id="beta" data-composition-id="beta"></section>
+  </div>
+  <script>window.__timelines["root"] = gsap.timeline({ paused: true });</script>
+</body></html>`);
+
+    const { results, totalWarnings } = await lintProject(project);
+    const findings = results[0]?.result.findings.filter(
+      (finding) => finding.code === "missing_data_no_timeline",
+    );
+
+    expect(totalWarnings).toBe(2);
+    expect(findings?.map((finding) => finding.elementId)).toEqual(["alpha", "beta"]);
+  });
+});
+
 describe("external symlink assets", () => {
   it("does not report a shared asset addressed through an in-project symlink", async () => {
     const project = makeProject(
