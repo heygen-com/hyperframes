@@ -3144,6 +3144,31 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 
+  it("leaves a shader load on screen when assets settle, and reports painted once it is gone", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    player.shaderLoader.update({ loading: true, ready: false }, "player");
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    const loader = player.shadowRoot?.querySelector(".hfp-shader-loader");
+    expect(loader?.classList.contains("hfp-visible")).toBe(true);
+    expect(events).toEqual(["assetsready"]);
+
+    player.shaderLoader.update({ loading: false, ready: true }, "player");
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(events).toEqual(["assetsready", "painted"]);
+
+    player.remove();
+  });
+
   it("cancels a queued play if the user pauses while assets are still buffering", async () => {
     const player = await createConnectedPlayer();
 

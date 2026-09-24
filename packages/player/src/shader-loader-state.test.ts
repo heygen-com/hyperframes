@@ -58,4 +58,14 @@ describe("shader loader progress rows", () => {
     state.hideAssetsLoading();
     expect(root.classList.contains("hfp-visible")).toBe(true);
   });
+
+  it("keeps the Loading assets card through shader messages that draw nothing", () => {
+    const { state, root } = loader();
+    state.showAssetsLoading();
+    state.update({ loading: false, ready: false }, "player");
+    state.update({ loading: false, ready: true }, "player");
+    state.update({ loading: true, ready: false }, "composition");
+    expect(root.classList.contains("hfp-visible")).toBe(true);
+    expect(root.getAttribute("aria-label")).toBe("Loading assets");
+  });
 });

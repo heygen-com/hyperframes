@@ -1107,7 +1107,7 @@ class HyperframesPlayer extends HTMLElement {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = true;
     this.removeAttribute(ASSETS_LOADING_ATTR);
-    this.shaderLoader.hide();
+    this.shaderLoader.hideAssetsLoading();
     this.dispatchEvent(new Event("assetsready"));
     this.shaderLoader.whenHidden(() => {
       if (generation !== this._assetsGeneration) return;

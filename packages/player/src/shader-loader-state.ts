@@ -79,6 +79,9 @@ export class ShaderLoaderState {
 
   // fallow-ignore-next-line unused-class-member, complexity
   update(status: ShaderTransitionState, loadingMode: string): void {
+    const draws = loadingMode === "player" && status.loading && !status.ready;
+    // A shader message that draws nothing leaves the Loading assets card to its own owner.
+    if (this._drawingAssets && !draws) return;
     if (loadingMode !== "player") {
       this.reset();
       return;
