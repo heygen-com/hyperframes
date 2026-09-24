@@ -800,7 +800,14 @@
       };
 
       // ---------- font: local Geist Bold TTF -> three Font (blocks the load event) ----------
-      const ttfBuffer = await fetch("assets/fonts/Geist-Bold.ttf").then((r) => r.arrayBuffer());
+      // Beside this file when mounted; a runtime without assetUrl keeps the plain path.
+      const assetUrl = (path) =>
+        typeof __hyperframes !== "undefined" && __hyperframes.assetUrl
+          ? __hyperframes.assetUrl(path)
+          : path;
+      const ttfBuffer = await fetch(assetUrl("assets/fonts/Geist-Bold.ttf")).then((r) =>
+        r.arrayBuffer(),
+      );
       const font = new FontLoader().parse(new TTFLoader().parse(ttfBuffer));
       try {
         await document.fonts.ready; // DOM letter rects must be measured with the real font
