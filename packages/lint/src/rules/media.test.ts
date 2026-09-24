@@ -983,14 +983,49 @@ describe("media_src_kind_mismatch", () => {
     expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
   });
 
-  it("does not flag .ogg or .m4a, whose containers can carry video too", async () => {
+  it("does not flag .ogg anywhere or .m4a on <video>, whose containers can carry video too", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
     <video id="v1" src="clip.ogg" data-start="0" data-duration="5" muted></video>
     <video id="v2" src="clip.m4a" data-start="0" data-duration="5" muted></video>
     <img id="i1" src="clip.ogg" data-start="0" data-duration="5" />
-    <img id="i2" src="clip.m4a" data-start="0" data-duration="5" />
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
+  });
+
+  it.each([
+    ['<img id="m" src="voice.m4a">', "an audio file"],
+    ['<img id="m" src="https://cdn.example.com/voice.M4A?sig=abc#t=1">', "an audio file"],
+    ['<video id="m" src="photo.avif" data-start="0" data-duration="5" muted></video>', "an image"],
+    [
+      '<video id="m" src="https://cdn.example.com/photo.AVIF?w=800#top" data-start="0" data-duration="5" muted></video>',
+      "an image",
+    ],
+  ])("errors on %s as %s", async (element, noun) => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    ${element}
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_src_kind_mismatch");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("m");
+    expect(finding?.message).toContain(`src is ${noun}`);
+  });
+
+  it("does not flag an .avif <img> or an .m4a <audio>", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <img id="i1" src="photo.avif">
+    <audio id="a1" src="voice.m4a" data-start="0" data-duration="5"></audio>
   </div>
   <script>window.__timelines = {};</script>
 </body></html>`;

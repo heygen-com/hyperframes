@@ -55,6 +55,7 @@ const IMAGE_SRC_EXT = new Set([
   "heif",
   "tiff",
   "ico",
+  "avif",
 ]);
 const VIDEO_SRC_EXT = new Set([
   "mp4",
@@ -71,6 +72,10 @@ const VIDEO_SRC_EXT = new Set([
 
 const AUDIO_SRC_EXT = new Set(["mp3", "wav", "aac", "flac", "opus", "aiff", "wma"]);
 
+// Audio by convention, but MPEG-4 can also carry a video stream: the extension
+// proves an <img> wrong, while a <video> may still hold real video (#3741).
+const VIDEO_CAPABLE_AUDIO_SRC_EXT = new Set(["m4a"]);
+
 type SrcKind = "image" | "video" | "audio";
 
 const SRC_KIND_NOUN: Record<SrcKind, string> = {
@@ -79,7 +84,7 @@ const SRC_KIND_NOUN: Record<SrcKind, string> = {
   audio: "an audio file",
 };
 
-function srcKind(src: string): SrcKind | null {
+function srcKind(src: string, element: "video" | "img"): SrcKind | null {
   const stripped = src.trim();
   if (!stripped) return null;
   const lower = stripped.toLowerCase();
@@ -109,6 +114,7 @@ function srcKind(src: string): SrcKind | null {
   if (IMAGE_SRC_EXT.has(ext)) return "image";
   if (VIDEO_SRC_EXT.has(ext)) return "video";
   if (AUDIO_SRC_EXT.has(ext)) return "audio";
+  if (VIDEO_CAPABLE_AUDIO_SRC_EXT.has(ext)) return element === "img" ? "audio" : null;
   return null;
 }
 
@@ -118,7 +124,7 @@ function findMediaSrcKindMismatchFindings(ctx: LintContext): HyperframeLintFindi
     if (tag.name !== "video" && tag.name !== "img") continue;
     const src = readAttr(tag.raw, "src");
     if (!src) continue;
-    const kind = srcKind(src);
+    const kind = srcKind(src, tag.name);
     if (kind === null) continue;
     const expected = tag.name === "video" ? "video" : "image";
     if (kind === expected) continue;
