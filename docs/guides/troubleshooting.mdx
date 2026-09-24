@@ -186,7 +186,38 @@ Use Docker when you need a pinned rendering environment:
 npx hyperframes render --docker --output output.mp4
 ```
 
+### Every render takes about 45 seconds longer than expected
+
+A composition that never registers a GSAP timeline still makes the producer wait
+for one. The producer polls `window.__timelines[<id>]` until the composition
+player reports ready, then gives up after `player-ready-timeout` (45 s by
+default). The wait is a fixed cost paid on every render, so it does not shrink
+when you lower quality or resize media.
+
+Declare that the composition has no timeline:
+
+```html
+<div
+  data-composition-id="promo"
+  data-no-timeline
+  data-width="1920"
+  data-height="1080"
+  data-duration="6"
+></div>
+```
+
+`npx hyperframes lint` reports the missing attribute as
+`missing_data_no_timeline`. Compositions that do register a timeline are
+unaffected: the poll returns as soon as the timeline appears, long before the
+timeout.
+
+To register a timeline instead of skipping the wait, see
+[GSAP animation](/guides/gsap-animation).
+
 ### The render is slow
+
+The causes below scale with the project. For a constant penalty on every render,
+check the timeline poll above first.
 
 During iteration:
 

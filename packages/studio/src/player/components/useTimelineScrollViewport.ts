@@ -3,6 +3,9 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { shouldShowTimelineShortcutHint } from "./timelineLayout";
 import { STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED } from "./timelineRowVirtualizationFlag";
 
+/** How long the timeline waits after the last scroll event before treating the scroll as settled. */
+export const TIMELINE_SCROLL_SETTLE_MS = 100;
+
 export interface TimelineScrollViewportSnapshot {
   readonly scrollLeft: number;
   readonly scrollTop: number;
@@ -91,7 +94,7 @@ export function useTimelineScrollViewport(
       scrollingRef.current = false;
       if (viewportRafRef.current) cancelAnimationFrame(viewportRafRef.current);
       publish();
-    }, 100);
+    }, TIMELINE_SCROLL_SETTLE_MS);
   }, []);
 
   const syncShortcutHintVisibility = useCallback(() => {

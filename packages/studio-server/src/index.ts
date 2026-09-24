@@ -1,6 +1,20 @@
 export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
+export {
+  openProjectHistory,
+  type ProjectHistory,
+  type ProjectHistoryOptions,
+  type HistoryListItem,
+  type HistoryResult,
+  type HistoryWindow,
+} from "./history/projectHistory.js";
+export {
+  START as HISTORY_START,
+  type HistoryEntry,
+  type HistoryFileChange,
+  type HistoryWho,
+} from "./history/historyLog.js";
 export type {
   StudioApiAdapter,
   ResolvedProject,

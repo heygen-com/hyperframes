@@ -12,7 +12,7 @@ import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
-import { buildSubCompositionHtml } from "../helpers/subComposition.js";
+import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import {
   resolveProjectAndSignature,
   resolveProjectSignature,
@@ -382,7 +382,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
 
       // Inject <base> for relative asset resolution
       const baseHref = `/api/projects/${project.id}/preview/`;
-      if (!bundled.includes("<base")) {
+      if (!hasBaseElement(bundled)) {
         bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
       }
 
