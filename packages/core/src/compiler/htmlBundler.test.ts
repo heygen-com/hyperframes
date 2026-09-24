@@ -198,6 +198,32 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
   });
 
+  it("binds a <template> composition authored in a mounted file to that file", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <template id="chip-template">
+    <div data-composition-id="chip" data-width="200" data-height="200">
+      <script>window.__chipUrl = __hyperframes.assetUrl("assets/chip.png");</script>
+    </div>
+  </template>
+  <div data-composition-id="chip"></div>
+</div>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toMatch(
+      /var __hfCompId = "chip";(?:(?!__hfCompId)[\s\S])*var __hfCompositionSrc = "compositions\/blk\/blk\.html";/,
+    );
+  });
+
   it("inlines an in-project sub-composition script but not one reached through a symlink escaping the project root", async () => {
     // Security: a shared/cloned project may carry a symlink pointing outside the
     // root (e.g. ext -> /etc). The bundler reads+inlines local assets, so it must
