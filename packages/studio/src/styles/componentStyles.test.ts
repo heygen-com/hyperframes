@@ -6,14 +6,13 @@ import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 import { loadStylesheet, STYLES_DIR } from "./styleSources";
 
-/** Class names a stylesheet's own selectors name. */
+/** Class names in a stylesheet's selectors, at any nesting depth (inside @layer or @media too). */
 function selectorClasses(css: string): string[] {
-  let selectors = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@(?:import|source)[^;]*;/g, "");
-  for (let previous = ""; previous !== selectors; ) {
-    previous = selectors;
-    selectors = selectors.replace(/\{[^{}]*\}/g, ";");
-  }
-  return [...selectors.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((match) => match[1]);
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@(?:import|source)[^;]*;/g, "");
+  return [...source.matchAll(/([^{};]+)\{/g)]
+    .map((match) => match[1].trim())
+    .filter((prelude) => !prelude.startsWith("@"))
+    .flatMap((selector) => [...selector.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1]));
 }
 
 describe("studio component styles", () => {
