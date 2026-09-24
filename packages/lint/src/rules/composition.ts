@@ -205,6 +205,55 @@ function rootClassStyledSelectors(styles: ExtractedBlock[], rootClasses: string[
   return offenders;
 }
 
+// A `zoom` declaration and its value. The lookbehind keeps custom properties
+// out: `--panel-zoom: 2` and `--zoom: 0.5` are author variables, not the CSS
+// `zoom` property, and a plain \b would flag both.
+const ZOOM_DECLARATION = /(?<![\w-])zoom\s*:\s*([^;}]+)/gi;
+
+/** zoom values that leave the canvas alone; anything else rescales it. */
+function isIdentityZoom(rawValue: string): boolean {
+  const value = rawValue
+    .trim()
+    .replace(/!\s*important\s*$/i, "")
+    .trim()
+    .toLowerCase();
+  return (
+    value === "" ||
+    value === "normal" ||
+    value === "unset" ||
+    value === "initial" ||
+    value === "revert" ||
+    value === "1" ||
+    value === "1.0" ||
+    value === "100%"
+  );
+}
+
+/** First rescaling `zoom` value in a declaration block, or null. */
+function firstRescalingZoom(css: string): string | null {
+  ZOOM_DECLARATION.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ZOOM_DECLARATION.exec(css)) !== null) {
+    const value = (match[1] ?? "").trim();
+    if (!isIdentityZoom(value)) return value.replace(/!\s*important\s*$/i, "").trim();
+  }
+  return null;
+}
+
+/**
+ * Does this selector's leftmost compound target the canvas itself — the
+ * composition root, or an ancestor of it? A zoom on a DESCENDANT is ordinary
+ * authoring and renders exactly as authored; only the canvas-level one
+ * desynchronises painted content from the declared frame.
+ */
+function targetsCanvasRoot(selector: string, rootId: string | null, rootClasses: string[]): boolean {
+  const leftmost = selector.trim().split(/[\s>+~]+/)[0] ?? "";
+  const bare = leftmost.toLowerCase();
+  if (bare === "html" || bare === "body" || bare === ":root" || bare === "*") return true;
+  if (rootId && leftmostCompoundId(selector) === rootId) return true;
+  return leftmostCompoundClasses(selector).some((cls) => rootClasses.includes(cls));
+}
+
 /** Declared variable ids from an <html> tag's raw text; null when the JSON is unparseable. */
 function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
   const declared = new Set<string>();
@@ -1226,6 +1275,93 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           `the source or scope them into their own per-transition sub-composition. If an ` +
           `overlay is genuinely inert for the whole clip, use display:none so it never enters ` +
           `the render tree. Field ref ts=1784040753 (#hyperframes-cli-feedback).`,
+      },
+    ];
+  },
+
+  // root_zoom_rescales_a_fixed_canvas
+  //
+  // The capture frame is sized from the root's data-width/data-height, which are
+  // LAYOUT pixels. CSS `zoom` on the canvas itself (the root, or html/body above
+  // it) rescales the painted content inside that frame without changing the frame,
+  // so the two disagree and the author gets neither of the two things they might
+  // have meant.
+  //
+  // Measured at 0.8.71 on an 800x400 composition holding two 100x100 boxes at
+  // left:100 and left:600, rendered to a PNG sequence and the boxes located by
+  // colour:
+  //
+  //   root zoom:0.5  canvas stays 800x400; boxes paint at (50,25) and (300,25),
+  //                  each 50x50 -- the composition occupies the top-left quarter
+  //                  and the rest of every frame is dead space.
+  //   root zoom:2    canvas stays 800x400; the left:100 box paints at (200,100)
+  //                  at 200x200, and the left:600 box renders ZERO PIXELS --
+  //                  scaled to x=1200, outside a frame that is still 800 wide.
+  //
+  // The second case is the one worth an error: content that is inside the declared
+  // composition silently does not exist in the output, with nothing else in lint,
+  // check or the render log naming it.
+  //
+  // Deliberately NOT flagged: `zoom` on a descendant. Measured in the same run --
+  // a child at left:100 with zoom:2 paints at (200,100) at 200x200, which is
+  // exactly what CSS `zoom` specifies. It is honoured, not ignored, so a rule that
+  // fired on every `zoom` would be flagging correct authoring.
+  ({ rootTag, tags, styles }) => {
+    if (!rootTag) return [];
+    const rootId = readAttr(rootTag.raw, "id");
+    const rootClasses = (readAttr(rootTag.raw, "class") || "").split(/\s+/).filter(Boolean);
+
+    const hits: Array<{ where: string; value: string; snippet: string }> = [];
+
+    const htmlTag = findHtmlTag(tags);
+    const bodyTag = tags.find((tag) => tag.name.toLowerCase() === "body");
+    for (const [label, tag] of [
+      ["the root element's inline style", rootTag],
+      ["<html>'s inline style", htmlTag],
+      ["<body>'s inline style", bodyTag],
+    ] as const) {
+      if (!tag) continue;
+      const inline = readAttr(tag.raw, "style");
+      const value = inline ? firstRescalingZoom(inline) : null;
+      if (value) hits.push({ where: label, value, snippet: truncateSnippet(tag.raw) });
+    }
+
+    for (const style of styles) {
+      const noComments = stripCssComments(style.content);
+      const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+      let match: RegExpExecArray | null;
+      while ((match = ruleWithBody.exec(noComments)) !== null) {
+        const header = (match[1] ?? "").trim();
+        if (!header || header.startsWith("@")) continue;
+        const value = firstRescalingZoom(match[2] ?? "");
+        if (!value) continue;
+        for (const selector of header.split(",")) {
+          const trimmed = selector.trim();
+          if (!trimmed || !targetsCanvasRoot(trimmed, rootId, rootClasses)) continue;
+          hits.push({ where: `\`${trimmed}\``, value, snippet: truncateSnippet(`${trimmed} { zoom: ${value} }`) });
+          break;
+        }
+      }
+    }
+
+    if (hits.length === 0) return [];
+    const hit = hits[0];
+    const enlarging = !hit.value.startsWith("-") && parseFloat(hit.value) > (hit.value.includes("%") ? 100 : 1);
+    return [
+      {
+        code: "root_zoom_rescales_a_fixed_canvas",
+        severity: "error",
+        message:
+          `\`zoom: ${hit.value}\` on ${hit.where} rescales the painted composition inside a frame that does not rescale with it. ` +
+          `The capture frame is sized from the root's data-width/data-height in LAYOUT pixels, and \`zoom\` changes only what is painted inside it, so ` +
+          (enlarging
+            ? `content past the frame's edge renders zero pixels — it is inside the declared composition and absent from the output, with nothing else reporting it.`
+            : `the composition paints into part of the frame and the remainder of every output frame is dead space.`),
+        fixHint:
+          `Author the composition at its real size — set data-width/data-height (and the root's width/height) to the dimensions you want — and drop the canvas-level \`zoom\`. ` +
+          `To scale the OUTPUT without changing layout, pass \`--output-resolution\` to render, which supersamples. ` +
+          `\`zoom\` on descendants is fine and is not flagged: it is honoured exactly as specified.`,
+        snippet: hit.snippet,
       },
     ];
   },

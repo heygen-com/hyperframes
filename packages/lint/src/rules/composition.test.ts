@@ -2180,4 +2180,119 @@ describe("composition rules", () => {
       expect(finding?.message).toMatch(/25 elements/);
     });
   });
+
+  // root_zoom_rescales_a_fixed_canvas — measured at 0.8.71 on an 800x400
+  // composition: root zoom:2 renders a left:600 box at ZERO pixels (scaled to
+  // x=1200, outside a frame still 800 wide); root zoom:0.5 paints the whole
+  // composition into the top-left quarter. A zoom on a DESCENDANT is honoured
+  // exactly as CSS specifies and must stay silent.
+  describe("root_zoom_rescales_a_fixed_canvas", () => {
+    const codes = (r: { findings: Array<{ code: string }> }) => r.findings.map((f) => f.code);
+
+    it("flags a rescaling zoom on the composition root", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        #root { width: 800px; height: 400px; zoom: 2; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+      const finding = result.findings.find((f) => f.code === "root_zoom_rescales_a_fixed_canvas");
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("zero pixels");
+    });
+
+    it("describes the shrinking case as dead space, not clipping", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        #root { zoom: 0.5; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      const finding = result.findings.find((f) => f.code === "root_zoom_rescales_a_fixed_canvas");
+      expect(finding?.message).toContain("dead space");
+      expect(finding?.message).not.toContain("zero pixels");
+    });
+
+    it("flags zoom on html and on body, which scale the canvas from above", async () => {
+      for (const selector of ["html", "body"]) {
+        const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+          ${selector} { zoom: 1.5; }
+        </style></head><body>
+          <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+        </body></html>`);
+        expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+      }
+    });
+
+    it("flags an inline zoom on the root", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" style="zoom: 2" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("stays silent on a zoom applied to a descendant", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        .badge { zoom: 2; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5">
+          <div class="badge"></div>
+        </div>
+      </body></html>`);
+
+      expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("stays silent on identity zoom values", async () => {
+      for (const value of ["1", "1.0", "100%", "normal", "unset", "initial"]) {
+        const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+          #root { zoom: ${value}; }
+        </style></head><body>
+          <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+        </body></html>`);
+        expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+      }
+    });
+
+    // A custom property is not the CSS `zoom` property. A plain \b boundary
+    // flags both, which is the same trap the negative-z-index rule hit.
+    it("stays silent on custom properties whose name ends in zoom", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        #root { --zoom: 2; --panel-zoom: 0.5; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("reads through !important", async () => {
+      const identity = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        #root { zoom: 1 !important; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+      expect(codes(identity)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+
+      const rescaling = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        #root { zoom: 2 !important; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+      const finding = rescaling.findings.find((f) => f.code === "root_zoom_rescales_a_fixed_canvas");
+      expect(finding?.message).toContain("zoom: 2`");
+    });
+
+    it("ignores a zoom inside a CSS comment", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        #root { /* zoom: 2; */ width: 800px; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+  });
 });
