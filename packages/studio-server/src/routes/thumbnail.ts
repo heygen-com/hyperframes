@@ -1,6 +1,9 @@
 import type { Hono } from "hono";
 import {
+  closeSync,
   existsSync,
+  fstatSync,
+  openSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -76,6 +79,26 @@ function writeThumbnailAtomically(path: string, buffer: Buffer): void {
   }
 }
 
+type CompositionSource = { html: string; mtimeMs: number } | "missing" | "not-a-file";
+
+// One open for the stat and the read, so the file cannot change between the check and the use.
+function readCompositionSource(file: string): CompositionSource {
+  let fd: number;
+  try {
+    fd = openSync(file, "r");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    throw err;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return "not-a-file";
+    return { html: readFileSync(fd, "utf-8"), mtimeMs: stat.mtimeMs };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
     if (!adapter.generateThumbnail) {
@@ -88,9 +111,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     let compPath = requestSubPath(c.req.url, "projects/:id/thumbnail");
     if (compPath && !compPath.includes(".")) compPath += ".html";
     const htmlFile = resolveWithinProject(project.dir, compPath);
-    if (!htmlFile || statSync(htmlFile, { throwIfNoEntry: false })?.isDirectory()) {
-      return c.json({ error: "not found" }, 404);
-    }
+    const source = htmlFile ? readCompositionSource(htmlFile) : "not-a-file";
+    if (source === "not-a-file") return c.json({ error: "not found" }, 404);
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
     const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
 
@@ -126,10 +148,10 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     // edit, even on a hard reload. Keyed on content (like manualEdits/motion), not
     // just mtime, so a restore/copy with a preserved mtime can't serve stale.
     let sourceKey = "";
-    if (existsSync(htmlFile)) {
-      const html = readFileSync(htmlFile, "utf-8");
+    if (source !== "missing") {
+      const { html } = source;
       sourceKey = `_${createHash("sha1").update(html).digest("hex").slice(0, 16)}`;
-      sourceMtime = Math.round(statSync(htmlFile).mtimeMs);
+      sourceMtime = Math.round(source.mtimeMs);
       if (!vpWidth) {
         const wMatch = html.match(/data-width=["'](\d+)["']/);
         const hMatch = html.match(/data-height=["'](\d+)["']/);
