@@ -21,6 +21,11 @@ import {
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.
+// packages/cli/src/utils/compositionViewport.ts MAX_VIEWPORT_DIMENSION. Kept as a
+// literal rather than imported: @hyperframes/lint must not depend on the CLI, and
+// the number is a property of the capture path we are warning about, not of lint.
+const INSPECTION_VIEWPORT_CAP = 4096;
+
 const MAX_COMPOSITION_LINES = 300;
 const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
@@ -1433,6 +1438,59 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           `To scale the OUTPUT without changing layout, pass \`--output-resolution\` to render, which supersamples. ` +
           `\`zoom\` on descendants is fine and is not flagged: it is honoured exactly as specified.`,
         snippet: hit.snippet,
+      },
+    ];
+  },
+
+  // composition_exceeds_inspection_viewport_cap
+  //
+  // packages/cli/src/utils/compositionViewport.ts caps a parsed data-width /
+  // data-height at MAX_VIEWPORT_DIMENSION (4096) with a plain Math.min and no
+  // warning. captureCompositionFrame resolves its viewport through that helper,
+  // and check, validate, snapshot, compare and layout all capture through it;
+  // layout and motionShot carry their own independent Math.min(..., 4096).
+  //
+  // `render` does NOT go through it, and that asymmetry is the whole finding.
+  // Measured at 0.8.71 on a 5000x400 composition with 100x100 boxes at left:100
+  // and left:4500:
+  //
+  //   render    -> 5000x400 output, both boxes present.
+  //   snapshot  -> 4096x400 frame, the left:4500 box ABSENT.
+  //
+  // So the video is correct and the tools an author would reach for to check it
+  // silently cannot see the last 904 px. The failure direction is the awkward
+  // one: `check` comes back clean on a region it never rendered, and someone
+  // debugging a missing element through `snapshot` chases a difference that
+  // exists only in the instrument.
+  //
+  // A warning, not an error: the deliverable is fine, and a composition wider
+  // than 4096 can be entirely deliberate.
+  ({ rootTag }) => {
+    if (!rootTag) return [];
+    const over: string[] = [];
+    for (const attr of ["data-width", "data-height"] as const) {
+      const raw = readAttr(rootTag.raw, attr);
+      if (!raw) continue;
+      const value = Number.parseInt(raw, 10);
+      if (Number.isFinite(value) && value > INSPECTION_VIEWPORT_CAP) {
+        over.push(`${attr}=${value}`);
+      }
+    }
+    if (over.length === 0) return [];
+    return [
+      {
+        code: "composition_exceeds_inspection_viewport_cap",
+        severity: "warning",
+        message:
+          `${over.join(" and ")} exceeds the ${INSPECTION_VIEWPORT_CAP}px viewport cap that check, validate, snapshot, compare and layout clamp to. ` +
+          `render is unaffected and produces the full size, so the video is correct — but every inspection command captures a ${INSPECTION_VIEWPORT_CAP}px-wide frame, ` +
+          `and anything beyond that is missing from what they report. Measured at 0.8.71: a 5000x400 composition renders 5000x400 with all content, ` +
+          `while snapshot returns 4096x400 with the element at left:4500 absent.`,
+        fixHint:
+          `Keep the authored size if the output needs it, and verify the region past ${INSPECTION_VIEWPORT_CAP}px from a render rather than from check/snapshot/compare — ` +
+          `a clean inspection result does not cover it. If the large canvas is only there to gain resolution, author at the layout size and pass ` +
+          `\`--output-resolution\` to render instead, which supersamples without changing layout.`,
+        snippet: truncateSnippet(rootTag.raw),
       },
     ];
   },

@@ -2297,4 +2297,62 @@ describe("composition rules", () => {
       expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
     });
   });
+
+  // composition_exceeds_inspection_viewport_cap — measured at 0.8.71: a
+  // 5000x400 composition renders 5000x400 with all content, while snapshot
+  // (and check/validate/compare/layout, which share the same capture helper)
+  // returns 4096x400 with the element at left:4500 absent.
+  describe("composition_exceeds_inspection_viewport_cap", () => {
+    const codes = (r: { findings: Array<{ code: string }> }) => r.findings.map((f) => f.code);
+    const root = (attrs: string) =>
+      `<!doctype html><html><body><div id="root" data-composition-id="main" ${attrs} data-duration="5"></div></body></html>`;
+
+    it("warns when data-width exceeds the cap", async () => {
+      const result = await lintHyperframeHtml(root(`data-width="5000" data-height="400"`));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_exceeds_inspection_viewport_cap",
+      );
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).toContain("data-width=5000");
+      expect(finding?.message).not.toContain("data-height");
+    });
+
+    it("warns when data-height exceeds the cap", async () => {
+      const result = await lintHyperframeHtml(root(`data-width="1080" data-height="4500"`));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_exceeds_inspection_viewport_cap",
+      );
+      expect(finding?.message).toContain("data-height=4500");
+    });
+
+    it("names both axes when both exceed the cap", async () => {
+      const result = await lintHyperframeHtml(root(`data-width="5000" data-height="4500"`));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_exceeds_inspection_viewport_cap",
+      );
+      expect(finding?.message).toContain("data-width=5000 and data-height=4500");
+    });
+
+    it("is silent exactly at the cap", async () => {
+      const result = await lintHyperframeHtml(root(`data-width="4096" data-height="4096"`));
+      expect(codes(result)).not.toContain("composition_exceeds_inspection_viewport_cap");
+    });
+
+    it("fires one past the cap", async () => {
+      const result = await lintHyperframeHtml(root(`data-width="4097" data-height="1080"`));
+      expect(codes(result)).toContain("composition_exceeds_inspection_viewport_cap");
+    });
+
+    it("is silent on ordinary dimensions", async () => {
+      const result = await lintHyperframeHtml(root(`data-width="3840" data-height="2160"`));
+      expect(codes(result)).not.toContain("composition_exceeds_inspection_viewport_cap");
+    });
+
+    it("is silent when the dimensions are absent or unparseable", async () => {
+      for (const attrs of [``, `data-width="wide" data-height="tall"`]) {
+        const result = await lintHyperframeHtml(root(attrs));
+        expect(codes(result)).not.toContain("composition_exceeds_inspection_viewport_cap");
+      }
+    });
+  });
 });
