@@ -194,6 +194,28 @@ describe("registerCompositionRoute", () => {
     expect(await edited.text()).toBe("a{color:tan}");
   });
 
+  it("serves an edited SVG fresh and still answers a Range request on text", async () => {
+    const project = tmpProject();
+    const svg = join(project.dir, "logo.svg");
+    const pinned = new Date("2026-01-01T00:00:00Z");
+    writeFileSync(svg, "<svg>a</svg>");
+    utimesSync(svg, pinned, pinned);
+    const app = await buildApp(project, false);
+    const etag = (await app.request("/composition/logo.svg")).headers.get("ETag") ?? "";
+
+    writeFileSync(svg, "<svg>b</svg>");
+    utimesSync(svg, pinned, pinned);
+    const edited = await app.request("/composition/logo.svg", {
+      headers: { "If-None-Match": etag },
+    });
+    expect(edited.status).toBe(200);
+    expect(await edited.text()).toBe("<svg>b</svg>");
+
+    const ranged = await app.request("/composition/logo.svg", { headers: { Range: "bytes=0-3" } });
+    expect(ranged.status).toBe(206);
+    expect(await ranged.text()).toBe("<svg");
+  });
+
   it("answers a Range request on a plain asset with 206 + the requested byte slice", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "clip.mp4"), Buffer.from("0123456789", "utf-8"));
