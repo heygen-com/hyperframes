@@ -8,6 +8,12 @@ import { join } from "node:path";
 // "./updateCheck.js" would only override the export binding, not the internal
 // call printStalePinNotice makes to it from within the same module.
 let store: Record<string, unknown> = {};
+let runningVersion = "0.7.55";
+vi.mock("../version.js", () => ({
+  get VERSION() {
+    return runningVersion;
+  },
+}));
 // isDevMode() is true under vitest (module path ends in .ts), which would
 // suppress the notice unconditionally — mock ./env.js like updateCheck.test.ts does.
 vi.mock("./env.js", () => ({ isDevMode: () => false }));
@@ -27,6 +33,7 @@ describe("printStalePinNotice", () => {
   const origWrite = process.stderr.write.bind(process.stderr);
   beforeEach(() => {
     store = { latestVersion: "0.7.55" };
+    runningVersion = "0.7.55";
     writes = [];
     dir = mkdtempSync(join(tmpdir(), "hf-pin-"));
     process.stderr.write = ((s: unknown) => {
@@ -60,6 +67,21 @@ describe("printStalePinNotice", () => {
     );
     printStalePinNotice(dir);
     expect(writes.join("")).toBe("");
+  });
+
+  it("warns on every run when an older CLI than the pin is running", () => {
+    store = { latestVersion: "0.8.71" };
+    runningVersion = "0.7.71";
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ scripts: { check: "npx --yes hyperframes@0.8.66 check" } }),
+    );
+    printStalePinNotice(dir);
+    printStalePinNotice(dir);
+    const mismatch = writes.filter((w) => w.includes("This is hyperframes 0.7.71"));
+    expect(mismatch.length).toBe(2);
+    expect(mismatch[0]).toContain("npx hyperframes@0.8.66");
+    expect(writes.join("")).not.toContain("upgrade --project");
   });
 
   it("silent under CI", () => {

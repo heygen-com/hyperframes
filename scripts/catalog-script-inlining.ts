@@ -227,21 +227,10 @@ ${gsapLoaderJs(vendorUrls)}
 }
 
 function inlineGlassScripts(html: string, projectDir: string): string {
-  const hdrRelPath = "assets/ferndale_studio_01_1k.hdr";
-  let glassText = withHostedRefs(
-    readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8"),
-    projectDir,
-  );
-  if (!glassText.includes(hdrRelPath)) {
-    throw new Error(
-      `catalog-script-inlining: glass-main.js no longer references "${hdrRelPath}"; ` +
-        `the hdr substitution needs updating.`,
-    );
+  if (html.includes("assets/ferndale_studio_01_1k.hdr")) {
+    throw new Error("catalog-script-inlining: glass-shard-title's hdr <link> was not inlined.");
   }
-  const hdrBytes = readFileSync(join(projectDir, hdrRelPath));
-  const hdrDataUrl = `data:application/octet-stream;base64,${hdrBytes.toString("base64")}`;
-  glassText = glassText.split(hdrRelPath).join(hdrDataUrl);
-
+  const glassText = readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8");
   const bootstrap = `<script>(0,eval)(${jsStringLiteral(glassText)});</script>`;
   return replaceOnce(
     html,

@@ -35,6 +35,8 @@ export type { ToggleProps } from "./components/ui/Toggle";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
+export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
+export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
 

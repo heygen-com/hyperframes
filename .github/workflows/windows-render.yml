@@ -34,7 +34,8 @@ on:
 
 concurrency:
   group: windows-render-${{ github.ref }}
-  cancel-in-progress: true
+  # A body or title edit queues behind running checks instead of cancelling them.
+  cancel-in-progress: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
 
 jobs:
   changes:

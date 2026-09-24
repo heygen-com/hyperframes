@@ -7,6 +7,7 @@ import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { ShortcutsPanel } from "./ShortcutsPanel";
+import type { ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
 
@@ -161,6 +162,8 @@ interface PlayerControlsProps {
   disabled?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Replaces the shortcuts panel's list, e.g. DEFAULT_SHORTCUT_SECTIONS with entries dropped or relabelled. */
+  shortcutSections?: readonly ShortcutSection[];
 }
 
 export const PlayerControls = memo(function PlayerControls({
@@ -169,6 +172,7 @@ export const PlayerControls = memo(function PlayerControls({
   disabled = false,
   isFullscreen = false,
   onToggleFullscreen,
+  shortcutSections,
 }: PlayerControlsProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const duration = usePlayerStore((s) => s.duration);
@@ -291,6 +295,7 @@ export const PlayerControls = memo(function PlayerControls({
             setInPoint={setInPoint}
             setOutPoint={setOutPoint}
             onSeek={onSeek}
+            sections={shortcutSections}
           />
         </div>
       </div>
