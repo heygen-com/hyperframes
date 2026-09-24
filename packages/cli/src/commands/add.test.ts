@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
+import { lintHyperframeHtml } from "@hyperframes/lint";
 import {
   AddError,
   buildSnippet,
@@ -253,6 +254,14 @@ describe("add command pure helpers", () => {
       const snip = buildSnippet(BLOCK_ITEM, "src/scenes/my-block.html");
       expect(snip).toContain('data-composition-src="src/scenes/my-block.html"');
       expect(snip).toContain('data-duration="6"');
+    });
+
+    it("gives the block host the composition id that check requires", async () => {
+      const snip = buildSnippet(BLOCK_ITEM, "compositions/my-block.html");
+      const html = `<!doctype html><html><body><div data-composition-id="root" data-width="1080" data-height="1350">${snip}</div></body></html>`;
+      const { findings } = await lintHyperframeHtml(html);
+      expect(findings.map((f) => f.code)).not.toContain("host_missing_composition_id");
+      expect(snip).toContain('data-composition-id="my-block"');
     });
 
     it("emits a paste hint for components", () => {

@@ -115,7 +115,7 @@ export function buildSnippet(
         ? ` data-width="${item.dimensions.width}" data-height="${item.dimensions.height}"`
         : "";
     const vars = variableValuesAttribute(values);
-    return `<div data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}${vars}></div>`;
+    return `<div data-composition-id="${item.name}" data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}${vars}></div>`;
   }
   if (item.type === "hyperframes:component") {
     return `<!-- paste from ${relativeTarget} into your composition -->`;
