@@ -95,16 +95,24 @@ node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish vo
 | Directed delivery with Gemini prebuilt or custom voices   | **Gemini** (explicit selection; transcription for timing) |
 | Non-English multilingual with deterministic phonemization | **Kokoro** (`ef_dora`, `jf_alpha`, `zf_xiaobei`, …)       |
 
-## Gemini 3.8 narration
+## Gemini narration
 
-Use the shared audio engine, not `hyperframes tts`. Set `GEMINI_API_KEY` or
-`GOOGLE_API_KEY` in the environment or project `.env` (Gemini key wins when
-both are set). Never put the key in a request file or composition.
+Use the shared audio engine, not `hyperframes tts`. Authenticate with either:
 
-This helper calls the Gemini Developer API using API-key authentication. The API
-also supports appropriately scoped OAuth credentials, but this helper does not
-yet accept OAuth tokens. Do not put service-account JSON in an API-key variable.
-Cloud Text-to-Speech and Vertex AI have separate model availability.
+- `GEMINI_API_KEY` or `GOOGLE_API_KEY` (first set key wins).
+- A service-account JSON file at `GOOGLE_APPLICATION_CREDENTIALS`, or injected
+  JSON in `GCS_CREDS`. Install `google-auth requests` in the Python 3 environment
+  used by the helper. A configured file takes precedence over injected JSON.
+
+API keys take precedence over service accounts: unset both key variables to use
+OAuth. Never put credentials in a request file or composition. The helper
+obtains a fresh OAuth token for each generation with `cloud-platform` and
+`generative-language.retriever` scopes. The quota project resolves from
+`GOOGLE_CLOUD_PROJECT`, then `GCLOUD_PROJECT_ID`, then the service-account JSON.
+User ADC files and metadata-server authentication are not supported.
+
+Both routes call the Gemini Developer Interactions API, not Cloud TTS or Vertex
+AI. Those APIs have separate model catalogs and access requirements.
 
 Save this as `audio_request.json` in the project:
 
@@ -133,13 +141,20 @@ has audio and nonempty word timings before building a captioned video. Review
 the timings against the actual audio; transcription is estimated alignment,
 not native TTS timestamps. Do not distribute words evenly across a clip.
 
-- **Models:** `gemini-3.8-flash-tts` (default), or `gemini-3.8-flash-lite-tts`.
+- **Models:** `gemini-3.8-flash-tts` (default), `gemini-3.8-flash-lite-tts`,
+  `gemini-3.1-flash-tts-preview`, `gemini-2.5-pro-preview-tts`, and
+  `gemini-2.5-flash-preview-tts`. Use these exact Developer API IDs; Cloud TTS
+  aliases such as `gemini-2.5-flash-tts` are not accepted.
 - **Voice:** `Kore` by default; pass another prebuilt voice or an existing custom
-  voice ID. Creating or replicating voices is outside this helper.
+  voice ID for 3.8. Older models require prebuilt voices. Creating or replicating
+  voices is outside this helper.
 - **Delivery:** Put directions in `style`, not in spoken `text`. Each line can
-  override `style`. Use style for pacing; numeric `speed` must be omitted or 1.
-- **Audio:** The unary API returns a complete WAV, saved locally. No generation
-  calls run during playback or rendering.
+  override `style`. 3.8 uses structured annotations; older models receive a
+  delivery prompt before the transcript. Check that directions were not spoken.
+  Use style for pacing; numeric `speed` must be omitted or 1.
+- **Audio:** 3.8 returns a complete WAV. Older models return mono 16-bit PCM,
+  which the helper wraps as WAV at the returned sample rate without resampling.
+  No generation calls run during playback or rendering.
 - **Timing:** This adapter requests no native word timestamps. It uses the
   existing transcription pass. `lang` selects transcription language; Gemini
   infers speech language from the text.

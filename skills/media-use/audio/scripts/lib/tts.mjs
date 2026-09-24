@@ -20,7 +20,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { heygenAuthHeaders, heygenCredential, heygenJSON } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
-import { geminiKey, synthesizeGemini } from "./gemini-tts.mjs";
+import { synthesizeGemini } from "./gemini-tts.mjs";
+import { geminiConfigured } from "./gemini-auth.mjs";
 
 // ── provider detection ────────────────────────────────────────────────────────
 export function heygenAvailable() {
@@ -40,8 +41,10 @@ export function pickProvider(userProvider) {
   if (userProvider) {
     if (!["heygen", "elevenlabs", "kokoro", "gemini"].includes(userProvider))
       throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro | gemini)`);
-    if (userProvider === "gemini" && !geminiKey())
-      throw new Error("provider=gemini but GEMINI_API_KEY or GOOGLE_API_KEY is not set");
+    if (userProvider === "gemini" && !geminiConfigured())
+      throw new Error(
+        "provider=gemini needs GEMINI_API_KEY or GOOGLE_API_KEY, or service-account credentials (GOOGLE_APPLICATION_CREDENTIALS or GCS_CREDS)",
+      );
     if (userProvider === "heygen" && !heygenAvailable())
       throw new Error(
         "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `npx hyperframes auth login`)",

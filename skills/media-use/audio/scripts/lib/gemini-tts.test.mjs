@@ -11,6 +11,8 @@ function fixture(t) {
   const saved = { ...process.env };
   process.env.GEMINI_API_KEY = "test-gemini-key";
   delete process.env.GOOGLE_API_KEY;
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  delete process.env.GCS_CREDS;
   t.after(() => {
     process.env = saved;
     rmSync(dir, { recursive: true, force: true });
@@ -141,4 +143,101 @@ test("incomplete, missing, raw PCM and malformed audio cannot become a successfu
     assert.equal(result.ok, false);
     assert.equal(existsSync(args.wavAbs), false);
   }
+});
+
+for (const model of [
+  "gemini-3.1-flash-tts-preview",
+  "gemini-2.5-pro-preview-tts",
+  "gemini-2.5-flash-preview-tts",
+]) {
+  test(`${model} uses legacy delivery prompts and wraps PCM as mono WAV`, async (t) => {
+    const { args, wav } = fixture(t);
+    const pcm = wav.subarray(44);
+    const result = await synthesizeGemini(
+      { ...args, model, style: "Warm and clear" },
+      {
+        fetchImpl: async (_, options) => {
+          const body = JSON.parse(options.body);
+          assert.deepEqual(body.response_format, { type: "audio" });
+          assert.equal(body.input[0].content[0].annotations, undefined);
+          assert.ok(body.input[0].content[0].text.endsWith(args.text));
+          assert.ok(body.input[0].content[0].text.includes("Warm and clear"));
+          return Response.json({
+            status: "completed",
+            steps: [
+              {
+                type: "model_output",
+                content: [
+                  {
+                    type: "audio",
+                    mime_type: "audio/L16;codec=pcm;rate=24000",
+                    data: pcm.toString("base64"),
+                  },
+                ],
+              },
+            ],
+          });
+        },
+      },
+    );
+    assert.equal(result.ok, true, result.error);
+    assert.deepEqual(readFileSync(args.wavAbs), wav);
+  });
+}
+
+test("service-account bearer and quota project reach synthesis, and token errors are redacted", async (t) => {
+  const { args, payload } = fixture(t);
+  const authenticate = () => ({
+    headers: { Authorization: "Bearer secret-token", "x-goog-user-project": "test-project" },
+    secret: "secret-token",
+  });
+  const ok = await synthesizeGemini(args, {
+    authenticate,
+    fetchImpl: async (_, options) => {
+      assert.equal(options.headers.Authorization, "Bearer secret-token");
+      assert.equal(options.headers["x-goog-user-project"], "test-project");
+      assert.equal(options.headers["x-goog-api-key"], undefined);
+      return Response.json(payload);
+    },
+  });
+  assert.equal(ok.ok, true);
+  const failed = await synthesizeGemini(args, {
+    authenticate,
+    fetchImpl: async () => new Response("denied secret-token", { status: 403 }),
+  });
+  assert.match(failed.error, /HTTP 403/);
+  assert.ok(!failed.error.includes("secret-token"));
+});
+
+test("older models reject unsupported PCM and custom voices", async (t) => {
+  const { args } = fixture(t);
+  for (const mime of [
+    "audio/l16",
+    "audio/l16;rate=0",
+    "audio/l16;rate=24000;channels=2",
+    "audio/l16;rate=24000;codec=other",
+  ]) {
+    const result = await synthesizeGemini(
+      { ...args, model: "gemini-3.1-flash-tts-preview" },
+      {
+        fetchImpl: async () =>
+          Response.json({
+            status: "completed",
+            steps: [
+              {
+                type: "model_output",
+                content: [{ type: "audio", mime_type: mime, data: "AAAAAA==" }],
+              },
+            ],
+          }),
+      },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(existsSync(args.wavAbs), false);
+  }
+  const result = await synthesizeGemini(
+    { ...args, model: "gemini-2.5-pro-preview-tts", voiceId: "voice_custom" },
+    { fetchImpl: () => assert.fail("must not generate") },
+  );
+  assert.match(result.error, /Custom Gemini voices require/);
 });

@@ -18,7 +18,7 @@ node skills/media-use/audio/scripts/heygen-tts.mjs \
 
 These adapters supply audio without word data. The shared audio engine runs
 transcription automatically when timings are absent. For Gemini, use the
-request in [Text to speech](tts.md#gemini-38-narration), then consume
+request in [Text to speech](tts.md#gemini-narration), then consume
 `audio_meta.json` → `voices[].words`.
 
 For a standalone local Kokoro generation, generate the audio, then transcribe:
