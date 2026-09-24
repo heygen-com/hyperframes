@@ -34,6 +34,11 @@ if (!executablePath) {
 }
 
 const thumbnailDir = join(PROJECT_DIR, ".thumbnails");
+/** `compositions/scene-3.html t=2.50` from a thumbnail URL, for reading which renders ran. */
+const thumbnailLabel = (url) => {
+  const { pathname, searchParams } = new URL(url);
+  return `${decodeURIComponent(pathname.split("/thumbnail/")[1])} t=${searchParams.get("t")}`;
+};
 rmSync(thumbnailDir, { recursive: true, force: true });
 
 const browser = await puppeteer.launch({
@@ -46,6 +51,7 @@ try {
   await page.setViewport({ width: 1600, height: 900 });
   const counters = await startWorkCounters(browser, page);
   const thumbnailsInFlight = new Set();
+  const thumbnailOutcomes = [];
   let lastThumbnailActivity = 0;
   const isThumbnail = (request) => request.url().includes("/thumbnail/");
   page.on("request", (request) => {
@@ -55,7 +61,10 @@ try {
   });
   for (const done of ["requestfinished", "requestfailed"]) {
     page.on(done, (request) => {
-      if (thumbnailsInFlight.delete(request)) lastThumbnailActivity = Date.now();
+      if (!thumbnailsInFlight.delete(request)) return;
+      lastThumbnailActivity = Date.now();
+      const outcome = request.response()?.status() ?? request.failure()?.errorText;
+      thumbnailOutcomes.push(`${thumbnailLabel(request.url())} ${request.resourceType()} ${outcome}`);
     });
   }
   const started = performance.now();
@@ -114,6 +123,8 @@ try {
         idleMs: IDLE_MS,
         wallMs,
         workCounts,
+        thumbnailRequests: thumbnailOutcomes.sort(),
+        thumbnailFiles: existsSync(thumbnailDir) ? readdirSync(thumbnailDir).sort() : [],
       },
       null,
       2,

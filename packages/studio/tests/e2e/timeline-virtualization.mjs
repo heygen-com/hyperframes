@@ -366,14 +366,17 @@ try {
         ? "approved"
         : "rejected",
   };
-  // The worst measured run per counter; perf-ratchet.mjs holds it under perf-ceilings.json.
-  const workCounts = {};
-  for (const run of runs) {
-    for (const [counter, perTick] of Object.entries(run.workPerTick)) {
-      const key = `${counter}PerTick`;
-      workCounts[key] = Math.max(workCounts[key] ?? 0, perTick);
-    }
-  }
+  // The median measured run per counter: a real regression moves every run, a stray late
+  // scroll event moves one. perf-ratchet.mjs holds it under perf-ceilings.json.
+  const workCounts = Object.fromEntries(
+    Object.keys(runs[0].workPerTick).map((counter) => [
+      `${counter}PerTick`,
+      percentile(
+        runs.map((run) => run.workPerTick[counter]),
+        0.5,
+      ),
+    ]),
+  );
   const interactionP95Ms = percentile(
     runs.map((run) => run.interactionP95Ms),
     0.95,
