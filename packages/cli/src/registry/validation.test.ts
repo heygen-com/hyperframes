@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { validRegistryName, validRegistryManifest, validRegistryItem } from "./validation.js";
 
@@ -38,5 +40,22 @@ describe("registry manifest boundary", () => {
     expect(
       validRegistryManifest({ ...manifest, items: Array(10_001).fill(manifest.items[0]) }),
     ).toBe(false);
+  });
+  it("accepts every registry-item.json the repo publishes", () => {
+    const registry = join(import.meta.dirname, "../../../../registry");
+    const rejected = readdirSync(registry, { withFileTypes: true })
+      .filter((dir) => dir.isDirectory())
+      .flatMap((dir) =>
+        readdirSync(join(registry, dir.name)).map((name) => ({ dir: dir.name, name })),
+      )
+      .filter(({ dir, name }) => existsSync(join(registry, dir, name, "registry-item.json")))
+      .filter(({ dir, name }) => {
+        const item = JSON.parse(
+          readFileSync(join(registry, dir, name, "registry-item.json"), "utf8"),
+        );
+        return !validRegistryItem(item, name, item.type);
+      })
+      .map(({ dir, name }) => `${dir}/${name}`);
+    expect(rejected).toEqual([]);
   });
 });
