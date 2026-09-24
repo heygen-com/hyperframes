@@ -7,7 +7,7 @@
   },
   "timeline-scroll": {
     "reactCommitsPerTick": 0.86,
-    "styleRecalcsPerTick": 0.86,
+    "styleRecalcsPerTick": 1.71,
     "layoutsPerTick": 0.86
   }
 }

@@ -839,6 +839,7 @@ jobs:
       - name: Count the work of opening a film in Studio
         # Counts, not ms: thumbnail renders, page loads and requests do not move
         # with runner load, so perf-ceilings.json can hold them exactly.
+        if: success() || failure()
         run: |
           set -euo pipefail
           NODE_ENV=production bun run --cwd packages/studio dev -- --port 5315 --strictPort &
