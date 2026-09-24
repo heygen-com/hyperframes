@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
+import { createWriteToken } from "../helpers/fileVersion.js";
 import type { HistoryWindow, ProjectHistory } from "../history/projectHistory.js";
 import { stepTarget, type HistoryEntry, type HistoryWho } from "../history/historyLog.js";
 
@@ -18,6 +19,12 @@ async function bodyOf(c: Context): Promise<Record<string, unknown>> {
 }
 
 const text = (value: unknown) => (typeof value === "string" && value ? value : null);
+
+/** Studio's write token, so the watcher's echo of an undo reads as Studio's own write. */
+function writing(c: Context): { writeToken?: string } {
+  const header = c.req.header("X-Hyperframes-Write-Token");
+  return header ? { writeToken: createWriteToken(header) } : {};
+}
 
 /** How long a window or a coalescing claim may wait for its next write; past the cap a timer overflows. */
 function idleOf(body: Record<string, unknown>): number | undefined {
@@ -64,18 +71,20 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
   );
   api.post(`${base}/step`, (c) =>
     withHistory(adapter, c, (history, body) =>
-      history.step(body.direction === "forward" ? "forward" : "back", YOU),
+      history.step(body.direction === "forward" ? "forward" : "back", YOU, writing(c)),
     ),
   );
   api.post(`${base}/undo`, (c) =>
     withHistory(adapter, c, (history, body) => {
       const mode =
         body.mode === "just-this" || body.mode === "back-to-before" ? body.mode : undefined;
-      return history.undo(text(body.entryId) ?? "", { who: YOU, mode });
+      return history.undo(text(body.entryId) ?? "", { who: YOU, mode, ...writing(c) });
     }),
   );
   api.post(`${base}/restore`, (c) =>
-    withHistory(adapter, c, (history, body) => history.restore(text(body.point) ?? "", YOU)),
+    withHistory(adapter, c, (history, body) =>
+      history.restore(text(body.point) ?? "", YOU, writing(c)),
+    ),
   );
   api.get(`${base}/peek/:point`, (c) =>
     withHistory(adapter, c, (history) => ({ files: history.peek(c.req.param("point")) })),
