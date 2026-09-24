@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as clack from "@clack/prompts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
@@ -445,5 +446,67 @@ describe("waitForStudioChildClose", () => {
     await waiting;
     expect(resolved).toBe(true);
     expect(signalTarget.off).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("studio dev-server spawns", () => {
+  function fakeStudioChild() {
+    return {
+      pid: 4321,
+      exitCode: 0,
+      signalCode: null,
+      stdout: { on: vi.fn(), removeListener: vi.fn() },
+      stderr: { on: vi.fn(), removeListener: vi.fn() },
+      on: vi.fn(),
+      once: vi.fn(),
+    };
+  }
+
+  // Returns the spawn spy. mkdirSync/existsSync are stubbed too, so
+  // linkProjectIntoStudioData never touches the real studio data directory.
+  function mockStudioSpawn() {
+    const spawn = vi.fn((_command: string, _args: string[], _options: unknown) =>
+      fakeStudioChild(),
+    );
+    vi.doMock("node:child_process", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:child_process")>();
+      return { ...actual, spawn };
+    });
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return { ...actual, mkdirSync: () => undefined, existsSync: () => true };
+    });
+    vi.resetModules();
+    return spawn;
+  }
+
+  afterEach(() => {
+    vi.doUnmock("node:child_process");
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+  });
+
+  it("runDevMode passes windowsHide to the studio dev-server spawn", async () => {
+    const spawn = mockStudioSpawn();
+
+    const { runDevMode } = await import("./preview.js");
+    await runDevMode("/tmp/hf-preview-devmode-test", { json: true });
+
+    expect(spawn).toHaveBeenCalledOnce();
+    expect(spawn.mock.calls[0]?.[2]).toMatchObject({ windowsHide: true });
+  });
+
+  it("runLocalStudioMode passes windowsHide to the local Vite spawn", async () => {
+    const spawn = mockStudioSpawn();
+
+    // @hyperframes/studio is resolved for real, so the project dir has to sit
+    // inside the monorepo's node_modules tree.
+    const thisFile = fileURLToPath(import.meta.url);
+    const localStudioProjectDir = resolve(dirname(thisFile), "..", "..");
+    const { runLocalStudioMode } = await import("./preview.js");
+    await runLocalStudioMode(localStudioProjectDir, { json: true });
+
+    expect(spawn).toHaveBeenCalledOnce();
+    expect(spawn.mock.calls[0]?.[2]).toMatchObject({ windowsHide: true });
   });
 });

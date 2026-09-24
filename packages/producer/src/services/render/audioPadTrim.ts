@@ -41,7 +41,7 @@ import { redactKnownPaths, redactTelemetryString } from "@hyperframes/core";
 const AUDIO_DURATION_TOLERANCE_SECONDS = 0.001;
 
 /** Delivery headroom applied after every AAC encode in this stage. */
-export const AAC_DELIVERY_TRUE_PEAK_DBFS = -1;
+const AAC_DELIVERY_TRUE_PEAK_DBFS = -1;
 const AAC_TRUE_PEAK_CORRECTION_HEADROOM_DB = 0.5;
 const MAX_TRUE_PEAK_CORRECTION_PASSES = 3;
 
@@ -642,7 +642,10 @@ async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<
   if (!args.includes("--")) {
     throw new Error('[audioPadTrim] ffprobe args must terminate options with "--".');
   }
-  const proc = spawn(getFfprobeBinary(), args, { stdio: ["ignore", "pipe", "pipe"] });
+  const proc = spawn(getFfprobeBinary(), args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
   trackChildProcess(proc);
   let stdout = "";
   proc.stdout.on("data", (data: Buffer) => {

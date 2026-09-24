@@ -1398,7 +1398,7 @@ export function reportPreviewShutdown(json: boolean): void {
 /**
  * Dev mode: spawn the studio dev server from the monorepo.
  */
-async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+export async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
@@ -1418,6 +1418,7 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   const child = spawn("bun", ["run", "dev", "--", ...previewViteArgs(options?.port)], {
     cwd: studioPkgDir,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
     env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
       projectDir: dir,
       projectName: pName,
@@ -1463,7 +1464,10 @@ function hasLocalStudio(dir: string): boolean {
  * Local studio mode: spawn Vite using a locally installed @hyperframes/studio.
  * Provides full Vite HMR and the complete studio experience.
  */
-async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+export async function runLocalStudioMode(
+  dir: string,
+  options?: StudioLaunchOptions,
+): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
   const pName = options?.projectName ?? basename(dir);
@@ -1480,6 +1484,7 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
     env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
       projectDir: dir,
       projectName: pName,

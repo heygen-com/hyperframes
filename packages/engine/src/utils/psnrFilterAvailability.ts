@@ -45,6 +45,7 @@ async function probe(): Promise<boolean> {
     const { stdout } = await execFileP(getFfmpegBinary(), ["-hide_banner", "-filters"], {
       maxBuffer: 4 * 1024 * 1024,
       timeout: 5_000,
+      windowsHide: true,
     });
     // ffmpeg's `-filters` output lists one filter per line, e.g.
     //   " T.. psnr             VV->V      Calculate the PSNR between two video streams."
