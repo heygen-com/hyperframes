@@ -79,6 +79,17 @@ describe("history routes", () => {
     });
   });
 
+  it("claim what Studio just wrote as the person's entry, under the edit's label", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    const { claimed } = await (
+      await call("/claim", { label: "Moved Title", paths: ["index.html", 7] })
+    ).json();
+    const { entries, back } = await (await call("")).json();
+    expect(entries).toMatchObject([{ id: claimed.id, label: "Moved Title", who: { name: "You" } }]);
+    expect(back).toMatchObject({ id: claimed.id, label: "Moved Title" });
+  });
+
   it("end a window given idleMs by itself once its writes stop", async () => {
     const { projectDir, call } = await demoProject();
 

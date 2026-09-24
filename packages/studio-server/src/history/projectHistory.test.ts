@@ -293,3 +293,71 @@ describe("openProjectHistory", () => {
     expect(read("index.html")).toBe("c".repeat(40));
   });
 });
+
+describe("claim: a writer that records after writing", () => {
+  it("files the claimed paths' writes as the claimer's entry; other outside writes stay outside", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "notes.md": "n" });
+    write("index.html", "B");
+    write("notes.md", "agent notes");
+    const claimed = await history.claim(you, "Moved Title", ["index.html"]);
+    expect(history.list()).toMatchObject([
+      { id: claimed!.id, who: you, label: "Moved Title", files: [{ path: "index.html" }] },
+    ]);
+    await history.flush();
+    expect(history.list().map((entry) => [entry.who.kind, entry.files[0]!.path])).toEqual([
+      ["person", "index.html"],
+      ["outside", "notes.md"],
+    ]);
+    await history.undo(claimed!.id, { who: you });
+    expect(read("index.html")).toBe("A");
+    expect(await history.claim(you, "Nothing", ["index.html"]), "nothing left to claim").toBeNull();
+  });
+
+  it("merges claims with one coalesceKey into one entry, and Cmd+Z right after undoes all of it", async () => {
+    const { history, write, read } = await project({ "index.html": "A" });
+    write("index.html", "B");
+    const first = await history.claim(you, "Dragged Title", ["./index.html"], {
+      coalesceKey: "drag",
+    });
+    write("index.html", "C");
+    const second = await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+    });
+    expect(second!.id).toBe(first!.id);
+    expect(history.list(), "still open for the next write of the drag").toEqual([]);
+
+    expect(await history.step("back", you)).toMatchObject({
+      ok: true,
+      entry: { label: "Undid: Dragged Title" },
+    });
+    expect(read("index.html")).toBe("A");
+    expect(history.list()[0]).toMatchObject({ id: first!.id, files: [{ path: "index.html" }] });
+  });
+
+  it("a claim with another key, or its idle time, ends the coalescing claim", async () => {
+    const { history, write } = await project({ "a.html": "A", "b.html": "B" });
+    write("a.html", "A2");
+    await history.claim(you, "Dragged A", ["a.html"], { coalesceKey: "a", idleMs: 30 });
+    await vi.waitFor(() => expect(history.list()).toMatchObject([{ label: "Dragged A" }]));
+    write("b.html", "B2");
+    await history.claim(you, "Dragged B", ["b.html"], { coalesceKey: "b" });
+    write("a.html", "A3");
+    await history.claim(you, "Dragged A again", ["a.html"], { coalesceKey: "a" });
+    expect(history.list().map((entry) => entry.label)).toEqual(["Dragged A", "Dragged B"]);
+  });
+
+  it("an outside write to a claimed path between the write and its claim folds into the claim (the ceiling)", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    write("index.html", "B");
+    write("index.html", "C");
+    await history.claim(you, "Moved Title", ["index.html"]);
+    const [entry] = history.list();
+    expect(entry).toMatchObject({ who: you, label: "Moved Title" });
+    const blob = async (hash: string | null) =>
+      hash ? String(await history.readBlob(hash)) : null;
+    expect([await blob(entry!.files[0]!.before), await blob(entry!.files[0]!.after)]).toEqual([
+      "A",
+      "C",
+    ]);
+  });
+});

@@ -4,7 +4,7 @@ import type { HistoryWindow, ProjectHistory } from "../history/projectHistory.js
 import { stepTarget, type HistoryEntry, type HistoryWho } from "../history/historyLog.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
-/** Past this a timer overflows; no edit waits this long between writes anyway. */
+/** No edit waits this long between writes. */
 const MAX_WINDOW_IDLE_MS = 10 * 60_000;
 
 async function historyOf(adapter: StudioApiAdapter, c: Context): Promise<ProjectHistory | null> {
@@ -18,6 +18,14 @@ async function bodyOf(c: Context): Promise<Record<string, unknown>> {
 }
 
 const text = (value: unknown) => (typeof value === "string" && value ? value : null);
+
+/** How long a window or a coalescing claim may wait for its next write; past the cap a timer overflows. */
+function idleOf(body: Record<string, unknown>): number | undefined {
+  const idleMs = body.idleMs;
+  return typeof idleMs === "number" && idleMs > 0
+    ? Math.min(idleMs, MAX_WINDOW_IDLE_MS)
+    : undefined;
+}
 
 /** What Cmd+Z or Cmd+Shift+Z would revert next, so Studio can name it on its buttons. */
 function nextStep(entries: readonly HistoryEntry[], direction: "back" | "forward") {
@@ -76,13 +84,23 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
       return { ok: true };
     }),
   );
+  // Studio records after it writes: its edit claims the paths it just wrote, under the edit's label.
+  api.post(`${base}/claim`, (c) =>
+    withHistory(adapter, c, async (history, body) => {
+      const paths = Array.isArray(body.paths) ? body.paths.filter((path) => text(path)) : [];
+      const coalesceKey = text(body.coalesceKey) ?? undefined;
+      const idleMs = idleOf(body);
+      const claimed = await history.claim(YOU, text(body.label) ?? "Edited in Studio", paths, {
+        ...(coalesceKey && { coalesceKey }),
+        ...(idleMs && { idleMs }),
+      });
+      return { claimed };
+    }),
+  );
   api.post(`${base}/window`, (c) =>
     withHistory(adapter, c, async (history, body) => {
       // A drag's burst of writes keeps one window open; it ends itself after idleMs without a write.
-      const idleMs =
-        typeof body.idleMs === "number" && body.idleMs > 0
-          ? Math.min(body.idleMs, MAX_WINDOW_IDLE_MS)
-          : undefined;
+      const idleMs = idleOf(body);
       const window = await history.beginWindow(
         YOU,
         text(body.label) ?? "Edited in Studio",

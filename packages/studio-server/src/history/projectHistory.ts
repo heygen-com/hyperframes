@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
@@ -65,6 +65,17 @@ export interface ProjectHistory {
     label: string,
     options?: { idleMs?: number },
   ): Promise<HistoryWindow>;
+  /**
+   * For a writer that records after writing (Studio): takes in every write so far and moves the not yet committed
+   * outside changes to `paths` into one entry of `who`'s. Claims with the same coalesceKey merge until a claim with
+   * another key, `idleMs` (default quietMs) without one, or any operation. Null when nothing was claimed.
+   */
+  claim(
+    who: HistoryWho,
+    label: string,
+    paths: readonly string[],
+    options?: { coalesceKey?: string; idleMs?: number },
+  ): Promise<{ id: string } | null>;
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
   list(): HistoryListItem[];
@@ -117,6 +128,14 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
+/** Files one change to a group; a later change to the same path keeps the group's first "before". */
+function addChange(group: Group, path: string, before: string | null, after: string | null): void {
+  const earlier = group.changes.get(path);
+  const from = earlier ? earlier.before : before;
+  if (from === after) group.changes.delete(path);
+  else group.changes.set(path, { path, before: from, after });
+}
+
 class Engine {
   readonly dir: string;
   readonly home: string;
@@ -124,6 +143,8 @@ class Engine {
   tracked = new Map<string, Tracked>();
   windows: Group[] = [];
   outside: Group | null = null;
+  /** A coalescing claim, open until another key, its idle timer, or an operation commits it. */
+  claimed: { group: Group; key: string; timer: NodeJS.Timeout } | null = null;
   quietTimer: NodeJS.Timeout | undefined;
   maxTimer: NodeJS.Timeout | undefined;
   notedTimer: NodeJS.Timeout | null = null;
@@ -249,11 +270,63 @@ class Engine {
   record(path: string, before: string | null, after: string | null): void {
     const window = this.windows.at(-1);
     if (window) this.touch(window);
-    const group = window ?? this.outsideGroup();
-    const earlier = group.changes.get(path);
-    const from = earlier ? earlier.before : before;
-    if (from === after) group.changes.delete(path);
-    else group.changes.set(path, { path, before: from, after });
+    addChange(window ?? this.outsideGroup(), path, before, after);
+  }
+
+  /**
+   * ponytail: a claim takes every uncommitted outside change to its paths, so another writer's write to the same file
+   * between Studio's write and its claim (milliseconds) folds into Studio's entry. Per-write tokens would split them.
+   * A write filed to another writer's open window stays that window's.
+   */
+  async claimNow(
+    who: HistoryWho,
+    label: string,
+    paths: readonly string[],
+    { coalesceKey, idleMs }: { coalesceKey?: string; idleMs?: number },
+  ): Promise<{ id: string } | null> {
+    await this.sweep();
+    const taken = this.takeOutside(paths);
+    if (!taken.length) return null;
+    const group = await this.claimGroup(who, label, coalesceKey);
+    for (const change of taken) addChange(group, change.path, change.before, change.after);
+    if (coalesceKey) return this.holdClaim(group, coalesceKey, idleMs);
+    const entry = await this.commit(group);
+    return entry && { id: entry.id };
+  }
+
+  /** The held claim when the key matches; otherwise it is committed and a new group starts. */
+  async claimGroup(who: HistoryWho, label: string, key: string | undefined): Promise<Group> {
+    if (key && this.claimed?.key === key) return this.claimed.group;
+    await this.commitClaim();
+    return this.newGroup(who, label);
+  }
+
+  /** Removes and returns the uncommitted outside changes to `paths` (project-relative or absolute). */
+  takeOutside(paths: readonly string[]): HistoryFileChange[] {
+    const outside = this.outside;
+    if (!outside) return [];
+    const wanted = new Set(
+      paths.map((path) => relative(this.dir, resolve(this.dir, path)).split(sep).join("/")),
+    );
+    const taken = [...outside.changes.values()].filter((change) => wanted.has(change.path));
+    for (const change of taken) outside.changes.delete(change.path);
+    return taken;
+  }
+
+  holdClaim(group: Group, key: string, idleMs = this.options.quietMs ?? 2000): { id: string } {
+    clearTimeout(this.claimed?.timer);
+    const timer = setTimeout(() => this.background(() => this.commitClaim()), idleMs);
+    timer.unref?.();
+    this.claimed = { group, key, timer };
+    return { id: group.id };
+  }
+
+  async commitClaim(): Promise<void> {
+    const held = this.claimed;
+    this.claimed = null;
+    if (!held) return;
+    clearTimeout(held.timer);
+    await this.commit(held.group);
   }
 
   outsideGroup(): Group {
@@ -322,6 +395,7 @@ class Engine {
   /** Before an operation: every write so far is filed, and the outside group is closed so it sorts first. */
   async settle(): Promise<void> {
     await this.sweep();
+    await this.commitClaim();
     await this.commitOutside();
   }
 
@@ -378,6 +452,7 @@ class Engine {
   /** Every pending write, open window and outside group, committed: for flush and close. */
   async settleAll(): Promise<void> {
     await this.sweep();
+    await this.commitClaim();
     for (const window of [...this.windows]) await this.endWindow(window);
     await this.commitOutside();
   }
@@ -470,6 +545,8 @@ class Engine {
       projectId: this.projectId,
       beginWindow: (who, label, options = {}) =>
         this.beginWindow(who, label, options.idleMs ?? this.options.maxGroupMs ?? 30_000),
+      claim: (who, label, paths, options = {}) =>
+        this.queue(() => this.claimNow(who, label, paths, options)),
       noteChange: (path) => this.noteChange(path),
       list: () => {
         const undone = undoneIds(this.log.entries);
