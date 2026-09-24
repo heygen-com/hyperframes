@@ -8,6 +8,7 @@ import { rateAt, sourceTimeAt, timeAtSourceTime, type RateSpec } from "../speedR
 import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
+import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
 export {
   readElementPlaybackRate,
   readElementRateSpec,
@@ -16,6 +17,22 @@ export {
 
 export function readElementPlaybackStart(el: Element): number {
   return readMediaStart(el);
+}
+
+const SEEK_END_EVENTS = ["seeked", "error", "emptied", "abort"] as const;
+
+// A seeking video still paints its previous frame; frame captures wait on the seek barrier until it lands.
+function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
+  if (el.tagName !== "VIDEO" || !el.seeking) return;
+  registerSeekCompletion(
+    new Promise<void>((resolve) => {
+      const done = () => {
+        for (const type of SEEK_END_EVENTS) el.removeEventListener(type, done);
+        resolve();
+      };
+      for (const type of SEEK_END_EVENTS) el.addEventListener(type, done);
+    }),
+  );
 }
 
 /**
@@ -502,6 +519,7 @@ export function syncRuntimeMedia(params: {
               swallow("runtime.media.site3", err);
             }
           }
+          holdSeekBarrierUntilVideoLands(el);
         }
         playRequested.delete(el);
       }

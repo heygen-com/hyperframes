@@ -8,6 +8,7 @@ import {
 } from "./media";
 import type { RuntimeMediaClip } from "./media";
 import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { sourceTimeAt } from "../speedRamp";
 import type { HfAutomationLane } from "../audioAutomation";
 
@@ -702,6 +703,43 @@ describe("syncRuntimeMedia", () => {
 
       expect(clip.el.muted).toBe(false);
     });
+  });
+
+  describe("video seek completion", () => {
+    afterEach(() => resetSeekDispatchState());
+
+    function seekColdVideo(): RuntimeMediaClip {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "seeking", { value: true, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: false, playbackRate: 1 });
+      return clip;
+    }
+
+    async function barrierSettled(barrier: Promise<void>): Promise<boolean> {
+      let settled = false;
+      void barrier.then(() => (settled = true));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return settled;
+    }
+
+    it("holds the seek-completion barrier until a seeking video lands its frame", async () => {
+      const clip = seekColdVideo();
+      expect(clip.el.currentTime).toBeCloseTo(4.9);
+      const barrier = waitForSeekCompletion();
+      expect(await barrierSettled(barrier)).toBe(false);
+      clip.el.dispatchEvent(new Event("seeked"));
+      expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    it.each(["error", "emptied", "abort"])(
+      "releases the barrier when the seek ends in %s",
+      async (type) => {
+        const clip = seekColdVideo();
+        const barrier = waitForSeekCompletion();
+        clip.el.dispatchEvent(new Event(type));
+        expect(await barrierSettled(barrier)).toBe(true);
+      },
+    );
   });
 
   describe("play() storm guard (unplayable elements)", () => {
