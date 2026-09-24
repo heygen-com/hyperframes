@@ -66,10 +66,8 @@ describe("opening a film of external scenes", () => {
     // What `cp -p` or rsync leaves: new content at the recorded size and mtime.
     const stamped = fs.readFileSync(file, "utf-8");
     const unstamped = stamped.replace(/ data-hf-id="[^"]*"/, "").padEnd(stamped.length, " ");
-    const fd = fs.openSync(file, "r+");
-    fs.writeSync(fd, unstamped, 0);
-    fs.futimesSync(fd, pinned, pinned);
-    fs.closeSync(fd);
+    fs.writeFileSync(file, unstamped);
+    fs.utimesSync(file, pinned, pinned);
 
     open();
 
