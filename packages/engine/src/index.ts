@@ -439,6 +439,7 @@ export {
   PROVENANCE_VERSION_TAG,
   PROVENANCE_RENDERER_NAME,
   PROVENANCE_VERSION,
+  UNRESOLVED_VERSION,
   type RenderProvenance,
 } from "./utils/renderProvenance.js";
 

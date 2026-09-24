@@ -38,7 +38,13 @@ export const PROVENANCE_RENDERER_NAME = "hyperframes";
  * real release, so a total resolution failure looked exactly like a dev build.
  * It survived unnoticed across twenty published versions for that reason.
  */
-const UNRESOLVED_VERSION = "unresolved";
+/**
+ * Exported so a caller that GATES on the version compares against this rather
+ * than re-typing the literal: a second copy of the sentinel is a second thing
+ * to keep in step, and the whole point of the value is that it must never be
+ * mistaken for a version.
+ */
+export const UNRESOLVED_VERSION = "unresolved";
 
 /** The package this file belongs to, whether built standalone or bundled. */
 const OWN_PACKAGE_NAME = /^(?:hyperframes|@hyperframes\/[^/]+)$/;

@@ -1,5 +1,6 @@
 import { failCommand, requestCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
+import { checkRequiredVersion } from "../utils/requireVersion.js";
 import type { Example } from "./_examples.js";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { createRenderPlan, resolveBrowserGpuForCli, type RenderFormat } from "./render/plan.js";
@@ -113,7 +114,11 @@ import {
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
-import { EXTRACT_CACHE_DIR_DISABLED_ALIASES, type VideoFrameFormat } from "@hyperframes/engine";
+import {
+  EXTRACT_CACHE_DIR_DISABLED_ALIASES,
+  PROVENANCE_VERSION,
+  type VideoFrameFormat,
+} from "@hyperframes/engine";
 import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
@@ -133,6 +138,13 @@ export default defineCommand({
       type: "positional",
       description: "Project directory",
       required: false,
+    },
+    requireVersion: {
+      type: "string",
+      description:
+        "Refuse to render unless the running renderer is exactly this version (e.g. 0.8.72). " +
+        "Turns a version pin into a checked gate: pinning stops drift, this proves which " +
+        "version ran. Refuses rather than passes if the build cannot resolve its own version.",
     },
     composition: {
       type: "string",
@@ -410,6 +422,15 @@ export default defineCommand({
   },
   // Keep the transport adapter thin: each phase has one ownership boundary.
   async run({ args }) {
+    // Before anything else: a mismatch must cost a startup, not an encode.
+    if (args.requireVersion !== undefined) {
+      const mismatch = checkRequiredVersion(String(args.requireVersion), PROVENANCE_VERSION);
+      if (mismatch) {
+        process.stderr.write(`${mismatch}\n`);
+        requestCliExit(1);
+        return;
+      }
+    }
     const plan = createRenderPlan(args);
     const cancellation = plan.useDocker ? undefined : createRenderCancellationScope();
     try {
