@@ -322,4 +322,41 @@ describe("__hfSwapScenes", () => {
     await expect(swapping).rejects.toThrow("torn down");
     delete (window as unknown as { gsap?: unknown }).gsap;
   });
+
+  it("offers no swap on a page served without a scene manifest", async () => {
+    const { root } = trackingRoot();
+    boot([A1, B], root);
+    await tick();
+    expect(window.__hfSwapScenes).toBeTypeOf("function");
+    window.__hfRuntimeTeardown?.();
+    document.querySelector('meta[name="hf-scene-parts"]')?.remove();
+    initSandboxRuntimeModular();
+    expect(window.__hfSwapScenes).toBeUndefined();
+  });
+
+  it("re-applies caption overrides only to the swapped scene's words", async () => {
+    const { root } = trackingRoot();
+    const set = vi.fn();
+    (window as unknown as { gsap: unknown }).gsap = { set, getTweensOf: () => [] };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json([
+        { wordIndex: 0, opacity: 0.5 },
+        { wordIndex: 1, opacity: 0.5 },
+      ]),
+    );
+    const words = (s: Scene, word: string): Scene => ({
+      ...s,
+      body: `<div class="caption-group"><span>${word}</span></div>`,
+    });
+    boot([words(A1, "a"), words(B, "b")], root);
+    for (let i = 0; i < 5; i++) await tick();
+    set.mockClear();
+    await window.__hfSwapScenes!(
+      preview([{ ...words(A2, "a2"), hash: "hw2" }, words(B, "b")]).html,
+    );
+    const touched = set.mock.calls.map(([el]) => (el as Element).textContent);
+    expect(touched).toContain("a2");
+    expect(touched).not.toContain("b");
+    delete (window as unknown as { gsap?: unknown }).gsap;
+  });
 });

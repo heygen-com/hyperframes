@@ -3033,11 +3033,12 @@ export function initSandboxRuntimeModular(): void {
   );
 
   // Passes that must see scene DOM, which arrives after init: when scenes mount, or when one is
-  // swapped. Resolves when caption overrides (applied only if `captions`) have landed.
-  const settleSceneDom = (captions: boolean): Promise<void> => {
+  // swapped. Resolves when caption overrides (all, or only those inside `captionsIn`) have landed.
+  const settleSceneDom = (captionsIn?: readonly Element[]): Promise<void> => {
     bindMediaMetadataListeners();
     installAssetFailureDiagnostics();
-    const captionsApplied = captions ? applyCaptionOverrides() : Promise.resolve();
+    const captionsApplied =
+      captionsIn?.length === 0 ? Promise.resolve() : applyCaptionOverrides(captionsIn);
     // Per-instance scoped values: data-var-* / --{id} bindings inside scenes. Idempotent.
     applyVariableBindings(document);
     // An unregistered vfx chain paints nothing and logs nothing, so re-scan the new DOM.
@@ -3069,7 +3070,7 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
-        void settleSceneDom(true);
+        void settleSceneDom();
         maybePublishRenderReady();
       });
   } else {
@@ -3124,7 +3125,8 @@ export function initSandboxRuntimeModular(): void {
     const root = state.capturedTimeline as
       | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
       | null;
-    let captions = false;
+    // Overrides re-dim every word they touch, so only the swapped scenes' captions get them.
+    const captionHosts: Element[] = [];
     for (const { oldParts, newParts, oldHost, newHost } of swaps) {
       for (const el of [oldHost, ...oldHost.querySelectorAll("[data-composition-id]")]) {
         const id = el.getAttribute("data-composition-id");
@@ -3144,7 +3146,7 @@ export function initSandboxRuntimeModular(): void {
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
       oldHost.replaceWith(host);
-      captions ||= host.querySelector(".caption-group") !== null;
+      if (host.querySelector(".caption-group")) captionHosts.push(host);
       for (const el of newParts) {
         if (el.tagName !== "SCRIPT") continue;
         // An imported <script> never runs; a created one does.
@@ -3157,7 +3159,7 @@ export function initSandboxRuntimeModular(): void {
     document
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
       ?.setAttribute("content", JSON.stringify(nextParts));
-    await settleSceneDom(captions);
+    await settleSceneDom(captionHosts);
     if (state.tornDown) throw new Error("the preview was torn down during the swap");
     releaseDetachedMedia();
     childrenBound = false;
@@ -3173,10 +3175,13 @@ export function initSandboxRuntimeModular(): void {
     syncTimedElementVisibility(state.currentTime);
     postTimeline();
   };
-  window.__hfSwapScenes = swapScenes;
-  registerRuntimeCleanup(() => {
-    delete window.__hfSwapScenes;
-  });
+  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
+  if (readSceneParts(document)) {
+    window.__hfSwapScenes = swapScenes;
+    registerRuntimeCleanup(() => {
+      delete window.__hfSwapScenes;
+    });
+  }
 
   const picker = createPickerModule({
     postMessage: (payload) => postRuntimeMessage(payload),

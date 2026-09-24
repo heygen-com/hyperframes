@@ -113,7 +113,8 @@ function getOrCreateCaptionWrapper(el: HTMLElement): HTMLElement {
   return wrapper;
 }
 
-export function applyCaptionOverrides(): Promise<void> {
+/** Applies caption-overrides.json to caption words, only those inside `within` when given. */
+export function applyCaptionOverrides(within?: readonly Element[]): Promise<void> {
   const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
   if (!gsap) return Promise.resolve();
 
@@ -141,7 +142,7 @@ export function applyCaptionOverrides(): Promise<void> {
         if (!el && override.wordIndex !== undefined) {
           el = wordEls[override.wordIndex] ?? null;
         }
-        if (!el) continue;
+        if (!el || (within && !within.some((root) => root.contains(el)))) continue;
 
         // Split into transform props (wrapper) and style props (word span)
         const transformProps: Record<string, unknown> = {};
