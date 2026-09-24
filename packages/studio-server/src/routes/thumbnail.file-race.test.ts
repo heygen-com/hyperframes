@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -21,7 +21,7 @@ afterEach(() => {
   for (const dir of projectDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function serveThumbnails(): { app: Hono; adapter: StudioApiAdapter } {
+function serveThumbnails(): { app: Hono; adapter: StudioApiAdapter; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "hf-thumbnail-race-"));
   projectDirs.push(dir);
   writeFileSync(join(dir, "index.html"), `<div data-width="640" data-height="360"></div>`);
@@ -31,7 +31,7 @@ function serveThumbnails(): { app: Hono; adapter: StudioApiAdapter } {
   } as unknown as StudioApiAdapter;
   const app = new Hono();
   registerThumbnailRoutes(app, adapter);
-  return { app, adapter };
+  return { app, adapter, dir };
 }
 
 describe("thumbnail reads that race a delete", () => {
@@ -57,5 +57,15 @@ describe("thumbnail reads that race a delete", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("thumb");
     expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
+  });
+
+  it("caches a thumbnail when the cache folder disappears between the check and its use", async () => {
+    const { app, dir } = serveThumbnails();
+    vanished.matches = (path) => path.endsWith(".thumbnails");
+
+    const res = await app.request("http://localhost/projects/demo/thumbnail/index.html");
+
+    expect(res.status).toBe(200);
+    expect(readdirSync(join(dir, ".thumbnails"))).toHaveLength(1);
   });
 });

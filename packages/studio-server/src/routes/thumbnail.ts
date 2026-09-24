@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import {
   closeSync,
-  existsSync,
+  type Dirent,
   fstatSync,
   openSync,
   mkdirSync,
@@ -36,8 +36,14 @@ export function pruneThumbnailCache(
   protectedPaths: ReadonlySet<string>,
   now = Date.now(),
 ): void {
-  if (!existsSync(cacheDir)) return;
-  const files = readdirSync(cacheDir, { withFileTypes: true }).flatMap((entry) => {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(cacheDir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw err;
+  }
+  const files = entries.flatMap((entry) => {
     if (!entry.isFile()) return [];
     const path = join(cacheDir, entry.name);
     try {
@@ -99,7 +105,7 @@ function readFileOnce(file: string): FileRead {
   }
 }
 
-// A manifest that is gone or not a file adds nothing to the key, as preview and render read it.
+// A manifest that is gone or not a file adds nothing to the key; any other read error still fails.
 function manifestKey(file: string): { key: string; mtimeMs: number } {
   const manifest = readFileOnce(file);
   if (typeof manifest === "string") return { key: "", mtimeMs: 0 };
@@ -242,7 +248,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             // but never file them under a signature they do not prove.
             return generated;
           }
-          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
+          mkdirSync(cacheDir, { recursive: true });
           writeThumbnailAtomically(cachePath, generated);
           return generated;
         },
