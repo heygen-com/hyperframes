@@ -41,27 +41,62 @@ export function globalAssetRows(records: GlobalAssetRecord[], query = ""): Globa
 
 export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
   const [records, setRecords] = useState<GlobalAssetRecord[] | null>(null);
+  const [error, setError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
     fetch("/api/assets/global")
-      .then((r) => (r.ok ? r.json() : { assets: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error(`Global asset request failed: ${r.status}`);
+        return r.json();
+      })
       .then((d) => {
-        if (!cancelled) setRecords(Array.isArray(d.assets) ? d.assets : []);
+        if (!cancelled) {
+          setError(false);
+          setRecords(Array.isArray(d.assets) ? d.assets : []);
+        }
       })
       .catch(() => {
-        if (!cancelled) setRecords([]);
+        if (!cancelled) {
+          setError(true);
+          setRecords(null);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryCount]);
 
   const rows = useMemo(() => globalAssetRows(records ?? [], searchQuery), [records, searchQuery]);
 
   if (records === null) {
+    if (error) {
+      return (
+        <div className="px-4 py-3 text-[11px] text-panel-text-5">
+          <p>Unable to load global assets.</p>
+          <button
+            type="button"
+            className="mt-2 text-panel-text-1 underline underline-offset-2"
+            onClick={() => {
+              setError(false);
+              setRetryCount((count) => count + 1);
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
     return <p className="px-4 py-3 text-[11px] text-panel-text-5">Loading global assets…</p>;
   }
   if (rows.length === 0) {
+    if (searchQuery.trim()) {
+      return (
+        <p className="px-4 py-3 text-[11px] text-panel-text-5">
+          No global assets match “{searchQuery}”.
+        </p>
+      );
+    }
     return (
       <p className="px-4 py-3 text-[11px] text-panel-text-5">
         No assets in the global cache yet. Resolved media is promoted to <code>~/.media</code> and
