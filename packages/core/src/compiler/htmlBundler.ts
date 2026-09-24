@@ -847,7 +847,7 @@ function hoistExternalScript(
   }
   if (seenSrcs.has(src)) return;
   seenSrcs.add(src);
-  if (!isNonRelativeUrl(src) && !isAbsolute(src)) {
+  if (!isNonRelativeUrl(src) && !isAbsolute(src) && attributes.type !== "module") {
     const jsPath = resolveWithinProject(projectDir, src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js != null) {
@@ -1024,7 +1024,7 @@ export async function bundleToSingleHtml(
     }
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
-    if (isRelativeUrl(extSrc)) {
+    if (isRelativeUrl(extSrc) && scriptItem.type !== "module") {
       const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {

@@ -208,7 +208,10 @@ describe("bundleToSingleHtml", () => {
   </div>
 </body></html>`,
       "compositions/blk/assets/three.js": "export const REVISION = 1;",
+      "compositions/blk/assets/scene.js": 'import * as THREE from "three"; export const SCENE = 1;',
       "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <script type="module" src="./assets/scene.js"></script>
+  <script type="module" src="https://cdn.test/mod.js"></script>
   <script type="importmap">{ "imports": { "three": "./assets/three.js", "cdn": "https://cdn.test/x.js" } }</script>
   <script type="module">import * as THREE from "three"; window.__url = __hyperframes.assetUrl("assets/leaf.webp");</script>
   <script>window.__classic = 1;</script>
@@ -224,10 +227,16 @@ describe("bundleToSingleHtml", () => {
     expect(JSON.parse(importMaps[0]!.textContent || "")).toEqual({
       imports: { three: "./compositions/blk/assets/three.js", cdn: "https://cdn.test/x.js" },
     });
-    expect(modules).toHaveLength(1);
-    expect(modules[0]!.textContent).toMatch(/^const __hyperframes = /);
-    expect(modules[0]!.textContent).toContain('"compositions/blk/blk.html"');
-    expect(modules[0]!.textContent).toContain('import * as THREE from "three";');
+    expect(modules.map((m) => m.getAttribute("src")).filter(Boolean)).toEqual([
+      "compositions/blk/assets/scene.js",
+      "https://cdn.test/mod.js",
+    ]);
+    const inline = modules.filter((m) => !m.hasAttribute("src"));
+    expect(inline).toHaveLength(1);
+    expect(inline[0]!.textContent).toMatch(/^const __hyperframes = /);
+    expect(inline[0]!.textContent).toContain('"compositions/blk/blk.html"');
+    expect(inline[0]!.textContent).toContain('import * as THREE from "three";');
+    expect(classic.join("")).not.toContain("SCENE");
     expect(classic.join("")).toContain(".__classic = 1;");
     expect(classic.join("")).not.toContain('"imports"');
     expect(classic.join("")).not.toContain("import * as THREE");

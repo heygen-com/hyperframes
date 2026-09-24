@@ -34,7 +34,9 @@ describe("compileForRender mounted module scripts", () => {
   </div>
 </body></html>`,
       "compositions/blk/assets/three.js": "export const REVISION = 1;",
+      "compositions/blk/assets/scene.js": 'import * as THREE from "three"; export const SCENE = 1;',
       "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="320" data-height="180">
+  <script type="module" src="./assets/scene.js"></script>
   <script type="importmap">{ "imports": { "three": "./assets/three.js" } }</script>
   <script type="module">import * as THREE from "three"; window.__url = __hyperframes.assetUrl("assets/leaf.webp");</script>
 </div>`,
@@ -50,9 +52,14 @@ describe("compileForRender mounted module scripts", () => {
     expect(JSON.parse(importMap?.textContent || "null")).toEqual({
       imports: { three: "./compositions/blk/assets/three.js" },
     });
-    expect(modules).toHaveLength(1);
-    expect(modules[0]!.textContent).toMatch(/^const __hyperframes = /);
-    expect(modules[0]!.textContent).toContain('"compositions/blk/blk.html"');
+    expect(modules.map((m) => m.getAttribute("src")).filter(Boolean)).toEqual([
+      "compositions/blk/assets/scene.js",
+    ]);
+    const inline = modules.filter((m) => !m.hasAttribute("src"));
+    expect(inline).toHaveLength(1);
+    expect(inline[0]!.textContent).toMatch(/^const __hyperframes = /);
+    expect(inline[0]!.textContent).toContain('"compositions/blk/blk.html"');
+    expect(classic.join("")).not.toContain("SCENE");
     expect(classic.join("")).not.toContain('"imports"');
     expect(classic.join("")).not.toContain("import * as THREE");
   });
