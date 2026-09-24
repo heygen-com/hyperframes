@@ -13,10 +13,7 @@ afterEach(() => act(() => root?.unmount()));
 
 function mount(result: { ok: boolean; reason?: string; label?: string; paths?: string[] }) {
   const editHistory = {
-    undo: vi.fn<EditHistoryHandle["undo"]>(async (cb) => {
-      if (result.ok) await cb.writeFile("index.html", "before");
-      return result;
-    }),
+    undo: vi.fn<EditHistoryHandle["undo"]>(async () => result),
     redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
   };
   const deps = {
@@ -42,22 +39,25 @@ function mount(result: { ok: boolean; reason?: string; label?: string; paths?: s
 }
 
 describe("useEditHistoryActions", () => {
-  it("undo writes through the host writer, resyncs the preview and toasts the label", async () => {
-    const { deps, actions } = mount({ ok: true, label: "Move clip", paths: ["index.html"] });
+  it("undo resyncs the preview and toasts the step as the history names it", async () => {
+    const { deps, actions } = mount({ ok: true, label: "Undid: Move clip", paths: ["index.html"] });
     await act(() => actions.undo());
     expect(deps.waitForPendingDomEditSaves).toHaveBeenCalled();
-    expect(deps.writeProjectFile).toHaveBeenCalledWith("index.html", "before");
     expect(deps.onAfterUndoRedo).toHaveBeenCalled();
     expect(deps.forceReloadSdkSession).toHaveBeenCalled();
     expect(deps.syncHistoryPreviewAfterApply).toHaveBeenCalled();
-    expect(deps.showToast).toHaveBeenCalledWith("Undid Move clip", "info");
+    expect(deps.showToast).toHaveBeenCalledWith("Undid: Move clip", "info");
   });
 
   it("redo reports the redone label and skips the SDK reload for other files", async () => {
-    const { deps, actions } = mount({ ok: true, label: "Split clip", paths: ["other.html"] });
+    const { deps, actions } = mount({
+      ok: true,
+      label: "Redid: Split clip",
+      paths: ["other.html"],
+    });
     await act(() => actions.redo());
     expect(deps.forceReloadSdkSession).not.toHaveBeenCalled();
-    expect(deps.showToast).toHaveBeenCalledWith("Redid Split clip", "info");
+    expect(deps.showToast).toHaveBeenCalledWith("Redid: Split clip", "info");
   });
 
   it("explains a refused undo when the file changed on disk", async () => {
