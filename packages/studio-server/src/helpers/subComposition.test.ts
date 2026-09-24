@@ -16,6 +16,20 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  it("adds the preview base even when the project head's script mentions a <base>", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><script>if (0) document.write('<base href="../">');</script></head><body></body></html>`,
+      "compositions/scene.html": `<div data-composition-id="scene" data-width="320" data-height="180"></div>`,
+    });
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/scene.html",
+      "/api/runtime.js",
+      "/api/projects/demo/preview/",
+    );
+    expect(html).toContain('<base href="/api/projects/demo/preview/">');
+  });
+
   it("handles full HTML document compositions without nesting <html> in <body>", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
