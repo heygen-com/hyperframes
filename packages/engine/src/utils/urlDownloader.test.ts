@@ -115,7 +115,7 @@ function isoBmffMediaBytes(marker: string): Buffer {
 // Fake Date, and hold the 1_000 ms attempt deadline every test passes: on a slow runner one
 // attempt (hash, fsync, refetch) can outlast it and throw "Download timeout". A test that
 // needs the deadline calls fireAttemptDeadline(). Other timers (cache-lock poll, test
-// delays, the 20 ms stalled-body test) stay real.
+// delays) stay real.
 const ATTEMPT_DEADLINE_MS = 1_000;
 const heldDeadlines = new Map<ReturnType<typeof setTimeout>, () => void>();
 let realSetTimeout: typeof setTimeout;
@@ -1191,7 +1191,10 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeTempDir();
 
-    const path = await downloadToTemp("https://cdn.example/stalled-body.mp4", dir, 20);
+    const pending = downloadToTemp("https://cdn.example/stalled-body.mp4", dir, 1_000);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireAttemptDeadline();
+    const path = await pending;
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readFileSync(path, "utf8")).toBe("complete");
@@ -1215,7 +1218,10 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeTempDir();
 
-    const path = await downloadToTemp("https://cdn.example/unresponsive-body.mp4", dir, 20);
+    const pending = downloadToTemp("https://cdn.example/unresponsive-body.mp4", dir, 1_000);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireAttemptDeadline();
+    const path = await pending;
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readFileSync(path, "utf8")).toBe("complete");
@@ -1240,7 +1246,10 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeTempDir();
 
-    const path = await downloadToTemp("https://cdn.example/aborted-chunked-body.mp4", dir, 20);
+    const pending = downloadToTemp("https://cdn.example/aborted-chunked-body.mp4", dir, 1_000);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireAttemptDeadline();
+    const path = await pending;
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readFileSync(path, "utf8")).toBe("complete");
