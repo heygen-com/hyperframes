@@ -549,7 +549,18 @@ function runCli(env, body = bodyWith(`[a](${OLD})`, `[b](${NEW})`)) {
   const copy = join(dir, "check.mjs");
   copyFileSync(new URL("./check-pr-captures.mjs", import.meta.url), copy);
   const preload = join(dir, "no-network.mjs");
-  writeFileSync(preload, "globalThis.fetch = async () => ({ ok: false, status: 404 });\n");
+  writeFileSync(
+    preload,
+    [
+      "globalThis.fetch = async () => ({ ok: false, status: 404 });",
+      // The gate's retry backoff (up to 110s per asset) is real production
+      // behavior we want covered end to end, but a test shouldn't sit through
+      // it: collapse every delay to fire on the next tick.
+      "const realSetTimeout = globalThis.setTimeout;",
+      "globalThis.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);",
+      "",
+    ].join("\n"),
+  );
   return spawnSync("node", ["--import", preload, copy, "--base", "main", "--head", "HEAD"], {
     cwd: dir,
     encoding: "utf8",
