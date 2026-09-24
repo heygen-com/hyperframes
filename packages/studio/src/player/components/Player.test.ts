@@ -22,6 +22,7 @@ class TestHyperframesPlayer extends HTMLElement {
 
   constructor() {
     super();
+    this.attachShadow({ mode: "open" }).appendChild(this.iframeElement);
 
     const addIframeListener = this.iframeElement.addEventListener.bind(this.iframeElement);
     this.iframeElement.addEventListener = ((type, listener, options) => {
@@ -314,6 +315,15 @@ describe("ready to show", () => {
     });
     await twoFrames();
     expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
+  });
+});
+
+describe("preview canvas chrome", () => {
+  it("does not paint Studio chrome on the scaled composition iframe", async () => {
+    const { player } = await mountPlayer();
+    const injectedStyles = Array.from(player.shadowRoot?.querySelectorAll("style") ?? []);
+
+    expect(injectedStyles.some((style) => style.textContent?.includes("box-shadow"))).toBe(false);
   });
 });
 
