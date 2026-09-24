@@ -379,10 +379,13 @@ export function inlineSubCompositions(
     // discarded on render while the mount path executed it.
     for (const scriptEl of plan.scriptSources) {
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
+      // A swap never re-runs external scripts: a library URL is fine, a scene's own file is not.
       refuseSwap(
-        externalSrc
-          ? "it loads an external script"
-          : sceneScriptSwapRefusal(scriptEl.textContent || ""),
+        !externalSrc
+          ? sceneScriptSwapRefusal(scriptEl.textContent || "")
+          : /^https?:\/\//i.test(externalSrc)
+            ? null
+            : "it runs a local script file",
       );
       if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {

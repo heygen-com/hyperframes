@@ -1967,13 +1967,18 @@ describe("bundleToSingleHtml sceneParts", () => {
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
     <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
     <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+    <div data-composition-id="c" data-composition-src="compositions/c.html" data-start="0" data-duration="2"></div>
   </div></body></html>`,
+      "compositions/c.html": `<template id="c-template"><div data-composition-id="c"><p>C</p>
+  <script src="c.js"></script></div></template>`,
+      "compositions/c.js": `document.querySelector("p").animate([], 1000);`,
       "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><p>A</p>
   <div data-composition-id="n" data-composition-src="compositions/n.html"></div>
   <script>window.__timelines = window.__timelines || {};</script></div></template>`,
       "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
   <script>window.addEventListener("hf-seek", () => {});</script></div></template>`,
       "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p>
+  <script src="https://cdn.example.com/gsap.min.js"></script>
   <script>gsap.timeline({ onComplete: () => {} });</script></div></template>`,
     });
     const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
@@ -1982,6 +1987,7 @@ describe("bundleToSingleHtml sceneParts", () => {
       "its script uses addEventListener",
     );
     expect(host("b")?.hasAttribute("data-hf-scene-no-swap")).toBe(false);
+    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe("it runs a local script file");
     const rendered = await bundleToSingleHtml(dir);
     expect(rendered).not.toContain("data-hf-scene-no-swap");
   });
