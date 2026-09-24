@@ -141,6 +141,16 @@ export function buildSnippet(
   return "";
 }
 
+/** `add <tag> --json` output: each item's warnings, prefixed with its name. */
+export function tagAddJson(tag: string, results: RunAddResult[]) {
+  return {
+    ok: true,
+    tag,
+    installed: results.map((r) => r.name),
+    warnings: results.flatMap((r) => r.warnings.map((w) => `${r.name}: ${w}`)),
+  };
+}
+
 /** `--vars` is JSON an agent or the catalog page produced; a malformed one is
  *  worth a clear error rather than a snippet that silently drops the values. */
 export function parseVariableValues(raw: string | undefined): Record<string, unknown> | null {
@@ -577,9 +587,7 @@ export default defineCommand({
       }
 
       if (json) {
-        console.log(
-          JSON.stringify({ ok: true, tag: args.name, installed: results.map((r) => r.name) }),
-        );
+        console.log(JSON.stringify(tagAddJson(args.name, results)));
       } else {
         console.log("");
         console.log(`${c.success("✓")} Installed ${results.length}/${items.length} blocks`);

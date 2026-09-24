@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
 import { lintHyperframeHtml } from "@hyperframes/lint";
+import type { RunAddResult } from "./add.js";
 import {
   AddError,
   buildSnippet,
@@ -12,6 +13,7 @@ import {
   parseVariableValues,
   remapTarget,
   runAdd,
+  tagAddJson,
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
@@ -558,5 +560,17 @@ describe("describeInstallFailure", () => {
     const message = describeInstallFailure(new Error('Unsafe target "../x"'));
 
     expect(message).toBe('Install failed: Unsafe target "../x"');
+  });
+});
+
+describe("tagAddJson", () => {
+  it("carries every installed item's warnings", () => {
+    const result = (name: string, warnings: string[]) => ({ name, warnings }) as RunAddResult;
+    expect(tagAddJson("lower-thirds", [result("a", []), result("b", ["no id"])])).toEqual({
+      ok: true,
+      tag: "lower-thirds",
+      installed: ["a", "b"],
+      warnings: ["b: no id"],
+    });
   });
 });
