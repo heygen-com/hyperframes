@@ -414,6 +414,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       cachedProjectSignature = null;
     }
   });
+  const projectSignature = (dir: string): string => {
+    if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
+    cachedProjectSignature ??= createProjectSignature(projectDir);
+    return cachedProjectSignature;
+  };
 
   const inFlightRenders = new Map<AbortController, Promise<void>>();
   // Set synchronously by shutdown() before any await, so a render or
@@ -483,11 +488,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return injectDeterministicFontFaces(prepared.html);
     },
 
-    getProjectSignature(dir: string): string {
-      if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
-      cachedProjectSignature ??= createProjectSignature(projectDir);
-      return cachedProjectSignature;
-    },
+    getProjectSignature: projectSignature,
 
     async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
@@ -659,7 +660,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         return await thumbnailPages.withPage(
           session.browser,
           opts.previewUrl,
-          createProjectSignature(opts.project.dir),
+          projectSignature(opts.project.dir),
           async (page) => {
             await page.setViewport(viewport);
             await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
@@ -696,6 +697,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             });
             await new Promise((r) => setTimeout(r, 200));
             await reapplyStudioManualEditsToThumbnailPage(page);
+            if (opts.signal.aborted) return null;
             let clip: ScreenshotClip | undefined;
             if (opts.selector) {
               clip = await page.evaluate(
