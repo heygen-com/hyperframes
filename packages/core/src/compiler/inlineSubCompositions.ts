@@ -33,10 +33,10 @@ import {
 } from "./compositionAssembly";
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 
-// Anything a scene script can leave running or registered outside its timeline. Only the timeline
-// is torn down when a scene is swapped, so when unsure, refuse.
+// Anything a scene script can leave running, pending or registered outside its timeline: only the
+// timeline is torn down when a scene is swapped, so when unsure, refuse.
 const SIDE_EFFECT_RE =
-  /\b(addEventListener|requestAnimationFrame|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU|gpu|Worker|AudioContext|\w*Observer|fetch|import|eval|Function|lottie|THREE|__hf[A-Z]\w*)\b|\.on[a-z]+\s*=(?!=)/;
+  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU|gpu|Worker|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|animate|ticker|delayedCall|ScrollTrigger|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.on[a-z]+\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b/;
 
 /** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
 function sceneScriptSwapRefusal(script: string): string | null {
@@ -385,7 +385,7 @@ export function inlineSubCompositions(
           ? sceneScriptSwapRefusal(scriptEl.textContent || "")
           : /^https?:\/\//i.test(externalSrc)
             ? null
-            : "it runs a local script file",
+            : "it runs a script file that is not a library URL",
       );
       if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {

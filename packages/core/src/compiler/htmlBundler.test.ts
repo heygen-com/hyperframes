@@ -1987,8 +1987,88 @@ describe("bundleToSingleHtml sceneParts", () => {
       "its script uses addEventListener",
     );
     expect(host("b")?.hasAttribute("data-hf-scene-no-swap")).toBe(false);
-    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe("it runs a local script file");
+    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "it runs a script file that is not a library URL",
+    );
     const rendered = await bundleToSingleHtml(dir);
     expect(rendered).not.toContain("data-hf-scene-no-swap");
+  });
+
+  it("refuses to swap a scene for every kind of work its script can leave behind", async () => {
+    const leaks = [
+      'window.addEventListener("resize", f)',
+      "requestAnimationFrame(f)",
+      "requestIdleCallback(f)",
+      "setTimeout(f, 1)",
+      "setInterval(f, 1)",
+      "queueMicrotask(f)",
+      'c.getContext("webgl")',
+      "new WebGLRenderer()",
+      "navigator.gpu",
+      "new Worker(u)",
+      "new Audio(u).play()",
+      "new AudioContext()",
+      "new ResizeObserver(f)",
+      "fetch(u)",
+      'import("x")',
+      "eval(s)",
+      "new Function(s)",
+      "Promise.resolve()",
+      "async function f() {}",
+      "await img.decode()",
+      "d3.json(u).then(f)",
+      "el.animate([], 1000)",
+      "gsap.ticker.add(f)",
+      "gsap.delayedCall(1, f)",
+      "ScrollTrigger.create({})",
+      "lottie.loadAnimation({})",
+      "new THREE.Scene()",
+      "window.__hfLottie = []",
+      "window.onresize = f",
+      'el["onclick"] = f',
+      "document.head.appendChild(s)",
+      "document.body.append(s)",
+    ];
+    const files: Record<string, string> = {};
+    const hosts = leaks
+      .map(
+        (_, i) =>
+          `<div data-composition-id="s${i}" data-composition-src="compositions/s${i}.html" data-start="0" data-duration="1"></div>`,
+      )
+      .join("\n");
+    files["index.html"] = `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="1">${hosts}</div></body></html>`;
+    leaks.forEach((code, i) => {
+      files[`compositions/s${i}.html`] =
+        `<template id="s${i}-template"><div data-composition-id="s${i}"><p>${i}</p>
+  <script>${code};</script></div></template>`;
+    });
+    const doc = parseHTML(
+      await bundleToSingleHtml(makeTempProject(files), { sceneParts: true }),
+    ).document;
+    const unmarked = leaks.filter(
+      (_, i) =>
+        !doc.querySelector(`div[data-hf-scene="s${i}"]`)?.hasAttribute("data-hf-scene-no-swap"),
+    );
+    expect(unmarked).toEqual([]);
+  });
+
+  it("keeps the shared style's @import first when scene styles are split out", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><style>.root { color: red; }
+@import url("https://fonts.example.com/montserrat.css");</style></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><style>.a { color: blue; }</style></div></template>`,
+    });
+    const shared = (html: string) =>
+      [...parseHTML(html).document.querySelectorAll("head style:not([data-hf-scene])")]
+        .map((el) => el.textContent ?? "")
+        .find((css) => css.includes(".root")) ?? "";
+    expect(shared(await bundleToSingleHtml(dir, { sceneParts: true })).startsWith("@import")).toBe(
+      true,
+    );
+    expect(shared(await bundleToSingleHtml(dir)).startsWith("@import")).toBe(true);
   });
 });
