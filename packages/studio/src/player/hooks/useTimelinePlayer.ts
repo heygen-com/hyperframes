@@ -38,6 +38,7 @@ import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
+import { sceneSwapFor } from "../sceneSwap";
 
 export interface UseTimelinePlayerOptions {
   /** Runs right after a reloaded preview becomes the live iframe. */
@@ -426,20 +427,35 @@ export function useTimelinePlayer({
     stopReverseLoop();
     setIsPlaying(false);
   }, [getAdapter, stopRAFLoop, setIsPlaying, stopReverseLoop]);
+  const reloadWholeFilm = useCallback(
+    (url: string) => {
+      saveSeekPosition();
+      // The old iframe is no longer navigated away, so stop its playback (and audio) here.
+      getAdapter()?.pause();
+      // The live iframe is never hidden; the reload loads in a shadow and is promoted once painted.
+      beginShadowReload(url);
+    },
+    [saveSeekPosition, getAdapter, beginShadowReload],
+  );
+  const refreshGenRef = useRef(0);
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
     logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
-    saveSeekPosition();
-    // The old iframe is no longer navigated away, so stop its playback (and audio) here.
-    getAdapter()?.pause();
-    // The live iframe is never hidden; the reload loads in a shadow and is promoted once painted.
-    const src = iframe.src;
-    const url = new URL(src, window.location.origin);
+    const url = new URL(iframe.src, window.location.origin);
     url.searchParams.set("_t", String(Date.now()));
     applyPreviewVariablesToUrl(url);
-    beginShadowReload(url.toString());
-  }, [saveSeekPosition, getAdapter, beginShadowReload]);
+    const gen = ++refreshGenRef.current;
+    const swap = sceneSwapFor(iframe);
+    // A full reload already in flight replaces the live preview anyway.
+    if (!swap || isRefreshingRef.current) return reloadWholeFilm(url.toString());
+    // Swap only the edited scenes into the live preview; anything else reloads the film.
+    swap(url.toString(), () => gen === refreshGenRef.current).catch((error: unknown) => {
+      if (gen !== refreshGenRef.current) return;
+      logReload("scene-swap-refused", { reason: String(error) });
+      reloadWholeFilm(url.toString());
+    });
+  }, [reloadWholeFilm]);
   const getAdapterRef = useRef(getAdapter);
   getAdapterRef.current = getAdapter;
 
