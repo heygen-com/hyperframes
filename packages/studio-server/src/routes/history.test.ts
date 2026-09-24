@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "../createStudioApi";
+import { fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory";
 import type { StudioApiAdapter } from "../types";
 
@@ -26,10 +27,10 @@ function apiFor(projectDir: string, history?: ProjectHistory) {
     ...(history && { history: () => history }),
   } as unknown as StudioApiAdapter;
   const api = createStudioApi(adapter);
-  return (path: string, body?: object) =>
+  return (path: string, body?: object, headers?: Record<string, string>) =>
     api.request(
       `/projects/demo/history${path}`,
-      body ? { method: "POST", body: JSON.stringify(body) } : undefined,
+      body ? { method: "POST", body: JSON.stringify(body), headers } : undefined,
     );
 }
 
@@ -76,6 +77,20 @@ describe("history routes", () => {
     expect(await (await call("")).json()).toMatchObject({
       back: null,
       forward: { label: "Undid: Moved Title" },
+    });
+  });
+
+  it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await call("/claim", { label: "Moved Title", paths: ["index.html"] });
+    await call("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-1" });
+    expect(readFileSync(join(projectDir, "index.html"), "utf8")).toBe("A");
+    expect(
+      identifyFileWrite(join(projectDir, "index.html"), fileContentVersion("A")),
+    ).toMatchObject({
+      path: "index.html",
+      writeToken: "studio-1",
     });
   });
 

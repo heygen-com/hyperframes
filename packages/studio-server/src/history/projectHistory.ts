@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
+import { hashVersion, recordFileWriteReceipt } from "../helpers/fileVersion.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { projectHistoryId } from "./historyId.js";
@@ -36,6 +37,10 @@ export interface ProjectHistoryOptions {
   budgetBytes?: number;
   /** A sweep or commit that a watcher or timer started failed. */
   onError?: (error: unknown) => void;
+}
+
+interface Writing {
+  writeToken?: string;
 }
 
 export interface HistoryListItem extends HistoryEntry {
@@ -80,15 +85,18 @@ export interface ProjectHistory {
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
   list(): HistoryListItem[];
-  /** Cmd+Z (back) and Cmd+Shift+Z (forward), whoever made the change. */
-  step(direction: "back" | "forward", who: HistoryWho): Promise<HistoryResult>;
+  /**
+   * Cmd+Z (back) and Cmd+Shift+Z (forward), whoever made the change. Operations given a `writeToken` label their
+   * file writes with it, so the watcher's echo reads as the caller's own write.
+   */
+  step(direction: "back" | "forward", who: HistoryWho, options?: Writing): Promise<HistoryResult>;
   /** A conflict (a file changed since) returns the choice; pass `mode` to take one. */
   undo(
     id: string,
-    options: { who: HistoryWho; mode?: "just-this" | "back-to-before" },
+    options: { who: HistoryWho; mode?: "just-this" | "back-to-before" } & Writing,
   ): Promise<HistoryResult>;
   /** Makes the files equal what they were right after `point` (an entry id, or START). */
-  restore(point: string, who: HistoryWho): Promise<HistoryEntry | null>;
+  restore(point: string, who: HistoryWho, options?: Writing): Promise<HistoryEntry | null>;
   /** The files at `point` without writing anything: path to hash, read through readBlob. */
   peek(point: string): Record<string, string> | null;
   readBlob(hash: string): Promise<Buffer>;
@@ -146,6 +154,8 @@ class Engine {
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, or an operation commits it. */
   claimed: { group: Group; key: string; timer: NodeJS.Timeout } | null = null;
+  /** The running operation's write token (operations run one at a time). */
+  writeToken: string | undefined;
   quietTimer: NodeJS.Timeout | undefined;
   maxTimer: NodeJS.Timeout | undefined;
   notedTimer: NodeJS.Timeout | null = null;
@@ -475,7 +485,13 @@ class Engine {
       for (const [path, hash] of target) {
         if ((this.tracked.get(path)?.hash ?? null) === hash) continue;
         if (hash === null) await rm(join(this.dir, path), { force: true });
-        else await this.blobs.writeTo(hash, join(this.dir, path));
+        else {
+          const version = hashVersion(hash);
+          const { writeToken } = this;
+          if (writeToken)
+            recordFileWriteReceipt(join(this.dir, path), { path, version, writeToken });
+          await this.blobs.writeTo(hash, join(this.dir, path));
+        }
       }
       await this.sweep();
     } finally {
@@ -541,6 +557,19 @@ class Engine {
     return this.writeAs(who, label, target, { restoredTo: point });
   }
 
+  /** Settles, then runs `task` with its writes labelled `writeToken`. */
+  operation<T>(writeToken: string | undefined, task: () => Promise<T>): Promise<T> {
+    return this.queue(async () => {
+      await this.settle();
+      this.writeToken = writeToken;
+      try {
+        return await task();
+      } finally {
+        this.writeToken = undefined;
+      }
+    });
+  }
+
   pointLabel(point: string): string {
     return point === START ? "the start" : this.entry(point).label;
   }
@@ -561,22 +590,17 @@ class Engine {
           undone: undone.has(entry.id),
         }));
       },
-      step: (direction, who) =>
-        this.queue(async () => {
-          await this.settle();
+      step: (direction, who, { writeToken } = {}) =>
+        this.operation(writeToken, async () => {
           const target = stepTarget(this.log.entries, direction);
           return target ? this.undoNow(target.id, who) : { ok: true, entry: null };
         }),
-      undo: (id, { who, mode }) =>
-        this.queue(async () => {
-          await this.settle();
-          return this.undoNow(id, who, mode);
-        }),
-      restore: (point, who) =>
-        this.queue(async () => {
-          await this.settle();
-          return this.restoreNow(point, who, `Restored: ${this.pointLabel(point)}`);
-        }),
+      undo: (id, { who, mode, writeToken }) =>
+        this.operation(writeToken, () => this.undoNow(id, who, mode)),
+      restore: (point, who, { writeToken } = {}) =>
+        this.operation(writeToken, () =>
+          this.restoreNow(point, who, `Restored: ${this.pointLabel(point)}`),
+        ),
       peek: (point) => {
         const files = manifestAt(this.log, point);
         return files && Object.fromEntries(files);
