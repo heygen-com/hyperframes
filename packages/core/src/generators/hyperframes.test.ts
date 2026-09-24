@@ -6,6 +6,7 @@ import {
   generateHyperframesHtml,
   generateGsapTimelineScript,
   generateHyperframesStyles,
+  DEFAULT_COMPOSITION_DURATION_SECONDS,
 } from "./hyperframes.js";
 import { parseHtml } from "@hyperframes/parsers";
 import { GSAP_CDN } from "../templates/constants.js";
@@ -217,6 +218,29 @@ describe("generateHyperframesHtml", () => {
     expect(html).toContain("data-composition-duration=");
     expect(html).toContain('id="stage"');
     expect(html).toContain('id="stage-zoom-container"');
+  });
+
+  it("never emits a zero root duration for a no-element, zero-duration composition", () => {
+    // Single-scene, no-narration comp (e.g. an RTL logo-reveal): no elements and
+    // totalDuration 0 used to emit data-composition-duration="0", which the
+    // renderer treats as a permanent "Composition has zero duration" hard-fail.
+    const html = generateHyperframesHtml([], 0);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const declared = Number(doc.documentElement.getAttribute("data-composition-duration"));
+
+    expect(html).not.toContain('data-composition-duration="0"');
+    expect(declared).toBe(DEFAULT_COMPOSITION_DURATION_SECONDS);
+    expect(declared).toBeGreaterThan(0);
+  });
+
+  it("preserves a positive computed root duration exactly (fallback does not clamp)", () => {
+    // A comp whose longest element runs to 8s must keep 8s — the zero-duration
+    // guard only replaces a non-positive value, never shrinks a real one.
+    const elements = [makeTextElement({ startTime: 0, duration: 8 })];
+    const html = generateHyperframesHtml(elements, 5);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+
+    expect(Number(doc.documentElement.getAttribute("data-composition-duration"))).toBe(8);
   });
 
   it("includes element data attributes", () => {

@@ -1658,7 +1658,11 @@ async function evaluateHfDiagnostic(page: Page): Promise<HfDiagnostic> {
   return (await page.evaluate(HF_READY_DIAGNOSTIC_EXPR)) as HfDiagnostic;
 }
 
-async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 100): Promise<void> {
+export async function pollHfReady(
+  page: Page,
+  timeoutMs: number,
+  intervalMs: number = 100,
+): Promise<void> {
   const readyExpr = `!!(window.__hf && typeof window.__hf.seek === "function" && window.__hf.duration > 0)`;
   const FAST_FAIL_AFTER_MS = 10_000;
   // Throttle diagnostic CDP calls to ~1000ms — running evaluateHfDiagnostic on
@@ -1708,6 +1712,16 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
 
   const diag = await evaluateHfDiagnostic(page);
   if (diag.hasSeek && diag.duration === 0) {
+    // Defense-in-depth: a render-ready composition whose duration resolved to 0
+    // after the full readiness timeout (e.g. a single-scene, no-narration comp
+    // whose codegen never set a root data-duration and whose GSAP timeline holds
+    // only zero-length tweens) is otherwise classed as a permanent authoring
+    // failure and never retried — the "Composition has zero duration" hard-fail.
+    // Rather than fail the whole render, recover a usable duration and continue.
+    // Codegen always emitting a positive root duration is the primary fix; this
+    // is the safety net so the class can't recur silently even if codegen misses.
+    const recovered = await recoverZeroCompositionDuration(page);
+    if (recovered > 0) return;
     throw new Error(buildZeroDurationDiagnostic(diag));
   }
   throw new Error(
@@ -1716,6 +1730,52 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
       `  State: __hf=${diag.hasHf}, seek=${diag.hasSeek}, player=${diag.hasPlayer}, ` +
       `renderReady=${diag.renderReady}, duration=${diag.duration}`,
   );
+}
+
+/**
+ * Minimum duration (seconds) applied when a render-ready composition reports a
+ * zero total duration and no authored duration can be recovered. Keeps a
+ * degenerate composition from permanently hard-failing the whole render; the
+ * real fix is codegen always emitting a positive root duration. Kept short (and
+ * paired with a console warning) so a genuinely-empty comp yields an
+ * obviously-short clip rather than a plausible-looking full render.
+ */
+export const ZERO_DURATION_FALLBACK_SECONDS = 1;
+
+/**
+ * Best-effort recovery of a positive composition duration when the runtime
+ * resolved 0 after the readiness timeout. Prefers a declared root duration
+ * attribute, then the longest registered GSAP timeline, then a minimum floor.
+ * Patches window.__hf.duration so downstream getCompositionDuration() observes
+ * the recovered value, and warns (surfaced as a [HyperFrames] console message)
+ * whenever the floor is applied. Returns the recovered duration (> 0), or 0 if
+ * recovery is not possible.
+ */
+async function recoverZeroCompositionDuration(page: Page): Promise<number> {
+  const expr = `(function(fallback) {
+    var best = 0;
+    var root = document.querySelector("[data-composition-id]");
+    if (root) {
+      var declared = Number(root.getAttribute("data-duration") || root.getAttribute("data-composition-duration"));
+      if (isFinite(declared) && declared > best) best = declared;
+    }
+    var timelines = window.__timelines || {};
+    Object.keys(timelines).forEach(function(k) {
+      try {
+        var tl = timelines[k];
+        var d = tl && typeof tl.totalDuration === "function" ? tl.totalDuration() : 0;
+        if (typeof d === "number" && isFinite(d) && d > best) best = d;
+      } catch (e) {}
+    });
+    var resolved = best > 0 ? best : fallback;
+    if (window.__hf) { window.__hf.duration = resolved; }
+    if (best <= 0) {
+      console.warn("[hyperframes] composition reported zero duration; applying fallback duration " + resolved + "s (set a positive root data-duration to fix)");
+    }
+    return resolved;
+  })(${ZERO_DURATION_FALLBACK_SECONDS})`;
+  const resolved = (await page.evaluate(expr)) as number;
+  return typeof resolved === "number" && isFinite(resolved) && resolved > 0 ? resolved : 0;
 }
 
 export async function pollSubCompositionTimelines(
