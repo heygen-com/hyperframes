@@ -287,6 +287,25 @@ describe("ready to show", () => {
     expect(usePlayerStore.getState().previewBooted).toBe(true);
   });
 
+  it("marks the preview booted at its first frame while media is still buffering", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const onReadyToShowChange = vi.fn();
+    const { player } = await mountPlayer({ onReadyToShowChange });
+    const el = player as TestHyperframesPlayer;
+    document.body.appendChild(el.iframeElement);
+    const doc = el.iframeElement.contentDocument!;
+    const audio = doc.createElement("audio");
+    Object.defineProperty(audio, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(audio, "networkState", { value: 2, configurable: true });
+    doc.body.appendChild(audio);
+
+    loadAndReady(el);
+    painted(el);
+    await twoFrames();
+    expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
+    expect(usePlayerStore.getState().previewBooted).toBe(true);
+  });
+
   it("stops deferring editing work when the preview never shows", async () => {
     vi.useFakeTimers();
     try {

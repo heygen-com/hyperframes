@@ -430,21 +430,20 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       setAssetsLoading(false);
     };
 
-    const readyToShow =
-      loaded &&
-      painted &&
-      !compositionLoading &&
-      !shaderTransitionLoading &&
-      !assetsLoading &&
-      !previewError;
+    const firstFrameShown =
+      loaded && painted && !compositionLoading && !shaderTransitionLoading && !previewError;
+    const readyToShow = firstFrameShown && !assetsLoading;
+    // The first frame is up: work that waited on the boot (editing session, lint, thumbnails) starts
+    // while media finishes buffering, rather than seconds later at the boot deadline.
+    useEffect(() => {
+      if (firstFrameShown) usePlayerStore.getState().markPreviewBooted();
+    }, [firstFrameShown]);
     // `painted` means the player's own loader has finished fading; two frames of grace on top.
     useEffect(() => {
       if (!readyToShow) {
         onReadyToShowChangeRef.current?.(false);
         return;
       }
-      // The preview shows and can play: work that waited on the boot (editing session, lint) starts.
-      usePlayerStore.getState().markPreviewBooted();
       let second = 0;
       const first = requestAnimationFrame(() => {
         second = requestAnimationFrame(() => onReadyToShowChangeRef.current?.(true));
