@@ -42,6 +42,7 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
+import { SCENE_PART_ATTR, SCENE_PARTS_META, type SceneParts } from "../sceneParts";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
@@ -193,6 +194,16 @@ function createSettledTracker(
     );
     return settled;
   };
+}
+
+function readSceneParts(doc: Document): SceneParts | null {
+  const content = doc.querySelector(`meta[name="${SCENE_PARTS_META}"]`)?.getAttribute("content");
+  if (!content) return null;
+  try {
+    return JSON.parse(content) as SceneParts;
+  } catch {
+    return null;
+  }
 }
 
 export function initSandboxRuntimeModular(): void {
@@ -2050,11 +2061,14 @@ export function initSandboxRuntimeModular(): void {
     window.addEventListener("unhandledrejection", runtimeUnhandledRejectionListener);
   };
 
+  const assetNodesWithDiagnostics = new WeakSet<Element>();
   const installAssetFailureDiagnostics = () => {
     const assetNodes = Array.from(
       document.querySelectorAll("img, video, audio, source, link[rel='stylesheet']"),
     );
     for (const node of assetNodes) {
+      if (assetNodesWithDiagnostics.has(node)) continue;
+      assetNodesWithDiagnostics.add(node);
       const onError = () => {
         if (!isElementNode(node)) {
           return;
@@ -2269,15 +2283,27 @@ export function initSandboxRuntimeModular(): void {
     if (isMediaElement(target)) reportWebAudioRoute(target);
   };
 
+  const unbindMedia = (mediaEl: HTMLMediaElement) => {
+    mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
+    mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
+    mediaEl.removeEventListener("error", onMediaErrorForProxy);
+    metadataBoundMedia.delete(mediaEl);
+  };
   const unbindMediaMetadataListeners = () => {
+    for (const mediaEl of metadataBoundMedia) unbindMedia(mediaEl);
+  };
+  // A swapped-out scene's media is detached but still buffering: stop it and drop its sources.
+  const releaseDetachedMedia = () => {
     for (const mediaEl of metadataBoundMedia) {
-      mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
-      mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
-      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
-      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
-      mediaEl.removeEventListener("error", onMediaErrorForProxy);
+      if (mediaEl.isConnected) continue;
+      unbindMedia(mediaEl);
+      mediaEl.pause();
+      for (const source of mediaEl.querySelectorAll("source")) source.remove();
+      mediaEl.removeAttribute("src");
+      mediaEl.load();
     }
-    metadataBoundMedia.clear();
   };
 
   const bindMediaMetadataListeners = () => {
@@ -3001,6 +3027,18 @@ export function initSandboxRuntimeModular(): void {
     (err) => swallow("runtime.init.buildReady", err),
   );
 
+  // Passes that must see scene DOM, which arrives after init: when scenes mount, or when one is
+  // swapped. Resolves when caption overrides (applied only if `captions`) have landed.
+  const settleSceneDom = (captions: boolean): Promise<void> => {
+    bindMediaMetadataListeners();
+    installAssetFailureDiagnostics();
+    const captionsApplied = captions ? applyCaptionOverrides() : Promise.resolve();
+    // Per-instance scoped values: data-var-* / --{id} bindings inside scenes. Idempotent.
+    applyVariableBindings(document);
+    // An unregistered vfx chain paints nothing and logs nothing, so re-scan the new DOM.
+    initVfx(document.body, state.canonicalFps);
+    return captionsApplied;
+  };
   if (!externalCompositionsReady) {
     const compositionLoaderParams = {
       injectedStyles: state.injectedCompStyles,
@@ -3026,23 +3064,100 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
-        bindMediaMetadataListeners();
-        installAssetFailureDiagnostics();
-        applyCaptionOverrides();
-        // Runtime-loaded sub-compositions (and their per-instance scoped
-        // values) don't exist at the init-time binding pass — re-apply so
-        // data-var-* / --{id} bindings inside them resolve. Idempotent.
-        applyVariableBindings(document);
-        // A vfx host inside a sub-composition enters the DOM only now, so the
-        // init-time pass below never saw it. Re-scan before readiness is
-        // published: an unregistered chain paints nothing and logs nothing.
-        initVfx(document.body, state.canonicalFps);
+        void settleSceneDom(true);
         maybePublishRenderReady();
       });
   } else {
     // No external/inline compositions to load — apply caption overrides immediately
-    applyCaptionOverrides();
+    void applyCaptionOverrides();
   }
+
+  // Swap edited scenes in place from a rebuilt preview document. Rejects, changing nothing, unless
+  // the documents differ only inside existing scenes (their manifests say so); the caller reloads.
+  const swapScenes = async (html: string): Promise<void> => {
+    const next = new DOMParser().parseFromString(html, "text/html");
+    const liveParts = readSceneParts(document);
+    const nextParts = readSceneParts(next);
+    if (!liveParts || !nextParts) throw new Error("no scene manifest");
+    if (liveParts.shared !== nextParts.shared)
+      throw new Error("the film changed outside its scenes");
+    const names = Object.keys(nextParts.scenes);
+    if (
+      names.length !== Object.keys(liveParts.scenes).length ||
+      names.some((name) => !(name in liveParts.scenes))
+    ) {
+      throw new Error("scenes were added or removed");
+    }
+    const changed = names.filter((name) => nextParts.scenes[name] !== liveParts.scenes[name]);
+    if (changed.length === 0) throw new Error("no scene changed");
+    const swaps = changed.map((name) => {
+      const partsIn = (doc: Document) =>
+        Array.from(doc.querySelectorAll(`[${SCENE_PART_ATTR}="${CSS.escape(name)}"]`));
+      const isHost = (el: Element) => el.tagName !== "STYLE" && el.tagName !== "SCRIPT";
+      const oldParts = partsIn(document);
+      const newParts = partsIn(next);
+      const oldHost = oldParts.find(isHost);
+      const newHost = newParts.find(isHost);
+      // A duplicated scene's script also registers under its shared original id; reload instead.
+      if (!oldHost || !newHost || oldHost.hasAttribute("data-hf-original-composition-id")) {
+        throw new Error(`scene ${name} cannot be swapped`);
+      }
+      return { oldParts, newParts, oldHost, newHost };
+    });
+    const timelines = (window.__timelines ??= {}) as Record<
+      string,
+      RuntimeTimelineLike | undefined
+    >;
+    const root = state.capturedTimeline as
+      | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
+      | null;
+    let captions = false;
+    for (const { oldParts, newParts, oldHost, newHost } of swaps) {
+      for (const el of [oldHost, ...oldHost.querySelectorAll("[data-composition-id]")]) {
+        const id = el.getAttribute("data-composition-id");
+        const previous = id ? timelines[id] : undefined;
+        if (!id || !previous) continue;
+        root?.remove?.(previous);
+        (previous as { kill?: () => void }).kill?.();
+        delete timelines[id];
+      }
+      for (const el of oldParts) if (el !== oldHost) el.remove();
+      const host = document.importNode(newHost, true);
+      oldHost.replaceWith(host);
+      captions ||= host.querySelector(".caption-group") !== null;
+      for (const el of newParts) {
+        if (el.tagName === "STYLE") document.head.appendChild(document.importNode(el, true));
+        if (el.tagName !== "SCRIPT") continue;
+        // An imported <script> never runs; a created one does.
+        const script = document.createElement("script");
+        for (const attr of Array.from(el.attributes)) script.setAttribute(attr.name, attr.value);
+        script.textContent = el.textContent;
+        document.body.appendChild(script);
+      }
+    }
+    document
+      .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
+      ?.setAttribute("content", JSON.stringify(nextParts));
+    await settleSceneDom(captions);
+    if (state.tornDown) return;
+    releaseDetachedMedia();
+    childrenBound = false;
+    bindRootTimelineIfAvailable();
+    const bound = state.capturedTimeline;
+    const duration = getSafeTimelineDurationSeconds(bound, 0);
+    if (bound && duration > 0) {
+      clock.setDuration(duration);
+      bound.totalTime?.(Math.max(0, state.currentTime || 0), false);
+    }
+    // The rebind above skips these when the root timeline object did not change.
+    applyPositionEdits(document);
+    syncTimedElementVisibility(state.currentTime);
+    postTimeline();
+  };
+  window.__hfSwapScenes = swapScenes;
+  registerRuntimeCleanup(() => {
+    delete window.__hfSwapScenes;
+  });
 
   const picker = createPickerModule({
     postMessage: (payload) => postRuntimeMessage(payload),

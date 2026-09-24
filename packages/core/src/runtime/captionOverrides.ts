@@ -113,14 +113,14 @@ function getOrCreateCaptionWrapper(el: HTMLElement): HTMLElement {
   return wrapper;
 }
 
-export function applyCaptionOverrides(): void {
+export function applyCaptionOverrides(): Promise<void> {
   const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
-  if (!gsap) return;
+  if (!gsap) return Promise.resolve();
 
   // Only fetch overrides if the composition has caption groups
-  if (document.querySelectorAll(".caption-group").length === 0) return;
+  if (document.querySelectorAll(".caption-group").length === 0) return Promise.resolve();
 
-  fetch("caption-overrides.json")
+  return fetch("caption-overrides.json")
     .then((r) => {
       if (!r.ok) return null;
       return r.json();
