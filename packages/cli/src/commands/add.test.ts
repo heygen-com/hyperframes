@@ -162,6 +162,7 @@ const DEP_BLOCK_HTML = `<div data-composition-variables='[{ "id": "maths", "type
 
 const FILE_BODIES: Record<string, string> = {
   "dep-block.html": DEP_BLOCK_HTML,
+  "deprecated-block.html": `<div data-composition-id="deprecated-block"></div>`,
   "my-block.html": `<div data-composition-id="my-block-root" data-width="1080" data-height="1350"></div>`,
 };
 
@@ -417,6 +418,9 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "compositions/dep-block.html"))).toBe(true);
       // Snippet points at the requested block, not the dependency.
       expect(result.snippet).toContain("compositions/dep-block.html");
+      expect(result.warnings).toEqual([
+        expect.stringContaining("compositions/dep-block.html declares no data-composition-id"),
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

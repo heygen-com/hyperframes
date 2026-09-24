@@ -383,12 +383,13 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   // 6. Build include snippet + clipboard copy for the requested item.
   const itemForInstall = installPlan[installPlan.length - 1]!;
   const snippetTargetRel = primaryInstalledTarget(itemForInstall);
-  const snippet = buildSnippet(
-    item,
-    snippetTargetRel,
-    variableValues,
-    installedRootId(resolve(projectDir, snippetTargetRel)),
-  );
+  const compositionId = installedRootId(resolve(projectDir, snippetTargetRel));
+  if (item.type === "hyperframes:block" && !compositionId) {
+    warnings.push(
+      `${snippetTargetRel} declares no data-composition-id, so the snippet has none; give its root one and put the same id on the snippet`,
+    );
+  }
+  const snippet = buildSnippet(item, snippetTargetRel, variableValues, compositionId);
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
 
   if (variablesUnknown.length > 0) {
