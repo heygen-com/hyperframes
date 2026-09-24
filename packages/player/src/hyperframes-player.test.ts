@@ -2795,7 +2795,11 @@ describe("HyperframesPlayer asset-ready gate", () => {
     play(): void;
     pause(): void;
     seek(timeInSeconds: number): void;
-    shaderLoader: { showAssetsLoading(): void; hide(): void };
+    shaderLoader: {
+      showAssetsLoading(): void;
+      hide(): void;
+      update(status: { loading: boolean; ready: boolean }, mode: string): void;
+    };
     _settleAssetsReady(generation: number): void;
     assetsLoadingUi: "player" | "none";
   };
@@ -3119,6 +3123,23 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(player.getAttribute("assets-loading-ui")).toBe("none");
     expect(hideSpy).toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("keeps a shader load drawn over the loading card when assets-loading-ui switches to none", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    player.shaderLoader.update({ loading: true, ready: false }, "player");
+    player.assetsLoadingUi = "none";
+
+    const loader = player.shadowRoot?.querySelector(".hfp-shader-loader");
+    expect(loader?.classList.contains("hfp-visible")).toBe(true);
+    expect(loader?.getAttribute("aria-label")).toBe("Preparing scene transitions");
 
     player.remove();
   });

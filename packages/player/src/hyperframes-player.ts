@@ -315,7 +315,7 @@ class HyperframesPlayer extends HTMLElement {
         else this._media.teardownUrlAudio();
         break;
       case ASSETS_LOADING_UI_ATTR:
-        if (val === "none" && this.hasAttribute(ASSETS_LOADING_ATTR)) this.shaderLoader.hide();
+        if (val === "none") this.shaderLoader.hideAssetsLoading();
         break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
