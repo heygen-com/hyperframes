@@ -76,6 +76,7 @@ const HeaderSlicedLabelMask = memo(function HeaderSlicedLabelMask({
       el?.addEventListener("scroll", onScroll, { passive: true });
       return () => {
         clearTimeout(settle);
+        scrollingRef.current = false;
         el?.removeEventListener("scroll", onScroll);
       };
     },

@@ -59,4 +59,40 @@ describe("TimelineRuler", () => {
     expect(mask()).toBe("204.5px");
     act(() => root.unmount());
   });
+
+  it("masks right away when the scroll element is swapped mid-scroll", () => {
+    vi.useFakeTimers();
+    const make = (left: number) => {
+      const el = document.createElement("div");
+      Object.defineProperty(el, "scrollLeft", { get: () => left });
+      return el;
+    };
+    const first = make(205);
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const render = (el: HTMLDivElement) =>
+      act(() =>
+        root.render(
+          <TimelineRuler
+            major={[0, 10, 20]}
+            minor={[]}
+            pps={20}
+            trackContentWidth={600}
+            totalH={100}
+            effectiveDuration={30}
+            majorTickInterval={10}
+            theme={{} as TimelineTheme}
+            contentOrigin={80}
+            scrollRef={{ current: el }}
+          />,
+        ),
+      );
+    render(first);
+    act(() => first.dispatchEvent(new Event("scroll")));
+    render(make(205));
+    expect(host.querySelector<HTMLElement>("[data-timeline-ruler-label-mask]")?.style.left).toBe(
+      "204.5px",
+    );
+    act(() => root.unmount());
+  });
 });
