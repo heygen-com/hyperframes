@@ -182,20 +182,55 @@ describe("createPickerModule", () => {
       const api = (window as any).__HF_PICKER_API;
       try {
         expect(api.getCandidatesAtPoint(10, 10)[0]?.selector).toBe("#code");
-        const override = document.head.querySelectorAll("style")[1] as HTMLStyleElement;
-        expect(override.sheet?.disabled).toBe(true);
-        // Later hit tests reuse the sheet: no DOM mutation for observers to hear on every hover.
-        const observer = new MutationObserver(() => {});
-        observer.observe(document, { childList: true, subtree: true, attributes: true });
         expect(api.pickAtPoint(10, 10)?.selector).toBe("#code");
-        expect(observer.takeRecords()).toEqual([]);
-        observer.disconnect();
-        expect(document.head.querySelectorAll("style")).toHaveLength(2);
+        expect(document.head.querySelectorAll("style")).toHaveLength(1);
       } finally {
         Object.defineProperty(document, "elementsFromPoint", {
           configurable: true,
           value: originalElementsFromPoint,
         });
+      }
+    });
+
+    it("adopts the override only for the hit test, leaving the DOM and a saved outerHTML untouched", () => {
+      const adopted: CSSStyleSheet[] = [];
+      Object.defineProperty(document, "adoptedStyleSheets", {
+        configurable: true,
+        get: () => adopted.slice(),
+        set: (next: CSSStyleSheet[]) => adopted.splice(0, adopted.length, ...next),
+      });
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = '<div data-composition-id="intro"><span id="t">hi</span></div>';
+      const during: string[][] = [];
+      const originalElementsFromPoint = document.elementsFromPoint;
+      Object.defineProperty(document, "elementsFromPoint", {
+        configurable: true,
+        value: vi.fn(() => {
+          during.push(adopted.flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText)));
+          return [document.getElementById("t")!];
+        }),
+      });
+      const observer = new MutationObserver(() => {});
+      observer.observe(document, { childList: true, subtree: true, attributes: true });
+      const html = document.documentElement.outerHTML;
+
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10)[0]?.selector).toBe("#t");
+        expect(api.pickAtPoint(10, 10)?.selector).toBe("#t");
+        expect(during).toHaveLength(2);
+        expect(during[0]?.join()).toContain("pointer-events: auto !important");
+        expect(adopted).toEqual([]);
+        expect(observer.takeRecords()).toEqual([]);
+        expect(document.documentElement.outerHTML).toBe(html);
+      } finally {
+        observer.disconnect();
+        Object.defineProperty(document, "elementsFromPoint", {
+          configurable: true,
+          value: originalElementsFromPoint,
+        });
+        delete (document as { adoptedStyleSheets?: unknown }).adoptedStyleSheets;
       }
     });
 

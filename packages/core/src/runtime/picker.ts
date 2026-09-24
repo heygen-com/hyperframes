@@ -38,7 +38,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   let pickModeStyleEl: HTMLStyleElement | null = null;
   let pickLastHoveredInfo: RuntimePickerElementInfo | null = null;
   let pickLastSelectedInfo: RuntimePickerElementInfo | null = null;
-  let pickableRootsStyleEl: HTMLStyleElement | null = null;
+  let pickableRootsSheetCache: CSSStyleSheet | null | undefined;
 
   function emitPickerRuntimeEvent(eventName: string, detail: RuntimeJson): void {
     try {
@@ -67,21 +67,46 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     });
   }
 
-  // One sheet, enabled only for the hit test. Toggling a sheet is not a DOM mutation, so the runtime's and
-  // Studio's MutationObservers stay quiet on every hover.
+  // An adopted sheet is not a DOM node: no MutationObserver hears it (the runtime's timing observer would
+  // wake a paused transport on every hover) and a saved documentElement.outerHTML never contains it.
   function withPickableCompositionRoots<T>(run: () => T): T {
-    if (!pickableRootsStyleEl?.isConnected) {
-      pickableRootsStyleEl = document.createElement("style");
-      pickableRootsStyleEl.textContent = PICKABLE_ROOTS_CSS;
-      (document.head ?? document.documentElement).appendChild(pickableRootsStyleEl);
-    }
-    const sheet = pickableRootsStyleEl.sheet;
-    if (sheet) sheet.disabled = false;
+    const sheet = pickableRootsSheet();
+    const release = sheet ? adoptSheet(sheet) : appendPickableRootsStyle();
     try {
       return run();
     } finally {
-      if (sheet) sheet.disabled = true;
+      release();
     }
+  }
+
+  function pickableRootsSheet(): CSSStyleSheet | null {
+    if (pickableRootsSheetCache !== undefined) return pickableRootsSheetCache;
+    pickableRootsSheetCache = null;
+    if (!Array.isArray(document.adoptedStyleSheets) || typeof CSSStyleSheet === "undefined")
+      return null;
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(PICKABLE_ROOTS_CSS);
+      pickableRootsSheetCache = sheet;
+    } catch (err) {
+      swallow("runtime.picker.site2", err);
+    }
+    return pickableRootsSheetCache;
+  }
+
+  function adoptSheet(sheet: CSSStyleSheet): () => void {
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    return () => {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
+    };
+  }
+
+  // No constructable sheets (older engines, jsdom): a style element for the hit test only.
+  function appendPickableRootsStyle(): () => void {
+    const style = document.createElement("style");
+    style.textContent = PICKABLE_ROOTS_CSS;
+    (document.head ?? document.documentElement).appendChild(style);
+    return () => style.remove();
   }
 
   function isEffectivelyHidden(el: HTMLElement): boolean {
