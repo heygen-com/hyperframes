@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildSubCompositionHtml } from "./subComposition";
+import { buildSubCompositionHtml, hasBaseElement } from "./subComposition";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-subcomp-preview-"));
@@ -428,5 +428,21 @@ describe("buildSubCompositionHtml", () => {
     );
 
     expect(html).toContain('src="assets/logo.png"');
+  });
+});
+
+describe("hasBaseElement", () => {
+  it("counts a real <base> element and nothing that only mentions one", () => {
+    expect(hasBaseElement(`<head><base href="/cdn/"></head>`)).toBe(true);
+    expect(hasBaseElement(`<head><BASE HREF="/cdn/"></head>`)).toBe(true);
+    for (const html of [
+      `<head><script>document.write('<base href="../">')</script></head>`,
+      `<head><script >x = "<base>";</script ></head>`,
+      `<head><!-- <base href="x"> --></head>`,
+      `<head><template><base href="t"></template></head>`,
+      `<head><basefont></head>`,
+    ]) {
+      expect(hasBaseElement(html)).toBe(false);
+    }
   });
 });

@@ -376,7 +376,7 @@ ${rewrittenContent}
 </html>`;
 }
 
-/** True for a real `<base>` tag; the text "<base" inside a script or comment does not count. */
+/** True for a real `<base>` element; the text "<base" inside a script or comment does not count. */
 export function hasBaseElement(html: string): boolean {
-  return /<base\b/i.test(html.replace(/<script\b[\s\S]*?<\/script>|<!--[\s\S]*?-->/gi, ""));
+  return parseHTML(html).document.querySelector("base") !== null;
 }
