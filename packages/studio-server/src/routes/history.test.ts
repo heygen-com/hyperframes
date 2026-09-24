@@ -2,7 +2,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "../createStudioApi";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory";
 import type { StudioApiAdapter } from "../types";
@@ -33,16 +33,21 @@ function apiFor(projectDir: string, history?: ProjectHistory) {
     );
 }
 
+/** A project whose index.html reads "A", with its history and the routes over it. */
+async function demoProject() {
+  const projectDir = tempDir("hf-history-routes-");
+  writeFileSync(join(projectDir, "index.html"), "A");
+  const history = await openProjectHistory({
+    projectDir,
+    historyRoot: tempDir("hf-history-routes-root-"),
+  });
+  cleanup.push(() => history.close());
+  return { projectDir, call: apiFor(projectDir, history) };
+}
+
 describe("history routes", () => {
   it("record a Studio edit window as the person's entry, and step back undoes it", async () => {
-    const projectDir = tempDir("hf-history-routes-");
-    writeFileSync(join(projectDir, "index.html"), "A");
-    const history = await openProjectHistory({
-      projectDir,
-      historyRoot: tempDir("hf-history-routes-root-"),
-    });
-    cleanup.push(() => history.close());
-    const call = apiFor(projectDir, history);
+    const { projectDir, call } = await demoProject();
 
     const { windowId } = await (await call("/window", { label: "Moved Title" })).json();
     writeFileSync(join(projectDir, "index.html"), "B");
@@ -53,6 +58,41 @@ describe("history routes", () => {
     expect(step).toMatchObject({ ok: true, entry: { label: "Undid: Moved Title" } });
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
     expect((await (await call("")).json()).entries).toHaveLength(2);
+  });
+
+  it("name what Cmd+Z and Cmd+Shift+Z would revert next", async () => {
+    const { projectDir, call } = await demoProject();
+    expect(await (await call("")).json()).toMatchObject({ back: null, forward: null });
+
+    const { windowId } = await (await call("/window", { label: "Moved Title" })).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await call(`/window/${windowId}/close`, {});
+    expect(await (await call("")).json()).toMatchObject({
+      back: { id: windowId, label: "Moved Title" },
+      forward: null,
+    });
+
+    await call("/step", { direction: "back" });
+    expect(await (await call("")).json()).toMatchObject({
+      back: null,
+      forward: { label: "Undid: Moved Title" },
+    });
+  });
+
+  it("end a window given idleMs by itself once its writes stop", async () => {
+    const { projectDir, call } = await demoProject();
+
+    const { windowId } = await (
+      await call("/window", { label: "Dragged Title", idleMs: 50 })
+    ).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await vi.waitFor(
+      async () =>
+        expect((await (await call("")).json()).entries).toMatchObject([{ label: "Dragged Title" }]),
+      { timeout: 2_000, interval: 50 },
+    );
+    const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
+    expect(entry).toMatchObject({ id: windowId, label: "Dragged Title" });
   });
 
   it("refuse to close a window through another project's route", async () => {
