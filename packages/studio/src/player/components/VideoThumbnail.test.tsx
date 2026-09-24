@@ -3,6 +3,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
+import { usePlayerStore } from "../store/playerStore";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
 import { VideoThumbnail } from "./VideoThumbnail";
 
@@ -24,6 +25,7 @@ let root: Root | null = null;
 
 beforeEach(() => {
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  usePlayerStore.setState({ previewAssetsSettled: true });
   host = document.createElement("div");
   document.body.append(host);
 });

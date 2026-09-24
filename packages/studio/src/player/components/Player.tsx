@@ -231,6 +231,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setPreviewError(null);
           setCompositionLoading(false);
         };
+        const handleAssetsReady = () => usePlayerStore.getState().markPreviewAssetsSettled();
         const handlePainted = () => {
           setPainted(true);
           onPainted?.({ iframe, startedAt: loadStartedAtRef.current, loadId: loadIdRef.current });
@@ -307,6 +308,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("shadertransitionstate", handleShaderTransitionState);
         player.addEventListener("ready", handleReady);
         player.addEventListener("painted", handlePainted);
+        player.addEventListener("assetsready", handleAssetsReady);
         player.addEventListener("error", handleError);
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
@@ -349,6 +351,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
           player.removeEventListener("ready", handleReady);
           player.removeEventListener("painted", handlePainted);
+          player.removeEventListener("assetsready", handleAssetsReady);
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
@@ -456,7 +459,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     }, [readyToShow]);
 
     useEffect(() => {
-      if (previewError) usePlayerStore.getState().markPreviewBooted();
+      if (!previewError) return;
+      usePlayerStore.getState().markPreviewBooted();
+      usePlayerStore.getState().markPreviewAssetsSettled();
     }, [previewError]);
 
     useEffect(() => {

@@ -1,3 +1,4 @@
+import { usePlayerStore } from "../store/playerStore";
 import { TIMELINE_VIEWPORT_BUDGETS, type TimelineViewportBudgets } from "./timelineViewportBudgets";
 
 export type ThumbnailPriority = "overscan" | "visible" | "interaction";
@@ -83,6 +84,11 @@ function concurrencyBucket(kind: ThumbnailJobKind): "video" | "composition" | "g
   return "general";
 }
 
+/** Video frames and waveforms fetch the media files the preview's first frame is waiting for. */
+function readsPreviewMedia(kind: ThumbnailJobKind): boolean {
+  return kind === "video" || kind === "waveform";
+}
+
 function errorFrom(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error(String(reason));
 }
@@ -115,6 +121,7 @@ export class ThumbnailScheduler {
   private nextSequence = 1;
   private scrolling = false;
   private previewReloading = false;
+  private previewAssetsPending = false;
   private cacheBytes = 0;
   private waveformCacheBytes = 0;
   private readonly activeByBucket = { video: 0, composition: 0, general: 0 };
@@ -218,6 +225,12 @@ export class ThumbnailScheduler {
    * Hold server-rendered composition thumbnails while the preview loads a new document: both
    * are served by the same Studio server, and the preview is what the person is waiting for.
    */
+  setPreviewAssetsPending(pending: boolean): void {
+    if (this.previewAssetsPending === pending) return;
+    this.previewAssetsPending = pending;
+    if (!pending) this.pump();
+  }
+
   setPreviewReloading(reloading: boolean): void {
     if (this.previewReloading === reloading) return;
     this.previewReloading = reloading;
@@ -280,6 +293,7 @@ export class ThumbnailScheduler {
     for (const entry of queued) {
       if (this.scrolling && entry.request.rich) continue;
       if (this.previewReloading && entry.request.kind === "composition") continue;
+      if (this.previewAssetsPending && readsPreviewMedia(entry.request.kind)) continue;
       const bucket = concurrencyBucket(entry.request.kind);
       if (this.activeByBucket[bucket] >= this.bucketLimit(bucket)) continue;
       this.start(entry, bucket);
@@ -515,3 +529,7 @@ export class ThumbnailScheduler {
 }
 
 export const thumbnailScheduler = new ThumbnailScheduler();
+thumbnailScheduler.setPreviewAssetsPending(!usePlayerStore.getState().previewAssetsSettled);
+usePlayerStore.subscribe((state) =>
+  thumbnailScheduler.setPreviewAssetsPending(!state.previewAssetsSettled),
+);

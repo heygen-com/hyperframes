@@ -186,6 +186,27 @@ describe("ThumbnailScheduler", () => {
     });
   });
 
+  it("holds video frames and waveforms until the preview's opening assets settle", async () => {
+    const scheduler = new ThumbnailScheduler();
+    const video = vi.fn(async () => result("frames"));
+    const waveform = vi.fn(async () => result("peaks"));
+    const image = vi.fn(async () => result("still"));
+
+    scheduler.setPreviewAssetsPending(true);
+    scheduler.acquire(request("frames", video, "visible", { kind: "video" }), vi.fn());
+    scheduler.acquire(request("peaks", waveform, "visible", { kind: "waveform" }), vi.fn());
+    scheduler.acquire(request("still", image), vi.fn());
+    await flush();
+    expect(image).toHaveBeenCalledTimes(1);
+    expect(video).not.toHaveBeenCalled();
+    expect(waveform).not.toHaveBeenCalled();
+
+    scheduler.setPreviewAssetsPending(false);
+    await flush();
+    expect(video).toHaveBeenCalledTimes(1);
+    expect(waveform).toHaveBeenCalledTimes(1);
+  });
+
   it("aborts queued and active jobs after the final release", async () => {
     const scheduler = new ThumbnailScheduler(
       resolveTimelineViewportBudgets({ concurrentVideoDecodes: 1 }),

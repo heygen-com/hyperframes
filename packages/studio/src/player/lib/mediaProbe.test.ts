@@ -8,6 +8,7 @@ import {
   probeMissingSourceDurations,
   resetMediaProbeRegistry,
 } from "./mediaProbe";
+import { usePlayerStore } from "../store/playerStore";
 
 const dispose = vi.fn();
 const getDurationFromMetadata = vi.fn(async () => 5);
@@ -33,6 +34,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   requestedSources.length = 0;
   getDurationFromMetadata.mockResolvedValue(5);
+  usePlayerStore.setState({ previewAssetsSettled: true });
 });
 
 afterEach(() => {
@@ -87,6 +89,23 @@ describe("media probe registry", () => {
     vi.advanceTimersByTime(30_001);
     await expect(probeMediaUrl("/bad.mp4")).resolves.toBeNull();
     expect(getDurationFromMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits to open a file until the preview's opening assets settle", async () => {
+    usePlayerStore.setState({ previewAssetsSettled: false });
+    const apply = vi.fn();
+    const probing = probeMissingSourceDurations(
+      [{ id: "clip", tag: "video", src: "/assets/clip.mp4" }],
+      null,
+      apply,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requestedSources).toEqual([]);
+
+    usePlayerStore.getState().markPreviewAssetsSettled();
+    await probing;
+    expect(requestedSources).toHaveLength(1);
+    expect(apply).toHaveBeenCalledWith("clip", 5);
   });
 
   it("probes same-origin rooted media through the active project preview", async () => {

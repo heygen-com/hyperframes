@@ -11,8 +11,12 @@ export interface PlaybackReadinessSlice {
   /** Latched when the project's first preview shows and can play (or fails), kept through edit
    *  reloads, so work that must not compete with the boot waits for it once. */
   previewBooted: boolean;
+  /** Latched when the first preview's opening assets settle (the player's own capped wait) or it
+   *  fails. Media reads that fetch those same files wait for it; unlike previewBooted, no deadline. */
+  previewAssetsSettled: boolean;
   setTimelineReady: (ready: boolean) => void;
   markPreviewBooted: () => void;
+  markPreviewAssetsSettled: () => void;
   /** Sets timelineReady once doc's readiness inputs settle, or immediately
    *  if doc is null. A wait a later call supersedes never wins the race. */
   requestTimelineReady: (doc: Document | null) => void;
@@ -24,10 +28,10 @@ let timelineReadyGeneration = 0;
  * wait in flight can never resolve into what replaced it. */
 export function resetPlaybackReadinessState(): Pick<
   PlaybackReadinessSlice,
-  "timelineReady" | "previewBooted"
+  "timelineReady" | "previewBooted" | "previewAssetsSettled"
 > {
   timelineReadyGeneration++;
-  return { timelineReady: false, previewBooted: false };
+  return { timelineReady: false, previewBooted: false, previewAssetsSettled: false };
 }
 
 export function createPlaybackReadinessSlice(
@@ -36,7 +40,9 @@ export function createPlaybackReadinessSlice(
   return {
     timelineReady: false,
     previewBooted: false,
+    previewAssetsSettled: false,
     markPreviewBooted: () => set({ previewBooted: true }),
+    markPreviewAssetsSettled: () => set({ previewAssetsSettled: true }),
     setTimelineReady: (ready) => {
       timelineReadyGeneration++;
       set({ timelineReady: ready });

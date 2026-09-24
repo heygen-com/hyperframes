@@ -1,4 +1,5 @@
 import { resolveMediaPreviewUrl } from "../components/thumbnailUtils";
+import { whenPreviewAssetsSettled } from "../store/playerStore";
 import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
 
 export interface MediaProbeResult {
@@ -148,6 +149,8 @@ export async function probeMissingSourceDurations<
       : [];
   });
   if (needs.length === 0) return;
+  // A probe opens the file with an open-ended range, competing with the preview's own first frame.
+  await whenPreviewAssetsSettled();
   await Promise.allSettled(
     needs.map(async ({ el, source }) => {
       const result = await probeMediaUrl(source);

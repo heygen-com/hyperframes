@@ -557,6 +557,18 @@ export function isPreviewBooted(projectId: string): boolean {
   return previewBooted && timelineProjectId === projectId;
 }
 
+/** Resolves once the live preview's opening assets have settled, or its load failed. */
+export function whenPreviewAssetsSettled(): Promise<void> {
+  if (usePlayerStore.getState().previewAssetsSettled) return Promise.resolve();
+  return new Promise((resolve) => {
+    const stop = usePlayerStore.subscribe((state) => {
+      if (!state.previewAssetsSettled) return;
+      stop();
+      resolve();
+    });
+  });
+}
+
 /** True once projectId's live preview has booted, false once another project replaces it.
  * Open-time work the first frame does not need (server parses, lint) waits on it. */
 export function whenPreviewBooted(projectId: string): Promise<boolean> {
