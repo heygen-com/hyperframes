@@ -110,6 +110,8 @@ function buildMotionSampleTimes(duration: number): number[] {
 interface SampleGrid {
   duration: number;
   layoutSamples: number[];
+  /** `--at` times: they can all land on a still stretch, so the frozen-sweep guard never judges them. */
+  userPickedSamples: number[];
   captionSamples: number[];
   frameSamples: number[];
   transitionSamples: number[];
@@ -158,6 +160,7 @@ async function buildSampleGrid(
   return {
     duration,
     layoutSamples,
+    userPickedSamples: options.at?.length ? baseSamples : [],
     captionSamples,
     frameSamples,
     transitionSamples: transitions.times,
@@ -213,7 +216,7 @@ interface GridSamples {
   screenshots: CheckScreenshot[];
   contrastMs: number;
   /** One geometry+opacity fingerprint per layout sample (#U10 frozen-sweep guard). */
-  geometrySignatures: string[];
+  geometrySignatures: { time: number; signature: string }[];
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
@@ -417,7 +420,7 @@ async function collectGridSamples(
       const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
       collected.layoutIssues.push(...layoutIssues);
       issuesAtTime.push(...layoutIssues);
-      collected.geometrySignatures.push(await driver.collectLayoutGeometry());
+      collected.geometrySignatures.push({ time, signature: await driver.collectLayoutGeometry() });
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
     }
@@ -1089,9 +1092,12 @@ export async function runAuditGrid(
     );
     motionIssues = [...motionIssues, ...(await driver.anchorMotionIssues(evaluated))];
   }
+  const userPicked = new Set(grid.userPickedSamples);
   const sweepFindings = detectSweepStatic(
     grid.duration,
-    collected.geometrySignatures,
+    collected.geometrySignatures
+      .filter((sample) => !userPicked.has(sample.time))
+      .map((sample) => sample.signature),
     motionIssues,
     await driver.hasNoTimelineDeclaration(),
   );
