@@ -9,7 +9,6 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
-import { homedir } from "node:os";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -48,6 +47,8 @@ import {
   type RenderJobState,
   type BackgroundRemovalRender,
   openProjectHistory,
+  DEFAULT_HISTORY_ROOT,
+  HistoryBusyError,
   type ProjectHistory,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
@@ -66,9 +67,6 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
-
-/** Where `hyperframes preview` keeps project histories: outside every project, so no tidy-up takes one away. */
-const DEFAULT_HISTORY_ROOT = join(homedir(), ".cache", "hyperframes", "history");
 
 // Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
 // before that watchdog can fire and skip this file's browser cleanup.
@@ -414,7 +412,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   });
 
   // Opened on first use, so a server that never serves Studio's history never writes one. A failed open stays off
-  // for this run.
+  // for this run; one another process was holding is tried again on the next request.
   let history: Promise<ProjectHistory | null> | undefined;
   const projectHistory = () =>
     (history ??= openProjectHistory({
@@ -422,6 +420,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       historyRoot: options.historyRoot ?? DEFAULT_HISTORY_ROOT,
     }).catch((error: unknown) => {
       console.warn(`[studio] Project history is off: ${String(error)}`);
+      if (error instanceof HistoryBusyError) history = undefined;
       return null;
     }));
   watcher.addListener((changedPath) => {

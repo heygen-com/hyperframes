@@ -3,12 +3,14 @@ export { createProjectSignature, affectsProjectSignature } from "./helpers/proje
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export {
   openProjectHistory,
+  DEFAULT_HISTORY_ROOT,
   type ProjectHistory,
   type ProjectHistoryOptions,
   type HistoryListItem,
   type HistoryResult,
   type HistoryWindow,
 } from "./history/projectHistory.js";
+export { HistoryBusyError } from "./history/ownerLock.js";
 export {
   START as HISTORY_START,
   type HistoryEntry,
