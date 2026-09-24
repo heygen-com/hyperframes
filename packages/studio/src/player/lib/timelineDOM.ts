@@ -346,11 +346,11 @@ export function parseTimelineFromDOM(
     if (compSrc) {
       entry.compositionSrc = compSrc;
     } else if (compId && compId !== rootComp?.getAttribute("data-composition-id")) {
-      // Inline composition — expose inner video for thumbnails
-      const innerVideo = el.querySelector("video[src]");
-      if (innerVideo) {
-        entry.src = innerVideo.getAttribute("src") || undefined;
-        entry.tag = "video";
+      // Inline composition — expose inner video or image for thumbnails
+      const innerMedia = el.querySelector("video[src], img[src]");
+      if (innerMedia) {
+        entry.src = innerMedia.getAttribute("src") || undefined;
+        entry.tag = innerMedia.tagName === "IMG" ? "img" : "video";
       }
     }
     if (entry.kind === "composition") {

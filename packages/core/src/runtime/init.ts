@@ -3341,6 +3341,12 @@ export function initSandboxRuntimeModular(): void {
         );
       }
     }
+    // Nothing else hides out-of-window clips on a paused page until someone seeks, so readiness does.
+    // Media is left to init's media pass and to seeks: they own color grading and audio scheduling.
+    syncTimedElementVisibility(
+      state.currentTime,
+      Array.from(document.querySelectorAll("[data-start]:not(video, audio, img)")),
+    );
     // __renderReady = timeline binding attempted, safe for deterministic seeking.
     // Set after any GSAP batching has completed. renderSeek works with or
     // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
