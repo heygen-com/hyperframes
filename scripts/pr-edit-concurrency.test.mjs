@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { parse } from "yaml";
 
-const workflowsDir = new URL("../.github/workflows/", import.meta.url);
+const workflowsDir = join(import.meta.dirname, "..", ".github", "workflows");
 const workflows = readdirSync(workflowsDir)
   .filter((file) => file.endsWith(".yml"))
-  .map((file) => ({ file, config: parse(readFileSync(new URL(file, workflowsDir), "utf8")) }));
+  .map((file) => ({ file, config: parse(readFileSync(join(workflowsDir, file), "utf8")) }));
 
 // A body or title edit must not cancel in-flight code checks: the cancelled run's
 // fail-closed `Test` stays red on the PR. Only a push or a base change cancels.
