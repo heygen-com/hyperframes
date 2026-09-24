@@ -61,6 +61,34 @@ describe("history routes", () => {
     expect((await (await call("")).json()).entries).toHaveLength(2);
   });
 
+  it("record an agent that names itself as the writer of its window and of its undo", async () => {
+    const { projectDir, call } = await demoProject();
+    const agent = { kind: "agent", name: "Claude" };
+
+    const { windowId } = await (
+      await call("/window", { label: "Bigger title", who: agent })
+    ).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
+    expect(entry.who).toEqual(agent);
+
+    const undo = await (await call("/undo", { entryId: windowId, who: agent })).json();
+    expect(undo.entry).toMatchObject({ who: agent, label: "Undid: Bigger title" });
+    const restore = await (await call("/restore", { point: windowId, who: { name: "x" } })).json();
+    expect(restore.who, "only an agent names itself").toEqual({ kind: "person", name: "You" });
+  });
+
+  it("serve a kept file's bytes by hash, and nothing for a hash that is not one", async () => {
+    const { projectDir, call } = await demoProject();
+    const { windowId } = await (await call("/window", { label: "Edit" })).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
+
+    expect(await (await call(`/blob/${entry.files[0].before}`)).text()).toBe("A");
+    expect((await call(`/blob/${"0".repeat(64)}`)).status).toBe(404);
+    expect((await call("/blob/..%2F..%2Fetc")).status).toBe(404);
+  });
+
   it("name what Cmd+Z and Cmd+Shift+Z would revert next", async () => {
     const { projectDir, call } = await demoProject();
     expect(await (await call("")).json()).toMatchObject({ back: null, forward: null });

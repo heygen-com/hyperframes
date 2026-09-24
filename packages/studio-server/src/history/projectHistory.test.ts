@@ -203,6 +203,24 @@ describe("openProjectHistory", () => {
     expect((await waiting).projectId).toBe(history.projectId);
   });
 
+  it("files what changed while closed to a window begun on an earlier open, under its id", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    write("index.html", "v2");
+    const closedWindow = { id: "turn-1", who: agent, label: "Bigger title", startedAt: 1 };
+
+    const reopened = await open(projectDir, historyRoot, { closedWindow });
+    expect(reopened.list()).toMatchObject([{ id: "turn-1", who: agent, label: "Bigger title" }]);
+    await reopened.close();
+
+    write("index.html", "v3");
+    const again = await open(projectDir, historyRoot, { closedWindow });
+    expect(
+      again.list().map((entry) => entry.who),
+      "an id already kept is not reused",
+    ).toEqual([agent, { kind: "outside", name: "Outside" }]);
+  });
+
   it("takes over the lock of an owner that died without closing", async () => {
     const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
     await history.close();

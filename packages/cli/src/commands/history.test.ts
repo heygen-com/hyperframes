@@ -1,0 +1,280 @@
+// @vitest-environment node
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createAdaptorServer } from "@hono/node-server";
+import {
+  createStudioApi,
+  openProjectHistory,
+  type StudioApiAdapter,
+} from "@hyperframes/studio-server";
+import { runCommand } from "citty";
+import { Hono } from "hono";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { consumeCommandResult } from "../utils/commandResult.js";
+import historyCommand, { historyDeps } from "./history.js";
+
+const tracked = vi.hoisted(() => [] as Array<{ action: string; via: string }>);
+vi.mock("../telemetry/events.js", () => ({
+  trackHistoryAction: (props: { action: string; via: string }) => tracked.push(props),
+}));
+
+const cleanup: Array<() => unknown> = [];
+afterEach(async () => {
+  for (const step of cleanup.splice(0).reverse()) await step();
+  tracked.length = 0;
+});
+
+function tempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+/** A project of index.html "A" and notes.html "N", its history kept in a temp root, no preview running. */
+function project() {
+  const dir = tempDir("hf-history-cli-");
+  writeFileSync(join(dir, "index.html"), "A");
+  writeFileSync(join(dir, "notes.html"), "N");
+  historyDeps.historyRoot = tempDir("hf-history-cli-root-");
+  historyDeps.findServer = async () => null;
+  const write = (path: string, text: string) => writeFileSync(join(dir, path), text);
+  const read = (path: string) => readFileSync(join(dir, path), "utf-8");
+  async function hf(...args: string[]) {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await runCommand(historyCommand, { rawArgs: [...args, "--dir", dir] });
+      const out = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      const err = error.mock.calls.map((call) => call.join(" ")).join("\n");
+      return { out, err, code: consumeCommandResult().exitCode };
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+    }
+  }
+  const json = async (...args: string[]) => JSON.parse((await hf(...args, "--json")).out);
+  /** One agent turn that writes `path`. */
+  async function turn(name: string, label: string, path: string, text: string) {
+    await hf("begin", "--who", name, "--label", label);
+    write(path, text);
+    return (await json("end")).entry;
+  }
+  return { dir, write, read, hf, json, turn };
+}
+
+/** A running preview over the project's history, as `hyperframes preview` serves it. */
+async function preview(dir: string) {
+  const history = await openProjectHistory({
+    projectDir: dir,
+    historyRoot: historyDeps.historyRoot,
+    quietMs: 20,
+  });
+  const adapter = {
+    listProjects: () => [],
+    resolveProject: (id: string) => (id === "demo" ? { id, dir } : null),
+    history: () => history,
+  } as unknown as StudioApiAdapter;
+  const server = createAdaptorServer({
+    fetch: new Hono().route("/api", createStudioApi(adapter)).fetch,
+  });
+  await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
+  cleanup.push(async () => {
+    server.close();
+    await history.close();
+  });
+  const { port } = server.address() as AddressInfo;
+  historyDeps.findServer = async () =>
+    ({
+      port,
+      host: "127.0.0.1",
+      projectName: "demo",
+      projectDir: dir,
+      version: "test",
+      pid: null,
+    }) as never;
+  return history;
+}
+
+describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
+  async function setup() {
+    const p = project();
+    await p.hf(); // the first open records the baseline
+    const held = mode === "preview" ? await preview(p.dir) : null;
+    /** A person's edit, taken in as preview's file watcher would. */
+    async function personWrites(path: string, text: string) {
+      p.write(path, text);
+      if (!held) return;
+      held.noteChange(path);
+      await vi.waitFor(() => expect(held.list().at(-1)?.files[0]?.path).toBe(path));
+    }
+    return { ...p, personWrites };
+  }
+
+  it("an agent's labelled turn, a person's edit after it: --since shows both, undo of the turn keeps the edit", async () => {
+    const { read, json, hf, turn, personWrites } = await setup();
+    const startedAt = new Date(Date.now() - 1).toISOString();
+    await turn("claude", "Bigger title", "index.html", "A2");
+    await personWrites("notes.html", "N2");
+
+    const both = (await json("--since", startedAt)).entries;
+    expect(both.map((entry: { who: object; files: string[] }) => [entry.who, entry.files])).toEqual(
+      [
+        [{ kind: "outside", name: "Outside" }, ["notes.html"]],
+        [{ kind: "agent", name: "claude" }, ["index.html"]],
+      ],
+    );
+    const mine = (await json("--since", "mine", "--who", "claude")).entries;
+    expect(mine).toMatchObject([{ who: { name: "Outside" }, files: ["notes.html"] }]);
+
+    const undo = await hf("undo", "--who", "claude");
+    expect(undo.code, undo.err).toBe(0);
+    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N2"]);
+    expect(tracked.map((event) => event.via)).toContain(mode);
+    expect(tracked.map((event) => event.action)).toEqual(
+      expect.arrayContaining(["begin", "end", "list", "undo"]),
+    );
+  });
+
+  it("undo by one agent leaves another agent's open turn open", async () => {
+    const { write, read, json, hf, turn } = await setup();
+    await turn("gemini", "Notes", "notes.html", "N2");
+    await hf("begin", "--who", "claude", "--label", "Bigger title");
+    write("index.html", "A2");
+
+    expect((await hf("undo", "--who", "gemini")).code).toBe(0);
+    expect(read("notes.html")).toBe("N");
+    expect((await hf("end")).code).toBe(0);
+    const claude = (await json()).entries.filter(
+      (e: { who: { name: string } }) => e.who.name === "claude",
+    );
+    expect(claude).toMatchObject([{ files: ["index.html"] }]);
+  });
+
+  it("undo of an id without --who is the person's, and leaves an agent's open turn open", async () => {
+    const { write, json, hf, turn } = await setup();
+    const notes = await turn("gemini", "Notes", "notes.html", "N2");
+    await hf("begin", "--who", "claude", "--label", "Bigger title");
+    write("index.html", "A2");
+
+    expect((await json("undo", notes.id)).entry.who).toEqual({ kind: "person", name: "You" });
+    expect((await hf("end")).code).toBe(0);
+  });
+
+  it("undo refuses a conflict with exit 2, names the newer entries and both choices, then takes one", async () => {
+    const { read, hf, turn } = await setup();
+    const first = await turn("claude", "First", "index.html", "A2");
+    await turn("gemini", "Second", "index.html", "A3");
+
+    const refused = await hf("undo", first.id.slice(0, 8));
+    expect(refused.code).toBe(2);
+    expect(refused.out).toContain("Second");
+    expect(refused.out).toMatch(/--just-this[\s\S]*--back-to-before/);
+    expect(read("index.html")).toBe("A3");
+
+    expect((await hf("undo", first.id, "--just-this")).code).toBe(0);
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("show lists an entry's files and --diff prints the text change", async () => {
+    const { hf, turn } = await setup();
+    const entry = await turn("claude", "Retitle", "index.html", "A2");
+    expect((await hf("show", entry.id)).out).toContain("M index.html");
+    const diff = (await hf("show", entry.id.slice(0, 8), "--diff")).out;
+    expect(diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
+  });
+
+  it("peek reads a file as it was without writing, and restore puts every file back", async () => {
+    const { read, hf, turn } = await setup();
+    const entry = await turn("claude", "Retitle", "index.html", "A2");
+    await turn("claude", "Again", "index.html", "A3");
+
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await hf("peek", entry.id, "index.html");
+    expect(String(stdout.mock.calls[0]?.[0])).toBe("A2");
+    stdout.mockRestore();
+    expect(read("index.html")).toBe("A3");
+
+    expect((await hf("restore", "start")).code).toBe(0);
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("pin marks an entry kept, --off unmarks it", async () => {
+    const { json, hf, turn } = await setup();
+    const entry = await turn("claude", "Retitle", "index.html", "A2");
+    await hf("pin", entry.id);
+    expect((await json()).entries[0]).toMatchObject({ id: entry.id, pinned: true });
+    await hf("pin", entry.id, "--off");
+    expect((await json()).entries[0]).toMatchObject({ pinned: false });
+  });
+});
+
+describe("hyperframes history, one owner", () => {
+  it("goes through a running preview, so the log keeps one baseline and every entry once", async () => {
+    const { dir, json, turn } = project();
+    const held = await preview(dir);
+    await turn("claude", "Retitle", "index.html", "A2");
+    await json();
+    const log = readFileSync(join(historyDeps.historyRoot, held.projectId, "log.jsonl"), "utf-8");
+    const records = log
+      .trim()
+      .split("\n")
+      .map((row) => JSON.parse(row).type);
+    expect(records).toEqual(["baseline", "entry"]);
+  });
+
+  it("a turn begun through a preview that stopped without closing it is still the agent's", async () => {
+    const { dir, write, json, hf } = project();
+    await hf();
+    const turn = {
+      via: "preview",
+      id: "turn-1",
+      who: { kind: "agent", name: "claude" },
+      label: "Retitle",
+      startedAt: 1,
+    };
+    writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(turn));
+    write("index.html", "A2");
+
+    expect((await json("end")).entry).toMatchObject({
+      id: "turn-1",
+      who: turn.who,
+      files: [{ path: "index.html" }],
+    });
+  });
+
+  it("a CLI run waits while another process holds the history, instead of forking its log", async () => {
+    const { dir, write } = project();
+    const home = tempDir("hf-history-cli-home-");
+    const historyRoot = join(home, ".cache", "hyperframes", "history");
+    const held = await openProjectHistory({ projectDir: dir, historyRoot });
+    write("index.html", "A2");
+    const cli = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
+    const child = spawn("bun", ["run", cli, "history", "--dir", dir], {
+      env: {
+        ...process.env,
+        HOME: home,
+        HYPERFRAMES_SKIP_UPDATE_CHECK: "1",
+        HYPERFRAMES_NO_TELEMETRY: "1",
+      },
+    });
+    const exited = new Promise<number | null>((done) => child.on("exit", done));
+    const logFile = join(historyRoot, held.projectId, "log.jsonl");
+    await new Promise((settle) => setTimeout(settle, 1500));
+    expect(
+      readFileSync(logFile, "utf-8").trim().split("\n"),
+      "nothing written while held",
+    ).toHaveLength(1);
+
+    await held.close(); // commits the outside edit once
+    expect(await exited).toBe(0);
+    const types = readFileSync(logFile, "utf-8")
+      .trim()
+      .split("\n")
+      .map((row) => JSON.parse(row).type);
+    expect(types).toEqual(["baseline", "entry"]);
+  });
+});
