@@ -559,12 +559,14 @@
     return issues;
   }
 
+  function isNowrapTextChild(child) {
+    if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) return false;
+    if (getComputedStyle(child).whiteSpace !== "nowrap") return false;
+    return (child.textContent || "").trim().length > 0;
+  }
+
   function hasNowrapTextChild(element) {
-    return Array.from(element.children).some((child) => {
-      if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) return false;
-      if (getComputedStyle(child).whiteSpace !== "nowrap") return false;
-      return (child.textContent || "").trim().length > 0;
-    });
+    return Array.from(element.children).some(isNowrapTextChild);
   }
 
   function containerOverflowIssues(root, time, tolerance) {
@@ -586,8 +588,7 @@
       const containerRect = toRect(container.getBoundingClientRect());
       for (const child of Array.from(container.children)) {
         if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) continue;
-        const childStyle = getComputedStyle(child);
-        if (!checksEveryChild && childStyle.whiteSpace !== "nowrap") continue;
+        if (!checksEveryChild && !isNowrapTextChild(child)) continue;
         const childRect = toRect(child.getBoundingClientRect());
         const overflow = checksEveryChild
           ? overflowFor(childRect, containerRect, tolerance)

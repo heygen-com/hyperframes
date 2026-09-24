@@ -345,6 +345,31 @@ describe("layout-audit.browser", () => {
     expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
   });
 
+  it("does not flag an empty nowrap decoration beside a fitting label", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="label">OK</span>
+          <div id="decoration"></div>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 150, height: 40 }),
+        label: rect({ left: 0, top: 0, width: 40, height: 20 }),
+        decoration: rect({ left: 0, top: 0, width: 240, height: 20 }),
+      },
+      { label: { whiteSpace: "nowrap" }, decoration: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
   it("does not flag a wrapping sibling because another child is nowrap", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
