@@ -1198,6 +1198,63 @@ describe("composition rules", () => {
       );
       expect(finding).toBeUndefined();
     });
+
+    const declaringRoot = (declaration: string) =>
+      `<div id="main" data-composition-id="main" data-width="1920" data-height="1080" data-composition-variables='${declaration}'></div>`;
+    const declarationFindings = (r: { findings: { code: string }[] }) =>
+      r.findings.filter((f) => f.code === "invalid_composition_variables_declaration");
+
+    it.each([
+      [
+        "a full-document composition root",
+        `<html>\n<body>\n${declaringRoot("broken")}\n</body></html>`,
+        {},
+      ],
+      [
+        "a template composition root",
+        `<template>\n\n${declaringRoot("broken")}\n</template>`,
+        { isSubComposition: true },
+      ],
+    ])("reports unparseable declarations on %s at that element", async (_, html, options) => {
+      const findings = declarationFindings(await lintHyperframeHtml(html, options));
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({ elementId: "main", line: 3 });
+      expect(findings[0]?.message).toMatch(/not valid JSON/);
+      expect(findings[0]?.message).toContain('<div id="main">');
+    });
+
+    it("reports invalid declaration shapes on a template composition root", async () => {
+      const html = `<template>${declaringRoot('[{"id":"title","type":"date","label":"Title","default":"x"},{"id":"bad"}]')}</template>`;
+      const findings = declarationFindings(
+        await lintHyperframeHtml(html, { isSubComposition: true }),
+      );
+      expect(findings.map((f) => f.message)).toEqual([
+        expect.stringMatching(/entry \[0\] .*type/),
+        expect.stringMatching(/entry \[1\] .*type, label, default/),
+      ]);
+    });
+
+    it("checks each declaring element independently", async () => {
+      const valid = '[{"id":"title","type":"string","label":"Title","default":"Hello"}]';
+      const bothBroken = await lintHyperframeHtml(
+        `<html data-composition-variables='broken'><body>${declaringRoot("{}")}</body></html>`,
+      );
+      expect(declarationFindings(bothBroken).map((f) => f.message)).toEqual([
+        expect.stringMatching(/^data-composition-variables is not valid JSON/),
+        expect.stringMatching(/on <div id="main"> must be a JSON array/),
+      ]);
+      const onlyRootBroken = await lintHyperframeHtml(
+        `<html data-composition-variables='${valid}'><body>${declaringRoot("broken")}</body></html>`,
+      );
+      expect(declarationFindings(onlyRootBroken)).toHaveLength(1);
+      expect(declarationFindings(onlyRootBroken)[0]?.elementId).toBe("main");
+    });
+
+    it("does not warn for valid declarations on a template composition root", async () => {
+      const html = `<template>${declaringRoot('[{"id":"title","type":"string","label":"Title","default":"Hello"}]')}</template>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(declarationFindings(result)).toHaveLength(0);
+    });
   });
 
   describe("unloadable_media_variable_default", () => {

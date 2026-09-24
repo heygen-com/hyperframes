@@ -254,6 +254,113 @@ function declaredIdsForBindingCheck(tags: readonly OpenTag[]): Set<string> | nul
   return declared;
 }
 
+/**
+ * Where a declaration lives, for messages: empty on `<html>` (the documented
+ * home), otherwise the declaring element so two broken declarations in one
+ * file read (and dedupe) as two findings.
+ */
+function declarationOwner(tag: OpenTag): string {
+  if (tag.name === "html") return "";
+  const id = readAttr(tag.raw, "id");
+  const compositionId = readAttr(tag.raw, "data-composition-id");
+  const attr = id ? ` id="${id}"` : compositionId ? ` data-composition-id="${compositionId}"` : "";
+  return ` on <${tag.name}${attr}>`;
+}
+
+/** JSON and shape checks for one element's `data-composition-variables`. */
+// fallow-ignore-next-line complexity
+function findVariableDeclarationFindings(
+  tag: OpenTag,
+  varSrcIds: ReadonlySet<string>,
+): HyperframeLintFinding[] {
+  const raw = readJsonAttr(tag.raw, "data-composition-variables");
+  if (!raw) return [];
+  const attr = `data-composition-variables${declarationOwner(tag)}`;
+  const elementId = readAttr(tag.raw, "id") || undefined;
+  const snippet = truncateSnippet(tag.raw);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "unknown";
+    return [
+      {
+        code: "invalid_composition_variables_declaration",
+        severity: "error",
+        message: `${attr} is not valid JSON (${reason}).`,
+        fixHint:
+          'Provide a JSON array of variable declarations: data-composition-variables=\'[{"id":"title","type":"string","label":"Title","default":"Hello"}]\'.',
+        elementId,
+        snippet,
+      },
+    ];
+  }
+
+  if (!Array.isArray(parsed)) {
+    return [
+      {
+        code: "invalid_composition_variables_declaration",
+        severity: "error",
+        message: `${attr} must be a JSON array of variable declarations.`,
+        fixHint:
+          'Wrap declarations in [] and give each an id, type, label, and default: \'[{"id":"title","type":"string","label":"Title","default":"Hello"}]\'.',
+        elementId,
+        snippet,
+      },
+    ];
+  }
+
+  const findings: HyperframeLintFinding[] = [];
+  const knownTypes = new Set<string>(COMPOSITION_VARIABLE_TYPES);
+  for (let i = 0; i < parsed.length; i += 1) {
+    const entry = parsed[i];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      findings.push({
+        code: "invalid_composition_variables_declaration",
+        severity: "error",
+        message: `${attr} entry [${i}] must be an object with id, type, label, and default.`,
+        elementId,
+        snippet,
+      });
+      continue;
+    }
+    const e = entry as Record<string, unknown>;
+    const missing: string[] = [];
+    if (typeof e.id !== "string") missing.push("id");
+    if (typeof e.type !== "string" || !knownTypes.has(e.type)) missing.push("type");
+    if (typeof e.label !== "string") missing.push("label");
+    if (!("default" in e)) missing.push("default");
+    if (missing.length > 0) {
+      findings.push({
+        code: "invalid_composition_variables_declaration",
+        severity: "error",
+        message: `${attr} entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum, font, image.`,
+        elementId,
+        snippet,
+      });
+      continue;
+    }
+    const id = String(e.id);
+    if (
+      (e.type === "image" || varSrcIds.has(id)) &&
+      typeof e.default === "string" &&
+      e.default.length > 0 &&
+      !isSafeMediaUrl(e.default)
+    ) {
+      findings.push({
+        code: "unloadable_media_variable_default",
+        severity: "error",
+        message: `Variable "${id}" defaults to a URL the runtime will refuse to load, so any element bound to it renders its authored fallback src instead and the render still exits 0.`,
+        fixHint: `Media URLs must be relative, http(s), blob:, or a data:image/* URI. Copy the file into the project and reference it relatively (e.g. "assets/bg.png") rather than by absolute path.`,
+        elementId,
+        snippet,
+      });
+    }
+  }
+  return findings;
+}
+
 function isInsideInertTemplate(tag: OpenTag, tags: readonly OpenTag[]): boolean {
   return tags.some(
     (candidate) =>
@@ -754,46 +861,12 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // The runtime parses `data-composition-variables` and silently returns []
   // on any structural problem. Surface JSON / shape failures so authors
   // catch them at lint time rather than wondering why their `getVariables()`
-  // defaults aren't applied.
-  // fallow-ignore-next-line complexity
+  // defaults aren't applied. The runtime reads the attribute from every
+  // element that carries it (<html>, a composition root, a template root), so
+  // each declaring element is checked on its own.
   ({ tags }) => {
-    const htmlTag = findHtmlTag(tags);
-    if (!htmlTag) return [];
-    const raw = readJsonAttr(htmlTag.raw, "data-composition-variables");
-    if (!raw) return [];
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "unknown";
-      return [
-        {
-          code: "invalid_composition_variables_declaration",
-          severity: "error",
-          message: `data-composition-variables is not valid JSON (${reason}).`,
-          fixHint:
-            'Provide a JSON array of variable declarations: data-composition-variables=\'[{"id":"title","type":"string","label":"Title","default":"Hello"}]\'.',
-          snippet: truncateSnippet(htmlTag.raw),
-        },
-      ];
-    }
-
-    if (!Array.isArray(parsed)) {
-      return [
-        {
-          code: "invalid_composition_variables_declaration",
-          severity: "error",
-          message: "data-composition-variables must be a JSON array of variable declarations.",
-          fixHint:
-            'Wrap declarations in [] and give each an id, type, label, and default: \'[{"id":"title","type":"string","label":"Title","default":"Hello"}]\'.',
-          snippet: truncateSnippet(htmlTag.raw),
-        },
-      ];
-    }
-
-    const findings: HyperframeLintFinding[] = [];
-    const knownTypes = new Set<string>(COMPOSITION_VARIABLE_TYPES);
+    const declaring = tags.filter((tag) => readJsonAttr(tag.raw, "data-composition-variables"));
+    if (declaring.length === 0) return [];
     // Ids whose value the runtime pushes through isSafeMediaUrl: every
     // data-var-src binding, plus image-typed variables (always consumed as a
     // URL even when the binding lives in a sub-composition this file can't see).
@@ -802,49 +875,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       const bound = readAttr(tag.raw, "data-var-src");
       if (bound) varSrcIds.add(bound);
     }
-    for (let i = 0; i < parsed.length; i += 1) {
-      const entry = parsed[i];
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        findings.push({
-          code: "invalid_composition_variables_declaration",
-          severity: "error",
-          message: `data-composition-variables entry [${i}] must be an object with id, type, label, and default.`,
-          snippet: truncateSnippet(htmlTag.raw),
-        });
-        continue;
-      }
-      const e = entry as Record<string, unknown>;
-      const missing: string[] = [];
-      if (typeof e.id !== "string") missing.push("id");
-      if (typeof e.type !== "string" || !knownTypes.has(e.type)) missing.push("type");
-      if (typeof e.label !== "string") missing.push("label");
-      if (!("default" in e)) missing.push("default");
-      if (missing.length > 0) {
-        findings.push({
-          code: "invalid_composition_variables_declaration",
-          severity: "error",
-          message: `data-composition-variables entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum, font, image.`,
-          snippet: truncateSnippet(htmlTag.raw),
-        });
-        continue;
-      }
-      const id = String(e.id);
-      if (
-        (e.type === "image" || varSrcIds.has(id)) &&
-        typeof e.default === "string" &&
-        e.default.length > 0 &&
-        !isSafeMediaUrl(e.default)
-      ) {
-        findings.push({
-          code: "unloadable_media_variable_default",
-          severity: "error",
-          message: `Variable "${id}" defaults to a URL the runtime will refuse to load, so any element bound to it renders its authored fallback src instead and the render still exits 0.`,
-          fixHint: `Media URLs must be relative, http(s), blob:, or a data:image/* URI. Copy the file into the project and reference it relatively (e.g. "assets/bg.png") rather than by absolute path.`,
-          snippet: truncateSnippet(htmlTag.raw),
-        });
-      }
-    }
-    return findings;
+    return declaring.flatMap((tag) => findVariableDeclarationFindings(tag, varSrcIds));
   },
 
   // html_dir_attribute_breaks_render — valid non-LTR dir values on
