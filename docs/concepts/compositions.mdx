@@ -254,7 +254,8 @@ mounted, previewed or opened on its own.
 
 A path meant from the project root, such as `assets/logo.png` in a composition
 at `compositions/intro.html` whose image sits in the project's own `assets/`
-folder, already resolves from the page. Leave it as a plain string.
+folder, already resolves from the page. Leave it as a plain string:
+`assetUrl()` would look for it beside the composition and miss.
 
 ```html compositions/globe/globe.html
 <div data-composition-id="globe" data-width="1920" data-height="1080">
