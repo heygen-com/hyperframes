@@ -142,7 +142,7 @@ class HyperframesPlayer extends HTMLElement {
   private _runtimeData = new Map<string, unknown>();
   private _runtimeDataRequestId = 0;
   private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
-  private _queuedEvents: Event[] | null = null;
+  private _queuedEvents: Array<Event | (() => void)> | null = null;
 
   constructor() {
     super();
@@ -1029,7 +1029,7 @@ class HyperframesPlayer extends HTMLElement {
     this._replayBridgeState();
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc, assetsReady);
-    if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
+    this._playWhenWanted();
   }
 
   private _onProbeReady(result: ProbeResult) {
@@ -1047,7 +1047,7 @@ class HyperframesPlayer extends HTMLElement {
     if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc);
-    if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
+    this._playWhenWanted();
   }
 
   /** Gates play() on composition readiness (media, compute, paint-and-idle),
@@ -1132,7 +1132,9 @@ class HyperframesPlayer extends HTMLElement {
       this._painted = true;
       this._emit(new Event("painted"));
     });
-    if (this._pendingPlay) this.play();
+    this._afterEvents(() => {
+      if (this._pendingPlay) this.play();
+    });
   }
 
   /** Every host-driven navigation or teardown: the old document's handshake, asset wait and
@@ -1197,14 +1199,32 @@ class HyperframesPlayer extends HTMLElement {
       apply();
       return;
     }
-    const queue: Event[] = [];
+    const queue: Array<Event | (() => void)> = [];
     this._queuedEvents = queue;
     try {
       apply();
     } finally {
+      // Still open while flushing: an event a listener raises goes behind the rest.
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i]!;
+        if (item instanceof Event) this.dispatchEvent(item);
+        else item();
+      }
       this._queuedEvents = null;
-      for (const event of queue) this.dispatchEvent(event);
     }
+  }
+
+  /** Runs `action` once the current update's events have fired (at once outside an update). */
+  private _afterEvents(action: () => void): void {
+    if (this._queuedEvents) this._queuedEvents.push(action);
+    else action();
+  }
+
+  /** Autoplay, or a play() made before ready, decided after `ready`'s listeners had their turn. */
+  private _playWhenWanted(): void {
+    this._afterEvents(() => {
+      if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
+    });
   }
 
   /** Every event the player raises goes through here, so an update's events keep their order. */

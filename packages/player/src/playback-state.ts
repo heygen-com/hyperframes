@@ -51,7 +51,7 @@ export function applyRuntimeStateMessage(
     callbacks.play();
     // play() sets paused=false; reflect that in the returned state so the
     // caller's destructure doesn't overwrite it with the stale nextPaused value.
-    return { ...current, currentTime, paused: false };
+    return { ...current, currentTime: 0, paused: false };
   }
 
   const next: PlaybackState = { ...current, currentTime, paused: nextPaused };

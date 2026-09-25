@@ -1404,6 +1404,7 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(seek).toHaveBeenCalledWith(0);
     expect(play).toHaveBeenCalled();
     expect(player._paused).toBe(false);
+    expect(player._currentTime).toBe(0);
   });
 
   it("fires ended and stays paused when a non-looping composition posts its final paused state", () => {
@@ -2350,6 +2351,59 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     player._onMessage(timelineMessage(120));
 
     expect(seen).toEqual(["ready", "assetsready", "play"]);
+  });
+
+  it("fires an event a ready listener raises after the rest of the update", () => {
+    Object.defineProperty(player.iframe, "contentDocument", {
+      configurable: true,
+      get: () => null,
+    });
+    player.setAttribute("autoplay", "");
+    const seen: string[] = [];
+    for (const type of ["ready", "assetsready", "play", "pause"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+    player.addEventListener("ready", () => (player as unknown as { pause: () => void }).pause(), {
+      once: true,
+    });
+
+    player._onMessage(timelineMessage(120));
+
+    // Autoplay is decided after `ready`'s listeners, as it was before events were queued.
+    expect(seen).toEqual(["ready", "assetsready", "pause", "play"]);
+    expect(player.paused).toBe(false);
+  });
+
+  it("keeps autoplay when a ready listener seeks", () => {
+    Object.defineProperty(player.iframe, "contentDocument", {
+      configurable: true,
+      get: () => null,
+    });
+    player.setAttribute("autoplay", "");
+    player.addEventListener(
+      "ready",
+      () => (player as unknown as { seek: (t: number) => void }).seek(1),
+      {
+        once: true,
+      },
+    );
+
+    player._onMessage(timelineMessage(120));
+
+    expect(player.paused).toBe(false);
+    expect(findControlCalls("play")).toHaveLength(1);
+  });
+
+  it("applies a message a listener delivers inside the update after the first one's events", () => {
+    const seen: string[] = [];
+    for (const type of ["ready", "durationchange", "scenes"]) {
+      player.addEventListener(type, () => seen.push(`${type} d=${player.duration}`));
+    }
+    player.addEventListener("ready", () => player._onMessage(timelineMessage(180)), { once: true });
+
+    player._onMessage(timelineMessage(120));
+
+    expect(seen).toEqual(["ready d=4", "scenes d=6", "durationchange d=6", "scenes d=6"]);
   });
 
   it("fires the probe path's resize only once ready is set", () => {
