@@ -100,6 +100,21 @@ describe("module blocks' catalog import map", () => {
       "BufferGeometryUtils",
     ].map((k) => [k, `https://cdn.example/${k}.js`]),
   );
+  it("frost: runs the script that drives frost after frost.js, not an earlier inline script", () => {
+    const name = "frost-sequence-camera-orbit";
+    const dir = join("registry/blocks", name);
+    const out = inlineCatalogScripts(
+      name,
+      readFileSync(join(dir, `${name}.html`), "utf-8"),
+      dir,
+      vendorUrls,
+    );
+    const start = out.indexOf("<script>(function(){");
+    const bootstrap = out.slice(start, out.indexOf("})();</script>", start));
+    assert.match(bootstrap, /setRendererProfile/);
+    assert.doesNotMatch(out.replace(bootstrap, ""), /setRendererProfile/);
+  });
+
   for (const name of ["cuboid-carousel", "orbit-card"]) {
     it(`${name}: maps every specifier its entry module imports, with no import map of its own left`, () => {
       const dir = join("registry/blocks", name);

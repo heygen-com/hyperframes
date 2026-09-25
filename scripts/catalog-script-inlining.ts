@@ -206,7 +206,7 @@ function inlineFrostScripts(
   // gsap/frost.js load: left in document order it would run before either is ready.
   const { text: compositionScriptText, html: withoutComposition } = extractAndRemoveScript(
     html.replace(`<script src="assets/gsap-3.14.2.min.js"></script>`, "__CATALOG_BOOTSTRAP__"),
-    /<script>(?=[\s\S]*?window\.__frostInstance)/,
+    /<script>(?=(?:(?!<\/script>)[\s\S])*?window\.__frostInstance)/,
     "frost's composition script",
   );
 
