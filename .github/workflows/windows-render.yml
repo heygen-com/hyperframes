@@ -80,11 +80,19 @@ jobs:
   render-windows:
     name: Render on windows-latest
     needs: [changes, preflight]
-    if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+    # A skipped required check passes, so a failed change detection or preflight must fail it.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: windows-latest
     timeout-minutes: 30
 
     steps:
+      - name: Require change detection and the preflight
+        if: needs.changes.result != 'success' || needs.preflight.result != 'success'
+        shell: bash
+        run: |
+          echo "::error::changes=${{ needs.changes.result }} preflight=${{ needs.preflight.result }}; this required check cannot pass."
+          exit 1
+
       - name: Disable Windows Defender real-time monitoring
         shell: pwsh
         continue-on-error: true
@@ -507,7 +515,7 @@ jobs:
   test-windows:
     name: Tests on windows-latest
     needs: [changes, test-windows-lane]
-    if: always() && (needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
