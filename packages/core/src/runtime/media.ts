@@ -19,18 +19,32 @@ export function readElementPlaybackStart(el: Element): number {
   return readMediaStart(el);
 }
 
-const SEEK_END_EVENTS = ["seeked", "error", "emptied", "abort"] as const;
+const HOLD_END_EVENTS = ["seeked", "loadeddata", "suspend", "error", "emptied", "abort"] as const;
+const HOLD_CAP_MS = 5000;
+const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
-// A seeking video still paints its previous frame; frame captures wait on the seek barrier until it lands.
+// A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
+// waits for metadata without setting `seeking`); frame captures wait on the seek barrier until it lands. Each seek
+// re-arms a 5 s cap, and listeners run in the capture phase so a failing <source> child releases the hold.
 function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
-  if (el.tagName !== "VIDEO" || !el.seeking) return;
+  const loading =
+    el.readyState < el.HAVE_CURRENT_DATA &&
+    el.networkState === el.NETWORK_LOADING &&
+    !(window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
+  if (el.tagName !== "VIDEO" || !(el.seeking || loading) || findInjectedRenderFrame(el)) return;
+  releaseHeldVideo.get(el)?.();
   registerSeekCompletion(
     new Promise<void>((resolve) => {
-      const done = () => {
-        for (const type of SEEK_END_EVENTS) el.removeEventListener(type, done);
+      const done = (event?: Event) => {
+        if ((event?.type === "loadeddata" || event?.type === "suspend") && el.seeking) return;
+        clearTimeout(cap);
+        for (const type of HOLD_END_EVENTS) el.removeEventListener(type, done, true);
+        if (releaseHeldVideo.get(el) === done) releaseHeldVideo.delete(el);
         resolve();
       };
-      for (const type of SEEK_END_EVENTS) el.addEventListener(type, done);
+      const cap = setTimeout(done, HOLD_CAP_MS);
+      for (const type of HOLD_END_EVENTS) el.addEventListener(type, done, true);
+      releaseHeldVideo.set(el, done);
     }),
   );
 }
@@ -521,6 +535,8 @@ export function syncRuntimeMedia(params: {
           holdSeekBarrierUntilVideoLands(el);
         }
         playRequested.delete(el);
+      } else if (!params.playing) {
+        holdSeekBarrierUntilVideoLands(el);
       }
       if (isHeldVideoTail) {
         if (!el.paused) el.pause();

@@ -731,6 +731,112 @@ describe("syncRuntimeMedia", () => {
       expect(await barrierSettled(barrier)).toBe(true);
     });
 
+    function seekLoadingVideo(): RuntimeMediaClip {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 2, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: false, playbackRate: 1 });
+      return clip;
+    }
+
+    it("holds the barrier until a video still loading its first data has it", async () => {
+      const clip = seekLoadingVideo();
+      expect(clip.el.seeking).toBe(false);
+      const barrier = waitForSeekCompletion();
+      expect(await barrierSettled(barrier)).toBe(false);
+      Object.defineProperty(clip.el, "seeking", { value: true, configurable: true });
+      clip.el.dispatchEvent(new Event("loadeddata"));
+      expect(await barrierSettled(barrier)).toBe(false);
+      clip.el.dispatchEvent(new Event("seeked"));
+      expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    it("holds a loading video that is already parked on the frame's time", async () => {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 2, configurable: true });
+      clip.el.currentTime = 4.9;
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: false, playbackRate: 1 });
+      expect(await barrierSettled(waitForSeekCompletion())).toBe(false);
+    });
+
+    it("does not hold a video that is not fetching", async () => {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 1, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: false, playbackRate: 1 });
+      expect(await barrierSettled(waitForSeekCompletion())).toBe(true);
+    });
+
+    it("releases a loading video when its <source> child fails", async () => {
+      const clip = seekLoadingVideo();
+      const source = document.createElement("source");
+      clip.el.appendChild(source);
+      const barrier = waitForSeekCompletion();
+      source.dispatchEvent(new Event("error"));
+      expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    it("gives a later seek its own full wait", async () => {
+      vi.useFakeTimers();
+      try {
+        const clip = seekLoadingVideo();
+        await vi.advanceTimersByTimeAsync(4000);
+        syncRuntimeMedia({ clips: [clip], timeSeconds: 13, playing: false, playbackRate: 1 });
+        let settled = false;
+        void waitForSeekCompletion().then(() => (settled = true));
+        await vi.advanceTimersByTimeAsync(4999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(settled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not hold a loading video while playing without a seek", async () => {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 2, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: true, playbackRate: 1 });
+      resetSeekDispatchState();
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: true, playbackRate: 1 });
+      expect(await barrierSettled(waitForSeekCompletion())).toBe(true);
+    });
+
+    it("releases a video that never loads after the cap", async () => {
+      vi.useFakeTimers();
+      try {
+        seekLoadingVideo();
+        let settled = false;
+        void waitForSeekCompletion().then(() => (settled = true));
+        await vi.advanceTimersByTimeAsync(4999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(settled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("releases a loading video that stops fetching before it has data", async () => {
+      const clip = seekLoadingVideo();
+      const barrier = waitForSeekCompletion();
+      clip.el.dispatchEvent(new Event("suspend"));
+      expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    it("does not hold a render for a video still loading", async () => {
+      const renderWindow = window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown };
+      renderWindow.__HF_EXPORT_RENDER_SEEK_CONFIG = { mode: "seek" };
+      try {
+        seekLoadingVideo();
+        expect(await barrierSettled(waitForSeekCompletion())).toBe(true);
+      } finally {
+        delete renderWindow.__HF_EXPORT_RENDER_SEEK_CONFIG;
+      }
+    });
+
     it.each(["error", "emptied", "abort"])(
       "releases the barrier when the seek ends in %s",
       async (type) => {
