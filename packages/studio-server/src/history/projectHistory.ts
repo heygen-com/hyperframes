@@ -25,8 +25,8 @@ import {
   stepTarget,
   undoneIds,
   writeLog,
-  type HistoryEntrySide,
   type HistoryEntry,
+  type HistoryEntrySide,
   type HistoryFileChange,
   type HistoryLog,
   type HistoryWho,
@@ -762,7 +762,7 @@ class Engine {
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
           this.entry(entryId);
-          if ((await readdir(emptyDir).catch(() => [])).length > 0)
+          if ((await readdir(emptyDir).catch(missingIsEmpty)).length > 0)
             throw new Error(`Checkout writes into an empty folder only: ${emptyDir}`);
           for (const [path, hash] of manifestAround(this.log, entryId, side)!)
             await this.blobs.writeTo(hash, join(emptyDir, path));
@@ -786,6 +786,11 @@ class Engine {
       },
     };
   }
+}
+
+function missingIsEmpty(error: NodeJS.ErrnoException): string[] {
+  if (error.code === "ENOENT") return [];
+  throw error;
 }
 
 /** Opens a project's history: every write to its files becomes an entry that can be undone or restored. */

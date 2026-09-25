@@ -30,6 +30,8 @@ afterEach(async () => {
   for (const step of cleanup.splice(0).reverse()) await step();
 });
 
+const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
+
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
@@ -183,10 +185,15 @@ describe("openProjectHistory", () => {
     const after = tempDir("hf-history-checkout-");
     await history.checkout(second.id, "before", before);
     await history.checkout(second.id, "after", after);
-    const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
     expect([inside(before, "index.html"), inside(before, "assets/a.txt")]).toEqual(["v1", "a"]);
     expect(existsSync(join(before, "extra/b.txt"))).toBe(false);
     expect([inside(after, "index.html"), inside(after, "extra/b.txt")]).toEqual(["v2", "b"]);
+    const beforeThird = join(tempDir("hf-history-checkout-"), "made-by-checkout");
+    await history.checkout(history.list()[1]!.id, "before", beforeThird);
+    expect([inside(beforeThird, "index.html"), inside(beforeThird, "extra/b.txt")]).toEqual([
+      "v2",
+      "b",
+    ]);
 
     expect(read("index.html")).toBe("v3");
     expect(history.list()).toHaveLength(2);
@@ -218,7 +225,7 @@ describe("openProjectHistory", () => {
       for (const side of ["before", "after"] as const) {
         const dir = tempDir("hf-history-checkout-");
         await history.checkout(id, side, dir);
-        pair.push(readFileSync(join(dir, "index.html"), "utf-8"));
+        pair.push(inside(dir, "index.html"));
       }
       return pair.join(">");
     };

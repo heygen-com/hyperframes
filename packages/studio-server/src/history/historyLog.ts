@@ -107,11 +107,7 @@ export function writeLog(file: string, log: HistoryLog): void {
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
 }
 
-function applyEntry(
-  manifest: Manifest,
-  entry: HistoryEntry,
-  side: HistoryEntrySide = "after",
-): void {
+function applyEntry(manifest: Manifest, entry: HistoryEntry, side: HistoryEntrySide): void {
   for (const file of entry.files) {
     const hash = file[side];
     if (hash === null) manifest.delete(file.path);
@@ -177,7 +173,7 @@ export function stepTarget(
 export function foldOldest(log: HistoryLog): boolean {
   const oldest = log.entries[0];
   if (!oldest || log.pins.has(oldest.id)) return false;
-  applyEntry(log.baseline, oldest);
+  applyEntry(log.baseline, oldest, "after");
   log.entries.shift();
   return true;
 }
