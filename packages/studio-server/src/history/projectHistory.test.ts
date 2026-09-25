@@ -171,6 +171,62 @@ describe("openProjectHistory", () => {
     expect(read("index.html")).toBe("v2");
   });
 
+  it("checks out an entry's before and after into a folder, leaving the project and its history alone", async () => {
+    const { history, write, read } = await project({ "index.html": "v1", "assets/a.txt": "a" });
+    const second = await change(history, you, "Second", () => {
+      write("index.html", "v2");
+      write("extra/b.txt", "b");
+    });
+    await change(history, you, "Third", () => write("index.html", "v3"));
+
+    const before = tempDir("hf-history-checkout-");
+    const after = tempDir("hf-history-checkout-");
+    await history.checkout(second.id, "before", before);
+    await history.checkout(second.id, "after", after);
+    const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
+    expect([inside(before, "index.html"), inside(before, "assets/a.txt")]).toEqual(["v1", "a"]);
+    expect(existsSync(join(before, "extra/b.txt"))).toBe(false);
+    expect([inside(after, "index.html"), inside(after, "extra/b.txt")]).toEqual(["v2", "b"]);
+
+    expect(read("index.html")).toBe("v3");
+    expect(history.list()).toHaveLength(2);
+    await expect(history.checkout(second.id, "after", after)).rejects.toThrow("empty folder");
+    await expect(
+      history.checkout("gone", "after", tempDir("hf-history-checkout-")),
+    ).rejects.toThrow("no longer kept");
+  });
+
+  it("checks out each entry's own change even when entries were logged out of write order", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    const drag = (overwrote: string) =>
+      history.claim(you, "Dragged Title", ["index.html"], {
+        coalesceKey: "drag",
+        idleMs: 60_000,
+        overwrote: { "index.html": fileContentVersion(overwrote) },
+      });
+    write("index.html", "B");
+    await drag("A");
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "C");
+    await window.close();
+    write("index.html", "D");
+    await drag("C");
+    await history.flush();
+
+    const sides = async (id: string) => {
+      const pair: string[] = [];
+      for (const side of ["before", "after"] as const) {
+        const dir = tempDir("hf-history-checkout-");
+        await history.checkout(id, side, dir);
+        pair.push(readFileSync(join(dir, "index.html"), "utf-8"));
+      }
+      return pair.join(">");
+    };
+    const changes = [];
+    for (const entry of history.list()) changes.push(`${entry.label}: ${await sides(entry.id)}`);
+    expect(changes.sort()).toEqual(["Agent turn: B>C", "Dragged Title: A>B", "Dragged Title: C>D"]);
+  });
+
   it("keeps the history across a move and a reopen, and a copy of the folder starts its own", async () => {
     const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
     write("index.html", "v2");

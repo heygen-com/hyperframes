@@ -16,6 +16,7 @@ export { HistoryBusyError } from "./history/ownerLock.js";
 export {
   START as HISTORY_START,
   type HistoryEntry,
+  type HistoryEntrySide,
   type HistoryFileChange,
   type HistoryWho,
 } from "./history/historyLog.js";

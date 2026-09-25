@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
@@ -17,6 +17,7 @@ import { takeHistoryOwnership } from "./ownerLock.js";
 import {
   START,
   foldOldest,
+  manifestAround,
   manifestAt,
   readLog,
   saveRecord,
@@ -24,6 +25,7 @@ import {
   stepTarget,
   undoneIds,
   writeLog,
+  type HistoryEntrySide,
   type HistoryEntry,
   type HistoryFileChange,
   type HistoryLog,
@@ -128,6 +130,7 @@ export interface ProjectHistory {
   restore(point: string, who: HistoryWho, options?: Writing): Promise<HistoryEntry | null>;
   /** The files at `point` without writing anything: path to hash, read through readBlob. */
   peek(point: string): Record<string, string> | null;
+  checkout(entryId: string, side: HistoryEntrySide, emptyDir: string): Promise<void>;
   readBlob(hash: string): Promise<Buffer>;
   pin(id: string, pinned: boolean): void;
   onEntry(listener: (entry: HistoryEntry) => void): () => void;
@@ -756,6 +759,14 @@ class Engine {
         const files = manifestAt(this.log, point);
         return files && Object.fromEntries(files);
       },
+      checkout: (entryId, side, emptyDir) =>
+        this.queue(async () => {
+          this.entry(entryId);
+          if ((await readdir(emptyDir).catch(() => [])).length > 0)
+            throw new Error(`Checkout writes into an empty folder only: ${emptyDir}`);
+          for (const [path, hash] of manifestAround(this.log, entryId, side)!)
+            await this.blobs.writeTo(hash, join(emptyDir, path));
+        }),
       next: (direction) => this.next(direction),
       readBlob: (hash) => this.blobs.read(hash),
       pin: (id, pinned) => {

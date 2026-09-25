@@ -15,6 +15,8 @@ export interface HistoryFileChange {
   after: string | null;
 }
 
+export type HistoryEntrySide = "before" | "after";
+
 export interface HistoryEntry {
   id: string;
   who: HistoryWho;
@@ -105,19 +107,33 @@ export function writeLog(file: string, log: HistoryLog): void {
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
 }
 
-function applyEntry(manifest: Manifest, entry: HistoryEntry): void {
-  for (const file of entry.files)
-    if (file.after === null) manifest.delete(file.path);
-    else manifest.set(file.path, file.after);
+function applyEntry(
+  manifest: Manifest,
+  entry: HistoryEntry,
+  side: HistoryEntrySide = "after",
+): void {
+  for (const file of entry.files) {
+    const hash = file[side];
+    if (hash === null) manifest.delete(file.path);
+    else manifest.set(file.path, hash);
+  }
 }
 
 /** The files as they were right after `point`. Null when that point is no longer kept. */
 export function manifestAt(log: HistoryLog, point: string): Manifest | null {
+  return point === START ? new Map(log.baseline) : manifestAround(log, point, "after");
+}
+
+/** Entry `id`'s own files as it found (`before`) or left (`after`) them; the rest as earlier entries left them. */
+export function manifestAround(
+  log: HistoryLog,
+  id: string,
+  side: HistoryEntrySide,
+): Manifest | null {
   const manifest = new Map(log.baseline);
-  if (point === START) return manifest;
   for (const entry of log.entries) {
-    applyEntry(manifest, entry);
-    if (entry.id === point) return manifest;
+    applyEntry(manifest, entry, entry.id === id ? side : "after");
+    if (entry.id === id) return manifest;
   }
   return null;
 }
