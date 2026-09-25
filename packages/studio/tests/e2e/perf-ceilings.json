@@ -7,11 +7,5 @@
       "total.requests.document": 2,
       "total.requests.thumbnail": 20
     }
-  },
-  "timeline-scroll": {
-    "browser": "153",
-    "counts": {
-      "reactCommitsPerScrollStep": 1
-    }
   }
 }

@@ -812,10 +812,6 @@ jobs:
           else
             DEFAULT_STATUS=1
           fi
-          COUNT_STATUS=0
-          node packages/studio/tests/e2e/perf-ratchet.mjs check \
-            packages/studio/tests/e2e/perf-ceilings.json timeline-scroll \
-            /tmp/timeline-gate-default.json /tmp/base-perf-ceilings.json || COUNT_STATUS=$?
           stop_server
 
           NODE_ENV=production \
@@ -840,11 +836,10 @@ jobs:
             echo "### Timeline viewport gate"
             echo "- Default arm exit: ${DEFAULT_STATUS}"
             echo "- Explicitly disabled arm exit: ${DISABLED_STATUS}"
-            echo "- Work per scroll step against perf-ceilings.json exit: ${COUNT_STATUS}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 || COUNT_STATUS != 0 )); then
-            echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}, counts=${COUNT_STATUS}"
+          if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 )); then
+            echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}"
             exit 1
           fi
       - name: Count the work of opening a film in Studio

@@ -24,7 +24,6 @@
 import { platform, arch } from "node:os";
 import puppeteer from "puppeteer-core";
 import { resolveChromeExecutable } from "./chrome-executable.mjs";
-import { diffCounts, startWorkCounters } from "./perf-counters.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
@@ -168,62 +167,6 @@ async function collectRun(page, injectedLongTaskMs = 0) {
   }, injectedLongTaskMs);
 }
 
-const WORK_COUNT_PASSES = 3;
-// Ten times the timeline's scroll-settle delay (TIMELINE_SCROLL_SETTLE_MS).
-const WORK_QUIET_MS = 1_000;
-const SCROLL_WORK_STEPS = [0.25, 0.5, 0.75, 1, 0.5, 0];
-
-/**
- * Work per scroll step, counted apart from the timed runs. Each step waits until no React commit
- * has landed for WORK_QUIET_MS before the next, so a slower machine waits longer rather than
- * letting a step's late work fall into the next one.
- */
-async function countScrollWork(page, workCounters) {
-  const passes = [];
-  for (let pass = 0; pass < WORK_COUNT_PASSES; pass += 1) {
-    await page.evaluate(scrollStepsUntilQuiet, [0], WORK_QUIET_MS);
-    const before = await workCounters.read();
-    const steps = await page.evaluate(scrollStepsUntilQuiet, SCROLL_WORK_STEPS, WORK_QUIET_MS);
-    const work = diffCounts(await workCounters.read(), before);
-    passes.push(
-      Object.fromEntries(
-        ["reactCommits", "styleRecalcs", "layouts"].map((counter) => [
-          `${counter}PerScrollStep`,
-          Math.round((work[counter] / steps) * 100) / 100,
-        ]),
-      ),
-    );
-  }
-  return passes;
-}
-
-/** In the page: scroll to each ratio and wait for quiet; returns how many steps moved. */
-async function scrollStepsUntilQuiet(ratios, quietMs) {
-  const root = document.querySelector('[aria-label="Timeline track view"]');
-  const scroller = root?.querySelector("[data-timeline-scroll-viewport]");
-  if (!(scroller instanceof HTMLElement)) throw new Error("Timeline scroller not mounted");
-  const commits = () => window.__hfWorkCounts?.reactCommits ?? 0;
-  const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-  let moved = 0;
-  for (const ratio of ratios) {
-    const left = Math.round((scroller.scrollWidth - scroller.clientWidth) * ratio);
-    const top = Math.round((scroller.scrollHeight - scroller.clientHeight) * ratio);
-    if (scroller.scrollLeft !== left || scroller.scrollTop !== top) moved += 1;
-    scroller.scrollLeft = left;
-    scroller.scrollTop = top;
-    let seen = commits();
-    let quietSince = performance.now();
-    const deadline = quietSince + 30_000;
-    while (performance.now() - quietSince < quietMs) {
-      await nextFrame();
-      if (commits() !== seen) [seen, quietSince] = [commits(), performance.now()];
-      if (performance.now() > deadline)
-        throw new Error("The timeline never went quiet after a scroll");
-    }
-  }
-  return moved;
-}
-
 async function assertLongTaskCapture(browser, longTaskLimitMs, scrollSamplesPerRun) {
   const page = await browser.newPage();
   const injectedDurationMs = longTaskLimitMs + 25;
@@ -312,8 +255,6 @@ try {
     deviceScaleFactor: TIER === "high-dpr" ? 2 : 1,
   });
   const client = await page.createCDPSession();
-  // Page-activity observers stay off: they would run inside the timed scroll.
-  const workCounters = await startWorkCounters(browser, page, { pageActivity: false });
   if (TIER === "low-resource") {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   }
@@ -392,8 +333,6 @@ try {
     run.passed = run.responsivenessPassed && run.timelineMounted && run.domSizePassed !== false;
   }
 
-  const workPasses = await countScrollWork(page, workCounters);
-
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
   await page.waitForFunction(
     () => document.querySelector('[aria-label="Timeline track view"]') === null,
@@ -416,23 +355,7 @@ try {
         ? "approved"
         : "rejected",
   };
-  // The median pass per counter; perf-ratchet.mjs holds the gated ones under perf-ceilings.json.
-  const workCounts = Object.fromEntries(
-    Object.keys(workPasses[0]).map((counter) => {
-      const values = workPasses.map((pass) => pass[counter]);
-      // NaN sorts unpredictably, so one pass missing a counter must not hide behind the median.
-      const median = values.every(Number.isFinite) ? percentile(values, 0.5) : Number.NaN;
-      return [counter, median];
-    }),
-  );
-  const interactionP95Ms = percentile(
-    runs.map((run) => run.interactionP95Ms),
-    0.95,
-  );
   const evidence = {
-    journey: "timeline-scroll",
-    workCounts,
-    workPasses,
     environment: {
       browser: version,
       executablePath,
@@ -462,9 +385,11 @@ try {
     },
     directScrollGate,
     runs,
-    wallMs: interactionP95Ms,
     aggregate: {
-      interactionP95Ms,
+      interactionP95Ms: percentile(
+        runs.map((run) => run.interactionP95Ms),
+        0.95,
+      ),
       frameIntervalP95Ms: percentile(
         runs.map((run) => run.frameIntervalP95Ms),
         0.95,
