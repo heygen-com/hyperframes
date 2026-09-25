@@ -267,38 +267,35 @@ Example: scene-3 ends at 8s, transition duration 0.5s -> `time: 7.75`.
 
 ### How the skeleton handles this
 
-The skeleton only lists **anchor scenes** (the ones bracketing shader transitions) in `HyperShader.init()`. Anchor scenes use `style="opacity:0;"` because HyperShader manages their opacity. Non-anchor scenes use `style="visibility:hidden;"`.
+The skeleton only lists **anchor scenes** (the ones bracketing shader transitions) in `HyperShader.init()`. Anchor scenes use `style="opacity:0;"` because HyperShader manages their opacity. Non-anchor scenes carry no inline visibility: the runtime shows and hides every scene in its `data-start` / `data-duration` window.
 
 **CRITICAL — two bugs cause "invisible middle scenes" if you don't handle them:**
 
-1. **Non-anchor scenes need explicit `tl.set` visibility toggles.** Without them, the scene container stays at `visibility:hidden` and child animations play inside an invisible parent.
+1. **Non-anchor scenes after scene 1 need `tl.set("#sN", { opacity: 1 }, <data-start>)`.** When any shader fires, HyperShader resets every `.scene` to `opacity:0`, so a later non-anchor scene would show at `opacity:0`.
 
 2. **The first anchor scene in each shader group needs `tl.set("#sN", { opacity: 1 }, <start-time>)`.** HyperShader browser mode does NOT auto-show the first anchor. It stays at `opacity:0` for its entire window. Every demov4 composition has this bug.
 
-The skeleton pre-wires these toggles for every non-anchor scene using **`autoAlpha`** (not `visibility`):
+The skeleton pre-wires this for every non-anchor scene after scene 1, with `opacity` only:
 
 ```js
-// --- Non-anchor scene toggles (REQUIRED — must use autoAlpha, not visibility) ---
-tl.set("#s1", { autoAlpha: 0 }, 2.5); // hide s1 at its end time
-tl.set("#s2", { autoAlpha: 1 }, 2.5); // show s2 at its start
-tl.set("#s2", { autoAlpha: 0 }, 5.0); // hide s2 at its end
-tl.set("#s3", { autoAlpha: 1 }, 5.0); // show s3 at its start
-tl.set("#s3", { autoAlpha: 0 }, 7.5); // hide s3 at its end
+// --- Non-anchor scenes: restore opacity at the start; the runtime owns visibility ---
+tl.set("#s2", { opacity: 1 }, 2.5);
+tl.set("#s3", { opacity: 1 }, 5.0);
 ```
 
-**Why `autoAlpha` and NOT `visibility`:** When any shader transition fires, HyperShader blanks ALL `.scene` elements to `opacity:0`. If a non-anchor scene only toggles `visibility`, the blanket reset poisons its `opacity` — the scene becomes `visibility:visible` but `opacity:0` (invisible). `autoAlpha` sets BOTH `opacity` AND `visibility` in one call, overriding the blanket reset.
+**Why `opacity` and nothing else:** When any shader transition fires, HyperShader blanks ALL `.scene` elements to `opacity:0`; the set brings a non-anchor scene back. The runtime already shows each scene at its `data-start` and hides it at its end, and a GSAP write of `visibility`, `display` or `autoAlpha` on a scene is a lint error (`gsap_animates_clip_element`), so there are no show/hide toggles.
 
 **Rules:**
 
-- Every non-anchor scene gets `tl.set("#sN", { autoAlpha: 1 }, <data-start>)` AND `tl.set("#sN", { autoAlpha: 0 }, <data-start + data-duration>)`
-- Scene 1 gets only a hide at its end time (it starts visible)
-- Anchor scenes do NOT get autoAlpha toggles — HyperShader owns their opacity
-- When you add or remove scenes, update these toggles to match
+- Every non-anchor scene after scene 1 gets `tl.set("#sN", { opacity: 1 }, <data-start>)`, and nothing else
+- Scene 1 needs no set (it starts visible, and the runtime hides it at its end)
+- Anchor scenes get no set except the first anchor's `opacity: 1` — HyperShader owns their opacity
+- When you add or remove scenes, update these sets to match
 
 Example for an 8-scene video with shaders at s4→s5 and s7→s8:
 
 - Anchor scenes: s4, s5, s7, s8 (listed in HyperShader `scenes` array, use `opacity:0`)
-- Non-anchor scenes: s1, s2, s3, s6 (NOT in HyperShader, use `visibility:hidden`, with explicit `tl.set` toggles)
+- Non-anchor scenes: s1, s2, s3, s6 (NOT in HyperShader, no inline visibility; s2, s3 and s6 get `tl.set` `opacity: 1` at their start)
 - Scene 1 has no inline style (visible from t=0)
 
 ### Adding or removing shader transitions
@@ -307,14 +304,14 @@ To add a shader transition between two scenes:
 
 1. Add both scene IDs to the `scenes` array in `HyperShader.init()`
 2. Add a transition object to the `transitions` array
-3. Change both scenes from `visibility:hidden` to `opacity:0`
+3. Give both scenes `style="opacity:0;"`. Keep an `opacity: 1` set only on the first anchor of the group; HyperShader owns the second
 4. Invariant: `scenes.length === transitions.length + 1`
 
 To remove a shader transition (make it a hard cut instead):
 
 1. Remove the scene IDs from `scenes` (unless they're also anchors for another transition)
 2. Remove the transition from `transitions`
-3. Change affected scenes from `opacity:0` to `visibility:hidden`
+3. Remove the affected scenes' `style="opacity:0;"` and give each an `opacity: 1` set at its start (scene 1 excepted)
 
 **BANNED: invisible bridge transitions.** Never pad with `flash-through-white` at 0.01s.
 
@@ -346,7 +343,7 @@ Scrub through every scene and check:
 | Blink before transition       | Transition duration < 0.3s                            | Increase to 0.5s                                                                                                                                                      |
 | Seeking backwards shows blank | Async capture race condition                          | Known bug in HyperShader browser mode. Forward seek usually works. For reliable scrubbing, download and use `npx hyperframes preview` locally                         |
 | Middle scene invisible        | First shader anchor not shown                         | Add `tl.set("#sN", { opacity: 1 }, startTime)` for first anchor in each shader group                                                                                  |
-| Middle scene invisible        | Non-anchor uses `visibility` instead of `autoAlpha`   | Change to `tl.set("#sN", { autoAlpha: 1 }, start)` and `tl.set("#sN", { autoAlpha: 0 }, end)`. Shader blanket reset poisons opacity; `visibility` alone can't fix it. |
+| Middle scene invisible        | Non-anchor scene has no `opacity: 1` set             | Add `tl.set("#sN", { opacity: 1 }, start)`. The shader blanket reset zeroes opacity; the runtime owns visibility. |
 
 ### Deliver
 
@@ -398,7 +395,7 @@ The skeleton handles most structural rules. These are the runtime rules the skel
 | Template literals in selectors         | Hardcoded strings                             |
 | CSS `transform` for centering          | Flexbox centering on a wrapper                |
 | SVG filter `data:image/svg+xml` grain  | CSS radial-gradient grain (see pattern below) |
-| Animating `visibility` / `display`     | Use `autoAlpha`                               |
+| Animating `visibility` / `display` / `autoAlpha` on a scene | Use `opacity` on the scene, or animate a child |
 
 ### Self-review checklist
 
@@ -408,8 +405,8 @@ Run before delivering. Check with actual code, not assumptions.
 
 - [ ] Every scene has `class="scene clip"` + all data attributes
 - [ ] Every scene has a `<div class="scene-content">` wrapper
-- [ ] Anchor scenes have `style="opacity:0;"`. Non-anchor scenes have `style="visibility:hidden;"`
-- [ ] **Every non-anchor scene has `tl.set` with `autoAlpha`** (NOT `visibility`). `autoAlpha: 1` at start, `autoAlpha: 0` at end.
+- [ ] Anchor scenes have `style="opacity:0;"`. Non-anchor scenes have no inline visibility
+- [ ] **Every non-anchor scene after scene 1 has `tl.set("#sN", { opacity: 1 }, start)`**, and no scene gets a GSAP `visibility`, `display` or `autoAlpha` write (lint error).
 - [ ] **First anchor scene in each shader group has `tl.set("#sN", { opacity: 1 }, startTime)`**. Without this, it stays invisible.
 - [ ] Scene windows tile end-to-end (no gaps)
 - [ ] Shader transitions have boundary INSIDE the window: `time < boundary < time + duration`
@@ -656,7 +653,6 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, **s3→s4 SHADER** (hero re
         data-start="2.5"
         data-duration="2.5"
         data-track-index="0"
-        style="visibility:hidden;"
       >
         <div class="grain"></div>
         <div class="scene-content">
@@ -700,7 +696,6 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, **s3→s4 SHADER** (hero re
         data-start="10"
         data-duration="2.5"
         data-track-index="0"
-        style="visibility:hidden;"
       >
         <div class="grain"></div>
         <div class="scene-content">
@@ -714,7 +709,6 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, **s3→s4 SHADER** (hero re
         data-start="12.5"
         data-duration="2.5"
         data-track-index="0"
-        style="visibility:hidden;"
       >
         <div class="grain"></div>
         <div class="scene-content">
@@ -727,15 +721,12 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, **s3→s4 SHADER** (hero re
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
 
-      // --- Non-anchor scene toggles (REQUIRED — use autoAlpha) ---
-      tl.set("#s1", { autoAlpha: 0 }, 2.5);
-      tl.set("#s2", { autoAlpha: 1 }, 2.5);
-      tl.set("#s2", { autoAlpha: 0 }, 5.0);
+      // --- Non-anchor scenes: restore opacity at the start; the runtime owns visibility ---
+      tl.set("#s2", { opacity: 1 }, 2.5);
       // s3, s4 are shader anchors — HyperShader manages their opacity
       tl.set("#s3", { opacity: 1 }, 5.0); // first anchor must be explicitly shown
-      tl.set("#s5", { autoAlpha: 1 }, 10.0);
-      tl.set("#s5", { autoAlpha: 0 }, 12.5);
-      tl.set("#s6", { autoAlpha: 1 }, 12.5);
+      tl.set("#s5", { opacity: 1 }, 10.0);
+      tl.set("#s6", { opacity: 1 }, 12.5);
 
       // === SCENE 1 (0-2.5s) — hook ===
       // FILL: entrance + mid-scene activity (use 2+ patterns from Section 8)
@@ -908,7 +899,6 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, s3→s4 hard cut, **s4→s5
         data-start="3"
         data-duration="3"
         data-track-index="0"
-        style="visibility:hidden;"
       >
         <div class="grain"></div>
         <div class="vignette"></div>
@@ -921,7 +911,6 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, s3→s4 hard cut, **s4→s5
         data-start="6"
         data-duration="3"
         data-track-index="0"
-        style="visibility:hidden;"
       >
         <div class="grain"></div>
         <div class="vignette"></div>
@@ -962,7 +951,6 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, s3→s4 hard cut, **s4→s5
         data-start="15.5"
         data-duration="3"
         data-track-index="0"
-        style="visibility:hidden;"
       >
         <div class="grain"></div>
         <div class="vignette"></div>
@@ -1001,19 +989,15 @@ Transition plan: s1→s2 hard cut, s2→s3 hard cut, s3→s4 hard cut, **s4→s5
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
 
-      // --- Non-anchor scene visibility toggles (REQUIRED) ---
-      tl.set("#s1", { autoAlpha: 0 }, 3.0);
-      tl.set("#s2", { autoAlpha: 1 }, 3.0);
-      tl.set("#s2", { autoAlpha: 0 }, 6.0);
-      tl.set("#s3", { autoAlpha: 1 }, 6.0);
-      tl.set("#s3", { autoAlpha: 0 }, 9.0);
+      // --- Non-anchor scenes: restore opacity at the start; the runtime owns visibility ---
+      tl.set("#s2", { opacity: 1 }, 3.0);
+      tl.set("#s3", { opacity: 1 }, 6.0);
 
       // --- First shader anchor must be explicitly shown ---
       tl.set("#s4", { opacity: 1 }, 9.0);
 
       // s4, s5 are shader anchors — HyperShader manages their opacity after transitions
-      tl.set("#s6", { autoAlpha: 1 }, 15.5);
-      tl.set("#s6", { autoAlpha: 0 }, 18.5);
+      tl.set("#s6", { opacity: 1 }, 15.5);
 
       // --- Second shader group's first anchor must also be shown ---
       tl.set("#s7", { opacity: 1 }, 18.5);

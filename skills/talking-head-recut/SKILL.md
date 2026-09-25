@@ -1006,7 +1006,6 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
           // Example for card-01 [1.0, 7.5] with kinetic-chars at +0.3, grow-x at +0.65:
 
           // Enter (fade in over 0.4s)
-          tl.set('.card-host[data-card-id="card-01"]', { visibility: "visible" }, 1.0);
           tl.fromTo(
             '.card-host[data-card-id="card-01"]',
             { opacity: 0 },
@@ -1033,7 +1032,6 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
             { opacity: 0, duration: 0.35, ease: "power2.in" },
             7.15,
           );
-          tl.set('.card-host[data-card-id="card-01"]', { visibility: "hidden" }, 7.5);
 
           // ── Video framing transitions ──
           // When the next card uses a different composition layout, animate the
@@ -1051,7 +1049,6 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
           );
 
           // Card-02 enter — same pattern as card-01
-          tl.set('.card-host[data-card-id="card-02"]', { visibility: "visible" }, 8.0);
           tl.fromTo(
             '.card-host[data-card-id="card-02"]',
             { opacity: 0 },
