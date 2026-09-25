@@ -32,6 +32,69 @@ describe("applyFileMutations", () => {
     expectStaleMutation("before");
   });
 
+  it("keeps a save to an earlier file when a later file's conflict rolls the batch back", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-version-"));
+    const first = join(projectDir, "first.html");
+    const second = join(projectDir, "second.html");
+    try {
+      writeFileSync(first, "first-before", "utf8");
+      writeFileSync(second, "second-before", "utf8");
+      const writeFile = (path: string, content: string, encoding: "utf-8") => {
+        writeFileSync(path, content, encoding);
+        if (path !== first || content !== "first-after") return;
+        writeFileSync(first, "first-saved", "utf8");
+        writeFileSync(second, "second-saved", "utf8");
+      };
+      expect(() =>
+        applyFileMutations(
+          projectDir,
+          ["first", "second"].map((name) => ({
+            sourceFile: `${name}.html`,
+            absPath: join(projectDir, `${name}.html`),
+            before: `${name}-before`,
+            after: `${name}-after`,
+            expectedVersion: fileContentVersion(`${name}-before`),
+          })),
+          undefined,
+          writeFile,
+        ),
+      ).toThrow("file changed since the timeline was read");
+      expect(readFileSync(first, "utf8")).toBe("first-saved");
+      expect(readFileSync(second, "utf8")).toBe("second-saved");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes nothing when a later file is already stale", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-version-"));
+    try {
+      for (const name of ["first", "second"])
+        writeFileSync(join(projectDir, `${name}.html`), `${name}-before`, "utf8");
+      writeFileSync(join(projectDir, "second.html"), "second-saved", "utf8");
+      let writes = 0;
+      expect(() =>
+        applyFileMutations(
+          projectDir,
+          ["first", "second"].map((name) => ({
+            sourceFile: `${name}.html`,
+            absPath: join(projectDir, `${name}.html`),
+            before: `${name}-before`,
+            after: `${name}-after`,
+            expectedVersion: fileContentVersion(`${name}-before`),
+          })),
+          undefined,
+          () => {
+            writes += 1;
+          },
+        ),
+      ).toThrow("file changed since the timeline was read");
+      expect(writes).toBe(0);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("clears receipts for writes rolled back after a partial batch", () => {
     resetFileWriteReceipts();
     const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-rollback-"));
