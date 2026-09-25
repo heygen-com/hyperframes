@@ -9,6 +9,7 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
+import { homedir } from "node:os";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -46,6 +47,8 @@ import {
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
+  openProjectHistory,
+  type ProjectHistory,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
@@ -63,6 +66,9 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+
+/** Where `hyperframes preview` keeps project histories: outside every project, so no tidy-up takes one away. */
+const DEFAULT_HISTORY_ROOT = join(homedir(), ".cache", "hyperframes", "history");
 
 // Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
 // before that watchdog can fire and skip this file's browser cleanup.
@@ -324,6 +330,8 @@ export interface StudioServerOptions {
   autoProxy?: boolean | undefined;
   /** GPU policy used by Studio thumbnails and frame capture. */
   browserGpuMode?: BrowserGpuMode;
+  /** Where project histories are kept; defaults to ~/.cache/hyperframes/history. */
+  historyRoot?: string;
 }
 
 export interface StudioServer {
@@ -405,6 +413,21 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     }
   });
 
+  // Opened on first use, so a server that never serves Studio's history never writes one. A failed open stays off
+  // for this run.
+  let history: Promise<ProjectHistory | null> | undefined;
+  const projectHistory = () =>
+    (history ??= openProjectHistory({
+      projectDir,
+      historyRoot: options.historyRoot ?? DEFAULT_HISTORY_ROOT,
+    }).catch((error: unknown) => {
+      console.warn(`[studio] Project history is off: ${String(error)}`);
+      return null;
+    }));
+  watcher.addListener((changedPath) => {
+    void history?.then((opened) => opened?.noteChange(changedPath));
+  });
+
   const inFlightRenders = new Map<AbortController, Promise<void>>();
   // Set synchronously by shutdown() before any await, so a render or
   // thumbnail request already queued behind it sees the flag instead of
@@ -412,6 +435,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   let shuttingDown = false;
 
   const adapter: PreviewApiAdapter = {
+    history: () => projectHistory(),
     // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
     // otherwise honor the project's hyperframes.json media.autoProxy so every
     // createStudioServer caller (e.g. the background preview child) gets the
@@ -1051,6 +1075,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;
+    // Commits any open edit window; bounded with the renders below, so a history still opening cannot hold exit.
+    const closeHistory = history?.then((opened) => opened?.close()).catch(() => {});
     const renders = [...inFlightRenders];
     for (const [abortController] of renders) abortController.abort();
     const { killTrackedProcesses, closeBrowserPool } = await import("@hyperframes/engine");
@@ -1063,7 +1089,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       closeBrowserPool().catch(() => {}),
     ]);
     await Promise.race([
-      Promise.allSettled(renders.map(([, done]) => done)),
+      Promise.allSettled([...renders.map(([, done]) => done), closeHistory]),
       new Promise<void>((resolve) => setTimeout(resolve, RENDER_SHUTDOWN_WAIT_MS).unref()),
     ]);
     await closeBrowsers;

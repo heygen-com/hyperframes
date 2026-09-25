@@ -22,6 +22,7 @@ export type LayoutIssueCode =
   // Coordinate-frame findings — geometry computed in one frame, rendered in another.
   | "escaped_container"
   | "panel_out_of_canvas"
+  | "canvas_content_at_edge"
   | "connector_detached"
   | "connector_orphan"
   // Cross-sample rotation finding — a spinning element whose bbox center drifts
@@ -203,6 +204,7 @@ const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "text_occluded",
   "escaped_container",
   "panel_out_of_canvas",
+  "canvas_content_at_edge",
   "connector_detached",
   "connector_orphan",
 ]);
