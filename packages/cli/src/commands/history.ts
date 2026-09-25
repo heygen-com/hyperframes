@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { defineCommand, type ArgsDef } from "citty";
 import {
   HISTORY_START,
+  HistoryBusyError,
   type HistoryEntry,
   type HistoryListItem,
   type HistoryWho,
@@ -217,7 +218,7 @@ function guarded<A>(run: (args: A) => Promise<void>) {
       const refused =
         error instanceof Refusal ||
         error instanceof AmbiguousPreviewServerError ||
-        (error as Error).name === "HistoryBusyError";
+        error instanceof HistoryBusyError;
       if (!refused) throw error;
       setCommandExitCode(2);
       const { message } = error as Error;
@@ -372,7 +373,7 @@ export default defineCommand({
         (args) =>
           withOwner("begin", args.dir, async (owner, turn, projectDir) => {
             if (turn) await owner.end(turn.id);
-            const who: HistoryWho = { kind: "agent", name: args.who };
+            const who = whoOf(args.who);
             const id = await owner.begin(who, args.label);
             const startedAt = Date.now();
             writeTurn(projectDir, {
