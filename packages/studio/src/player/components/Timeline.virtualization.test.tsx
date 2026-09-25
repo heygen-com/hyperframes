@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { TIMELINE_SCROLL_SETTLE_MS } from "./useTimelineScrollViewport";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -429,6 +430,26 @@ describe("Timeline without row virtualization", { timeout: 30_000 }, () => {
       },
     };
   }
+
+  it("clips a scrolled-off playhead at the track headers once the scroll settles", async () => {
+    const { host, dispose } = await renderUnvirtualizedTimeline();
+    try {
+      const scroller = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]")!;
+      const layer = () => host.querySelector<HTMLElement>("[data-timeline-playhead-layer]");
+      await scrollTimelineHorizontally(scroller, 166);
+      expect(layer()?.style.clipPath).toBe("");
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, TIMELINE_SCROLL_SETTLE_MS + 20));
+      });
+      // The ruler's corner is as wide as the track headers; the glow may overhang by 6.5px.
+      const headerWidth = parseFloat(
+        host.querySelector<HTMLElement>(".sticky.left-0")!.style.width,
+      );
+      expect(layer()?.style.clipPath).toContain(`${166 + headerWidth - 6.5}px)`);
+    } finally {
+      dispose();
+    }
+  });
 
   it("mounts every clip rather than a window", async () => {
     const { host, dispose } = await renderUnvirtualizedTimeline();

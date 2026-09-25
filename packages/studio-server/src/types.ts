@@ -1,5 +1,6 @@
 import type { CanvasResolution } from "@hyperframes/parsers";
 import type { RegistryItem } from "@hyperframes/core";
+import type { ProjectHistory } from "./history/projectHistory.js";
 
 /** Resolved info about a single project. */
 export interface ResolvedProject {
@@ -105,6 +106,12 @@ export interface StudioApiAdapter {
 
   /** Resolve a project ID (or session ID) to its directory. Returns null if not found. */
   resolveProject(id: string): Promise<ResolvedProject | null> | ResolvedProject | null;
+
+  /**
+   * Optional: the project's history (openProjectHistory), one per project for the host's lifetime. Without it
+   * the history routes answer 404.
+   */
+  history?: (project: ResolvedProject) => Promise<ProjectHistory | null> | ProjectHistory | null;
 
   /** Bundle a project directory into a single HTML string. Returns null if unavailable. */
   bundle(projectDir: string): Promise<string | null>;

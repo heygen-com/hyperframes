@@ -57,6 +57,19 @@ vi.mock("../browser/manager.js", () => ({
   ensureBrowser: async () => ({ executablePath: undefined, source: "system" }),
 }));
 
+// Lets one test hold the project history in its opening; every other test opens the real one.
+const historyState = vi.hoisted(() => ({
+  open: null as null | ((...args: unknown[]) => Promise<unknown>),
+}));
+vi.mock("@hyperframes/studio-server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@hyperframes/studio-server")>();
+  return {
+    ...original,
+    openProjectHistory: (...args: Parameters<typeof original.openProjectHistory>) =>
+      historyState.open ? historyState.open(...args) : original.openProjectHistory(...args),
+  };
+});
+
 // Only `fs.watch` is replaced, so the SSE describe below can fire a file-change
 // on demand; every other server test keeps reading and writing real files.
 const mockWatcher = new EventEmitter() as EventEmitter & { close: () => void };
@@ -110,6 +123,47 @@ describe("Studio thumbnail GPU capture plumbing", () => {
     expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
     expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu)");
     expect(source).toContain("await seekCompositionTimeline(page, opts.seekTime");
+  });
+});
+
+describe("createStudioServer project history (D-491)", () => {
+  it("serves the project's history, and a change the watcher sees becomes an entry", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    const list = async () =>
+      (await (await server!.app.request(historyUrl)).json()) as {
+        entries: Array<{ who: { kind: string } }>;
+        back: { label: string } | null;
+      };
+    expect(await list()).toMatchObject({ entries: [], back: null });
+
+    writeFileSync(join(projectDir, "index.html"), "<html>agent</html>");
+    mockWatcher.emit("change", "change", "index.html");
+
+    // Writes with no window open group until 2 s of quiet.
+    await vi.waitFor(async () => expect((await list()).entries).toHaveLength(1), {
+      timeout: 5_000,
+      interval: 200,
+    });
+    expect((await list()).entries[0]!.who.kind).toBe("outside");
+    await server.shutdown();
+  });
+
+  it("shutdown returns within preview's exit watchdog while the history is still opening", async () => {
+    historyState.open = () => new Promise(() => {});
+    try {
+      const projectDir = tmpProject();
+      server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+      void server.app.request(`/api/projects/${encodeURIComponent(basename(projectDir))}/history`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const started = Date.now();
+      await server.shutdown();
+      expect(Date.now() - started).toBeLessThan(2_900);
+    } finally {
+      historyState.open = null;
+    }
   });
 });
 
