@@ -1,5 +1,6 @@
 import { initSandboxRuntimeModular } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
+import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
 import { getVariables } from "./getVariables";
@@ -25,6 +26,9 @@ type HyperframeWindow = Window & {
 // composition's animation scripts (and the grading hide) mutate it — must run
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
+
+// Also at evaluation time: the body is parsed, and may paint, before init runs at DOMContentLoaded.
+hideTimedClipsUntilFirstPass();
 
 // Expose runtime helpers immediately so composition scripts can use them
 // before DOMContentLoaded (font sizing runs during script evaluation, and
