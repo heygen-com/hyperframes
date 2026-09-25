@@ -1,6 +1,5 @@
 import { useCallback, useRef } from "react";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import type { EditHistoryKind } from "../utils/editHistory";
 import {
   StudioFileConflictError,
   buildStudioSaveFailureProperties,
@@ -12,7 +11,6 @@ const FAILURE_BURST_MS = 5_000;
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -108,7 +106,6 @@ export function useEditorSave({
       const task = saveProjectFilesWithHistory({
         projectId: candidate.projectId,
         label: "Edit source",
-        kind: "source",
         coalesceKey: `source:${candidate.path}`,
         files: { [candidate.path]: candidate.content },
         readFile: readProjectFile,

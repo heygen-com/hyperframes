@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { SlideshowManifest } from "@hyperframes/core/slideshow";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import { persistSlideshowManifest } from "../utils/setSlideshowManifest";
 
@@ -12,7 +11,6 @@ export interface UseSlideshowPersistParams {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   reloadPreview: () => void;

@@ -41,6 +41,10 @@ const STORYBOARD_VIEW_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio/src/utils/editHistory.ts",
+    "held only EditHistoryKind; recordEdit's kind was never sent to the project history, so it and every caller's copy go",
+  ],
+  [
     "packages/studio/src/utils/editHistoryStorage.ts",
     "Studio's undo moves onto the project history (studio-server); the browser IndexedDB history and its reducer are removed",
   ],

@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { openComposition, type Composition, type CompositionVariable } from "@hyperframes/sdk";
 import { persistSdkSerialize } from "../utils/sdkCutover";
-import type { EditHistoryKind } from "../utils/editHistory";
 
 /** Records an edit into the studio's undo history (label + kind + per-file before/after). */
 export type RecordEditFn = (entry: {
   label: string;
-  kind: EditHistoryKind;
   files: Record<string, { before: string; after: string }>;
 }) => Promise<void>;
 

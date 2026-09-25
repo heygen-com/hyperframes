@@ -11,7 +11,6 @@ describe("saveProjectFilesWithHistory", () => {
     await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Move layer",
-      kind: "manual",
       files: { "index.html": "after" },
       readFile: async (path) => reads[path],
       writeFile: async (path, content) => {
@@ -23,7 +22,6 @@ describe("saveProjectFilesWithHistory", () => {
     expect(writes).toEqual({ "index.html": "after" });
     expect(recordEdit).toHaveBeenCalledWith({
       label: "Move layer",
-      kind: "manual",
       coalesceKey: undefined,
       files: { "index.html": { before: "before", after: "after" } },
     });
@@ -42,7 +40,6 @@ describe("saveProjectFilesWithHistory", () => {
     await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Delete timeline clip",
-      kind: "timeline",
       files: { "index.html": "removed+shrunk" },
       readFile: async () => "original",
       diskContent: { "index.html": "removed" },
@@ -67,7 +64,6 @@ describe("saveProjectFilesWithHistory", () => {
     await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Move layer",
-      kind: "manual",
       files: { "index.html": "after" },
       readFile: async () => "before",
       writeFile: async (path, _content, expectedContent) => {
@@ -85,7 +81,6 @@ describe("saveProjectFilesWithHistory", () => {
     const changedPaths = await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Edit layer",
-      kind: "manual",
       files: { "index.html": "same" },
       readFile: async () => "same",
       writeFile,
@@ -109,7 +104,6 @@ describe("saveProjectFilesWithHistory", () => {
       saveProjectFilesWithHistory({
         projectId: "project-1",
         label: "Move layer",
-        kind: "manual",
         files: {
           "index.html": "index-after",
           "scene.html": "scene-after",
@@ -144,7 +138,6 @@ describe("saveProjectFilesWithHistory", () => {
       saveProjectFilesWithHistory({
         projectId: "project-1",
         label: "Move layer",
-        kind: "manual",
         files: {
           "index.html": "index-after",
           "scene.html": "scene-after",
@@ -178,7 +171,6 @@ describe("saveProjectFilesWithHistory", () => {
       saveProjectFilesWithHistory({
         projectId: "project-1",
         label: "Move layer",
-        kind: "manual",
         files: {
           "index.html": "index-after",
           "scene.html": "scene-after",
@@ -223,7 +215,6 @@ describe("saveProjectFilesWithHistory", () => {
     const save = saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Edit source",
-      kind: "source",
       files: { "index.html": "editor-after" },
       readFile,
       writeFile,

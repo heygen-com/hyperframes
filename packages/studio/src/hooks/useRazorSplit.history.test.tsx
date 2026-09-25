@@ -175,7 +175,6 @@ describe("useRazorSplit — split is undoable via edit history", () => {
         expect(harness.records).toHaveLength(1);
         expect(harness.records[0]).toMatchObject({
           label: "Split timeline clip",
-          kind: "timeline",
         });
         expect(harness.records[0]!.files["index.html"]).toEqual({
           before: ORIGINAL,

@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server";
-import type { EditHistoryKind } from "../utils/editHistory";
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
