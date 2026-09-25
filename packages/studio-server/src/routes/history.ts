@@ -121,7 +121,6 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
   );
   api.post(`${base}/window`, (c) =>
     withHistory(adapter, c, async (history, body) => {
-      // A drag's burst of writes keeps one window open; it ends itself after idleMs without a write.
       const idleMs = idleOf(body);
       const window = await history.beginWindow(
         YOU,

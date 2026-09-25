@@ -89,7 +89,6 @@ export function useEditHistoryActions({
           forceReloadSdkSession?.();
         }
         await syncHistoryPreviewAfterApply({ paths: result.paths, files: result.files });
-        // The history names the step itself ("Undid: Moved Title").
         showToast(result.label, "info");
       }
     },

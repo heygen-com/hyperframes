@@ -20,7 +20,6 @@ export interface UsePersistentEditHistoryOptions {
   projectId: string | null;
 }
 
-/** `restored` is what the step wrote; `previous` what was on disk before it, so the preview can patch in place. */
 interface ApplyRestoredFile {
   previous: string;
   restored: string;
@@ -43,7 +42,6 @@ interface NextStep {
   paths: string[];
 }
 
-/** GET /projects/:id/history: every entry, and what Cmd+Z and Cmd+Shift+Z would revert next. */
 interface HistoryView {
   entries: HistoryListItem[];
   back: NextStep | null;
@@ -51,14 +49,12 @@ interface HistoryView {
 }
 
 const EMPTY: HistoryView = { entries: [], back: null, forward: null };
-/** How long a drag's edits keep merging into one undo step when the edit names no window. */
 const DEFAULT_COALESCE_MS = 300;
 
 function historyUrl(projectId: string, path = ""): string {
   return `/api/projects/${encodeURIComponent(projectId)}/history${path}`;
 }
 
-/** The server's JSON reply, or why there is none (the server's own error, or that it was unreachable). */
 async function post(
   url: string,
   body: object,
@@ -77,8 +73,7 @@ async function post(
   return { ok: false, status: response.status, error: reply?.error ?? `HTTP ${response.status}` };
 }
 
-/** Whether the server holds a drag's claim open for its next edit. A failed claim is logged: its write still reaches
- * the history, as a change made outside the app. 404: this app keeps no history. */
+/** Whether a drag's claim is held open; a failed one is logged (its write lands as an outside change; 404: none). */
 function claimHeld(reply: Awaited<ReturnType<typeof post>>, label: string): boolean {
   if (reply.ok) return Boolean((reply.body as { claimed: { id: string } | null } | null)?.claimed);
   if (reply.status !== 404)
@@ -86,7 +81,6 @@ function claimHeld(reply: Awaited<ReturnType<typeof post>>, label: string): bool
   return false;
 }
 
-/** Per path, the version each edit overwrote, so the history keeps earlier writers' changes theirs. */
 async function overwroteVersions(files: RecordEditInput["files"]): Promise<Record<string, string>> {
   const pairs = await Promise.all(
     Object.entries(files).map(async ([path, { before }]) => [
@@ -97,7 +91,6 @@ async function overwroteVersions(files: RecordEditInput["files"]): Promise<Recor
   return Object.fromEntries(pairs);
 }
 
-/** Reads every path, or null when one cannot be read (a file the step creates or deletes). */
 async function readAll(
   paths: readonly string[],
   readFile: (path: string) => Promise<string>,
@@ -111,7 +104,6 @@ async function readAll(
   return contents;
 }
 
-/** Each changed file's before and after, or undefined when one is unknown: the preview then reloads. */
 async function restoredFiles(
   paths: readonly string[],
   previous: Record<string, string> | null,
@@ -125,17 +117,12 @@ async function restoredFiles(
   );
 }
 
-/** When the edit Cmd+Shift+Z would redo was made: the entry its undo reverted. */
 function redoneAt(view: HistoryView): number | null {
   const undo = view.entries.find((entry) => entry.id === view.forward?.id);
   return view.entries.find((entry) => entry.id === undo?.undoes)?.endedAt ?? null;
 }
 
-/**
- * Studio's undo and redo over the project's history on the server: an edit claims the files it just wrote, and
- * Cmd+Z / Cmd+Shift+Z step through every writer's changes by time. Without a history on the server (404) edits
- * still save; they just cannot be undone.
- */
+/** Studio's undo over the server's project history: an edit claims what it wrote; Cmd+Z steps every writer's. */
 export function usePersistentEditHistory({ projectId }: UsePersistentEditHistoryOptions) {
   const [view, setView] = useState<HistoryView>(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -214,7 +201,6 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
   const undo = useCallback((callbacks: ApplyCallbacks) => step("undo", callbacks), [step]);
   const redo = useCallback((callbacks: ApplyCallbacks) => step("redo", callbacks), [step]);
 
-  // Beat edits interleave with these by edit time (useAppHotkeys): the top of each stack.
   const state = useMemo(() => {
     const backAt = Math.max(view.back?.endedAt ?? 0, heldClaimRef.current?.at ?? 0);
     const redoAt = redoneAt(view);
