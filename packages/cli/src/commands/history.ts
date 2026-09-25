@@ -1,28 +1,26 @@
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { defineCommand, type ArgsDef } from "citty";
 import {
-  DEFAULT_HISTORY_ROOT,
   HISTORY_START,
-  MAX_WINDOW_IDLE_MS,
-  openProjectHistory,
   type HistoryEntry,
   type HistoryListItem,
-  type HistoryResult,
   type HistoryWho,
 } from "@hyperframes/studio-server";
 import type { Example } from "./_examples.js";
 import { trackHistoryAction } from "../telemetry/events.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
-import { resolveProject } from "../utils/project.js";
 import {
-  AmbiguousPreviewServerError,
-  findPreviewServerForProject,
-  studioApiUrl,
-} from "../utils/studioSelectionClient.js";
+  Refusal,
+  withOwner as withHistoryOwner,
+  writeTurn,
+  type Owner,
+  type Turn,
+  type UndoMode,
+} from "../utils/historyOwner.js";
+import { AmbiguousPreviewServerError } from "../utils/studioSelectionClient.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export const examples: Example[] = [
@@ -37,159 +35,18 @@ export const examples: Example[] = [
   ["Undo your newest entry after a failed check", "hyperframes history undo --who claude"],
 ];
 
-type UndoMode = "just-this" | "back-to-before";
-
-/** An agent's turn: its writes until `end`, or until the idle limit passes without one, are one entry of its own. */
-interface Turn {
-  via: "preview" | "direct";
-  id: string;
-  who: HistoryWho;
-  label: string;
-  startedAt: number;
-  lastWriteAt: number;
-}
-
-/** Whoever holds the project's history: a running preview (over its routes) or this process (the engine). */
-interface Owner {
-  via: "preview" | "direct";
-  list(): Promise<HistoryListItem[]>;
-  peek(point: string): Promise<Record<string, string> | null>;
-  blob(hash: string): Promise<Buffer>;
-  undo(id: string, who: HistoryWho, mode?: UndoMode): Promise<HistoryResult>;
-  restore(point: string, who: HistoryWho): Promise<HistoryEntry | null>;
-  pin(id: string, pinned: boolean): Promise<void>;
-  begin(who: HistoryWho, label: string): Promise<string>;
-  end(id: string): Promise<HistoryEntry | null>;
-  close(): Promise<void>;
-}
-
-/** Swapped by tests. */
-export const historyDeps = {
-  historyRoot: DEFAULT_HISTORY_ROOT,
-  findServer: (projectDir: string) => findPreviewServerForProject(projectDir),
-  /** A turn with no write for this long has ended, through a preview or not. */
-  turnIdleMs: MAX_WINDOW_IDLE_MS,
-};
-
 const YOU: HistoryWho = { kind: "person", name: "You" };
 
-class Refusal extends Error {}
-
-const turnFile = (dir: string) => join(dir, ".hyperframes", "history-turn.json");
-
-function readTurn(dir: string): Turn | null {
-  try {
-    return JSON.parse(readFileSync(turnFile(dir), "utf-8")) as Turn;
-  } catch {
-    return null;
-  }
-}
-
-function writeTurn(dir: string, turn: Turn | null): void {
-  if (!turn) return rmSync(turnFile(dir), { force: true });
-  mkdirSync(dirname(turnFile(dir)), { recursive: true });
-  writeFileSync(turnFile(dir), JSON.stringify(turn));
-}
-
-function previewOwner(route: (path: string) => string): Owner {
-  const call = async (path: string, body?: object) => {
-    const init = body && {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    };
-    const response = await fetch(route(path), init);
-    if (response.ok) return response;
-    const error = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Refusal(error?.error ?? `The preview answered ${response.status}.`);
-  };
-  const json = async (path: string, body?: object) => (await call(path, body)).json();
-  const list = async () => (await json("")).entries as HistoryListItem[];
-  return {
-    via: "preview",
-    list,
-    peek: async (point) => (await json(`/peek/${encodeURIComponent(point)}`)).files,
-    blob: async (hash) => Buffer.from(await (await call(`/blob/${hash}`)).arrayBuffer()),
-    undo: (id, who, mode) => json("/undo", { entryId: id, who, mode }),
-    restore: (point, who) => json("/restore", { point, who }),
-    pin: async (id, pinned) => void (await json("/pin", { entryId: id, pinned })),
-    begin: async (who, label) =>
-      (await json("/window", { who, label, idleMs: historyDeps.turnIdleMs })).windowId,
-    // A preview restarted since begin committed the window on its way down.
-    end: (id) =>
-      json(`/window/${id}/close`, {})
-        .then((closed) => closed.entry as HistoryEntry | null)
-        .catch(async () => (await list()).find((entry) => entry.id === id) ?? null),
-    close: async () => {},
-  };
-}
-
-async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner> {
-  const history = await openProjectHistory({
-    projectDir,
-    historyRoot: historyDeps.historyRoot,
-    // A turn begun through a preview that has since stopped is still the agent's, until its idle limit.
-    ...(turn && {
-      closedWindow: {
-        id: turn.id,
-        who: turn.who,
-        label: turn.label,
-        startedAt: turn.startedAt,
-        lastWriteAt: turn.lastWriteAt,
-        idleMs: historyDeps.turnIdleMs,
-      },
-    }),
-  });
-  return {
-    via: "direct",
-    list: async () => history.list(),
-    peek: async (point) => history.peek(point),
-    blob: (hash) => history.readBlob(hash),
-    undo: (id, who, mode) => history.undo(id, { who, ...(mode && { mode }) }),
-    restore: (point, who) => history.restore(point, who),
-    pin: async (id, pinned) => history.pin(id, pinned),
-    // Opening filed every earlier write; the turn's own writes are filed to it when the next open passes it.
-    begin: async () => randomUUID(),
-    end: async (id) => history.list().find((entry) => entry.id === id) ?? null,
-    close: () => history.close(),
-  };
-}
-
-/** One owner: a preview that keeps this project's history, else the engine, which refuses a second opener. */
-async function connect(projectDir: string, turn: Turn | null): Promise<Owner> {
-  const server = await historyDeps.findServer(projectDir);
-  if (server) {
-    const route = (path: string) => studioApiUrl(server, `history${path}`);
-    // 404, or gone since the scan: no preview keeps this history, and the engine's lock guards the rest.
-    const status = await fetch(route("")).then((response) => response.status, () => 404);
-    if (status !== 404) return previewOwner(route);
-  }
-  return directOwner(projectDir, turn);
-}
-
-/** Runs `task` with the project's history. ponytail: with no preview, a command mid-turn splits the turn in two. */
-async function withOwner<T>(
+/** The project's history for one subcommand, counted by action and by who kept it (preview or this process). */
+const withOwner = <T>(
   action: string,
   dir: string | undefined,
   task: (owner: Owner, turn: Turn | null, projectDir: string) => Promise<T>,
-): Promise<T> {
-  const { dir: projectDir } = resolveProject(dir);
-  const turn = readTurn(projectDir);
-  const owner = await connect(projectDir, turn);
-  trackHistoryAction({ action, via: owner.via });
-  try {
-    return await task(owner, turn, projectDir);
-  } finally {
-    // This open filed the turn so far under its id; the turn goes on under a fresh one, from its last write.
-    const direct = owner.via === "direct" && turn;
-    const kept = direct && (await owner.list()).find((entry) => entry.id === turn.id);
-    await owner.close();
-    if (direct && readTurn(projectDir)?.id === turn.id) {
-      const lastWriteAt = kept ? kept.endedAt : turn.lastWriteAt;
-      writeTurn(projectDir, { ...turn, via: "direct", id: randomUUID(), lastWriteAt });
-    }
-  }
-}
+) =>
+  withHistoryOwner(dir, (owner, turn, projectDir) => {
+    trackHistoryAction({ action, via: owner.via });
+    return task(owner, turn, projectDir);
+  });
 
 /** An agent names itself with --who; without it the caller is the person, even during an agent's turn. */
 const whoOf = (name: string | undefined): HistoryWho => (name ? { kind: "agent", name } : YOU);
@@ -400,7 +257,8 @@ const listEntries = async (args: {
     const all = await owner.list();
     const picked = args.since ? since(all, args.since, whoOf(args.who)) : all;
     const limit = Number(args.limit ?? 20);
-    if (!Number.isInteger(limit) || limit < 1) throw new Refusal("--limit takes a whole number above 0");
+    if (!Number.isInteger(limit) || limit < 1)
+      throw new Refusal("--limit takes a whole number above 0");
     const shown = picked.slice(-limit).reverse();
     const more = picked.length - shown.length;
     const text = shown.map(line).join("\n") || "No changes recorded.";
@@ -429,7 +287,10 @@ export default defineCommand({
         (args) =>
           withOwner("show", args.dir, async (owner) => {
             const entry = entryOf(await owner.list(), args.ref);
-            const changes = entry.files.map((file) => ({ path: file.path, change: changeOf(file) }));
+            const changes = entry.files.map((file) => ({
+              path: file.path,
+              change: changeOf(file),
+            }));
             const diff = args.diff ? await textDiff(owner, entry) : undefined;
             const marks = changes.map((file) => `  ${file.change[0]!.toUpperCase()} ${file.path}`);
             print(

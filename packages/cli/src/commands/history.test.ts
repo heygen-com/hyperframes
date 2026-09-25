@@ -15,7 +15,8 @@ import { runCommand } from "citty";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
-import historyCommand, { historyDeps } from "./history.js";
+import { historyDeps } from "../utils/historyOwner.js";
+import historyCommand from "./history.js";
 
 const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
 
@@ -277,7 +278,9 @@ describe("hyperframes history, one owner", () => {
     }
     await hf("end");
     const entries = (await json()).entries.reverse();
-    expect(entries.map((entry: { who: object; files: string[] }) => [entry.who, entry.files])).toEqual([
+    expect(
+      entries.map((entry: { who: object; files: string[] }) => [entry.who, entry.files]),
+    ).toEqual([
       [{ kind: "agent", name: "claude" }, ["index.html"]],
       [{ kind: "agent", name: "claude" }, ["extra.html", "notes.html"]],
     ]);
@@ -344,7 +347,10 @@ describe("hyperframes history, refusals", () => {
     await hf();
     const refused = await hf("show", "zzzz", "--json");
     expect(refused.code).toBe(2);
-    expect(JSON.parse(refused.out)).toMatchObject({ ok: false, error: 'No entry "zzzz" in this history' });
+    expect(JSON.parse(refused.out)).toMatchObject({
+      ok: false,
+      error: 'No entry "zzzz" in this history',
+    });
     expect((await hf("--limit", "0")).code).toBe(2);
   });
 
