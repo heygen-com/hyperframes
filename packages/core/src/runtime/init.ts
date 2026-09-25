@@ -1960,14 +1960,10 @@ export function initSandboxRuntimeModular(): void {
       return;
     }
     const rect = rootNode.getBoundingClientRect();
-    const declaredWidth = Number(rootNode.getAttribute("data-width"));
-    const declaredHeight = Number(rootNode.getAttribute("data-height"));
+    const declaredWidth = parseCompositionDimension(rootNode.getAttribute("data-width"));
+    const declaredHeight = parseCompositionDimension(rootNode.getAttribute("data-height"));
     const computedStyle = window.getComputedStyle(rootNode);
-    const hasDeclaredDimensions =
-      Number.isFinite(declaredWidth) &&
-      declaredWidth > 0 &&
-      Number.isFinite(declaredHeight) &&
-      declaredHeight > 0;
+    const hasDeclaredDimensions = declaredWidth !== null && declaredHeight !== null;
     const looksCollapsed =
       rect.width <= 0 ||
       rect.height <= 0 ||
