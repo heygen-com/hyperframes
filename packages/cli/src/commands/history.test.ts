@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -16,6 +16,8 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
 import historyCommand, { historyDeps } from "./history.js";
+
+const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
 
 const tracked = vi.hoisted(() => [] as Array<{ action: string; via: string }>);
 vi.mock("../telemetry/events.js", () => ({
@@ -41,6 +43,7 @@ function project() {
   writeFileSync(join(dir, "notes.html"), "N");
   historyDeps.historyRoot = tempDir("hf-history-cli-root-");
   historyDeps.findServer = async () => null;
+  historyDeps.turnIdleMs = 60_000;
   const write = (path: string, text: string) => writeFileSync(join(dir, path), text);
   const read = (path: string) => readFileSync(join(dir, path), "utf-8");
   async function hf(...args: string[]) {
@@ -139,6 +142,19 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     );
   });
 
+  it("a turn left open ends after the idle limit: a person's later edit stays theirs through undo of the turn", async () => {
+    const { write, read, hf, personWrites } = await setup();
+    historyDeps.turnIdleMs = 300;
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    write("index.html", "A2");
+    await pause(600);
+    await personWrites("notes.html", "N2");
+
+    const undo = await hf("undo", "--who", "claude");
+    expect(undo.code, undo.err).toBe(0);
+    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N2"]);
+  });
+
   it("undo by one agent leaves another agent's open turn open", async () => {
     const { write, read, json, hf, turn } = await setup();
     await turn("gemini", "Notes", "notes.html", "N2");
@@ -235,6 +251,7 @@ describe("hyperframes history, one owner", () => {
       who: { kind: "agent", name: "claude" },
       label: "Retitle",
       startedAt: 1,
+      lastWriteAt: Date.now(),
     };
     writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(turn));
     write("index.html", "A2");
@@ -242,8 +259,28 @@ describe("hyperframes history, one owner", () => {
     expect((await json("end")).entry).toMatchObject({
       id: "turn-1",
       who: turn.who,
-      files: [{ path: "index.html" }],
+      files: ["index.html"],
     });
+  });
+
+  it("a turn whose writes come closer together than the idle limit stays the agent's past it", async () => {
+    const { write, json, hf } = project();
+    await hf();
+    historyDeps.turnIdleMs = 300;
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    await pause(200);
+    write("index.html", "2");
+    await hf(); // a command mid-turn files the turn so far
+    for (const path of ["notes.html", "extra.html"]) {
+      await pause(200);
+      write(path, "2");
+    }
+    await hf("end");
+    const entries = (await json()).entries.reverse();
+    expect(entries.map((entry: { who: object; files: string[] }) => [entry.who, entry.files])).toEqual([
+      [{ kind: "agent", name: "claude" }, ["index.html"]],
+      [{ kind: "agent", name: "claude" }, ["extra.html", "notes.html"]],
+    ]);
   });
 
   it("a CLI run waits while another process holds the history, instead of forking its log", async () => {
@@ -277,4 +314,58 @@ describe("hyperframes history, one owner", () => {
       .map((row) => JSON.parse(row).type);
     expect(types).toEqual(["baseline", "entry"]);
   });
+});
+
+describe("hyperframes history, refusals", () => {
+  it("undo --who refuses once the agent's newest entry is already undone", async () => {
+    const { read, hf, turn } = project();
+    await hf();
+    await turn("claude", "Retitle", "index.html", "A2");
+    expect((await hf("undo", "--who", "claude")).code).toBe(0);
+
+    const again = await hf("undo", "--who", "claude");
+    expect([again.code, again.err]).toEqual([2, "claude has no entry still in effect"]);
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("restore refuses a ref that is neither an entry nor a date, instead of reading it as a time", async () => {
+    const { read, write, hf, turn } = project();
+    await hf();
+    await turn("claude", "Retitle", "index.html", "A2");
+    write("added.html", "new");
+
+    const refused = await hf("restore", "1");
+    expect([refused.code, refused.err]).toEqual([2, 'No entry "1" in this history']);
+    expect(read("added.html")).toBe("new");
+  });
+
+  it("--json refusals go to stdout as {ok: false, error}", async () => {
+    const { hf } = project();
+    await hf();
+    const refused = await hf("show", "zzzz", "--json");
+    expect(refused.code).toBe(2);
+    expect(JSON.parse(refused.out)).toMatchObject({ ok: false, error: 'No entry "zzzz" in this history' });
+    expect((await hf("--limit", "0")).code).toBe(2);
+  });
+
+  it("refuses a folder with no index.html, and records nothing for it", async () => {
+    project();
+    const folder = tempDir("hf-history-cli-not-a-project-");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(runCommand(historyCommand, { rawArgs: ["--dir", folder] })).rejects.toThrow();
+    error.mockRestore();
+    expect(readdirSync(historyDeps.historyRoot)).toEqual([]);
+  });
+
+  it("exits 2 with the holder's pid when another process keeps the history past the wait", async () => {
+    const { dir, hf } = project();
+    await openProjectHistory({ projectDir: dir, historyRoot: historyDeps.historyRoot }).then(
+      (held) => cleanup.push(() => held.close()),
+    );
+    const busy = await hf();
+    expect([busy.code, busy.err]).toEqual([
+      2,
+      `This project's history is open in another process (pid ${process.pid}).`,
+    ]);
+  }, 15_000);
 });

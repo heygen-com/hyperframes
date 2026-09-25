@@ -1,12 +1,14 @@
 import type { Context, Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { createWriteToken } from "../helpers/fileVersion.js";
-import type { HistoryWindow, ProjectHistory } from "../history/projectHistory.js";
-import type { HistoryWho } from "../history/historyLog.js";
+import {
+  MAX_WINDOW_IDLE_MS,
+  type HistoryWindow,
+  type ProjectHistory,
+} from "../history/projectHistory.js";
+import { stepTarget, type HistoryEntry, type HistoryWho } from "../history/historyLog.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
-/** No edit waits this long between writes. */
-const MAX_WINDOW_IDLE_MS = 10 * 60_000;
 
 async function historyOf(adapter: StudioApiAdapter, c: Context): Promise<ProjectHistory | null> {
   const project = await adapter.resolveProject(c.req.param("id") ?? "");

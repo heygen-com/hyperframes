@@ -80,13 +80,14 @@ describe("history routes", () => {
 
   it("serve a kept file's bytes by hash, and nothing for a hash that is not one", async () => {
     const { projectDir, call } = await demoProject();
+    const outsideHistory = `${"../".repeat(40)}${projectDir.slice(1)}/index.html`;
     const { windowId } = await (await call("/window", { label: "Edit" })).json();
     writeFileSync(join(projectDir, "index.html"), "B");
     const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
 
     expect(await (await call(`/blob/${entry.files[0].before}`)).text()).toBe("A");
     expect((await call(`/blob/${"0".repeat(64)}`)).status).toBe(404);
-    expect((await call("/blob/..%2F..%2Fetc")).status).toBe(404);
+    expect((await call(`/blob/${encodeURIComponent(outsideHistory)}`)).status).toBe(404);
   });
 
   it("name what Cmd+Z and Cmd+Shift+Z would revert next", async () => {

@@ -7,6 +7,7 @@ import { defineCommand, type ArgsDef } from "citty";
 import {
   DEFAULT_HISTORY_ROOT,
   HISTORY_START,
+  MAX_WINDOW_IDLE_MS,
   openProjectHistory,
   type HistoryEntry,
   type HistoryListItem,
@@ -17,7 +18,11 @@ import type { Example } from "./_examples.js";
 import { trackHistoryAction } from "../telemetry/events.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { resolveProject } from "../utils/project.js";
-import { findPreviewServerForProject, studioApiUrl } from "../utils/studioSelectionClient.js";
+import {
+  AmbiguousPreviewServerError,
+  findPreviewServerForProject,
+  studioApiUrl,
+} from "../utils/studioSelectionClient.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export const examples: Example[] = [
@@ -34,13 +39,14 @@ export const examples: Example[] = [
 
 type UndoMode = "just-this" | "back-to-before";
 
-/** An agent's turn: its writes until `end` are one entry of its own. */
+/** An agent's turn: its writes until `end`, or until the idle limit passes without one, are one entry of its own. */
 interface Turn {
   via: "preview" | "direct";
   id: string;
   who: HistoryWho;
   label: string;
   startedAt: number;
+  lastWriteAt: number;
 }
 
 /** Whoever holds the project's history: a running preview (over its routes) or this process (the engine). */
@@ -61,10 +67,10 @@ interface Owner {
 export const historyDeps = {
   historyRoot: DEFAULT_HISTORY_ROOT,
   findServer: (projectDir: string) => findPreviewServerForProject(projectDir),
+  /** A turn with no write for this long has ended, through a preview or not. */
+  turnIdleMs: MAX_WINDOW_IDLE_MS,
 };
 
-/** The preview's window cap: a turn with no write for this long ends by itself. */
-const TURN_IDLE_MS = 10 * 60_000;
 const YOU: HistoryWho = { kind: "person", name: "You" };
 
 class Refusal extends Error {}
@@ -108,7 +114,7 @@ function previewOwner(route: (path: string) => string): Owner {
     restore: (point, who) => json("/restore", { point, who }),
     pin: async (id, pinned) => void (await json("/pin", { entryId: id, pinned })),
     begin: async (who, label) =>
-      (await json("/window", { who, label, idleMs: TURN_IDLE_MS })).windowId,
+      (await json("/window", { who, label, idleMs: historyDeps.turnIdleMs })).windowId,
     // A preview restarted since begin committed the window on its way down.
     end: (id) =>
       json(`/window/${id}/close`, {})
@@ -122,8 +128,17 @@ async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner
   const history = await openProjectHistory({
     projectDir,
     historyRoot: historyDeps.historyRoot,
-    // A turn begun through a preview that has since stopped is still the agent's.
-    ...(turn && { closedWindow: turn }),
+    // A turn begun through a preview that has since stopped is still the agent's, until its idle limit.
+    ...(turn && {
+      closedWindow: {
+        id: turn.id,
+        who: turn.who,
+        label: turn.label,
+        startedAt: turn.startedAt,
+        lastWriteAt: turn.lastWriteAt,
+        idleMs: historyDeps.turnIdleMs,
+      },
+    }),
   });
   return {
     via: "direct",
@@ -145,31 +160,34 @@ async function connect(projectDir: string, turn: Turn | null): Promise<Owner> {
   const server = await historyDeps.findServer(projectDir);
   if (server) {
     const route = (path: string) => studioApiUrl(server, `history${path}`);
-    // 404: a preview that keeps no history.
-    if ((await fetch(route(""))).status !== 404) return previewOwner(route);
+    // 404, or gone since the scan: no preview keeps this history, and the engine's lock guards the rest.
+    const status = await fetch(route("")).then((response) => response.status, () => 404);
+    if (status !== 404) return previewOwner(route);
   }
   return directOwner(projectDir, turn);
 }
 
-/**
- * Runs `task` with the project's history. A direct open files an open turn's writes so far as its entry, so the
- * turn goes on under a fresh id. ponytail: with no preview, a command mid-turn splits the turn in two entries.
- */
+/** Runs `task` with the project's history. ponytail: with no preview, a command mid-turn splits the turn in two. */
 async function withOwner<T>(
   action: string,
   dir: string | undefined,
   task: (owner: Owner, turn: Turn | null, projectDir: string) => Promise<T>,
 ): Promise<T> {
-  const { dir: projectDir } = resolveProject(dir, { requireIndex: false });
+  const { dir: projectDir } = resolveProject(dir);
   const turn = readTurn(projectDir);
   const owner = await connect(projectDir, turn);
   trackHistoryAction({ action, via: owner.via });
   try {
     return await task(owner, turn, projectDir);
   } finally {
+    // This open filed the turn so far under its id; the turn goes on under a fresh one, from its last write.
+    const direct = owner.via === "direct" && turn;
+    const kept = direct && (await owner.list()).find((entry) => entry.id === turn.id);
     await owner.close();
-    if (owner.via === "direct" && turn && readTurn(projectDir)?.id === turn.id)
-      writeTurn(projectDir, { ...turn, via: "direct", id: randomUUID() });
+    if (direct && readTurn(projectDir)?.id === turn.id) {
+      const lastWriteAt = kept ? kept.endedAt : turn.lastWriteAt;
+      writeTurn(projectDir, { ...turn, via: "direct", id: randomUUID(), lastWriteAt });
+    }
   }
 }
 
@@ -192,10 +210,14 @@ function entryOf(entries: readonly HistoryListItem[], ref: string): HistoryListI
   );
 }
 
-/** A time, when `ref` is no entry id (a date like 2026-09-24 also reads as hex). */
+/** A local ISO date or date-time, when `ref` is no entry id (a date like 2026-09-24 also reads as hex). */
 function timeOf(entries: readonly HistoryListItem[], ref: string): number | null {
-  const time = Date.parse(ref);
-  return Number.isNaN(time) || entries.some((entry) => entry.id.startsWith(ref)) ? null : time;
+  if (!/^\d{4}-\d\d-\d\d(T.+)?$/.test(ref) || entries.some((entry) => entry.id.startsWith(ref)))
+    return null;
+  // A bare date would parse as UTC midnight; with a time it parses as local.
+  const time = Date.parse(ref.includes("T") ? ref : `${ref}T00:00`);
+  if (Number.isNaN(time)) throw new Refusal(`"${ref}" is not a date`);
+  return time;
 }
 
 /** A point is START, an entry id, or a time (the files right after the newest entry by then). */
@@ -231,16 +253,19 @@ function line(entry: HistoryListItem | HistoryEntry): string {
 }
 
 /** The agreed entry shape shared with the Desktop tools: files as paths. */
-const publicEntry = (entry: HistoryListItem) => ({
+const publicEntry = (entry: HistoryEntry & Partial<HistoryListItem>) => ({
   id: entry.id,
   who: entry.who,
   label: entry.label,
   startedAt: entry.startedAt,
   endedAt: entry.endedAt,
   files: entry.files.map((file) => file.path),
-  undone: entry.undone,
-  pinned: entry.pinned,
+  undone: entry.undone ?? false,
+  pinned: entry.pinned ?? false,
 });
+
+const changeOf = (file: HistoryEntry["files"][number]) =>
+  file.before === null ? "added" : file.after === null ? "deleted" : "modified";
 
 function print(json: boolean, data: object, text: string): void {
   console.log(json ? JSON.stringify(withMeta(data), null, 2) : text);
@@ -317,7 +342,7 @@ async function runUndo(args: {
     if (result.ok)
       return print(
         args.json,
-        result,
+        { ok: true, entry: result.entry && publicEntry(result.entry) },
         result.entry ? `Undid ${short(entry.id)}: ${line(result.entry)}` : "Nothing to undo.",
       );
     setCommandExitCode(2);
@@ -326,20 +351,21 @@ async function runUndo(args: {
   });
 }
 
-/** Refusals are the user's to fix: one line (or JSON) and exit 2, never a stack. */
+/** Refusals are the user's to fix: one line on stderr (or JSON on stdout) and exit 2, never a stack. */
 function guarded<A>(run: (args: A) => Promise<void>) {
   return async (args: A) => {
     try {
       await run(args);
     } catch (error) {
-      if (!(error instanceof Refusal) && (error as Error).name !== "HistoryBusyError") throw error;
+      const refused =
+        error instanceof Refusal ||
+        error instanceof AmbiguousPreviewServerError ||
+        (error as Error).name === "HistoryBusyError";
+      if (!refused) throw error;
       setCommandExitCode(2);
-      const json = (args as { json?: boolean }).json;
-      console.error(
-        json
-          ? JSON.stringify({ ok: false, reason: (error as Error).message })
-          : (error as Error).message,
-      );
+      const { message } = error as Error;
+      if ((args as { json?: boolean }).json) print(true, { ok: false, error: message }, message);
+      else console.error(message);
     }
   };
 }
@@ -374,6 +400,7 @@ const listEntries = async (args: {
     const all = await owner.list();
     const picked = args.since ? since(all, args.since, whoOf(args.who)) : all;
     const limit = Number(args.limit ?? 20);
+    if (!Number.isInteger(limit) || limit < 1) throw new Refusal("--limit takes a whole number above 0");
     const shown = picked.slice(-limit).reverse();
     const more = picked.length - shown.length;
     const text = shown.map(line).join("\n") || "No changes recorded.";
@@ -402,12 +429,14 @@ export default defineCommand({
         (args) =>
           withOwner("show", args.dir, async (owner) => {
             const entry = entryOf(await owner.list(), args.ref);
-            const marks = entry.files.map(
-              (file) =>
-                `  ${file.before === null ? "A" : file.after === null ? "D" : "M"} ${file.path}`,
+            const changes = entry.files.map((file) => ({ path: file.path, change: changeOf(file) }));
+            const diff = args.diff ? await textDiff(owner, entry) : undefined;
+            const marks = changes.map((file) => `  ${file.change[0]!.toUpperCase()} ${file.path}`);
+            print(
+              args.json,
+              { entry: publicEntry(entry), changes, ...(diff !== undefined && { diff }) },
+              `${line(entry)}\n${diff ?? marks.join("\n")}`,
             );
-            const body = args.diff ? await textDiff(owner, entry) : marks.join("\n");
-            print(args.json, { entry }, `${line(entry)}\n${body}`);
           }),
       ),
     undo: () =>
@@ -433,7 +462,11 @@ export default defineCommand({
               pointOf(await owner.list(), args.ref),
               whoOf(args.who),
             );
-            print(args.json, { entry }, entry ? `Restored: ${line(entry)}` : "Already there.");
+            print(
+              args.json,
+              { entry: entry && publicEntry(entry) },
+              entry ? `Restored: ${line(entry)}` : "Already there.",
+            );
           }),
       ),
     peek: () =>
@@ -480,12 +513,14 @@ export default defineCommand({
             if (turn) await owner.end(turn.id);
             const who: HistoryWho = { kind: "agent", name: args.who };
             const id = await owner.begin(who, args.label);
+            const startedAt = Date.now();
             writeTurn(projectDir, {
               via: owner.via,
               id,
               who,
               label: args.label,
-              startedAt: Date.now(),
+              startedAt,
+              lastWriteAt: startedAt,
             });
             print(args.json, { entryId: id }, short(id));
           }),
@@ -496,7 +531,11 @@ export default defineCommand({
           if (!turn) throw new Refusal("No turn is open; start one with history begin");
           const entry = await owner.end(turn.id);
           writeTurn(projectDir, null);
-          print(args.json, { entry }, entry ? line(entry) : "Nothing changed in this turn.");
+          print(
+            args.json,
+            { entry: entry && publicEntry(entry) },
+            entry ? line(entry) : "Nothing changed in this turn.",
+          );
         }),
       ),
   },
