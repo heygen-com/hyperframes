@@ -7,6 +7,7 @@ import {
   parseCommit,
   renderCommitBullet,
   renderMdxCommitBullet,
+  renderTags,
   shouldSkipCommit,
   type RawCommit,
 } from "./draft-changelog.ts";
@@ -147,5 +148,18 @@ describe("skipped release tags", () => {
 
   it("accepts a baseline with or without the v prefix", () => {
     assert.deepEqual(findSkippedReleaseTags(TAGS, "0.8.50", "0.8.52"), ["0.8.51"]);
+  });
+});
+
+describe("release tags", () => {
+  it("names Release once, even when a commit is scoped to the release itself", () => {
+    const commits = [
+      "fix(studio-server): inject page tags (#1)",
+      "docs(release): list the changes v1.2.3 also shipped (#2)",
+      "fix(core): wait for a loading video (#3)",
+      "fix(studio): open at Fit (#4)",
+    ].map((subject) => parseCommit(commit(subject)));
+
+    assert.deepEqual(renderTags(commits), ["Release", "Studio Server", "Core", "Studio"]);
   });
 });
