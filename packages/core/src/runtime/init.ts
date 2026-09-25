@@ -643,6 +643,13 @@ export function initSandboxRuntimeModular(): void {
       // flow so the preview matches the rendered video, which never stamps
       // (production renders run as the top-level page, not in an iframe).
       if (el.hasAttribute("data-hf-autostamped")) continue;
+      // A clip that has not started is display:none, which measures as "auto". Measure it
+      // shown, so a clip starting later lays out like one showing at load.
+      const hiddenPriority =
+        el.style.getPropertyValue("display") === "none"
+          ? el.style.getPropertyPriority("display")
+          : null;
+      if (hiddenPriority !== null) el.style.removeProperty("display");
       const hasLegacyAnchoredDefaults =
         (el.style.top === "0px" || el.style.top === "0") &&
         (el.style.left === "0px" || el.style.left === "0") &&
@@ -687,22 +694,8 @@ export function initSandboxRuntimeModular(): void {
       if (shouldForceAbsolute) {
         el.style.position = "absolute";
       }
-      const hasExplicitVerticalAnchor =
-        Boolean(el.style.top) ||
-        Boolean(el.style.bottom) ||
-        computed.top !== "auto" ||
-        computed.bottom !== "auto";
-      if (!hasExplicitVerticalAnchor) {
-        el.style.top = "0";
-      }
-      const hasExplicitHorizontalAnchor =
-        Boolean(el.style.left) ||
-        Boolean(el.style.right) ||
-        computed.left !== "auto" ||
-        computed.right !== "auto";
-      if (!hasExplicitHorizontalAnchor) {
-        el.style.left = "0";
-      }
+      // No top/left is set: an absolute clip keeps the spot its CSS gives it (a flex-centred
+      // title stays centred).
       if (tag !== "audio") {
         const forcedWidth = parseDimensionPx(el.getAttribute("data-width"));
         const forcedHeight = parseDimensionPx(el.getAttribute("data-height"));
@@ -723,6 +716,7 @@ export function initSandboxRuntimeModular(): void {
           el.style.height = "100%";
         }
       }
+      if (hiddenPriority !== null) el.style.setProperty("display", "none", hiddenPriority);
     }
   };
 

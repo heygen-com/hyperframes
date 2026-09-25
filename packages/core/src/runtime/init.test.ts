@@ -3908,7 +3908,7 @@ describe("initSandboxRuntimeModular", () => {
   // so the design panel can discover them — those must NOT be force-absolutized,
   // or the layout collapses (footer shrink-wraps, `space-between` clusters). The
   // marker `data-hf-autostamped` distinguishes them; these tests pin both halves.
-  describe("applyClipLayout: runtime-stamped clips stay in document flow", () => {
+  describe("applyClipLayout", () => {
     const makeRoot = () => {
       const root = document.createElement("div");
       root.setAttribute("data-composition-id", "main");
@@ -3946,7 +3946,7 @@ describe("initSandboxRuntimeModular", () => {
       }) as typeof window.getComputedStyle);
     };
 
-    it("force-absolutizes an authored data-start clip (baseline behavior preserved)", () => {
+    it("force-absolutizes an authored data-start clip and leaves its position to CSS", () => {
       const root = makeRoot();
       const clip = document.createElement("div");
       clip.setAttribute("data-start", "0"); // authored clip, no autostamp marker
@@ -3963,8 +3963,71 @@ describe("initSandboxRuntimeModular", () => {
       initSandboxRuntimeModular();
 
       expect(clip.style.position).toBe("absolute");
-      expect(clip.style.top).toBe("0px");
-      expect(clip.style.left).toBe("0px");
+      expect(clip.style.top).toBe("");
+      expect(clip.style.left).toBe("");
+    });
+
+    // A browser reports "auto" for every box value of a display:none element and pixels once
+    // it shows. jsdom does no layout, so model that for the clip under test.
+    const modelBrowserLayout = (target: HTMLElement, shown: { width: string; height: string }) => {
+      const real = window.getComputedStyle.bind(window);
+      vi.spyOn(window, "getComputedStyle").mockImplementation(((
+        el: Element,
+        pseudo?: string | null,
+      ) => {
+        const style = real(el as Element, pseudo ?? undefined);
+        if (el !== target) return style;
+        const box = (): Record<string, string> => {
+          if (target.style.display === "none") {
+            return { width: "auto", height: "auto", top: "auto", left: "auto" };
+          }
+          return { ...shown, top: "499px", left: "784px" };
+        };
+        return new Proxy(style, {
+          get(t, prop) {
+            if (prop === "position") return target.style.position || "static";
+            if (prop === "bottom" || prop === "right") return "auto";
+            if (typeof prop === "string" && prop in box()) return box()[prop];
+            const value = Reflect.get(t, prop);
+            return typeof value === "function" ? value.bind(t) : value;
+          },
+        }) as CSSStyleDeclaration;
+      }) as typeof window.getComputedStyle);
+    };
+
+    it("keeps a clip that starts later where its CSS puts it (flex-centred title)", () => {
+      const root = makeRoot();
+      root.style.cssText = "display:flex;align-items:center;justify-content:center";
+      const title = document.createElement("h1");
+      title.setAttribute("data-start", "0.88");
+      title.setAttribute("data-duration", "5");
+      title.textContent = "Agent one";
+      root.appendChild(title);
+      modelBrowserLayout(title, { width: "352px", height: "82px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(title.style.display).toBe("none");
+      expect(title.style.position).toBe("absolute");
+      expect(title.style.top).toBe("");
+      expect(title.style.left).toBe("");
+    });
+
+    it("sizes an empty clip that starts later like one showing at load", () => {
+      const root = makeRoot();
+      const card = document.createElement("div");
+      card.setAttribute("data-start", "1");
+      card.setAttribute("data-duration", "5");
+      root.appendChild(card);
+      modelBrowserLayout(card, { width: "0px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(card.style.display).toBe("none");
+      expect(card.style.width).toBe("100%");
+      expect(card.style.height).toBe("100%");
     });
 
     it("leaves a runtime-stamped flow child untouched so the layout is preserved", () => {
