@@ -77,24 +77,17 @@ export interface HistoryWindow {
 
 export interface ProjectHistory {
   readonly projectId: string;
-  /**
-   * Writes until close() are this writer's, as one entry whose id is the window's. Another writer's claim that cuts
-   * a file out of the window commits the window's writes so far as an entry of their own (a fresh id); close()
-   * returns the last entry the window made. A window with no write for `idleMs` (default maxGroupMs) ends by
-   * itself. ponytail: overlapping windows give a write to the newest.
-   */
+  /** Writes until close() are one entry with the window's id; a claim cutting a file out commits that file's part
+   * first (fresh id), returned by close() if nothing else remained. Idle windows end; overlaps go to the newest. */
   beginWindow(
     who: HistoryWho,
     label: string,
     options?: { idleMs?: number },
   ): Promise<HistoryWindow>;
   /**
-   * For a writer that records after writing (Studio): takes in every write so far and moves the not yet committed
-   * changes to `paths`, filed outside or in another writer's open window, into one entry of `who`'s. With
-   * `overwrote`, a change that began before the claimer's write keeps that earlier part as its writer's. Claims with
-   * the same coalesceKey merge until a claim with another key, `idleMs` (default quietMs) without one, or any
-   * operation. Null when nothing was claimed, or when a coalescing claim's writes net to nothing (a drag back to
-   * where it started).
+   * For a writer that records after writing (Studio): moves the uncommitted changes to `paths` into one entry of
+   * `who`'s, each cut at the `overwrote` version so earlier parts stay their writer's. Same-key claims merge until
+   * another key, `idleMs` idle, or any operation. Null when nothing was claimed or a drag nets to nothing.
    */
   claim(
     who: HistoryWho,
@@ -105,12 +98,9 @@ export interface ProjectHistory {
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
   list(): HistoryListItem[];
-  /**
-   * Cmd+Z (back) and Cmd+Shift+Z (forward), whoever made the change. Operations given a `writeToken` label their
-   * file writes with it, so the watcher's echo reads as the caller's own write.
-   */
+  /** Cmd+Z (back) and Cmd+Shift+Z (forward), whoever made the change; `writeToken` labels the writes' echo. */
   step(direction: "back" | "forward", who: HistoryWho, options?: Writing): Promise<HistoryResult>;
-  /** The entry the next step reverts, as of the last write taken in. */
+  /** The entry the next step reverts, as of the last scan (a step scans first). */
   next(direction: "back" | "forward"): HistoryEntry | undefined;
   /** A conflict (a file changed since) returns the choice; pass `mode` to take one. */
   undo(
@@ -161,10 +151,7 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
 
 const sameWho = (a: HistoryWho, b: HistoryWho) => a.kind === b.kind && a.name === b.name;
 
-/**
- * Cuts a change at `at`, the content the claimer overwrote: what came before it stays [0], the rest is claimed [1].
- * `at` unknown, or its bytes not kept, claims the whole change.
- */
+/** Cuts a change at the overwritten `at`: [kept before it, claimed after]; `at` unknown or not kept claims all. */
 function splitAt(
   change: HistoryFileChange,
   at: string | undefined,
@@ -195,7 +182,6 @@ class Engine {
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, or an operation commits it. */
   claimed: { group: Group; key: string; timer: NodeJS.Timeout } | null = null;
-  /** The running operation's write token (operations run one at a time). */
   writeToken: string | undefined;
   quietTimer: NodeJS.Timeout | undefined;
   maxTimer: NodeJS.Timeout | undefined;
@@ -325,11 +311,7 @@ class Engine {
     addChange(window ?? this.outsideGroup(), path, before, after);
   }
 
-  /**
-   * ponytail: a claim cuts each change at the version the claimer says it overwrote, so an earlier write stays its
-   * writer's. Another writer's write between Studio's write and the sweep that saw it (milliseconds) has no kept
-   * version to cut at and folds into Studio's entry. Per-write tokens would split them.
-   */
+  /** ponytail: another's write between Studio's write and its sweep folds into Studio's entry (per-write tokens). */
   async claimNow(
     who: HistoryWho,
     label: string,
@@ -337,43 +319,50 @@ class Engine {
     { coalesceKey, idleMs, overwrote = {} }: ClaimOptions,
   ): Promise<{ id: string } | null> {
     await this.sweep();
-    const { taken, split } = this.takeClaimed(who, paths, overwrote);
+    const { taken, cut } = this.takeClaimed(who, paths, overwrote);
     if (!taken.length) {
       // A claim under another key still ends the held one.
       if (coalesceKey !== this.claimed?.key) await this.commitClaim();
       return null;
     }
-    // What happened outside, or in a window cut by this claim, before this write is older than it: logged first.
-    await this.commitOutside();
-    for (const window of split) await this.commitSoFar(window);
-    const group = await this.claimGroup(who, label, coalesceKey);
+    const held = this.heldFor(coalesceKey, taken);
+    if (!held) await this.commitClaim();
+    await this.commitOlder(cut);
+    const group = held ?? this.newGroup(who, label);
     for (const change of taken) addChange(group, change.path, change.before, change.after);
     if (coalesceKey) return this.holdClaim(group, coalesceKey, idleMs);
     const entry = await this.commit(group);
     return entry && { id: entry.id };
   }
 
-  /** The held claim when the key matches; otherwise it is committed and a new group starts. */
-  async claimGroup(who: HistoryWho, label: string, key: string | undefined): Promise<Group> {
-    if (key && this.claimed?.key === key) return this.claimed.group;
-    await this.commitClaim();
-    return this.newGroup(who, label);
+  async commitOlder(cut: Map<Group, string[]>): Promise<void> {
+    if (this.outside) cut.delete(this.outside);
+    await this.commitOutside();
+    for (const [window, paths] of cut) await this.commitCut(window, paths);
   }
 
-  /** A path as the log names it: project-relative, forward slashes. */
+  /** The held claim `taken` continues: same key, each change starting where the claim's own left off (no one between). */
+  heldFor(key: string | undefined, taken: readonly HistoryFileChange[]): Group | null {
+    const group = key && this.claimed?.key === key ? this.claimed.group : null;
+    const after = (path: string, before: string | null) => {
+      const own = group?.changes.get(path);
+      return own ? own.after : before;
+    };
+    return group && taken.every((change) => after(change.path, change.before) === change.before)
+      ? group
+      : null;
+  }
+
   logPath(path: string): string {
     return relative(this.dir, resolve(this.dir, path)).split(sep).join("/");
   }
 
-  /**
-   * Removes and returns the uncommitted changes to `paths` (project-relative or absolute) filed outside or in another
-   * writer's open window, each cut at the version `who` overwrote; `split` names the windows that keep a part.
-   */
+  /** Takes `paths`' uncommitted changes from others, cut at what `who` overwrote; `cut`: paths each group keeps. */
   takeClaimed(
     who: HistoryWho,
     paths: readonly string[],
     overwrote: Readonly<Record<string, string>>,
-  ): { taken: HistoryFileChange[]; split: Group[] } {
+  ): { taken: HistoryFileChange[]; cut: Map<Group, string[]> } {
     const wanted = new Set(paths.map((path) => this.logPath(path)));
     const at = new Map(
       Object.entries(overwrote).map(([path, version]) => [
@@ -384,19 +373,18 @@ class Engine {
     const others = this.windows.filter((open) => !sameWho(open.who, who));
     const groups = this.outside ? [this.outside, ...others] : others;
     const taken: HistoryFileChange[] = [];
-    const split = new Set<Group>();
+    const cut = new Map<Group, string[]>();
     for (const group of groups) {
       for (const change of [...group.changes.values()]) {
         if (!wanted.has(change.path)) continue;
         const [kept, claimed] = this.cutOut(group, change, at.get(change.path));
         if (claimed) taken.push(claimed);
-        if (kept && claimed && group !== this.outside) split.add(group);
+        if (kept && claimed) cut.set(group, [...(cut.get(group) ?? []), change.path]);
       }
     }
-    return { taken, split: [...split] };
+    return { taken, cut };
   }
 
-  /** Cuts `change` in `group` at `cut`: the part before stays in the group; both parts are returned. */
   cutOut(group: Group, change: HistoryFileChange, cut: string | undefined) {
     const [kept, claimed] = splitAt(change, cut, cut !== undefined && this.blobs.has(cut));
     group.changes.delete(change.path);
@@ -404,14 +392,15 @@ class Engine {
     return [kept, claimed] as const;
   }
 
-  /**
-   * Commits a window's writes so far as an entry of its own and keeps the window open. A window holds one change per
-   * file, so without this the writer's next write to a file cut by a claim would span the claimer's edit.
-   */
-  async commitSoFar(window: Group): Promise<void> {
-    window.entry = await this.commit({ ...window, id: randomUUID() });
-    window.changes = new Map();
-    window.startedAt = this.now();
+  /** Commits the window's cut `paths` as their own entry, other files staying: a window holds one change per file,
+   * so the writer's next write to a cut file would otherwise span the claimer's edit. */
+  async commitCut(window: Group, paths: readonly string[]): Promise<void> {
+    const part = { ...this.newGroup(window.who, window.label), startedAt: window.startedAt };
+    for (const path of paths) {
+      part.changes.set(path, window.changes.get(path)!);
+      window.changes.delete(path);
+    }
+    window.entry = await this.commit(part);
   }
 
   holdClaim(
@@ -550,7 +539,6 @@ class Engine {
     if (!this.windows.includes(window)) return window.entry ?? null;
     clearTimeout(window.idleTimer);
     this.windows = this.windows.filter((open) => open !== window);
-    // A window cut by a claim may have nothing after the cut: it became the entry committed then.
     window.entry = (await this.commit(window)) ?? window.entry ?? null;
     return window.entry;
   }
@@ -631,15 +619,12 @@ class Engine {
     };
   }
 
-  /** The entry's files that no longer hold what it left. */
   movedOn(entry: HistoryEntry): HistoryFileChange[] {
     return entry.files.filter((file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after);
   }
 
-  /**
-   * Back reverts the newest change in effect, unless its files moved on under an edit that ended before it (a
-   * person's edit during an agent's turn): then the newest such edit, if it still applies, so Cmd+Z cannot jam.
-   */
+  /** Back reverts the newest change in effect, unless its files moved on under an earlier-ending edit (a held drag
+   * committed after an agent's turn): then that edit, if it still applies. */
   next(direction: "back" | "forward"): HistoryEntry | undefined {
     const top = stepTarget(this.log.entries, direction);
     const moved = new Set(top && direction === "back" ? this.movedOn(top).map((f) => f.path) : []);

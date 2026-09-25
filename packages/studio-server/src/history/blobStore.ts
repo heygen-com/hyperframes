@@ -13,7 +13,6 @@ export interface BlobStore {
   writeTo(hash: string, absPath: string): Promise<void>;
   bytes(): number;
   size(hash: string): number;
-  /** Deletes every blob not in `keep`. */
   prune(keep: ReadonlySet<string>): Promise<void>;
 }
 
