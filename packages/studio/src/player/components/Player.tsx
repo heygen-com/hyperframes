@@ -58,7 +58,6 @@ function getShaderTransitionLoading(event: Event): boolean | null {
 }
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
-/** A preview stuck without an error stops holding back editing, lint and thumbnails after this. */
 const PREVIEW_BOOT_DEADLINE_MS = 5000;
 const DEFAULT_PREVIEW_ERROR = "The composition preview did not become ready.";
 
@@ -433,8 +432,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const firstFrameShown =
       loaded && painted && !compositionLoading && !shaderTransitionLoading && !previewError;
     const readyToShow = firstFrameShown && !assetsLoading;
-    // The first frame is up: work that waited on the boot (editing session, lint, thumbnails) starts
-    // while media finishes buffering, rather than seconds later at the boot deadline.
+    // Work waiting on the boot starts at the first frame, while media still buffers.
     useEffect(() => {
       if (firstFrameShown) usePlayerStore.getState().markPreviewBooted();
     }, [firstFrameShown]);

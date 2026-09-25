@@ -38,15 +38,12 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
   >([]);
   const autoLintRanRef = useRef(false);
 
-  // A background lint is a separate process on the server; it must not compete with the boot.
   const runBackgroundLint = useCallback(async () => {
     if (!projectId) return;
     if (!isPreviewBooted(projectId) && !(await whenPreviewBooted(projectId))) return;
     try {
       setBackgroundFindings(await fetchLintFindings(projectId));
-    } catch {
-      // Keeps the last findings; a manual lint reports the error.
-    }
+    } catch {}
   }, [projectId]);
 
   const handleLint = useCallback(async () => {

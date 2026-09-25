@@ -219,7 +219,6 @@ export function useShadowPreviewReload({
     shadowIframeRef.current = null;
     isRefreshingRef.current = false;
     pendingSeekRef.current = null;
-    // The new composition's preview isn't playable yet; its load step marks it ready again.
     usePlayerStore.getState().setTimelineReady(false);
     setPreviewSlots(planShadowDiscard);
     thumbnailScheduler.setPreviewReloading(false);

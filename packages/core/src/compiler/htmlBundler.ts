@@ -797,11 +797,6 @@ export interface BundleOptions {
    * inline a LUT that this option has already excluded.
    */
   inlineAssets?: boolean;
-  /**
-   * Lint the compiled HTML and warn when it breaks the HyperFrames contract. Default: true.
-   * A caller that lints the project on its own path (Studio preview) sets false: on a large
-   * composition this lint costs seconds per bundle.
-   */
   staticGuard?: boolean;
 }
 

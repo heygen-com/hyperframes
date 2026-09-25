@@ -390,7 +390,6 @@ export const CompositionsTab = memo(function CompositionsTab({
   lintFindingsByFile,
 }: CompositionsTabProps) {
   const thumbnailRevisions = usePlayerStore((state) => state.thumbnailRevisions);
-  // A card thumbnail is a server render of a whole composition; it waits for the live preview.
   const previewBooted = usePlayerStore((state) => state.previewBooted);
   if (compositions.length === 0) {
     return (

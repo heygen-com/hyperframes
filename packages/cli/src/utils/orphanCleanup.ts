@@ -7,19 +7,9 @@ import { terminateProcessTree, windowsProcessTreeKillArgs } from "./processTree.
 export { windowsProcessTreeKillArgs };
 
 /**
- * Find and kill orphaned Chrome processes from previous crashed sessions.
- * Targets both chrome-headless-shell (production/CI) and Google Chrome
- * launched by Puppeteer (dev mode). Puppeteer Chrome is identified by the
- * `puppeteer_dev_chrome_profile` marker in its user-data-dir argument.
- *
- * An orphan is a process whose PPID=1 (reparented to init/launchd after
- * its parent died). We kill the orphan's entire subtree so child helper
- * processes (GPU, renderer, network, etc.) are also cleaned up.
- *
- * Scoped to the current user via `pgrep -u` to avoid touching other
- * users' processes on shared machines.
- *
- * Returns the count of killed process trees.
+ * Kill orphaned Chrome processes (PPID 1: their parent died) left by crashed sessions, headless shell or
+ * Puppeteer's Chrome (`puppeteer_dev_chrome_profile`), with their helper subtrees. Only the current user's
+ * processes are read. Returns the count of killed process trees.
  */
 export function killOrphanedProcesses(): number {
   if (process.platform === "win32") return 0;

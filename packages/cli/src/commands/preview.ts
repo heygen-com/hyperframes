@@ -480,8 +480,7 @@ export default defineCommand({
       );
     }
 
-    // Lint surfaces issues for the agent reading this terminal. It runs in the CLI worker while
-    // Studio starts, so it never delays the Studio opening; --json never reads it.
+    // Runs in the CLI worker while Studio starts, so it never delays the opening; --json skips it.
     const startupLint = args.json ? null : printStartupLint(dir, Boolean(args["lint-verbose"]));
 
     const launchMode = previewLaunchMode({
@@ -1201,8 +1200,7 @@ export function studioSummaryUrls(
   };
 }
 
-/** Builds the film's preview while the browser starts, so the player's first request is a cache read.
- * A failed build is not lost: the player's own request builds again and reports it. */
+/** Builds the preview while the browser starts; a failed build is retried by the player's own request. */
 export function prebuildPreview(
   fetchApp: (request: Request) => Response | Promise<Response>,
   serverUrl: string,

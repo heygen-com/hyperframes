@@ -1895,8 +1895,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-// The parse is pure in `script`, and the same source is parsed again on every Studio open and by
-// several lint rules; each hit returns a copy so one caller's edits never reach another's result.
+// Pure in `script`; a hit returns a copy, so one caller's edits never reach another's result.
 const PARSE_MEMO_ENTRIES = 4;
 const parseMemo = new Map<string, ParsedGsap>();
 

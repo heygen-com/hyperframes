@@ -26,7 +26,6 @@ const CLIP_HEIGHT = 66;
 const THUMBNAIL_URL_VERSION = "v3";
 export const THUMBNAIL_SEEK_TIME_SECONDS = 3;
 
-/** A composition's poster time, shared by its card and its timeline clip so one render serves both. */
 export function resolveThumbnailSeekTime(durationSeconds: number | null | undefined): number {
   if (
     Number.isFinite(durationSeconds) &&

@@ -160,7 +160,6 @@ export function useRenderClipContent({
           label: "",
           labelColor: style.label,
 
-          // The composition card's frame, so the card and this clip share one render.
           seekTime: resolveThumbnailSeekTime(el.duration),
           duration: 0,
           projectId: pid,

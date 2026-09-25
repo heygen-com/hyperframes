@@ -74,7 +74,6 @@ async function requestParsedAnimations(
   projectId: string,
   sourceFile: string,
 ): Promise<ParsedGsapAnimations | null> {
-  // The parse runs on the server's only event loop and feeds keyframes, not the first frame.
   if (!isPreviewBooted(projectId) && !(await whenPreviewBooted(projectId))) return null;
   try {
     const res = await fetch(

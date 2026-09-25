@@ -180,7 +180,6 @@ export function useTimelinePlayer({
     applyPreviewAudioFlags(iframeRef.current, audioMuted, audioVolume);
   }, []);
   const play = useCallback(() => {
-    // Same gate as the Play button: the preview's load step pauses and rewinds, so an earlier play is lost.
     if (!usePlayerStore.getState().timelineReady) return;
     stopRAFLoop();
     stopReverseLoop();
