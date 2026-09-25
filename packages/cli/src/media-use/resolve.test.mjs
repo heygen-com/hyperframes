@@ -33,10 +33,14 @@ const CAN_TSX =
   spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", "0"], {
     stdio: "ignore",
   }).status === 0;
+process.env.HYPERFRAMES_MEDIA_HOME = mkdtempSync(join(tmpdir(), "mu-resolve-home-"));
+
 let tmp;
 
 function setup() {
   tmp = mkdtempSync(join(tmpdir(), "mu-resolve-test-"));
+  // A fresh global cache per test, apart from the project so the two manifests never coincide.
+  process.env.HYPERFRAMES_MEDIA_HOME = mkdtempSync(join(tmpdir(), "mu-resolve-home-"));
 }
 
 function cleanup() {

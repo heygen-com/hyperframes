@@ -18,6 +18,7 @@ function sandbox() {
   const home = join(root, "home");
   mkdirSync(home, { recursive: true });
   process.env.HOME = home;
+  process.env.HYPERFRAMES_MEDIA_HOME = home;
   return { root, home };
 }
 

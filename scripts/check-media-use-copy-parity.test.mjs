@@ -15,6 +15,7 @@ export const MEDIA_USE_COPY_NAMES = [
   "index-gen.mjs",
   "manifest.mjs",
   "media-fetch.mjs",
+  "media-home.mjs",
   "npx-sync.mjs",
   "parakeet-words.mjs",
   "prefs-store.mjs",
