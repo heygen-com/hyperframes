@@ -1810,6 +1810,14 @@ describe("initSandboxRuntimeModular", () => {
       expect(clip.style.getPropertyPriority("display")).toBe("important");
     });
 
+    it("shows a clip whose inline display is a plain none at its start", () => {
+      const clip = mountClip("none");
+      window.__player?.seek(0);
+      expect(clip.style.display).toBe("none");
+      window.__player?.seek(3);
+      expect(clip.style.display).toBe("");
+    });
+
     it("keeps a data-hidden clip's own display, priority included, when the attribute goes", () => {
       const clip = mountClip("grid", "important");
       clip.setAttribute("data-hidden", "");

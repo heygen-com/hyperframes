@@ -2405,7 +2405,10 @@ export function initSandboxRuntimeModular(): void {
   const hideByDisplay = (el: HTMLElement) => {
     if (!displayBeforeHide.has(el)) {
       const value = el.style.getPropertyValue("display");
-      displayBeforeHide.set(el, { value, priority: el.style.getPropertyPriority("display") });
+      const priority = el.style.getPropertyPriority("display");
+      // A plain none may be a hide left behind (a Studio reveal restoring the runtime's own).
+      const isLeftoverHide = value === "none" && !priority;
+      displayBeforeHide.set(el, isLeftoverHide ? { value: "", priority: "" } : { value, priority });
     }
     el.style.display = "none";
   };
