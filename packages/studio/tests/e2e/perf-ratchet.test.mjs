@@ -10,6 +10,7 @@ import {
   correlate,
   formatRow,
   lowerCeilings,
+  readBase,
 } from "./perf-ratchet.mjs";
 
 describe("checkCeilings", () => {
@@ -42,6 +43,19 @@ describe("checkCeilings", () => {
 
   it("refuses an empty ceiling set", () => {
     expect(() => checkCeilings({}, { a: 1 })).toThrow(/checks nothing/);
+  });
+});
+
+describe("readBase", () => {
+  const all = { open: { browser: "153", counts: { a: 1 } } };
+
+  it("names base journeys this file dropped", () => {
+    const base = { open: { counts: { a: 2 } }, scroll: { counts: { b: 1 } } };
+    expect(readBase(base, all, "open")).toEqual({ counts: { a: 2 }, removedJourneys: ["scroll"] });
+  });
+
+  it("refuses a base file in a shape it cannot compare", () => {
+    expect(() => readBase({ open: { a: 13 } }, all, "open")).toThrow(/no counts object/);
   });
 });
 

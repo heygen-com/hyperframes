@@ -134,18 +134,33 @@ function journeyInputs([ceilingsPath, journey, evidencePath]) {
   return { all, ceilingsPath, journey, evidence, counts: evidence.workCounts ?? {} };
 }
 
-function runCheck(args) {
-  const { all, journey, evidence, counts } = journeyInputs(args);
-  // The base branch's copy of this file; absent while the journey is new there.
-  const basePath = args[3];
-  const base = basePath && existsSync(basePath) ? readJson(basePath)[journey]?.counts : undefined;
-  const { passed, rows } = checkCeilings(all[journey].counts, counts, base);
-  console.log(`[perf-ratchet] ${journey}: ${passed ? "PASS" : "FAIL"}`);
-  for (const row of rows) console.log(`[perf-ratchet]   ${formatRow(row)}`);
+const isObject = (value) => typeof value === "object" && value !== null;
+
+/**
+ * The base branch's ceilings for `journey`, and the base journeys this file no longer has. A
+ * base file in a shape this script does not write throws: an unreadable base must not pass.
+ */
+export function readBase(base, all, journey) {
+  for (const [name, entry] of Object.entries(base)) {
+    if (!isObject(entry?.counts)) throw new Error(`base ceilings: "${name}" has no counts object`);
+  }
+  return {
+    counts: base[journey]?.counts,
+    removedJourneys: Object.keys(base).filter((name) => !Object.hasOwn(all, name)),
+  };
+}
+
+/** Absent while the base branch has no ceilings file yet (and on runs without a base). */
+function loadBase(path, all, journey) {
+  if (!path || !existsSync(path)) return { counts: undefined, removedJourneys: [] };
+  return readBase(readJson(path), all, journey);
+}
+
+function printNotes(recorded, evidence, rows) {
   const measuredOn = browserMajor(evidence);
-  if (measuredOn !== all[journey].browser) {
+  if (measuredOn !== recorded.browser) {
     console.log(
-      `[perf-ratchet]   note: measured on Chrome ${measuredOn}, ceilings recorded on Chrome ${all[journey].browser}`,
+      `[perf-ratchet]   note: measured on Chrome ${measuredOn}, ceilings recorded on Chrome ${recorded.browser}`,
     );
   }
   if (rows.some((row) => row.status === "rose")) {
@@ -154,7 +169,22 @@ function runCheck(args) {
         "exactly: run the journey a few times and compare with perf-ratchet.mjs correlate.",
     );
   }
-  return passed ? 0 : 1;
+}
+
+function runCheck(args) {
+  const { all, journey, evidence, counts } = journeyInputs(args);
+  const base = loadBase(args[3], all, journey);
+  const { passed, rows } = checkCeilings(all[journey].counts, counts, base.counts);
+  const ok = passed && base.removedJourneys.length === 0;
+  console.log(`[perf-ratchet] ${journey}: ${ok ? "PASS" : "FAIL"}`);
+  for (const row of rows) console.log(`[perf-ratchet]   ${formatRow(row)}`);
+  for (const name of base.removedJourneys) {
+    console.log(
+      `[perf-ratchet]   FAIL journey ${name} removed against the base branch; ceilings only go down`,
+    );
+  }
+  printNotes(all[journey], evidence, rows);
+  return ok ? 0 : 1;
 }
 
 function runLower(args) {
