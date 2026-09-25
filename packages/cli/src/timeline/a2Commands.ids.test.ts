@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { consumeCommandResult } from "../utils/commandResult.js";
 import { runIds } from "./a2Commands.js";
 
 const hooks = vi.hoisted(() => ({ minting: undefined as (() => void) | undefined }));
@@ -18,7 +19,6 @@ vi.mock("@hyperframes/parsers/hf-ids", async (importOriginal) => {
 
 const dirs: string[] = [];
 afterEach(() => {
-  hooks.minting = undefined;
   vi.restoreAllMocks();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -38,8 +38,15 @@ describe("timeline ids", () => {
       writeFileSync(indexPath, save);
     };
     vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(runIds({ dir, json: true })).rejects.toThrow("file changed");
+    await runIds({ dir, json: true });
+
     expect(readFileSync(indexPath, "utf-8")).toBe(save);
+    expect(consumeCommandResult().exitCode).toBe(2);
+    expect(JSON.parse(String(stderr.mock.calls[0]?.[0]))).toMatchObject({
+      ok: false,
+      reason: "file changed since the timeline was read",
+    });
   });
 });
