@@ -41,7 +41,7 @@ describe("stampFileHfIds", () => {
     return file;
   }
 
-  it("stamps ids and writes back through the same fd", () => {
+  it("stamps ids and writes them back to the file", () => {
     const file = tmpFile(`<div class="clip" data-start="0" data-end="3">Hi</div>`);
     const returned = stampFileHfIds(file);
     expect(returned).toContain('data-hf-id="hf-');
