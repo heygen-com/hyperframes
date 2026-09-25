@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  acceptedRaises,
   browserMajor,
   checkCeilings,
   correlate,
@@ -36,6 +37,60 @@ describe("checkCeilings", () => {
     expect(rows.map((row) => row.status)).toEqual(["raised", "removed"]);
   });
 
+  it("passes a raise only with a reason the base branch did not give", () => {
+    const base = { counts: { a: 5 }, raised: { b: "older raise" } };
+    const withReason = { counts: { a: 6 }, raised: { a: "new work on purpose" } };
+    expect(
+      checkCeilings(withReason.counts, { a: 6 }, base.counts, acceptedRaises(withReason, base))
+        .passed,
+    ).toBe(true);
+    const noReason = { counts: { a: 6 } };
+    expect(
+      checkCeilings(noReason.counts, { a: 6 }, base.counts, acceptedRaises(noReason, base)).passed,
+    ).toBe(false);
+    const blank = { counts: { a: 6 }, raised: { a: " " } };
+    expect(acceptedRaises(blank, base).size).toBe(0);
+    expect(acceptedRaises(blank, { counts: { a: 5 }, raised: { a: "older raise" } }).size).toBe(0);
+    const notText = { counts: { a: 6 }, raised: { a: 1 } };
+    expect(acceptedRaises(notText, base).size).toBe(0);
+  });
+
+  it("does not take a whitespace edit of the base's reason as a new one", () => {
+    const base = { counts: { a: 6 }, raised: { a: "new work  on purpose" } };
+    const respaced = { counts: { a: 7 }, raised: { a: " new work on purpose " } };
+    expect(acceptedRaises(respaced, base).size).toBe(0);
+  });
+
+  it("accepts a reason only for a counter whose ceiling went up", () => {
+    const entry = { counts: { a: 5 }, raised: { a: "why" } };
+    expect(acceptedRaises(entry, { counts: { a: 5 } }).size).toBe(0);
+  });
+
+  it("does not reuse a reason the base already gave for a later raise", () => {
+    const base = { counts: { a: 6 }, raised: { a: "new work on purpose" } };
+    const again = { counts: { a: 7 }, raised: { a: "new work on purpose" } };
+    const { passed, rows } = checkCeilings(
+      again.counts,
+      { a: 7 },
+      base.counts,
+      acceptedRaises(again, base),
+    );
+    expect(passed).toBe(false);
+    expect(rows[0].status).toBe("raised");
+  });
+
+  it("still fails a removed ceiling when other raises carry reasons", () => {
+    const entry = { counts: { a: 6 }, raised: { a: "why", b: "why" } };
+    const { passed, rows } = checkCeilings(
+      entry.counts,
+      { a: 6 },
+      { a: 5, b: 2 },
+      acceptedRaises(entry, { counts: { a: 5, b: 2 } }),
+    );
+    expect(passed).toBe(false);
+    expect(rows.map((row) => row.status)).toEqual(["at", "removed"]);
+  });
+
   it("fails a gated counter the journey did not measure", () => {
     expect(checkCeilings({ reactCommits: 4 }, {}).passed).toBe(false);
     expect(checkCeilings({ reactCommits: 4 }, { reactCommits: Number.NaN }).passed).toBe(false);
@@ -48,6 +103,11 @@ describe("checkCeilings", () => {
 
 describe("readBase", () => {
   const all = { open: { browser: "153", counts: { a: 1 } } };
+
+  it("returns the base journey's raise reasons", () => {
+    const base = { j: { counts: { a: 1 }, raised: { a: "why" } } };
+    expect(readBase(base, base, "j").raised).toEqual({ a: "why" });
+  });
 
   it("names base journeys this file dropped", () => {
     const base = { open: { counts: { a: 2 } }, scroll: { counts: { b: 1 } } };
@@ -90,6 +150,46 @@ describe("lower", () => {
       execFileSync(process.execPath, [cli, "lower", ceilings, "j", evidence], { stdio: "pipe" }),
     ).toThrow(/Chrome 152/);
     expect(JSON.parse(readFileSync(ceilings, "utf8")).j.counts).toEqual({ a: 5 });
+  });
+});
+
+describe("check", () => {
+  const cli = fileURLToPath(new URL("./perf-ratchet.mjs", import.meta.url));
+  const run = (reason) => {
+    const dir = mkdtempSync(join(tmpdir(), "perf-ratchet-"));
+    const file = (name, value) => {
+      writeFileSync(join(dir, name), JSON.stringify(value));
+      return join(dir, name);
+    };
+    const base = file("base.json", {
+      j: { browser: "153", counts: { a: 5 }, raised: { a: "why" } },
+    });
+    const ceilings = file("ceilings.json", {
+      j: { browser: "153", counts: { a: 6 }, raised: { a: reason } },
+    });
+    const evidence = file("evidence.json", {
+      browser: "HeadlessChrome/153.0.1.1",
+      workCounts: { a: 6 },
+    });
+    return execFileSync(process.execPath, [cli, "check", ceilings, "j", evidence, base], {
+      stdio: "pipe",
+      encoding: "utf8",
+    });
+  };
+
+  it("passes a raise with a new reason against the base file and prints it", () => {
+    expect(run("new work on purpose")).toMatch(/a raised on purpose: new work on purpose/);
+  });
+
+  it("fails a raise that reuses the base file's reason", () => {
+    let failure;
+    try {
+      run("why");
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure?.status).toBe(1);
+    expect(failure?.stdout).toMatch(/ceiling raised 5 -> 6/);
   });
 });
 

@@ -1,7 +1,8 @@
 import type { Context, Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
+import { createWriteToken } from "../helpers/fileVersion.js";
 import type { HistoryWindow, ProjectHistory } from "../history/projectHistory.js";
-import { stepTarget, type HistoryEntry, type HistoryWho } from "../history/historyLog.js";
+import type { HistoryWho } from "../history/historyLog.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
 /** No edit waits this long between writes. */
@@ -19,6 +20,12 @@ async function bodyOf(c: Context): Promise<Record<string, unknown>> {
 
 const text = (value: unknown) => (typeof value === "string" && value ? value : null);
 
+/** Studio's write token, so the watcher's echo of an undo reads as Studio's own write. */
+function writing(c: Context): { writeToken?: string } {
+  const header = c.req.header("X-Hyperframes-Write-Token");
+  return header ? { writeToken: createWriteToken(header) } : {};
+}
+
 /** How long a window or a coalescing claim may wait for its next write; past the cap a timer overflows. */
 function idleOf(body: Record<string, unknown>): number | undefined {
   const idleMs = body.idleMs;
@@ -27,9 +34,18 @@ function idleOf(body: Record<string, unknown>): number | undefined {
     : undefined;
 }
 
+/** `{ [path]: version }` from a request body, keeping only string pairs. */
+function versionsOf(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const pairs = Object.entries(value).filter(
+    (pair): pair is [string, string] => typeof pair[1] === "string",
+  );
+  return pairs.length ? Object.fromEntries(pairs) : undefined;
+}
+
 /** What Cmd+Z or Cmd+Shift+Z would revert next, so Studio can name it on its buttons. */
-function nextStep(entries: readonly HistoryEntry[], direction: "back" | "forward") {
-  const target = stepTarget(entries, direction);
+function nextStep(history: ProjectHistory, direction: "back" | "forward") {
+  const target = history.next(direction);
   if (!target) return null;
   const paths = target.files.map((file) => file.path);
   return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
@@ -59,23 +75,25 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.get(base, (c) =>
     withHistory(adapter, c, (history) => {
       const entries = history.list();
-      return { entries, back: nextStep(entries, "back"), forward: nextStep(entries, "forward") };
+      return { entries, back: nextStep(history, "back"), forward: nextStep(history, "forward") };
     }),
   );
   api.post(`${base}/step`, (c) =>
     withHistory(adapter, c, (history, body) =>
-      history.step(body.direction === "forward" ? "forward" : "back", YOU),
+      history.step(body.direction === "forward" ? "forward" : "back", YOU, writing(c)),
     ),
   );
   api.post(`${base}/undo`, (c) =>
     withHistory(adapter, c, (history, body) => {
       const mode =
         body.mode === "just-this" || body.mode === "back-to-before" ? body.mode : undefined;
-      return history.undo(text(body.entryId) ?? "", { who: YOU, mode });
+      return history.undo(text(body.entryId) ?? "", { who: YOU, mode, ...writing(c) });
     }),
   );
   api.post(`${base}/restore`, (c) =>
-    withHistory(adapter, c, (history, body) => history.restore(text(body.point) ?? "", YOU)),
+    withHistory(adapter, c, (history, body) =>
+      history.restore(text(body.point) ?? "", YOU, writing(c)),
+    ),
   );
   api.get(`${base}/peek/:point`, (c) =>
     withHistory(adapter, c, (history) => ({ files: history.peek(c.req.param("point")) })),
@@ -92,16 +110,17 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
       const paths = Array.isArray(body.paths) ? body.paths.filter((path) => text(path)) : [];
       const coalesceKey = text(body.coalesceKey) ?? undefined;
       const idleMs = idleOf(body);
+      const overwrote = versionsOf(body.overwrote);
       const claimed = await history.claim(YOU, text(body.label) ?? "Edited in Studio", paths, {
         ...(coalesceKey && { coalesceKey }),
         ...(idleMs && { idleMs }),
+        ...(overwrote && { overwrote }),
       });
       return { claimed };
     }),
   );
   api.post(`${base}/window`, (c) =>
     withHistory(adapter, c, async (history, body) => {
-      // A drag's burst of writes keeps one window open; it ends itself after idleMs without a write.
       const idleMs = idleOf(body);
       const window = await history.beginWindow(
         YOU,
@@ -109,7 +128,7 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
         idleMs ? { idleMs } : undefined,
       );
       windows.set(window.id, { history, window });
-      // The window's id is the id of the entry it becomes.
+      // The window's id is the id of the entry it becomes (its last one, when a claim cut it).
       return { windowId: window.id };
     }),
   );

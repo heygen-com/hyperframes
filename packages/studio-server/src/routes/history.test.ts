@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "../createStudioApi";
+import { DELETED_VERSION, fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory";
 import type { StudioApiAdapter } from "../types";
 
@@ -26,10 +27,10 @@ function apiFor(projectDir: string, history?: ProjectHistory) {
     ...(history && { history: () => history }),
   } as unknown as StudioApiAdapter;
   const api = createStudioApi(adapter);
-  return (path: string, body?: object) =>
+  return (path: string, body?: object, headers?: Record<string, string>) =>
     api.request(
       `/projects/demo/history${path}`,
-      body ? { method: "POST", body: JSON.stringify(body) } : undefined,
+      body ? { method: "POST", body: JSON.stringify(body), headers } : undefined,
     );
 }
 
@@ -42,7 +43,7 @@ async function demoProject() {
     historyRoot: tempDir("hf-history-routes-root-"),
   });
   cleanup.push(() => history.close());
-  return { projectDir, call: apiFor(projectDir, history) };
+  return { projectDir, history, call: apiFor(projectDir, history) };
 }
 
 describe("history routes", () => {
@@ -76,6 +77,67 @@ describe("history routes", () => {
     expect(await (await call("")).json()).toMatchObject({
       back: null,
       forward: { label: "Undid: Moved Title" },
+    });
+  });
+
+  it("name the step the engine takes when it steps past an entry whose file moved on", async () => {
+    const { projectDir, history, call } = await demoProject();
+    const write = (text: string) => writeFileSync(join(projectDir, "index.html"), text);
+    const agent = { kind: "agent" as const, name: "Agent" };
+    const you = { kind: "person" as const, name: "You" };
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("B");
+    await history.claim(you, "sweep", []);
+    write("C");
+    await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+      idleMs: 60_000,
+      overwrote: { "index.html": fileContentVersion("B") },
+    });
+    write("D");
+    await window.close();
+    await history.flush();
+    expect((await (await call("")).json()).back).toMatchObject({ label: "Agent turn" });
+  });
+
+  it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await call("/claim", { label: "Moved Title", paths: ["index.html"] });
+    await call("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-1" });
+    expect(readFileSync(join(projectDir, "index.html"), "utf8")).toBe("A");
+    expect(
+      identifyFileWrite(join(projectDir, "index.html"), fileContentVersion("A")),
+    ).toMatchObject({
+      path: "index.html",
+      writeToken: "studio-1",
+    });
+  });
+
+  it("label a deletion an undo makes with Studio's write token too", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "extra.html"), "added");
+    await call("/claim", { label: "Added a section", paths: ["extra.html"] });
+    await call("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-2" });
+    expect(existsSync(join(projectDir, "extra.html"))).toBe(false);
+    expect(identifyFileWrite(join(projectDir, "extra.html"), DELETED_VERSION)).toMatchObject({
+      writeToken: "studio-2",
+    });
+  });
+
+  it("cap a window's idle time at ten minutes, and pass the version Studio overwrote to its claim", async () => {
+    const { history, call } = await demoProject();
+    const beginWindow = vi.spyOn(history, "beginWindow");
+    const claim = vi.spyOn(history, "claim");
+    await call("/window", { label: "Dragged", idleMs: 1e12 });
+    expect(beginWindow).toHaveBeenCalledWith(expect.anything(), "Dragged", { idleMs: 600_000 });
+    await call("/claim", {
+      label: "Moved",
+      paths: ["index.html"],
+      overwrote: { "index.html": "v", x: 1 },
+    });
+    expect(claim).toHaveBeenCalledWith(expect.anything(), "Moved", ["index.html"], {
+      overwrote: { "index.html": "v" },
     });
   });
 

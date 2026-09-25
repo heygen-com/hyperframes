@@ -815,8 +815,8 @@ export class WebAudioTransport {
       this._monitorGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
   }
 
-  isActive(): boolean {
-    return this._activeSources.length > 0 && !this._paused;
+  ownsClock(): boolean {
+    return !this._paused && this._activeSources.some(isBufferSource);
   }
 
   /** Whether the transport currently plays THIS element (the runtime mutes it to

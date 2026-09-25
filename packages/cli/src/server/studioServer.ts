@@ -11,7 +11,6 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
-import { homedir } from "node:os";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -41,6 +40,7 @@ import {
   createProjectSignature,
   createBackgroundRemovalJob,
   identifyFileWrite,
+  DELETED_VERSION,
   fileContentVersion,
   getMimeType,
   affectsProjectSignature,
@@ -53,6 +53,7 @@ import {
   type RenderJobState,
   type BackgroundRemovalRender,
   stampProjectHfIds,
+  DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   type ProjectHistory,
 } from "@hyperframes/studio-server";
@@ -73,9 +74,6 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
-
-/** Where `hyperframes preview` keeps project histories: outside every project, so no tidy-up takes one away. */
-const DEFAULT_HISTORY_ROOT = join(homedir(), ".cache", "hyperframes", "history");
 
 // Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
 // before that watchdog can fire and skip this file's browser cleanup.
@@ -866,7 +864,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // `version` ships even when no receipt matches: it is the client's only
         // identity for an unlabelled change, and without it every duplicate
         // delivery of one watcher event drains and reloads again.
-        const receipt = version ? identifyFileWrite(absPath, version) : null;
+        const receipt = identifyFileWrite(absPath, version ?? DELETED_VERSION);
         // `projectId` so a stale tab — one still pointed at a project this
         // server no longer serves, because `hyperframes preview` reused this
         // port for a different folder (see ProjectUnreachableBanner's doc

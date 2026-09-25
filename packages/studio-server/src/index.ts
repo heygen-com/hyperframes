@@ -2,6 +2,7 @@ export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export {
+  DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   type ProjectHistory,
   type ProjectHistoryOptions,
@@ -52,6 +53,7 @@ export {
   consumeFileWriteReceipt,
   identifyFileWrite,
   fileContentVersion,
+  DELETED_VERSION,
   settledFileTag,
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";

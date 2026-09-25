@@ -41,6 +41,22 @@ const STORYBOARD_VIEW_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio/src/utils/editHistoryStorage.ts",
+    "Studio's undo moves onto the project history (studio-server); the browser IndexedDB history and its reducer are removed",
+  ],
+  [
+    "packages/studio/src/utils/editHistoryStorage.test.ts",
+    "tests for the removed IndexedDB history store",
+  ],
+  [
+    "packages/studio/src/utils/editHistory.test.ts",
+    "tests for the removed in-browser history reducer; merging and undo are tested in projectHistory.test.ts",
+  ],
+  [
+    "packages/studio/src/hooks/usePersistentEditHistory.projectOwnership.test.tsx",
+    "tests the removed per-project IndexedDB store; the hook now posts to the project's own history routes",
+  ],
+  [
     "packages/studio/src/components/nle/TimelinePane.test.ts",
     "its only subject, the expandedParentStart rebase wrappers, is dead code now removed",
   ],

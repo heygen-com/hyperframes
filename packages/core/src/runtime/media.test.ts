@@ -1628,6 +1628,25 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.currentTime).toBe(5);
   });
 
+  // A seek while playing pauses and syncs in one pass, before the video element has paused.
+  it("a seek that pauses mid-playback lands a lagging playing video on the new time", () => {
+    const clip = createMockClip({ start: 3.85, end: 5.6, duration: 1.75 });
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true });
+    Object.defineProperty(clip.el, "currentTime", { value: 0.031, writable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 4.109, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(0.031);
+
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 4.4,
+      playing: false,
+      playbackRate: 1,
+      forceSync: true,
+    });
+    expect(clip.el.currentTime).toBeCloseTo(0.55, 5);
+    expect(clip.el.pause).toHaveBeenCalled();
+  });
+
   it("mutes when either outputMuted OR userMuted is true (OR invariant)", () => {
     // Explicit validation of the combined-flag contract: setting one to
     // false while the other is true must keep the element muted.

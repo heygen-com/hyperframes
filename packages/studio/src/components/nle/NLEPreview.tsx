@@ -551,11 +551,13 @@ export const NLEPreview = memo(function NLEPreview({
                 />
               ),
             )}
-            {poster.showPoster && (
+            {poster.mountPoster && (
               <PreviewPoster
                 key={activeKey}
                 projectId={projectId}
+                hidden={poster.hidePoster}
                 onSize={(size) => setCompositionSize((prev) => prev ?? size)}
+                onLoaded={poster.onPosterLoaded}
                 onMissing={poster.onPosterMissing}
               />
             )}

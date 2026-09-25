@@ -22,6 +22,9 @@ import {
   createProjectSignature,
   affectsProjectSignature,
   PREVIEW_BUNDLE_OPTIONS,
+  DEFAULT_HISTORY_ROOT,
+  openProjectHistory,
+  type ProjectHistory,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
@@ -101,7 +104,16 @@ export function createViteAdapter(
   dataDir: string,
   server: ViteDevServer,
   signatureCache: ProjectSignatureCache,
+  {
+    historyRoot = DEFAULT_HISTORY_ROOT,
+    openHistory = openProjectHistory,
+  }: { historyRoot?: string; openHistory?: typeof openProjectHistory } = {},
 ): StudioApiAdapter {
+  const histories = new Map<string, Promise<ProjectHistory | null>>();
+  // Commits any open edit when the dev server stops, so it keeps its label.
+  server.httpServer?.on("close", () => {
+    for (const opened of histories.values()) void opened.then((history) => history?.close());
+  });
   let _bundler: ((dir: string, options?: BundleOptions) => Promise<string>) | null = null;
   let _producerModuleLoader:
     | (() => Promise<{
@@ -198,6 +210,19 @@ export function createViteAdapter(
           } satisfies ResolvedProject;
         })
         .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
+    },
+
+    // Studio's undo runs on the project's history: opened once per project, and a failed open stays off.
+    history(project: ResolvedProject) {
+      let opened = histories.get(project.dir);
+      if (!opened) {
+        opened = openHistory({ projectDir: project.dir, historyRoot }).catch((error: unknown) => {
+          console.warn(`[studio] Project history is off for ${project.id}: ${String(error)}`);
+          return null;
+        });
+        histories.set(project.dir, opened);
+      }
+      return opened;
     },
 
     // fallow-ignore-next-line complexity

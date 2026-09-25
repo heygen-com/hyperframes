@@ -21,11 +21,15 @@ const PREVIEW_POSTER_STYLE: React.CSSProperties = {
 /** Covers the live preview with the cached frame 0; reports its size so the stage fits it. */
 export function PreviewPoster({
   projectId,
+  hidden,
   onSize,
+  onLoaded,
   onMissing,
 }: {
   projectId: string;
+  hidden: boolean;
   onSize: (size: PreviewCompositionSize) => void;
+  onLoaded: () => void;
   onMissing: () => void;
 }) {
   return (
@@ -34,42 +38,62 @@ export function PreviewPoster({
       alt=""
       aria-hidden
       data-testid="preview-poster"
+      hidden={hidden}
       style={PREVIEW_POSTER_STYLE}
       onLoad={(event) => {
         const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
-        if (width > 0 && height > 0) onSize({ width, height });
+        if (!hidden && width > 0 && height > 0) onSize({ width, height });
+        onLoaded();
       }}
       onError={onMissing}
     />
   );
 }
 
-/** The poster covers the live slot until its first frame is ready to show; a missing poster is
- * rendered after that, off the open path, for the next open. */
+/** The poster covers the live slot until its first frame is ready; a missing poster is rendered
+ * after both are known, in either order, off the open path, for the next open. */
 export function usePreviewPoster(
   projectId: string,
   activeKey: string,
   directUrl: string | undefined,
 ) {
-  const [posterDoneFor, setPosterDoneFor] = useState<string | null>(null);
-  const posterMissingRef = useRef(false);
+  const visit = useVisitNumber(activeKey);
+  const [coverDoneFor, setCoverDoneFor] = useState<number | null>(null);
+  const [posterSettledFor, setPosterSettledFor] = useState<number | null>(null);
+  const missingForRef = useRef<number | null>(null);
+  const liveReadyForRef = useRef<number | null>(null);
+  const renderMissingPoster = useCallback(() => {
+    if (missingForRef.current !== visit || liveReadyForRef.current !== visit) return;
+    missingForRef.current = null;
+    void fetch(previewPosterUrl(projectId, false)).catch(() => {});
+  }, [visit, projectId]);
   const onLiveReadyToShowChange = useCallback(
     (ready: boolean) => {
       if (!ready) return;
-      setPosterDoneFor(activeKey);
-      if (!posterMissingRef.current || directUrl) return;
-      posterMissingRef.current = false;
-      void fetch(previewPosterUrl(projectId, false)).catch(() => {});
+      setCoverDoneFor(visit);
+      liveReadyForRef.current = visit;
+      renderMissingPoster();
     },
-    [activeKey, directUrl, projectId],
+    [visit, renderMissingPoster],
   );
   return {
-    showPoster: !directUrl && posterDoneFor !== activeKey,
+    mountPoster: !directUrl && (coverDoneFor !== visit || posterSettledFor !== visit),
+    hidePoster: coverDoneFor === visit,
     onLiveReadyToShowChange,
-    onPreviewError: () => setPosterDoneFor(activeKey),
+    onPreviewError: () => setCoverDoneFor(visit),
+    onPosterLoaded: () => setPosterSettledFor(visit),
     onPosterMissing: () => {
-      posterMissingRef.current = true;
-      setPosterDoneFor(activeKey);
+      setCoverDoneFor(visit);
+      setPosterSettledFor(visit);
+      missingForRef.current = visit;
+      renderMissingPoster();
     },
   };
+}
+
+function useVisitNumber(key: string): number {
+  const [seen, setSeen] = useState({ key, visit: 0 });
+  if (seen.key === key) return seen.visit;
+  setSeen({ key, visit: seen.visit + 1 });
+  return seen.visit + 1;
 }

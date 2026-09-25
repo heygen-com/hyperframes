@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { isValidProjectId } from "./src/utils/projectRouting";
-import { createStudioApi } from "@hyperframes/studio-server";
+import { createStudioApi, type ProjectHistory } from "@hyperframes/studio-server";
 import type { ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 
@@ -24,10 +25,55 @@ function fixture() {
     data,
     {} as ViteDevServer,
     createProjectSignatureCache({ compute: () => "test" }),
+    { historyRoot: join(root, "history") },
   );
   const app = createStudioApi(adapter);
   return { root, data, sessions, adapter, app };
 }
+
+describe("Studio's dev server keeps each project's history", () => {
+  it("serves it, so an edit Studio claims is the next undo, and opens it once per project", async () => {
+    const { data, adapter, app } = fixture();
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "A");
+    const project = adapter.resolveProject("demo")!;
+    const history = await adapter.history!(project);
+    expect(await adapter.history!(project)).toBe(history);
+    try {
+      writeFileSync(join(data, "demo", "index.html"), "B");
+      const claim = await app.request("http://localhost/projects/demo/history/claim", {
+        method: "POST",
+        body: JSON.stringify({ label: "Moved Title", paths: ["index.html"] }),
+      });
+      expect(await claim.json()).toMatchObject({ claimed: { id: expect.any(String) } });
+      const list = await app.request("http://localhost/projects/demo/history");
+      expect(await list.json()).toMatchObject({ back: { label: "Moved Title" } });
+    } finally {
+      await history?.close();
+    }
+  });
+});
+
+describe("Studio's dev server closes the histories it opened when it stops", () => {
+  it("closes each through the opener it was given, so an open edit keeps its label", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-project-history-close-"));
+    roots.push(root);
+    mkdirSync(join(root, "demo"));
+    const httpServer = new EventEmitter();
+    const close = vi.fn(async () => {});
+    const openHistory = vi.fn(async () => ({ close }) as unknown as ProjectHistory);
+    const adapter = createViteAdapter(
+      root,
+      { httpServer } as unknown as ViteDevServer,
+      createProjectSignatureCache({ compute: () => "test" }),
+      { openHistory },
+    );
+    await adapter.history!(adapter.resolveProject("demo")!);
+    httpServer.emit("close");
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(openHistory).toHaveBeenCalledOnce();
+  });
+});
 
 describe("Vite project resolution boundary", () => {
   it.each(["C%3A", "C%3Ademo", "..%2Fsessions", "a%2Fb", "a%5Cb", "%2E%2E%2Fsessions", "a%00b"])(

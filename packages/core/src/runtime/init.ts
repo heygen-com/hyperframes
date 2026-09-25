@@ -3881,14 +3881,14 @@ export function initSandboxRuntimeModular(): void {
       }
 
       // Audio-master clock: three tiers of timing precision.
-      // 1. WebAudio (AudioContext.currentTime): ~21µs, sample-accurate
+      // 1. WebAudio (AudioContext.currentTime) while it plays a decoded buffer: ~21µs, sample-accurate
       // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
       // 3. Monotonic (performance.now()): ~1ms, no audio coupling
       if (clock.isPlaying() && !state.mediaOutputMuted) {
         if (
           !state.nativeMediaSyncDisabled &&
           !state.webAudioMediaDisabled &&
-          webAudio.isActive() &&
+          webAudio.ownsClock() &&
           webAudio.context
         ) {
           const webAudioTime = webAudio.getTime();
