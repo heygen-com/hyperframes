@@ -1410,26 +1410,44 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(player._paused).toBe(true);
   });
 
-  it("ends a film whose length falls between two frames at its last frame", () => {
+  function postState(frame: number, isPlaying: boolean) {
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "state", frame, isPlaying },
+      }),
+    );
+  }
+
+  it("ends a film whose length falls between two frames when the runtime stops on its last frame", () => {
     const ended = vi.fn();
     player.addEventListener("ended", ended);
     player.loop = false;
-    player._duration = 4.97; // 149.1 frames at 30fps; the runtime's last post is frame 149
+    player._duration = 4.97; // 149.1 frames at 30fps; the runtime stops on frame 149
     player._paused = false;
-    const post = (frame: number) =>
-      player._onMessage(
-        new MessageEvent("message", {
-          source: frameWindow,
-          data: { source: "hf-preview", type: "state", frame, isPlaying: true },
-        }),
-      );
 
-    post(148);
+    postState(149, true);
     expect(ended).not.toHaveBeenCalled();
 
-    post(149);
+    postState(149, false);
     expect(ended).toHaveBeenCalledTimes(1);
     expect(player._currentTime).toBe(4.97);
+  });
+
+  it("ends only within half a frame of the length", () => {
+    const ended = vi.fn();
+    player.addEventListener("ended", ended);
+    player.loop = false;
+    player._paused = false;
+
+    player._duration = 149.51 / 30;
+    postState(149, false);
+    expect(ended).not.toHaveBeenCalled();
+
+    player._paused = false;
+    player._duration = 149.49 / 30;
+    postState(149, false);
+    expect(ended).toHaveBeenCalledTimes(1);
   });
 
   it("loops a film whose length falls between two frames", () => {
@@ -1438,12 +1456,7 @@ describe("HyperframesPlayer loop end-state handling", () => {
     player._duration = 4.97;
     player._paused = false;
 
-    player._onMessage(
-      new MessageEvent("message", {
-        source: frameWindow,
-        data: { source: "hf-preview", type: "state", frame: 149, isPlaying: true },
-      }),
-    );
+    postState(149, false);
 
     expect(seek).toHaveBeenCalledWith(0);
     expect(player._paused).toBe(false);

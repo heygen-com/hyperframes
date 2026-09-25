@@ -40,7 +40,9 @@ export function applyRuntimeStateMessage(
 ): PlaybackState {
   const rawTime = (data.frame ?? 0) / fps;
   const postedFrameRoundingSeconds = 0.5 / fps;
-  const atEnd = current.duration > 0 && rawTime >= current.duration - postedFrameRoundingSeconds;
+  const stoppedOnLastPostedFrame =
+    !data.isPlaying && rawTime >= current.duration - postedFrameRoundingSeconds;
+  const atEnd = current.duration > 0 && (rawTime >= current.duration || stoppedOnLastPostedFrame);
   const currentTime = atEnd ? current.duration : rawTime;
   const wasPlaying = !current.paused;
   const nextPaused = !data.isPlaying;
