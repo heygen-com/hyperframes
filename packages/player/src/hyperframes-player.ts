@@ -1201,16 +1201,19 @@ class HyperframesPlayer extends HTMLElement {
     }
     const queue: Array<() => void> = [];
     this._afterUpdate = queue;
-    try {
-      apply();
-    } finally {
-      // Still open while flushing: whatever a listener raises goes behind the rest.
+    const errors: unknown[] = [];
+    const run = (step: () => void) => {
       try {
-        for (const action of queue) action();
-      } finally {
-        this._afterUpdate = null;
+        step();
+      } catch (error) {
+        errors.push(error);
       }
-    }
+    };
+    run(apply);
+    // Still open while flushing: whatever a listener raises goes behind the rest.
+    for (const action of queue) run(action);
+    this._afterUpdate = null;
+    if (errors.length > 0) throw errors[0];
   }
 
   /** Runs `action` once the current update's events have fired (at once outside an update). */

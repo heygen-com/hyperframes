@@ -1359,6 +1359,8 @@ describe("HyperframesPlayer loop end-state handling", () => {
     _duration: number;
     _currentTime: number;
     _paused: boolean;
+    _ready: boolean;
+    _assetsReady: boolean;
     _onMessage: (event: MessageEvent) => void;
   };
 
@@ -1484,7 +1486,10 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(player._paused).toBe(false);
   });
 
-  it("keeps playing when an ended listener calls play", () => {
+  it("rewinds and keeps playing when an ended listener calls play", () => {
+    const seek = vi.spyOn(player, "seek");
+    player._ready = true;
+    player._assetsReady = true;
     player._duration = 4;
     player._paused = false;
     player.addEventListener("ended", () => player.play(), { once: true });
@@ -1496,6 +1501,8 @@ describe("HyperframesPlayer loop end-state handling", () => {
       }),
     );
 
+    expect(seek).toHaveBeenCalledWith(0);
+    expect(player._currentTime).toBe(0);
     expect(player._paused).toBe(false);
   });
 
@@ -2405,6 +2412,18 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     player._onMessage(timelineMessage(120));
 
     expect(seen).toEqual(["ready d=4", "scenes d=6", "durationchange d=6", "scenes d=6"]);
+  });
+
+  it("runs the rest of an update's events when a listener throws", () => {
+    stubIframeContentDocument(player.iframe, null);
+    const seen: string[] = [];
+    player.addEventListener("ready", () => {
+      throw new Error("listener failed");
+    });
+    player.addEventListener("assetsready", () => seen.push("assetsready"));
+
+    expect(() => player._onMessage(timelineMessage(120))).toThrow("listener failed");
+    expect(seen).toEqual(["assetsready"]);
   });
 
   it("keeps raising events after an action throws inside an update", () => {
