@@ -674,7 +674,6 @@ function joinCssHoistingImports(sheets: string[]): string {
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const allHeadStyles = [...document.querySelectorAll("head style")];
   const headStyleEls = allHeadStyles.filter((el) => !el.hasAttribute(SCENE_PART_ATTR));
-  // Counting scene parts keeps the shared style's @import hoist the same as without them.
   if (allHeadStyles.length > 1) {
     const merged = joinCssHoistingImports(headStyleEls.map((el) => el.textContent || ""));
     if (merged) {
@@ -791,10 +790,7 @@ export interface BundleOptions {
    * `inlineColorGradingLuts` narrows LUTs further; it cannot inline a LUT this option excluded.
    */
   inlineAssets?: boolean;
-  /**
-   * Emit each scene's host, styles and scripts as separately tagged parts (`data-hf-scene`) so
-   * the Studio preview can swap one edited scene in place. Off for renders.
-   */
+  /** Preview only: tag each scene's host, styles and scripts (`data-hf-scene`) so one can be swapped. */
   sceneParts?: boolean;
   /** Warn when the compiled HTML breaks the HyperFrames contract (default true). */
   staticGuard?: boolean;
@@ -1010,7 +1006,6 @@ export async function bundleToSingleHtml(
       );
     },
   });
-  // With sceneParts, a scene's own styles and inline scripts are emitted as their own tagged parts.
   const sceneStyleChunks = new Map<string, string[]>();
   const sceneScriptChunks = new Map<string, DeferredScriptChunk[]>();
   const addScenePart = <T>(parts: Map<string, T[]>, scene: string, chunk: T) =>
@@ -1047,7 +1042,6 @@ export async function bundleToSingleHtml(
       if (js != null) {
         const chunk = () =>
           preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js;
-        // Kept in its scene's part so it runs in source order with that scene's inline scripts.
         if (scriptItem.scene) addScenePart(sceneScriptChunks, scriptItem.scene, chunk);
         else compScriptChunks.push(chunk);
         continue;

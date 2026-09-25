@@ -397,7 +397,6 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mainCompositionPath,
         mediaCodecProbeCache,
       );
-      // Last, so the manifest covers every transform above; the signature changes on every edit.
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
       rememberPreview(builtKey, bundled);
       adapter.previewDocuments?.write(builtKey, bundled);
