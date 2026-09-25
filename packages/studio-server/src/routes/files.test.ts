@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { parseHTML } from "linkedom";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   existsSync,
   mkdirSync,
@@ -1516,6 +1517,48 @@ const tl = gsap.timeline({ paused: true });
 
     expect(res.status).toBe(400);
   });
+
+  it.each([
+    ["gsap-mutations", "<script>const tl = gsap.timeline({ paused: true });</script>"],
+    ["gsap-mutations-batch", "<script>const tl = gsap.timeline({ paused: true });</script>"],
+    ["gsap-mutations", ""],
+  ])(
+    "%s saves a tween on a served id together with that id (script: %j)",
+    async (route, script) => {
+      const projectDir = createProjectDir();
+      const scene = `<div data-composition-id="scene"><div class="box">Hi</div>${script}</div>`;
+      writeHtml(projectDir, "scene.html", scene);
+      const servedBox = parseHTML(ensureHfIds(scene)).document.querySelector(".box");
+      const servedId = servedBox?.getAttribute("data-hf-id");
+      expect(servedId).toMatch(/^hf-/);
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
+      const add = {
+        type: "add",
+        targetSelector: `[data-hf-id="${servedId}"]`,
+        method: "set",
+        position: 0,
+        properties: { opacity: 0.5 },
+      };
+
+      const res = await app.request(`http://localhost/projects/demo/${route}/scene.html`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(route === "gsap-mutations" ? add : { mutations: [add] }),
+      });
+
+      const result = (await res.json()) as {
+        after: string;
+        parsed: { animations: Array<{ targetSelector: string }> };
+      };
+      expect(res.status).toBe(200);
+      expect(result.parsed.animations.map((a) => a.targetSelector)).toEqual([add.targetSelector]);
+      const saved = readFileSync(join(projectDir, "scene.html"), "utf8");
+      expect(saved).toBe(result.after);
+      const savedBox = parseHTML(saved).document.querySelector(".box");
+      expect(savedBox?.getAttribute("data-hf-id")).toBe(servedId);
+    },
+  );
 
   it("rejects raw JavaScript expressions at the GSAP mutation boundary", async () => {
     const projectDir = createProjectDir();

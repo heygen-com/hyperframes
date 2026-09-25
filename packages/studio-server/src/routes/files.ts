@@ -84,6 +84,7 @@ import {
   type ElementRebase,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   CompositionInsertionError,
   insertCompositionIntoSource,
@@ -644,16 +645,16 @@ function updateReferences(projectDir: string, oldPath: string, newPath: string):
 // ── GSAP script extraction ──────────────────────────────────────────────────
 
 /**
- * Parse an HTML string with linkedom, locate the inline `<script>` that
- * contains GSAP timeline code, and return both its text content and a
- * function that replaces that script block and serialises back to HTML.
+ * Mint the HTML's ids (so a tween saved on a served id writes that id too), parse it with
+ * linkedom, locate the inline `<script>` holding GSAP timeline code, and return its text and
+ * a function that replaces that script block and serialises back to HTML.
  */
 function extractGsapScriptBlock(html: string): {
   scriptText: string;
   document: Document;
   replaceScript: (newText: string) => string;
 } | null {
-  const { document } = parseHTML(html);
+  const { document } = parseHTML(ensureHfIds(html));
   const scripts = [
     ...document.querySelectorAll("script:not([src])"),
     ...Array.from(document.querySelectorAll("template")).flatMap((tmpl) =>
