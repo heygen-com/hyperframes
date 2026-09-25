@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { createWriteToken } from "../helpers/fileVersion.js";
 import type { HistoryWindow, ProjectHistory } from "../history/projectHistory.js";
-import { stepTarget, type HistoryEntry, type HistoryWho } from "../history/historyLog.js";
+import type { HistoryWho } from "../history/historyLog.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
 /** No edit waits this long between writes. */
@@ -44,8 +44,8 @@ function versionsOf(value: unknown): Record<string, string> | undefined {
 }
 
 /** What Cmd+Z or Cmd+Shift+Z would revert next, so Studio can name it on its buttons. */
-function nextStep(entries: readonly HistoryEntry[], direction: "back" | "forward") {
-  const target = stepTarget(entries, direction);
+function nextStep(history: ProjectHistory, direction: "back" | "forward") {
+  const target = history.next(direction);
   if (!target) return null;
   const paths = target.files.map((file) => file.path);
   return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
@@ -75,7 +75,7 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.get(base, (c) =>
     withHistory(adapter, c, (history) => {
       const entries = history.list();
-      return { entries, back: nextStep(entries, "back"), forward: nextStep(entries, "forward") };
+      return { entries, back: nextStep(history, "back"), forward: nextStep(history, "forward") };
     }),
   );
   api.post(`${base}/step`, (c) =>
