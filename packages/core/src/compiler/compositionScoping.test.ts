@@ -165,6 +165,39 @@ body { margin: 0; }
     expect(fakeWindow.__captured).toEqual({ title: "Pro", price: "$29" });
   });
 
+  it("resolves __hyperframes.assetUrl against the mounted composition's own file", () => {
+    const run = (compositionSrc?: string) => {
+      const { document } = parseHTML(`<div data-composition-id="blk"></div>`);
+      Object.defineProperty(document, "baseURI", {
+        value: "https://p.test/api/projects/x/preview/",
+      });
+      const fakeWindow: Record<string, unknown> = {
+        document,
+        __timelines: {},
+        __hyperframes: { assetUrl: () => "TOP-LEVEL", getVariables: () => ({}) },
+      };
+      const wrapped = wrapScopedCompositionScript(
+        `window.__url = __hyperframes.assetUrl("assets/env.hdr");`,
+        "blk",
+        undefined,
+        undefined,
+        undefined,
+        null,
+        compositionSrc,
+      );
+      new Function("window", wrapped)(fakeWindow);
+      return fakeWindow.__url;
+    };
+
+    expect(run("compositions/blk/blk.html")).toBe(
+      "https://p.test/api/projects/x/preview/compositions/blk/assets/env.hdr",
+    );
+    expect(run("https://cdn.test/blocks/blk/blk.html")).toBe(
+      "https://cdn.test/blocks/blk/assets/env.hdr",
+    );
+    expect(run()).toBe("https://p.test/api/projects/x/preview/assets/env.hdr");
+  });
+
   it("routes the documented window.__hyperframes.getVariables() to the scoped variant too", () => {
     // Regression: the docs (variables-and-media.md) show `window.__hyperframes.
     // getVariables()`, but inside a sub-comp the scoped `window` proxy used to

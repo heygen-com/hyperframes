@@ -358,6 +358,7 @@ export function inlineSubCompositions(
               runtimeScope || undefined,
               runtimeCompId || scopeCompId || scriptCompositionId,
               authoredRootId,
+              src,
             )
           : wrapInlineScriptWithErrorBoundary(scriptEl.textContent || "", scriptErrorLabel);
         scripts.push(wrappedScript);
