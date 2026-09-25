@@ -9,6 +9,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -232,6 +233,57 @@ describe("openProjectHistory", () => {
     const changes = [];
     for (const entry of history.list()) changes.push(`${entry.label}: ${await sides(entry.id)}`);
     expect(changes.sort()).toEqual(["Agent turn: B>C", "Dragged Title: A>B", "Dragged Title: C>D"]);
+  });
+
+  it("checks out a window logged before the outside change that turned its file into a folder", async () => {
+    const { history, projectDir } = await project({ a: "file" });
+    rmSync(join(projectDir, "a"));
+    mkdirSync(join(projectDir, "a"));
+    writeFileSync(join(projectDir, "a", "b.txt"), "b0");
+    const window = await history.beginWindow(agent, "Agent turn");
+    writeFileSync(join(projectDir, "a", "b.txt"), "b1");
+    const turn = await window.close();
+    await history.flush();
+    expect(history.list().map((entry) => entry.label)).toEqual([
+      "Agent turn",
+      "Changed outside the app",
+    ]);
+
+    for (const [side, content] of [
+      ["before", "b0"],
+      ["after", "b1"],
+    ] as const) {
+      const dir = tempDir("hf-history-checkout-");
+      await history.checkout(turn!.id, side, dir);
+      expect(inside(dir, "a/b.txt")).toBe(content);
+    }
+  });
+
+  it("refuses a checkout folder inside the project, however it is reached", async () => {
+    const { history, write, projectDir, has } = await project({ "index.html": "v1" });
+    const entry = await change(history, you, "Second", () => write("index.html", "v2"));
+    const alias = join(tempDir("hf-history-alias-"), "alias");
+    symlinkSync(projectDir, alias);
+
+    for (const dir of [join(projectDir, "archive"), join(alias, "archive"), projectDir])
+      await expect(history.checkout(entry.id, "after", dir)).rejects.toThrow("outside the project");
+    expect(has("archive")).toBe(false);
+    await history.flush();
+    expect(history.list()).toHaveLength(1);
+  });
+
+  it("leaves the folder empty when a checkout fails partway, so it can be retried", async () => {
+    const { history, write, historyRoot } = await project({ "a.txt": "a", "b.txt": "b" });
+    const entry = await change(history, you, "Edit", () => write("b.txt", "b2"));
+    const lost = history.peek(entry.id)!["b.txt"]!;
+    const blob = readdirSync(historyRoot, { recursive: true }).find((path) =>
+      String(path).endsWith(lost),
+    );
+    rmSync(join(historyRoot, String(blob)));
+
+    const dir = tempDir("hf-history-checkout-");
+    await expect(history.checkout(entry.id, "after", dir)).rejects.toThrow();
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it("keeps the history across a move and a reopen, and a copy of the folder starts its own", async () => {

@@ -107,31 +107,79 @@ export function writeLog(file: string, log: HistoryLog): void {
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
 }
 
-function applyEntry(manifest: Manifest, entry: HistoryEntry, side: HistoryEntrySide): void {
-  for (const file of entry.files) {
-    const hash = file[side];
-    if (hash === null) manifest.delete(file.path);
-    else manifest.set(file.path, hash);
-  }
+function applyEntry(manifest: Manifest, entry: HistoryEntry): void {
+  for (const file of entry.files)
+    if (file.after === null) manifest.delete(file.path);
+    else manifest.set(file.path, file.after);
 }
 
 /** The files as they were right after `point`. Null when that point is no longer kept. */
 export function manifestAt(log: HistoryLog, point: string): Manifest | null {
-  return point === START ? new Map(log.baseline) : manifestAround(log, point, "after");
+  const manifest = new Map(log.baseline);
+  if (point === START) return manifest;
+  for (const entry of log.entries) {
+    applyEntry(manifest, entry);
+    if (entry.id === point) return manifest;
+  }
+  return null;
 }
 
-/** Entry `id`'s own files as it found (`before`) or left (`after`) them; the rest as earlier entries left them. */
+/** Replays each file's changes in the order their versions chain, whatever order the entries were logged in. */
+export function chainManifest(baseline: Manifest, entries: readonly HistoryEntry[]): Manifest {
+  const manifest = new Map(baseline);
+  const changesByPath = new Map<string, HistoryFileChange[]>();
+  for (const entry of entries)
+    for (const file of entry.files)
+      changesByPath.set(file.path, [...(changesByPath.get(file.path) ?? []), file]);
+  for (const [path, changes] of changesByPath) {
+    let version = manifest.get(path) ?? null;
+    while (changes.length > 0) {
+      const next = changes.findIndex((change) => change.before === version);
+      version = changes.splice(Math.max(next, 0), 1)[0]!.after;
+    }
+    if (version === null) manifest.delete(path);
+    else manifest.set(path, version);
+  }
+  return manifest;
+}
+
+/** Entry `id`'s own files as it found or left them; the rest as the entries written before it left them. */
 export function manifestAround(
   log: HistoryLog,
   id: string,
   side: HistoryEntrySide,
 ): Manifest | null {
-  const manifest = new Map(log.baseline);
-  for (const entry of log.entries) {
-    applyEntry(manifest, entry, entry.id === id ? side : "after");
-    if (entry.id === id) return manifest;
+  const index = log.entries.findIndex((entry) => entry.id === id);
+  if (index === -1) return null;
+  const written = log.entries.slice(0, index + 1);
+  const unexplained = (path: string, version: string | null) =>
+    version !== (log.baseline.get(path) ?? null) &&
+    !written.some((entry) => entry.files.some((f) => f.path === path && f.after === version));
+  // A later-logged entry wrote first when a change here starts from a version only it produced.
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const entry of log.entries.slice(index + 1)) {
+      if (written.includes(entry)) continue;
+      const needed = written.some((kept) =>
+        kept.files.some(
+          (change) =>
+            unexplained(change.path, change.before) &&
+            entry.files.some((made) => made.path === change.path && made.after === change.before),
+        ),
+      );
+      if (needed) {
+        written.push(entry);
+        grew = true;
+      }
+    }
   }
-  return null;
+  const manifest = chainManifest(log.baseline, written);
+  for (const file of log.entries[index]!.files) {
+    const hash = file[side];
+    if (hash === null) manifest.delete(file.path);
+    else manifest.set(file.path, hash);
+  }
+  return manifest;
 }
 
 /** Entries currently reverted: an undo that is itself in effect reverts its target. */
@@ -173,7 +221,7 @@ export function stepTarget(
 export function foldOldest(log: HistoryLog): boolean {
   const oldest = log.entries[0];
   if (!oldest || log.pins.has(oldest.id)) return false;
-  applyEntry(log.baseline, oldest, "after");
+  applyEntry(log.baseline, oldest);
   log.entries.shift();
   return true;
 }

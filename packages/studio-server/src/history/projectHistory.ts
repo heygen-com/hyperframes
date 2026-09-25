@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
+import { isSafePath } from "../helpers/safePath.js";
 import {
   DELETED_VERSION,
   hashOfVersion,
@@ -762,10 +763,21 @@ class Engine {
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
           this.entry(entryId);
+          if (isSafePath(this.dir, emptyDir))
+            throw new Error(`Checkout writes outside the project only: ${emptyDir}`);
           if ((await readdir(emptyDir).catch(missingIsEmpty)).length > 0)
             throw new Error(`Checkout writes into an empty folder only: ${emptyDir}`);
-          for (const [path, hash] of manifestAround(this.log, entryId, side)!)
-            await this.blobs.writeTo(hash, join(emptyDir, path));
+          const files = manifestAround(this.log, entryId, side)!;
+          const folder = [...files.keys()].flatMap(folders).find((path) => files.has(path));
+          if (folder)
+            throw new Error(`Those files cannot be laid out: ${folder} is a file and a folder.`);
+          try {
+            for (const [path, hash] of files) await this.blobs.writeTo(hash, join(emptyDir, path));
+          } catch (error) {
+            for (const name of await readdir(emptyDir).catch(() => []))
+              await rm(join(emptyDir, name), { recursive: true, force: true });
+            throw error;
+          }
         }),
       next: (direction) => this.next(direction),
       readBlob: (hash) => this.blobs.read(hash),
@@ -787,6 +799,12 @@ class Engine {
     };
   }
 }
+
+const folders = (path: string) =>
+  path
+    .split("/")
+    .slice(0, -1)
+    .map((_, index, parts) => parts.slice(0, index + 1).join("/"));
 
 function missingIsEmpty(error: NodeJS.ErrnoException): string[] {
   if (error.code === "ENOENT") return [];
