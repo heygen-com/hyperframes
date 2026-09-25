@@ -6,16 +6,24 @@
 
 /** Runs in every frame before any page script; child frames add into the top frame's tally. */
 function installInPage(options) {
-  let counts;
-  try {
-    counts = window.top.__hfWorkCounts ??= {};
-  } catch {
-    counts = window.__hfWorkCounts ??= {};
-  }
+  const counts = sharedCounts();
   const add = (key) => {
     counts[key] = (counts[key] ?? 0) + 1;
   };
-  if (window === window.top && !window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+  installReactHook();
+  if (options.pageActivity) installPageActivity();
+
+  // Helpers stay inside: the page receives this one function's source, nothing around it.
+  function sharedCounts() {
+    try {
+      return (window.top.__hfWorkCounts ??= {});
+    } catch {
+      return (window.__hfWorkCounts ??= {});
+    }
+  }
+
+  function installReactHook() {
+    if (window !== window.top || window.__REACT_DEVTOOLS_GLOBAL_HOOK__) return;
     // React calls this hook on every commit, production builds included.
     window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
       supportsFiber: true,
@@ -31,11 +39,17 @@ function installInPage(options) {
       checkDCE() {},
     };
   }
-  if (!options.pageActivity) return;
-  new MutationObserver((records) => {
-    counts.domMutations = (counts.domMutations ?? 0) + records.length;
-  }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
-  const countCallbacks = (name, key) => {
+
+  function installPageActivity() {
+    new MutationObserver((records) => {
+      counts.domMutations = (counts.domMutations ?? 0) + records.length;
+    }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    countCallbacks("setTimeout", "timerCallbacks");
+    countCallbacks("setInterval", "timerCallbacks");
+    countCallbacks("requestAnimationFrame", "rafCallbacks");
+  }
+
+  function countCallbacks(name, key) {
     const native = window[name];
     window[name] = function (callback, ...rest) {
       if (typeof callback !== "function") return native.call(this, callback, ...rest);
@@ -48,10 +62,7 @@ function installInPage(options) {
         ...rest,
       );
     };
-  };
-  countCallbacks("setTimeout", "timerCallbacks");
-  countCallbacks("setInterval", "timerCallbacks");
-  countCallbacks("requestAnimationFrame", "rafCallbacks");
+  }
 }
 
 /**

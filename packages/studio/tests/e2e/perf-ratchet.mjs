@@ -29,13 +29,16 @@ export function checkCeilings(ceilings, counts) {
   return { passed: rows.every((row) => row.status === "at" || row.status === "below"), rows };
 }
 
+/** `, +67%`: a rise as a share of its ceiling, or nothing for a zero ceiling. */
+const riseShare = (rise, ceiling) =>
+  ceiling === 0 ? "" : `, +${Math.round((rise / ceiling) * 100)}%`;
+
 export function formatRow({ counter, ceiling, value, status }) {
   if (status === "missing") return `FAIL ${counter}: not measured (ceiling ${ceiling})`;
-  const delta = value - ceiling;
-  const percent =
-    ceiling === 0 ? "" : `, ${delta > 0 ? "+" : ""}${Math.round((delta / ceiling) * 100)}%`;
-  if (status === "rose")
-    return `FAIL ${counter} rose ${ceiling} -> ${value} (+${round(delta)}${percent})`;
+  if (status === "rose") {
+    const rise = value - ceiling;
+    return `FAIL ${counter} rose ${ceiling} -> ${value} (+${round(rise)}${riseShare(rise, ceiling)})`;
+  }
   if (status === "below") return `ok   ${counter} ${value}, below its ceiling ${ceiling}: lower it`;
   return `ok   ${counter} ${value}`;
 }
@@ -101,37 +104,46 @@ function pearson(xs, ys) {
 const round = (value) => Math.round(value * 100) / 100;
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
+/** The whole ceilings file, the journey named in it, and that journey's measured counts. */
+function journeyInputs([ceilingsPath, journey, evidencePath]) {
+  const all = readJson(ceilingsPath);
+  if (!all[journey]) throw new Error(`${ceilingsPath} has no journey "${journey}"`);
+  return { all, ceilingsPath, journey, counts: readJson(evidencePath).workCounts ?? {} };
+}
+
+function runCheck(args) {
+  const { all, journey, counts } = journeyInputs(args);
+  const { passed, rows } = checkCeilings(all[journey], counts);
+  console.log(`[perf-ratchet] ${journey}: ${passed ? "PASS" : "FAIL"}`);
+  for (const row of rows) console.log(`[perf-ratchet]   ${formatRow(row)}`);
+  return passed ? 0 : 1;
+}
+
+function runLower(args) {
+  const { all, ceilingsPath, journey, counts } = journeyInputs(args);
+  all[journey] = lowerCeilings(all[journey], counts);
+  writeFileSync(ceilingsPath, `${JSON.stringify(all, null, 2)}\n`);
+  return 0;
+}
+
+function runCorrelate(args) {
+  const runs = args.map((arg) => {
+    const [variant, path] = arg.split("=");
+    const evidence = readJson(path);
+    return { variant, wallMs: evidence.wallMs, counts: evidence.workCounts };
+  });
+  console.log("counter\tr\tspread\tgate");
+  for (const row of correlate(runs)) {
+    const gate = row.gateable ? "yes" : "no";
+    console.log(`${row.counter}\t${round(row.r)}\t${round(row.spreadRatio * 100)}%\t${gate}`);
+  }
+  return 0;
+}
+
+const COMMANDS = { check: runCheck, lower: runLower, correlate: runCorrelate };
+
 function main([command, ...args]) {
-  if (command === "check" || command === "lower") {
-    const [ceilingsPath, journey, evidencePath] = args;
-    const all = readJson(ceilingsPath);
-    const ceilings = all[journey];
-    if (!ceilings) throw new Error(`${ceilingsPath} has no journey "${journey}"`);
-    const counts = readJson(evidencePath).workCounts ?? {};
-    if (command === "lower") {
-      all[journey] = lowerCeilings(ceilings, counts);
-      writeFileSync(ceilingsPath, `${JSON.stringify(all, null, 2)}\n`);
-      return 0;
-    }
-    const { passed, rows } = checkCeilings(ceilings, counts);
-    console.log(`[perf-ratchet] ${journey}: ${passed ? "PASS" : "FAIL"}`);
-    for (const row of rows) console.log(`[perf-ratchet]   ${formatRow(row)}`);
-    return passed ? 0 : 1;
-  }
-  if (command === "correlate") {
-    const runs = args.map((arg) => {
-      const [variant, path] = arg.split("=");
-      const evidence = readJson(path);
-      return { variant, wallMs: evidence.wallMs, counts: evidence.workCounts };
-    });
-    console.log("counter\tr\tspread\tgate");
-    for (const row of correlate(runs)) {
-      console.log(
-        `${row.counter}\t${round(row.r)}\t${round(row.spreadRatio * 100)}%\t${row.gateable ? "yes" : "no"}`,
-      );
-    }
-    return 0;
-  }
+  if (Object.hasOwn(COMMANDS, command)) return COMMANDS[command](args);
   console.error("usage: perf-ratchet.mjs check|lower <ceilings.json> <journey> <evidence.json>");
   console.error("       perf-ratchet.mjs correlate <variant>=<evidence.json> ...");
   return 2;
