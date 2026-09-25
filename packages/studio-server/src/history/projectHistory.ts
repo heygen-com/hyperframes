@@ -308,8 +308,7 @@ class Engine {
     const seen = listProjectFiles(this.dir).sort((a, b) => changedAt(a) - changedAt(b));
     let changed = false;
     for (const file of seen)
-      changed =
-        (await this.observe(file.path, statKey(file, sweptAt), changedAt(file))) || changed;
+      changed = (await this.observe(file.path, statKey(file, sweptAt), changedAt(file))) || changed;
     const present = new Set(seen.map((file) => file.path));
     for (const [path, known] of this.tracked) {
       if (present.has(path)) continue;

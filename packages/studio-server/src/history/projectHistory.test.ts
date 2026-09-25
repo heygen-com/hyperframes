@@ -256,9 +256,14 @@ describe("openProjectHistory", () => {
     ]);
     expect(outside?.who.kind).toBe("outside");
     const onDisk = readFileSync(join(historyRoot, reopened.projectId, "log.jsonl"), "utf-8");
-    expect(Object.keys(JSON.parse(onDisk.trim().split("\n")[1]!).entry).sort()).toEqual(
-      ["endedAt", "files", "id", "label", "startedAt", "who"],
-    );
+    expect(Object.keys(JSON.parse(onDisk.trim().split("\n")[1]!).entry).sort()).toEqual([
+      "endedAt",
+      "files",
+      "id",
+      "label",
+      "startedAt",
+      "who",
+    ]);
   });
 
   it("gives a claimed path back from another writer's open window to the claimer", async () => {
