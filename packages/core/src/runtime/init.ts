@@ -2406,7 +2406,7 @@ export function initSandboxRuntimeModular(): void {
     if (!displayBeforeHide.has(el)) {
       const value = el.style.getPropertyValue("display");
       const priority = el.style.getPropertyPriority("display");
-      // On a timed clip a plain none may be a hide left behind (a Studio reveal restoring ours).
+      // On the timed hide, a plain none may be a hide left behind (a Studio reveal restoring ours).
       const isLeftoverHide = plainNoneMayBeLeftover && value === "none" && !priority;
       displayBeforeHide.set(el, isLeftoverHide ? { value: "", priority: "" } : { value, priority });
     }
