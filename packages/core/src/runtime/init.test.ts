@@ -4022,68 +4022,80 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
-  // #3458: cross-origin media with no CORS opt-in. `createMediaElementSource`
-  // returns a node that outputs silence per the Web Audio spec rather than
-  // throwing, so the composition played through with visuals animating and no
-  // sound, and nothing was logged.
-  describe("cross-origin audio without a CORS opt-in", () => {
-    // `WebAudioTransport.init()` does `new AudioContext()`, which jsdom does not
-    // provide — without a stub it returns false, `webAudioReady` stays false,
-    // and `scheduleWebAudioForActiveClips` is never reached at all, so every
-    // assertion below would pass for the wrong reason.
+  // jsdom has no AudioContext; without one `WebAudioTransport.init()` fails, Web Audio scheduling
+  // never runs, and every Web Audio assertion passes for the wrong reason.
+  function useMockAudioContext() {
+    const ctx = { time: 0, mediaElementSources: 0 };
     class MockAudioContext {
-      currentTime = 0;
       state = "running";
       destination = {};
+      get currentTime() {
+        return ctx.time;
+      }
       resume() {
         return Promise.resolve();
       }
       createGain() {
         return { gain: { value: 1 }, connect() {}, disconnect() {} };
       }
+      createMediaElementSource() {
+        ctx.mediaElementSources += 1;
+        return { connect() {}, disconnect() {} };
+      }
     }
     const originalAudioContext = (globalThis as Record<string, unknown>).AudioContext;
 
     beforeEach(() => {
+      ctx.time = 0;
+      ctx.mediaElementSources = 0;
       (globalThis as Record<string, unknown>).AudioContext = MockAudioContext;
     });
 
     afterEach(() => {
       (globalThis as Record<string, unknown>).AudioContext = originalAudioContext;
     });
+    return ctx;
+  }
 
-    /** `webAudio.init()` resolves on a microtask, so `webAudioReady` is still
-     *  false on the tick `initSandboxRuntimeModular()` returns. */
-    async function startPlayback() {
-      initSandboxRuntimeModular();
-      await Promise.resolve();
-      window.__player?.play();
-      await Promise.resolve();
-      await Promise.resolve();
-    }
+  /** `webAudio.init()` resolves on a microtask, so `webAudioReady` is still
+   *  false on the tick `initSandboxRuntimeModular()` returns. */
+  async function startPlayback() {
+    initSandboxRuntimeModular();
+    await Promise.resolve();
+    window.__player?.play();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
 
-    function mountAudio(src: string, attrs: Record<string, string> = {}) {
-      const root = document.createElement("div");
-      root.setAttribute("data-composition-id", "main");
-      root.setAttribute("data-root", "true");
-      root.setAttribute("data-start", "0");
-      root.setAttribute("data-duration", "10");
-      root.setAttribute("data-width", "1920");
-      root.setAttribute("data-height", "1080");
-      document.body.appendChild(root);
+  function mountAudio(src: string, attrs: Record<string, string> = {}) {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
 
-      const audio = document.createElement("audio");
-      audio.setAttribute("data-start", "0");
-      audio.setAttribute("data-duration", "10");
-      audio.setAttribute("src", src);
-      for (const [name, value] of Object.entries(attrs)) audio.setAttribute(name, value);
-      audio.load = () => {};
-      audio.play = vi.fn(() => Promise.resolve());
-      root.appendChild(audio);
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("src", src);
+    for (const [name, value] of Object.entries(attrs)) audio.setAttribute(name, value);
+    audio.load = () => {};
+    audio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audio);
 
-      window.__timelines = { main: createMockTimeline(10) };
-      return audio;
-    }
+    window.__timelines = { main: createMockTimeline(10) };
+    return audio;
+  }
+
+  // #3458: cross-origin media with no CORS opt-in. `createMediaElementSource`
+  // returns a node that outputs silence per the Web Audio spec rather than
+  // throwing, so the composition played through with visuals animating and no
+  // sound, and nothing was logged.
+  describe("cross-origin audio without a CORS opt-in", () => {
+    useMockAudioContext();
 
     it("withholds Web Audio capture but still tries decode, which keeps the FX graph", async () => {
       // Decode is the BEST outcome here, not a consolation: a CDN that sends
@@ -4235,6 +4247,39 @@ describe("initSandboxRuntimeModular", () => {
 
         expect(audio.muted).toBe(false);
       });
+    });
+  });
+
+  describe("a voiceover routed through Web Audio", () => {
+    const ctx = useMockAudioContext();
+
+    it("holds the timeline while the voiceover buffers instead of seeking it forward", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      const audio = mountAudio("/assets/vo.mp3");
+      // Playing, but stuck buffering at 0 like a cold mp3.
+      const seeks: number[] = [];
+      Object.defineProperty(audio, "paused", { value: false, configurable: true });
+      Object.defineProperty(audio, "readyState", { value: 1, configurable: true });
+      Object.defineProperty(audio, "currentTime", {
+        get: () => 0,
+        set: (t: number) => seeks.push(t),
+        configurable: true,
+      });
+
+      await startPlayback();
+      expect(ctx.mediaElementSources).toBe(1);
+
+      for (let frame = 0; frame < 120; frame++) {
+        ctx.time += 1 / 60;
+        raf.step(1000 / 60);
+      }
+
+      expect(window.__player?.getTime()).toBeLessThan(0.1);
+      expect(seeks.filter((t) => t > 0.1)).toEqual([]);
     });
   });
 });
