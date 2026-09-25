@@ -785,7 +785,7 @@ jobs:
           cp -R packages/studio/tests/e2e/fixtures/studio-open \
             packages/studio/data/projects/studio-open
       - name: Read the base branch's work-count ceilings
-        # A ceiling may not rise or disappear against the branch this PR merges into.
+        # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}

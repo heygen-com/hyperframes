@@ -2,13 +2,15 @@
 /**
  * Work-count ratchet: each gated counter has a ceiling in perf-ceilings.json that may only go
  * down. A journey fails when a counter rises above its ceiling or falls below it (bank the
- * improvement), or when a ceiling was raised or removed against the base branch's file.
+ * improvement), or when a ceiling was raised or removed against the base branch's file. A raise
+ * passes only when the journey's `raised` map gives that counter a reason the base did not have.
  *
  *   node perf-ratchet.mjs check <ceilings.json> <journey> <evidence.json> [<base-ceilings.json>]
  *   node perf-ratchet.mjs lower <ceilings.json> <journey> <evidence.json>
  *   node perf-ratchet.mjs correlate <variant>=<evidence.json> ...
  *
- * Ceilings: `{ <journey>: { browser: "<Chrome major>", counts: { <counter>: n } } }`.
+ * Ceilings: `{ <journey>: { browser: "<Chrome major>", counts: { <counter>: n },
+ *   raised?: { <counter>: "<why this ceiling went up>" } } }`.
  * Evidence is a journey's JSON output: `workCounts`, `wallMs` and the browser it ran in.
  */
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -27,15 +29,17 @@ function measuredStatus(ceiling, value) {
   return value > ceiling ? "rose" : "below";
 }
 
-function ceilingRow(counter, ceiling, value, base) {
-  if (raisedAgainst(ceiling, base)) return { counter, ceiling, base, status: "raised" };
+function ceilingRow(counter, ceiling, value, base, accepted) {
+  if (raisedAgainst(ceiling, base) && !accepted.has(counter)) {
+    return { counter, ceiling, base, status: "raised" };
+  }
   return { counter, ceiling, value, status: measuredStatus(ceiling, value) };
 }
 
 /** Passes only when every gated counter sits exactly at a ceiling no higher than the base's. */
-export function checkCeilings(ceilings, counts, baseCeilings = {}) {
+export function checkCeilings(ceilings, counts, baseCeilings = {}, accepted = new Set()) {
   const rows = Object.entries(ceilings).map(([counter, ceiling]) =>
-    ceilingRow(counter, ceiling, counts[counter], baseCeilings[counter]),
+    ceilingRow(counter, ceiling, counts[counter], baseCeilings[counter], accepted),
   );
   if (rows.length === 0)
     throw new Error("no gated counters: a ratchet that checks nothing passes nothing");
@@ -57,7 +61,7 @@ const ROW_TEXT = {
   below: ({ counter, ceiling, value }) =>
     `FAIL ${counter} fell ${ceiling} -> ${value}: bank it by setting its ceiling to ${value} (perf-ratchet.mjs lower)`,
   raised: ({ counter, ceiling, base }) =>
-    `FAIL ${counter}: ceiling raised ${base} -> ${ceiling} against the base branch; ceilings only go down`,
+    `FAIL ${counter}: ceiling raised ${base} -> ${ceiling} against the base branch; a raise needs a new reason under "raised" in perf-ceilings.json`,
   removed: ({ counter, base }) =>
     `FAIL ${counter}: ceiling ${base} removed against the base branch; ceilings only go down`,
 };
@@ -153,8 +157,22 @@ export function readBase(base, all, journey) {
   assertBaseShape(base);
   return {
     counts: base[journey]?.counts,
+    raised: base[journey]?.raised,
     removedJourneys: Object.keys(base).filter((name) => !Object.hasOwn(all, name)),
   };
+}
+
+const normalized = (text) => (typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "");
+const isNewReason = (reason, baseReason) =>
+  normalized(reason) !== "" && normalized(reason) !== normalized(baseReason);
+
+/** Counters raised above the base on purpose: a reason in `raised` the base branch did not give. */
+export function acceptedRaises(entry, base) {
+  const reasons = entry.raised ?? {};
+  const onPurpose = (counter) =>
+    raisedAgainst(entry.counts[counter], base.counts?.[counter]) &&
+    isNewReason(reasons[counter], base.raised?.[counter]);
+  return new Set(Object.keys(reasons).filter(onPurpose));
 }
 
 function assertBaseShape(base) {
@@ -197,10 +215,16 @@ function printResult(journey, ok, rows, removedJourneys) {
 function runCheck(args) {
   const { all, journey, evidence, counts } = journeyInputs(args);
   const base = loadBase(args[3], all, journey);
-  const { passed, rows } = checkCeilings(all[journey].counts, counts, base.counts);
+  const accepted = acceptedRaises(all[journey], base);
+  const { passed, rows } = checkCeilings(all[journey].counts, counts, base.counts, accepted);
   const ok = passed && base.removedJourneys.length === 0;
   printResult(journey, ok, rows, base.removedJourneys);
   printNotes(all[journey], evidence, rows);
+  for (const counter of accepted) {
+    console.log(
+      `[perf-ratchet]   note: ${counter} raised on purpose: ${all[journey].raised[counter]}`,
+    );
+  }
   return ok ? 0 : 1;
 }
 
