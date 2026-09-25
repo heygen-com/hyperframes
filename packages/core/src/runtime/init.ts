@@ -643,12 +643,10 @@ export function initSandboxRuntimeModular(): void {
       // (production renders run as the top-level page, not in an iframe).
       return !el.hasAttribute("data-hf-autostamped");
     });
-    // An inline display:none (a clip not started yet, or data-hidden) measures as "auto", so lay
-    // every clip out shown. Lifting them all at once keeps a pass to one forced layout.
-    const hidden = clips
+    const displayNoneLiftedToMeasureShown = clips
       .filter((el) => el.style.getPropertyValue("display") === "none")
       .map((el) => ({ el, priority: el.style.getPropertyPriority("display") }));
-    for (const { el } of hidden) el.style.removeProperty("display");
+    for (const { el } of displayNoneLiftedToMeasureShown) el.style.removeProperty("display");
     for (const el of clips) {
       const tag = el.tagName.toLowerCase();
       const hasLegacyAnchoredDefaults =
@@ -716,7 +714,9 @@ export function initSandboxRuntimeModular(): void {
         }
       }
     }
-    for (const { el, priority } of hidden) el.style.setProperty("display", "none", priority);
+    for (const { el, priority } of displayNoneLiftedToMeasureShown) {
+      el.style.setProperty("display", "none", priority);
+    }
   };
 
   const createTimingResolver = (includeAuthoredTimingAttrs: boolean) =>
