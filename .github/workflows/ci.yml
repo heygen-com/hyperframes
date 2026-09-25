@@ -11,6 +11,8 @@ env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
 on:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       catalog_publish:
