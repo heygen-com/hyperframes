@@ -242,9 +242,6 @@ export type ShaderName = keyof typeof shaders;
 export const SHADER_NAMES = Object.keys(shaders) as ShaderName[];
 
 export function getFragSource(name: string): string {
-  // A plain-object lookup returns Object.prototype members (e.g. "constructor",
-  // "toString") for those exact names instead of undefined, so an unguarded
-  // shaders[name] can silently succeed on a bogus name that happens to shadow one.
   const def = Object.hasOwn(shaders, name) ? shaders[name] : undefined;
   if (!def)
     throw new Error(

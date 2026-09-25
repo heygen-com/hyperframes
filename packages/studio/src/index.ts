@@ -172,9 +172,6 @@ export { TimelineEditProvider } from "./contexts/TimelineEditContext";
 export type { TimelineEditCallbacks } from "./player/components/timelineCallbacks";
 export type { BlockedTimelineEditIntent } from "./player/components/timelineEditing";
 
-// Seam transition preview: plays a catalog shader transition's real effect
-// between two decoded frames (Desktop's seam popover is the caller; OSS
-// Studio has no screen of its own that uses this).
 export {
   playSeamTransitionLoop,
   type SeamTransitionFrameSource,

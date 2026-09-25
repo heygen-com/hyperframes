@@ -34,8 +34,6 @@ function compileShader(gl: WebGLRenderingContext, src: string, type: number): We
   return s;
 }
 
-// vertexShader is caller-owned (compiled by createProgramWithVertex); this
-// function only deletes what it creates itself, the fragment shader.
 function linkProgram(
   gl: WebGLRenderingContext,
   vertexShader: WebGLShader,
@@ -47,8 +45,6 @@ function linkProgram(
   gl.attachShader(p, vertexShader);
   gl.attachShader(p, fragmentShader);
   gl.linkProgram(p);
-  // WebGL never frees an attached shader object on its own; deleting once
-  // linked is safe either way, including on a failed link below.
   gl.deleteShader(fragmentShader);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
     const log = gl.getProgramInfoLog(p) || "unknown";
@@ -81,7 +77,6 @@ export interface AccentColors {
   bright: [number, number, number];
 }
 
-/** Fallback when a composition sets no accentColor (hyper-shader.ts's own default). */
 export const DEFAULT_ACCENT_COLORS: AccentColors = {
   accent: [1, 0.6, 0.2],
   dark: [0.4, 0.15, 0],
