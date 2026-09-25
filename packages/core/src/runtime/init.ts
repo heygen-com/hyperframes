@@ -2532,7 +2532,6 @@ export function initSandboxRuntimeModular(): void {
         timedClipDisplayNoneApplied.add(rawNode);
       }
     }
-    // Grading registers only media it can see, and media inside a clip was hidden until now.
     if (decidedTimedClip && revealTimedClipsAfterFirstPass()) colorGradingRuntime?.refresh();
     // Only when a `data-hidden` mutation actually moved something: the skips
     // this reschedule exists to re-run are what change the active set, so

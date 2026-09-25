@@ -1,6 +1,6 @@
-// Until the first visibility pass decides each timed clip, a paused page would paint every clip at once
-// (and decode every scene's images). Media is left out: init's media pass owns it.
-// The rule and its flag live on the page, not in this module: every runtime copy on the page shares them.
+// Hides timed non-media clips from script evaluation until the first visibility pass decides them;
+// before it, a paused page painted every clip at once. Media is left to init's media pass.
+// The rule and its flag live on the page, so every runtime copy shares them.
 const HIDE_ATTR = "data-hf-first-pass-hide";
 const HIDE_UNTIL_FIRST_PASS =
   "[data-start]:not(video, audio, img) { visibility: hidden !important; }";
@@ -24,7 +24,7 @@ export function hideTimedClipsUntilFirstPass(): void {
   win.__hfFirstPassHidden = true;
 }
 
-/** True when this call lifted the rule. */
+/** True when this call lifted the rule; callers then re-register what skipped hidden elements (grading). */
 export function revealTimedClipsAfterFirstPass(): boolean {
   const win = window as FirstPassWindow;
   if (!win.__hfFirstPassHidden) return false;

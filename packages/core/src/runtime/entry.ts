@@ -29,7 +29,6 @@ type HyperframeWindow = Window & {
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
 
-// Also at evaluation time: the body is parsed, and may paint, before init runs at DOMContentLoaded.
 hideTimedClipsUntilFirstPass();
 
 // Expose runtime helpers immediately so composition scripts can use them

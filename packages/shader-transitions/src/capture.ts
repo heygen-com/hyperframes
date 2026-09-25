@@ -55,7 +55,6 @@ export function forceSceneVisibleInClone(source: HTMLElement, cloneDoc: Document
   if (!(clone instanceof HTMLElement)) return;
 
   clone.style.opacity = "1";
-  // Important: the runtime hides timed clips with an !important rule until its first visibility pass.
   clone.style.setProperty("visibility", "visible", "important");
   clone.querySelectorAll<HTMLElement>("[data-start]").forEach((el) => {
     el.style.setProperty("visibility", "visible", "important");
