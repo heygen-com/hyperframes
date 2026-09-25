@@ -162,3 +162,31 @@ export function resolvePreviewWheelPan(input: {
     ...pan,
   };
 }
+
+export interface PreviewVisibleRegion {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** The part of the frame the viewport shows, as fractions of the frame; the stage is centred and scaled about its centre. */
+export function resolvePreviewVisibleRegion(input: {
+  state: PreviewZoomState;
+  viewportWidth: number;
+  viewportHeight: number;
+  contentWidth: number;
+  contentHeight: number;
+}): PreviewVisibleRegion {
+  const scale = clampPreviewZoomPercent(input.state.zoomPercent) / 100;
+  const axis = (pan: number, view: number, content: number): [number, number] => {
+    const size = content * scale;
+    if (!(size > 0)) return [0, 1];
+    const at = (edge: number) => Math.min(1, Math.max(0, (edge - pan + size / 2) / size));
+    const start = at(-view / 2);
+    return [start, at(view / 2) - start];
+  };
+  const [left, width] = axis(input.state.panX, input.viewportWidth, input.contentWidth);
+  const [top, height] = axis(input.state.panY, input.viewportHeight, input.contentHeight);
+  return { left, top, width, height };
+}

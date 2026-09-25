@@ -13,6 +13,7 @@ import {
   ownsPreviewPanTarget,
   PREVIEW_PAN_OVERSCROLL_PX,
   PREVIEW_PAN_SURFACE_SELECTOR,
+  resolvePreviewVisibleRegion,
   resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
   toDomPrecision,
@@ -319,5 +320,31 @@ describe("resolvePreviewWheelPan", () => {
 
     expect(next.panX).toBe(PREVIEW_PAN_OVERSCROLL_PX);
     expect(next.panY).toBe(-PREVIEW_PAN_OVERSCROLL_PX);
+  });
+});
+
+describe("resolvePreviewVisibleRegion", () => {
+  const frame = { viewportWidth: 1000, viewportHeight: 600, contentWidth: 800, contentHeight: 450 };
+
+  it("shows the whole frame at Fit", () => {
+    expect(resolvePreviewVisibleRegion({ state: DEFAULT_PREVIEW_ZOOM, ...frame })).toEqual({
+      left: 0,
+      top: 0,
+      width: 1,
+      height: 1,
+    });
+  });
+
+  it("shows the centre part at 200%, and the part the pan moved to", () => {
+    const zoomed = { zoomPercent: 200, panX: 0, panY: 0 };
+    const centre = resolvePreviewVisibleRegion({ state: zoomed, ...frame });
+    expect(centre.width).toBeCloseTo(1000 / 1600);
+    expect(centre.left).toBeCloseTo((1 - 1000 / 1600) / 2);
+    expect(centre.height).toBeCloseTo(600 / 900);
+
+    // Panning right by 300px brings the frame's left side into view.
+    const panned = resolvePreviewVisibleRegion({ state: { ...zoomed, panX: 300 }, ...frame });
+    expect(panned.left).toBeCloseTo(centre.left - 300 / 1600);
+    expect(panned.width).toBeCloseTo(centre.width);
   });
 });

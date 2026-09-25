@@ -11,13 +11,13 @@ import {
   clampPreviewPan,
   clampPreviewZoomPercent,
   ownsPreviewPanTarget,
+  resolvePreviewVisibleRegion,
   resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
   toDomPrecision,
   type PreviewZoomState,
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps {
@@ -54,6 +54,7 @@ export function getPreviewPlayerKey({
 const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
 const PREVIEW_STAGE_INSET_PX = 8;
+const NAVIGATOR_PX = 112;
 
 // clip-path as well as visibility: the player's loading overlay sets its own
 // visibility:visible and would otherwise paint over the live frame.
@@ -73,15 +74,18 @@ function isPreviewAtFit(state: PreviewZoomState): boolean {
   );
 }
 
-function loadInitialZoom(): PreviewZoomState {
-  const stored = readStudioUiPreferences().previewZoom;
-  return stored
-    ? {
-        zoomPercent: clampPreviewZoomPercent(stored.zoomPercent),
-        panX: stored.panX,
-        panY: stored.panY,
-      }
-    : DEFAULT_PREVIEW_ZOOM;
+/** A pan at 100% is off Fit without a zoom. */
+function zoomChipLabel(zoomPercent: number): string {
+  const rounded = Math.round(zoomPercent);
+  return rounded === 100 ? "Panned" : `Zoomed ${rounded}%`;
+}
+
+/** The navigator's frame box: the composition's shape, its long side NAVIGATOR_PX. */
+function navigatorFrameSize(stage: { width: number; height: number }) {
+  const ratio = stage.width > 0 && stage.height > 0 ? stage.width / stage.height : 16 / 9;
+  return ratio >= 1
+    ? { width: NAVIGATOR_PX, height: toDomPrecision(NAVIGATOR_PX / ratio) }
+    : { width: toDomPrecision(NAVIGATOR_PX * ratio), height: NAVIGATOR_PX };
 }
 
 export function resolvePreviewStageSize(
@@ -160,7 +164,8 @@ export const NLEPreview = memo(function NLEPreview({
   const insetPx = fillBox ? 0 : PREVIEW_STAGE_INSET_PX;
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
-  const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
+  // Every project opens at Fit; a zoom lasts only while the project stays open.
+  const zoomRef = useRef<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(() => zoomRef.current);
   const hudRef = useRef<HTMLDivElement>(null);
   const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -232,14 +237,53 @@ export const NLEPreview = memo(function NLEPreview({
   const stageSizeRef = useRef(stageSize);
   stageSizeRef.current = stageSize;
 
-  const writeTransform = useCallback((state: PreviewZoomState) => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const s = toDomPrecision(state.zoomPercent / 100);
-    const px = toDomPrecision(state.panX);
-    const py = toDomPrecision(state.panY);
-    stage.style.transform = `translate3d(${px}px, ${py}px, 0) scale(${s})`;
+  const navigatorRegionRef = useRef<HTMLDivElement | null>(null);
+  const drawNavigator = useCallback((state: PreviewZoomState) => {
+    const region = navigatorRegionRef.current;
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!region || !rect) return;
+    const visible = resolvePreviewVisibleRegion({
+      state,
+      viewportWidth: rect.width,
+      viewportHeight: rect.height,
+      contentWidth: stageSizeRef.current.width,
+      contentHeight: stageSizeRef.current.height,
+    });
+    region.style.left = `${visible.left * 100}%`;
+    region.style.top = `${visible.top * 100}%`;
+    region.style.width = `${visible.width * 100}%`;
+    region.style.height = `${visible.height * 100}%`;
   }, []);
+  const setNavigatorRegion = useCallback(
+    (node: HTMLDivElement | null) => {
+      navigatorRegionRef.current = node;
+      drawNavigator(zoomRef.current);
+    },
+    [drawNavigator],
+  );
+  useEffect(() => drawNavigator(zoomRef.current), [stageSize, drawNavigator]);
+
+  const writeTransform = useCallback(
+    (state: PreviewZoomState) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const s = toDomPrecision(state.zoomPercent / 100);
+      const px = toDomPrecision(state.panX);
+      const py = toDomPrecision(state.panY);
+      stage.style.transform = `translate3d(${px}px, ${py}px, 0) scale(${s})`;
+      drawNavigator(state);
+    },
+    [drawNavigator],
+  );
+
+  const zoomProjectRef = useRef(projectId);
+  useEffect(() => {
+    if (zoomProjectRef.current === projectId) return;
+    zoomProjectRef.current = projectId;
+    zoomRef.current = DEFAULT_PREVIEW_ZOOM;
+    writeTransform(DEFAULT_PREVIEW_ZOOM);
+    setSettledZoom(DEFAULT_PREVIEW_ZOOM);
+  }, [projectId, writeTransform]);
 
   const applyTransform = useCallback(
     (next: PreviewZoomState, showHud: boolean) => {
@@ -269,7 +313,6 @@ export const NLEPreview = memo(function NLEPreview({
       settleTimerRef.current = setTimeout(() => {
         zoomingRef.current = false;
         const final = zoomRef.current;
-        writeStudioUiPreferences({ previewZoom: final });
         setSettledZoom((prev) =>
           prev.zoomPercent === final.zoomPercent &&
           prev.panX === final.panX &&
@@ -305,8 +348,7 @@ export const NLEPreview = memo(function NLEPreview({
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
     if (Math.abs(z.zoomPercent - 100) > 0.5 || Math.abs(z.panX) > 0.1 || Math.abs(z.panY) > 0.1) {
-      // A pan persisted on a large window can restore the composition mostly
-      // off-screen in a smaller one; clamp against the current viewport first.
+      // A reload can land in a smaller viewport than the pan was made in; clamp first.
       const viewport = viewportRef.current;
       const rect = viewport?.getBoundingClientRect();
       const sz = stageSizeRef.current;
@@ -570,15 +612,42 @@ export const NLEPreview = memo(function NLEPreview({
           aria-live="polite"
         />
         {!isPreviewAtFit(settledZoom) && (
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 z-50 rounded-md px-2.5 py-1 text-xs font-medium text-white/80 bg-black/50 backdrop-blur-xs hover:bg-black/70 hover:text-white transition-colors"
-            onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
-            aria-label="Reset zoom to fit"
-            data-testid="preview-reset-zoom"
-          >
-            {Math.round(settledZoom.zoomPercent)}% — Reset
-          </button>
+          <>
+            <div
+              className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 rounded-md py-1 pl-2.5 pr-1 text-xs text-white/80 bg-black/60 backdrop-blur-xs"
+              data-testid="preview-zoom-chip"
+            >
+              <span className="tabular-nums">{zoomChipLabel(settledZoom.zoomPercent)}</span>
+              <span aria-hidden="true" className="text-white/30">
+                ·
+              </span>
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 font-medium text-studio-accent hover:bg-white/10 transition-colors"
+                onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
+                aria-label="Fit the whole frame in view"
+                data-testid="preview-zoom-fit"
+              >
+                Fit
+              </button>
+            </div>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-3 right-3 z-50 rounded-md p-1.5 bg-black/60 backdrop-blur-xs"
+              data-testid="preview-zoom-navigator"
+            >
+              <div
+                className="relative overflow-hidden bg-white/10"
+                style={navigatorFrameSize(stageSize)}
+              >
+                <div
+                  ref={setNavigatorRegion}
+                  className="absolute rounded-[1px] border border-studio-accent bg-studio-accent/15"
+                  data-testid="preview-zoom-navigator-region"
+                />
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -40,11 +40,6 @@ vi.mock("../../player", async () => {
   };
 });
 
-vi.mock("../../utils/studioUiPreferences", () => ({
-  readStudioUiPreferences: () => ({}),
-  writeStudioUiPreferences: () => {},
-}));
-
 let resizeCallbacks: Array<() => void> = [];
 
 class MockResizeObserver {
@@ -93,11 +88,11 @@ function renderPreview(
   document.body.append(host);
   const root = createRoot(host);
   const iframeRef = createRef<HTMLIFrameElement>();
-  const render = (directUrl?: string) =>
+  const render = (directUrl?: string, projectId = "timeline-edit-playground") =>
     act(() => {
       root.render(
         React.createElement(NLEPreview, {
-          projectId: "timeline-edit-playground",
+          projectId,
           directUrl,
           iframeRef,
           onIframeLoad: () => {},
@@ -129,6 +124,9 @@ function renderPreview(
     render,
     viewport,
     stage,
+    openProject(projectId: string) {
+      render(undefined, projectId);
+    },
     cleanup() {
       act(() => {
         root.unmount();
@@ -240,6 +238,22 @@ describe("NLEPreview", () => {
     view.cleanup();
   });
 
+  it("labels a pan away from Fit without a zoom as panned", () => {
+    vi.useFakeTimers();
+    const view = renderPreview();
+    act(() => {
+      view.stage.dispatchEvent(
+        new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -30, deltaY: 0 }),
+      );
+    });
+    act(() => vi.advanceTimersByTime(300));
+    expect(view.host.querySelector('[data-testid="preview-zoom-chip"]')?.textContent).toBe(
+      "Panned·Fit",
+    );
+    view.cleanup();
+    vi.useRealTimers();
+  });
+
   it("pans the preview with a two-finger wheel gesture", () => {
     const view = renderPreview();
     const target = document.createElement("div");
@@ -260,6 +274,83 @@ describe("NLEPreview", () => {
 
     expect(view.stage.style.transform).toContain("translate3d(30px, -24px, 0)");
     view.cleanup();
+  });
+
+  describe("zoom", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      localStorage.clear();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      localStorage.clear();
+    });
+
+    /** A pinch (ctrl + wheel) over the preview, then the settle that follows it. */
+    function pinchIn(view: ReturnType<typeof renderPreview>, steps: number) {
+      act(() => {
+        for (let step = 0; step < steps; step += 1) {
+          const pinch = new WheelEvent("wheel", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 400,
+            clientY: 300,
+            deltaY: -10,
+          });
+          // happy-dom drops ctrlKey from the WheelEvent init; a trackpad pinch sets it.
+          Object.defineProperty(pinch, "ctrlKey", { value: true });
+          view.stage.dispatchEvent(pinch);
+        }
+      });
+      act(() => vi.advanceTimersByTime(300));
+    }
+    const chip = (view: ReturnType<typeof renderPreview>) =>
+      view.host.querySelector('[data-testid="preview-zoom-chip"]');
+    const navigator = (view: ReturnType<typeof renderPreview>) =>
+      view.host.querySelector('[data-testid="preview-zoom-navigator"]');
+
+    it("opens at Fit even when an older Studio saved a zoom", () => {
+      localStorage.setItem(
+        "hf-studio-ui-preferences",
+        JSON.stringify({ previewZoom: { zoomPercent: 245, panX: 0, panY: 0 } }),
+      );
+      const view = renderPreview();
+      expect(view.stage.style.transform).toContain("scale(1)");
+      expect(chip(view)).toBeNull();
+      view.cleanup();
+    });
+
+    it("says how far it is zoomed, shows where in the frame, and Fit puts it back", () => {
+      const view = renderPreview();
+      expect([chip(view), navigator(view)]).toEqual([null, null]);
+
+      pinchIn(view, 10);
+      expect(chip(view)?.textContent).toMatch(/^Zoomed 2\d\d%·Fit$/);
+      const region = view.host.querySelector<HTMLElement>(
+        '[data-testid="preview-zoom-navigator-region"]',
+      );
+      expect(Number.parseFloat(region!.style.width)).toBeLessThan(100);
+
+      act(() => {
+        view.host.querySelector<HTMLButtonElement>('[data-testid="preview-zoom-fit"]')!.click();
+      });
+      act(() => vi.advanceTimersByTime(300));
+      expect(view.stage.style.transform).toContain("scale(1)");
+      expect([chip(view), navigator(view)]).toEqual([null, null]);
+      view.cleanup();
+    });
+
+    it("keeps a zoom only while the project is open: nothing is saved, and another project opens at Fit", () => {
+      const view = renderPreview();
+      pinchIn(view, 10);
+      expect(chip(view)).not.toBeNull();
+      expect(localStorage.getItem("hf-studio-ui-preferences") ?? "").not.toContain("previewZoom");
+
+      view.openProject("another-project");
+      expect(view.stage.style.transform).toContain("scale(1)");
+      expect(chip(view)).toBeNull();
+      view.cleanup();
+    });
   });
 
   it("insets the picture by default and fills a same-shape box when fillBox is on", () => {
