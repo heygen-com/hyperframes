@@ -70,7 +70,6 @@ export async function commitTimelineCompositionInsertion(input: {
     try {
       await input.recordEdit({
         label: "Add composition to timeline",
-        kind: "timeline",
         files: { [input.targetPath]: { before: result.before, after: result.after } },
       });
     } catch (error) {

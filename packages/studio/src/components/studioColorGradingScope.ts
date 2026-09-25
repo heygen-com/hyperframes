@@ -1,4 +1,3 @@
-import type { EditHistoryKind } from "../utils/editHistory";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { patchMediaColorGradingInHtml } from "./editor/colorGradingScopePatch";
 import { hasRelativeLutSource } from "./studioMediaJobs";
@@ -11,7 +10,6 @@ type ProjectFileWriter = (path: string, content: string) => Promise<void>;
 type ShowToast = (message: string, tone?: "error" | "info") => void;
 type RecordEdit = (entry: {
   label: string;
-  kind: EditHistoryKind;
   files: Record<string, { before: string; after: string }>;
 }) => Promise<void>;
 
@@ -105,7 +103,6 @@ export async function applyColorGradingScopeUpdate({
   const changedPaths = await saveProjectFilesWithHistory({
     projectId,
     label: value ? "Apply color grading" : "Clear color grading",
-    kind: "manual",
     files,
     readFile: readProjectFile,
     writeFile: writeProjectFile,

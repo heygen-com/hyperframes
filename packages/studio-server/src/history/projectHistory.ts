@@ -341,7 +341,7 @@ class Engine {
     for (const [window, paths] of cut) await this.commitCut(window, paths);
   }
 
-  /** The held claim `taken` continues: same key, each change starting where the claim's own left off (no one between). */
+  /** The held claim `taken` continues: same key, each file from its own last change, no held file changed since. */
   heldFor(key: string | undefined, taken: readonly HistoryFileChange[]): Group | null {
     const group = key && this.claimed?.key === key ? this.claimed.group : null;
     const after = (path: string, before: string | null) => {

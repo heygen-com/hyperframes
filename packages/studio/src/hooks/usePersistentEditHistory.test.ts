@@ -66,7 +66,6 @@ it("an edit Studio saved is undone and redone by the project's history, with the
   await act(() =>
     hook().recordEdit({
       label: "Moved Title",
-      kind: "manual",
       files: { "index.html": { before: "A", after: "B" } },
     }),
   );
@@ -98,7 +97,6 @@ it("a drag's edits under one key undo as one step, even before the drag goes idl
     await act(() =>
       hook().recordEdit({
         label: "Dragged Title",
-        kind: "manual",
         coalesceKey: "drag",
         coalesceMs: 60_000,
         files: { "index.html": { before, after } },
@@ -119,12 +117,11 @@ it("a drag's edits under one key undo as one step, even before the drag goes idl
 it("an agent's edit made seconds before Studio's stays the agent's: Cmd+Z undoes only Studio's", async () => {
   const { hook, file, save, readFile } = await studio();
   save("B");
-  await act(() => hook().recordEdit({ label: "sweep", kind: "manual", files: {} }));
+  await act(() => hook().recordEdit({ label: "sweep", files: {} }));
   save("C");
   await act(() =>
     hook().recordEdit({
       label: "Moved Title",
-      kind: "manual",
       files: { "index.html": { before: "B", after: "C" } },
     }),
   );
@@ -138,7 +135,6 @@ it("an undo's writes carry the write token Studio marked, so their echo is not r
   await act(() =>
     hook().recordEdit({
       label: "Moved Title",
-      kind: "manual",
       files: { "index.html": { before: "A", after: "B" } },
     }),
   );
@@ -153,7 +149,6 @@ it("without a history on the server an edit still saves, and there is nothing to
   await act(() =>
     hook().recordEdit({
       label: "Moved Title",
-      kind: "manual",
       files: { "index.html": { before: "A", after: "B" } },
     }),
   );
@@ -191,7 +186,6 @@ it("a refused step names the files that changed since its edit", async () => {
   await act(() =>
     hook().recordEdit({
       label: "Moved Title",
-      kind: "manual",
       files: { "index.html": { before: "A", after: "B" } },
     }),
   );
@@ -213,7 +207,6 @@ it("a claim the server refused is logged, and the write stays undoable as a chan
   await act(() =>
     hook().recordEdit({
       label: "Moved Title",
-      kind: "manual",
       files: { "index.html": { before: "A", after: "B" } },
     }),
   );

@@ -185,7 +185,6 @@ export function useElementLifecycleOps({
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Delete element",
-          kind: "timeline",
           files: { [targetPath]: patchedContent },
           readFile: async () => originalContent,
           // remove-element already wrote the removal, so disk holds THAT — not

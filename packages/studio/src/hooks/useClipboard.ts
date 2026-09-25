@@ -13,7 +13,6 @@ import { collectHtmlIds } from "../utils/studioHelpers";
 import { insertTimelineAssetIntoSource } from "../utils/timelineAssetDrop";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import type { EditHistoryKind } from "../utils/editHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { findElementForSelection } from "../components/editor/domEditingElement";
 import { findTimelineElementInIframe, readFileContent } from "./timelineEditingHelpers";
@@ -22,7 +21,6 @@ import { timeRangesOverlap } from "../player/components/timelineCollision";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -297,7 +295,6 @@ export function useClipboard({
       await saveProjectFilesWithHistory({
         projectId: pid,
         label,
-        kind: "timeline" as EditHistoryKind,
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
         writeFile: writeProjectFile,
@@ -348,7 +345,6 @@ export function useClipboard({
       await saveProjectFilesWithHistory({
         projectId: pid,
         label: clipLabel("Duplicate", clips.length),
-        kind: "timeline" as EditHistoryKind,
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
         writeFile: writeProjectFile,

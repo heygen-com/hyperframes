@@ -399,7 +399,6 @@ async function foldGsapMutationIntoHistory(input: {
       if (Object.keys(files).length > 0) {
         await input.recordEdit({
           label: input.label,
-          kind: "timeline",
           coalesceKey: input.coalesceKey,
           coalesceMs: GSAP_HISTORY_COALESCE_MS,
           files,

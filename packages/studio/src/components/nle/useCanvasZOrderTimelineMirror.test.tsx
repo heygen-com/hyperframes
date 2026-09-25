@@ -57,7 +57,6 @@ interface HarnessApi {
 
 interface RecordedWrite {
   label: string;
-  kind: "manual" | "timeline";
   coalesceKey: string;
   after: string;
 }
@@ -70,9 +69,9 @@ interface RecordedWrite {
  * only captures what Studio sends on each write:
  *
  * - the z sink mimics commitDomEditPatchBatches' recordEdit call verbatim
- *   (kind "manual", options.coalesceKey — see useDomEditCommits.ts), and
+ *   (options.coalesceKey — see useDomEditCommits.ts), and
  * - the move sink mimics persistTimelineBatchEdit → saveProjectFilesWithHistory
- *   (kind "timeline", the coalesceKey forwarded through onMoveElements — see
+ *   (the coalesceKey forwarded through onMoveElements — see
  *   timelineEditingHelpers.ts / studioFileHistory.ts).
  */
 function mountMirrorHarness(history: {
@@ -82,12 +81,11 @@ function mountMirrorHarness(history: {
 }) {
   const record = (
     label: string,
-    kind: "manual" | "timeline",
     coalesceKey: string,
     _coalesceMs: number | undefined,
     after: string,
   ) => {
-    history.records.push({ label, kind, coalesceKey, after });
+    history.records.push({ label, coalesceKey, after });
     history.fileContent.current = after;
   };
 
@@ -98,7 +96,7 @@ function mountMirrorHarness(history: {
     coalesceMs,
   ) => {
     history.moveCoalesceKeys.push(coalesceKey ?? "<none>");
-    record("Move timeline clips", "timeline", coalesceKey ?? "<none>", coalesceMs, "C-move");
+    record("Move timeline clips", coalesceKey ?? "<none>", coalesceMs, "C-move");
   };
 
   const api: Partial<HarnessApi> = {};
@@ -106,7 +104,7 @@ function mountMirrorHarness(history: {
     const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
       makeLifecycleOpsParams({
         commitDomEditPatchBatches: async (_batches, options) => {
-          record(options.label, "manual", options.coalesceKey, options.coalesceMs, "B-z");
+          record(options.label, options.coalesceKey, options.coalesceMs, "B-z");
           return { durable: true, allMatched: true, changed: true };
         },
       }),
