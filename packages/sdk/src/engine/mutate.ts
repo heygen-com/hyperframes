@@ -867,7 +867,7 @@ function handleSetVariableValue(
 ): MutationResult {
   const root = findRoot(parsed.document);
   if (!root) return EMPTY;
-  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  const declEl = declarationElement(parsed.document, parsed.wrapped, id);
 
   const modelPath = variablePath(id);
   const oldVarDefault = readVariableDefault(declEl, id);
@@ -990,7 +990,8 @@ function handleDeclareVariable(
   if (!declEl) return EMPTY;
   if (!isCompositionVariable(declaration)) return EMPTY;
   if (!isValidVariableId(declaration.id)) return EMPTY;
-  if (findVariableDeclaration(declEl, declaration.id) !== undefined) return EMPTY;
+  const existing = declarationElement(parsed.document, parsed.wrapped, declaration.id);
+  if (findVariableDeclaration(existing, declaration.id) !== undefined) return EMPTY;
   if (!writeVariableDeclaration(declEl, declaration)) return EMPTY;
   const path = variableDeclPath(declaration.id);
   const result: MutationResult = {
@@ -1014,7 +1015,7 @@ function handleUpdateVariableDeclaration(
   id: string,
   declaration: CompositionVariable,
 ): MutationResult {
-  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  const declEl = declarationElement(parsed.document, parsed.wrapped, id);
   if (!declEl) return EMPTY;
   if (!isCompositionVariable(declaration) || declaration.id !== id) return EMPTY;
   const old = findVariableDeclaration(declEl, id);
@@ -1043,7 +1044,7 @@ function handleUpdateVariableDeclaration(
 }
 
 function handleRemoveVariableDeclaration(parsed: ParsedDocument, id: string): MutationResult {
-  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  const declEl = declarationElement(parsed.document, parsed.wrapped, id);
   if (!declEl) return EMPTY;
   const old = findVariableDeclaration(declEl, id);
   if (old === undefined) return EMPTY;
@@ -1678,7 +1679,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
       if (preErr) return preErr;
       if (
         findVariableDeclaration(
-          declarationElement(parsed.document, parsed.wrapped),
+          declarationElement(parsed.document, parsed.wrapped, op.declaration.id),
           op.declaration.id,
         ) !== undefined
       )
@@ -1699,8 +1700,10 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           "Variable ids are immutable — rename via removeVariableDeclaration + declareVariable.",
         );
       if (
-        findVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), op.id) ===
-        undefined
+        findVariableDeclaration(
+          declarationElement(parsed.document, parsed.wrapped, op.id),
+          op.id,
+        ) === undefined
       )
         return canErr(
           "E_VARIABLE_NOT_FOUND",
@@ -1713,8 +1716,10 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
       const fragmentErr = fragmentCompositionErr(parsed);
       if (fragmentErr) return fragmentErr;
       if (
-        findVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), op.id) ===
-        undefined
+        findVariableDeclaration(
+          declarationElement(parsed.document, parsed.wrapped, op.id),
+          op.id,
+        ) === undefined
       )
         return canErr(
           "E_VARIABLE_NOT_FOUND",
