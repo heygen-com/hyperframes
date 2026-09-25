@@ -1,31 +1,27 @@
 /**
  * Local catalog search that costs nothing and needs no account.
  *
- * Replaces a substring test. `description.includes(query)` cannot answer "make
- * the pace suddenly feel faster" because no description contains that phrase,
- * so the honest result was zero matches. Scoring shared vocabulary answers it
- * partially, offline, with no model and no network.
+ * Scoring shared vocabulary answers "make the pace suddenly feel faster"
+ * partially, offline, with no model and no network, where a substring test
+ * finds nothing because no description contains that phrase.
  *
  * The scorer is the one the retrieval evaluation used: lowercase tokens, stop
  * words dropped, anything two characters or shorter dropped, and the shared
- * token count divided by the square root of the entry's token count. That
- * divisor is load-bearing. Without it the wordiest entry wins every query on
- * sheer surface area.
+ * token count divided by the square root of the entry's token count. Without
+ * that divisor the wordiest entry wins every query on sheer surface area.
  *
  * Two things sit on top of that, both measured against a fixed eval set of
  * catalog queries rather than adjusted by feel:
  *
  * 1. A token matching an item's NAME or TITLE counts for more than one
- *    matching its description. Without this, searching "typewriter effect on a
- *    title" ranked the item literally called `typewriter` seventh, behind
- *    entries that merely mention typing. An author who types a move's name is
- *    giving the strongest signal available and it was being averaged away.
+ *    matching its description, so searching "typewriter effect on a title"
+ *    ranks the item called `typewriter` above entries that merely mention
+ *    typing. A name the author types is the strongest signal available.
  *
- * 2. Plurals fold to their singular on both sides. "a stat that counts up and
- *    then pulses once" shares no token with a description reading "lands with
- *    a restrained scale pulse", because `counts` is not `count` and `pulses`
- *    is not `pulse`. Adding detail to a query made results strictly worse,
- *    which is the opposite of what a search should do.
+ * 2. Plurals fold to their singular on both sides, so "a stat that counts up
+ *    and then pulses once" matches a description reading "lands with a
+ *    restrained scale pulse". Adding detail to a query must not make results
+ *    worse.
  *
  * Ties break on descending name, matching the evaluation's sort.
  */
