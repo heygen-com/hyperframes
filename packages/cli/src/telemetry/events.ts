@@ -2,7 +2,11 @@ import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
 import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
-import type { CatalogUsage } from "../utils/catalogUsage.js";
+import type {
+  CatalogUsage,
+  ProjectCatalogItem,
+  ProjectCatalogItems,
+} from "../utils/catalogUsage.js";
 import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
@@ -789,6 +793,30 @@ export function trackInitTemplate(templateId: string, props?: { tailwind?: boole
  * (`hyperframes telemetry disable`, `HYPERFRAMES_NO_TELEMETRY`, `DO_NOT_TRACK`)
  * emits nothing.
  */
+/**
+ * `hyperframes catalog --installed` ran: which catalog items a project holds.
+ *
+ * Item properties reuse the render event's shape and names, so a query can
+ * compare what a project holds with what reached its videos. The view also
+ * finds items by file path, which render does not, so it counts those apart.
+ * No project name, path or content: item names are public registry names.
+ */
+export function trackCatalogInstalledView(props: {
+  view: ProjectCatalogItems;
+  json: boolean;
+}): void {
+  const count = (keep: (item: ProjectCatalogItem) => boolean) =>
+    props.view.items.filter(keep).length;
+  trackEvent("cli_catalog_installed_view", {
+    ...catalogEventProperties(props.view.usage),
+    registry_items_found_by_file_count: count((item) => item.foundBy === "file"),
+    registry_items_file_missing_count: count((item) => item.status === "file-missing"),
+    registry_blocks_unused_count: count((item) => item.status === "not-used"),
+    scanned_files: props.view.scannedFiles,
+    json: props.json,
+  });
+}
+
 export function trackRegistryItemAdded(props: {
   item: string;
   itemType: string;

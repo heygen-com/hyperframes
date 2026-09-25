@@ -6,6 +6,7 @@ export const examples: Example[] = [
   ["List blocks only", "hyperframes catalog --type block"],
   ["Filter by tag", "hyperframes catalog --type block --tag social"],
   ["Machine-readable JSON", "hyperframes catalog --json"],
+  ["Catalog items in this project, and which the video uses", "hyperframes catalog --installed"],
   ["Interactive picker (install on select)", "hyperframes catalog --human-friendly"],
 ];
 
@@ -15,6 +16,12 @@ import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
+import {
+  type CatalogItemStatus,
+  type ProjectCatalogItem,
+  listProjectCatalogItems,
+} from "../utils/catalogUsage.js";
+import { trackCatalogInstalledView } from "../telemetry/events.js";
 import { resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
 import { runAdd } from "./add.js";
@@ -146,6 +153,11 @@ export default defineCommand({
       type: "boolean",
       description: "Print matching items as JSON to stdout",
     },
+    installed: {
+      type: "boolean",
+      description:
+        "List the catalog items in this project and whether its video uses each (combines with --type and --json)",
+    },
     "human-friendly": {
       type: "boolean",
       description: "Interactive picker — select an item to install",
@@ -193,6 +205,23 @@ export default defineCommand({
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
     const registryNames = new Set(catalog.map((e) => e.name));
     const filtered = typeFilter ? catalog.filter((e) => e.type === typeFilter) : catalog;
+
+    if (args.installed === true) {
+      if (interactive || args.query || args.tag) {
+        console.error(
+          "--installed lists this project's catalog items; it does not combine with --query, --tag or --human-friendly.",
+        );
+        finishCommand(1);
+      }
+      const view = listProjectCatalogItems(dir, manifest ? catalog : undefined);
+      trackCatalogInstalledView({ view, json });
+      const items = typeFilter
+        ? view.items.filter((item) => `hyperframes:${item.type}` === typeFilter)
+        : view.items;
+      if (json) console.log(JSON.stringify({ items, scannedFiles: view.scannedFiles }, null, 2));
+      else for (const line of installedViewLines(items, view.scannedFiles)) console.log(line);
+      return;
+    }
 
     if (filtered.length === 0) {
       if (json) console.log("[]");
@@ -475,6 +504,43 @@ export default defineCommand({
     console.log(c.dim(`${matching.length} items. Run "hyperframes add <name>" to install.`));
   },
 });
+
+const STATUS_LABELS: Record<CatalogItemStatus, string> = {
+  "in-use": "in use",
+  "not-used": "not used",
+  "file-missing": "file removed",
+  "pasted-inline": "pasted inline, can't tell",
+};
+
+/** `catalog --installed` as terminal lines: one row per item, or how to add one. */
+export function installedViewLines(items: ProjectCatalogItem[], scannedFiles: boolean): string[] {
+  const note = scannedFiles
+    ? []
+    : [c.dim("Registry list unavailable: showing only items recorded by hyperframes add.")];
+  if (items.length === 0) {
+    return [
+      "No catalog items in this project yet.",
+      c.dim('  Browse with "hyperframes catalog", install with "hyperframes add <name>".'),
+      ...note,
+    ];
+  }
+  const NAME_COL = 28;
+  const TYPE_COL = 12;
+  const STATUS_COL = 28;
+  const lines = [
+    `${c.bold("Name".padEnd(NAME_COL))}${c.bold("Type".padEnd(TYPE_COL))}${c.bold("Status".padEnd(STATUS_COL))}${c.bold("File")}`,
+    "-".repeat(96),
+  ];
+  for (const item of items) {
+    const found = item.foundBy === "file" ? c.dim(" (found by file name)") : "";
+    lines.push(
+      `${c.cyan(item.name.padEnd(NAME_COL))}${item.type.padEnd(TYPE_COL)}${STATUS_LABELS[item.status].padEnd(STATUS_COL)}${item.file}${found}`,
+    );
+  }
+  const inUse = items.filter((item) => item.status === "in-use").length;
+  lines.push("", c.dim(`${items.length} items, ${inUse} in use by index.html.`), ...note);
+  return lines;
+}
 
 /** One `--json` row: what an agent or app needs to pick an item and show it before `add` downloads anything. */
 export function catalogRow(item: RegistryItem) {

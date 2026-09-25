@@ -29,6 +29,7 @@ const {
   trackCommandResult,
   trackCheckReport,
   trackRenderComplete,
+  trackCatalogInstalledView,
   trackRenderError,
   trackRenderObservation,
   trackCommandFailure,
@@ -1303,5 +1304,35 @@ describe("power-state sampling respects the telemetry opt-out", () => {
     shouldTrack.mockReturnValue(false);
     trackRenderComplete({ durationMs: 1, fps: 30, quality: "high", docker: false, gpu: false });
     expect(getPowerState).not.toHaveBeenCalled();
+  });
+});
+
+describe("trackCatalogInstalledView", () => {
+  beforeEach(() => trackEvent.mockClear());
+
+  it("reports the project's catalog items in the render event's names, plus the view's own counts", () => {
+    trackCatalogInstalledView({
+      json: true,
+      view: {
+        scannedFiles: true,
+        usage: { installed: ["data-chart", "glitch"], usedBlocks: ["glitch"], manifestUnreadable: false },
+        items: [
+          { name: "data-chart", type: "block", file: "a", status: "not-used", foundBy: "recorded" },
+          { name: "glitch", type: "block", file: "b", status: "in-use", foundBy: "file" },
+          { name: "gone", type: "block", file: "c", status: "file-missing", foundBy: "recorded" },
+        ],
+      },
+    });
+    expect(trackEvent).toHaveBeenCalledWith("cli_catalog_installed_view", {
+      registry_item_count: 2,
+      registry_blocks_used_count: 1,
+      registry_items: "data-chart,glitch",
+      registry_blocks_used: "glitch",
+      registry_items_found_by_file_count: 1,
+      registry_items_file_missing_count: 1,
+      registry_blocks_unused_count: 1,
+      scanned_files: true,
+      json: true,
+    });
   });
 });

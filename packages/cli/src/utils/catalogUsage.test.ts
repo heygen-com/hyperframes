@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { summarizeCatalogUsage, type CatalogUsage } from "./catalogUsage.js";
+import {
+  listProjectCatalogItems,
+  summarizeCatalogUsage,
+  type CatalogUsage,
+  type ProjectCatalogItems,
+} from "./catalogUsage.js";
 import type { RegistryItemRecord } from "./projectConfig.js";
 
 /**
@@ -211,5 +216,141 @@ describe("summarizeCatalogUsage", () => {
       usedBlocks: [],
       manifestUnreadable: false,
     });
+  });
+});
+
+/** A throwaway project listed with `listProjectCatalogItems`; `config` is hyperframes.json. */
+function listOf(
+  files: Record<string, string>,
+  config: Record<string, unknown> | string | null,
+  catalog?: { name: string; type: string }[],
+): ProjectCatalogItems {
+  const dir = mkdtempSync(join(tmpdir(), "hf-catalog-list-"));
+  try {
+    if (config !== null) {
+      const text = typeof config === "string" ? config : JSON.stringify(config);
+      writeFileSync(join(dir, "hyperframes.json"), text);
+    }
+    for (const [rel, html] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, rel)), { recursive: true });
+      writeFileSync(join(dir, rel), html);
+    }
+    return listProjectCatalogItems(dir, catalog);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const COMPONENT = (name: string): RegistryItemRecord => ({
+  name,
+  type: "hyperframes:component",
+  target: `compositions/components/${name}.html`,
+});
+
+describe("listProjectCatalogItems", () => {
+  it("says which recorded items the video uses, which it does not, and which files are gone", () => {
+    const { items } = listOf(
+      {
+        "index.html": entryDoc("compositions/kept.html"),
+        "compositions/kept.html": subCompDoc("kept"),
+        "compositions/dropped.html": subCompDoc("dropped"),
+        "compositions/components/badge.html": "<div class=badge></div>",
+      },
+      { registryItems: [BLOCK("kept"), BLOCK("dropped"), BLOCK("deleted"), COMPONENT("badge")] },
+    );
+    expect(items.map(({ name, status, foundBy }) => [name, status, foundBy])).toEqual([
+      ["badge", "pasted-inline", "recorded"],
+      ["deleted", "file-missing", "recorded"],
+      ["dropped", "not-used", "recorded"],
+      ["kept", "in-use", "recorded"],
+    ]);
+  });
+
+  // Projects from before `add` recorded items, or with items copied in by hand.
+  it("finds unrecorded registry items by their install path, flat or in their own folder", () => {
+    const { items, scannedFiles } = listOf(
+      {
+        "index.html": entryDoc("compositions/orbit-card/orbit-card.html"),
+        "compositions/orbit-card/orbit-card.html": subCompDoc("orbit"),
+        "compositions/glitch.html": subCompDoc("glitch"),
+        "compositions/my-own-scene.html": subCompDoc("mine"),
+      },
+      {},
+      [
+        { name: "orbit-card", type: "hyperframes:block" },
+        { name: "glitch", type: "hyperframes:block" },
+        { name: "not-installed", type: "hyperframes:block" },
+      ],
+    );
+    expect(scannedFiles).toBe(true);
+    expect(items).toEqual([
+      {
+        name: "glitch",
+        type: "block",
+        file: "compositions/glitch.html",
+        status: "not-used",
+        foundBy: "file",
+      },
+      {
+        name: "orbit-card",
+        type: "block",
+        file: "compositions/orbit-card/orbit-card.html",
+        status: "in-use",
+        foundBy: "file",
+      },
+    ]);
+  });
+
+  it("looks for unrecorded items under the project's own paths", () => {
+    const { items } = listOf(
+      { "index.html": entryDoc(), "scenes/glitch.html": subCompDoc("glitch") },
+      { paths: { blocks: "scenes/" } },
+      [{ name: "glitch", type: "hyperframes:block" }],
+    );
+    expect(items.map((item) => item.file)).toEqual(["scenes/glitch.html"]);
+  });
+
+  it("lists recorded items only, and says so, without the registry list", () => {
+    const view = listOf(
+      { "index.html": entryDoc(), "compositions/glitch.html": subCompDoc("glitch") },
+      { registryItems: [BLOCK("kept")] },
+    );
+    expect(view.scannedFiles).toBe(false);
+    expect(view.items.map((item) => item.name)).toEqual(["kept"]);
+  });
+
+  it("reports the view in the render event's shape, file finds included", () => {
+    const { usage } = listOf(
+      {
+        "index.html": entryDoc("compositions/glitch.html"),
+        "compositions/glitch.html": subCompDoc("glitch"),
+        "compositions/kept.html": subCompDoc("kept"),
+      },
+      { registryItems: [BLOCK("kept"), BLOCK("Not A Slug")] },
+      [{ name: "glitch", type: "hyperframes:block" }],
+    );
+    expect(usage).toEqual({
+      installed: ["glitch", "kept"],
+      usedBlocks: ["glitch"],
+      manifestUnreadable: false,
+    });
+  });
+
+  it("still finds items by file when hyperframes.json is unreadable, and flags the manifest", () => {
+    const view = listOf(
+      { "index.html": entryDoc(), "compositions/glitch.html": subCompDoc("glitch") },
+      "{ not json",
+      [{ name: "glitch", type: "hyperframes:block" }],
+    );
+    expect(view.items.map((item) => item.name)).toEqual(["glitch"]);
+    expect(view.usage.manifestUnreadable).toBe(true);
+  });
+
+  it("marks a recorded target that escapes the project as missing rather than reading it", () => {
+    const { items } = listOf(
+      { "index.html": entryDoc() },
+      { registryItems: [{ name: "evil", type: "hyperframes:block", target: "../outside.html" }] },
+    );
+    expect(items.map((item) => item.status)).toEqual(["file-missing"]);
   });
 });
