@@ -1,0 +1,128 @@
+---
+title: "How catalog search works"
+description: "What `hyperframes catalog --query` does, the on-device model behind meaning search, what it downloads, and how its index is built."
+---
+
+`hyperframes catalog --query "<what you want>"` finds catalog blocks and components by what they do,
+not only by name. It runs on your machine in one of two ways, and neither sends your query anywhere.
+
+| Search | When it runs | Needs |
+| --- | --- | --- |
+| **Word match** | By default, and whenever the model below is not on this machine | Nothing |
+| **On-device meaning search** | Once you have agreed to a one-time 33 MB download | The model, a small index, and the ONNX runtime |
+
+With `--query --json`, the output names the one that ran: `"tier": "words"` or `"tier": "on-device"`.
+
+## Word match
+
+Scores each item by the words it shares with your query across its name, title, description and
+tags, leaving out common words and words of one or two letters. A word that matches an item's name or
+title counts for more than one in its description, a word few items use counts for more than one most
+items use, plurals match their singular ("pulses" finds "pulse"), and compound words match both ways
+("countdown" and "count down"). It needs no model and no network, and it can only find items that use
+your words.
+
+## On-device meaning search
+
+Turns your query and every catalog item into vectors of numbers and returns the items whose vectors
+point the same way as the query's, so "make the pace feel suddenly faster" can find a move whose
+description never uses those words. It shows the 25 closest items, best first, and `--json` adds
+`top_score`, the similarity of the first result.
+
+### Turning it on
+
+The download is never started without a yes:
+
+- In a terminal, the first word-match search asks once whether to download the model, after showing
+  what word match found. Your answer is remembered. A yes fetches the catalog vectors right away and
+  the model on your next search.
+- `--on-device` gets meaning search ready on this run, prompting first in a terminal if you have not
+  been asked yet.
+- Agents, CI and `--json` runs are never prompted. They are told to ask the person they work for;
+  `--on-device --yes` is that person's yes, and records it.
+- After a no, `--on-device` alone is skipped with a message; `--on-device --yes` changes the answer.
+
+Once the model is on your machine, every `catalog --query` uses meaning search. If it cannot run, the
+CLI says why and falls back to word match.
+
+### The model
+
+| | |
+| --- | --- |
+| Model | `bge-small-en-v1.5`, the quantized ONNX build from `Xenova/bge-small-en-v1.5` |
+| Pinned to | revision `ea104dacec62c0de699686887e3f920caeb4f3e3`, never `main` |
+| Vector size | 384 numbers per item |
+| Download | 32 MB model and a 0.7 MB tokenizer, 33 MB in total |
+
+It was chosen because its average score on the MTEB benchmark is close to that of the larger hosted
+embedding model it replaces (62.17 against 62.3) with vectors a quarter of the size (384 numbers
+instead of 1,536), and it is small enough to download on request. The CLI has no hosted search. It is pinned to one revision because the
+catalog's vectors were made with those exact weights: a model that changed underneath them would still
+return results, just wrong ones.
+
+The quantized build is also what makes the catalog vectors, so the query and the catalog always come
+from the same file.
+
+### What is downloaded, and where
+
+| What | From | Stored in |
+| --- | --- | --- |
+| `model_quantized.onnx` (34,014,426 bytes) | huggingface.co, at the pinned revision | `~/.hyperframes/models/bge-small-en-v1.5.onnx` |
+| `tokenizer.json` (711,396 bytes) | huggingface.co, at the pinned revision | `~/.hyperframes/models/bge-small-en-v1.5.tokenizer.json` |
+| `onnxruntime-node` 1.21.1 | npm, on first use | `~/.cache/hyperframes/optional` |
+| `local-vectors.json` and `local-vectors.bin` | the catalog registry, `catalog-artifact/` | `~/.hyperframes/catalog` |
+
+Both model files are checked against pinned SHA-256 hashes. A file that does not match is deleted and
+the search falls back to word match, so a partial or altered download is never used. The runtime is
+installed before the model, so a machine that cannot run it does not spend the 33 MB first.
+
+The catalog vectors carry a `revision`. When the registry publishes a new one, the CLI fetches the new
+pair before the next meaning search, so newly published items become findable without a CLI update.
+For development, `HYPERFRAMES_CATALOG_ARTIFACT_DIR` replaces `~/.hyperframes/catalog` as the folder
+the vectors are kept in.
+
+### What is compared
+
+- **Each catalog item** is represented by its title, its description and its tags, one per line. Its
+  name is deliberately left out.
+- **Your query** gets the prefix bge expects on short searches:
+  `Represent this sentence for searching relevant passages: `.
+- Each vector is the model's first-token output scaled to length 1, and items are ranked by cosine
+  similarity to the query.
+
+## Privacy
+
+Meaning search runs entirely on your machine: your query is turned into a vector locally and compared
+with vectors already on disk. The only network traffic is the one-time downloads above and the refresh
+of the catalog vectors, none of which carries your query.
+
+When a search finds nothing useful, the CLI prints a `hyperframes feedback --search-miss` command you
+can run to report the gap. That command sends the query, and only if you run it.
+
+## How the index is built
+
+The vectors ship with the registry, one row per installable block and component, built by:
+
+```bash
+bun scripts/catalog/build-local-vectors.ts
+```
+
+It reads `registry/blocks/*` and `registry/components/*` from the repository, sorts them by name, and
+embeds them 16 at a time with the pinned model. The batch size matters: within a batch the texts are
+padded to the same length, which changes the quantized result, so the same text embedded alone comes
+out slightly different (cosine 0.9969). Rebuilding in batches of 16 reproduces the shipped rows
+exactly, which is how to check that an index came from this registry and this model.
+
+The `revision` is a SHA-256 over the model, its revision, the vector size, the batch size and every
+item's name and text. It is written into `local-vectors.json` and into the registry's `registry.json`, which is
+how the CLI knows its copy is out of date.
+
+### Rebuilding it
+
+Contributors adding a catalog item rarely need to. `bun run generate:catalog` rebuilds the index along
+with the rest of the generated catalog, downloading the pinned model first if needed; the catalog
+publication pull request does the same after source changes merge. Without the model, the build script
+stops and says so rather than failing midway, and the "Catalog: search index covers the registry" CI
+check fails if any searchable item is missing from the index. See
+[`registry/catalog-artifact/README.md`](https://github.com/heygen-com/hyperframes/blob/main/registry/catalog-artifact/README.md)
+for the file format.

@@ -7,7 +7,7 @@
  * partially, offline, with no model and no network.
  *
  * The scorer is the one the retrieval evaluation used: lowercase tokens, stop
- * words dropped, anything three characters or shorter dropped, and the shared
+ * words dropped, anything two characters or shorter dropped, and the shared
  * token count divided by the square root of the entry's token count. That
  * divisor is load-bearing. Without it the wordiest entry wins every query on
  * sheer surface area.
