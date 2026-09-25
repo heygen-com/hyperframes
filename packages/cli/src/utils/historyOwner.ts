@@ -23,6 +23,8 @@ export interface Turn {
   label: string;
   startedAt: number;
   lastWriteAt: number;
+  /** Entries this turn already filed: without a preview, each command mid-turn files the turn so far. */
+  parts: string[];
 }
 
 /** Whoever holds the project's history: a running preview (over its routes) or this process (the engine). */
@@ -56,7 +58,7 @@ const turnFile = (dir: string) => join(dir, ".hyperframes", "history-turn.json")
 function readTurn(dir: string): Turn | null {
   try {
     const turn = JSON.parse(readFileSync(turnFile(dir), "utf-8")) as Turn;
-    return typeof turn.lastWriteAt === "number" ? turn : null;
+    return typeof turn.lastWriteAt === "number" ? { ...turn, parts: turn.parts ?? [] } : null;
   } catch {
     return null;
   }
@@ -66,6 +68,39 @@ export function writeTurn(dir: string, turn: Turn | null): void {
   if (!turn) return rmSync(turnFile(dir), { force: true });
   mkdirSync(dirname(turnFile(dir)), { recursive: true });
   writeFileSync(turnFile(dir), JSON.stringify(turn));
+}
+
+/** Each agent's last ended turn, as the entries it filed; kept beside the marker, outside the history. */
+const lastTurnsFile = (dir: string) => join(dir, ".hyperframes", "history-turns.json");
+
+function readLastTurns(dir: string): Record<string, string[]> {
+  try {
+    return JSON.parse(readFileSync(lastTurnsFile(dir), "utf-8")) as Record<string, string[]>;
+  } catch {
+    return {};
+  }
+}
+
+/** The entries of `name`'s last ended turn; null when `name` never ended a turn here. */
+export function lastTurnParts(dir: string, name: string): string[] | null {
+  return readLastTurns(dir)[name] ?? null;
+}
+
+/** Ends an open turn: its last part is the entry `end` returns, and every part is kept as its agent's last turn. */
+export async function endTurn(
+  owner: Owner,
+  turn: Turn,
+  dir: string,
+): Promise<{ entry: HistoryEntry | null; parts: string[] }> {
+  const entry = await owner.end(turn.id);
+  const parts = entry ? [...turn.parts, entry.id] : turn.parts;
+  writeTurn(dir, null);
+  mkdirSync(dirname(lastTurnsFile(dir)), { recursive: true });
+  writeFileSync(
+    lastTurnsFile(dir),
+    JSON.stringify({ ...readLastTurns(dir), [turn.who.name]: parts }),
+  );
+  return { entry, parts };
 }
 
 function previewOwner(route: (path: string) => string): Owner {
@@ -164,7 +199,8 @@ export async function withOwner<T>(
     await owner.close();
     if (direct && readTurn(projectDir)?.id === turn.id) {
       const lastWriteAt = kept ? kept.endedAt : turn.lastWriteAt;
-      writeTurn(projectDir, { ...turn, via: "direct", id: randomUUID(), lastWriteAt });
+      const parts = kept ? [...turn.parts, kept.id] : turn.parts;
+      writeTurn(projectDir, { ...turn, via: "direct", id: randomUUID(), lastWriteAt, parts });
     }
   }
 }

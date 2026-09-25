@@ -267,6 +267,42 @@ describe("openProjectHistory", () => {
     ]);
   });
 
+  it("times each write by its file: oldest first, a copy that keeps an old mtime as now, a removal as now", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "a.html": "a1",
+      "b.html": "b1",
+      "c.html": "c1",
+    });
+    await history.close();
+    const writeAt = (path: string, text: string, at: number) => {
+      write(path, text);
+      utimesSync(join(projectDir, path), at / 1000, at / 1000);
+    };
+    const turn = (id: string, lastWriteAt: number) => ({
+      closedWindow: { id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs: 400 },
+    });
+
+    // b.html comes first in time though not by name: taken in order, both are the window's.
+    const first = Date.now() + 60_000;
+    writeAt("b.html", "b2", first + 300);
+    writeAt("a.html", "a2", first + 600);
+    const reopened = await open(projectDir, historyRoot, turn("turn-1", first));
+    const [kept] = reopened.list();
+    expect(kept?.files.map((file) => file.path)).toEqual(["a.html", "b.html"]);
+    expect(Math.abs(kept!.endedAt - (first + 600)), "ends at its last write").toBeLessThan(2);
+    await reopened.close();
+
+    // Long after the window's last write: an old mtime does not hide a write made now, nor does a removal.
+    const stale = Date.now() - 5000;
+    writeAt("a.html", "a3", stale + 100);
+    rmSync(join(projectDir, "c.html"));
+    const again = await open(projectDir, historyRoot, turn("turn-2", stale));
+    expect(again.list().at(-1)).toMatchObject({
+      who: { kind: "outside" },
+      files: [{ path: "a.html" }, { path: "c.html" }],
+    });
+  });
+
   it("gives a claimed path back from another writer's open window to the claimer", async () => {
     const { history, write } = await project({ "index.html": "A", "notes.html": "N" });
     const window = await history.beginWindow(agent, "Retitle");

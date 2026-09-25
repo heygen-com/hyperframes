@@ -15,6 +15,8 @@ import { trackHistoryAction } from "../telemetry/events.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import {
   Refusal,
+  endTurn,
+  lastTurnParts,
   withOwner as withHistoryOwner,
   writeTurn,
   type Owner,
@@ -74,7 +76,11 @@ function timeOf(entries: readonly HistoryListItem[], ref: string): number | null
     return null;
   // A bare date would parse as UTC midnight; with a time it parses as local.
   const time = Date.parse(ref.includes("T") ? ref : `${ref}T00:00`);
-  if (Number.isNaN(time)) throw new Refusal(`"${ref}" is not a date`);
+  // Date.parse rolls 2026-02-31 over to March instead of refusing it.
+  const [year, month, date] = ref.slice(0, 10).split("-").map(Number) as [number, number, number];
+  const day = new Date(Date.UTC(year, month - 1, date));
+  if (Number.isNaN(time) || day.getUTCMonth() !== month - 1 || day.getUTCDate() !== date)
+    throw new Refusal(`"${ref}" is not a date`);
   return time;
 }
 
@@ -171,6 +177,28 @@ function conflictText(entry: HistoryListItem, newer: HistoryListItem[], files: s
   ].join("\n");
 }
 
+/**
+ * What `undo --who` reverts: every entry of the agent's last turn still in effect, newest first. An agent that never
+ * ended a turn here gets its newest entry.
+ */
+function turnTargets(entries: HistoryListItem[], who: HistoryWho, dir: string): HistoryListItem[] {
+  const inEffect = (entry: HistoryListItem) => !entry.undone && !entry.undoes;
+  const parts = lastTurnParts(dir, who.name);
+  const newest = entries[lastIndex(entries, (e) => e.who.name === who.name && inEffect(e))];
+  const targets = parts
+    ? entries.filter((entry) => parts.includes(entry.id) && inEffect(entry)).reverse()
+    : newest
+      ? [newest]
+      : [];
+  if (!targets.length)
+    throw new Refusal(
+      parts
+        ? `${who.name}'s last turn has no change still in effect; undo an older entry by its id`
+        : `${who.name} has no entry still in effect`,
+    );
+  return targets;
+}
+
 async function runUndo(args: {
   ref?: string;
   who?: string;
@@ -186,26 +214,25 @@ async function runUndo(args: {
       : undefined;
   await withOwner("undo", args.dir, async (owner, turn, projectDir) => {
     const who = whoOf(args.who);
-    // Undo ends the caller's own open turn first, so the turn is an entry that can be undone.
-    if (turn?.who.name === who.name) {
-      await owner.end(turn.id);
-      writeTurn(projectDir, null);
-    }
+    // Undo ends the caller's own open turn first, so the turn is entries that can be undone.
+    if (turn?.who.name === who.name) await endTurn(owner, turn, projectDir);
     const entries = await owner.list();
-    const entry = args.ref
-      ? entryOf(entries, args.ref)
-      : entries[lastIndex(entries, (e) => e.who.name === who.name && !e.undone && !e.undoes)];
-    if (!entry) throw new Refusal(`${who.name} has no entry still in effect`);
-    const result = await owner.undo(entry.id, who, mode);
-    if (result.ok)
-      return print(
-        args.json,
-        { ok: true, entry: result.entry && publicEntry(result.entry) },
-        result.entry ? `Undid ${short(entry.id)}: ${line(result.entry)}` : "Nothing to undo.",
-      );
-    setCommandExitCode(2);
-    const newer = result.conflict.newer.map((id) => entryOf(entries, id));
-    print(args.json, result, conflictText(entry, newer, result.conflict.files));
+    const targets = args.ref ? [entryOf(entries, args.ref)] : turnTargets(entries, who, projectDir);
+    const undid: HistoryEntry[] = [];
+    for (const entry of targets) {
+      const result = await owner.undo(entry.id, who, mode);
+      if (!result.ok) {
+        setCommandExitCode(2);
+        const newer = result.conflict.newer.map((id) => entryOf(entries, id));
+        return print(args.json, result, conflictText(entry, newer, result.conflict.files));
+      }
+      if (result.entry) undid.push(result.entry);
+    }
+    print(
+      args.json,
+      { ok: true, entry: undid[0] ? publicEntry(undid[0]) : null, entries: undid.map(publicEntry) },
+      undid.map((entry) => `Undid: ${line(entry)}`).join("\n") || "Nothing to undo.",
+    );
   });
 }
 
@@ -372,7 +399,7 @@ export default defineCommand({
         { who: { type: "string", required: true }, label: { type: "string", required: true } },
         (args) =>
           withOwner("begin", args.dir, async (owner, turn, projectDir) => {
-            if (turn) await owner.end(turn.id);
+            if (turn) await endTurn(owner, turn, projectDir);
             const who = whoOf(args.who);
             const id = await owner.begin(who, args.label);
             const startedAt = Date.now();
@@ -383,6 +410,7 @@ export default defineCommand({
               label: args.label,
               startedAt,
               lastWriteAt: startedAt,
+              parts: [],
             });
             print(args.json, { entryId: id }, short(id));
           }),
@@ -391,12 +419,17 @@ export default defineCommand({
       sub<{ dir?: string; json: boolean }>("end", "End your turn and print its entry", {}, (args) =>
         withOwner("end", args.dir, async (owner, turn, projectDir) => {
           if (!turn) throw new Refusal("No turn is open; start one with history begin");
-          const entry = await owner.end(turn.id);
-          writeTurn(projectDir, null);
+          const { entry, parts } = await endTurn(owner, turn, projectDir);
+          const earlier = parts.length - (entry ? 1 : 0);
+          const text = entry
+            ? line(entry)
+            : earlier
+              ? "Nothing changed since this turn's last command."
+              : "Nothing changed in this turn.";
           print(
             args.json,
-            { entry: entry && publicEntry(entry) },
-            entry ? line(entry) : "Nothing changed in this turn.",
+            { entry: entry && publicEntry(entry), parts },
+            earlier ? `${text}\n(+${earlier} earlier part${earlier > 1 ? "s" : ""})` : text,
           );
         }),
       ),

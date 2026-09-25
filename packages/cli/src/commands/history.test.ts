@@ -289,6 +289,39 @@ describe("hyperframes history, one owner", () => {
     ]);
   });
 
+  it("undo --who refuses when the agent's last turn recorded nothing, and leaves its earlier turn alone", async () => {
+    const { dir, read, write, hf, turn } = project();
+    await hf();
+    historyDeps.turnIdleMs = 400;
+    await turn("claude", "Earlier", "notes.html", "N2");
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    // The only change lands past the idle limit (the person's edit over the agent's), so it is Outside.
+    write("index.html", "A2");
+    const later = Date.now() + 60_000;
+    utimesSync(join(dir, "index.html"), later / 1000, later / 1000);
+
+    const refused = await hf("undo", "--who", "claude");
+    expect([refused.code, refused.err]).toEqual([
+      2,
+      "claude's last turn has no change still in effect; undo an older entry by its id",
+    ]);
+    expect([read("index.html"), read("notes.html")]).toEqual(["A2", "N2"]);
+  });
+
+  it("undo --who reverts every part of a turn that a mid-turn command split", async () => {
+    const { read, write, hf, json } = project();
+    await hf();
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    write("index.html", "A2");
+    await hf(); // files the turn so far as its first part
+    write("notes.html", "N2");
+    expect((await json("end")).parts).toHaveLength(2);
+
+    const undo = await hf("undo", "--who", "claude");
+    expect(undo.code, undo.err).toBe(0);
+    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N"]);
+  });
+
   it("a turn marker with no last write time has ended, so the next edit is not the agent's", async () => {
     const { dir, write, json, hf } = project();
     await hf();
@@ -341,7 +374,10 @@ describe("hyperframes history, refusals", () => {
     expect((await hf("undo", "--who", "claude")).code).toBe(0);
 
     const again = await hf("undo", "--who", "claude");
-    expect([again.code, again.err]).toEqual([2, "claude has no entry still in effect"]);
+    expect([again.code, again.err]).toEqual([
+      2,
+      "claude's last turn has no change still in effect; undo an older entry by its id",
+    ]);
     expect(read("index.html")).toBe("A");
   });
 
@@ -355,6 +391,7 @@ describe("hyperframes history, refusals", () => {
 
     const refused = await hf("restore", digit);
     expect([refused.code, refused.err]).toEqual([2, `No entry "${digit}" in this history`]);
+    expect((await hf("restore", "2026-02-31")).err).toBe('"2026-02-31" is not a date');
     expect(read("added.html")).toBe("new");
   });
 
