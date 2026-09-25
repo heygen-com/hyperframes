@@ -175,6 +175,14 @@ jobs:
         with:
           node-version: 22
 
+      # Bun's download cache; linking still happens, the downloads do not.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
       - name: Install dependencies
         shell: pwsh
         # Force the pre-1.3 "hoisted" linker on Windows. Bun 1.3.x's default
@@ -444,6 +452,14 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+
+      # Bun's download cache; linking still happens, the downloads do not.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
 
       - name: Install dependencies
         shell: pwsh
