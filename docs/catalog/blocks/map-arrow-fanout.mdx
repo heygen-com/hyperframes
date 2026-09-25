@@ -13,7 +13,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/map-arrow-fanout.html"
   title="Map Arrow Fanout"
   description="Arrow swarm fan-out from an origin - abstract schematic advances. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection - not affiliated; footage not included)."
-  variables={[{"id":"title","type":"string","label":"Title","default":"Advance Fan-Out"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Educational cartography - arrow swarm"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
+  variables={[{"id":"title","type":"string","label":"Title","default":"Advance Fan-Out"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Educational cartography · arrow swarm"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":282}}
   attribution={{"author":"HeyGen","authorUrl":"https://hyperframes.heygen.com","path":"registry/blocks/map-arrow-fanout","tags":["map","geography","animation","arrows","fanout","swarm","newsreel","svg"]}}
   hasCode
@@ -226,7 +226,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         </svg>
       </div>
       <div id="maf-title" data-var-text="title">Advance Fan-Out</div>
-      <div id="maf-subtitle" data-var-text="subtitle">Educational cartography - arrow swarm</div>
+      <div id="maf-subtitle" data-var-text="subtitle">Educational cartography · arrow swarm</div>
       <div id="maf-note">Abstract arrow fan-out - educational schematic only</div>
     </div>
     <script>
@@ -342,9 +342,9 @@ Move it in time with `data-start`. Put it on a different timeline row with
 
 Set these CSS variables on the block:
 
-- `undefined` - Title. Defaults to `Advance Fan-Out`.
-- `undefined` - Subtitle. Defaults to `Educational cartography - arrow swarm`.
-- `undefined` - Accent. Defaults to `#c45c26`.
+- `undefined` — Title. Defaults to `Advance Fan-Out`.
+- `undefined` — Subtitle. Defaults to `Educational cartography · arrow swarm`.
+- `undefined` — Accent. Defaults to `#c45c26`.
 
 ## Variables
 
@@ -354,7 +354,7 @@ want to change on the element:
 | Variable | Default | Accepts | What it does |
 | --- | --- | --- | --- |
 | `title` | `Advance Fan-Out` | string |  |
-| `subtitle` | `Educational cartography - arrow swarm` | string |  |
+| `subtitle` | `Educational cartography · arrow swarm` | string |  |
 | `accent` | `#c45c26` | color |  |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
@@ -364,7 +364,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   data-composition-id="map-arrow-fanout"
   data-composition-src="compositions/map-arrow-fanout.html"
-  data-variable-values='{"title":"Advance Fan-Out","subtitle":"Educational cartography - arrow swarm","accent":"#c45c26"}'
+  data-variable-values='{"title":"Advance Fan-Out","subtitle":"Educational cartography · arrow swarm","accent":"#c45c26"}'
 ></div>
 ```
 

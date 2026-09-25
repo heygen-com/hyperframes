@@ -13,7 +13,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/map-globe-inset.html"
   title="Map Globe Inset"
   description="Inset globe that rotates via seek-safe GSAP transform beside a main stylized map. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection - not affiliated; footage not included)."
-  variables={[{"id":"title","type":"string","label":"Title","default":"World Inset"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Educational cartography - globe inset"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
+  variables={[{"id":"title","type":"string","label":"Title","default":"World Inset"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Educational cartography · globe inset"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
   meta={{"duration":9,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":230}}
   attribution={{"author":"HeyGen","authorUrl":"https://hyperframes.heygen.com","path":"registry/blocks/map-globe-inset","tags":["map","geography","animation","globe","inset","newsreel","svg"]}}
   hasCode
@@ -201,8 +201,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         </svg>
       </div>
       <div id="mgi-title" data-var-text="title">World Inset</div>
-      <div id="mgi-subtitle" data-var-text="subtitle">Educational cartography - globe inset</div>
-      <div id="mgi-note">Inset globe - GSAP rotation only - seek-safe</div>
+      <div id="mgi-subtitle" data-var-text="subtitle">Educational cartography · globe inset</div>
+      <div id="mgi-note">Inset globe · GSAP rotation only · seek-safe</div>
     </div>
     <script>
       (function () {
@@ -290,9 +290,9 @@ Move it in time with `data-start`. Put it on a different timeline row with
 
 Set these CSS variables on the block:
 
-- `undefined` - Title. Defaults to `World Inset`.
-- `undefined` - Subtitle. Defaults to `Educational cartography - globe inset`.
-- `undefined` - Accent. Defaults to `#c45c26`.
+- `undefined` — Title. Defaults to `World Inset`.
+- `undefined` — Subtitle. Defaults to `Educational cartography · globe inset`.
+- `undefined` — Accent. Defaults to `#c45c26`.
 
 ## Variables
 
@@ -302,7 +302,7 @@ want to change on the element:
 | Variable | Default | Accepts | What it does |
 | --- | --- | --- | --- |
 | `title` | `World Inset` | string |  |
-| `subtitle` | `Educational cartography - globe inset` | string |  |
+| `subtitle` | `Educational cartography · globe inset` | string |  |
 | `accent` | `#c45c26` | color |  |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
@@ -312,7 +312,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   data-composition-id="map-globe-inset"
   data-composition-src="compositions/map-globe-inset.html"
-  data-variable-values='{"title":"World Inset","subtitle":"Educational cartography - globe inset","accent":"#c45c26"}'
+  data-variable-values='{"title":"World Inset","subtitle":"Educational cartography · globe inset","accent":"#c45c26"}'
 ></div>
 ```
 

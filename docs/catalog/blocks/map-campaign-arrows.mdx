@@ -1,6 +1,6 @@
 ---
 title: "Map Campaign Arrows"
-description: "Newsreel wartime aesthetic with sequential schematic campaign arrows along a path - abstract educational cartography, not glorifying. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection - not affiliated; footage not included)."
+description: "Newsreel wartime aesthetic with sequential schematic campaign arrows along a path — abstract educational cartography, not glorifying. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
 mode: "frame"
 ---
 
@@ -12,8 +12,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionId="map-campaign-arrows"
   compositionSrc="compositions/map-campaign-arrows.html"
   title="Map Campaign Arrows"
-  description="Newsreel wartime aesthetic with sequential schematic campaign arrows along a path - abstract educational cartography, not glorifying. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection - not affiliated; footage not included)."
-  variables={[{"id":"title","type":"string","label":"Title","default":"Schematic Advances"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Sequential path arrows | abstract cartography"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
+  description="Newsreel wartime aesthetic with sequential schematic campaign arrows along a path — abstract educational cartography, not glorifying. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
+  variables={[{"id":"title","type":"string","label":"Title","default":"Schematic Advances"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Sequential path arrows · abstract cartography"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
   meta={{"duration":9,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":283}}
   attribution={{"author":"HeyGen","authorUrl":"https://hyperframes.heygen.com","path":"registry/blocks/map-campaign-arrows","tags":["map","geography","animation","arrows","campaign","newsreel","schematic","svg"]}}
   hasCode
@@ -232,7 +232,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       </div>
       <div id="mca-title" data-var-text="title">Schematic Advances</div>
       <div id="mca-subtitle" data-var-text="subtitle">
-        Sequential path arrows | abstract cartography
+        Sequential path arrows · abstract cartography
       </div>
       <div id="mca-note">Abstract educational diagram - not a depiction of any real campaign</div>
     </div>
@@ -251,7 +251,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         var subtitle =
           typeof vars.subtitle === "string" && vars.subtitle
             ? vars.subtitle
-            : "Sequential path arrows | abstract cartography";
+            : "Sequential path arrows · abstract cartography";
 
         document.getElementById("mca-title").textContent = title;
         document.getElementById("mca-subtitle").textContent = subtitle;
@@ -343,9 +343,9 @@ Move it in time with `data-start`. Put it on a different timeline row with
 
 Set these CSS variables on the block:
 
-- `undefined` - Title. Defaults to `Schematic Advances`.
-- `undefined` - Subtitle. Defaults to `Sequential path arrows | abstract cartography`.
-- `undefined` - Accent. Defaults to `#c45c26`.
+- `undefined` — Title. Defaults to `Schematic Advances`.
+- `undefined` — Subtitle. Defaults to `Sequential path arrows · abstract cartography`.
+- `undefined` — Accent. Defaults to `#c45c26`.
 
 ## Variables
 
@@ -355,7 +355,7 @@ want to change on the element:
 | Variable | Default | Accepts | What it does |
 | --- | --- | --- | --- |
 | `title` | `Schematic Advances` | string |  |
-| `subtitle` | `Sequential path arrows | abstract cartography` | string |  |
+| `subtitle` | `Sequential path arrows · abstract cartography` | string |  |
 | `accent` | `#c45c26` | color |  |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
@@ -365,7 +365,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   data-composition-id="map-campaign-arrows"
   data-composition-src="compositions/map-campaign-arrows.html"
-  data-variable-values='{"title":"Schematic Advances","subtitle":"Sequential path arrows | abstract cartography","accent":"#c45c26"}'
+  data-variable-values='{"title":"Schematic Advances","subtitle":"Sequential path arrows · abstract cartography","accent":"#c45c26"}'
 ></div>
 ```
 

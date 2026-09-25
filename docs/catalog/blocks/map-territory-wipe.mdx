@@ -1,6 +1,6 @@
 ---
 title: "Map Territory Wipe"
-description: "Newsreel-style territory fill that wipes on via clip-path reveal over a stylized landmass. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection - not affiliated; footage not included)."
+description: "Newsreel-style territory fill that wipes on via clip-path reveal over a stylized landmass. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
 mode: "frame"
 ---
 
@@ -12,8 +12,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionId="map-territory-wipe"
   compositionSrc="compositions/map-territory-wipe.html"
   title="Map Territory Wipe"
-  description="Newsreel-style territory fill that wipes on via clip-path reveal over a stylized landmass. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection - not affiliated; footage not included)."
-  variables={[{"id":"title","type":"string","label":"Title","default":"Territory Revealed"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Wipe fill - educational cartography"},{"id":"regionLabel","type":"string","label":"Region label","default":"Region A"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
+  description="Newsreel-style territory fill that wipes on via clip-path reveal over a stylized landmass. Inspired by classic newsreel animated-map tropes (Moving Image Archive Animated Maps collection — not affiliated; footage not included)."
+  variables={[{"id":"title","type":"string","label":"Title","default":"Territory Revealed"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Wipe fill · educational cartography"},{"id":"regionLabel","type":"string","label":"Region label","default":"Region A"},{"id":"accent","type":"color","label":"Accent","default":"#c45c26"}]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":210}}
   attribution={{"author":"HeyGen","authorUrl":"https://hyperframes.heygen.com","path":"registry/blocks/map-territory-wipe","tags":["map","geography","animation","territory","wipe","newsreel","reveal","svg"]}}
   hasCode
@@ -173,7 +173,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         </svg>
       </div>
       <div id="mtw-title" data-var-text="title">Territory Revealed</div>
-      <div id="mtw-subtitle" data-var-text="subtitle">Wipe fill - educational cartography</div>
+      <div id="mtw-subtitle" data-var-text="subtitle">Wipe fill · educational cartography</div>
       <div id="mtw-badge" data-var-text="regionLabel">Region A</div>
     </div>
     <script>
@@ -191,7 +191,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         var subtitle =
           typeof vars.subtitle === "string" && vars.subtitle
             ? vars.subtitle
-            : "Wipe fill - educational cartography";
+            : "Wipe fill · educational cartography";
         var regionLabel =
           typeof vars.regionLabel === "string" && vars.regionLabel ? vars.regionLabel : "Region A";
 
@@ -270,10 +270,10 @@ Move it in time with `data-start`. Put it on a different timeline row with
 
 Set these CSS variables on the block:
 
-- `undefined` - Title. Defaults to `Territory Revealed`.
-- `undefined` - Subtitle. Defaults to `Wipe fill - educational cartography`.
-- `undefined` - Region label. Defaults to `Region A`.
-- `undefined` - Accent. Defaults to `#c45c26`.
+- `undefined` — Title. Defaults to `Territory Revealed`.
+- `undefined` — Subtitle. Defaults to `Wipe fill · educational cartography`.
+- `undefined` — Region label. Defaults to `Region A`.
+- `undefined` — Accent. Defaults to `#c45c26`.
 
 ## Variables
 
@@ -283,7 +283,7 @@ want to change on the element:
 | Variable | Default | Accepts | What it does |
 | --- | --- | --- | --- |
 | `title` | `Territory Revealed` | string |  |
-| `subtitle` | `Wipe fill - educational cartography` | string |  |
+| `subtitle` | `Wipe fill · educational cartography` | string |  |
 | `regionLabel` | `Region A` | string |  |
 | `accent` | `#c45c26` | color |  |
 
@@ -294,7 +294,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   data-composition-id="map-territory-wipe"
   data-composition-src="compositions/map-territory-wipe.html"
-  data-variable-values='{"title":"Territory Revealed","subtitle":"Wipe fill - educational cartography","regionLabel":"Region A","accent":"#c45c26"}'
+  data-variable-values='{"title":"Territory Revealed","subtitle":"Wipe fill · educational cartography","regionLabel":"Region A","accent":"#c45c26"}'
 ></div>
 ```
 
