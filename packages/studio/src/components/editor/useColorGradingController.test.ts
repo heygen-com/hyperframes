@@ -400,7 +400,6 @@ describe("useColorGradingController", () => {
     const postMessage = vi.spyOn(contentWindow, "postMessage");
     const { root, getState } = renderHook(vi.fn(), makeElement(), { current: iframe });
     act(() => getState().commitColorGrading(brightPopGrading()));
-    // Let the blank frame's own late load replay first, so only the swap can replay below.
     await act(async () => {
       vi.advanceTimersByTime(100);
       await vi.runAllTimersAsync();

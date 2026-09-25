@@ -135,7 +135,6 @@ export function useShadowPreviewReload({
 
   const getShadowAdapter = useCallback(() => getAdapter(shadowIframeRef.current), [getAdapter]);
   const isCurrentShadow = useCallback((gen?: number) => gen === shadowGenRef.current, []);
-  /** Changes when a full reload starts or fails, and when the preview slots are reset. */
   const previewGeneration = useCallback(() => shadowGenRef.current, []);
   const markAdapterReady = useCallback(
     (_iframe: HTMLIFrameElement | null, gen: number | undefined, commit: () => void) => {
