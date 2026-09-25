@@ -42,6 +42,33 @@ npx hyperframes preview
 You do not need to learn every panel. Choose the surface that matches the
 problem in front of you.
 
+## Compose preview guides in a host app
+
+Host apps can compose the same rulers, safe margins, grid, and snap toolbar that
+Studio uses over their own preview iframe. The provider owns the iframe geometry
+and shared preferences, so the host only supplies its iframe ref and chooses the
+parts to render:
+
+```tsx
+import {
+  GridOverlay,
+  PreviewGuides,
+  PreviewOverlayProvider,
+  SnapToolbar,
+} from "@hyperframes/studio";
+import type { RefObject } from "react";
+
+function Preview({ iframeRef }: { iframeRef: RefObject<HTMLIFrameElement | null> }) {
+  return (
+    <PreviewOverlayProvider iframeRef={iframeRef}>
+      <PreviewGuides />
+      <GridOverlay />
+      <SnapToolbar />
+    </PreviewOverlayProvider>
+  );
+}
+```
+
 | You want to change                              | Start with                       |
 | ----------------------------------------------- | -------------------------------- |
 | Something visible in the current frame          | Canvas, then Design or Layers    |

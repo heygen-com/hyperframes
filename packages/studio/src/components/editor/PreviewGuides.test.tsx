@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreviewGuides } from "./PreviewGuides";
+import { PreviewOverlayProvider } from "./PreviewOverlayProvider";
 import { usePreviewGuidesStore } from "./previewGuidesStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -26,7 +27,11 @@ function render(rulerVisible: boolean, safeMarginsVisible: boolean) {
   const host = document.createElement("div");
   document.body.append(host);
   act(() => {
-    createRoot(host).render(<PreviewGuides iframeRef={{ current: null }} />);
+    createRoot(host).render(
+      <PreviewOverlayProvider iframeRef={{ current: null }}>
+        <PreviewGuides />
+      </PreviewOverlayProvider>,
+    );
   });
   return host;
 }

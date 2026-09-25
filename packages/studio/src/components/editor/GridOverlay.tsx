@@ -1,28 +1,17 @@
-// fallow-ignore-file unused-file
 import { memo } from "react";
+import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
 
-interface GridOverlayProps {
-  visible: boolean;
-  spacing: number;
-  scaleX: number;
-  scaleY: number;
-  compositionLeft: number;
-  compositionTop: number;
-  compositionWidth: number;
-  compositionHeight: number;
-}
-
-// fallow-ignore-next-line complexity
-export const GridOverlay = memo(function GridOverlay({
-  visible,
-  spacing,
-  scaleX,
-  scaleY,
-  compositionLeft,
-  compositionTop,
-  compositionWidth,
-  compositionHeight,
-}: GridOverlayProps) {
+export const GridOverlay = memo(function GridOverlay() {
+  const { state } = usePreviewOverlayContext();
+  const { gridVisible: visible, gridSpacing: spacing } = state.snapPrefs;
+  const {
+    scaleX,
+    scaleY,
+    left: compositionLeft,
+    top: compositionTop,
+    width: compositionWidth,
+    height: compositionHeight,
+  } = state.compositionRect;
   if (!visible || spacing <= 0) return null;
 
   const overlaySpacingX = spacing * scaleX;
