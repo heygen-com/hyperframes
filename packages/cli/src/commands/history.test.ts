@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -265,17 +265,20 @@ describe("hyperframes history, one owner", () => {
   });
 
   it("a turn whose writes come closer together than the idle limit stays the agent's past it", async () => {
-    const { write, json, hf } = project();
+    const { dir, write, json, hf } = project();
     await hf();
-    historyDeps.turnIdleMs = 300;
-    await hf("begin", "--who", "claude", "--label", "Retitle");
-    await pause(200);
-    write("index.html", "2");
-    await hf(); // a command mid-turn files the turn so far
-    for (const path of ["notes.html", "extra.html"]) {
-      await pause(200);
+    historyDeps.turnIdleMs = 400;
+    // Written "later" by their times, so the test never races the clock.
+    const writeAt = (path: string, at: number) => {
       write(path, "2");
-    }
+      utimesSync(join(dir, path), at / 1000, at / 1000);
+    };
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    const at = Date.now() + 300;
+    writeAt("index.html", at);
+    await hf(); // a command mid-turn files the turn so far; the rest counts from index.html
+    writeAt("notes.html", at + 300);
+    writeAt("extra.html", at + 600);
     await hf("end");
     const entries = (await json()).entries.reverse();
     expect(
@@ -284,6 +287,17 @@ describe("hyperframes history, one owner", () => {
       [{ kind: "agent", name: "claude" }, ["index.html"]],
       [{ kind: "agent", name: "claude" }, ["extra.html", "notes.html"]],
     ]);
+  });
+
+  it("a turn marker with no last write time has ended, so the next edit is not the agent's", async () => {
+    const { dir, write, json, hf } = project();
+    await hf();
+    const who = { kind: "agent", name: "claude" };
+    const marker = { via: "direct", id: "turn-1", who, label: "Retitle", startedAt: 1 };
+    writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(marker));
+    write("index.html", "A2");
+
+    expect((await json()).entries[0]).toMatchObject({ who: { kind: "outside" } });
   });
 
   it("a CLI run waits while another process holds the history, instead of forking its log", async () => {
@@ -332,13 +346,15 @@ describe("hyperframes history, refusals", () => {
   });
 
   it("restore refuses a ref that is neither an entry nor a date, instead of reading it as a time", async () => {
-    const { read, write, hf, turn } = project();
+    const { read, write, hf, json, turn } = project();
     await hf();
     await turn("claude", "Retitle", "index.html", "A2");
     write("added.html", "new");
+    const ids = (await json()).entries.map((entry: { id: string }) => entry.id);
+    const digit = [..."0123456789"].find((d) => !ids.some((id: string) => id.startsWith(d)))!;
 
-    const refused = await hf("restore", "1");
-    expect([refused.code, refused.err]).toEqual([2, 'No entry "1" in this history']);
+    const refused = await hf("restore", digit);
+    expect([refused.code, refused.err]).toEqual([2, `No entry "${digit}" in this history`]);
     expect(read("added.html")).toBe("new");
   });
 

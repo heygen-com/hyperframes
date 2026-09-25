@@ -52,9 +52,11 @@ export class Refusal extends Error {}
 
 const turnFile = (dir: string) => join(dir, ".hyperframes", "history-turn.json");
 
+/** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
 function readTurn(dir: string): Turn | null {
   try {
-    return JSON.parse(readFileSync(turnFile(dir), "utf-8")) as Turn;
+    const turn = JSON.parse(readFileSync(turnFile(dir), "utf-8")) as Turn;
+    return typeof turn.lastWriteAt === "number" ? turn : null;
   } catch {
     return null;
   }
