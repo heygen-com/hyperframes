@@ -28,7 +28,6 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath, resolveWithinProject } from "../helpers/safePath.js";
-import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   createWriteToken,
   fileContentVersion,
@@ -251,7 +250,6 @@ interface ElementPatchBatchFileResult {
   matched: boolean[];
   before: string;
   after: string;
-  backupPath?: string | null;
 }
 
 interface AtomicCutTarget {
@@ -422,7 +420,6 @@ export function commitElementPatchBatches(
   }
 
   const applied = applyFileMutations(
-    projectDir,
     prepared.map(({ sourceFile, absPath, before, after }) => ({
       sourceFile,
       absPath,
@@ -438,7 +435,6 @@ export function commitElementPatchBatches(
     matched: prepared[index]?.matched ?? [],
     before: file.before,
     after: file.after,
-    backupPath: file.backupPath ?? undefined,
   }));
   return { durable: true, files };
 }
@@ -489,23 +485,9 @@ function writeFileWithReceipt(
   return recordMutationReceipt(c, filePath, absPath, html);
 }
 
-function writeMutationResult(
-  c: RouteContext,
-  projectDir: string,
-  filePath: string,
-  absPath: string,
-  html: string,
-): { backupPath: string | null; version: string } | Response {
-  const backup = snapshotBeforeWrite(projectDir, absPath);
-  if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
-  const { version } = writeFileWithReceipt(c, filePath, absPath, html);
-  return { backupPath: backupPathForResponse(projectDir, backup.backupPath), version };
-}
-
 /** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
 function writeIfChanged(
   c: RouteContext,
-  projectDir: string,
   filePath: string,
   absPath: string,
   original: string,
@@ -514,16 +496,8 @@ function writeIfChanged(
   if (next === original) {
     return c.json({ ok: true, changed: false, content: original, path: filePath });
   }
-  const mutationResult = writeMutationResult(c, projectDir, filePath, absPath, next);
-  if (mutationResult instanceof Response) return mutationResult;
-  const { backupPath } = mutationResult;
-  return c.json({
-    ok: true,
-    changed: true,
-    content: next,
-    path: filePath,
-    backupPath,
-  });
+  writeFileWithReceipt(c, filePath, absPath, next);
+  return c.json({ ok: true, changed: true, content: next, path: filePath });
 }
 
 function rejectUnsafeMutationValues(
@@ -1295,7 +1269,6 @@ async function prepareGsapMutationScript(
       after: html,
       scriptText: "",
       path: res.filePath,
-      backupPath: null,
     });
   }
   if (!block) return c.json({ error: "no GSAP script found in file" }, 400);
@@ -1344,24 +1317,13 @@ async function applyGsapMutations(
 
   const changed = block.scriptText !== initialScript;
   const newHtml = changed ? block.replaceScript(block.scriptText) : html;
-  let backupPath: string | null = null;
   // Parsing can await lazy imports. Revalidate before EVERY successful response,
   // including semantic no-ops: a stale no-op response would otherwise claim
   // the old bytes and let the client keep a preview that missed a successor.
   if (readFileSync(res.absPath, "utf-8") !== beforeHtml) {
     return c.json({ error: "file changed during GSAP mutation", conflict: true }, 409);
   }
-  if (changed) {
-    const mutationResult = writeMutationResult(
-      c,
-      res.project.dir,
-      res.filePath,
-      res.absPath,
-      newHtml,
-    );
-    if (mutationResult instanceof Response) return mutationResult;
-    backupPath = mutationResult.backupPath;
-  }
+  if (changed) writeFileWithReceipt(c, res.filePath, res.absPath, newHtml);
 
   const responsePayload: Record<string, unknown> = {
     ok: true,
@@ -1373,7 +1335,6 @@ async function applyGsapMutations(
     scriptText: block.scriptText,
     path: res.filePath,
     version: fileContentVersion(newHtml),
-    backupPath,
   };
   if (skippedSelectors.size > 0) responsePayload.skippedSelectors = [...skippedSelectors];
   c.header("ETag", responsePayload.version as string);
@@ -2400,7 +2361,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       );
     }
 
-    let backup: ReturnType<typeof snapshotBeforeWrite> = { backupPath: null };
     if (createOnly) {
       ensureDir(res.absPath);
       let fd: number;
@@ -2458,8 +2418,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
             409,
           );
         }
-        backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-        if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
         const mode = fstatSync(fd).mode;
         closeSync(fd);
         fd = null;
@@ -2478,7 +2436,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       path: res.filePath,
       version,
       writeToken,
-      backupPath: backupPathForResponse(res.project.dir, backup.backupPath),
     });
   });
 
@@ -2509,18 +2466,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const stat = statSync(res.absPath);
-    const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-    if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
     if (stat.isDirectory()) {
       rmSync(res.absPath, { recursive: true });
     } else {
       unlinkSync(res.absPath);
     }
 
-    return c.json({
-      ok: true,
-      backupPath: backupPathForResponse(res.project.dir, backup.backupPath),
-    });
+    return c.json({ ok: true });
   });
 
   api.post("/projects/:id/file-mutations/insert-composition/*", async (c) => {
@@ -2577,8 +2529,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       throw error;
     }
 
-    const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
-    if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
     const { version, writeToken } = writeFileWithReceipt(
       c,
       ctx.filePath,
@@ -2596,7 +2546,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       after: insertion.html,
       version,
       writeToken,
-      backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
     });
   });
 
@@ -2614,7 +2563,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const originalContent = readFileSync(ctx.absPath, "utf-8");
     return writeIfChanged(
       c,
-      ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       originalContent,
@@ -2650,7 +2598,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     for (const target of targets) {
       next = removeElementFromHtml(next, target);
     }
-    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, next);
+    return writeIfChanged(c, ctx.filePath, ctx.absPath, originalContent, next);
   });
 
   api.post("/projects/:id/file-mutations/split-batch", async (c) => {
@@ -2731,18 +2679,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         }
       }
 
-      const backups = new Map<string, string | null>();
-      for (const file of prepared) {
-        const backup = snapshotBeforeWrite(project.dir, file.absPath);
-        if (backup.error) {
-          return c.json(
-            { error: `Failed to create backup for ${file.path}: ${backup.error}` },
-            500,
-          );
-        }
-        backups.set(file.path, backupPathForResponse(project.dir, backup.backupPath));
-      }
-
       const writeToken = createWriteToken(
         typeof body.transactionToken === "string"
           ? body.transactionToken
@@ -2794,7 +2730,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         after: file.after,
         version: fileContentVersion(file.after),
         writeToken,
-        backupPath: backups.get(file.path) ?? null,
         splitCount: file.splitCount,
         skippedSelectors: file.skippedSelectors,
       }));
@@ -2847,15 +2782,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         version,
       });
     }
-    const mutationResult = writeMutationResult(
-      c,
-      ctx.project.dir,
-      ctx.filePath,
-      ctx.absPath,
-      result.html,
-    );
-    if (mutationResult instanceof Response) return mutationResult;
-    const { version, backupPath } = mutationResult;
+    const { version } = writeFileWithReceipt(c, ctx.filePath, ctx.absPath, result.html);
     c.header("ETag", version);
     return c.json({
       ok: true,
@@ -2864,7 +2791,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       newId: result.newId,
       path: ctx.filePath,
       version,
-      backupPath,
     });
   });
 
@@ -2908,15 +2834,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         version,
       });
     }
-    const mutationResult = writeMutationResult(
-      c,
-      ctx.project.dir,
-      ctx.filePath,
-      ctx.absPath,
-      patched,
-    );
-    if (mutationResult instanceof Response) return mutationResult;
-    const { backupPath, version } = mutationResult;
+    const { version } = writeFileWithReceipt(c, ctx.filePath, ctx.absPath, patched);
     c.header("ETag", version);
     return c.json({
       ok: true,
@@ -2925,7 +2843,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       content: patched,
       path: ctx.filePath,
       version,
-      backupPath,
     });
   });
 
@@ -2987,7 +2904,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       matched: file.matched,
       content: file.after,
       path: file.sourceFile,
-      backupPath: file.backupPath,
     });
   });
 
@@ -3048,22 +2964,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         result.error === "grouped elements must share a single parent" ? 422 : 400,
       );
     }
-    const mutationResult = writeMutationResult(
-      c,
-      ctx.project.dir,
-      ctx.filePath,
-      ctx.absPath,
-      result.html,
-    );
-    if (mutationResult instanceof Response) return mutationResult;
-    const { backupPath } = mutationResult;
+    writeFileWithReceipt(c, ctx.filePath, ctx.absPath, result.html);
     return c.json({
       ok: true,
       changed: true,
       groupId: result.groupId,
       content: result.html,
       path: ctx.filePath,
-      backupPath,
     });
   });
 
@@ -3113,7 +3020,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (result.unwrappedGroupId) {
       cleaned = stripGsapAnimationsForSelector(cleaned, `#${result.unwrappedGroupId}`);
     }
-    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, cleaned);
+    return writeIfChanged(c, ctx.filePath, ctx.absPath, originalContent, cleaned);
   });
 
   api.post("/projects/:id/file-mutations/probe-element/*", async (c) => {

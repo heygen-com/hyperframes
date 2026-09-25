@@ -1,6 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
 import { replaceFileAtomically } from "./atomicFile.js";
-import { backupPathForResponse, snapshotBeforeWrite } from "./backupJournal.js";
 import {
   clearFileWriteReceipt,
   createWriteToken,
@@ -21,14 +20,12 @@ export interface AppliedFileMutation {
   changed: boolean;
   before: string;
   after: string;
-  backupPath: string | null;
   version: string;
   writeToken: string | null;
 }
 
-/** Applies prepared HTML mutations with the same journal and receipt semantics as Studio. */
+/** Applies prepared HTML mutations with the same receipt semantics as Studio; rolls back all on a failure. */
 export function applyFileMutations(
-  projectDir: string,
   mutations: readonly FileMutationInput[],
   requestToken?: string,
   writeFile: (path: string, content: string, encoding: "utf-8") => void = (path, content) =>
@@ -42,7 +39,7 @@ export function applyFileMutations(
   const attempted: Array<PreparedMutation & { version: string; writeToken: string }> = [];
   try {
     for (const mutation of prepared) {
-      results.push(applyOneMutation(projectDir, mutation, requestToken, writeFile, attempted));
+      results.push(applyOneMutation(mutation, requestToken, writeFile, attempted));
     }
     return results;
   } catch (error) {
@@ -68,7 +65,6 @@ export function applyFileMutations(
 type PreparedMutation = FileMutationInput & { before: string };
 
 function applyOneMutation(
-  projectDir: string,
   mutation: PreparedMutation,
   requestToken: string | undefined,
   writeFile: (path: string, content: string, encoding: "utf-8") => void,
@@ -81,13 +77,10 @@ function applyOneMutation(
       ...mutation,
       before: current,
       changed: false,
-      backupPath: null,
       version: fileContentVersion(mutation.before),
       writeToken: null,
     };
   }
-  const backup = snapshotBeforeWrite(projectDir, mutation.absPath);
-  if (backup.error) throw new Error(`backup failed: ${backup.error}`);
   const before = current;
   const version = fileContentVersion(mutation.after);
   const writeToken = createWriteToken(requestToken);
@@ -102,7 +95,6 @@ function applyOneMutation(
     ...mutation,
     before,
     changed: true,
-    backupPath: backupPathForResponse(projectDir, backup.backupPath),
     version,
     writeToken,
   };

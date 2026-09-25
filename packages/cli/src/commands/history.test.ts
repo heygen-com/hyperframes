@@ -15,7 +15,7 @@ import { runCommand } from "citty";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
-import { historyDeps } from "../utils/historyOwner.js";
+import { historyDeps, recordInHistory } from "../utils/historyOwner.js";
 import historyCommand from "./history.js";
 
 const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
@@ -390,4 +390,21 @@ describe("hyperframes history, refusals", () => {
       `This project's history is open in another process (pid ${process.pid}).`,
     ]);
   }, 15_000);
+});
+
+describe.each(["direct", "preview"])("a timeline write recorded in the history (%s)", (mode) => {
+  it("is one entry under its label, and its id is handed back", async () => {
+    const { dir, write, read, json } = project();
+    await json(); // the first open records the baseline
+    if (mode === "preview") await preview(dir);
+    const { result, entryId } = await recordInHistory(dir, "timeline move #clip", () => {
+      write("index.html", "B");
+      return "written";
+    });
+    expect(result).toBe("written");
+    expect((await json()).entries).toMatchObject([
+      { id: entryId, label: "timeline move #clip", files: ["index.html"] },
+    ]);
+    expect(read("index.html")).toBe("B");
+  });
 });

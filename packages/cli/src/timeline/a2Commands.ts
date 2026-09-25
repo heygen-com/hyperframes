@@ -1,4 +1,6 @@
 import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-server";
+import { undoEntry } from "../commands/history.js";
+import { recordInHistory } from "../utils/historyOwner.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,11 +38,13 @@ export async function runIds(args: Record<string, unknown>): Promise<void> {
       ? []
       : [{ sourceFile: file, absPath: join(project.dir, file), before, after }];
   });
-  const receipts = inputs.length > 0 ? applyFileMutations(project.dir, inputs) : [];
+  const { result: receipts, entryId } = await recordInHistory(project.dir, "timeline ids", () =>
+    inputs.length > 0 ? applyFileMutations(inputs) : [],
+  );
   const afterTimeline = await describeProject(project.indexPath);
   const result = {
     ok: true,
-    receipt: receipts.map((receipt) => publicReceipt(receipt)),
+    receipt: receipts.map((receipt) => publicReceipt(receipt, entryId)),
     file: files,
     before: allRows(beforeTimeline),
     after: allRows(afterTimeline),
@@ -222,8 +226,10 @@ export async function runApply(args: Record<string, unknown>): Promise<void> {
     warnings: [],
   };
   if (!plan) {
-    const receipts = inputs.length > 0 ? applyFileMutations(project.dir, inputs) : [];
-    result.receipt = receipts.map((receipt) => publicReceipt(receipt));
+    const { result: receipts, entryId } = await recordInHistory(project.dir, "timeline apply", () =>
+      inputs.length > 0 ? applyFileMutations(inputs) : [],
+    );
+    result.receipt = receipts.map((receipt) => publicReceipt(receipt, entryId));
   }
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else
@@ -258,34 +264,19 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
       json,
     );
   }
-  const value = isRecord(parsed) && isRecord(parsed.receipt) ? parsed.receipt : parsed;
-  if (
-    !isRecord(value) ||
-    typeof value.file !== "string" ||
-    typeof value.version !== "string" ||
-    typeof value.backupPath !== "string"
-  ) {
+  const receipt = isRecord(parsed) && "receipt" in parsed ? parsed.receipt : parsed;
+  const value = Array.isArray(receipt) ? receipt[0] : receipt;
+  if (!isRecord(value) || typeof value.entryId !== "string") {
     return refuse(
       "timeline undo",
       {
-        reason: "undo receipt is missing file, version, or backupPath",
-        fix: "pass an applied timeline receipt",
+        reason:
+          "the receipt names no history entry (written before timeline undo used the history)",
+        fix: "find the change with hyperframes history, then run hyperframes history undo <id>",
       },
       json,
     );
   }
-  const backup = join(project.dir, value.backupPath);
-  const target = join(project.dir, value.file);
-  const before = readFileSync(target, "utf-8");
-  const after = readFileSync(backup, "utf-8");
-  const receipts = applyFileMutations(project.dir, [
-    { sourceFile: value.file, absPath: target, before, after, expectedVersion: value.version },
-  ]);
-  const result = {
-    ok: true,
-    receipt: receipts.map((receipt) => publicReceipt(receipt)),
-    file: value.file,
-  };
-  if (json) console.log(JSON.stringify(withMeta(result), null, 2));
-  else console.log(`undid ${value.file}`);
+  const who = typeof args.who === "string" ? args.who : undefined;
+  await undoEntry({ ref: value.entryId, who, dir: project.dir, json });
 }
