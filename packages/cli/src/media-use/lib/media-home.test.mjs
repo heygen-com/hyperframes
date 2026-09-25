@@ -4,7 +4,6 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { cachePut } from "./cache.mjs";
 import { globalMediaDir } from "./media-home.mjs";
@@ -23,20 +22,22 @@ test("the global cache writes into the media home a test points it at", () => {
   assert.equal(globalMediaDir(), join(HOME, ".media"));
 });
 
-// A child `node --test` run over one probe file, with the media-home variables set as given.
+// A child process that resolves the media dir, with only the given media-home variables set.
 function runProbe(env) {
-  const dir = mkdtempSync(join(tmpdir(), "media-home-probe-"));
-  const probe = join(dir, "probe.test.mjs");
-  const lib = fileURLToPath(new URL("./media-home.mjs", import.meta.url));
-  writeFileSync(
-    probe,
-    `import { test } from "node:test";\nimport { globalMediaDir } from ${JSON.stringify(lib)};\ntest("reach", () => console.log("dir=" + globalMediaDir()));\n`,
-  );
+  const lib = new URL("./media-home.mjs", import.meta.url).href;
   const childEnv = { ...process.env };
   delete childEnv.HYPERFRAMES_MEDIA_HOME;
   delete childEnv.HYPERFRAMES_MEDIA_HOME_REQUIRED;
-  Object.assign(childEnv, env);
-  const run = spawnSync(process.execPath, ["--test", probe], { encoding: "utf8", env: childEnv });
+  delete childEnv.NODE_TEST_CONTEXT;
+  const run = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `const m = await import(${JSON.stringify(lib)}); console.log("dir=" + m.globalMediaDir());`,
+    ],
+    { encoding: "utf8", env: { ...childEnv, ...env } },
+  );
   return { status: run.status, output: `${run.stdout}${run.stderr}` };
 }
 
