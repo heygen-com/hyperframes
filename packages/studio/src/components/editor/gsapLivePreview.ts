@@ -1,4 +1,5 @@
 import type { DomEditSelection } from "./domEditingTypes";
+import { findPreviewElement } from "../../player/lib/timelineElementHelpers";
 
 /**
  * Build the "live preview" callback the 3D-transform sub-view fires while a
@@ -16,7 +17,7 @@ function resolvePreviewNode(
   el: DomEditSelection,
 ): Element | null {
   if (!doc) return null;
-  if (el.id) return doc.querySelector(`#${el.id}`);
+  if (el.hfId || el.id) return findPreviewElement(doc, el);
   if (!el.selector) return null;
   return doc.querySelectorAll(el.selector)[el.selectorIndex ?? 0] ?? null;
 }

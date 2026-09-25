@@ -17,14 +17,7 @@ import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
-
-/** The preview node an element stands for, by dom id and then by `data-hf-id`. */
-function previewNodeFor(doc: Document, element: TimelineElement): Element | null {
-  const domId = element.domId ?? element.id;
-  const byId = domId ? doc.getElementById(domId) : null;
-  if (byId) return byId;
-  return element.hfId ? doc.querySelector(`[data-hf-id="${element.hfId}"]`) : null;
-}
+import { findPreviewElement } from "./timelineElementHelpers";
 
 /**
  * Re-read every element's automation and FX-chain attributes from the preview
@@ -65,7 +58,7 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
   usePlayerStore.setState((state) => {
     let changed = false;
     const elements = state.elements.map((element) => {
-      const node = previewNodeFor(doc, element);
+      const node = findPreviewElement(doc, { hfId: element.hfId, id: element.domId ?? element.id });
       if (!node) return element;
       const fields = syncedFields(doc, element, node);
       // Same array back when nothing moved: `elements` keys memos all over the

@@ -20,6 +20,7 @@ import {
   getTimelineElementDisplayLabel,
   buildTimelineElementIdentity,
   readTimelineElementZIndex,
+  findPreviewElement,
 } from "./timelineElementHelpers";
 import { postRuntimeControlMessage } from "./runtimeProtocol";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
@@ -514,9 +515,8 @@ export function buildMissingCompositionElements(
   let patched = false;
   const updatedEls = (currentEls as TimelineElement[]).map((existing) => {
     if (existing.compositionSrc) return existing;
-    // Find the matching DOM host by element id or composition id
     const host =
-      doc.getElementById(existing.id) ??
+      findPreviewElement(doc, { hfId: existing.hfId, id: existing.domId ?? existing.id }) ??
       doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
     if (!host) return existing;
     const compSrc =

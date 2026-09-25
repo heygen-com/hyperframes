@@ -458,6 +458,17 @@ function findInClipScope(
   return lone;
 }
 
+/** A preview element by the `data-hf-id` the timeline bound it with, then by id, which can repeat across files. */
+export function findPreviewElement(
+  doc: Document,
+  target: { hfId?: string; id?: string },
+): Element | null {
+  const byHfId = target.hfId
+    ? doc.querySelector(`[data-hf-id="${CSS.escape(target.hfId)}"]`)
+    : null;
+  return byHfId ?? (target.id ? doc.getElementById(target.id) : null);
+}
+
 export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {
   if (!clip.id) return null;
   const first = doc.getElementById(clip.id);
