@@ -261,7 +261,7 @@ class Engine {
   windows: Group[] = [];
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
-  claimed: { group: Group; key: string; timer: NodeJS.Timeout } | null = null;
+  claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   writeToken: string | undefined;
   quietTimer: NodeJS.Timeout | undefined;
   maxTimer: NodeJS.Timeout | undefined;
@@ -578,8 +578,10 @@ class Engine {
     idleMs = this.options.quietMs ?? 2000,
   ): { id: string } | null {
     clearTimeout(this.claimed?.timer);
-    const timer = setTimeout(() => this.background(() => this.commitClaim()), idleMs);
-    timer.unref?.();
+    const timer = Number.isFinite(idleMs)
+      ? setTimeout(() => this.background(() => this.commitClaim()), idleMs)
+      : undefined;
+    timer?.unref?.();
     this.claimed = { group, key, timer };
     return group.changes.size ? { id: group.id } : null;
   }

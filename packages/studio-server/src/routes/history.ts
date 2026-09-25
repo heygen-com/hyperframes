@@ -122,16 +122,14 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const bytes = await history.readBlob(hash).catch(() => null);
     return bytes ? c.body(new Uint8Array(bytes)) : missing();
   });
-  // Studio records after it writes: its edit claims the paths it just wrote, under the edit's label.
+  // Studio records after it writes, under the edit's label; a gesture with no idleMs holds until another key.
   api.post(`${base}/claim`, (c) =>
     withHistory(adapter, c, async (history, body) => {
       const paths = Array.isArray(body.paths) ? body.paths.filter((path) => text(path)) : [];
       const coalesceKey = text(body.coalesceKey) ?? undefined;
-      const idleMs = idleOf(body);
       const overwrote = versionsOf(body.overwrote);
       const claimed = await history.claim(YOU, text(body.label) ?? "Edited in Studio", paths, {
-        ...(coalesceKey && { coalesceKey }),
-        ...(idleMs && { idleMs }),
+        ...(coalesceKey && { coalesceKey, idleMs: idleOf(body) ?? Infinity }),
         ...(overwrote && { overwrote }),
       });
       return { claimed };

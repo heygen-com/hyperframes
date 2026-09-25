@@ -36,12 +36,13 @@ function apiFor(projectDir: string, history?: ProjectHistory) {
 }
 
 /** A project whose index.html reads "A", with its history and the routes over it. */
-async function demoProject() {
+async function demoProject({ quietMs }: { quietMs?: number } = {}) {
   const projectDir = tempDir("hf-history-routes-");
   writeFileSync(join(projectDir, "index.html"), "A");
   const history = await openProjectHistory({
     projectDir,
     historyRoot: tempDir("hf-history-routes-root-"),
+    ...(quietMs && { quietMs }),
   });
   cleanup.push(() => history.close());
   return { projectDir, history, call: apiFor(projectDir, history) };
@@ -188,6 +189,24 @@ describe("history routes", () => {
       entry: { label: "Undid: Moved Title" },
     });
     expect(readFileSync(index, "utf-8")).toBe(saved(undoneTo));
+  });
+
+  it("hold a gesture claimed without idleMs until another key, however long it pauses", async () => {
+    const { projectDir, history, call } = await demoProject({ quietMs: 30 });
+    const drag = (text: string) => {
+      writeFileSync(join(projectDir, "index.html"), text);
+      return call("/claim", {
+        label: "Dragged Title",
+        paths: ["index.html"],
+        coalesceKey: "drag",
+        idleMs: null,
+      });
+    };
+    await drag("B");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await drag("C");
+    await history.flush();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Dragged Title"]);
   });
 
   it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {
