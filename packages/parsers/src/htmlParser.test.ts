@@ -790,6 +790,25 @@ describe("extractCompositionMetadata", () => {
     expect(meta.variables[1].type).toBe("number");
   });
 
+  it("reads variables declared on the composition root, templated or not", () => {
+    const decl = (id: string, def = "x") =>
+      JSON.stringify([{ id, type: "string", label: id, default: def }]);
+    const onRoot = `<!DOCTYPE html><html><body><div data-composition-id="c" data-composition-variables='${decl("title")}'></div></body></html>`;
+    expect(extractCompositionMetadata(onRoot).variables.map((v) => v.id)).toEqual(["title"]);
+    const inTemplate = `<!DOCTYPE html><html><body><template id="c-template"><div data-composition-id="c" data-composition-variables='${decl("sub")}'></div></template></body></html>`;
+    expect(extractCompositionMetadata(inTemplate).variables.map((v) => v.id)).toEqual(["sub"]);
+  });
+
+  it("merges <html> and root declarations, the root winning a shared id", () => {
+    const html = `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"title","type":"string","label":"T","default":"A"},{"id":"count","type":"number","label":"C","default":1}]'>
+<body><div data-composition-id="c" data-composition-variables='[{"id":"title","type":"string","label":"T","default":"B"}]'></div></body>
+</html>`;
+    const vars = extractCompositionMetadata(html).variables;
+    expect(vars.map((v) => v.id)).toEqual(["title", "count"]);
+    expect(vars[0]?.default).toBe("B");
+  });
+
   // T9 — CompositionVariable font/image parse (WS-B R1 implemented).
 
   it("parses a font variable (type: font) with name and source", () => {

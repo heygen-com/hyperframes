@@ -15,6 +15,8 @@ env:
 # or WSL.
 
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     # `edited` is required so the workflow re-fires when a PR's base ref is
     # set back to `main` after a Graphite stack restack momentarily flips
