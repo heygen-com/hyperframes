@@ -30,8 +30,7 @@ interface BasePosition {
 
 interface GsapRuntime {
   timeline: { seek: (t: number) => void };
-  gsap: { set: (target: string, vars: Record<string, number | string>) => void };
-  selector: string;
+  gsap: { set: (target: Element, vars: Record<string, number | string>) => void };
   element: HTMLElement;
   startTime: number;
   maxSeekTime: number;
@@ -86,7 +85,7 @@ function connectGsapRuntime(
 ): GsapRuntime | null {
   try {
     const win = iframeEl.contentWindow as Window & {
-      gsap?: { set: (t: string, v: Record<string, number | string>) => void };
+      gsap?: { set: (t: Element, v: Record<string, number | string>) => void };
       __timelines?: Record<string, { seek: (t: number) => void; duration: () => number }>;
       __player?: { getTime: () => number };
     };
@@ -103,7 +102,6 @@ function connectGsapRuntime(
       return {
         timeline: tl,
         gsap: win.gsap,
-        selector,
         element,
         startTime: win.__player?.getTime() ?? 0,
         maxSeekTime:
@@ -126,7 +124,7 @@ function applyRuntimePreview(
   const seekTime = Math.min(runtime.startTime + time, runtime.maxSeekTime);
   runtime.timeline.seek(seekTime);
   runtime.element.style.setProperty("translate", "none");
-  runtime.gsap.set(runtime.selector, { ...properties });
+  runtime.gsap.set(runtime.element, { ...properties });
   runtime.element.style.visibility = "visible";
   liveTime.notify(seekTime);
   usePlayerStore.getState().setCurrentTime(seekTime);
@@ -256,7 +254,7 @@ function releaseRuntimePreview(r: RecordingRefs): void {
   element.style.visibility = savedVisibility;
   element.style.setProperty("translate", savedTranslate || "");
   try {
-    runtime.gsap.set(runtime.selector, {
+    runtime.gsap.set(runtime.element, {
       clearProps: "x,y,scale,scaleX,scaleY,rotation,rotationX,rotationY,opacity,z",
     });
   } catch {

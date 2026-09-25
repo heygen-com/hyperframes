@@ -109,7 +109,7 @@ describe("useGestureRecording", () => {
     act(() => root.unmount());
 
     expect(cancelAnimationFrame).toHaveBeenCalledWith(17);
-    expect(set).toHaveBeenCalledWith("#card", {
+    expect(set).toHaveBeenCalledWith(element, {
       clearProps: "x,y,scale,scaleX,scaleY,rotation,rotationX,rotationY,opacity,z",
     });
     expect(element.style.visibility).toBe("hidden");

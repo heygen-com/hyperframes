@@ -20,7 +20,8 @@ import {
   getTimelineElementDisplayLabel,
   buildTimelineElementIdentity,
   readTimelineElementZIndex,
-  findPreviewElement,
+  previewElementFinder,
+  type PreviewTarget,
 } from "./timelineElementHelpers";
 import { postRuntimeControlMessage } from "./runtimeProtocol";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
@@ -224,7 +225,7 @@ let scrubPrevVolume: number | null = null;
  * `doc` is the preview iframe's document, so its `<audio>` nodes are instances of
  * the IFRAME's `HTMLAudioElement`, never this module's. `instanceof
  * HTMLAudioElement` here is false for every one of them, which silently threw the
- * `musicId` hint away and fell through to "first `<audio>` in the document" — the
+ * `music` hint away and fell through to "first `<audio>` in the document" — the
  * very thing the comment above warns can be a voiceover. Ask what the node IS.
  * Same rule and same reasoning as packages/core/src/runtime/domRealm.ts.
  */
@@ -236,9 +237,9 @@ function isAudioNode(node: Element | null): node is HTMLAudioElement {
   );
 }
 
-function resolveScrubAudioEl(doc: Document, musicId?: string | null): HTMLAudioElement | null {
-  if (musicId) {
-    const byId = doc.getElementById(musicId);
+function resolveScrubAudioEl(doc: Document, music?: PreviewTarget | null): HTMLAudioElement | null {
+  if (music) {
+    const byId = previewElementFinder(doc)(music);
     if (isAudioNode(byId)) return byId;
   }
   return (
@@ -284,7 +285,7 @@ function applyScrub(el: HTMLAudioElement, audioFileTime: number, previewVolume: 
 export function scrubPreviewAudio(
   iframe: HTMLIFrameElement | null,
   audioFileTime: number | null,
-  musicId?: string | null,
+  music?: PreviewTarget | null,
   previewVolume = 1,
 ): void {
   if (!iframe) return;
@@ -299,7 +300,7 @@ export function scrubPreviewAudio(
     return;
   }
   if (!doc) return;
-  const el = resolveScrubAudioEl(doc, musicId);
+  const el = resolveScrubAudioEl(doc, music);
   if (el) applyScrub(el, audioFileTime, previewVolume);
 }
 
@@ -513,14 +514,11 @@ export function buildMissingCompositionElements(
 
   // Patch existing elements that are missing compositionSrc
   let patched = false;
+  const findHost = previewElementFinder(doc);
   const updatedEls = (currentEls as TimelineElement[]).map((existing) => {
     if (existing.compositionSrc) return existing;
     const host =
-      findPreviewElement(doc, {
-        hfId: existing.hfId,
-        id: existing.domId ?? existing.id,
-        sourceFile: existing.sourceFile,
-      }) ?? doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
+      findHost(existing) ?? doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
     if (!host) return existing;
     const compSrc =
       host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file");

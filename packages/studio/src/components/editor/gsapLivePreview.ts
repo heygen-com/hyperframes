@@ -9,13 +9,14 @@ import { findElementForSelection } from "./domEditingElement";
  * Extracted so the identical closure exists once — shared by the legacy
  * PropertyPanel Layout section and the flat Layout group (PropertyPanelFlat).
  */
-// hf-ids and ids repeat across flattened sub-compositions and a selector's first match may be a sibling, so look in
-// the selection's own file first, then anywhere.
-function resolvePreviewNode(
+// The selected node while it is still mounted; after a reload, the copy in the selection's own file (hf-ids and ids
+// repeat across flattened sub-compositions), then anywhere.
+export function findPreviewNode(
   doc: Document | null | undefined,
   el: DomEditSelection,
 ): Element | null {
   if (!doc) return null;
+  if (el.element?.isConnected && el.element.ownerDocument === doc) return el.element;
   return (
     findElementForSelection(doc, el) ??
     findElementForSelection(doc, { ...el, sourceFile: undefined })
@@ -29,7 +30,7 @@ export function createGsapLivePreview(iframeRef: { readonly current: HTMLIFrameE
       | { gsap?: { set: (t: Element, v: Record<string, number>) => void } }
       | null
       | undefined;
-    const node = resolvePreviewNode(iframe?.contentDocument, el);
+    const node = findPreviewNode(iframe?.contentDocument, el);
     if (win?.gsap && node) win.gsap.set(node, props);
   };
 }
