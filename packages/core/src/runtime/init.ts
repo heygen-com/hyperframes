@@ -3269,7 +3269,9 @@ export function initSandboxRuntimeModular(): void {
       resolveStartSeconds: (element) => resolveStartForElement(element, 0),
     }),
     createAnimeJsAdapter(),
-    createLottieAdapter(),
+    createLottieAdapter({
+      resolveStartSeconds: (element) => resolveStartForElement(element, 0),
+    }),
     createThreeAdapter(),
     createMapboxAdapter(),
     createLeafletAdapter(),
