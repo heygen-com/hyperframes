@@ -3168,7 +3168,7 @@
           ...opts,
           previewPixelRatio,
           rig: { duration: DURATION, mode: values.assemblyMode, sequence: true, sample: sampleRig },
-          fontUrl: "assets/fonts/Geist-Bold.ttf",
+          fontUrl: (window.__frostAssetBase || "assets/") + "fonts/Geist-Bold.ttf",
           onProgress: (msg) => {
             stage.dataset.state = msg;
             buildStatus.textContent = "Building Frost · " + msg;

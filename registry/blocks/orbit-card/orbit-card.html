@@ -78,7 +78,11 @@
       { "imports": { "orbit-card/scene": "./assets/orbit-scene.js" } }
     </script>
     <script type="module">
-      import { renderAt } from "orbit-card/scene";
+      import { createOrbitScene } from "orbit-card/scene";
+      // Bare __hyperframes is this composition's own in a module.
+      const renderAt = createOrbitScene(
+        (typeof __hyperframes !== "undefined" && __hyperframes.getVariables?.()) || {},
+      );
       const state = { time: 0 };
       const timeline = gsap.timeline({ paused: true });
       timeline.to(state, {
