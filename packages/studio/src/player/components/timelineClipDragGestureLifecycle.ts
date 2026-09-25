@@ -15,6 +15,7 @@ import {
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { StackingPatch } from "./timelineStackingSync";
 import type { TimelineElement, usePlayerStore } from "../store/playerStore";
+import { trackStudioTrimCommit } from "../../telemetry/events";
 
 export type TimelineGestureKind = "drag" | "resize";
 type TimelineGesturePhase = "active" | "committing" | "cancelled" | "complete";
@@ -235,7 +236,13 @@ export function mountTimelineClipDragGestureLifecycle({
     suppressClickRef.current = true;
     clearSuppressedClick();
     if (groupSession) {
-      commitTimelineGroupResize(groupSession, updateElement, onResizeElementsRef.current);
+      const trimMode = resize.trimMode;
+      commitTimelineGroupResize(
+        groupSession,
+        updateElement,
+        onResizeElementsRef.current,
+        trimMode ? () => trackStudioTrimCommit({ mode: trimMode }) : undefined,
+      );
       return;
     }
     const hasChanged =

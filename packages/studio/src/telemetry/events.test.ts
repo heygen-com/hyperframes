@@ -11,6 +11,7 @@ const {
   trackStudioSessionStart,
   trackStudioRenderStart,
   trackStudioRazorSplit,
+  trackStudioTrimCommit,
   trackStudioExpandedClipEdit,
   trackStudioKeyframeLaneExpand,
   trackStudioSegmentEaseEdit,
@@ -87,6 +88,11 @@ describe("studio telemetry events", () => {
   it("trackStudioRazorSplit emits 'studio_razor_split' with mode and count", () => {
     trackStudioRazorSplit({ mode: "all", count: 3 });
     expect(trackEvent).toHaveBeenCalledWith("studio_razor_split", { mode: "all", count: 3 });
+  });
+
+  it("trackStudioTrimCommit emits 'studio_trim_commit' with the trim mode", () => {
+    trackStudioTrimCommit({ mode: "slide" });
+    expect(trackEvent).toHaveBeenCalledWith("studio_trim_commit", { mode: "slide" });
   });
 
   it("trackStudioExpandedClipEdit emits 'studio_expanded_clip_edit' with action", () => {

@@ -11,6 +11,9 @@ import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const { trackStudioTrimCommit } = vi.hoisted(() => ({ trackStudioTrimCommit: vi.fn() }));
+vi.mock("../../telemetry/events", () => ({ trackStudioTrimCommit }));
+
 function el(id: string, over: Partial<TimelineElement> = {}): TimelineElement {
   return {
     id,
@@ -27,6 +30,7 @@ function el(id: string, over: Partial<TimelineElement> = {}): TimelineElement {
 afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
+  trackStudioTrimCommit.mockClear();
 });
 
 function renderResizeHarness(
@@ -483,6 +487,8 @@ describe("useTimelineClipDrag — trim tools", () => {
       ["b", 2.5, 3],
       ["c", 5.5, 1],
     ]);
+    expect(trackStudioTrimCommit).toHaveBeenCalledOnce();
+    expect(trackStudioTrimCommit).toHaveBeenCalledWith({ mode: "ripple" });
     expect(h.storeById("d").start).toBe(0); // another lane is never rippled
     h.unmount();
   });
@@ -509,6 +515,8 @@ describe("useTimelineClipDrag — trim tools", () => {
       ["a", 0, 2.5],
       ["b", 2.5, 2.5],
     ]);
+    expect(trackStudioTrimCommit).toHaveBeenCalledOnce();
+    expect(trackStudioTrimCommit).toHaveBeenCalledWith({ mode: "roll" });
     expect(h.storeById("c").start).toBe(5);
     h.unmount();
   });
@@ -520,6 +528,8 @@ describe("useTimelineClipDrag — trim tools", () => {
 
     expect(persistedTrim(h)).toEqual([["b", 2, 3]]);
     expect(h.onResizeElements.mock.calls[0][0][0].playbackStart).toBe(0.5);
+    expect(trackStudioTrimCommit).toHaveBeenCalledOnce();
+    expect(trackStudioTrimCommit).toHaveBeenCalledWith({ mode: "slip" });
     h.unmount();
   });
 
@@ -533,6 +543,35 @@ describe("useTimelineClipDrag — trim tools", () => {
       ["b", 2.5, 3],
       ["c", 5.5, 0.5],
     ]);
+    expect(trackStudioTrimCommit).toHaveBeenCalledOnce();
+    expect(trackStudioTrimCommit).toHaveBeenCalledWith({ mode: "slide" });
+    h.unmount();
+  });
+
+  it("does not track a trim when persistence fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { h } = startTrim("ripple", "a", "end");
+    h.onResizeElements.mockRejectedValueOnce(new Error("persist failed"));
+
+    await h.moveAndDropPointer(50);
+
+    expect(trackStudioTrimCommit).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+    h.unmount();
+  });
+
+  it("rolls back and does not track when persistence throws synchronously", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { h } = startTrim("ripple", "a", "end");
+    h.onResizeElements.mockImplementationOnce(() => {
+      throw new Error("persist failed");
+    });
+
+    await expect(h.moveAndDropPointer(50)).resolves.toBeUndefined();
+
+    expect(h.storeById("a").duration).toBe(2);
+    expect(trackStudioTrimCommit).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
     h.unmount();
   });
 
@@ -545,6 +584,7 @@ describe("useTimelineClipDrag — trim tools", () => {
     expect(h.getResizeProjection()).toHaveLength(0);
     expect(h.storeById("b").start).toBe(2);
     expect(h.onResizeElements).not.toHaveBeenCalled();
+    expect(trackStudioTrimCommit).not.toHaveBeenCalled();
     h.unmount();
   });
 });

@@ -10,6 +10,7 @@ export function commitTimelineGroupResize(
   session: TimelineGroupResizeSession,
   updateElement: (key: string, updates: Partial<TimelineElement>) => void,
   persist: TimelineEditCallbacks["onResizeElements"],
+  onPersisted?: () => void,
 ): void {
   if (!session.hasChanged) return;
   const changes = session.changes;
@@ -33,22 +34,27 @@ export function commitTimelineGroupResize(
     return;
   }
   const coalesceKey = `clip-group-resize:${changes.map((change) => change.key).join(":")}`;
-  Promise.resolve(
-    persist(
-      changes.map((change) => ({
-        element: change.element,
-        start: change.start,
-        duration: change.duration,
-        playbackStart: change.playbackStart,
-      })),
-      { coalesceKey },
-    ),
-  ).catch((error) => {
-    rollbackLatestTimelineOptimisticGesture(
-      updateElement,
-      revision,
-      session.members.map((member) => ({ key: member.key, updates: member })),
+  void Promise.resolve()
+    .then(() =>
+      persist(
+        changes.map((change) => ({
+          element: change.element,
+          start: change.start,
+          duration: change.duration,
+          playbackStart: change.playbackStart,
+        })),
+        { coalesceKey },
+      ),
+    )
+    .then(
+      () => onPersisted?.(),
+      (error) => {
+        rollbackLatestTimelineOptimisticGesture(
+          updateElement,
+          revision,
+          session.members.map((member) => ({ key: member.key, updates: member })),
+        );
+        console.error("[Timeline] Failed to persist group clip resize", error);
+      },
     );
-    console.error("[Timeline] Failed to persist group clip resize", error);
-  });
 }

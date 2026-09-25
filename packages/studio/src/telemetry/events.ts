@@ -1,5 +1,6 @@
 import { trackEvent } from "./client";
 import { breadcrumbTrail } from "./breadcrumbs";
+import type { TimelineTrimMode } from "../player/components/timelineTrimOps";
 
 // Studio frontend events. The corresponding `render_complete` / `render_error`
 // events are emitted server-side by `packages/cli/src/server/studioServer.ts`
@@ -72,6 +73,10 @@ export function trackStudioRazorSplit(props: { mode: "single" | "all"; count: nu
     mode: props.mode,
     count: props.count,
   });
+}
+
+export function trackStudioTrimCommit(props: { mode: TimelineTrimMode }): void {
+  trackEvent("studio_trim_commit", { mode: props.mode });
 }
 
 // Adoption signal for the inline timeline-expansion surface: edits applied to a
