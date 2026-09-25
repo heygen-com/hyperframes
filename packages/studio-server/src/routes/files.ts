@@ -2943,8 +2943,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           version,
         });
       }
-      const raced = readFileSync(ctx.absPath, "utf-8") !== originalContent;
-      if (raced && attempt < PATCH_CONFLICT_ATTEMPTS) continue;
       const mutationResult = writeMutationResult(
         c,
         ctx.project.dir,
@@ -2953,7 +2951,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         patched,
         originalContent,
       );
-      if (mutationResult instanceof Response) return mutationResult;
+      if (mutationResult instanceof Response) {
+        if (mutationResult.status === 409 && attempt < PATCH_CONFLICT_ATTEMPTS) continue;
+        return mutationResult;
+      }
       const { backupPath, version } = mutationResult;
       c.header("ETag", version);
       return c.json({

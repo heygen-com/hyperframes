@@ -7,7 +7,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion } from "../helpers/fileVersion";
 import { registerFileRoutes } from "./files";
 
-const hooks = vi.hoisted(() => ({ transforming: undefined as (() => void) | undefined }));
+const hooks = vi.hoisted(() => ({
+  transforming: undefined as (() => void) | undefined,
+  backingUp: undefined as (() => void) | undefined,
+}));
+vi.mock("../helpers/backupJournal.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../helpers/backupJournal.js")>();
+  return {
+    ...actual,
+    snapshotBeforeWrite: (...args: Parameters<typeof actual.snapshotBeforeWrite>) => {
+      hooks.backingUp?.();
+      return actual.snapshotBeforeWrite(...args);
+    },
+  };
+});
 vi.mock("../helpers/sourceMutation.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../helpers/sourceMutation.js")>();
   return {
@@ -26,6 +39,7 @@ vi.mock("../helpers/sourceMutation.js", async (importOriginal) => {
 const dirs: string[] = [];
 afterEach(() => {
   hooks.transforming = undefined;
+  hooks.backingUp = undefined;
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -106,6 +120,40 @@ describe("element edits with another writer racing them", () => {
       expect(read()).toBe(saved(writes));
     },
   );
+
+  it.each(Object.entries(ROUTES))(
+    "%s refolds when a write lands while it takes its backup",
+    async (_, [route, body]) => {
+      const { post, path, read } = project();
+      hooks.backingUp = () => {
+        hooks.backingUp = undefined;
+        writeFileSync(path, saved(1));
+      };
+
+      expect((await post(route, body)).status).toBe(200);
+      expect(read()).toContain("agent 1");
+      expect(read()).toContain("z-index: 2");
+    },
+  );
+
+  it("insert-composition answers 409 instead of writing over a save that lands during its backup", async () => {
+    const { post, path, read } = project();
+    writeFileSync(
+      join(path, "..", "child.html"),
+      `<template><div data-composition-id="child" data-width="640" data-height="360" data-duration="3"></div></template>`,
+    );
+    hooks.backingUp = () => writeFileSync(path, saved("x"));
+
+    const response = await post("insert-composition/index.html", {
+      sourcePath: "child.html",
+      start: 0,
+      track: 0,
+      expectedVersion: fileContentVersion(ORIGINAL),
+    });
+
+    expect(response.status).toBe(409);
+    expect(read()).toBe(saved("x"));
+  });
 
   it("patch-element answers with the version of what it wrote", async () => {
     const { post, read } = project();
