@@ -114,7 +114,6 @@ function getOrCreateCaptionWrapper(el: HTMLElement): HTMLElement {
   return wrapper;
 }
 
-/** Applies caption-overrides.json to caption words, only those inside `within` when given. */
 export function applyCaptionOverrides(within?: readonly Element[]): Promise<void> {
   const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
   if (!gsap) return Promise.resolve();
@@ -188,7 +187,6 @@ export function applyCaptionOverrides(within?: readonly Element[]): Promise<void
             const color = state === "dim" ? override.dimColor : override.activeColor;
             if (!color) continue;
             tw.vars.color = color;
-            // A tween that already rendered keeps the colour it recorded then; make it re-read vars.
             tw.invalidate?.();
           }
 
