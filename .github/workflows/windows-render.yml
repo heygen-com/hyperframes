@@ -429,7 +429,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-          # Only engine and CLI tests read LFS fixtures (producer videos); the other lanes skip the fetch.
+          # Only the engine-cli lane reads an LFS file (engine's ffprobe test parses a producer HDR PNG).
           lfs: ${{ matrix.lane == 'engine-cli' }}
 
       # -----------------------------------------------------------------
