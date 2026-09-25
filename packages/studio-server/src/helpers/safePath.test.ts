@@ -52,16 +52,27 @@ describe("walkDir", () => {
     expect(files).not.toContain(".hyperframes/backup/snapshot.html");
   });
 
-  it.each(["EACCES", "ENOENT"])("skips a subfolder whose listing fails with %s", (code) => {
-    const projectDir = createProjectDir();
-    mkdirSync(join(projectDir, "locked"));
-    mkdirSync(join(projectDir, "compositions"));
-    writeFileSync(join(projectDir, "locked", "hidden.html"), "hidden");
-    writeFileSync(join(projectDir, "compositions", "scene.html"), "scene");
-    writeFileSync(join(projectDir, "index.html"), "root");
-    hooks.unreadable.set(join(projectDir, "locked"), code);
+  it.each(["EACCES", "EPERM", "ENOENT", "ENOTDIR"])(
+    "skips a subfolder whose listing fails with %s",
+    (code) => {
+      const projectDir = createProjectDir();
+      mkdirSync(join(projectDir, "locked"));
+      mkdirSync(join(projectDir, "compositions"));
+      writeFileSync(join(projectDir, "locked", "hidden.html"), "hidden");
+      writeFileSync(join(projectDir, "compositions", "scene.html"), "scene");
+      writeFileSync(join(projectDir, "index.html"), "root");
+      hooks.unreadable.set(join(projectDir, "locked"), code);
 
-    expect(walkDir(projectDir).sort()).toEqual(["compositions/scene.html", "index.html"]);
+      expect(walkDir(projectDir).sort()).toEqual(["compositions/scene.html", "index.html"]);
+    },
+  );
+
+  it("still throws when a subfolder fails for another reason", () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "busy"));
+    hooks.unreadable.set(join(projectDir, "busy"), "EMFILE");
+
+    expect(() => walkDir(projectDir)).toThrow("EMFILE");
   });
 
   it("still throws when the project folder itself cannot be listed", () => {

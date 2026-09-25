@@ -30,14 +30,17 @@ export function isInHiddenOrVendorDir(relPath: string): boolean {
   return segments.slice(0, -1).some((seg) => seg.startsWith(".") || seg === "node_modules");
 }
 
-/** Recursively walk a directory and return relative file paths. Only an unreadable `dir` itself
- * throws; a subfolder that is unreadable or removed mid-walk is skipped. */
+const UNREADABLE_DIR_CODES = new Set(["EACCES", "EPERM", "ENOENT", "ENOTDIR"]);
+
+/** Recursively walk a directory and return relative file paths. A subfolder that is unreadable
+ * or removed mid-walk is skipped; any other failure, or an unreadable `dir` itself, throws. */
 export function walkDir(dir: string, prefix = ""): string[] {
   let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch (err) {
-    if (!prefix) throw err;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (!prefix || !code || !UNREADABLE_DIR_CODES.has(code)) throw err;
     return [];
   }
   const files: string[] = [];

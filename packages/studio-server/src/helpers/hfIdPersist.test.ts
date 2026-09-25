@@ -1,5 +1,13 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stampFileHfIds } from "./hfIdPersist.js";
@@ -66,6 +74,15 @@ describe("stampFileHfIds", () => {
     stampFileHfIds(file);
 
     expect(readFileSync(file, "utf-8")).toBe(agentWrite);
+  });
+
+  it("leaves a file deleted while ids are minted deleted", () => {
+    const file = tmpFile(`<div class="clip" data-start="0" data-end="3">Hi</div>`);
+    hooks.minting = () => rmSync(file);
+
+    stampFileHfIds(file);
+
+    expect(existsSync(file)).toBe(false);
   });
 
   it("does not rewrite an already-stamped file", () => {
