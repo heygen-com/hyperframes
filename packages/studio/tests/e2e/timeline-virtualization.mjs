@@ -369,13 +369,12 @@ try {
   // The median measured run per counter: a real regression moves every run, a stray late
   // scroll event moves one. perf-ratchet.mjs holds it under perf-ceilings.json.
   const workCounts = Object.fromEntries(
-    Object.keys(runs[0].workPerTick).map((counter) => [
-      `${counter}PerTick`,
-      percentile(
-        runs.map((run) => run.workPerTick[counter]),
-        0.5,
-      ),
-    ]),
+    Object.keys(runs[0].workPerTick).map((counter) => {
+      const values = runs.map((run) => run.workPerTick[counter]);
+      // NaN sorts unpredictably, so one run missing a counter must not hide behind the median.
+      const median = values.every(Number.isFinite) ? percentile(values, 0.5) : Number.NaN;
+      return [`${counter}PerTick`, median];
+    }),
   );
   const interactionP95Ms = percentile(
     runs.map((run) => run.interactionP95Ms),
