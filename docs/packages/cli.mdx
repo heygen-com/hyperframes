@@ -168,6 +168,7 @@ npx hyperframes catalog                          # table of everything
 npx hyperframes catalog --type block --tag social
 npx hyperframes catalog --json
 npx hyperframes catalog --human-friendly         # picker; installs on select
+npx hyperframes catalog --installed              # what this project has, and what the video uses
 ```
 
 Filter with `--type` (`block` or `component`) and `--tag` (`social`,
@@ -176,6 +177,16 @@ and tags, shaped for agents to parse; `--json` is the structured form. Each
 `--json` row has the item's name, type, title, description and tags, plus its
 dimensions, duration and `preview` (`video` and `poster` URLs) when it has them.
 `--human-friendly` opens a picker that runs `add` on whatever you select.
+
+`--installed` lists the catalog items in the current project instead: name,
+type, file, and whether the video (`index.html`) uses it. Items come from what
+`add` recorded in `hyperframes.json` plus any registry item whose file sits at
+its install path; those are marked "found by file name". A block reads "in use"
+when `index.html` mounts it and "not used" when it does not; a component is
+pasted into your own markup, so it reads "pasted inline, can't tell"; a recorded
+item whose file is gone reads "file removed". It combines with `--type` and
+`--json` (`{ items, scannedFiles }`, where each item has `name`, `type`, `file`,
+`status` and `foundBy`), not with `--query`, `--tag` or `--human-friendly`.
 
 ## Bring in source material
 

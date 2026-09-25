@@ -108,9 +108,12 @@ npx hyperframes catalog --type component
 npx hyperframes catalog --type block --tag social
 npx hyperframes catalog --json
 npx hyperframes catalog --human-friendly
+npx hyperframes catalog --installed --json   # this project's items and whether index.html uses each
 ```
 
 The normal table and `--json` modes only list matches; install a selected name with `hyperframes add <name>`. `--human-friendly` opens an interactive picker and installs the selected item immediately. In CI or agent workflows, prefer `--json` followed by an explicit `add`.
+
+Before adding, check what the project already has: `catalog --installed --json` lists each item's `file` and `status` (`in-use`, `not-used`, `file-missing`, or `pasted-inline` for components, whose use cannot be detected). A `not-used` block is installed but not mounted in `index.html`; wire it in rather than adding it again.
 
 ### Report what the catalog does not have
 
