@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTimelinePlayer } from "../../player/hooks/useTimelinePlayer";
 import { NLEPreview, getPreviewPlayerKey, resolvePreviewStageSize } from "./NLEPreview";
+import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -178,6 +179,13 @@ describe("resolvePreviewStageSize", () => {
 });
 
 describe("NLEPreview", () => {
+  it("counts timeline clips and media clips from the painted document", () => {
+    const doc = new DOMParser().parseFromString(
+      '<div data-composition-id="main" data-duration="10"><video data-start="0" data-duration="2"></video><audio data-start="2" data-duration="3"></audio><div data-start="5" data-duration="1"></div></div>',
+      "text/html",
+    );
+    expect(readPreviewComplexity(doc)).toEqual({ clip_count: 3, media_clip_count: 2 });
+  });
   beforeEach(() => {
     globalThis.ResizeObserver = MockResizeObserver as typeof ResizeObserver;
   });

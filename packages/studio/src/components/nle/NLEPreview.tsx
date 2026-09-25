@@ -18,6 +18,7 @@ import {
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -147,6 +148,7 @@ export const NLEPreview = memo(function NLEPreview({
   }, [activeKey, resetPreviewSlots]);
 
   const liveGenRef = useRef<number | null>(null);
+  const reportPreviewFirstFrame = usePreviewFirstFrameTelemetry(previewSlots);
   const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
   const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
@@ -505,6 +507,7 @@ export const NLEPreview = memo(function NLEPreview({
                     applyInitialZoom();
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
+                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   style={
@@ -521,6 +524,7 @@ export const NLEPreview = memo(function NLEPreview({
                   directUrl={slot.url}
                   onLoad={() => onShadowIframeLoad(slot.gen)}
                   onReadyToShowChange={(ready) => onShadowReadyChange(slot.gen, ready)}
+                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   onPreviewError={(message) => onShadowError(slot.gen, message)}
                   portrait={portrait}
                   suppressLoadingOverlay
