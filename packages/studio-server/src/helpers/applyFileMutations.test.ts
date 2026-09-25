@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { applyFileMutations } from "./applyFileMutations.js";
+import { applyFileMutations, FileChangedError } from "./applyFileMutations.js";
 import { fileContentVersion, identifyFileWrite, resetFileWriteReceipts } from "./fileVersion.js";
 
 function expectStaleMutation(after: string): void {
@@ -30,6 +30,22 @@ describe("applyFileMutations", () => {
 
   it("refuses a stale no-op instead of silently accepting it", () => {
     expectStaleMutation("before");
+  });
+
+  it("refuses a file that changed since the caller read it, without an expected version", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-version-"));
+    const path = join(projectDir, "index.html");
+    try {
+      writeFileSync(path, "external", "utf8");
+      expect(() =>
+        applyFileMutations(projectDir, [
+          { sourceFile: "index.html", absPath: path, before: "before", after: "after" },
+        ]),
+      ).toThrow(FileChangedError);
+      expect(readFileSync(path, "utf8")).toBe("external");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("clears receipts for writes rolled back after a partial batch", () => {

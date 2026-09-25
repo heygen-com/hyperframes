@@ -44,6 +44,7 @@ export {
 export { duplicateElementInHtml, type DuplicateElementResult } from "./helpers/duplicateElement.js";
 export {
   applyFileMutations,
+  FileChangedError,
   type AppliedFileMutation,
   type FileMutationInput,
 } from "./helpers/applyFileMutations.js";

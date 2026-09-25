@@ -34,7 +34,7 @@ import {
   fileContentVersion,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
-import { applyFileMutations } from "../helpers/applyFileMutations.js";
+import { applyFileMutations, FileChangedError } from "../helpers/applyFileMutations.js";
 import {
   findUnsafeDomPatchValues,
   findUnsafeMutationValues,
@@ -376,6 +376,27 @@ export function commitElementPatchBatches(
     replaceFileAtomically(path, content, statSync(path).mode),
   requestToken?: string,
 ):
+  | { error: "duplicate" | "forbidden" | "not-found" | "conflict"; sourceFile: string }
+  | { durable: boolean; files: ElementPatchBatchFileResult[] } {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return foldAndCommitElementPatchBatches(projectDir, batches, writeFile, requestToken);
+    } catch (error) {
+      if (!(error instanceof FileChangedError)) throw error;
+      if (attempt === PATCH_CONFLICT_ATTEMPTS)
+        return { error: "conflict", sourceFile: error.sourceFile };
+    }
+  }
+}
+
+const PATCH_CONFLICT_ATTEMPTS = 3;
+
+function foldAndCommitElementPatchBatches(
+  projectDir: string,
+  batches: ElementPatchBatchRequest[],
+  writeFile: (path: string, content: string, encoding: "utf-8") => void,
+  requestToken: string | undefined,
+):
   | { error: "duplicate" | "forbidden" | "not-found"; sourceFile: string }
   | { durable: boolean; files: ElementPatchBatchFileResult[] } {
   const resolvedPaths = new Set<string>();
@@ -544,9 +565,11 @@ function rejectUnsafeMutationValues(
 
 function elementPatchBatchCommitErrorResponse(
   c: RouteContext,
-  error: "duplicate" | "forbidden" | "not-found",
+  error: "duplicate" | "forbidden" | "not-found" | "conflict",
   sourceFile: string,
 ): Response {
+  if (error === "conflict")
+    return c.json({ error: "file changed", conflict: true, sourceFile }, 409);
   if (error === "not-found") return c.json({ error, sourceFile }, 404);
   if (error === "forbidden") return c.json({ error, sourceFile }, 403);
   return c.json({ error: "duplicate source file", sourceFile }, 400);
