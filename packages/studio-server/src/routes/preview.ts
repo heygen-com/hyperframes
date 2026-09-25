@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   injectScriptsIntoHtml,
+  insertBeforeCloseTag,
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
 } from "@hyperframes/core/compiler";
@@ -63,8 +64,7 @@ function injectProjectSignature(html: string, signature: string): string {
       tag,
     );
   }
-  if (html.includes("</head>")) return html.replace("</head>", `${tag}\n</head>`);
-  return `${tag}\n${html}`;
+  return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
 }
 
 function readStudioMotionManifestContent(projectDir: string): string {
@@ -96,8 +96,7 @@ function parseStudioMotionManifestContent(content: string): {
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {
-  if (html.includes("</head>")) return html.replace("</head>", `${scriptTag}\n</head>`);
-  return `${scriptTag}\n${html}`;
+  return insertBeforeCloseTag(html, "head", `${scriptTag}\n`) ?? `${scriptTag}\n${html}`;
 }
 
 function htmlHasGsap(html: string): boolean {
@@ -375,9 +374,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         !bundled.includes("hyperframes-preview-runtime")
       ) {
         const runtimeTag = `<script src="${adapter.runtimeUrl}"></script>`;
-        bundled = bundled.includes("</body>")
-          ? bundled.replace("</body>", `${runtimeTag}\n</body>`)
-          : bundled + `\n${runtimeTag}`;
+        bundled =
+          insertBeforeCloseTag(bundled, "body", `${runtimeTag}\n`) ?? `${bundled}\n${runtimeTag}`;
       }
 
       // Inject <base> for relative asset resolution

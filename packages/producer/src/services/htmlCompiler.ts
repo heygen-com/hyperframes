@@ -47,6 +47,7 @@ import {
   readDeclaredDefaults,
   parseHostVariableValues,
   inlineScriptRuns,
+  insertBeforeCloseTag,
 } from "@hyperframes/core/compiler";
 import {
   checkSubCompositionUsability,
@@ -125,9 +126,7 @@ export function injectSdkPositionEditsRenderScript(html: string): string {
   }
   const scriptBody = getPositionEditsRenderScript().replace(/<\/script/gi, "<\\/script");
   const script = `<script>${scriptBody}</script>`;
-  const bodyClose = html.search(/<\/body\s*>/i);
-  if (bodyClose < 0) return `${html}${script}`;
-  return `${html.slice(0, bodyClose)}${script}${html.slice(bodyClose)}`;
+  return insertBeforeCloseTag(html, "body", script) ?? `${html}${script}`;
 }
 
 /**
@@ -2035,10 +2034,11 @@ export async function compileForRender(
   ];
   const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => assembledHtml.includes(attr));
   const htmlWithPositionScript = hasPositionEdits
-    ? assembledHtml.replace(
-        /<\/body>/i,
-        `<script>${createStudioPositionSeekReapplyScript()}</script></body>`,
-      )
+    ? (insertBeforeCloseTag(
+        assembledHtml,
+        "body",
+        `<script>${createStudioPositionSeekReapplyScript()}</script>`,
+      ) ?? assembledHtml)
     : assembledHtml;
   const htmlWithSdkPositionScript = injectSdkPositionEditsRenderScript(htmlWithPositionScript);
 

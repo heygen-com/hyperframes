@@ -17,6 +17,7 @@ import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
   RUNTIME_BOOTSTRAP_ATTR,
+  insertBeforeCloseTag,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
@@ -64,16 +65,8 @@ function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" =
     const inlinedRuntime = getHyperframeRuntimeScript();
     tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1">${inlinedRuntime}</script>`;
   }
-  if (sanitized.includes("</head>")) {
-    // Use a function replacer so `String.prototype.replace`'s substitution
-    // patterns (`$&`, `$$`, `$'`, `` $` ``, `$1`–`$99`) inside the inlined
-    // runtime IIFE are passed through verbatim. The minified runtime
-    // contains the literal sequence `$&` as part of legitimate JS, and
-    // the older `(pattern, string)` form would expand it to the matched
-    // `</head>`, silently corrupting the runtime and breaking every
-    // timeline in the bundle with a parse-time SyntaxError.
-    return sanitized.replace("</head>", () => `${tag}\n</head>`);
-  }
+  const withHead = insertBeforeCloseTag(sanitized, "head", `${tag}\n`);
+  if (withHead !== null) return withHead;
   const htmlOpenMatch = sanitized.match(/<html\b[^>]*>/i);
   if (htmlOpenMatch?.index != null) {
     const insertPos = htmlOpenMatch.index + htmlOpenMatch[0].length;

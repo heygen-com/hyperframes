@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
@@ -66,14 +67,6 @@ export function proxyEtagSalt(raw: string | undefined): string {
   return `:proxy:${raw}:${PROXY_PARAMS_VERSION}`;
 }
 
-// Mirrors `injectScriptTagIntoHead` in routes/preview.ts (kept local rather
-// than imported to avoid a helpers → routes dependency edge for one
-// two-line utility).
-function injectScriptTagIntoHead(html: string, scriptTag: string): string {
-  if (html.includes("</head>")) return html.replace("</head>", `${scriptTag}\n</head>`);
-  return `${scriptTag}\n${html}`;
-}
-
 /**
  * Injects `window.__HF_MEDIA_CODEC_MAP__` (the U1 codec-facts scan) into
  * served composition HTML, and fire-and-forget pre-warms `resolveProxy` for
@@ -130,7 +123,7 @@ export async function injectMediaCodecMapIntoHtml(
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
   const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
-  return injectScriptTagIntoHead(html, tag);
+  return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
 }
 
 /**
