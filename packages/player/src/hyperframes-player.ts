@@ -226,7 +226,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this._videoSource?.video.pause();
+    this._teardownVideo();
     this._sendControl("pause");
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
@@ -254,19 +254,12 @@ class HyperframesPlayer extends HTMLElement {
         // message fire before connectedCallback installs the parent message listener. Initial
         // attributes are applied below by connectedCallback; only live changes navigate here.
         if (!this.isConnected) break;
-        if (val) {
-          // A different composition: like a <video> given a new src, it does not inherit a queued play.
-          this._pendingPlay = false;
-          this._abandonComposition("Composition navigated before runtime data was applied");
-          this._loadSrc(val);
-        }
+        if (val) this._navigateSrc(val);
         break;
       case "type": {
         const src = this.getAttribute("src");
         if (!this.isConnected || src === null || isVideoType(oldVal) === isVideoType(val)) break;
-        this._pendingPlay = false;
-        this._abandonComposition("Composition navigated before runtime data was applied");
-        this._loadSrc(src);
+        this._navigateSrc(src);
         break;
       }
       case "srcdoc":
@@ -353,6 +346,8 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _reloadForSandboxOriginPolicy(): void {
+    // A video does not play in the iframe, so neither reload applies to it.
+    if (this._videoSource) return;
     this._abandonComposition("Sandbox policy changed before runtime data was applied");
     const srcdoc = this.getAttribute("srcdoc");
     if (srcdoc !== null) {
@@ -878,6 +873,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _reloadShaderOptions(): void {
+    if (this._videoSource) return;
     // This navigates the frame, so readiness has to fall with it. Leaving
     // `_runtimeBridgeReady` true lets a delivery post into a document that is being
     // replaced, where it can only end in a delivery timeout rather than the immediate,
@@ -889,6 +885,13 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
+  }
+
+  // A different source: like a <video> given a new src, it does not inherit a queued play.
+  private _navigateSrc(src: string): void {
+    this._pendingPlay = false;
+    this._abandonComposition("Composition navigated before runtime data was applied");
+    this._loadSrc(src);
   }
 
   /** Every `src` load: a `type="video/..."` source plays in a `<video>`, anything else is a
@@ -906,10 +909,16 @@ class HyperframesPlayer extends HTMLElement {
     if (!this._videoSource) {
       this._videoSource = createVideoSource({
         onMetadata: (video) => this._applyThenEmit(() => this._onVideoReady(video)),
-        onDurationChange: (video) => this._applyVideoDuration(video),
+        onDurationChange: (video) => this._applyTimelineDuration(video.duration),
         onResize: (video) => this._applyVideoSize(video),
-        onError: (message, code) =>
-          this._emit(new CustomEvent("error", { detail: { message, code } })),
+        // A pause the page did not ask for (media keys, the browser): the player follows it.
+        onPause: (video) => {
+          if (!video.ended && !this._paused) this.pause();
+        },
+        onError: (message, code) => {
+          if (!this._paused) this.pause();
+          this._emit(new CustomEvent("error", { detail: { message, code } }));
+        },
         onPlayRejected: (error) => this._onVideoPlayRejected(error),
       });
       this.container.appendChild(this._videoSource.video);
@@ -917,14 +926,17 @@ class HyperframesPlayer extends HTMLElement {
       // Unloads a composition this player was showing before it switched to video.
       this.iframe.src = "about:blank";
     }
+    this.probe.stop();
+    this._resetFrameState();
     const { video, adapter } = this._videoSource;
-    this._directTimelineClock.stop();
     this._directTimelineAdapter = adapter;
     this._paused = true;
     this._currentTime = 0;
+    this.controlsApi?.updatePlaying(false);
+    this.controlsApi?.updateTime(0, this._duration);
     video.muted = this.muted;
     video.volume = this._volume;
-    video.playbackRate = this.playbackRate;
+    adapter.timeScale?.(this.playbackRate);
     video.src = src;
   }
 
@@ -938,7 +950,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onVideoReady(video: HTMLVideoElement): void {
-    this._applyVideoDuration(video);
+    this._applyTimelineDuration(video.duration);
     this._applyVideoSize(video);
     this._ready = true;
     this._dispatchReady();
@@ -949,10 +961,10 @@ class HyperframesPlayer extends HTMLElement {
     });
   }
 
-  private _applyVideoDuration(video: HTMLVideoElement): void {
-    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
-    this._setDuration(video.duration);
-    this.controlsApi?.updateTime(this._currentTime, this._duration);
+  private _applyTimelineDuration(duration: number): void {
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    this._setDuration(duration);
+    this.controlsApi?.updateTime(this._currentTime, duration);
   }
 
   private _applyVideoSize(video: HTMLVideoElement): void {
@@ -990,11 +1002,7 @@ class HyperframesPlayer extends HTMLElement {
     try {
       fn(tl);
       if (resolved && resolved !== this._directTimelineAdapter) {
-        const duration = resolved.duration();
-        if (Number.isFinite(duration) && duration > 0) {
-          this._setDuration(duration);
-          this.controlsApi?.updateTime(this._currentTime, duration);
-        }
+        this._applyTimelineDuration(resolved.duration());
       }
       this._directTimelineAdapter = tl;
       return true;
@@ -1357,18 +1365,23 @@ class HyperframesPlayer extends HTMLElement {
     // holds this document's handshake; a paused runtime would never post it again.
     if (this._ready && this._getSameOriginIframeDocument() === null) return;
 
-    this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
     // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
     // sandbox-policy reloads already clear bridge readiness before starting a navigation.
+    this._resetFrameState();
+    this.probe.start();
+  }
+
+  /** Drops everything the previous document or video left behind. */
+  private _resetFrameState(): void {
+    this._ready = false;
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     this._invalidateAssetsWait();
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
-    this.probe.start();
   }
 
   private _setupControls() {

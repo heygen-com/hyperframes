@@ -2844,6 +2844,7 @@ describe("HyperframesPlayer video mode", () => {
     ready: boolean;
     muted: boolean;
     volume: number;
+    playbackRate: number;
     iframeElement: HTMLIFrameElement;
     _onIframeLoad: () => void;
   };
@@ -3074,6 +3075,98 @@ describe("HyperframesPlayer video mode", () => {
     await Promise.resolve();
 
     expect(errors).toEqual([]);
+  });
+
+  it("stops the composition probe when a composition player switches to video", () => {
+    vi.useFakeTimers();
+    try {
+      const switching = createPlayer({ src: "https://cdn.example.com/index.html" });
+      const errors: unknown[] = [];
+      switching.addEventListener("error", (event) => errors.push(event));
+      switching._onIframeLoad();
+
+      switching.setAttribute("type", "video/mp4");
+      vi.advanceTimersByTime(10_000);
+
+      expect(errors).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the playback rate across a new src", () => {
+    player.playbackRate = 2;
+
+    player.setAttribute("src", "https://cdn.example.com/other.mp4");
+
+    expect(videoOf(player).defaultPlaybackRate).toBe(2);
+    expect(videoOf(player).playbackRate).toBe(2);
+  });
+
+  it("leaves a playing video alone when a shader or sandbox option changes", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.seek(3);
+
+    player.setAttribute("shader-capture-scale", "2");
+    player.setAttribute("sandbox-origin", "");
+
+    expect(player.currentTime).toBe(3);
+    expect(player.ready).toBe(true);
+  });
+
+  it("follows a pause the page did not ask for, but not the one at the end", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    const pauses: Event[] = [];
+    player.addEventListener("pause", (event) => pauses.push(event));
+
+    player.play();
+    setMedia(video, { ended: true });
+    video.dispatchEvent(new Event("pause"));
+    expect(player.paused).toBe(false);
+
+    setMedia(video, { ended: false });
+    video.dispatchEvent(new Event("pause"));
+    expect(player.paused).toBe(true);
+    expect(pauses).toHaveLength(1);
+  });
+
+  it("shows a new src as paused at the start in the controls", () => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    const video = videoOf(withControls);
+    loadMetadata(video);
+    withControls.play();
+    withControls.seek(3);
+    withControls.play();
+    expect(withControls.shadowRoot?.textContent).toContain("0:03 / 0:06");
+
+    // As in a browser, the new source has no duration until its metadata loads.
+    setMedia(video, { duration: Number.NaN });
+    withControls.setAttribute("src", "https://cdn.example.com/other.mp4");
+
+    const playButton = withControls.shadowRoot?.querySelector('[aria-label="Play"]');
+    expect(playButton).not.toBeNull();
+    expect(withControls.shadowRoot?.textContent).toContain("0:00 / 0:06");
+  });
+
+  it("stops playing when the video fails", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+
+    video.dispatchEvent(new Event("error"));
+
+    expect(player.paused).toBe(true);
+  });
+
+  it("removes the video when the player leaves the page and brings it back on return", () => {
+    player.remove();
+    expect(player.shadowRoot?.querySelector("video")).toBeNull();
+    expect(player.iframeElement.hidden).toBe(false);
+
+    document.body.appendChild(player);
+    expect(videoOf(player).getAttribute("src")).toBe(FILM);
   });
 
   it("goes back to a composition when the video type is removed", () => {
