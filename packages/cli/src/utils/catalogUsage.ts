@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import type { RegistryManifestEntry } from "@hyperframes/core";
 import { collectSubCompositionSrcs } from "@hyperframes/parsers/asset-resolution";
 import {
   DEFAULT_PROJECT_CONFIG,
@@ -211,7 +212,7 @@ function itemStatus(
  */
 export function listProjectCatalogItems(
   projectDir: string,
-  catalog: readonly { name: string; type: string }[] | undefined,
+  catalog: readonly RegistryManifestEntry[] | undefined,
 ): ProjectCatalogItems {
   const { status, config } = readProjectConfigWithStatus(projectDir);
   const paths = config?.paths ?? DEFAULT_PROJECT_CONFIG.paths;

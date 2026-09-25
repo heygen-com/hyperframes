@@ -8,6 +8,7 @@ import {
   type CatalogUsage,
   type ProjectCatalogItems,
 } from "./catalogUsage.js";
+import type { RegistryManifestEntry } from "@hyperframes/core";
 import type { RegistryItemRecord } from "./projectConfig.js";
 
 /**
@@ -223,7 +224,7 @@ describe("summarizeCatalogUsage", () => {
 function listOf(
   files: Record<string, string>,
   config: Record<string, unknown> | string | null,
-  catalog?: { name: string; type: string }[],
+  catalog?: RegistryManifestEntry[],
 ): ProjectCatalogItems {
   const dir = mkdtempSync(join(tmpdir(), "hf-catalog-list-"));
   try {

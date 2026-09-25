@@ -11,7 +11,7 @@ export const examples: Example[] = [
 ];
 
 import * as clack from "@clack/prompts";
-import { type ItemType, type RegistryItem } from "@hyperframes/core";
+import { type ItemType, type RegistryItem, type RegistryManifestEntry } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { fetchRegistryManifest } from "../registry/remote.js";
@@ -509,7 +509,7 @@ const STATUS_LABELS: Record<CatalogItemStatus, string> = {
 /** `catalog --installed`: the project's catalog items, as a table or as `--json`. */
 function printInstalledView(
   dir: string,
-  catalog: readonly { name: string; type: string }[] | undefined,
+  catalog: readonly RegistryManifestEntry[] | undefined,
   typeFilter: ItemType | undefined,
   json: boolean,
 ): void {
