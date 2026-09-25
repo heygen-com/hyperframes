@@ -24,8 +24,9 @@ function ownerOf(file: string): number | null {
   try {
     const text = readFileSync(file, "utf-8");
     return /^\d+$/.test(text) ? Number(text) : Number.NaN;
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
 }
 
@@ -50,9 +51,8 @@ function releaseOwn(file: string): void {
 }
 
 /**
- * Removes a dead owner's lock. One evictor at a time, re-reading the owner under its own lock, so a lock a live
- * process took after the caller's check survives. False when another evictor is at it. ponytail: an evictor that
- * dies mid-eviction leaves its lock to the next one that finds it dead, unguarded.
+ * Removes a dead owner's lock under an evict lock, re-reading the owner, so a live owner's lock survives. False when
+ * another evictor holds it. ponytail: a crashed evictor's lock is cleared unguarded; racing that can give two owners.
  */
 function evictDeadOwner(file: string): boolean {
   const evictor = `${file}.evict`;

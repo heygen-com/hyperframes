@@ -235,6 +235,15 @@ describe("openProjectHistory", () => {
     );
   });
 
+  it("fails an open whose lock cannot be read, instead of retrying it forever", async () => {
+    const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    mkdirSync(join(historyRoot, history.projectId, "owner.pid"));
+    await expect(openProjectHistory({ projectDir, historyRoot, ownerWaitMs: 0 })).rejects.toThrow(
+      /EISDIR/,
+    );
+  });
+
   it("takes over a lock file that holds no pid", async () => {
     const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
     await history.close();
