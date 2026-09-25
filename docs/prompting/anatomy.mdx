@@ -92,7 +92,7 @@ The skeleton above is how you ask. This is what the agent writes, and it's worth
 
 | In the file | What it means |
 | --- | --- |
-| `class="clip"` | Marks a timed section. The framework owns its visibility — never animate a clip's own opacity or `display` to hide it. |
+| `class="clip"` | Marks a timed section. The framework owns its visibility — never animate a clip's own `display`, `visibility` or `autoAlpha`; fade it with `opacity`, or animate a child. |
 | `data-start` / `data-duration` / `data-track-index` | When the clip begins, how long it runs, and which track it sits on. Two clips on the same track index must not overlap in time. |
 | `window.__timelines["<id>"]` | Every GSAP-driven composition registers exactly one paused timeline here, built synchronously at load. The renderer seeks that timeline frame by frame — which is why nothing may depend on wall-clock time or unseeded randomness. Other adapters, including Lottie, CSS animations, and WAAPI, register through their own seekable runtime contracts. |
 | `<video muted>` + a separate `<audio>` | Video elements render muted and their sound rides a sibling audio element, so the mixer can duck and balance it independently. |
