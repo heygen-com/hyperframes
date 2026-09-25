@@ -19,11 +19,17 @@ import { pathToFileURL } from "node:url";
 const MIN_CORRELATION = 0.7;
 const MAX_SPREAD_RATIO = 0;
 
+const raisedAgainst = (ceiling, base) => Number.isFinite(base) && ceiling > base;
+
+function measuredStatus(ceiling, value) {
+  if (!Number.isFinite(value)) return "missing";
+  if (value === ceiling) return "at";
+  return value > ceiling ? "rose" : "below";
+}
+
 function ceilingRow(counter, ceiling, value, base) {
-  if (Number.isFinite(base) && ceiling > base) return { counter, ceiling, base, status: "raised" };
-  if (!Number.isFinite(value)) return { counter, ceiling, value: null, status: "missing" };
-  if (value === ceiling) return { counter, ceiling, value, status: "at" };
-  return { counter, ceiling, value, status: value > ceiling ? "rose" : "below" };
+  if (raisedAgainst(ceiling, base)) return { counter, ceiling, base, status: "raised" };
+  return { counter, ceiling, value, status: measuredStatus(ceiling, value) };
 }
 
 /** Passes only when every gated counter sits exactly at a ceiling no higher than the base's. */
@@ -121,9 +127,12 @@ function pearson(xs, ys) {
 const round = (value) => Math.round(value * 100) / 100;
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
+const versionOf = (evidence) => String(evidence.browser ?? evidence.environment?.browser);
+
 /** Chrome's major version from a journey's evidence, e.g. "153" from "HeadlessChrome/153.0.1.2". */
 export function browserMajor(evidence) {
-  return /\/(\d+)\./.exec(evidence.browser ?? evidence.environment?.browser ?? "")?.[1] ?? null;
+  const match = /\/(\d+)\./.exec(versionOf(evidence));
+  return match ? match[1] : null;
 }
 
 /** The whole ceilings file, the journey named in it, and that journey's evidence. */
@@ -141,13 +150,17 @@ const isObject = (value) => typeof value === "object" && value !== null;
  * base file in a shape this script does not write throws: an unreadable base must not pass.
  */
 export function readBase(base, all, journey) {
-  for (const [name, entry] of Object.entries(base)) {
-    if (!isObject(entry?.counts)) throw new Error(`base ceilings: "${name}" has no counts object`);
-  }
+  assertBaseShape(base);
   return {
     counts: base[journey]?.counts,
     removedJourneys: Object.keys(base).filter((name) => !Object.hasOwn(all, name)),
   };
+}
+
+function assertBaseShape(base) {
+  for (const [name, entry] of Object.entries(base)) {
+    if (!isObject(entry?.counts)) throw new Error(`base ceilings: "${name}" has no counts object`);
+  }
 }
 
 /** Absent while the base branch has no ceilings file yet (and on runs without a base). */
@@ -171,18 +184,22 @@ function printNotes(recorded, evidence, rows) {
   }
 }
 
+function printResult(journey, ok, rows, removedJourneys) {
+  console.log(`[perf-ratchet] ${journey}: ${ok ? "PASS" : "FAIL"}`);
+  for (const row of rows) console.log(`[perf-ratchet]   ${formatRow(row)}`);
+  for (const name of removedJourneys) {
+    console.log(
+      `[perf-ratchet]   FAIL journey ${name} removed against the base branch; ceilings only go down`,
+    );
+  }
+}
+
 function runCheck(args) {
   const { all, journey, evidence, counts } = journeyInputs(args);
   const base = loadBase(args[3], all, journey);
   const { passed, rows } = checkCeilings(all[journey].counts, counts, base.counts);
   const ok = passed && base.removedJourneys.length === 0;
-  console.log(`[perf-ratchet] ${journey}: ${ok ? "PASS" : "FAIL"}`);
-  for (const row of rows) console.log(`[perf-ratchet]   ${formatRow(row)}`);
-  for (const name of base.removedJourneys) {
-    console.log(
-      `[perf-ratchet]   FAIL journey ${name} removed against the base branch; ceilings only go down`,
-    );
-  }
+  printResult(journey, ok, rows, base.removedJourneys);
   printNotes(all[journey], evidence, rows);
   return ok ? 0 : 1;
 }
