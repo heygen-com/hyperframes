@@ -47,6 +47,29 @@ describe("live DOM manifest hydration", () => {
       ).toHaveLength(2);
     }
   });
+  it("binds a root clip to its own element when a mounted sub-composition repeats its id", () => {
+    // The sub-composition's copy comes first in document order, so a bare id lookup finds it.
+    const doc = documentWith(
+      '<div id="strip" data-composition-id="strip" data-composition-src="compositions/strip.html" data-start="0" data-duration="4" data-track-index="1">' +
+        '<video id="frame-1" data-hf-id="hf-inner" data-start="0"></video></div>' +
+        '<video id="frame-1" data-hf-id="hf-root" data-start="6" data-duration="1" data-track-index="7"></video>',
+    );
+    const [element] = buildTimelineElementsFromClips(
+      [
+        clip({
+          id: "frame-1",
+          tagName: "video",
+          kind: "video",
+          start: 6,
+          duration: 1,
+          track: 7,
+          compositionAncestors: ["main"],
+        }),
+      ],
+      doc,
+    );
+    expect([element.hfId, element.sourceFile]).toEqual(["hf-root", undefined]);
+  });
   it("does not bind a cross-tag direct identity", () => {
     const doc = documentWith('<div id="collision" data-start="0" data-duration="4"></div>');
     expect(
