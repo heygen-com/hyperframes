@@ -93,23 +93,25 @@ function renderPreview(
   document.body.append(host);
   const root = createRoot(host);
   const iframeRef = createRef<HTMLIFrameElement>();
-
-  act(() => {
-    root.render(
-      React.createElement(NLEPreview, {
-        projectId: "timeline-edit-playground",
-        iframeRef,
-        onIframeLoad: () => {},
-        previewSlots,
-        onShadowIframeLoad: () => {},
-        onShadowReadyChange: () => {},
-        onShadowError: () => {},
-        setShadowIframeNode: () => {},
-        resetPreviewSlots: () => {},
-        fillBox,
-      }),
-    );
-  });
+  const render = (directUrl?: string) =>
+    act(() => {
+      root.render(
+        React.createElement(NLEPreview, {
+          projectId: "timeline-edit-playground",
+          directUrl,
+          iframeRef,
+          onIframeLoad: () => {},
+          previewSlots,
+          onShadowIframeLoad: () => {},
+          onShadowReadyChange: () => {},
+          onShadowError: () => {},
+          setShadowIframeNode: () => {},
+          resetPreviewSlots: () => {},
+          fillBox,
+        }),
+      );
+    });
+  render();
 
   const viewport = host.querySelector('[aria-label="Composition preview"]') as HTMLDivElement;
   const stage = host.querySelector('[data-testid="preview-zoom-stage"]') as HTMLDivElement;
@@ -124,6 +126,7 @@ function renderPreview(
   return {
     host,
     root,
+    render,
     viewport,
     stage,
     cleanup() {
@@ -296,10 +299,65 @@ describe("NLEPreview", () => {
     expect(poster()?.style.zIndex).toBe("2");
 
     act(() => livePlayerProps.onReadyToShowChange?.(false));
-    expect(poster()).not.toBeNull();
+    expect(poster()?.hidden).toBe(false);
     act(() => livePlayerProps.onReadyToShowChange?.(true));
+    expect(poster()?.hidden).toBe(true);
+    act(() => poster()?.dispatchEvent(new Event("load")));
     expect(poster()).toBeNull();
     view.cleanup();
+  });
+
+  describe("a missing poster", () => {
+    const renderUrl =
+      "/api/projects/timeline-edit-playground/thumbnail/index.html?t=0&output=source";
+    const fetchSpy = vi.fn(() => Promise.resolve(new Response()));
+    beforeEach(() => {
+      fetchSpy.mockClear();
+      vi.stubGlobal("fetch", fetchSpy);
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    const settle = (
+      view: ReturnType<typeof renderPreview>,
+      steps: Array<"ready" | "missing" | "loaded">,
+    ) => {
+      for (const step of steps) {
+        const poster = view.stage.querySelector('[data-testid="preview-poster"]');
+        act(() =>
+          step === "ready"
+            ? livePlayerProps.onReadyToShowChange?.(true)
+            : poster?.dispatchEvent(new Event(step === "missing" ? "error" : "load")),
+        );
+      }
+    };
+
+    it("is rendered for the next open when the live frame is ready first", () => {
+      const view = renderPreview();
+      settle(view, ["ready", "missing"]);
+      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      expect(view.stage.querySelector('[data-testid="preview-poster"]')).toBeNull();
+      view.cleanup();
+    });
+
+    it("is rendered once the live frame is ready when it is missing first", () => {
+      const view = renderPreview();
+      settle(view, ["missing"]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      settle(view, ["ready", "ready"]);
+      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      view.cleanup();
+    });
+
+    it("is rendered on a return from a sub-composition when the live frame is ready first", () => {
+      const view = renderPreview();
+      settle(view, ["loaded", "ready"]);
+      view.render("/api/projects/timeline-edit-playground/preview/comp/compositions/intro.html");
+      settle(view, ["ready"]);
+      view.render();
+      settle(view, ["ready", "missing"]);
+      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      view.cleanup();
+    });
   });
 
   it("mounts the live player once when the composition switches", () => {
