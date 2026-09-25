@@ -461,12 +461,11 @@ export function syncRuntimeMedia(params: {
         (el.ended && canSeekEndedMediaBackward && drift > 0.001) ||
         staleAudioOnFirstTick ||
         (drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift));
-      // Playing video elements use the browser's native decoder pipeline for
-      // timing. Seeking a playing video resets the decoder, causing a ~150ms
-      // freeze while it re-buffers — during which the monotonic clock advances,
-      // creating a perpetual seek→freeze→drift→seek stutter loop. Skip strict
-      // and force sync for playing videos; only hard sync (>0.5s) warrants
-      // the decoder-reset cost.
+      // Playing videos use the browser's decoder for timing. Seeking one resets the decoder: a
+      // ~150ms freeze while it re-buffers, as the monotonic clock advances, which loops into a
+      // seek→freeze→drift→seek stutter. So a playing video skips strict and force sync; only hard
+      // sync (>0.5s) warrants the decoder-reset cost. A paused transport pauses this video below,
+      // so a seek that pauses mid-playback still lands it.
       const isPlayingVideo = el.tagName === "VIDEO" && !el.paused && params.playing;
       // Only apply strict sync when offset has stabilized (not growing).
       // During initial buffering, offset grows ~16ms/tick as the timeline
