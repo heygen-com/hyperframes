@@ -42,11 +42,9 @@ interface DecodedResources {
   canvases: Set<HTMLCanvasElement | OffscreenCanvas>;
 }
 
-interface ThumbnailCanvasSink {
-  canvasesAtTimestamps(
-    timestamps: number[],
-  ): AsyncIterable<{ canvas: HTMLCanvasElement | OffscreenCanvas } | null>;
-}
+type Mediabunny = typeof import("mediabunny");
+type VideoSample = InstanceType<Mediabunny["VideoSample"]>;
+type ThumbnailFit = "contain" | "cover";
 
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
@@ -75,17 +73,73 @@ function targetDimensions(
   };
 }
 
+async function thumbnailSizedBitmap(
+  sample: VideoSample,
+  drawScale: number,
+  pixelBuffer: (bytes: number) => Uint8ClampedArray<ArrayBuffer>,
+): Promise<ImageBitmap | null> {
+  const { width, height } = sample.visibleRect;
+  if (sample.allocationSize({ format: "RGBA" }) !== width * height * 4) return null;
+  const pixels = pixelBuffer(width * height * 4);
+  await sample.copyTo(pixels, { format: "RGBA" });
+  const scale = Math.min(1, drawScale);
+  return createImageBitmap(new ImageData(pixels, width, height), {
+    resizeWidth: Math.max(1, Math.round(sample.squarePixelWidth * scale)),
+    resizeHeight: Math.max(1, Math.round(sample.squarePixelHeight * scale)),
+    resizeQuality: "medium",
+  });
+}
+
+async function drawThumbnailFrame(
+  sample: VideoSample,
+  context: CanvasRenderingContext2D,
+  fit: ThumbnailFit,
+  pixelBuffer: (bytes: number) => Uint8ClampedArray<ArrayBuffer>,
+): Promise<void> {
+  const { width, height } = context.canvas;
+  context.clearRect(0, 0, width, height);
+  const quarterTurn = sample.rotation % 180 !== 0;
+  const drawScale = (fit === "contain" ? Math.min : Math.max)(
+    width / (quarterTurn ? sample.squarePixelHeight : sample.squarePixelWidth),
+    height / (quarterTurn ? sample.squarePixelWidth : sample.squarePixelHeight),
+  );
+  const bitmap = await thumbnailSizedBitmap(sample, drawScale, pixelBuffer);
+  if (!bitmap) {
+    sample.drawWithFit(context, { fit });
+    return;
+  }
+  const drawWidth = sample.squarePixelWidth * drawScale;
+  const drawHeight = sample.squarePixelHeight * drawScale;
+  context.save();
+  context.translate(width / 2, height / 2);
+  context.rotate((sample.rotation * Math.PI) / 180);
+  context.drawImage(bitmap, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  context.restore();
+  bitmap.close();
+}
+
 async function decodeFrames(
-  sink: ThumbnailCanvasSink,
-  timestamps: number[],
+  samples: AsyncIterable<VideoSample | null>,
+  canvas: HTMLCanvasElement,
+  fit: ThumbnailFit,
   signal: AbortSignal,
   resources: DecodedResources,
 ): Promise<void> {
-  for await (const wrapped of sink.canvasesAtTimestamps(timestamps)) {
-    throwIfAborted(signal);
-    if (!wrapped) continue;
-    resources.canvases.add(wrapped.canvas);
-    const blob = await canvasToBlob(wrapped.canvas);
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("Video thumbnail canvas is unavailable");
+  resources.canvases.add(canvas);
+  let pixels = new Uint8ClampedArray(new ArrayBuffer(0));
+  const pixelBuffer = (bytes: number) =>
+    pixels.length === bytes ? pixels : (pixels = new Uint8ClampedArray(new ArrayBuffer(bytes)));
+  for await (const sample of samples) {
+    if (!sample) continue;
+    try {
+      throwIfAborted(signal);
+      await drawThumbnailFrame(sample, context, fit, pixelBuffer);
+    } finally {
+      sample.close();
+    }
+    const blob = await canvasToBlob(canvas);
     throwIfAborted(signal);
     resources.urls.push(URL.createObjectURL(blob));
   }
@@ -153,13 +207,11 @@ export async function decodeVideoThumbnail(
     );
     const aspect = displayWidth / displayHeight;
     const target = targetDimensions(aspect, budgets);
-    const sink = new mediabunny.CanvasSink(track, {
-      width: target.width,
-      height: target.height,
-      fit: request.fit ?? "cover",
-      poolSize: 1,
-    });
-    await decodeFrames(sink, timestamps, signal, resources);
+    const canvas = document.createElement("canvas");
+    canvas.width = target.width;
+    canvas.height = target.height;
+    const samples = new mediabunny.VideoSampleSink(track).samplesAtTimestamps(timestamps);
+    await decodeFrames(samples, canvas, request.fit ?? "cover", signal, resources);
     return loadedResult(resources, aspect, target.width, target.height);
   } catch (error) {
     releaseDecodedResources(resources);

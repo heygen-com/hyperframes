@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { decodeVideoThumbnail, videoThumbnailTimestamps } from "./thumbnailVideoDecoder";
 
 const dispose = vi.fn();
-const canvasesAtTimestamps = vi.fn();
+const samplesAtTimestamps = vi.fn();
+const contexts: Array<{ rotate: Mock; drawImage: Mock }> = [];
 const input = {
   getPrimaryVideoTrack: vi.fn(),
   dispose,
@@ -19,13 +20,55 @@ vi.mock("mediabunny", () => ({
     getPrimaryVideoTrack = input.getPrimaryVideoTrack;
     dispose = input.dispose;
   },
-  CanvasSink: class {
-    canvasesAtTimestamps = canvasesAtTimestamps;
+  VideoSampleSink: class {
+    samplesAtTimestamps = samplesAtTimestamps;
   },
 }));
 
+function decodedSample({ copiesRgba = true, rotation = 0 } = {}) {
+  return {
+    visibleRect: { left: 0, top: 0, width: 1920, height: 1080 },
+    squarePixelWidth: 1920,
+    squarePixelHeight: 1080,
+    rotation,
+    timestamp: 2,
+    allocationSize: vi.fn(() => 1920 * 1080 * (copiesRgba ? 4 : 1.5)),
+    copyTo: vi.fn(async () => []),
+    drawWithFit: vi.fn(),
+    close: vi.fn(),
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  contexts.length = 0;
+  vi.stubGlobal(
+    "ImageData",
+    class {
+      constructor(
+        readonly data: Uint8ClampedArray,
+        readonly width: number,
+        readonly height: number,
+      ) {}
+    },
+  );
+  vi.stubGlobal(
+    "createImageBitmap",
+    vi.fn(async (_source: unknown, options: object) => ({ ...options, close: vi.fn() })),
+  );
+  HTMLCanvasElement.prototype.getContext = function getContext() {
+    const context = {
+      canvas: this,
+      clearRect: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      drawImage: vi.fn(),
+    };
+    contexts.push(context);
+    return context as unknown as CanvasRenderingContext2D;
+  } as typeof HTMLCanvasElement.prototype.getContext;
   vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:one").mockReturnValueOnce("blob:two");
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
@@ -52,11 +95,10 @@ describe("videoThumbnailTimestamps", () => {
 
 describe("decodeVideoThumbnail", () => {
   it("extracts sparse frames, returns object URLs, and disposes once", async () => {
-    const canvas = document.createElement("canvas");
-    canvasesAtTimestamps.mockImplementation(async function* (timestamps: number[]) {
+    samplesAtTimestamps.mockImplementation(async function* (timestamps: number[]) {
       expect(timestamps).toEqual([2, 8]);
-      yield { canvas, timestamp: 2, duration: 1 };
-      yield { canvas, timestamp: 8, duration: 1 };
+      yield decodedSample();
+      yield decodedSample();
     });
     const result = await decodeVideoThumbnail(
       { source: "/clip.mp4", sourceStart: 2, sourceRangeDuration: 6, frameCount: 2 },
@@ -84,17 +126,64 @@ describe("decodeVideoThumbnail", () => {
 
   it("revokes partial results when cancellation lands during extraction", async () => {
     const controller = new AbortController();
-    const canvas = document.createElement("canvas");
-    canvasesAtTimestamps.mockImplementation(async function* () {
-      yield { canvas, timestamp: 1, duration: 1 };
+    const late = decodedSample();
+    samplesAtTimestamps.mockImplementation(async function* () {
+      yield decodedSample();
       controller.abort();
-      yield { canvas, timestamp: 2, duration: 1 };
+      yield late;
     });
     await expect(
       decodeVideoThumbnail({ source: "/clip.mp4", frameCount: 2 }, controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(late.close).toHaveBeenCalledOnce();
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws each frame from a copy downscaled to the thumbnail, never the decoded frame", async () => {
+    input.getPrimaryVideoTrack.mockResolvedValue({
+      getDisplayWidth: vi.fn(async () => 1920),
+      getDisplayHeight: vi.fn(async () => 1080),
+      getDurationFromMetadata: vi.fn(async () => 10),
+    });
+    const decoded = [decodedSample(), decodedSample({ rotation: 90 })];
+    samplesAtTimestamps.mockImplementation(async function* () {
+      yield* decoded;
+    });
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", frameCount: 2 },
+      new AbortController().signal,
+    );
+
+    for (const sample of decoded) {
+      expect(sample.drawWithFit).not.toHaveBeenCalled();
+      expect(sample.close).toHaveBeenCalledOnce();
+    }
+    const bitmaps = await Promise.all(
+      vi.mocked(createImageBitmap).mock.results.map((r) => r.value as Promise<{ close: Mock }>),
+    );
+    expect(vi.mocked(createImageBitmap).mock.calls.map((c) => c[1])).toEqual([
+      expect.objectContaining({ resizeWidth: 240, resizeHeight: 135 }),
+      expect.objectContaining({ resizeWidth: 427, resizeHeight: 240 }),
+    ]);
+    const [context] = contexts;
+    expect(context?.rotate.mock.calls).toEqual([[0], [Math.PI / 2]]);
+    expect(context?.drawImage.mock.calls.map((c) => c[0])).toEqual(bitmaps);
+    for (const bitmap of bitmaps) expect(bitmap.close).toHaveBeenCalledOnce();
+  });
+
+  it("draws the decoded frame when the browser cannot copy it as RGBA", async () => {
+    const sample = decodedSample({ copiesRgba: false });
+    samplesAtTimestamps.mockImplementation(async function* () {
+      yield sample;
+    });
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", frameCount: 1 },
+      new AbortController().signal,
+    );
+    expect(sample.drawWithFit).toHaveBeenCalledWith(expect.anything(), { fit: "cover" });
+    expect(createImageBitmap).not.toHaveBeenCalled();
+    expect(sample.close).toHaveBeenCalledOnce();
   });
 
   it("stops after metadata cancellation before occupying the decoder", async () => {
@@ -121,7 +210,7 @@ describe("decodeVideoThumbnail", () => {
 
     await expect(decoding).rejects.toMatchObject({ name: "AbortError" });
     expect(getDurationFromMetadata).not.toHaveBeenCalled();
-    expect(canvasesAtTimestamps).not.toHaveBeenCalled();
+    expect(samplesAtTimestamps).not.toHaveBeenCalled();
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 });
