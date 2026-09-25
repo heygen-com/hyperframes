@@ -178,6 +178,26 @@ describe("a full document declaring on its composition root", () => {
     ).toEqual(["count", "title"]);
   });
 
+  it("reads both <html> and the root, and edits each id where it is declared", async () => {
+    const THEME_DECL = { id: "theme", type: "string", label: "Theme", default: "dark" };
+    const both = ROOT_DECLARED_HTML.replace(
+      '<html lang="en">',
+      `<html lang="en" data-composition-variables='${JSON.stringify([THEME_DECL])}'>`,
+    );
+    const comp = await openComposition(both);
+    expect(comp.getVariableDeclarations().map((d) => d.id)).toEqual(["theme", "title", "count"]);
+    comp.removeVariableDeclaration("title");
+    comp.removeVariableDeclaration("count");
+    expect(comp.getVariableDeclarations()).toEqual([THEME_DECL]);
+    expect(
+      comp.can({ type: "declareVariable", declaration: { ...THEME_DECL, default: "x" } }),
+    ).toMatchObject({ ok: false, code: "E_DUPLICATE_VARIABLE" });
+    comp.updateVariableDeclaration("theme", { ...THEME_DECL, default: "light" });
+    const reopened = await openComposition(comp.serialize());
+    expect(reopened.getVariableDeclarations()).toEqual([{ ...THEME_DECL, default: "light" }]);
+    expect(comp.serialize()).toMatch(/<html lang="en" data-composition-variables="[^"]*light/);
+  });
+
   it("prefers the root when <html> declares too, as the runtime does", async () => {
     const both = ROOT_DECLARED_HTML.replace(
       '<html lang="en">',
