@@ -119,12 +119,15 @@ function startRunningLoop() {
 }
 
 describe("playSeamTransitionLoop", () => {
-  it("throws synchronously for a shader with no WebGL implementation", () => {
-    const canvas = createMockCanvas(createMockGl());
-    expect(() => playSeamTransitionLoop(canvas, fromSource, toSource, "not-a-real-shader")).toThrow(
-      /Unknown shader/,
-    );
-  });
+  it.each(["not-a-real-shader", "constructor", "toString", "__proto__"])(
+    "throws synchronously for %s, a name with no WebGL implementation",
+    (name) => {
+      const canvas = createMockCanvas(createMockGl());
+      expect(() => playSeamTransitionLoop(canvas, fromSource, toSource, name)).toThrow(
+        /Unknown shader/,
+      );
+    },
+  );
 
   it.each(["glitch", "domain-warp-dissolve", "chromatic-radial-split"])(
     "resolves catalog block name %s (glitch is unaliased and unquoted; the others differ from their registry key)",
