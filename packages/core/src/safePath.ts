@@ -1,7 +1,15 @@
 import { resolve, sep, join, dirname, basename } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 
-const realpath = realpathSync.native;
+function realpath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch (error) {
+    // Some Windows volumes (RAM disks) refuse the native call with EISDIR.
+    if ((error as NodeJS.ErrnoException).code === "EISDIR") return realpathSync(path);
+    throw error;
+  }
+}
 
 // realpath also fails for dangling/cyclic symlinks. Existing entries must not
 // become missing segments: writes could follow them outside the project.
