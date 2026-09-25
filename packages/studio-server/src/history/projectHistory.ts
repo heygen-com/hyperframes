@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
-import { hashVersion, recordFileWriteReceipt } from "../helpers/fileVersion.js";
+import { DELETED_VERSION, hashVersion, recordFileWriteReceipt } from "../helpers/fileVersion.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { projectHistoryId } from "./historyId.js";
@@ -487,21 +487,26 @@ class Engine {
     this.windows.push(group);
     try {
       for (const [path, hash] of target) {
-        if ((this.tracked.get(path)?.hash ?? null) === hash) continue;
-        if (hash === null) await rm(join(this.dir, path), { force: true });
-        else {
-          const version = hashVersion(hash);
-          const { writeToken } = this;
-          if (writeToken)
-            recordFileWriteReceipt(join(this.dir, path), { path, version, writeToken });
-          await this.blobs.writeTo(hash, join(this.dir, path));
-        }
+        if ((this.tracked.get(path)?.hash ?? null) !== hash)
+          await this.writeProjectFile(path, hash);
       }
       await this.sweep();
     } finally {
       this.windows = this.windows.filter((open) => open !== group);
     }
     return this.commit(group, extra);
+  }
+
+  /** Writes one project file (null deletes it), first leaving the running operation's receipt for its echo. */
+  async writeProjectFile(path: string, hash: string | null): Promise<void> {
+    const absPath = join(this.dir, path);
+    const { writeToken } = this;
+    if (writeToken) {
+      const version = hash === null ? DELETED_VERSION : hashVersion(hash);
+      recordFileWriteReceipt(absPath, { path, version, writeToken });
+    }
+    if (hash === null) await rm(absPath, { force: true });
+    else await this.blobs.writeTo(hash, absPath);
   }
 
   entry(id: string): HistoryEntry {

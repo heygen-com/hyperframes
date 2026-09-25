@@ -104,9 +104,16 @@ export function createViteAdapter(
   dataDir: string,
   server: ViteDevServer,
   signatureCache: ProjectSignatureCache,
-  historyRoot = DEFAULT_HISTORY_ROOT,
+  {
+    historyRoot = DEFAULT_HISTORY_ROOT,
+    openHistory = openProjectHistory,
+  }: { historyRoot?: string; openHistory?: typeof openProjectHistory } = {},
 ): StudioApiAdapter {
   const histories = new Map<string, Promise<ProjectHistory | null>>();
+  // Commits any open edit when the dev server stops, so it keeps its label.
+  server.httpServer?.on("close", () => {
+    for (const opened of histories.values()) void opened.then((history) => history?.close());
+  });
   let _bundler: ((dir: string, options?: BundleOptions) => Promise<string>) | null = null;
   let _producerModuleLoader:
     | (() => Promise<{
@@ -209,12 +216,10 @@ export function createViteAdapter(
     history(project: ResolvedProject) {
       let opened = histories.get(project.dir);
       if (!opened) {
-        opened = openProjectHistory({ projectDir: project.dir, historyRoot }).catch(
-          (error: unknown) => {
-            console.warn(`[studio] Project history is off for ${project.id}: ${String(error)}`);
-            return null;
-          },
-        );
+        opened = openHistory({ projectDir: project.dir, historyRoot }).catch((error: unknown) => {
+          console.warn(`[studio] Project history is off for ${project.id}: ${String(error)}`);
+          return null;
+        });
         histories.set(project.dir, opened);
       }
       return opened;

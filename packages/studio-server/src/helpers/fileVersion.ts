@@ -18,6 +18,9 @@ export function fileContentVersion(content: string | Uint8Array): string {
   return hashVersion(createHash("sha256").update(content).digest("hex"));
 }
 
+/** The version a deletion's receipt is kept under: a deleted file has no bytes to hash. */
+export const DELETED_VERSION = '"deleted"';
+
 /** The version of content whose sha256 is `hex`. */
 export function hashVersion(hex: string): string {
   return `"sha256:${hex}"`;

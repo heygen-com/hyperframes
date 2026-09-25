@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileContentVersion } from "@hyperframes/studio-server";
@@ -602,6 +602,30 @@ describe("Studio file-change SSE", () => {
       expect(payload).not.toContain("writeToken");
       expect(payload).toContain(encodedVersion("<html>agent</html>"));
     }
+  });
+
+  it("labels the deletion an undo from Studio makes with Studio's write token", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const history = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    const post = (path: string, body: object, headers: Record<string, string> = {}) =>
+      server!.app.request(`${history}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+    await server.app.request(history); // opens the history, as Studio's first load does
+    writeFileSync(join(projectDir, "extra.html"), "<html>added</html>");
+    await post("/claim", { label: "Added a section", paths: ["extra.html"] });
+    const streams = await subscribe(1);
+
+    await post("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-undo-1" });
+    expect(existsSync(join(projectDir, "extra.html"))).toBe(false);
+    mockWatcher.emit("change", "rename", "extra.html");
+
+    const [payload] = await Promise.all(streams.map(nextEvent));
+    expect(payload).toContain("studio-undo-1");
   });
 
   // `/api/events` is one connection per SERVER, not per project: a tab left
