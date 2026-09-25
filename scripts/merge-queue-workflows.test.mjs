@@ -5,14 +5,16 @@ import test from "node:test";
 import { parse } from "yaml";
 
 const workflowsDir = join(import.meta.dirname, "..", ".github", "workflows");
+const events = (on) =>
+  typeof on === "string" ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
 
 // The queue waits only for required checks and deletes a group's ref when it merges,
 // so any other workflow on merge_group races that deletion and fails at random.
 test("only the workflows that report required checks run on merge queue groups", () => {
   const queued = readdirSync(workflowsDir).filter(
     (file) =>
-      file.endsWith(".yml") &&
-      parse(readFileSync(join(workflowsDir, file), "utf8")).on?.merge_group !== undefined,
+      /\.ya?ml$/.test(file) &&
+      events(parse(readFileSync(join(workflowsDir, file), "utf8")).on).includes("merge_group"),
   );
   assert.deepEqual(queued.sort(), [
     "ci.yml",
