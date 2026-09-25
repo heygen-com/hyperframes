@@ -480,7 +480,8 @@ jobs:
       - name: Run Studio shard ${{ matrix.studio_shard }}
         if: matrix.studio_shard
         shell: pwsh
-        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2
+        # A Studio lane has the runner to itself, so its shard may use every core.
+        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=4
 
       - name: Run ${{ matrix.lane }} package tests
         if: matrix.packages
