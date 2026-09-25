@@ -1,4 +1,5 @@
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { findAuthoredElement } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
 
 type IframeWindow = Window & {
@@ -308,10 +309,7 @@ export function applySoftReload(
         authoredDoc = null;
       }
     }
-    if (!authoredDoc) return null;
-    const hfId = el.getAttribute("data-hf-id");
-    if (hfId) return authoredDoc.querySelector(`[data-hf-id="${hfId}"]`);
-    return el.id ? authoredDoc.getElementById(el.id) : null;
+    return authoredDoc ? findAuthoredElement(authoredDoc, el) : null;
   };
   const readAuthoredOpacity = (el: HTMLElement): string | null => {
     const source = findAuthoredSource(el);
