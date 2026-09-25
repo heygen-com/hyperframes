@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 export interface BlobStore {
   /** Copies the file in (a clone where the file system can) and returns the copy's hash. */
   put(absPath: string): Promise<string>;
+  has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
   /** Writes the blob's bytes to `absPath` by clone-or-copy and rename, so a reader never sees half a file. */
   writeTo(hash: string, absPath: string): Promise<void>;
@@ -15,6 +16,8 @@ export interface BlobStore {
   /** Deletes every blob not in `keep`. */
   prune(keep: ReadonlySet<string>): Promise<void>;
 }
+
+const BLOB_HASH = /^[0-9a-f]{64}$/;
 
 async function hashFile(path: string): Promise<string> {
   const hash = createHash("sha256");
@@ -40,7 +43,11 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
   for (const shard of await readdir(dir))
     for (const hash of await readdir(join(dir, shard)).catch(() => []))
       sizes.set(hash, (await stat(join(dir, shard, hash))).size);
-  const pathOf = (hash: string) => join(dir, hash.slice(0, 2), hash);
+  const pathOf = (hash: string) => {
+    // Checked where the path is joined, so no caller can read or write outside the store.
+    if (!BLOB_HASH.test(hash)) throw new Error("That is not a history blob.");
+    return join(dir, hash.slice(0, 2), hash);
+  };
   let total = [...sizes.values()].reduce((sum, size) => sum + size, 0);
 
   return {
@@ -62,8 +69,9 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       total += size;
       return hash;
     },
-    read: (hash) => readFile(pathOf(hash)),
-    writeTo: (hash, absPath) => cloneOrCopy(pathOf(hash), absPath),
+    has: (hash) => sizes.has(hash),
+    read: async (hash) => readFile(pathOf(hash)),
+    writeTo: async (hash, absPath) => cloneOrCopy(pathOf(hash), absPath),
     bytes: () => total,
     size: (hash) => sizes.get(hash) ?? 0,
     async prune(keep) {

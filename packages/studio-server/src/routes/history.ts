@@ -34,6 +34,15 @@ function idleOf(body: Record<string, unknown>): number | undefined {
     : undefined;
 }
 
+/** `{ [path]: version }` from a request body, keeping only string pairs. */
+function versionsOf(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const pairs = Object.entries(value).filter(
+    (pair): pair is [string, string] => typeof pair[1] === "string",
+  );
+  return pairs.length ? Object.fromEntries(pairs) : undefined;
+}
+
 /** What Cmd+Z or Cmd+Shift+Z would revert next, so Studio can name it on its buttons. */
 function nextStep(entries: readonly HistoryEntry[], direction: "back" | "forward") {
   const target = stepTarget(entries, direction);
@@ -101,9 +110,11 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
       const paths = Array.isArray(body.paths) ? body.paths.filter((path) => text(path)) : [];
       const coalesceKey = text(body.coalesceKey) ?? undefined;
       const idleMs = idleOf(body);
+      const overwrote = versionsOf(body.overwrote);
       const claimed = await history.claim(YOU, text(body.label) ?? "Edited in Studio", paths, {
         ...(coalesceKey && { coalesceKey }),
         ...(idleMs && { idleMs }),
+        ...(overwrote && { overwrote }),
       });
       return { claimed };
     }),
