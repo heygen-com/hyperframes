@@ -213,13 +213,7 @@ export default defineCommand({
         );
         finishCommand(1);
       }
-      const view = listProjectCatalogItems(dir, manifest ? catalog : undefined);
-      trackCatalogInstalledView({ view, json });
-      const items = typeFilter
-        ? view.items.filter((item) => `hyperframes:${item.type}` === typeFilter)
-        : view.items;
-      if (json) console.log(JSON.stringify({ items, scannedFiles: view.scannedFiles }, null, 2));
-      else for (const line of installedViewLines(items, view.scannedFiles)) console.log(line);
+      printInstalledView(dir, manifest ? catalog : undefined, typeFilter, json);
       return;
     }
 
@@ -511,6 +505,22 @@ const STATUS_LABELS: Record<CatalogItemStatus, string> = {
   "file-missing": "file removed",
   "pasted-inline": "pasted inline, can't tell",
 };
+
+/** `catalog --installed`: the project's catalog items, as a table or as `--json`. */
+function printInstalledView(
+  dir: string,
+  catalog: readonly { name: string; type: string }[] | undefined,
+  typeFilter: ItemType | undefined,
+  json: boolean,
+): void {
+  const view = listProjectCatalogItems(dir, catalog);
+  trackCatalogInstalledView({ view, json });
+  const items = typeFilter
+    ? view.items.filter((item) => `hyperframes:${item.type}` === typeFilter)
+    : view.items;
+  if (json) console.log(JSON.stringify({ items, scannedFiles: view.scannedFiles }, null, 2));
+  else for (const line of installedViewLines(items, view.scannedFiles)) console.log(line);
+}
 
 /** `catalog --installed` as terminal lines: one row per item, or how to add one. */
 export function installedViewLines(items: ProjectCatalogItem[], scannedFiles: boolean): string[] {

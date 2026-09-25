@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RegistryItem } from "@hyperframes/core";
-import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import {
+  catalogRow,
+  countUnindexed,
+  installedViewLines,
+  pickByName,
+  searchMissCommand,
+} from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -693,5 +699,47 @@ describe("catalogRow", () => {
       duration: 5,
       preview,
     });
+  });
+});
+
+describe("installedViewLines", () => {
+  it("says the project has none yet and how to add one", () => {
+    expect(installedViewLines([], true)).toEqual([
+      "No catalog items in this project yet.",
+      '  Browse with "hyperframes catalog", install with "hyperframes add <name>".',
+    ]);
+  });
+
+  it("labels each status, marks items found only by file name, and counts what the video uses", () => {
+    const lines = installedViewLines(
+      [
+        {
+          name: "ai-chat-reveal",
+          type: "block",
+          file: "compositions/ai-chat-reveal.html",
+          status: "in-use",
+          foundBy: "recorded",
+        },
+        {
+          name: "arc-motion-path",
+          type: "component",
+          file: "compositions/components/arc-motion-path.html",
+          status: "pasted-inline",
+          foundBy: "file",
+        },
+      ],
+      true,
+    );
+    expect(lines[2]).toMatch(/^ai-chat-reveal +block +in use +compositions\/ai-chat-reveal\.html$/);
+    expect(lines[3]).toMatch(
+      /pasted inline, can't tell +compositions\/components\/arc-motion-path\.html \(found by file name\)$/,
+    );
+    expect(lines.at(-1)).toBe("2 items, 1 in use by index.html.");
+  });
+
+  it("says when only recorded items could be listed", () => {
+    expect(installedViewLines([], false).at(-1)).toBe(
+      "Registry list unavailable: showing only items recorded by hyperframes add.",
+    );
   });
 });
