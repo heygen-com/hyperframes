@@ -43,10 +43,6 @@ vi.mock("@hyperframes/engine", () => ({
   killTrackedProcesses: () => {},
   closeBrowserPool: () => engineState.closeBrowserPool(),
 }));
-vi.mock("@hyperframes/studio-server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@hyperframes/studio-server")>();
-  return { ...actual, createProjectSignature: vi.fn(actual.createProjectSignature) };
-});
 vi.mock("../browser/gpuPolicy.js", () => ({
   resolveCaptureBrowserGpuMode: async () => "software",
   resolveLocalBrowserGpuMode: () => "software",
@@ -69,6 +65,7 @@ vi.mock("@hyperframes/studio-server", async (importOriginal) => {
   const original = await importOriginal<typeof import("@hyperframes/studio-server")>();
   return {
     ...original,
+    createProjectSignature: vi.fn(original.createProjectSignature),
     openProjectHistory: (...args: Parameters<typeof original.openProjectHistory>) =>
       historyState.open ? historyState.open(...args) : original.openProjectHistory(...args),
   };
