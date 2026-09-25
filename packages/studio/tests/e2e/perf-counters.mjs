@@ -20,7 +20,11 @@ function installInPage(options) {
     window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
       supportsFiber: true,
       renderers: new Map(),
-      inject: () => 1,
+      // The key exists once React connects, so a hook React never found reads as not measured.
+      inject: () => {
+        counts.reactCommits ??= 0;
+        return 1;
+      },
       onCommitFiberRoot: () => add("reactCommits"),
       onCommitFiberUnmount() {},
       onPostCommitFiberRoot() {},
@@ -75,16 +79,20 @@ export async function startWorkCounters(browser, page, { pageActivity = true } =
     /** A flat snapshot of every counter so far; subtract two snapshots for a window. */
     async read() {
       const { metrics } = await client.send("Performance.getMetrics");
-      const metric = (name) => metrics.find((entry) => entry.name === name)?.value ?? 0;
       const inPage = await page.evaluate(() => ({ ...window.__hfWorkCounts }));
       const snapshot = {
-        reactCommits: 0,
         ...inPage,
-        styleRecalcs: metric("RecalcStyleCount"),
-        layouts: metric("LayoutCount"),
         frameNavigations: tally.frameNavigations,
         targetsCreated: tally.targetsCreated,
       };
+      // A metric Chrome stops reporting is left out, so the ratchet fails it as not measured.
+      for (const [counter, name] of [
+        ["styleRecalcs", "RecalcStyleCount"],
+        ["layouts", "LayoutCount"],
+      ]) {
+        const entry = metrics.find((metric) => metric.name === name);
+        if (entry) snapshot[counter] = entry.value;
+      }
       for (const [kind, count] of Object.entries(tally.requests)) {
         snapshot[`requests.${kind}`] = count;
       }

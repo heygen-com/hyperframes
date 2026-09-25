@@ -16,6 +16,7 @@ describe("checkCeilings", () => {
 
   it("fails a gated counter the journey did not measure", () => {
     expect(checkCeilings({ reactCommits: 4 }, {}).passed).toBe(false);
+    expect(checkCeilings({ reactCommits: 4 }, { reactCommits: Number.NaN }).passed).toBe(false);
   });
 
   it("refuses an empty ceiling set", () => {
@@ -42,6 +43,16 @@ describe("correlate", () => {
     const byCounter = Object.fromEntries(correlate(runs).map((row) => [row.counter, row]));
     expect(byCounter.renders.gateable).toBe(true);
     expect(byCounter.noisy.gateable).toBe(false);
+  });
+
+  it("does not gate a counter that wobbles even slightly within a variant", () => {
+    const runs = [
+      run("main", 900, { layouts: 100 }),
+      run("main", 950, { layouts: 101 }),
+      run("fix", 400, { layouts: 50 }),
+      run("fix", 420, { layouts: 50 }),
+    ];
+    expect(correlate(runs)[0].gateable).toBe(false);
   });
 
   it("does not gate a counter that never moves", () => {

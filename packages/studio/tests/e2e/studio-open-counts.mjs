@@ -111,6 +111,10 @@ try {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+  if (thumbnailOutcomes.length === 0 || thumbnailRenders === 0) {
+    // Twelve clips on the timeline always ask for thumbnails; none means the journey is broken.
+    throw new Error("Studio asked for or rendered no thumbnails; the journey measured nothing");
+  }
   const total = await counters.read();
 
   // Whole-journey totals, because what lands just before or after "can play" varies run to run.

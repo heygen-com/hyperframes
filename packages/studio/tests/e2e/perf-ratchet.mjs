@@ -9,7 +9,7 @@
  *
  * Evidence is a journey's JSON output: `workCounts` (flat counter map) and `wallMs`.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 // A counter gates only if it tracks wall-clock across variants and repeats exactly within
@@ -20,7 +20,7 @@ const MAX_SPREAD_RATIO = 0;
 export function checkCeilings(ceilings, counts) {
   const rows = Object.entries(ceilings).map(([counter, ceiling]) => {
     const value = counts[counter];
-    if (typeof value !== "number") return { counter, ceiling, value: null, status: "missing" };
+    if (!Number.isFinite(value)) return { counter, ceiling, value: null, status: "missing" };
     if (value > ceiling) return { counter, ceiling, value, status: "rose" };
     return { counter, ceiling, value, status: value < ceiling ? "below" : "at" };
   });
@@ -45,7 +45,7 @@ export function lowerCeilings(ceilings, counts) {
   return Object.fromEntries(
     Object.entries(ceilings).map(([counter, ceiling]) => [
       counter,
-      typeof counts[counter] === "number" ? Math.min(ceiling, counts[counter]) : ceiling,
+      Number.isFinite(counts[counter]) ? Math.min(ceiling, counts[counter]) : ceiling,
     ]),
   );
 }
@@ -57,7 +57,7 @@ export function lowerCeilings(ceilings, counts) {
 export function correlate(runs) {
   const counters = [...new Set(runs.flatMap((run) => Object.keys(run.counts)))].sort();
   return counters.map((counter) => {
-    const points = runs.filter((run) => typeof run.counts[counter] === "number");
+    const points = runs.filter((run) => Number.isFinite(run.counts[counter]));
     const r = pearson(
       points.map((run) => run.counts[counter]),
       points.map((run) => run.wallMs),
@@ -137,6 +137,7 @@ function main([command, ...args]) {
   return 2;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+// Real paths on both sides: a symlinked path (macOS /var, /tmp) must still run the CLI.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   process.exit(main(process.argv.slice(2)));
 }
