@@ -59,6 +59,24 @@ async function project(files: Record<string, string | Buffer>, options = {}) {
   return { projectDir, historyRoot, history, write, read, has };
 }
 
+/** An agent turn writes B, C, D; the person's drag claims C (written over B) and is held when the turn closes. */
+async function dragDuringTurn(
+  history: ProjectHistory,
+  write: (path: string, content: string) => void,
+) {
+  const window = await history.beginWindow(agent, "Agent turn");
+  write("index.html", "B");
+  await history.claim(you, "sweep", []);
+  write("index.html", "C");
+  await history.claim(you, "Dragged Title", ["index.html"], {
+    coalesceKey: "drag",
+    idleMs: 60_000,
+    overwrote: { "index.html": fileContentVersion("B") },
+  });
+  write("index.html", "D");
+  await window.close();
+}
+
 /** Runs `writes` inside a window of `who`'s and returns the entry it became. */
 async function change(history: ProjectHistory, who: HistoryWho, label: string, writes: () => void) {
   const window = await history.beginWindow(who, label);
@@ -235,16 +253,18 @@ describe("openProjectHistory", () => {
     expect(changes.sort()).toEqual(["Agent turn: B>C", "Dragged Title: A>B", "Dragged Title: C>D"]);
   });
 
-  it("checks out a window logged before the outside change that turned its file into a folder", async () => {
-    const { history, projectDir } = await project({ a: "file" });
+  it("logs the outside change that turned a file into a folder before the agent turn that followed", async () => {
+    const { history, projectDir, write } = await project({ a: "file", "r.txt": "R0" });
     rmSync(join(projectDir, "a"));
     mkdirSync(join(projectDir, "a"));
     writeFileSync(join(projectDir, "a", "b.txt"), "b0");
     const window = await history.beginWindow(agent, "Agent turn");
     writeFileSync(join(projectDir, "a", "b.txt"), "b1");
     const turn = await window.close();
+    write("r.txt", "R1");
     await history.flush();
     expect(history.list().map((entry) => entry.label)).toEqual([
+      "Changed outside the app",
       "Agent turn",
       "Changed outside the app",
     ]);
@@ -255,7 +275,7 @@ describe("openProjectHistory", () => {
     ] as const) {
       const dir = tempDir("hf-history-checkout-");
       await history.checkout(turn!.id, side, dir);
-      expect(inside(dir, "a/b.txt")).toBe(content);
+      expect([inside(dir, "a/b.txt"), inside(dir, "r.txt")]).toEqual([content, "R0"]);
     }
   });
 
@@ -940,30 +960,34 @@ describe("claim: a writer that records after writing", () => {
     expect([read("index.html"), read("b.js")]).toEqual(["C", "1"]);
   });
 
-  it("Cmd+Z undoes an agent's later write first when a held drag claim commits after the agent's turn", async () => {
+  it("a drag claimed during an agent turn ends at the turn and is logged before the turn's last part", async () => {
     const { history, write, read } = await project({ "index.html": "A" });
-    const window = await history.beginWindow(agent, "Agent turn");
-    write("index.html", "B");
-    await history.claim(you, "sweep", []);
-    write("index.html", "C");
-    await history.claim(you, "Dragged Title", ["index.html"], {
-      coalesceKey: "drag",
-      idleMs: 60_000,
-      overwrote: { "index.html": fileContentVersion("B") },
-    });
-    write("index.html", "D");
-    await window.close();
+    await dragDuringTurn(history, write);
     await history.flush();
     expect(history.list().map((entry) => entry.label)).toEqual([
       "Agent turn",
-      "Agent turn",
       "Dragged Title",
+      "Agent turn",
     ]);
     expect(history.next("back")?.label, "the button names the step Cmd+Z takes").toBe("Agent turn");
     for (const expected of ["C", "B", "A"]) {
       expect(await history.step("back", you)).toMatchObject({ ok: true });
       expect(read("index.html")).toBe(expected);
     }
+  });
+
+  it("reopens after a drag claimed during an agent turn without inventing an outside change", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "A" });
+    await dragDuringTurn(history, write);
+    await history.close();
+
+    const reopened = await open(projectDir, historyRoot);
+    await reopened.flush();
+    expect(reopened.list().map((entry) => entry.label)).toEqual([
+      "Agent turn",
+      "Dragged Title",
+      "Agent turn",
+    ]);
   });
 
   it("logs an entry with only its own fields, not its window's timer", async () => {

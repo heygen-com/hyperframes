@@ -562,8 +562,8 @@ class Engine {
 
   beginWindow(who: HistoryWho, label: string, idleMs: number): Promise<HistoryWindow> {
     return this.queue(async () => {
-      // Writes before the window opened are not this writer's.
-      await this.sweep();
+      // Writes before the window opened are not this writer's, and are logged before it.
+      await this.settle();
       const window = { ...this.newGroup(who, label), idleMs };
       this.windows.push(window);
       this.touch(window, Date.now());
@@ -594,6 +594,7 @@ class Engine {
     if (!this.windows.includes(window)) return window.entry ?? null;
     clearTimeout(window.idleTimer);
     this.windows = this.windows.filter((open) => open !== window);
+    await this.commitClaim();
     window.entry = (await this.commit(window)) ?? window.entry ?? null;
     return window.entry;
   }
@@ -763,14 +764,11 @@ class Engine {
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
           this.entry(entryId);
-          if (isSafePath(this.dir, emptyDir))
+          if (!existsSync(this.dir) || isSafePath(this.dir, emptyDir))
             throw new Error(`Checkout writes outside the project only: ${emptyDir}`);
           if ((await readdir(emptyDir).catch(missingIsEmpty)).length > 0)
             throw new Error(`Checkout writes into an empty folder only: ${emptyDir}`);
           const files = manifestAround(this.log, entryId, side)!;
-          const folder = [...files.keys()].flatMap(folders).find((path) => files.has(path));
-          if (folder)
-            throw new Error(`Those files cannot be laid out: ${folder} is a file and a folder.`);
           try {
             for (const [path, hash] of files) await this.blobs.writeTo(hash, join(emptyDir, path));
           } catch (error) {
@@ -799,12 +797,6 @@ class Engine {
     };
   }
 }
-
-const folders = (path: string) =>
-  path
-    .split("/")
-    .slice(0, -1)
-    .map((_, index, parts) => parts.slice(0, index + 1).join("/"));
 
 function missingIsEmpty(error: NodeJS.ErrnoException): string[] {
   if (error.code === "ENOENT") return [];
