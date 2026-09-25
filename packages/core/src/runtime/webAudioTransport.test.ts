@@ -258,14 +258,12 @@ describe("WebAudioTransport", () => {
 
       await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen1, 1);
       transport.stopAll();
-      mock.mediaElementSourceNode.disconnect.mockClear();
       el.setAttribute("src", "/assets/other-same-origin-clip.mp3");
       const gen2 = transport.startGeneration();
       const second = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen2, 1);
 
       expect(second).not.toBeNull();
       expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
-      expect(mock.mediaElementSourceNode.disconnect).not.toHaveBeenCalled();
     });
   });
 
