@@ -1774,7 +1774,7 @@ describe("initSandboxRuntimeModular", () => {
   describe("a clip the visibility pass hides gets the author's inline display back", () => {
     // A relative clip under a plain wrapper stays in flow (applyClipLayout only touches
     // root children), so the pass hides it with display:none rather than visibility.
-    const mountClip = (display: string, priority = "") => {
+    const mountClip = (display: string, priority = "", start = "2") => {
       const root = document.createElement("div");
       root.setAttribute("data-composition-id", "main");
       root.setAttribute("data-root", "true");
@@ -1786,7 +1786,7 @@ describe("initSandboxRuntimeModular", () => {
       const clip = document.createElement("div");
       clip.style.position = "relative";
       clip.style.setProperty("display", display, priority);
-      clip.setAttribute("data-start", "2");
+      clip.setAttribute("data-start", start);
       clip.setAttribute("data-duration", "4");
       wrapper.appendChild(clip);
       window.__timelines = { main: createMockTimeline(10) };
@@ -1816,6 +1816,16 @@ describe("initSandboxRuntimeModular", () => {
       expect(clip.style.display).toBe("none");
       window.__player?.seek(3);
       expect(clip.style.display).toBe("");
+    });
+
+    it("keeps an author's plain display:none through a data-hidden toggle", () => {
+      const clip = mountClip("none", "", "0");
+      window.__player?.seek(1);
+      clip.setAttribute("data-hidden", "");
+      window.__player?.seek(1);
+      clip.removeAttribute("data-hidden");
+      window.__player?.seek(1);
+      expect(clip.style.display).toBe("none");
     });
 
     it("keeps a data-hidden clip's own display, priority included, when the attribute goes", () => {

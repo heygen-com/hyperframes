@@ -2402,12 +2402,12 @@ export function initSandboxRuntimeModular(): void {
   // what was applied, not on `isTimedClipInFlow`: that answer can flip between the hide
   // and the show pass once `applyClipLayout` force-absolutizes the clip.
   const displayBeforeHide = new WeakMap<HTMLElement, { value: string; priority: string }>();
-  const hideByDisplay = (el: HTMLElement) => {
+  const hideByDisplay = (el: HTMLElement, plainNoneMayBeLeftover: boolean) => {
     if (!displayBeforeHide.has(el)) {
       const value = el.style.getPropertyValue("display");
       const priority = el.style.getPropertyPriority("display");
-      // A plain none may be a hide left behind (a Studio reveal restoring the runtime's own).
-      const isLeftoverHide = value === "none" && !priority;
+      // On a timed clip a plain none may be a hide left behind (a Studio reveal restoring ours).
+      const isLeftoverHide = plainNoneMayBeLeftover && value === "none" && !priority;
       displayBeforeHide.set(el, isLeftoverHide ? { value: "", priority: "" } : { value, priority });
     }
     el.style.display = "none";
@@ -2479,7 +2479,7 @@ export function initSandboxRuntimeModular(): void {
           if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
           groupMuteDirty = true;
         }
-        hideByDisplay(rawNode);
+        hideByDisplay(rawNode, false);
         if (isVideoElement(rawNode) || isImageElement(rawNode)) {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
@@ -2534,7 +2534,7 @@ export function initSandboxRuntimeModular(): void {
       if (isVisibleNow) {
         restoreDisplay(rawNode);
       } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
-        hideByDisplay(rawNode);
+        hideByDisplay(rawNode, true);
       }
     }
     if (decidedTimedClip && revealTimedClipsAfterFirstPass()) colorGradingRuntime?.refresh();
