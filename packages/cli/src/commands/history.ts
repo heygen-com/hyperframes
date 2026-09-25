@@ -109,7 +109,7 @@ function line(entry: HistoryListItem | HistoryEntry): string {
   return `${short(entry.id)}  ${ago(entry.endedAt)}  ${entry.who.name}  ${entry.label}  (${files})${flags}`;
 }
 
-/** The agreed entry shape shared with the Desktop tools: files as paths. */
+/** The public entry shape: files as paths, no hashes. */
 const publicEntry = (entry: HistoryEntry & Partial<HistoryListItem>) => ({
   id: entry.id,
   who: entry.who,
