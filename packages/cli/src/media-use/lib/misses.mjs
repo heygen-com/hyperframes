@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { globalMediaDir } from "./media-home.mjs";
 
 const MISSES_FILE = "misses.jsonl";
@@ -9,11 +9,12 @@ function missesPath() {
 }
 
 export function recordMiss({ type, intent, provider_override, local_only }) {
+  // Outside the try: the media-home guard must fail a test run, not be swallowed here.
+  const path = missesPath();
   try {
-    const dir = globalMediaDir();
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dirname(path), { recursive: true });
     appendFileSync(
-      join(dir, MISSES_FILE),
+      path,
       JSON.stringify({
         ts: new Date().toISOString(),
         type,

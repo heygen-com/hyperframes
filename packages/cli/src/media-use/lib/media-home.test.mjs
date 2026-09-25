@@ -23,18 +23,38 @@ test("the global cache writes into the media home a test points it at", () => {
   assert.equal(globalMediaDir(), join(HOME, ".media"));
 });
 
-test("a test that never points the media home anywhere fails instead of writing", () => {
-  const dir = mkdtempSync(join(tmpdir(), "media-home-guard-"));
+// A child `node --test` run over one probe file, with the media-home variables set as given.
+function runProbe(env) {
+  const dir = mkdtempSync(join(tmpdir(), "media-home-probe-"));
   const probe = join(dir, "probe.test.mjs");
   const lib = fileURLToPath(new URL("./media-home.mjs", import.meta.url));
   writeFileSync(
     probe,
-    `import { test } from "node:test";\nimport { globalMediaDir } from ${JSON.stringify(lib)};\ntest("reach", () => globalMediaDir());\n`,
+    `import { test } from "node:test";\nimport { globalMediaDir } from ${JSON.stringify(lib)};\ntest("reach", () => console.log("dir=" + globalMediaDir()));\n`,
   );
-  const env = { ...process.env };
-  delete env.HYPERFRAMES_MEDIA_HOME;
-  delete env.NODE_TEST_CONTEXT;
-  const run = spawnSync(process.execPath, ["--test", probe], { encoding: "utf8", env });
-  assert.notEqual(run.status, 0, run.stdout);
-  assert.match(`${run.stdout}${run.stderr}`, /set HYPERFRAMES_MEDIA_HOME to a temp dir/);
+  const childEnv = { ...process.env };
+  delete childEnv.HYPERFRAMES_MEDIA_HOME;
+  delete childEnv.HYPERFRAMES_MEDIA_HOME_REQUIRED;
+  Object.assign(childEnv, env);
+  const run = spawnSync(process.execPath, ["--test", probe], { encoding: "utf8", env: childEnv });
+  return { status: run.status, output: `${run.stdout}${run.stderr}` };
+}
+
+test("a repo test run that never points the media home anywhere fails instead of writing", () => {
+  const { status, output } = runProbe({ HYPERFRAMES_MEDIA_HOME_REQUIRED: "1" });
+  assert.notEqual(status, 0, output);
+  assert.match(output, /set HYPERFRAMES_MEDIA_HOME to a temp dir/);
+});
+
+// Node sets NODE_TEST_CONTEXT for every project's test runs, so another project whose own tests
+// spawn this CLI must get the person's real library, not the guard.
+test("another project's node --test run still resolves the real media home", () => {
+  const home = mkdtempSync(join(tmpdir(), "media-home-user-"));
+  const { status, output } = runProbe({
+    HOME: home,
+    USERPROFILE: home,
+    NODE_TEST_CONTEXT: "child-v8",
+  });
+  assert.equal(status, 0, output);
+  assert.ok(output.includes(`dir=${join(home, ".media")}`), output);
 });
