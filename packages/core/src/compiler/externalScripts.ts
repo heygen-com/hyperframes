@@ -1,12 +1,14 @@
 export interface ExternalScriptAttributes {
   integrity?: string;
   crossorigin?: string;
+  type?: "module";
 }
 
 export function readExternalScriptAttributes(el: Element): ExternalScriptAttributes {
   const attributes: ExternalScriptAttributes = {};
   if (el.hasAttribute("integrity")) attributes.integrity = el.getAttribute("integrity") || "";
   if (el.hasAttribute("crossorigin")) attributes.crossorigin = el.getAttribute("crossorigin") || "";
+  if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") attributes.type = "module";
   return attributes;
 }
 
@@ -40,6 +42,7 @@ export function ensureExternalScriptTag(
     if (integrity) el.setAttribute("integrity", integrity);
     if (attributes.crossorigin !== undefined)
       el.setAttribute("crossorigin", attributes.crossorigin);
+    if (attributes.type) el.setAttribute("type", attributes.type);
   }
   if (!existing.length) {
     const el = elements[0]!;

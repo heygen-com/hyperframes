@@ -7,6 +7,7 @@ import {
   resetOverlayFrameLoopForTests,
   subscribeOverlayFrame,
 } from "./overlayFrameLoop";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 /**
  * The editor's overlay polls run on one shared, parkable frame loop. The two
@@ -37,6 +38,7 @@ describe("overlay frame loop", () => {
   };
 
   beforeEach(() => {
+    usePlayerStore.setState({ previewBooted: true });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance", "Date"] });
     queued = [];
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
@@ -53,6 +55,20 @@ describe("overlay frame loop", () => {
     vi.useRealTimers();
     window.requestAnimationFrame = originalRaf;
     window.cancelAnimationFrame = originalCancelRaf;
+  });
+
+  it("does not poll the preview before it boots, and wakes when it does", () => {
+    usePlayerStore.setState({ previewBooted: false });
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(1000);
+    expect(runs).toBe(0);
+
+    usePlayerStore.getState().markPreviewBooted();
+    framesOver(32);
+    expect(runs).toBeGreaterThan(0);
   });
 
   it("runs every subscriber on one frame, not one frame each", () => {

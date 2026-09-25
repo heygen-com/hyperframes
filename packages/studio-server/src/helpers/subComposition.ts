@@ -274,8 +274,8 @@ export function buildSubCompositionHtml(
   if (!existsSync(compFile)) return null;
 
   // rawOverride lets the preview route thread the hf-id-stamped content in
-  // directly, so the build uses pinned ids even when the persist-to-disk write
-  // was skipped (read-only fs, concurrent-save TOCTOU guard).
+  // directly, so the build uses ids minted from the raw file, which is never
+  // written by serving.
   const rawComp = rawOverride ?? readFileSync(compFile, "utf-8");
 
   let compHeadContent = "";
@@ -334,7 +334,7 @@ export function buildSubCompositionHtml(
   }
 
   // Inject <base> for relative asset resolution (before other tags)
-  if (baseHref && !headContent.includes("<base")) {
+  if (baseHref && !hasBaseElement(headContent)) {
     headContent = `<base href="${baseHref}">\n${headContent}`;
   }
 
@@ -374,4 +374,9 @@ ${bodyOpen}
 ${rewrittenContent}
 </body>
 </html>`;
+}
+
+/** True for a real `<base>` element; the text "<base" inside a script or comment does not count. */
+export function hasBaseElement(html: string): boolean {
+  return parseHTML(html).document.querySelector("base") !== null;
 }

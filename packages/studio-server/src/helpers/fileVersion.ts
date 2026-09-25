@@ -15,7 +15,19 @@ const receipts = new Map<string, StoredReceipt[]>();
 
 /** Strong content version used as both the JSON version and HTTP ETag. */
 export function fileContentVersion(content: string | Uint8Array): string {
-  return `"sha256:${createHash("sha256").update(content).digest("hex")}"`;
+  return hashVersion(createHash("sha256").update(content).digest("hex"));
+}
+
+/** The version a deletion's receipt is kept under: a deleted file has no bytes to hash. */
+export const DELETED_VERSION = '"deleted"';
+
+export function hashVersion(hex: string): string {
+  return `"sha256:${hex}"`;
+}
+
+/** The sha256 a version names, or undefined when it is not a content version. */
+export function hashOfVersion(version: string): string | undefined {
+  return /^"sha256:([0-9a-f]{64})"$/.exec(version)?.[1];
 }
 
 /** A validator from a file's inode, change time and size, or null while the change is under three

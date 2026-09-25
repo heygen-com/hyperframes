@@ -10,7 +10,7 @@ export const examples: Example[] = [
 ];
 
 import * as clack from "@clack/prompts";
-import { type ItemType } from "@hyperframes/core";
+import { type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { fetchRegistryManifest } from "../registry/remote.js";
@@ -332,15 +332,7 @@ export default defineCommand({
     }
 
     if (json) {
-      const output = matching.map((item) => ({
-        name: item.name,
-        type: item.type.replace("hyperframes:", ""),
-        title: item.title,
-        description: item.description,
-        tags: item.tags ?? [],
-        ...("dimensions" in item && item.dimensions ? { dimensions: item.dimensions } : {}),
-        ...("duration" in item && item.duration ? { duration: item.duration } : {}),
-      }));
+      const output = matching.map(catalogRow);
       if (!query) {
         // A plain listing has no tier and no drop count, and this array shape
         // is already released. Leave it alone.
@@ -483,6 +475,20 @@ export default defineCommand({
     console.log(c.dim(`${matching.length} items. Run "hyperframes add <name>" to install.`));
   },
 });
+
+/** One `--json` row: what an agent or app needs to pick an item and show it before `add` downloads anything. */
+export function catalogRow(item: RegistryItem) {
+  return {
+    name: item.name,
+    type: item.type.replace("hyperframes:", ""),
+    title: item.title,
+    description: item.description,
+    tags: item.tags ?? [],
+    ...("dimensions" in item && item.dimensions ? { dimensions: item.dimensions } : {}),
+    ...("duration" in item && item.duration ? { duration: item.duration } : {}),
+    ...(item.preview ? { preview: item.preview } : {}),
+  };
+}
 
 /**
  * Resolve ranked names against the items this registry actually has.

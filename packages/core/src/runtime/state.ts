@@ -69,7 +69,7 @@ export type RuntimeState = {
    * Today: `2 × 80 ms = 160 ms`, which sits comfortably under the
    * perceptual A/V re-sync tolerance. If you raise this interval, audit
    * `MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES` in
-   * `packages/player/src/hyperframes-player.ts` — leaving it at `2` will
+   * `packages/player/src/parent-media.ts` — leaving it at `2` will
    * silently push correction latency past the tolerance budget.
    */
   bridgeMaxPostIntervalMs: number;

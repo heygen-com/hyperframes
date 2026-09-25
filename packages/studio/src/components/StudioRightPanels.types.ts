@@ -9,7 +9,6 @@
 import type { StudioEditPersistenceProps } from "./panels/VariablesPanel";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { Composition } from "@hyperframes/sdk";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import type { AddMediaOverlayHandler } from "./editor/propertyPanelTypes";
 import type { ToggleHiddenHandler } from "../utils/studioHelpers";
@@ -46,7 +45,6 @@ export interface StudioRightPanelsProps extends StudioEditPersistenceProps {
   reloadPreview: () => void;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;

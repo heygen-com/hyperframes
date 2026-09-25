@@ -112,7 +112,6 @@ function renderTimelineEditingHook(input: {
   writeProjectFile?: (path: string, content: string) => Promise<void>;
   recordEdit?: (input: {
     label: string;
-    kind: string;
     coalesceKey?: string;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;

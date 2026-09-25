@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication complexity
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { isInClipWindow } from "./clipWindow";
+import { revealTimedClipsAfterFirstPass } from "./timedClipHide";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
@@ -195,6 +196,8 @@ function createSettledTracker(
   };
 }
 
+const SLOW_IDLE_HEARTBEAT_MS = 1000;
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   // Runtime-data handlers may replace the timeline object they mutate. Keep the
@@ -252,13 +255,14 @@ export function initSandboxRuntimeModular(): void {
   state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
   setRuntimeProtocolFps(state.canonicalFps);
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
-    console.info("[hyperframes] render runtime fps", {
+    const fpsDetail = JSON.stringify({
       canonicalFps: state.canonicalFps,
       source: exportRenderFps.source,
       rawFpsSource: exportRenderFps.rawFpsSource,
       rawFps: exportRenderFps.rawFps,
       fallbackReason: exportRenderFps.fallbackReason,
     });
+    console.info(`[hyperframes] render runtime fps ${fpsDetail}`);
   }
   let colorGradingRuntime: RuntimeColorGradingApi | null = null;
   let runtimeErrorListener: ((event: ErrorEvent) => void) | null = null;
@@ -2452,6 +2456,7 @@ export function initSandboxRuntimeModular(): void {
       0,
       timingRevision,
     );
+    let decidedTimedClip = false;
     for (const rawNode of visibilityNodes) {
       if (!isHtmlElement(rawNode)) continue;
 
@@ -2516,6 +2521,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
+      if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
@@ -2529,6 +2535,7 @@ export function initSandboxRuntimeModular(): void {
         timedClipDisplayNoneApplied.add(rawNode);
       }
     }
+    if (decidedTimedClip && revealTimedClipsAfterFirstPass()) colorGradingRuntime?.refresh();
     // Only when a `data-hidden` mutation actually moved something: the skips
     // this reschedule exists to re-run are what change the active set, so
     // firing it otherwise was an audible stop-and-restart across the whole mix
@@ -3265,7 +3272,9 @@ export function initSandboxRuntimeModular(): void {
       resolveStartSeconds: (element) => resolveStartForElement(element, 0),
     }),
     createAnimeJsAdapter(),
-    createLottieAdapter(),
+    createLottieAdapter({
+      resolveStartSeconds: (element) => resolveStartForElement(element, 0),
+    }),
     createThreeAdapter(),
     createMapboxAdapter(),
     createLeafletAdapter(),
@@ -3341,6 +3350,12 @@ export function initSandboxRuntimeModular(): void {
         );
       }
     }
+    // Nothing else hides out-of-window clips on a paused page until someone seeks, so readiness does.
+    // Media is left to init's media pass and to seeks: they own color grading and audio scheduling.
+    syncTimedElementVisibility(
+      state.currentTime,
+      Array.from(document.querySelectorAll("[data-start]:not(video, audio, img)")),
+    );
     // __renderReady = timeline binding attempted, safe for deterministic seeking.
     // Set after any GSAP batching has completed. renderSeek works with or
     // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
@@ -3420,6 +3435,7 @@ export function initSandboxRuntimeModular(): void {
   let pausedSeekDeferredByManualGesture = false;
   // Set while the transport is parked (see scheduleNextTransportFrame).
   let transportParkTimerId: number | null = null;
+  let slowIdleHeartbeat = false;
   let transportWakeRequested = false;
   let parkedPollWitness = "";
   let lastSeenTimingRevision = -1;
@@ -3697,14 +3713,14 @@ export function initSandboxRuntimeModular(): void {
     state.capturedTimeline === lastTransportSeekTimeline;
 
   /**
-   * The parked loop. Two jobs the 60 Hz loop used to do implicitly:
+   * The parked loop has two jobs:
    *
    * 1. Keep the control bridge's paused heartbeat on its documented interval
-   *    (`state.bridgeMaxPostIntervalMs`) so a paused timeline still confirms
-   *    its position to any listener.
-   * 2. Re-read everything nothing can push (`readParkedPollWitness`). Polling
-   *    that 12 times a second instead of 60 is the whole reason the safety net
-   *    exists.
+   *    (`state.bridgeMaxPostIntervalMs`; a second after `set-idle-heartbeat`,
+   *    once the whole timeline is bound) so a paused timeline confirms its position.
+   * 2. Re-read everything nothing can push (`readParkedPollWitness`) on that
+   *    same beat: a timer, not a frame loop, is what keeps a paused runtime
+   *    cheap.
    */
   /**
    * Everything a parked transport still has to LOOK at, because no observer
@@ -3728,7 +3744,9 @@ export function initSandboxRuntimeModular(): void {
   const armParkTimer = () => {
     transportParkTimerId = window.setTimeout(
       parkedTransportHeartbeat,
-      state.bridgeMaxPostIntervalMs,
+      slowIdleHeartbeat && state.capturedTimeline && childrenBound
+        ? SLOW_IDLE_HEARTBEAT_MS
+        : state.bridgeMaxPostIntervalMs,
     );
   };
 
@@ -3868,14 +3886,14 @@ export function initSandboxRuntimeModular(): void {
       }
 
       // Audio-master clock: three tiers of timing precision.
-      // 1. WebAudio (AudioContext.currentTime): ~21µs, sample-accurate
+      // 1. WebAudio (AudioContext.currentTime) while it plays a decoded buffer: ~21µs, sample-accurate
       // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
       // 3. Monotonic (performance.now()): ~1ms, no audio coupling
       if (clock.isPlaying() && !state.mediaOutputMuted) {
         if (
           !state.nativeMediaSyncDisabled &&
           !state.webAudioMediaDisabled &&
-          webAudio.isActive() &&
+          webAudio.ownsClock() &&
           webAudio.context
         ) {
           const webAudioTime = webAudio.getTime();
@@ -4237,6 +4255,10 @@ export function initSandboxRuntimeModular(): void {
       applyPlaybackRate(rate);
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
+    },
+    onSetIdleHeartbeat: (slow) => {
+      slowIdleHeartbeat = slow;
+      wakeTransport();
     },
     onSetRootDuration: growRootDurationLive,
     onSetColorGrading: (target, grading) => {

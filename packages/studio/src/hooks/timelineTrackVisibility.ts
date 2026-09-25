@@ -175,7 +175,6 @@ async function setElementsHidden({
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label,
-      kind: "timeline",
       files,
       readFile: async (path) => {
         const original = originalByPath.get(path);

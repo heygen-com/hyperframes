@@ -1,4 +1,6 @@
-import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readTagCI } from "./ffprobe.js";
 
 /**
@@ -29,18 +31,94 @@ export const PROVENANCE_RENDERER_TAG = "hyperframes_renderer";
 export const PROVENANCE_VERSION_TAG = "hyperframes_version";
 export const PROVENANCE_RENDERER_NAME = "hyperframes";
 
-const UNKNOWN_VERSION = "0.0.0-dev";
+/**
+ * Deliberately not semver-shaped. A failed lookup must never break a render,
+ * but it must never be readable as a measurement either: the previous
+ * "0.0.0-dev" parses as a version, compares against one, and sorts below every
+ * real release, so a total resolution failure looked exactly like a dev build.
+ * It survived unnoticed across twenty published versions for that reason.
+ */
+const UNRESOLVED_VERSION = "unresolved";
+
+/** The package this file belongs to, whether built standalone or bundled. */
+const OWN_PACKAGE_NAME = /^(?:hyperframes|@hyperframes\/[^/]+)$/;
+
+/** Depth cap: a package root is a handful of levels up, never tens. */
+const MAX_WALK_DEPTH = 12;
+
+/**
+ * The walk, separated from `import.meta.url` so it is testable against real
+ * fixture layouts. A guard that cannot be exercised is a guard nobody has
+ * checked, and the name match below is the part worth exercising.
+ *
+ * @param startDir directory to begin from; the search moves upward.
+ */
+export function resolveOwnVersionFrom(startDir: string): string {
+  // Resolve by WALKING UP to our own package root, not by a fixed relative
+  // path, because this code runs from two different layouts and no single
+  // literal is correct in both:
+  //
+  //   repo      packages/engine/src/utils/  + ../../  -> packages/engine/package.json  OK
+  //   published <pkg>/dist/cli.js           + ../../  -> node_modules/package.json     overshoots
+  //
+  // The published CLI bundles the engine, so the file that actually runs sits
+  // at <pkg>/dist/, one level shallower than the source. The old code used the
+  // repo-correct path, missed in the published artifact, and its catch turned
+  // that miss into a sentinel.
+  //
+  // THE NAME CHECK IS THE FIX, NOT A REFINEMENT. A bare "first package.json
+  // found while walking up" resolves to whatever happens to sit above us in a
+  // hoisted install and returns a confident wrong version - the same class of
+  // defect as the sentinel, and harder to notice because the answer looks
+  // plausible. Only a package.json whose own name is ours may answer.
+  let dir = startDir;
+
+  for (let depth = 0; depth < MAX_WALK_DEPTH; depth++) {
+    const candidate = join(dir, "package.json");
+    let pkg: { name?: unknown; version?: unknown } | undefined;
+    try {
+      pkg = JSON.parse(readFileSync(candidate, "utf8")) as typeof pkg;
+    } catch {
+      // No package.json here, or unreadable/malformed. Either way this
+      // directory cannot answer; keep walking rather than give up, so one
+      // stray file between us and our root is not fatal.
+      pkg = undefined;
+    }
+    if (pkg && typeof pkg.name === "string" && OWN_PACKAGE_NAME.test(pkg.name)) {
+      if (typeof pkg.version === "string" && pkg.version.length > 0) return pkg.version;
+      // Our package root, but no usable version. Stop: walking past it would
+      // only find someone else's.
+      reportUnresolved(`found ${pkg.name} at ${candidate} but it declares no version`);
+      return UNRESOLVED_VERSION;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  reportUnresolved(`no package.json matching ${OWN_PACKAGE_NAME} within ${MAX_WALK_DEPTH} levels`);
+  return UNRESOLVED_VERSION;
+}
+
+/**
+ * Make the failure audible. The point of this change is that a resolution
+ * failure stops being indistinguishable from data - a silent fallback is what
+ * let the previous sentinel ship unnoticed.
+ */
+function reportUnresolved(reason: string): void {
+  console.warn(
+    `[renderProvenance] could not resolve the engine version (${reason}); ` +
+      `stamping ${PROVENANCE_VERSION_TAG}="${UNRESOLVED_VERSION}". ` +
+      `This is a lookup failure, not a version - do not treat it as one.`,
+  );
+}
 
 function readEngineVersion(): string {
   try {
-    // The engine ships as raw TS and exports "./package.json", so this
-    // resolves without a build-time define. A failed read must never break a
-    // render, hence the fallback rather than a throw.
-    const version = (createRequire(import.meta.url)("../../package.json") as { version?: string })
-      .version;
-    return typeof version === "string" && version.length > 0 ? version : UNKNOWN_VERSION;
+    return resolveOwnVersionFrom(dirname(fileURLToPath(import.meta.url)));
   } catch {
-    return UNKNOWN_VERSION;
+    reportUnresolved("import.meta.url is not a file URL");
+    return UNRESOLVED_VERSION;
   }
 }
 

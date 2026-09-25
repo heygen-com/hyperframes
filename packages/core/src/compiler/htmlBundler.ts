@@ -5,6 +5,7 @@ import {
   readExternalScriptAttributes,
   type ExternalScriptAttributes,
 } from "./externalScripts";
+import { emitMountedModuleScripts } from "./importMaps";
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
@@ -17,6 +18,7 @@ import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
   RUNTIME_BOOTSTRAP_ATTR,
+  insertBeforeCloseTag,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
@@ -33,6 +35,7 @@ import { readDeclaredDefaults } from "../runtime/getVariables";
 import { inlineSubCompositions } from "./inlineSubCompositions";
 import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
@@ -64,16 +67,8 @@ function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" =
     const inlinedRuntime = getHyperframeRuntimeScript();
     tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1">${inlinedRuntime}</script>`;
   }
-  if (sanitized.includes("</head>")) {
-    // Use a function replacer so `String.prototype.replace`'s substitution
-    // patterns (`$&`, `$$`, `$'`, `` $` ``, `$1`–`$99`) inside the inlined
-    // runtime IIFE are passed through verbatim. The minified runtime
-    // contains the literal sequence `$&` as part of legitimate JS, and
-    // the older `(pattern, string)` form would expand it to the matched
-    // `</head>`, silently corrupting the runtime and breaking every
-    // timeline in the bundle with a parse-time SyntaxError.
-    return sanitized.replace("</head>", () => `${tag}\n</head>`);
-  }
+  const withHead = insertBeforeCloseTag(sanitized, "head", `${tag}\n`);
+  if (withHead !== null) return withHead;
   const htmlOpenMatch = sanitized.match(/<html\b[^>]*>/i);
   if (htmlOpenMatch?.index != null) {
     const insertPos = htmlOpenMatch.index + htmlOpenMatch[0].length;
@@ -763,6 +758,7 @@ function stripJsCommentsParserSafe(source: string): string {
 export interface BundleOptions {
   /** Project-relative HTML entry to bundle. Defaults to `index.html`. */
   entryFile?: string;
+  stampHfIds?: boolean;
   /** Optional media duration prober (e.g., ffprobe). If omitted, media durations are not resolved. */
   probeMediaDuration?: MediaDurationProber;
   /**
@@ -788,13 +784,11 @@ export interface BundleOptions {
    */
   inlineColorGradingLuts?: boolean;
   /**
-   * Inline fonts, raster images (img/href/poster/srcset/CSS url()) and color
-   * grading LUTs as data URLs, up to the per-asset size ceiling. Default:
-   * true, for a genuinely self-contained bundle. Set false when the caller
-   * serves the project's own files alongside the bundle (e.g. a same-origin
-   * asset route): assets then keep their authored relative URL, which the
-   * caller resolves. `inlineColorGradingLuts` narrows LUTs further; it cannot
-   * inline a LUT that this option has already excluded.
+   * Inline fonts, raster images (img/href/poster/srcset/CSS url()) and color grading LUTs as data
+   * URLs, up to the per-asset size ceiling. Default: true, for a genuinely self-contained bundle. Set
+   * false when the caller serves the project's own files alongside the bundle (e.g. a same-origin
+   * asset route): assets then keep their authored relative URL, which the caller resolves.
+   * `inlineColorGradingLuts` narrows LUTs further; it cannot inline a LUT this option excluded.
    */
   inlineAssets?: boolean;
   /**
@@ -802,6 +796,8 @@ export interface BundleOptions {
    * the Studio preview can swap one edited scene in place. Off for renders.
    */
   sceneParts?: boolean;
+  /** Warn when the compiled HTML breaks the HyperFrames contract (default true). */
+  staticGuard?: boolean;
 }
 
 /**
@@ -852,7 +848,7 @@ function hoistExternalScript(
   }
   if (seenSrcs.has(src)) return;
   seenSrcs.add(src);
-  if (!isNonRelativeUrl(src) && !isAbsolute(src)) {
+  if (!isNonRelativeUrl(src) && !isAbsolute(src) && attributes.type !== "module") {
     const jsPath = resolveWithinProject(projectDir, src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js != null) {
@@ -927,14 +923,17 @@ export async function bundleToSingleHtml(
     return isSafePath(projectDir, resolved) ? resolved : null;
   };
 
-  const rawHtml = readFileSync(indexPath, "utf-8");
+  const readSource = options?.stampHfIds ? ensureHfIds : (html: string) => html;
+  const rawHtml = readSource(readFileSync(indexPath, "utf-8"));
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
-  const staticGuard = await validateHyperframeHtmlContract(compiled);
-  if (!staticGuard.isValid) {
-    console.warn(
-      `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
-    );
+  if (options?.staticGuard !== false) {
+    const staticGuard = await validateHyperframeHtmlContract(compiled);
+    if (!staticGuard.isValid) {
+      console.warn(
+        `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+      );
+    }
   }
 
   const withInterceptor = injectInterceptor(compiled, options?.runtime ?? "inline");
@@ -986,7 +985,8 @@ export async function bundleToSingleHtml(
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
       const compPath = resolveEntryPath(srcPath);
-      return compPath ? safeReadFile(compPath) : null;
+      const html = compPath ? safeReadFile(compPath) : null;
+      return html === null ? null : readSource(html);
     },
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
@@ -1041,7 +1041,7 @@ export async function bundleToSingleHtml(
     }
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
-    if (isRelativeUrl(extSrc)) {
+    if (isRelativeUrl(extSrc) && scriptItem.type !== "module") {
       const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
@@ -1244,6 +1244,7 @@ export async function bundleToSingleHtml(
     script.textContent = joinJsChunks(chunks);
     document.body.appendChild(script);
   }
+  emitMountedModuleScripts(document, subCompResult.importMaps, subCompResult.moduleScripts);
 
   emitRootCompositionVariableStyles(document, compVariablesByComp);
 

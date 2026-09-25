@@ -52,6 +52,7 @@ export {
   injectScriptsAtHeadStart,
   injectTagsAtHeadStart,
   injectScriptsIntoHtml,
+  insertBeforeCloseTag,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
@@ -102,3 +103,4 @@ export {
 } from "./mediaRenderIds";
 
 export { ensureExternalScriptTag } from "./externalScripts";
+export { emitMountedModuleScripts } from "./importMaps";

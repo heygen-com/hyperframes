@@ -21,3 +21,4 @@ How was this tested?
 - [ ] Unit tests added/updated
 - [ ] Manual testing performed
 - [ ] Documentation updated (if applicable)
+- [ ] Comments follow CONTRIBUTING.md "Comments": they say why, not what, and a bug fix says what the code must do and how to reproduce the bug

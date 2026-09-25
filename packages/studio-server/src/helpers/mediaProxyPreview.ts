@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
@@ -30,7 +31,14 @@ import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
 export type PreviewApiAdapter = StudioApiAdapter & {
   autoProxy?: boolean;
   mediaCodecProbeCache?: MediaCodecProbeCache;
+  /** Keeps built preview documents across restarts, keyed by project id and preview ETag. */
+  previewDocuments?: PreviewDocumentStore;
 };
+
+export interface PreviewDocumentStore {
+  read(key: string): string | null;
+  write(key: string, html: string): void;
+}
 
 export function isAutoProxyEnabled(adapter: PreviewApiAdapter): boolean {
   return adapter.autoProxy !== false;
@@ -57,14 +65,6 @@ export function resolvePreviewMediaCodecProbeCache(
 export function proxyEtagSalt(raw: string | undefined): string {
   if (raw === undefined) return "";
   return `:proxy:${raw}:${PROXY_PARAMS_VERSION}`;
-}
-
-// Mirrors `injectScriptTagIntoHead` in routes/preview.ts (kept local rather
-// than imported to avoid a helpers → routes dependency edge for one
-// two-line utility).
-function injectScriptTagIntoHead(html: string, scriptTag: string): string {
-  if (html.includes("</head>")) return html.replace("</head>", `${scriptTag}\n</head>`);
-  return `${scriptTag}\n${html}`;
 }
 
 /**
@@ -123,7 +123,7 @@ export async function injectMediaCodecMapIntoHtml(
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
   const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
-  return injectScriptTagIntoHead(html, tag);
+  return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
 }
 
 /**

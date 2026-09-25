@@ -7,13 +7,7 @@ import { splitElementInHtml } from "@hyperframes/studio-server/source-mutation";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
-import { createPersistentEditHistoryStore } from "./usePersistentEditHistory";
-import { createMemoryEditHistoryStorage } from "../utils/editHistoryStorage";
-import {
-  createEmptyEditHistory,
-  hashEditHistoryContent,
-  undoEditHistory,
-} from "../utils/editHistory";
+import type { RecordEditInput } from "./timelineEditingHelpers";
 import { createSplitFetchMock, mountProbe } from "./useRazorSplit.testHelpers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -36,7 +30,10 @@ type SplitAll = (splitTime: number) => Promise<void>;
 
 interface Harness {
   disk: Record<string, string>;
-  store: ReturnType<typeof createPersistentEditHistoryStore>;
+  // What the split recorded — folding, undo and undo mismatch guards are the
+  // server's own tested behaviour (projectHistory.ts / projectHistory.test.ts,
+  // usePersistentEditHistory.test.ts), not re-proven here via a reducer.
+  records: RecordEditInput[];
   splitRef: { current: Split | undefined };
   root: ReturnType<typeof mountProbe>;
   expected: string;
@@ -53,18 +50,7 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
   const disk: Record<string, string> = { "index.html": ORIGINAL };
   const finalContent = opts.gsap ? SPLIT_GSAP : SPLIT;
   const previewWrites: string[] = [];
-
-  const storage = createMemoryEditHistoryStorage();
-  const store = createPersistentEditHistoryStore({
-    projectId: "p1",
-    storage,
-    initialState: createEmptyEditHistory(),
-    now: (() => {
-      let t = 1000;
-      return () => (t += 10);
-    })(),
-    onChange: () => {},
-  });
+  const records: RecordEditInput[] = [];
 
   // Faithful stand-in for the atomic server cut: one forward file write and one
   // response carrying the canonical history snapshots.
@@ -115,7 +101,9 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
       writeProjectFile: async (path, content) => {
         disk[path] = content;
       },
-      recordEdit: store.recordEdit,
+      recordEdit: async (input) => {
+        records.push(input);
+      },
       reloadPreview: () => {
         if (!opts.previewStamp) return;
         const stamped = ensureHfIds(disk["index.html"]);
@@ -134,16 +122,7 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
 
   const root = mountProbe(Component);
 
-  return { disk, store, splitRef, root, expected: finalContent, previewWrites };
-}
-
-async function undoViaDisk(harness: Pick<Harness, "disk" | "store">) {
-  return harness.store.undo({
-    readFile: async (path) => harness.disk[path],
-    writeFile: async (path, content) => {
-      harness.disk[path] = content;
-    },
-  });
+  return { disk, records, splitRef, root, expected: finalContent, previewWrites };
 }
 
 afterEach(() => {
@@ -159,15 +138,16 @@ describe("useRazorSplit — split is undoable via edit history", () => {
       await harness.splitRef.current!(element, 2);
     });
 
-    const snapshot = harness.store.snapshot().state;
-    const entry = snapshot.undo.at(-1)!;
-    const currentHash = hashEditHistoryContent(harness.disk["index.html"]);
-    expect(entry.files["index.html"].afterHash).toBe(currentHash);
-
-    const undo = undoEditHistory(snapshot, { "index.html": currentHash }, 2000);
-    expect(undo.ok).toBe(true);
-    expect(undo.filesToWrite).toEqual({ "index.html": ORIGINAL });
+    // The preview reload found every id already stamped, so it never made a
+    // second, unrecorded write that would leave the recorded entry stale...
     expect(harness.previewWrites).toHaveLength(0);
+    // ...meaning the split's own recorded "after" IS the disk's final content,
+    // and undoing it (server-side) would restore exactly the pre-split bytes.
+    expect(harness.records).toHaveLength(1);
+    expect(harness.records[0]!.files["index.html"]).toEqual({
+      before: ORIGINAL,
+      after: harness.disk["index.html"],
+    });
 
     act(() => harness.root.unmount());
   });
@@ -182,7 +162,7 @@ describe("useRazorSplit — split is undoable via edit history", () => {
         act(() => harness.root.unmount());
       });
 
-      it("records a single 'Split timeline clip' history entry that undo restores", async () => {
+      it("records a single 'Split timeline clip' entry with the exact bytes undo restores", async () => {
         await act(async () => {
           await harness.splitRef.current!(element, 2);
         });
@@ -190,15 +170,16 @@ describe("useRazorSplit — split is undoable via edit history", () => {
         // The split reached disk.
         expect(harness.disk["index.html"]).toBe(harness.expected);
 
-        // The split must be the top of the undo stack — not a prior/other entry.
-        expect(harness.store.snapshot().canUndo).toBe(true);
-        expect(harness.store.snapshot().undoLabel).toBe("Split timeline clip");
-
-        // Undo restores the exact pre-split file.
-        const result = await undoViaDisk(harness);
-        expect(result.ok).toBe(true);
-        expect(result.label).toBe("Split timeline clip");
-        expect(harness.disk["index.html"]).toBe(ORIGINAL);
+        // Exactly one entry, correctly labeled, carrying the pre/post-split bytes —
+        // what a real undo (server-side, projectHistory.ts) restores from.
+        expect(harness.records).toHaveLength(1);
+        expect(harness.records[0]).toMatchObject({
+          label: "Split timeline clip",
+        });
+        expect(harness.records[0]!.files["index.html"]).toEqual({
+          before: ORIGINAL,
+          after: harness.expected,
+        });
       });
     });
   }
@@ -222,20 +203,14 @@ const batchElements: TimelineElement[] = [
 
 interface SplitAllHarness {
   disk: Record<string, string>;
-  store: ReturnType<typeof createPersistentEditHistoryStore>;
+  records: RecordEditInput[];
   splitAllRef: { current: SplitAll | undefined };
   root: ReturnType<typeof mountProbe>;
 }
 
 function mountRazorSplitAll(failOnSplit?: number): SplitAllHarness {
   const disk: Record<string, string> = { ...BATCH_ORIGINALS };
-  const store = createPersistentEditHistoryStore({
-    projectId: "p1",
-    storage: createMemoryEditHistoryStorage(),
-    initialState: createEmptyEditHistory(),
-    now: () => 1000,
-    onChange: () => {},
-  });
+  const records: RecordEditInput[] = [];
   let splitCount = 0;
 
   vi.stubGlobal(
@@ -255,7 +230,9 @@ function mountRazorSplitAll(failOnSplit?: number): SplitAllHarness {
       writeProjectFile: async (path, content) => {
         disk[path] = content;
       },
-      recordEdit: store.recordEdit,
+      recordEdit: async (input) => {
+        records.push(input);
+      },
       reloadPreview: () => {},
     });
     splitAllRef.current = handleRazorSplitAll;
@@ -264,7 +241,7 @@ function mountRazorSplitAll(failOnSplit?: number): SplitAllHarness {
 
   const root = mountProbe(Component);
   usePlayerStore.setState({ elements: batchElements });
-  return { disk, store, splitAllRef, root };
+  return { disk, records, splitAllRef, root };
 }
 
 describe("useRazorSplit — split-all batch history", () => {
@@ -280,22 +257,24 @@ describe("useRazorSplit — split-all batch history", () => {
     return harness;
   }
 
-  it("records one undo entry that restores every split file", async () => {
+  it("records one entry whose files cover every split file (one undo restores all of them)", async () => {
     const harness = await runSplitAll();
 
-    expect(harness.store.snapshot().canUndo).toBe(true);
-    const result = await undoViaDisk(harness);
-    expect(result.ok).toBe(true);
-    expect(harness.disk).toEqual(BATCH_ORIGINALS);
-    expect(harness.store.snapshot().canUndo).toBe(false);
+    expect(harness.records).toHaveLength(1);
+    const files = harness.records[0]!.files;
+    expect(Object.keys(files).sort()).toEqual(Object.keys(BATCH_ORIGINALS).sort());
+    for (const path of Object.keys(BATCH_ORIGINALS) as (keyof typeof BATCH_ORIGINALS)[]) {
+      expect(files[path]?.before).toBe(BATCH_ORIGINALS[path]);
+      expect(files[path]?.after).toBe(harness.disk[path]);
+    }
     act(() => harness.root.unmount());
   });
 
-  it("restores completed writes and records no undo when a later split fails", async () => {
+  it("restores completed writes and records no entry when a later split fails", async () => {
     const harness = await runSplitAll(2);
 
     expect(harness.disk).toEqual(BATCH_ORIGINALS);
-    expect(harness.store.snapshot().canUndo).toBe(false);
+    expect(harness.records).toHaveLength(0);
     act(() => harness.root.unmount());
   });
 });

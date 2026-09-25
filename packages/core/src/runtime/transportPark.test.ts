@@ -207,6 +207,62 @@ describe("parked transport loop", () => {
     expect(raf.pending()).toBe(0);
   });
 
+  const setIdleHeartbeat = (slow: boolean) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "set-idle-heartbeat", slow },
+      }),
+    );
+  const states = () => posted.filter((m) => m["type"] === "state").length;
+
+  it("slows the parked heartbeat to once a second when the host asks, and back when it stops", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+
+    setIdleHeartbeat(true);
+    quiesce();
+    const slow = states();
+    vi.advanceTimersByTime(3000);
+    expect(states() - slow).toBe(3);
+    expect(raf.pending()).toBe(0);
+
+    // Turned off mid-interval, the 80 ms beat resumes without waiting out the second.
+    vi.advanceTimersByTime(500);
+    setIdleHeartbeat(false);
+    settle();
+    const resumed = states();
+    for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    expect(states() - resumed).toBe(3);
+  });
+
+  it("keeps the fast heartbeat under a slow request until a timeline is bound", () => {
+    mount();
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+    document.getElementById("root")!.removeAttribute("data-duration");
+    setIdleHeartbeat(true);
+    quiesce();
+
+    // A composition that registers its timeline late (after fonts load) must still be seen at once.
+    window.__timelines!["main"] = createMockTimeline(12);
+    vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    settle();
+    expect(window.__player!.getDuration()).toBeCloseTo(12, 3);
+  });
+
+  it("keeps the fast heartbeat under a slow request while a sub-composition is unbound", () => {
+    mount('<div data-composition-id="child"></div>');
+    initSandboxRuntimeModular();
+    setIdleHeartbeat(true);
+    quiesce();
+
+    const before = states();
+    for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    expect(states() - before).toBe(3);
+  });
+
   it("delivers a live data-duration edit while parked", async () => {
     mount();
     initSandboxRuntimeModular();

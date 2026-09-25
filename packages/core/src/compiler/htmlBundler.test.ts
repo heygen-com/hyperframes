@@ -9,6 +9,7 @@ import { ensureExternalScriptTag } from "./externalScripts";
 import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
+import { ensureHfIds } from "../parsers/hfIds";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-bundler-test-"));
@@ -177,6 +178,100 @@ describe("bundleToSingleHtml", () => {
     // runtime tag — it stays as its own <script> elsewhere in the document.
     expect(runtimeBlock).not.toContain("window.__timelines.main = { duration:");
     expect(bundled).toContain('document.getElementById("scene")');
+  });
+
+  it("binds a mounted composition's scripts to its own file for __hyperframes.assetUrl", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <script>window.__envUrl = __hyperframes.assetUrl("assets/env.hdr");</script>
+</div>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
+  });
+
+  it("keeps a mounted file's import map and module script as such, bound to that file", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/assets/three.js": "export const REVISION = 1;",
+      "compositions/blk/assets/addons/env.js": "export const ENV = 1;",
+      "compositions/blk/assets/scene.js": 'import * as THREE from "three"; export const SCENE = 1;',
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <script type="module" src="./assets/scene.js"></script>
+  <script type="module" src="https://cdn.test/mod.js"></script>
+  <script type="importmap">{ "imports": { "three": "./assets/three.js", "three/addons/": "./assets/addons/", "cdn": "https://cdn.test/x.js" } }</script>
+  <script type="module">import * as THREE from "three"; window.__url = __hyperframes.assetUrl("assets/leaf.webp");</script>
+  <script>window.__classic = 1;</script>
+</div>`,
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const importMaps = [...document.querySelectorAll('script[type="importmap"]')];
+    const modules = [...document.querySelectorAll('script[type="module"]')];
+    const classic = [...document.querySelectorAll("script:not([type])")].map((s) => s.textContent);
+
+    expect(importMaps).toHaveLength(1);
+    expect(JSON.parse(importMaps[0]!.textContent || "")).toEqual({
+      imports: {
+        three: "./compositions/blk/assets/three.js",
+        "three/addons/": "./compositions/blk/assets/addons/",
+        cdn: "https://cdn.test/x.js",
+      },
+    });
+    expect(modules.map((m) => m.getAttribute("src")).filter(Boolean)).toEqual([
+      "compositions/blk/assets/scene.js",
+      "https://cdn.test/mod.js",
+    ]);
+    const inline = modules.filter((m) => !m.hasAttribute("src"));
+    expect(inline).toHaveLength(1);
+    expect(inline[0]!.textContent).toMatch(/^const __hyperframes = /);
+    expect(inline[0]!.textContent).toContain('"compositions/blk/blk.html"');
+    expect(inline[0]!.textContent).toContain('import * as THREE from "three";');
+    expect(classic.join("")).not.toContain("SCENE");
+    expect(classic.join("")).toContain(".__classic = 1;");
+    expect(classic.join("")).not.toContain('"imports"');
+    expect(classic.join("")).not.toContain("import * as THREE");
+  });
+
+  it("binds a <template> composition authored in a mounted file to that file", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <template id="chip-template">
+    <div data-composition-id="chip" data-width="200" data-height="200">
+      <script>window.__chipUrl = __hyperframes.assetUrl("assets/chip.png");</script>
+    </div>
+  </template>
+  <div data-composition-id="chip"></div>
+</div>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toMatch(
+      /var __hfCompId = "chip";(?:(?!__hfCompId)[\s\S])*var __hfCompositionSrc = "compositions\/blk\/blk\.html";/,
+    );
   });
 
   it("inlines an in-project sub-composition script but not one reached through a symlink escaping the project root", async () => {
@@ -1519,6 +1614,28 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
+  it("runs the StaticGuard lint unless staticGuard is false", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+</body></html>`,
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const guardWarnings = () =>
+      warnSpy.mock.calls
+        .map((call) => String(call[0] ?? ""))
+        .filter((line) => line.includes("[StaticGuard]"));
+    try {
+      await bundleToSingleHtml(dir, { staticGuard: false });
+      expect(guardWarnings()).toEqual([]);
+
+      await bundleToSingleHtml(dir);
+      expect(guardWarnings()).toHaveLength(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   describe("symlink path traversal (security: F-005)", () => {
     it("does not inline CSS from a symlink pointing outside projectDir", async () => {
       const { dir, outsideDir } = makeSymlinkProject(
@@ -2103,5 +2220,33 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(
       doc.querySelector('div[data-hf-scene="a"]')?.getAttribute("data-hf-scene-no-swap"),
     ).toBeNull();
+  });
+});
+
+describe("stampHfIds", () => {
+  const project = () =>
+    makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body><div id="root" data-composition-id="main" data-width="1920" data-height="1080"><div id="s" data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="3"></div></div></body></html>`,
+      "compositions/scene.html": `<template id="scene-template"><div data-composition-id="scene" data-width="1920" data-height="1080"><img class="logo" src="logo.png"></div></template>`,
+      "compositions/logo.png": "png",
+    });
+  const logo = (html: string) => /<img[^>]*class="logo"[^>]*>/.exec(html)?.[0] ?? "";
+
+  it("gives an inlined element the id its source file mints, though the bundle re-points its src", async () => {
+    const dir = project();
+    const html = await bundleToSingleHtml(dir, { inlineAssets: false, stampHfIds: true });
+    const source = ensureHfIds(
+      `<template id="scene-template"><div data-composition-id="scene" data-width="1920" data-height="1080"><img class="logo" src="logo.png"></div></template>`,
+    );
+    expect(logo(html)).toContain("compositions/logo.png");
+    expect(/data-hf-id="([^"]+)"/.exec(logo(html))?.[1]).toBe(
+      /<img[^>]*data-hf-id="([^"]+)"/.exec(source)?.[1],
+    );
+  });
+
+  it("leaves a render's bundle without ids", async () => {
+    const html = await bundleToSingleHtml(project(), { inlineAssets: false });
+    expect(logo(html)).toContain("compositions/logo.png");
+    expect(logo(html)).not.toContain("data-hf-id");
   });
 });

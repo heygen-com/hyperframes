@@ -30,6 +30,7 @@ export interface CaptureWarning {
   details?: {
     mediaType?: "image" | "video" | "audio";
     sources?: string[];
+    pendingCompositionIds?: string[];
     timeoutMs?: number;
     failureReasons?: string[];
     failureStages?: string[];
