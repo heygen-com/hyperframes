@@ -32,7 +32,6 @@ const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
 
 export interface OptionalPackageDeps {
   cacheDir: string;
-  /** The pinned copy installed beside the CLI, else null. */
   loadBesideCli(name: OptionalPackage): unknown | null;
   /** The package's exports when already installed in `dir`, else null. */
   loadInstalled(dir: string, name: string): unknown | null;
@@ -110,7 +109,6 @@ function loadInstalled(dir: string, name: string): unknown | null {
   return createRequire(join(dir, "package.json"))(name);
 }
 
-/** True when the copy `require` finds from the CLI's own install is the pinned version. */
 function pinnedCopyBesideCli(name: OptionalPackage, cliUrl: string): boolean {
   const paths = createRequire(cliUrl).resolve.paths(name) ?? [];
   const manifest = paths.map((dir) => join(dir, name, "package.json")).find(existsSync);
