@@ -2263,6 +2263,8 @@ describe("bundleToSingleHtml sceneParts", () => {
     tl.to("#nt-ticker-track", { x: 10, className: "fade-animate" });
     window.__timelines = window.__timelines || {};
     window.__timelines["a"] = tl;
+    const state = {};
+    Object.defineProperty(state, "flap", { get: () => 1 });
   </script></div></template>`,
     });
     const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
