@@ -8,7 +8,6 @@ import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
 import type { BlockParam } from "@hyperframes/core/registry";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { MediaOverlayPlacement } from "../components/editor/propertyPanelTypes";
 
@@ -19,7 +18,6 @@ interface BlockCtxDeps {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     coalesceKey?: string;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;

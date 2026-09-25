@@ -1,5 +1,4 @@
 import { openComposition, type Composition } from "@hyperframes/sdk";
-import type { EditHistoryKind } from "./editHistory";
 import { hashContent, markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
 import { trackStudioEvent } from "./studioTelemetry";
 import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
@@ -32,7 +31,6 @@ export interface CutoverDeps {
   editHistory: {
     recordEdit: (entry: {
       label: string;
-      kind: EditHistoryKind;
       coalesceKey?: string;
       coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;
@@ -248,7 +246,6 @@ async function writeAndRecord(
   try {
     await deps.editHistory.recordEdit({
       label: options?.label ?? "Edit layer",
-      kind: "manual",
       ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
       ...(options?.coalesceMs != null ? { coalesceMs: options.coalesceMs } : {}),
       files: { [targetPath]: { before: originalContent, after } },

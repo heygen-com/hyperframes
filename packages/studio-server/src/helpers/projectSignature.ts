@@ -176,6 +176,26 @@ function createProjectFingerprint(projectDir: string, files: ProjectSignatureFil
   return hash.digest("hex").slice(0, 24);
 }
 
+function collectProjectFiles(normalizedProjectDir: string): ProjectSignatureFile[] {
+  const collected: ProjectSignatureFile[] = [];
+  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, collected);
+  collectProjectSignatureManifestFiles(normalizedProjectDir, collected);
+  return collected;
+}
+
+/** The files a project is made of (the signature's set: source plus Studio's two manifests), paths with `/`. */
+export function listProjectFiles(
+  projectDir: string,
+): Array<{ path: string; size: number; mtimeMs: number; ctimeMs: number }> {
+  const normalizedProjectDir = resolve(projectDir);
+  return collectProjectFiles(normalizedProjectDir).map((entry) => ({
+    path: relative(normalizedProjectDir, entry.file).split(sep).join("/"),
+    size: entry.size,
+    mtimeMs: entry.mtimeMs,
+    ctimeMs: entry.ctimeMs,
+  }));
+}
+
 /**
  * Resolve the project signature through the adapter's cached path when the host
  * provides one (the CLI invalidates its cache from the file watcher), falling
@@ -204,9 +224,7 @@ export function createProjectSignature(
   excluding: ReadonlySet<string> = new Set(),
 ): string {
   const normalizedProjectDir = resolve(projectDir);
-  const collected: ProjectSignatureFile[] = [];
-  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, collected);
-  collectProjectSignatureManifestFiles(normalizedProjectDir, collected);
+  const collected = collectProjectFiles(normalizedProjectDir);
   const files = collected.filter(
     (entry) => !excluding.has(relative(normalizedProjectDir, entry.file).split(sep).join("/")),
   );

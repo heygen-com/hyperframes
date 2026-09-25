@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createLottieAdapter } from "./lottie";
+import { createRuntimeStartTimeResolver } from "../startResolver";
 
 const lottieWindow = window as Window & {
   lottie?: {
@@ -84,6 +85,37 @@ describe("lottie adapter", () => {
   });
 
   describe("seek", () => {
+    function mountedAt(start: string) {
+      document.body.innerHTML = `<div data-composition-id="root"><div data-composition-id="host" data-start="${start}"><div data-composition-id="walk"><div id="player"></div></div></div></div>`;
+      const { resolveStartForElement } = createRuntimeStartTimeResolver({});
+      const adapter = createLottieAdapter({
+        resolveStartSeconds: (el) => resolveStartForElement(el, 0),
+      });
+      return { adapter, player: document.getElementById("player")! };
+    }
+
+    it("seeks a player in a mounted composition to the time since that composition started", () => {
+      const { adapter, player } = mountedAt("3");
+      const anim = { ...createLottieWebAnim(), wrapper: player };
+      const dot = { ...createDotLottiePlayer({ totalFrames: 60, frameRate: 30 }), canvas: player };
+      lottieWindow.__hfLottie = [anim, dot];
+      adapter.seek({ time: 4 });
+      expect(anim.goToAndStop).toHaveBeenCalledWith(1000, false);
+      expect(dot.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
+      adapter.seek({ time: 1 });
+      expect(anim.goToAndStop).toHaveBeenLastCalledWith(0, false);
+      document.body.innerHTML = "";
+    });
+
+    it("keeps page time for a player in a composition that starts at 0", () => {
+      const { adapter, player } = mountedAt("0");
+      const anim = { ...createLottieWebAnim(), wrapper: player };
+      lottieWindow.__hfLottie = [anim];
+      adapter.seek({ time: 2 });
+      expect(anim.goToAndStop).toHaveBeenCalledWith(2000, false);
+      document.body.innerHTML = "";
+    });
+
     it("seeks lottie-web with goToAndStop in ms", () => {
       const anim = createLottieWebAnim();
       lottieWindow.__hfLottie = [anim];

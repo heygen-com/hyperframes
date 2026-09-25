@@ -11,6 +11,8 @@
 name: CodeQL
 
 on:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
   push:
     branches: [main]

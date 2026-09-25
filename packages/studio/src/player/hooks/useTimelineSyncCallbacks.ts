@@ -295,6 +295,8 @@ export function useTimelineSyncCallbacks({
 
   const onIframeLoad = useCallback(
     (context?: number) => {
+      const loadedDoc = safeContentDocument(iframeRef.current);
+      if (loadedDoc) usePlayerStore.getState().markPreviewLoadStep(loadedDoc);
       applyPreviewAudioState();
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
       stopWaitingRef.current?.();

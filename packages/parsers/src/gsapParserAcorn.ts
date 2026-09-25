@@ -1895,11 +1895,23 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+// Pure in `script`; a hit returns a copy, so one caller's edits never reach another's result.
+const PARSE_MEMO_ENTRIES = 4;
+const parseMemo = new Map<string, ParsedGsap>();
+
 /**
  * Browser-safe equivalent of `parseGsapScript` (gsapParser.ts).
  * Uses acorn + acorn-walk instead of recast + @babel/parser.
  */
 export function parseGsapScriptAcorn(script: string): ParsedGsap {
+  const parsed = parseMemo.get(script) ?? parseGsapScriptAcornUncached(script);
+  parseMemo.delete(script);
+  parseMemo.set(script, parsed);
+  if (parseMemo.size > PARSE_MEMO_ENTRIES) parseMemo.delete(parseMemo.keys().next().value!);
+  return structuredClone(parsed);
+}
+
+function parseGsapScriptAcornUncached(script: string): ParsedGsap {
   try {
     const ast = parseProgram(script);
     const scope = collectScopeBindings(ast);

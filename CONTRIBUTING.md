@@ -69,6 +69,34 @@ If you must add a cast, add a comment:
 const event = data as unknown as RuntimeEvent;
 ```
 
+#### Comments
+
+A comment says what the code cannot: the reason, the invariant, the non-obvious constraint. Names, types and tests carry the rest, and reasoning or history goes in the PR description, where it stays attached to the change. We follow the [Stack Overflow guidance on code comments](https://stackoverflow.blog/2021/12/23/best-practices-for-writing-code-comments/):
+
+1. **Don't repeat the code.** `// Count label` above `const countLabel` tells the reader nothing new.
+2. **A comment doesn't make unclear code clear.** Rename the variable or extract the function instead of explaining it.
+3. **If you can't write a clear comment, the code may be the problem.** Simplify it first.
+4. **Clear up confusion; don't add to it.** A comment the reader has to decode costs more than none.
+5. **Explain code that looks wrong on purpose.** An unusual loop, a deliberate no-op or a workaround says why it has to be that way.
+6. **Link the source of copied or adapted code**, with a URL that will still work.
+7. **Link external references where they help**: a spec, an issue or a vendor document anyone can open.
+8. **Explain bug fixes by what the code must do and how to reproduce the bug**, not by the change's history or PR number.
+9. **Mark unfinished work with a TODO that has an owner or an issue**: `TODO(name):`, `TODO(area):` or `TODO(#1234):`.
+
+Reviewers judge rules 2 to 5 and 8. The `Comments` check (`scripts/check-comment-citations.mjs`) grades the comments a PR adds or edits:
+
+- **Citations must resolve.** A backticked path, a `path:line`, a backticked camelCase symbol, or "pinned by" / "covered by" / "see" plus a test file must point at something in the repo. A comment that names its source reads as evidence, so a stale one sends the next reader to a dead end.
+- **No history.** "used to", "previously", "was removed", "before this change", "PR #123" describe the past, which git already records. State what is true now.
+- **No commented-out code.** Delete it; git keeps it.
+- **No block over 40 lines.** Cut it to the why and the invariant. A block that must stay whole (a licence, a diagram, a protocol table) starts with `comment-length: <reason>`.
+- **A TODO, FIXME or XXX names an owner or an issue** in its parentheses, or links the issue (rule 9).
+- **A URL can be opened by anyone** (rule 7): well-formed, not on a private network or internal host, and not signed or carrying a token. `localhost` addresses that describe a dev server are fine.
+- **Warnings that never fail the build:** copied or adapted code without a source link (rule 6), and a short comment whose words mostly restate the next line of code (rule 1). Both are heuristics that measured too many false positives on this repo to fail a build.
+
+- **A package file's comment share may not rise** (`scripts/comment-ratchet.mjs`). For source under `packages/*/src` (tests excluded), a file you change may not end up with a higher share of comment lines than it had where your branch forked, unless you only deleted code. It may not gain a new comment block over 12 lines, and a new file may not start above its package's share. Move the explanation into a name, a type or the PR description.
+
+Only comment blocks holding a line your PR added can fail the citation and block rules, and the TODO and URL rules grade only the lines your PR added. Broken citations elsewhere in a file you touched are printed as warnings, and fixing one while you are there is welcome. To grade files by hand, pass their paths: `node scripts/check-comment-citations.mjs path/to/file.ts`.
+
 ## Adding Registry Items (Blocks & Components)
 
 The registry at `registry/` contains reusable items installable via `hyperframes add <name>`. Each item lives in its own directory under `registry/blocks/` or `registry/components/`.

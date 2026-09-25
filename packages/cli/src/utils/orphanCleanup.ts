@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { runRenderSetupWorker } from "./cancellableProcess.js";
 import { terminateProcessTree, windowsProcessTreeKillArgs } from "./processTree.js";
@@ -7,32 +7,18 @@ import { terminateProcessTree, windowsProcessTreeKillArgs } from "./processTree.
 export { windowsProcessTreeKillArgs };
 
 /**
- * Find and kill orphaned Chrome processes from previous crashed sessions.
- * Targets both chrome-headless-shell (production/CI) and Google Chrome
- * launched by Puppeteer (dev mode). Puppeteer Chrome is identified by the
- * `puppeteer_dev_chrome_profile` marker in its user-data-dir argument.
- *
- * An orphan is a process whose PPID=1 (reparented to init/launchd after
- * its parent died). We kill the orphan's entire subtree so child helper
- * processes (GPU, renderer, network, etc.) are also cleaned up.
- *
- * Scoped to the current user via `pgrep -u` to avoid touching other
- * users' processes on shared machines.
- *
- * Returns the count of killed process trees.
+ * Kill orphaned Chrome processes (PPID 1: their parent died) left by crashed sessions, headless shell or
+ * Puppeteer's Chrome (`puppeteer_dev_chrome_profile`), with their helper subtrees. Only the current user's
+ * processes are read. Returns the count of killed process trees.
  */
 export function killOrphanedProcesses(): number {
   if (process.platform === "win32") return 0;
 
-  let killed = 0;
-
-  for (const name of ["chrome-headless-shell", "chrome_headless_shell"]) {
-    killed += killOrphansByName(name);
-  }
-
-  killed += killOrphansByName("puppeteer_dev_chrome_profile");
-
-  return killed;
+  return killOrphansMatching([
+    "chrome-headless-shell",
+    "chrome_headless_shell",
+    "puppeteer_dev_chrome_profile",
+  ]);
 }
 
 export async function killOrphanedProcessesForRender(signal: AbortSignal): Promise<number> {
@@ -232,53 +218,27 @@ export function isProcessDescendant(
   return false;
 }
 
-function killOrphansByName(processName: string): number {
-  const uid = getUid();
-  const userFlag = uid !== null ? `-u ${uid} ` : "";
-  let pids: number[];
+/** One process-table read: a spawn per candidate PID cost half a second before `preview` listened. */
+function killOrphansMatching(markers: readonly string[]): number {
+  const uid = process.getuid?.();
+  const owner = uid === undefined ? ["-A"] : ["-U", String(uid)];
+  let table: string;
   try {
-    const raw = execSync(`pgrep ${userFlag}-f ${processName}`, {
+    table = execFileSync("ps", [...owner, "-ww", "-o", "pid=,ppid=,args="], {
       encoding: "utf-8",
       timeout: 3000,
-    }).trim();
-    if (!raw) return 0;
-    pids = raw
-      .split("\n")
-      .map((s) => parseInt(s, 10))
-      .filter((n) => !isNaN(n) && n > 0);
+    });
   } catch {
     return 0;
   }
 
   let killed = 0;
-  for (const pid of pids) {
-    if (!isOrphan(pid)) continue;
-    killProcessTree(pid);
+  for (const line of table.split("\n")) {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/);
+    if (!match || match[2] !== "1") continue;
+    if (!markers.some((marker) => match[3]!.includes(marker))) continue;
+    killProcessTree(Number(match[1]));
     killed++;
   }
   return killed;
-}
-
-let _cachedUid: string | null | undefined;
-
-function getUid(): string | null {
-  if (_cachedUid !== undefined) return _cachedUid;
-  try {
-    _cachedUid = execSync("id -u", { encoding: "utf-8", timeout: 1000 }).trim();
-  } catch {
-    _cachedUid = null;
-  }
-  return _cachedUid;
-}
-
-function isOrphan(pid: number): boolean {
-  try {
-    const ppid = execSync(`ps -p ${pid} -o ppid=`, {
-      encoding: "utf-8",
-      timeout: 2000,
-    }).trim();
-    return ppid === "1";
-  } catch {
-    return false;
-  }
 }

@@ -36,6 +36,48 @@ describe("loadExternalCompositions", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("binds a fetched composition's scripts to its own URL for __hyperframes.assetUrl", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/blocks/blk/blk.html");
+    host.setAttribute("data-composition-id", "blk");
+    document.body.appendChild(host);
+    const compositionHtml =
+      `<div data-composition-id="blk"><script>window.__url = __hyperframes.assetUrl("assets/env.hdr");</scr` +
+      `ipt></div>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts.map((script) => script.textContent).join("")).toContain(
+      'var __hfCompositionSrc = "https://example.com/blocks/blk/blk.html";',
+    );
+  });
+
+  it("injects a fetched composition's import map and module script bound to its own URL", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/blocks/blk/blk.html");
+    host.setAttribute("data-composition-id", "blk");
+    document.body.appendChild(host);
+    const compositionHtml =
+      `<div data-composition-id="blk">` +
+      `<script type="importmap">{ "imports": { "three": "./lib/three.js" } }</scr` +
+      `ipt><script type="module">import "three"; window.__url = __hyperframes.assetUrl("a.png");</scr` +
+      `ipt></div>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    const importMap = injectedScripts.find((script) => script.type === "importmap");
+    const moduleScript = injectedScripts.find((script) => script.type === "module");
+    expect(JSON.parse(importMap?.textContent || "")).toEqual({
+      imports: { three: "https://example.com/blocks/blk/lib/three.js" },
+    });
+    expect(moduleScript?.textContent).toMatch(/^const __hyperframes = /);
+    expect(moduleScript?.textContent).toContain('"https://example.com/blocks/blk/blk.html"');
+  });
+
   it("fetches and mounts external composition HTML", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/comp.html");

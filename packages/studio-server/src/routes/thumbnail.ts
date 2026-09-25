@@ -1,6 +1,9 @@
 import type { Hono } from "hono";
 import {
+  closeSync,
   existsSync,
+  fstatSync,
+  openSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -18,6 +21,8 @@ import { compositionInputSignature } from "../helpers/compositionInputs.js";
 import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
+import { requestSubPath } from "../helpers/requestSubPath.js";
+import { resolveWithinProject } from "../helpers/safePath.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -74,6 +79,26 @@ function writeThumbnailAtomically(path: string, buffer: Buffer): void {
   }
 }
 
+type CompositionSource = { html: string; mtimeMs: number } | "missing" | "not-a-file";
+
+// One open for the stat and the read, so the file cannot change between the check and the use.
+function readCompositionSource(file: string): CompositionSource {
+  let fd: number;
+  try {
+    fd = openSync(file, "r");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    throw err;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return "not-a-file";
+    return { html: readFileSync(fd, "utf-8"), mtimeMs: stat.mtimeMs };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
     if (!adapter.generateThumbnail) {
@@ -83,10 +108,11 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (!resolved) return c.json({ error: "not found" }, 404);
     const { project, signature: projectSignature } = resolved;
 
-    let compPath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/thumbnail/`, "").split("?")[0] ?? "",
-    );
+    let compPath = requestSubPath(c.req.url, "projects/:id/thumbnail");
     if (compPath && !compPath.includes(".")) compPath += ".html";
+    const htmlFile = resolveWithinProject(project.dir, compPath);
+    const source = htmlFile ? readCompositionSource(htmlFile) : "not-a-file";
+    if (source === "not-a-file") return c.json({ error: "not found" }, 404);
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
     const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
 
@@ -122,11 +148,10 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     // edit, even on a hard reload. Keyed on content (like manualEdits/motion), not
     // just mtime, so a restore/copy with a preserved mtime can't serve stale.
     let sourceKey = "";
-    const htmlFile = join(project.dir, compPath);
-    if (existsSync(htmlFile)) {
-      const html = readFileSync(htmlFile, "utf-8");
+    if (source !== "missing") {
+      const { html } = source;
       sourceKey = `_${createHash("sha1").update(html).digest("hex").slice(0, 16)}`;
-      sourceMtime = Math.round(statSync(htmlFile).mtimeMs);
+      sourceMtime = Math.round(source.mtimeMs);
       if (!vpWidth) {
         const wMatch = html.match(/data-width=["'](\d+)["']/);
         const hMatch = html.match(/data-height=["'](\d+)["']/);
@@ -149,10 +174,11 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       sourceMtime = Math.max(sourceMtime, Math.round(statSync(motionFile).mtimeMs));
     }
 
+    const projectUrl = `http://${c.req.header("host")}/api/projects/${encodeURIComponent(project.id)}`;
     const previewUrl =
       compPath === "index.html"
-        ? `http://${c.req.header("host")}/api/projects/${project.id}/preview`
-        : `http://${c.req.header("host")}/api/projects/${project.id}/preview/comp/${compPath}`;
+        ? `${projectUrl}/preview`
+        : `${projectUrl}/preview/comp/${compPath.split("/").map(encodeURIComponent).join("/")}`;
 
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");
@@ -183,6 +209,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     }
+    if (url.searchParams.get("cached") === "1") return c.body(null, 404);
 
     try {
       const buffer = await thumbnailGenerationCoordinator.acquire(

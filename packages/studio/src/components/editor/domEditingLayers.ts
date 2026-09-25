@@ -491,6 +491,15 @@ export function collectDomEditLayerItems(
   return items;
 }
 
+export function liveLayerElement(
+  layer: DomEditLayerItem,
+  doc: Document | null | undefined,
+  activeCompositionPath: string | null,
+): HTMLElement {
+  if (layer.element.isConnected || !doc) return layer.element;
+  return findElementForSelection(doc, layer, activeCompositionPath) ?? layer.element;
+}
+
 // ─── Patch operations ────────────────────────────────────────────────────────
 
 export function buildDomEditStylePatchOperation(

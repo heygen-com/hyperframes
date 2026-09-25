@@ -67,6 +67,8 @@ Show a static image before playback starts:
 | `loop`                 | boolean                         | false         | Restart when the composition ends                                           |
 | `shader-capture-scale` | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`) |
 | `shader-loading`       | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
+| `assets-loading-ui`    | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
+| `low-power-idle`       | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
 
 ### Shader transition previews
 
@@ -82,6 +84,10 @@ When a composition uses `@hyperframes/shader-transitions`, the player can own pr
 ```
 
 `shader-loading="player"` shows the player-owned transition-prep overlay from shader progress messages. `composition` leaves direct composition fallback behavior alone, and `none` suppresses the loader.
+
+### Loading-assets card
+
+While images, video or fonts are still loading after `ready`, the player shows a loading card over the frame and sets the `assets-loading` attribute on itself. A host that draws its own loading state can turn the card off with `assets-loading-ui="none"` (or `player.assetsLoadingUi = "none"`). The `assets-loading` attribute and the `assetsready` and `painted` events behave the same either way, so the host still knows when the frame is ready.
 
 ### Audio lock (host-mandated silent playback)
 

@@ -1,6 +1,24 @@
 export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
+export {
+  DEFAULT_HISTORY_ROOT,
+  openProjectHistory,
+  MAX_WINDOW_IDLE_MS,
+  type ClosedWindow,
+  type ProjectHistory,
+  type ProjectHistoryOptions,
+  type HistoryListItem,
+  type HistoryResult,
+  type HistoryWindow,
+} from "./history/projectHistory.js";
+export { HistoryBusyError } from "./history/ownerLock.js";
+export {
+  START as HISTORY_START,
+  type HistoryEntry,
+  type HistoryFileChange,
+  type HistoryWho,
+} from "./history/historyLog.js";
 export type {
   StudioApiAdapter,
   ResolvedProject,
@@ -12,6 +30,7 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
+export { stampProjectHfIds } from "./helpers/hfIdPersist.js";
 export {
   patchElementInHtml,
   splitElementInHtml,
@@ -30,11 +49,14 @@ export {
 } from "./helpers/applyFileMutations.js";
 export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
 export { PREVIEW_BUNDLE_OPTIONS } from "./routes/preview.js";
+export { createPreviewDocumentStore } from "./helpers/previewDocumentStore.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
+export { requestSubPath } from "./helpers/requestSubPath.js";
 export {
   consumeFileWriteReceipt,
   identifyFileWrite,
   fileContentVersion,
+  DELETED_VERSION,
   settledFileTag,
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";

@@ -326,7 +326,6 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     if (result.before == null || result.after == null) return;
     await editHistory.recordEdit({
       label: options.label,
-      kind: "manual",
       coalesceKey: options.coalesceKey,
       coalesceMs: options.coalesceMs,
       files: { [targetPath]: { before: result.before, after: result.after } },

@@ -197,20 +197,16 @@ export function printUpdateNotice(): void {
 const STALE_PIN_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Actionable, throttled notice for a project whose package.json still pins an
- * OLD hyperframes version. Unlike printUpdateNotice this DOES fire on non-TTY
- * (agents render with piped stderr) \u2014 but only when there's a concrete stale
- * pin to act on, at most once/24h per install, and never under --json/CI/dev/
- * opt-out. The whole cli.ts update block is already skipped for --json, so a
- * JSON stdout stays clean regardless.
+ * Actionable notice when the running CLI is older than the project's pin (every
+ * run), or when the pin is older than the latest release (once/24h per install).
+ * Unlike printUpdateNotice this DOES fire on non-TTY (agents render with piped
+ * stderr), but never under --json/CI/dev/opt-out: the whole cli.ts update block
+ * is skipped for --json, so a JSON stdout stays clean regardless.
  */
 export function printStalePinNotice(cwd: string = process.cwd()): void {
   if (isDevMode()) return;
   if (process.env["CI"] === "true" || process.env["CI"] === "1") return;
   if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return;
-
-  const latest = getUpdateMeta().latestVersion;
-  if (!latest || !isSafeVersion(latest)) return;
 
   let scripts: Record<string, string> = {};
   try {
@@ -220,7 +216,20 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   } catch {
     return;
   }
-  const stale = readPinnedHyperframesVersions(scripts).filter((v) => {
+  const pins = readPinnedHyperframesVersions(scripts);
+  // A CLI older than the pin (e.g. a stale npx cache) misjudges every run, so this is never throttled.
+  const newerPins = pins.filter((v) => isNewerSemver(v, VERSION)).sort(compareVersions);
+  if (newerPins.length > 0) {
+    process.stderr.write(
+      `\n  This is hyperframes ${VERSION}, but this project pins hyperframes@${newerPins.join(", ")}.\n` +
+        `  Run it through the project's npm scripts, or npx hyperframes@${newerPins.at(-1)}.\n\n`,
+    );
+    return;
+  }
+
+  const latest = getUpdateMeta().latestVersion;
+  if (!latest || !isSafeVersion(latest)) return;
+  const stale = pins.filter((v) => {
     try {
       return compareVersions(latest, v) > 0;
     } catch {

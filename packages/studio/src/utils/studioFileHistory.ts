@@ -1,12 +1,10 @@
 import { buildProjectApiPath } from "./projectRouting";
 import type { MutableRefObject } from "react";
-import type { EditHistoryKind } from "./editHistory";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
 import { createStudioSaveHttpError } from "./studioSaveDiagnostics";
 
 export interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
@@ -27,7 +25,6 @@ type ProjectFileWriter = (path: string, content: string, expectedContent?: strin
 interface SaveProjectFilesWithHistoryInput {
   projectId: string;
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, string>;
@@ -65,7 +62,6 @@ export async function readProjectFileContent(pid: string, path: string): Promise
 
 export async function saveProjectFilesWithHistory({
   label,
-  kind,
   coalesceKey,
   coalesceMs,
   files,
@@ -93,7 +89,7 @@ export async function saveProjectFilesWithHistory({
         writtenPaths.push(path);
       }
 
-      await recordEdit({ label, kind, coalesceKey, coalesceMs, files: snapshots });
+      await recordEdit({ label, coalesceKey, coalesceMs, files: snapshots });
     } catch (error) {
       try {
         for (const path of writtenPaths.reverse()) {

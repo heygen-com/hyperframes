@@ -6,6 +6,7 @@
  */
 
 import { parseHTML } from "linkedom";
+import { findVariableDeclaration } from "./variableModel.js";
 import {
   ensureHfIds,
   isCompositionTemplate,
@@ -169,15 +170,40 @@ export function isNewHostBoundary(el: Element): boolean {
 }
 
 /**
- * The element that carries composition-level declarations
- * (`data-composition-variables`). Full-document comps use `<html>`; a wrapped
- * template/fragment comp has a synthetic `<html>` that serialize() strips, so
- * its declarations must live on the composition root div (where values/metadata
- * already live) to survive save.
+ * The elements carrying `data-composition-variables`, in the runtime's merge
+ * order: `<html>`, then the composition root, whose entries win a shared id. A
+ * wrapped template/fragment comp has a synthetic `<html>` that serialize()
+ * strips, so only its root counts.
  */
-export function declarationElement(document: Document, wrapped: boolean): Element | null {
+export function declarationCarriers(document: Document, wrapped: boolean): Element[] {
+  const root = findRoot(document);
+  const html = wrapped
+    ? null
+    : (document as Document & { documentElement?: Element }).documentElement;
+  const carriers = [html, root].filter(
+    (el): el is Element => !!el?.hasAttribute("data-composition-variables"),
+  );
+  return [...new Set(carriers)];
+}
+
+/**
+ * Where a declaration op lands: the carrier that declares `id` (the root first,
+ * as it wins), else the root if it carries declarations, else `<html>` (the
+ * root div for wrapped comps).
+ */
+export function declarationElement(
+  document: Document,
+  wrapped: boolean,
+  id?: string,
+): Element | null {
+  const winnerFirst = declarationCarriers(document, wrapped).reverse();
+  const owner =
+    id === undefined ? undefined : winnerFirst.find((el) => findVariableDeclaration(el, id));
+  if (owner) return owner;
   if (wrapped) return findRoot(document);
-  return (document as Document & { documentElement?: Element }).documentElement ?? null;
+  return (
+    winnerFirst[0] ?? (document as Document & { documentElement?: Element }).documentElement ?? null
+  );
 }
 
 export function findRoot(document: Document): Element | null {

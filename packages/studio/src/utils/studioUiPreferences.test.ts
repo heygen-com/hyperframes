@@ -23,14 +23,12 @@ describe("studio UI preferences", () => {
     writeStudioUiPreferences({ playbackRate: 1.5 }, storage);
     writeStudioUiPreferences({ audioMuted: true }, storage);
     writeStudioUiPreferences({ audioVolume: 0.4 }, storage);
-    writeStudioUiPreferences({ previewZoom: { zoomPercent: 160, panX: -20, panY: 12 } }, storage);
 
     expect(readStudioUiPreferences(storage)).toEqual({
       timelineVisible: false,
       playbackRate: 1.5,
       audioMuted: true,
       audioVolume: 0.4,
-      previewZoom: { zoomPercent: 160, panX: -20, panY: 12 },
     });
   });
 
@@ -49,6 +47,15 @@ describe("studio UI preferences", () => {
     expect(readStudioUiPreferences(storage)).toEqual({});
   });
 
+  it("keeps no preview zoom, so every project opens at Fit", () => {
+    const storage = createStorage();
+    storage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({ previewZoom: { zoomPercent: 245, panX: 0, panY: 0 } }),
+    );
+    expect(readStudioUiPreferences(storage)).toEqual({});
+  });
+
   it("ignores malformed stored values", () => {
     const storage = createStorage();
     storage.setItem(
@@ -58,7 +65,6 @@ describe("studio UI preferences", () => {
         playbackRate: Number.NaN,
         audioMuted: "false",
         audioVolume: 2,
-        previewZoom: { zoomPercent: 150, panX: 0, panY: "bad" },
       }),
     );
 
