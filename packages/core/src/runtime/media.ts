@@ -467,7 +467,8 @@ export function syncRuntimeMedia(params: {
       // creating a perpetual seek→freeze→drift→seek stutter loop. Skip strict
       // and force sync for playing videos; only hard sync (>0.5s) warrants
       // the decoder-reset cost.
-      const isPlayingVideo = el.tagName === "VIDEO" && !el.paused;
+      // A paused transport pauses this video below, so a seek that pauses mid-playback still lands it.
+      const isPlayingVideo = el.tagName === "VIDEO" && !el.paused && params.playing;
       // Only apply strict sync when offset has stabilized (not growing).
       // During initial buffering, offset grows ~16ms/tick as the timeline
       // advances while media stays at 0. Accumulated drift from pause/play
