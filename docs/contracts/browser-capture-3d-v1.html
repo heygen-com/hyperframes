@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Directive contract: live 3D from browser to Studio</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080a0d;
+        --panel: #10141a;
+        --ink: #f5f7fa;
+        --muted: #9ba6b2;
+        --line: #28313c;
+        --acid: #b7ff36;
+        --blue: #68a4ff;
+        --amber: #ffbf47;
+        --red: #ff6b6b;
+        --mono: "SFMono-Regular", Consolas, monospace;
+        --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 82% 6%, rgba(104, 164, 255, 0.16), transparent 30rem),
+          radial-gradient(circle at 10% 35%, rgba(183, 255, 54, 0.09), transparent 28rem),
+          var(--bg);
+        color: var(--ink);
+        font: 16px/1.5 var(--sans);
+      }
+      main { width: min(1240px, calc(100% - 32px)); margin: 0 auto 96px; }
+      header { padding: 84px 0 52px; border-bottom: 1px solid var(--line); }
+      .eyebrow, code, .tag { font-family: var(--mono); }
+      .eyebrow { color: var(--acid); font-size: 12px; letter-spacing: 0.13em; text-transform: uppercase; }
+      h1 { max-width: 1050px; margin: 18px 0 24px; font-size: clamp(54px, 8vw, 112px); line-height: 0.9; letter-spacing: -0.065em; }
+      .lede { max-width: 770px; margin: 0; color: #d5dbe2; font-size: clamp(20px, 2.2vw, 28px); line-height: 1.35; }
+      section { padding: 54px 0; border-bottom: 1px solid var(--line); }
+      h2 { margin: 0 0 24px; font-size: clamp(30px, 4vw, 54px); letter-spacing: -0.04em; }
+      h3 { margin: 0 0 10px; font-size: 17px; }
+      p { margin: 0; }
+      .muted { color: var(--muted); }
+      .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+      .card { min-width: 0; padding: 22px; border: 1px solid var(--line); background: rgba(16, 20, 26, 0.86); }
+      .card.recommended { border-color: var(--acid); box-shadow: inset 0 3px 0 var(--acid); }
+      .tag { display: inline-block; margin-bottom: 28px; color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+      .recommended .tag { color: var(--acid); }
+      .evidence { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 14px; }
+      .hero-stat { padding: 28px; border: 1px solid var(--acid); background: rgba(183, 255, 54, 0.06); }
+      .hero-stat strong { display: block; color: var(--acid); font: 700 clamp(52px, 8vw, 96px)/0.9 var(--mono); letter-spacing: -0.07em; }
+      .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); }
+      .fact { padding: 20px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .fact:nth-child(2n) { border-right: 0; }
+      .fact:nth-last-child(-n + 2) { border-bottom: 0; }
+      .fact strong { display: block; margin-bottom: 6px; color: var(--blue); font: 700 20px/1.2 var(--mono); }
+      .flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 28px; counter-reset: step; }
+      .step { position: relative; min-height: 180px; padding: 20px; border: 1px solid var(--line); background: var(--panel); }
+      .step::before { counter-increment: step; content: "0" counter(step); display: block; margin-bottom: 34px; color: var(--acid); font: 700 12px var(--mono); }
+      .step:not(:last-child)::after { content: "→"; position: absolute; right: -23px; top: 72px; color: var(--muted); font-size: 22px; }
+      .code { margin-top: 18px; padding: 18px; overflow: auto; border: 1px solid var(--line); background: #050608; color: #dce6f1; font: 13px/1.7 var(--mono); white-space: pre; }
+      .acceptance { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .gate { padding: 16px 18px; border-left: 3px solid var(--blue); background: var(--panel); }
+      .decision { padding: 28px; border: 1px solid var(--amber); background: rgba(255, 191, 71, 0.07); }
+      .decision strong { color: var(--amber); }
+      .danger { color: var(--red); }
+      a { color: var(--blue); }
+      @media (max-width: 860px) {
+        .grid, .evidence, .facts, .flow, .acceptance { grid-template-columns: 1fr; }
+        .fact { border-right: 0; }
+        .fact:nth-last-child(-n + 2) { border-bottom: 1px solid var(--line); }
+        .fact:last-child { border-bottom: 0; }
+        .step:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -27px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Directive U3 · contract before code</p>
+        <h1>Copy the scene, not the canvas.</h1>
+        <p class="lede">When a selected WebGL region has a reachable glTF model, HyperFrames should paste a local, interactive 3D island inside the editable HTML capture. The page's JavaScript never crosses the boundary.</p>
+      </header>
+
+      <section>
+        <h2>The UltraMock evidence is unusually strong.</h2>
+        <div class="evidence">
+          <article class="hero-stat">
+            <strong>4.79 MB</strong>
+            <p>One real <code>model/gltf-binary</code> asset loaded by the live editor. This is direct model recovery, not inference from pixels.</p>
+          </article>
+          <div class="facts">
+            <div class="fact"><strong>95</strong><span class="muted">scene nodes</span></div>
+            <div class="fact"><strong>76</strong><span class="muted">meshes</span></div>
+            <div class="fact"><strong>34</strong><span class="muted">materials</span></div>
+            <div class="fact"><strong>25</strong><span class="muted">embedded textures</span></div>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:18px">The GLB requires Meshopt, mesh quantization, KTX2/Basis textures, clearcoat, and specular material support. UltraMock also loads a separate HDR environment and finish texture. Those are optional fidelity resources, not prerequisites for recovering the model.</p>
+      </section>
+
+      <section>
+        <h2>The representation decision</h2>
+        <div class="grid">
+          <article class="card recommended">
+            <span class="tag">A · recommended</span>
+            <h3>Live 3D island inside editable DOM</h3>
+            <p class="muted">Keep <code>artifact.kind = editable-dom</code>. A model placeholder consumes one local GLB resource. Mixed text, buttons, and 3D remain one capture.</p>
+          </article>
+          <article class="card">
+            <span class="tag">B</span>
+            <h3>New editable-3d artifact</h3>
+            <p class="muted">Clean for model-only selections, but fractures mixed captures and duplicates placement, identity, and persistence rules.</p>
+          </article>
+          <article class="card">
+            <span class="tag">C</span>
+            <h3>Attach GLB behind a Still</h3>
+            <p class="muted">Preserves the screenshot first, but the thing on canvas is not the editable model. This fails the product promise.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>One owner per boundary</h2>
+        <div class="flow">
+          <article class="step"><h3>Discover</h3><p class="muted">The content script sees completed same-origin <code>.glb</code> or <code>.gltf</code> resources associated with a selected canvas.</p></article>
+          <article class="step"><h3>Validate</h3><p class="muted">Core owns GLB magic, declared length, embedded URI, hash, and byte-budget validation.</p></article>
+          <article class="step"><h3>Transport</h3><p class="muted">The canonical clipboard envelope carries model bytes. No token, signed URL, or page code is copied.</p></article>
+          <article class="step"><h3>Persist</h3><p class="muted">Studio writes the model plus child composition as one operation, then inserts the timeline host.</p></article>
+          <article class="step"><h3>Render</h3><p class="muted">A version-pinned HyperFrames viewer owns camera, orbit, materials, decoder support, and deterministic frame rendering.</p></article>
+        </div>
+        <div class="code">&lt;div
+  data-hf-model-resource-id="model-1"
+  data-hf-model-camera="auto-frame"
+  data-hf-model-environment="neutral-studio"
+  data-hf-model-animation="none"
+&gt;&lt;/div&gt;</div>
+      </section>
+
+      <section>
+        <h2>What editable means</h2>
+        <div class="grid">
+          <article class="card"><span class="tag">Editable now</span><h3>Scene controls</h3><p class="muted">Position, rotation, scale, camera orbit, focal length, environment, exposure, material parameters, and animation-clip playback.</p></article>
+          <article class="card"><span class="tag">Preserved</span><h3>Model structure</h3><p class="muted">Meshes, nodes, PBR materials, embedded textures, model extensions, and named animation clips survive as real glTF data.</p></article>
+          <article class="card"><span class="tag danger">Not promised</span><h3>Vertex editing</h3><p class="muted">Studio is not Blender. Direct mesh topology editing, UV unwrapping, rig authoring, and sculpting remain out of scope.</p></article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Acceptance gates</h2>
+        <div class="acceptance">
+          <div class="gate">The live UltraMock canvas produces a GLB-backed placeholder, not an image-only opaque island.</div>
+          <div class="gate">The model still renders after the source tab closes and network access is disabled.</div>
+          <div class="gate">Changing camera orbit or model rotation in Studio changes the rendered frame.</div>
+          <div class="gate">Reloading Studio preserves the local model, its controls, and the timeline placement.</div>
+          <div class="gate">Unsupported or oversized models fall back to the existing local visual island with an explicit diagnostic.</div>
+          <div class="gate">No third-party model bytes are committed to this repository or shipped in test fixtures.</div>
+        </div>
+      </section>
+
+      <section>
+        <div class="decision">
+          <p><strong>Miguel's decision needed:</strong> approve option A, where “editable 3D” means real model structure plus Studio camera, transform, material, environment, and animation controls, but not vertex-level mesh editing. The trusted viewer and decoders will be project-local so the pasted composition renders offline.</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "HyperFrames Capture",
+  "version": "0.1.0",
+  "description": "Capture a visible element and paste editable, self-contained HTML into HyperFrames Studio.",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "scripting", "clipboardWrite", "offscreen"],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Capture for HyperFrames Studio",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+H"
+      },
+      "description": "Capture an element for HyperFrames Studio"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  }
+}

@@ -227,6 +227,7 @@ function devProjectApi(): Plugin {
 
 export default defineConfig({
   plugins: [react(), devProjectApi()],
+  assetsInclude: ["**/*.wasm"],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
   },

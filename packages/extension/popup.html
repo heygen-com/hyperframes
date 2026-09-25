@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HyperFrames Capture</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        width: 320px;
+        margin: 0;
+        background: #0b0c0f;
+        color: #f7f8fa;
+      }
+      main {
+        padding: 18px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 13px;
+      }
+      .mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #0de4f5, #4ddb60);
+        color: #031b17;
+        font-weight: 900;
+      }
+      h1 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0;
+        color: #a5a8b1;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      #status {
+        min-height: 38px;
+      }
+      button {
+        width: 100%;
+        min-height: 42px;
+        margin-top: 14px;
+        border: 1px solid #2b2d34;
+        border-radius: 10px;
+        background: #17191e;
+        color: #f7f8fa;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:focus-visible {
+        outline: 3px solid rgba(60, 230, 172, 0.35);
+        outline-offset: 2px;
+      }
+      [hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <span class="mark" aria-hidden="true">H</span>
+        <h1>HyperFrames Capture</h1>
+      </div>
+      <p id="status" role="status" aria-live="polite">Opening the picker…</p>
+      <button id="done" type="button" hidden>Done</button>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

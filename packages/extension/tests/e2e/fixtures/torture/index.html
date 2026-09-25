@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HyperFrames capture torture fixture</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f6f7fb;
+        --muted: #a2a8b7;
+        --lime: #54f59a;
+        --cyan: #4de8ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(77, 232, 255, 0.16), transparent 36%),
+          radial-gradient(circle at 80% 76%, rgba(84, 245, 154, 0.14), transparent 34%), #07080b;
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      #torture-card {
+        position: relative;
+        width: min(860px, calc(100vw - 80px));
+        height: min(620px, calc(100vh - 80px));
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 30px;
+        background: linear-gradient(145deg, rgba(24, 27, 34, 0.96), rgba(9, 10, 14, 0.98));
+        box-shadow: 0 42px 120px rgba(0, 0, 0, 0.64);
+      }
+      #torture-card::before {
+        content: "LIVE CAPTURE TORTURE FIXTURE";
+        position: absolute;
+        left: 28px;
+        top: 24px;
+        z-index: 4;
+        color: var(--lime);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+      }
+      #torture-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+          120deg,
+          transparent 35%,
+          rgba(255, 255, 255, 0.06),
+          transparent 65%
+        );
+        transform: translateX(-100%);
+        animation: sheen 2.8s linear infinite;
+      }
+      @keyframes sheen {
+        to {
+          transform: translateX(100%);
+        }
+      }
+      .copy {
+        position: absolute;
+        left: 28px;
+        top: 78px;
+        z-index: 2;
+        width: 46%;
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(42px, 5vw, 74px);
+        line-height: 0.92;
+        letter-spacing: -0.065em;
+      }
+      h1 span {
+        color: var(--cyan);
+      }
+      p {
+        max-width: 430px;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 22px;
+      }
+      .chips span {
+        padding: 7px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        font-size: 11px;
+      }
+      .visual {
+        position: absolute;
+        right: 24px;
+        top: 62px;
+        width: 46%;
+        height: 61%;
+      }
+      #motion-canvas {
+        width: 100%;
+        height: 100%;
+        border-radius: 22px;
+        background: #020407;
+      }
+      .hud {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border: 1px solid rgba(77, 232, 255, 0.3);
+        border-radius: 22px;
+        box-shadow: inset 0 0 70px rgba(77, 232, 255, 0.08);
+      }
+      .hud::before,
+      .hud::after {
+        content: "";
+        position: absolute;
+        background: rgba(77, 232, 255, 0.3);
+      }
+      .hud::before {
+        left: 12%;
+        right: 12%;
+        top: 50%;
+        height: 1px;
+      }
+      .hud::after {
+        top: 12%;
+        bottom: 12%;
+        left: 50%;
+        width: 1px;
+      }
+      .bottom {
+        position: absolute;
+        left: 28px;
+        right: 28px;
+        bottom: 25px;
+        display: grid;
+        grid-template-columns: 1fr 1.25fr;
+        gap: 16px;
+        height: 130px;
+      }
+      .external,
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 17px;
+        background: #101218;
+      }
+      .external {
+        object-fit: cover;
+      }
+      iframe {
+        display: block;
+      }
+      svg {
+        position: absolute;
+        width: 0;
+        height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <svg aria-hidden="true">
+      <symbol id="spark" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M12 1l2.2 7.1L21 12l-6.8 3.9L12 23l-2.2-7.1L3 12l6.8-3.9z" />
+      </symbol>
+    </svg>
+    <main id="torture-card">
+      <section class="copy">
+        <h1>Rendered pixels.<br /><span>Zero excuses.</span></h1>
+        <p>
+          Pseudo-elements, CSS variables, an animated canvas, an outside SVG definition, a
+          cross-origin image, an iframe, and a pointer-events-none HUD.
+        </p>
+        <div class="chips">
+          <span>Canvas</span><span>SVG use</span><span>iframe</span><span>cross-origin</span
+          ><span
+            ><svg style="position: static; width: 12px; height: 12px">
+              <use href="#spark"></use>
+            </svg>
+            live motion</span
+          >
+        </div>
+      </section>
+      <section class="visual">
+        <canvas id="motion-canvas" width="760" height="760"></canvas>
+        <div class="hud"></div>
+      </section>
+      <section class="bottom">
+        <img
+          class="external"
+          src="http://localhost:4173/asset.svg"
+          alt="Cross-origin generated gradient"
+        /><iframe
+          title="Nested frame"
+          srcdoc="<style>body{margin:0;height:100%;display:grid;place-items:center;background:linear-gradient(135deg,#171a24,#0b0c10);color:#eef;font:700 20px system-ui}span{padding:14px 22px;border:1px solid #445;border-radius:999px}</style><span>same-origin nested frame</span>"
+        ></iframe>
+      </section>
+    </main>
+    <script>
+      const canvas = document.querySelector("#motion-canvas");
+      const context = canvas.getContext("2d");
+      function draw(time) {
+        const size = canvas.width;
+        context.clearRect(0, 0, size, size);
+        context.fillStyle = "#030508";
+        context.fillRect(0, 0, size, size);
+        for (let index = 0; index < 28; index++) {
+          const phase = time / 900 + index * 0.63;
+          const radius = 70 + index * 9;
+          const x = size / 2 + Math.cos(phase) * radius;
+          const y = size / 2 + Math.sin(phase * 1.31) * radius;
+          context.fillStyle = `hsla(${160 + index * 5}, 90%, 64%, ${0.18 + index / 70})`;
+          context.beginPath();
+          context.arc(x, y, 9 + index / 2, 0, Math.PI * 2);
+          context.fill();
+        }
+        requestAnimationFrame(draw);
+      }
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>

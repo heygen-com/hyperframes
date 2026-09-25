@@ -37,7 +37,9 @@ function validateRasterQuotas(input: WebCaptureEnvelopeInput): WebCaptureFailure
     input.artifact.width * input.artifact.height,
     input.claims.sourceFrame.width * input.claims.sourceFrame.height,
     ...input.resources.flatMap((resource) =>
-      resource.kind === "font" ? [] : [resource.width * resource.height],
+      resource.kind === "image" || resource.kind === "media"
+        ? [resource.width * resource.height]
+        : [],
     ),
   ];
   const rasterPixels = Math.max(...rasterAreas);
@@ -88,6 +90,7 @@ function measureResources(input: WebCaptureEnvelopeInput): ResourceMeasurement {
       continue;
     }
     materializedBytes += resource.bytes;
+    if (resource.kind === "model") continue;
     decodedPixels += resource.width * resource.height;
     if (resource.kind === "media") {
       const mediaFailure = validateMediaQuota(resource);

@@ -27,6 +27,7 @@ import { useStudioExternalFileChanges } from "./hooks/useStudioExternalFileChang
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
+import { useNativeClipboardBroker } from "./hooks/useNativeClipboardBroker";
 import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
@@ -216,20 +217,24 @@ export function StudioApp() {
   const domEditDeleteBridge: DomEditDelete = (s, o) => handleDomEditElementDeleteRef.current(s, o);
   const resetKeyframesRef = useRef<() => boolean>(() => false);
   const deleteSelectedKeyframesRef = useRef<() => void>(() => {});
-  const { handleCopy, handlePaste, handleCut } = useClipboard({
+  const { nativeClipboardHandlers } = useClipboard({
     projectId,
     activeCompPath,
     domEditSelectionRef: domEditSelectionBridgeRef,
     showToast,
     writeProjectFile: fileManager.writeProjectFile,
     recordEdit: editHistory.recordEdit,
+    observeProjectFileVersion: fileManager.observeProjectFileVersion,
+    refreshFileTree: fileManager.refreshFileTree,
+    forceReloadSdkSession: sdkHandle.forceReload,
     domEditSaveTimestampRef,
     reloadPreview,
     handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
     handleDomEditElementDelete: domEditDeleteBridge,
     previewIframeRef,
   });
-  const appHotkeys = useAppHotkeys({
+  const { syncPreviewClipboard } = useNativeClipboardBroker({ handlers: nativeClipboardHandlers });
+  const { handleUndo, handleRedo, syncPreviewHotkeys } = useAppHotkeys({
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     handleTimelineElementSplit: timelineEditing.handleTimelineElementSplit,
     handleDomEditElementDelete: domEditDeleteBridge,
@@ -244,9 +249,6 @@ export function StudioApp() {
     syncHistoryPreviewAfterApply: previewPersistence.syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
     leftSidebarRef,
-    handleCopy,
-    handlePaste,
-    handleCut,
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
     onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
@@ -256,6 +258,13 @@ export function StudioApp() {
     forceReloadSdkSession: sdkHandle.forceReload,
     onToggleRecording: () => handleToggleRecordingRef.current(),
   });
+  const syncPreviewInput = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      syncPreviewHotkeys(iframe);
+      syncPreviewClipboard(iframe);
+    },
+    [syncPreviewClipboard, syncPreviewHotkeys],
+  );
   const sidebarTabRef = useRef({
     select: (t: SidebarTab) => leftSidebarRef.current?.selectTab(t),
     get: () => leftSidebarRef.current?.getTab() ?? "compositions",
@@ -291,7 +300,7 @@ export function StudioApp() {
     previewDocumentVersion,
     rightPanelTab: panelLayout.rightPanelTab,
     applyStudioManualEditsToPreviewRef: previewPersistence.applyStudioManualEditsToPreviewRef,
-    syncPreviewHotkeys: appHotkeys.syncPreviewHotkeys,
+    syncPreviewHotkeys: syncPreviewInput,
     reloadPreview,
     setRefreshKey,
     openSourceForSelection: fileManager.openSourceForSelection,
@@ -370,11 +379,11 @@ export function StudioApp() {
     (iframe: HTMLIFrameElement | null) => {
       previewIframeRef.current = iframe;
       setPreviewIframe(iframe);
-      appHotkeys.syncPreviewHotkeys(iframe);
+      syncPreviewInput(iframe);
       resetConsoleErrors();
       refreshPreviewDocumentVersion();
     },
-    [appHotkeys, resetConsoleErrors, refreshPreviewDocumentVersion],
+    [syncPreviewInput, resetConsoleErrors, refreshPreviewDocumentVersion],
   );
   const { setEditingFile } = fileManager;
   const handleSelectComposition = useCompositionContentLoader({
@@ -429,8 +438,8 @@ export function StudioApp() {
     timelineElements,
     isPlaying,
     editHistory,
-    handleUndo: appHotkeys.handleUndo,
-    handleRedo: appHotkeys.handleRedo,
+    handleUndo,
+    handleRedo,
     renderQueue,
     compositionDimensions,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,

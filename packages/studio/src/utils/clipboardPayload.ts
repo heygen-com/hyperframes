@@ -1,6 +1,6 @@
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 
-const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
+const LEGACY_CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
 
 export interface ClipboardPayload {
   kind: "timeline-clip" | "dom-element";
@@ -21,7 +21,7 @@ interface SerializedPayload {
 
 export function serializeClipboardPayload(payload: ClipboardPayload): string {
   const data: SerializedPayload = {
-    _marker: CLIPBOARD_MARKER,
+    _marker: LEGACY_CLIPBOARD_MARKER,
     kind: payload.kind,
     html: payload.html,
     sourceFile: payload.sourceFile,
@@ -40,7 +40,7 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
   }
   if (!parsed || typeof parsed !== "object") return null;
   const obj = parsed as Record<string, unknown>;
-  if (obj._marker !== CLIPBOARD_MARKER) return null;
+  if (obj._marker !== LEGACY_CLIPBOARD_MARKER) return null;
   if (obj.kind !== "timeline-clip" && obj.kind !== "dom-element") return null;
   if (typeof obj.html !== "string" || typeof obj.sourceFile !== "string") return null;
   return {
@@ -51,6 +51,19 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
     originSelectorIndex:
       typeof obj.originSelectorIndex === "number" ? obj.originSelectorIndex : undefined,
   };
+}
+
+export function isLegacyClipboardText(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      (parsed as Record<string, unknown>)._marker === LEGACY_CLIPBOARD_MARKER
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

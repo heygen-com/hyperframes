@@ -29,6 +29,12 @@
     // Same arrangement for the audio FX graph builders, bundled by
     // build-audio-fx-runtime.ts for the offline render page.
     "packages/core/stubs/audio-fx-runtime-entry.ts",
+    // Chrome extension entry points are compiled by the package's two Vite
+    // configs rather than imported by another workspace source file.
+    "packages/extension/src/background/index.ts",
+    "packages/extension/src/clipboard/offscreen.ts",
+    "packages/extension/src/content/index.ts",
+    "packages/extension/src/popup/index.ts",
     // In-page audit scripts read as raw strings and injected via
     // page.addScriptTag (see layout.ts / validate.ts) — referenced by file
     // path, never imported, so they have no import-graph referrer.
@@ -83,6 +89,10 @@
     "skills/**/fonts/**",
     // Golden snapshot files: data consumed by toMatchFileSnapshot, not importable modules.
     "packages/**/__goldens__/**",
+    // These extension pages reference generated Vite output. The source entry
+    // points above own reachability before dist exists.
+    "packages/extension/offscreen.html",
+    "packages/extension/popup.html",
     "registry/**",
     "examples/**",
     "packages/sdk/examples/**",
@@ -96,6 +106,12 @@
     "packages/cli/bin/**",
   ],
   "ignoreExports": [
+    // Loaded through a literal dynamic import so ordinary browser captures do
+    // not pull the multi-megabyte 3D runtime into Studio's main chunk.
+    {
+      "file": "packages/studio/src/utils/webCapture3dRuntime.ts",
+      "exports": ["trustedWebCapture3dRuntimeSource"],
+    },
     // Public player-state types are consumed by package users outside this
     // workspace. Keep the barrel stable even when no in-repo import needs it.
     {

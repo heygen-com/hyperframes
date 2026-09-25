@@ -2,8 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { dispatchModifierKey, dispatchPlainKey } from "./useAppHotkeys";
 import { usePlayerStore } from "../player/store/playerStore";
-import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
-import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
+import { clearAutomationClipboard } from "../player/components/automationClipboard";
 import type { TimelineElement } from "../player/store/timelineElement";
 
 /** Minimal valid fixture — TimelineElement only requires these five fields. */
@@ -27,9 +26,6 @@ function callbacks() {
     handleDomEditElementDelete: vi.fn(async () => {}),
     handleUndo: vi.fn(async () => {}),
     handleRedo: vi.fn(async () => {}),
-    handleCopy: vi.fn(() => false),
-    handlePaste: vi.fn(async () => {}),
-    handleCut: vi.fn(async () => false),
     onResetKeyframes: vi.fn(() => true),
     onDeleteSelectedKeyframes: vi.fn(),
     showToast: vi.fn(),
@@ -199,81 +195,10 @@ describe("dispatchPlainKey — Delete arbitration", () => {
   });
 });
 
-describe("dispatchModifierKey — Cmd+C/Cmd+V arbitration", () => {
-  const clip: TimelineElement = {
-    id: "bgm",
-    key: "bgm",
-    tag: "audio",
-    start: 0,
-    duration: 6,
-    track: 0,
-  };
-
-  it("lets the clip clipboard have Cmd+C when no automation range is active", () => {
-    usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
-    const cb = callbacks();
-    dispatchModifierKey(chord("c"), "c", cb);
-    expect(cb.handleCopy).toHaveBeenCalled();
-  });
-
-  it("keeps Cmd+C from the clip clipboard when an automation range is active", () => {
-    // Both clipboards arming on one press double-wrote and toasted "Copied clip".
-    usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
-    usePlayerStore.getState().setAutomationSelection({
-      elementKey: "bgm",
-      target: "volume",
-      t0: 1,
-      t1: 3,
-    });
-    const cb = callbacks();
-    const e = chord("c");
-    expect(dispatchModifierKey(e, "c", cb)).toBe(true);
-    expect(cb.handleCopy).not.toHaveBeenCalled();
-    // No preventDefault: the automation handler downstream still needs the key.
-    expect(e.defaultPrevented).toBe(false);
-  });
-
-  it("lets the clip clipboard have Cmd+V when the automation clipboard is empty", () => {
-    // Nothing to paste means nothing to claim — the clip paste should still run.
-    clearAutomationClipboard();
-    usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
-    usePlayerStore.getState().setAutomationSelection({
-      elementKey: "bgm",
-      target: "volume",
-      t0: 1,
-      t1: 3,
-    });
-    const cb = callbacks();
-    dispatchModifierKey(chord("v"), "v", cb);
-    expect(cb.handlePaste).toHaveBeenCalled();
-  });
-
-  it("keeps Cmd+V from duplicating the clip while an automation paste is pending", () => {
-    clearAutomationClipboard();
-    copyRange(
-      null,
-      {
-        target: "volume",
-        points: [
-          { t: 1, v: 1 },
-          { t: 3, v: 0.25 },
-        ],
-      },
-      VOLUME_RANGE,
-      1,
-      3,
-    );
-    usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
-    usePlayerStore.getState().setAutomationSelection({
-      elementKey: "bgm",
-      target: "volume",
-      t0: 1,
-      t1: 3,
-    });
-    const cb = callbacks();
-    const e = chord("v");
-    dispatchModifierKey(e, "v", cb);
-    expect(cb.handlePaste).not.toHaveBeenCalled();
-    expect(e.defaultPrevented).toBe(false);
+describe("dispatchModifierKey — native clipboard ownership", () => {
+  it.each(["c", "v", "x"])("leaves Cmd+%s to ClipboardEvent", (key) => {
+    const event = chord(key);
+    expect(dispatchModifierKey(event, key, callbacks())).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
   });
 });

@@ -18,8 +18,20 @@ export type WebCaptureResourcePreparation =
   | WebCaptureFailure;
 
 function decodeCanonicalBase64(data: string): Uint8Array | null {
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) {
-    return null;
+  if (data.length % 4 !== 0) return null;
+  let padding = 0;
+  if (data.endsWith("==")) padding = 2;
+  else if (data.endsWith("=")) padding = 1;
+  const contentEnd = data.length - padding;
+  for (let index = 0; index < data.length; index += 1) {
+    const code = data.charCodeAt(index);
+    const alphabet =
+      (code >= 0x41 && code <= 0x5a) ||
+      (code >= 0x61 && code <= 0x7a) ||
+      (code >= 0x30 && code <= 0x39) ||
+      code === 0x2b ||
+      code === 0x2f;
+    if (index < contentEnd ? !alphabet : code !== 0x3d) return null;
   }
   try {
     const decoded = atob(data);
@@ -140,7 +152,7 @@ function compareWebCaptureResourceInspection(
   if (inspected.mime !== resource.mime)
     return { ok: false, code: "resource.mime-mismatch", resourceId: resource.id };
   if (
-    resource.kind !== "font" &&
+    (resource.kind === "image" || resource.kind === "media") &&
     (inspected.width !== resource.width || inspected.height !== resource.height)
   )
     return { ok: false, code: "resource.dimensions-mismatch", resourceId: resource.id };
@@ -298,6 +310,59 @@ function inspectWoff2(bytes: Uint8Array): WebCaptureResourceInspection | null {
   return declaredLength === bytes.length && decodedBytes > 0
     ? { mime: "font/woff2", decodedBytes }
     : null;
+}
+
+function hasExternalGltfUri(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  for (const collectionName of ["buffers", "images"] as const) {
+    const collection = record[collectionName];
+    if (!Array.isArray(collection)) continue;
+    for (const item of collection) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) return true;
+      const uri = (item as Record<string, unknown>).uri;
+      if (typeof uri === "string" && !uri.startsWith("data:")) return true;
+    }
+  }
+  return false;
+}
+
+function inspectGlb(bytes: Uint8Array): WebCaptureResourceInspection | null {
+  if (bytes.length < 20 || !hasBytes(bytes, 0, [0x67, 0x6c, 0x54, 0x46])) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(4, true) !== 2 || view.getUint32(8, true) !== bytes.length) return null;
+  const jsonLength = view.getUint32(12, true);
+  if (jsonLength === 0 || jsonLength % 4 !== 0 || 20 + jsonLength > bytes.length) return null;
+  if (view.getUint32(16, true) !== 0x4e4f534a) return null;
+  let gltf: unknown;
+  try {
+    let json = new TextDecoder("utf-8", { fatal: true }).decode(
+      bytes.subarray(20, 20 + jsonLength),
+    );
+    while (json.endsWith("\0") || json.endsWith(" ")) json = json.slice(0, -1);
+    gltf = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (gltf === null || typeof gltf !== "object" || Array.isArray(gltf)) return null;
+  const asset = (gltf as Record<string, unknown>).asset;
+  if (
+    asset === null ||
+    typeof asset !== "object" ||
+    Array.isArray(asset) ||
+    (asset as Record<string, unknown>).version !== "2.0" ||
+    hasExternalGltfUri(gltf)
+  ) {
+    return null;
+  }
+  let offset = 20 + jsonLength;
+  while (offset < bytes.length) {
+    if (offset + 8 > bytes.length) return null;
+    const chunkLength = view.getUint32(offset, true);
+    if (chunkLength % 4 !== 0 || offset + 8 + chunkLength > bytes.length) return null;
+    offset += 8 + chunkLength;
+  }
+  return offset === bytes.length ? { mime: "model/gltf-binary" } : null;
 }
 
 function readAscii(bytes: Uint8Array, offset: number, length: number): string {
@@ -474,6 +539,7 @@ function inspectWebm(bytes: Uint8Array): WebCaptureResourceInspection | null {
 
 export function inspectWebCaptureResource(bytes: Uint8Array): WebCaptureResourceInspection | null {
   return (
+    inspectGlb(bytes) ??
     inspectPng(bytes) ??
     inspectJpeg(bytes) ??
     inspectWebp(bytes) ??

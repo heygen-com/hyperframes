@@ -1,22 +1,24 @@
 export function normalizeDomString(value: string): string {
-  let output = "";
+  const parts: string[] = [];
+  let unchangedStart = 0;
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code >= 0xd800 && code <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
       if (next >= 0xdc00 && next <= 0xdfff) {
-        output += value[index]! + value[index + 1]!;
         index += 1;
       } else {
-        output += "\ufffd";
+        parts.push(value.slice(unchangedStart, index), "\ufffd");
+        unchangedStart = index + 1;
       }
     } else if (code >= 0xdc00 && code <= 0xdfff) {
-      output += "\ufffd";
-    } else {
-      output += value[index];
+      parts.push(value.slice(unchangedStart, index), "\ufffd");
+      unchangedStart = index + 1;
     }
   }
-  return output;
+  if (parts.length === 0) return value;
+  parts.push(value.slice(unchangedStart));
+  return parts.join("");
 }
 
 export function utf8ByteLength(value: string): number {

@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
-import { automationOwnsKey } from "./useAutomationSelectionKeyboard";
 import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { isTypingTarget } from "../utils/typingTarget";
-import { isEditableTarget } from "../utils/timelineDiscovery";
 import { useCaptionStore } from "../captions/store";
 import {
   applyCaptionModelToIframe,
@@ -126,9 +124,6 @@ interface UseAppHotkeysParams {
   }) => Promise<void>;
   waitForPendingDomEditSaves: () => Promise<void>;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
-  handleCopy: () => boolean;
-  handlePaste: () => Promise<void>;
-  handleCut: () => Promise<boolean>;
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onAfterUndoRedo?: () => void;
@@ -158,9 +153,6 @@ interface HotkeyCallbacks {
   ) => Promise<void>;
   handleUndo: () => Promise<void>;
   handleRedo: () => Promise<void>;
-  handleCopy: () => boolean;
-  handlePaste: () => Promise<void>;
-  handleCut: () => Promise<boolean>;
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onToggleRecording?: () => void;
@@ -171,9 +163,8 @@ interface HotkeyCallbacks {
   showToast: (message: string, tone?: "error" | "info") => void;
 }
 
-/** Exported for tests, like dispatchPlainKey below: lets the Cmd+C/Cmd+V
- *  arbitration between an automation range and the clip clipboard be asserted
- *  without standing up the whole hook. */
+/** Exported for tests, like dispatchPlainKey below. Native ClipboardEvent
+ *  handlers own Cmd/Ctrl+C/X/V so their bytes stay tied to the browser gesture. */
 export function dispatchModifierKey(
   event: KeyboardEvent,
   key: string,
@@ -215,37 +206,6 @@ export function dispatchModifierKey(
     return true;
   }
 
-  if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
-    // An active automation range owns Cmd+C/Cmd+V, the same way it owns Delete
-    // below. This listener is on window/capture and runs before
-    // useAutomationSelectionKeyboard's document/capture handler, so without
-    // this the clip clipboard also claimed the key: Cmd+V duplicated the clip
-    // while the automation paste wrote the same file, and Cmd+C armed both
-    // clipboards and toasted "Copied clip". Return without preventDefault so
-    // the downstream handler still sees the key.
-    if (automationOwnsKey(event)) return true;
-    if (key === "c") {
-      if (cb.handleCopy()) {
-        event.preventDefault();
-        trackStudioEvent("keyboard_shortcut", { action: "copy" });
-      }
-      return true;
-    }
-    if (key === "v") {
-      event.preventDefault();
-      trackStudioEvent("keyboard_shortcut", { action: "paste" });
-      void cb.handlePaste();
-      return true;
-    }
-    if (key === "x") {
-      if (usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current) {
-        event.preventDefault();
-        trackStudioEvent("keyboard_shortcut", { action: "cut" });
-        void cb.handleCut();
-      }
-      return true;
-    }
-  }
   return false;
 }
 
@@ -382,9 +342,6 @@ export function useAppHotkeys({
   syncHistoryPreviewAfterApply,
   waitForPendingDomEditSaves,
   leftSidebarRef,
-  handleCopy,
-  handlePaste,
-  handleCut,
   onResetKeyframes,
   onDeleteSelectedKeyframes,
   onAfterUndoRedo,
@@ -491,9 +448,6 @@ export function useAppHotkeys({
     handleDomEditElementDelete,
     handleUndo,
     handleRedo,
-    handleCopy,
-    handlePaste,
-    handleCut,
     onResetKeyframes,
     onDeleteSelectedKeyframes,
     onToggleRecording,

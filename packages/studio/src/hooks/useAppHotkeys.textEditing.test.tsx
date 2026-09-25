@@ -92,9 +92,6 @@ function Harness() {
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
     waitForPendingDomEditSaves: vi.fn(async () => undefined),
     leftSidebarRef,
-    handleCopy: vi.fn(() => false),
-    handlePaste: vi.fn(async () => undefined),
-    handleCut: vi.fn(async () => false),
     onResetKeyframes: vi.fn(() => false),
     onDeleteSelectedKeyframes: keyframeDelete,
   });

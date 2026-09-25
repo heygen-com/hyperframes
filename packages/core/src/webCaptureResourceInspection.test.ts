@@ -52,6 +52,21 @@ function minimalMp4(): Uint8Array {
   );
 }
 
+function minimalGlb(gltf: Record<string, unknown> = { asset: { version: "2.0" } }): Uint8Array {
+  const encoded = new TextEncoder().encode(JSON.stringify(gltf));
+  const jsonLength = Math.ceil(encoded.length / 4) * 4;
+  const bytes = new Uint8Array(20 + jsonLength);
+  const view = new DataView(bytes.buffer);
+  bytes.set(ascii("glTF"), 0);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, bytes.length, true);
+  view.setUint32(12, jsonLength, true);
+  view.setUint32(16, 0x4e4f534a, true);
+  bytes.fill(0x20, 20);
+  bytes.set(encoded, 20);
+  return bytes;
+}
+
 describe("inspectWebCaptureResource", () => {
   it("reads the closed image formats from their bytes", () => {
     const png = fromBase64(
@@ -117,5 +132,21 @@ describe("inspectWebCaptureResource", () => {
       decodedBytes: 1024,
     });
     expect(inspectWebCaptureResource(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
+  });
+
+  it("accepts a self-contained GLB and rejects model bytes that escape the envelope", () => {
+    expect(inspectWebCaptureResource(minimalGlb())).toEqual({
+      mime: "model/gltf-binary",
+    });
+    expect(
+      inspectWebCaptureResource(
+        minimalGlb({ asset: { version: "2.0" }, buffers: [{ uri: "https://host/model.bin" }] }),
+      ),
+    ).toBeNull();
+    expect(
+      inspectWebCaptureResource(
+        minimalGlb({ asset: { version: "2.0" }, images: [{ uri: "texture.png" }] }),
+      ),
+    ).toBeNull();
   });
 });

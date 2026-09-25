@@ -1,0 +1,24 @@
+{
+  "name": "@hyperframes/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bunx vite@6.4.2 build && bunx vite@6.4.2 build --config vite.content.config.ts && node scripts/copy-static.mjs",
+    "stage": "node scripts/stage.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e:editable": "node tests/e2e/run-editable-capture.mjs"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "happy-dom": "^20.9.0",
+    "puppeteer-core": "^25.8.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.4.2",
+    "vitest": "^3.2.4"
+  }
+}

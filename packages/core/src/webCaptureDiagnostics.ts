@@ -2,8 +2,9 @@ export const WEB_CAPTURE_PRODUCER_DIAGNOSTICS = {
   "animation.staticized": { rank: 10, severity: "warning" },
   "control.redacted": { rank: 20, severity: "warning" },
   "opaque.replaced": { rank: 30, severity: "info" },
-  "media.seek-unverified": { rank: 40, severity: "warning" },
-  "still.cropped": { rank: 50, severity: "warning" },
+  "model.localized": { rank: 40, severity: "info" },
+  "media.seek-unverified": { rank: 50, severity: "warning" },
+  "still.cropped": { rank: 60, severity: "warning" },
 } as const satisfies Record<string, { rank: number; severity: "info" | "warning" }>;
 
 export const WEB_CAPTURE_REJECTION_REASONS = {

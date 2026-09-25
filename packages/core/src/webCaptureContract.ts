@@ -156,7 +156,8 @@ const RESOURCE_FONT_KEYS = [...RESOURCE_SHARED_KEYS, "decodedBytes"] as const;
 
 function resourceKeys(kind: string): readonly string[] {
   if (kind === "media") return [...RESOURCE_DIMENSION_KEYS, "durationMs"];
-  return kind === "font" ? RESOURCE_FONT_KEYS : RESOURCE_DIMENSION_KEYS;
+  if (kind === "font") return RESOURCE_FONT_KEYS;
+  return kind === "model" ? RESOURCE_SHARED_KEYS : RESOURCE_DIMENSION_KEYS;
 }
 
 function hasValidResourceBase(value: JsonRecord): boolean {
@@ -185,6 +186,8 @@ function hasValidResourceVariant(value: JsonRecord): boolean {
         validDimensions(value.width, value.height) &&
         isPositiveInteger(value.durationMs)
       );
+    case "model":
+      return value.mime === "model/gltf-binary";
     default:
       return false;
   }

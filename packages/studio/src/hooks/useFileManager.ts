@@ -10,6 +10,7 @@ import {
   StudioFileConflictError,
   StudioSaveNetworkError,
 } from "../utils/studioSaveDiagnostics";
+import { deleteProjectFile } from "../utils/projectFileDelete";
 import { studioExpectedFileVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
@@ -392,19 +393,14 @@ export function useFileManager({
     async (path: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(
-        `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`,
-        {
-          method: "DELETE",
-        },
-      );
-      if (res.ok) {
+      try {
+        await deleteProjectFile(pid, path);
         if (editingPathRef.current === path) setEditingFile(null);
         await refreshFileTree();
-      } else {
-        const err = await res.json().catch(() => ({ error: "unknown" }));
-        console.error(`Delete failed: ${err.error}`);
-        showToast(`Couldn't delete ${path}: ${err.error}`, "error");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to delete ${path}`;
+        console.error(message);
+        showToast(`Couldn't delete ${path}: ${message}`, "error");
       }
     },
     [refreshFileTree, showToast],

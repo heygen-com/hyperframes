@@ -65,6 +65,10 @@ export type WebCaptureResource =
       width: number;
       height: number;
       durationMs: number;
+    })
+  | (WebCaptureResourceBase & {
+      kind: "model";
+      mime: "model/gltf-binary";
     });
 
 export interface WebCaptureResourceInspection {

@@ -66,6 +66,7 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "6.40.0",
+    "@google/model-viewer": "4.3.1",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/player": "workspace:*",
@@ -78,7 +79,8 @@
     "dompurify": "^3.2.4",
     "gsap": "^3.13.0",
     "marked": "^14.1.4",
-    "mediabunny": "^1.45.3"
+    "mediabunny": "^1.45.3",
+    "three": "0.183.2"
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",

@@ -1,6 +1,6 @@
 export const WEB_CAPTURE_BUDGETS = {
   clipboardItems: 1,
-  finalUtf8Bytes: 2_000_000,
+  finalUtf8Bytes: 10_000_000,
   htmlCssBytes: 1_000_000,
   nodes: 10_000,
   depth: 128,
@@ -10,6 +10,7 @@ export const WEB_CAPTURE_BUDGETS = {
   captureDeadlineMs: 12_000,
   aggregateDecodedPixels: 32_000_000,
   materializedBytes: 8_000_000,
+  modelBytes: 8_000_000,
   decodedFontBytes: 16_000_000,
   mediaDimension: 8_192,
   mediaDurationMs: 12_000,
