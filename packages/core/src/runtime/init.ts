@@ -2518,9 +2518,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
-      if (!isVideoElement(rawNode) && !isImageElement(rawNode) && rawNode.tagName !== "AUDIO") {
-        decidedTimedClip = true;
-      }
+      if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
