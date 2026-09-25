@@ -41,6 +41,7 @@ import {
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   ensureExternalScriptTag,
+  emitMountedModuleScripts,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
@@ -1096,6 +1097,13 @@ function inlineSubCompositions(
       }
     }
     flushInline();
+  }
+  if (body) {
+    emitMountedModuleScripts(
+      document as unknown as Document,
+      result.importMaps,
+      result.moduleScripts,
+    );
   }
 
   // Compile-time CSS custom properties (mirrors the preview bundler): root

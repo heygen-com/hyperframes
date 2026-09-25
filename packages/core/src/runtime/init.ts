@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication complexity
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { isInClipWindow } from "./clipWindow";
+import { revealTimedClipsAfterFirstPass } from "./timedClipHide";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
@@ -2452,6 +2453,7 @@ export function initSandboxRuntimeModular(): void {
       0,
       timingRevision,
     );
+    let decidedTimedClip = false;
     for (const rawNode of visibilityNodes) {
       if (!isHtmlElement(rawNode)) continue;
 
@@ -2516,6 +2518,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
+      if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
@@ -2529,6 +2532,7 @@ export function initSandboxRuntimeModular(): void {
         timedClipDisplayNoneApplied.add(rawNode);
       }
     }
+    if (decidedTimedClip && revealTimedClipsAfterFirstPass()) colorGradingRuntime?.refresh();
     // Only when a `data-hidden` mutation actually moved something: the skips
     // this reschedule exists to re-run are what change the active set, so
     // firing it otherwise was an audible stop-and-restart across the whole mix

@@ -49,15 +49,15 @@ export interface CaptureSceneOptions {
   scale?: number;
 }
 
-function forceSceneVisibleInClone(source: HTMLElement, cloneDoc: Document): void {
+export function forceSceneVisibleInClone(source: HTMLElement, cloneDoc: Document): void {
   if (!source.id) return;
   const clone = cloneDoc.getElementById(source.id);
   if (!(clone instanceof HTMLElement)) return;
 
   clone.style.opacity = "1";
-  clone.style.visibility = "visible";
+  clone.style.setProperty("visibility", "visible", "important");
   clone.querySelectorAll<HTMLElement>("[data-start]").forEach((el) => {
-    el.style.visibility = "visible";
+    el.style.setProperty("visibility", "visible", "important");
   });
 }
 
