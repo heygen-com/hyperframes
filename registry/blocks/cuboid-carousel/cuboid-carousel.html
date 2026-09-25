@@ -814,7 +814,8 @@
       tl.addLabel("solo-hold", T_CLEAR);
       tl.addLabel("hero-exit", T_OUT);
       tl.addLabel("empty", T_EMPTY);
-      tl.to(S, { t: DUR, duration: DUR, ease: "none" }, 0);
+      // fromTo: the start is fixed, not whatever warmGpu last left in S.t when the tween first renders.
+      tl.fromTo(S, { t: 0 }, { t: DUR, duration: DUR, ease: "none" }, 0);
       tl.eventCallback("onUpdate", () => renderAt(S.t));
 
       /* Studio's player seeks with GSAP events suppressed and dispatches an
@@ -836,7 +837,7 @@
           await new Promise((resolve) => setTimeout(resolve, 0));
           renderAt(DUR * f);
         }
-        renderAt(S.t);
+        renderAt(tl.time());
         renderer.getContext().finish();
       }
       window.__hf = window.__hf || {};
