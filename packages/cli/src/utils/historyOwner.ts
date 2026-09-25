@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   DEFAULT_HISTORY_ROOT,
@@ -75,7 +75,8 @@ const lastTurnsFile = (dir: string) => join(dir, ".hyperframes", "history-turns.
 
 function readLastTurns(dir: string): Record<string, string[]> {
   try {
-    return JSON.parse(readFileSync(lastTurnsFile(dir), "utf-8")) as Record<string, string[]>;
+    const turns: unknown = JSON.parse(readFileSync(lastTurnsFile(dir), "utf-8"));
+    return turns && typeof turns === "object" ? (turns as Record<string, string[]>) : {};
   } catch {
     return {};
   }
@@ -94,12 +95,12 @@ export async function endTurn(
 ): Promise<{ entry: HistoryEntry | null; parts: string[] }> {
   const entry = await owner.end(turn.id);
   const parts = entry ? [...turn.parts, entry.id] : turn.parts;
+  // Recorded before the marker goes, so a crash between the two never leaves the older turn as the last one.
+  const draft = `${lastTurnsFile(dir)}.${process.pid}.tmp`;
+  mkdirSync(dirname(draft), { recursive: true });
+  writeFileSync(draft, JSON.stringify({ ...readLastTurns(dir), [turn.who.name]: parts }));
+  renameSync(draft, lastTurnsFile(dir));
   writeTurn(dir, null);
-  mkdirSync(dirname(lastTurnsFile(dir)), { recursive: true });
-  writeFileSync(
-    lastTurnsFile(dir),
-    JSON.stringify({ ...readLastTurns(dir), [turn.who.name]: parts }),
-  );
   return { entry, parts };
 }
 

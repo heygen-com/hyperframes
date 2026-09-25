@@ -322,6 +322,25 @@ describe("hyperframes history, one owner", () => {
     expect([read("index.html"), read("notes.html")]).toEqual(["A", "N"]);
   });
 
+  it("undo --who of a split turn with a conflict changes nothing and offers the choices for the whole turn", async () => {
+    const { read, write, hf } = project();
+    await hf();
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    write("index.html", "A2");
+    await hf(); // files the turn so far as its first part
+    write("notes.html", "N2");
+    await hf("end");
+    write("index.html", "A3"); // the person's edit over the first part
+
+    const refused = await hf("undo", "--who", "claude");
+    expect(refused.code).toBe(2);
+    expect(refused.out).toContain("hyperframes history undo --who claude --just-this");
+    expect([read("index.html"), read("notes.html")], "no part stays undone").toEqual(["A3", "N2"]);
+
+    expect((await hf("undo", "--who", "claude", "--just-this")).code).toBe(0);
+    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N"]);
+  });
+
   it("a turn marker with no last write time has ended, so the next edit is not the agent's", async () => {
     const { dir, write, json, hf } = project();
     await hf();

@@ -166,14 +166,19 @@ async function textDiff(owner: Owner, entry: HistoryEntry): Promise<string> {
   }
 }
 
-function conflictText(entry: HistoryListItem, newer: HistoryListItem[], files: string[]): string {
-  const id = short(entry.id);
+/** `again` is the command to run once more with a choice: `undo <id>`, or `undo --who <name>` for a whole turn. */
+function conflictText(
+  entry: HistoryListItem,
+  newer: HistoryListItem[],
+  files: string[],
+  again: string,
+): string {
   return [
     `${files.join(", ")} changed since "${entry.label}". Newer entries:`,
     ...newer.map((later) => `  ${line(later)}`),
     `Choose one:`,
-    `  hyperframes history undo ${id} --just-this       put back only its files, over the newer edits to them`,
-    `  hyperframes history undo ${id} --back-to-before  go back to before it, undoing the newer entries too`,
+    `  hyperframes history ${again} --just-this       put back only its files, over the newer edits to them`,
+    `  hyperframes history ${again} --back-to-before  go back to before it, undoing the newer entries too`,
   ].join("\n");
 }
 
@@ -214,24 +219,34 @@ async function runUndo(args: {
       : undefined;
   await withOwner("undo", args.dir, async (owner, turn, projectDir) => {
     const who = whoOf(args.who);
-    // Undo ends the caller's own open turn first, so the turn is entries that can be undone.
+    // Undo ends the caller's own open turn first, so its entries can be undone.
     if (turn?.who.name === who.name) await endTurn(owner, turn, projectDir);
     const entries = await owner.list();
     const targets = args.ref ? [entryOf(entries, args.ref)] : turnTargets(entries, who, projectDir);
-    const undid: HistoryEntry[] = [];
-    for (const entry of targets) {
-      const result = await owner.undo(entry.id, who, mode);
-      if (!result.ok) {
-        setCommandExitCode(2);
-        const newer = result.conflict.newer.map((id) => entryOf(entries, id));
-        return print(args.json, result, conflictText(entry, newer, result.conflict.files));
+    const undid: Array<{ target: HistoryListItem; undo: HistoryEntry }> = [];
+    for (const target of targets) {
+      const result = await owner.undo(target.id, who, mode);
+      if (result.ok) {
+        if (result.entry) undid.push({ target, undo: result.entry });
+        continue;
       }
-      if (result.entry) undid.push(result.entry);
+      // A turn is undone whole or not at all: redo the parts this run already undid.
+      for (const done of undid.reverse()) await owner.undo(done.undo.id, who);
+      setCommandExitCode(2);
+      const now = await owner.list();
+      const newer = result.conflict.newer.map((id) => entryOf(now, id));
+      const again = args.ref ? `undo ${short(target.id)}` : `undo --who ${who.name}`;
+      return print(args.json, result, conflictText(target, newer, result.conflict.files, again));
     }
     print(
       args.json,
-      { ok: true, entry: undid[0] ? publicEntry(undid[0]) : null, entries: undid.map(publicEntry) },
-      undid.map((entry) => `Undid: ${line(entry)}`).join("\n") || "Nothing to undo.",
+      {
+        ok: true,
+        entry: undid[0] ? publicEntry(undid[0].undo) : null,
+        entries: undid.map((done) => publicEntry(done.undo)),
+      },
+      undid.map((done) => `Undid ${short(done.target.id)}: ${line(done.undo)}`).join("\n") ||
+        "Nothing to undo.",
     );
   });
 }
