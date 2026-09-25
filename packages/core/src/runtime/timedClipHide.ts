@@ -1,20 +1,32 @@
 // Until the first visibility pass decides each timed clip, a paused page would paint every clip at once
 // (and decode every scene's images). Media is left out: init's media pass owns it.
+// The rule and its flag live on the page, not in this module: every runtime copy on the page shares them.
+const HIDE_ATTR = "data-hf-first-pass-hide";
 const HIDE_UNTIL_FIRST_PASS =
   "[data-start]:not(video, audio, img) { visibility: hidden !important; }";
 
-let hideStyle: HTMLStyleElement | null = null;
+type FirstPassWindow = Window & {
+  __hfFirstPassHidden?: boolean;
+  __hyperframeRuntimeBootstrapped?: boolean;
+};
 
 export function hideTimedClipsUntilFirstPass(): void {
-  if (hideStyle || typeof document === "undefined") return;
+  if (typeof document === "undefined") return;
+  const win = window as FirstPassWindow;
+  // A runtime that already initialised may never run another pass to lift a new rule.
+  if (win.__hfFirstPassHidden || win.__hyperframeRuntimeBootstrapped) return;
   const parent = document.head ?? document.documentElement;
   if (!parent) return;
-  hideStyle = document.createElement("style");
-  hideStyle.textContent = HIDE_UNTIL_FIRST_PASS;
-  parent.appendChild(hideStyle);
+  const style = document.createElement("style");
+  style.setAttribute(HIDE_ATTR, "");
+  style.textContent = HIDE_UNTIL_FIRST_PASS;
+  parent.appendChild(style);
+  win.__hfFirstPassHidden = true;
 }
 
 export function revealTimedClipsAfterFirstPass(): void {
-  hideStyle?.remove();
-  hideStyle = null;
+  const win = window as FirstPassWindow;
+  if (!win.__hfFirstPassHidden) return;
+  win.__hfFirstPassHidden = false;
+  for (const style of document.querySelectorAll(`style[${HIDE_ATTR}]`)) style.remove();
 }
