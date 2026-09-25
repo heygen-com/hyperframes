@@ -4,6 +4,7 @@ import {
   isPageSideCompositingSupported,
   PAGE_COMPOSITOR_BUILD_CANARY,
   PAGE_COMPOSITOR_CANVAS_ID,
+  settledSceneToReveal,
 } from "./engineModePageComposite.js";
 
 describe("isPageSideCompositingSupported", () => {
@@ -87,6 +88,31 @@ describe("clonePinStyleFor", () => {
     // frame, or the clone would silently grow to fill the canvas.
     const pin = clonePinStyleFor({ left: 120, top: 240, width: 400, height: 300 });
     expect(pin).toEqual({ left: "120px", top: "240px", width: "400px", height: "300px" });
+  });
+});
+
+function hiddenScene(attrs: Record<string, string>): HTMLElement {
+  return {
+    style: { visibility: "hidden" },
+    getAttribute: (name: string) => attrs[name] ?? null,
+  } as unknown as HTMLElement;
+}
+
+describe("settledSceneToReveal", () => {
+  it("reveals the last shader scene hidden inside its own window", () => {
+    const scene = hiddenScene({ "data-start": "6.4", "data-duration": "1.6" });
+    expect(settledSceneToReveal(scene, 7.9)).toBe(scene);
+  });
+
+  it("leaves it hidden once its window has ended and a later scene plays", () => {
+    const scene = hiddenScene({ "data-start": "6.4", "data-duration": "1.6" });
+    expect(settledSceneToReveal(scene, 8.0)).toBeNull();
+    expect(settledSceneToReveal(scene, 8.8)).toBeNull();
+  });
+
+  it("reveals a scene whose window it cannot read", () => {
+    const scene = hiddenScene({ "data-start": "s4-end" });
+    expect(settledSceneToReveal(scene, 8.8)).toBe(scene);
   });
 });
 

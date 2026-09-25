@@ -106,6 +106,16 @@ export function clonePinStyleFor(rect: {
   };
 }
 
+/** The settled scene, if hidden while its own `data-start`/`data-duration` window is still open. */
+export function settledSceneToReveal(scene: HTMLElement | null, time: number): HTMLElement | null {
+  if (!scene || scene.style.visibility !== "hidden") return null;
+  const start = Number.parseFloat(scene.getAttribute("data-start") ?? "");
+  const duration = Number.parseFloat(scene.getAttribute("data-duration") ?? "");
+  const windowEnded =
+    Number.isFinite(start) && Number.isFinite(duration) && time >= start + duration;
+  return windowEnded ? null : scene;
+}
+
 export function isPageSideCompositingSupported(): boolean {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
   if (!isHtmlInCanvasCaptureSupported()) return false;
@@ -405,10 +415,11 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         // core clip runtime hides the final scene a beat before the comp ends, so
         // un-hide the settled scene (others stay at opacity 0).
         const settledId = settledSceneIdAt(time);
-        const settled = settledId ? document.getElementById(settledId) : null;
-        if (settled instanceof HTMLElement && settled.style.visibility === "hidden") {
-          settled.style.visibility = "visible";
-        }
+        const settled = settledSceneToReveal(
+          settledId ? document.getElementById(settledId) : null,
+          time,
+        );
+        if (settled) settled.style.visibility = "visible";
         return result;
       }
       currentActive = active;
