@@ -1,13 +1,17 @@
 {
   "studio-open": {
-    "thumbnailRenders": 13,
-    "total.frameNavigations": 7,
-    "total.requests.document": 2,
-    "total.requests.thumbnail": 13
+    "browser": "153",
+    "counts": {
+      "thumbnailRenders": 20,
+      "total.frameNavigations": 7,
+      "total.requests.document": 2,
+      "total.requests.thumbnail": 20
+    }
   },
   "timeline-scroll": {
-    "reactCommitsPerTick": 0.86,
-    "styleRecalcsPerTick": 1.71,
-    "layoutsPerTick": 0.86
+    "browser": "153",
+    "counts": {
+      "reactCommitsPerScrollStep": 1
+    }
   }
 }

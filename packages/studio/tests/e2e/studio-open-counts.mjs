@@ -12,7 +12,7 @@
  * the end is one thumbnail the server rendered during this journey. Totals are
  * read once thumbnail work has gone quiet; `idle.*` is the fixed window.
  */
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
 import { resolveChromeExecutable } from "./chrome-executable.mjs";
@@ -30,6 +30,19 @@ if (!STUDIO_URL || !PROJECT_DIR) {
 const executablePath = resolveChromeExecutable();
 if (!executablePath) {
   console.error("No Chrome executable found; set PUPPETEER_EXECUTABLE_PATH");
+  process.exit(2);
+}
+
+// A scene file that never made it into the fixture still opens and still renders a thumbnail,
+// so check the film is whole before measuring it.
+const indexHtml = readFileSync(join(PROJECT_DIR, "index.html"), "utf8");
+const scenes = [...indexHtml.matchAll(/data-composition-src="([^"]+)"/g)].map((match) => match[1]);
+const missingScenes = scenes.filter((scene) => !existsSync(join(PROJECT_DIR, scene)));
+if (scenes.length !== SCENE_COUNT || missingScenes.length > 0) {
+  console.error(
+    `The fixture must mount ${SCENE_COUNT} scenes that exist; index.html mounts ${scenes.length}` +
+      (missingScenes.length > 0 ? `, missing: ${missingScenes.join(", ")}` : ""),
+  );
   process.exit(2);
 }
 

@@ -759,6 +759,17 @@ jobs:
             packages/studio/data/projects/timeline-virtualization
           cp -R packages/studio/tests/e2e/fixtures/studio-open \
             packages/studio/data/projects/studio-open
+      - name: Read the base branch's work-count ceilings
+        # A ceiling may not rise or disappear against the branch this PR merges into.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if ! git show FETCH_HEAD:packages/studio/tests/e2e/perf-ceilings.json > /tmp/base-perf-ceilings.json; then
+            rm -f /tmp/base-perf-ceilings.json
+            echo "The base branch has no perf-ceilings.json yet"
+          fi
       - name: Run both arms of the timeline viewport gate
         run: |
           set -euo pipefail
@@ -804,7 +815,7 @@ jobs:
           COUNT_STATUS=0
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
             packages/studio/tests/e2e/perf-ceilings.json timeline-scroll \
-            /tmp/timeline-gate-default.json || COUNT_STATUS=$?
+            /tmp/timeline-gate-default.json /tmp/base-perf-ceilings.json || COUNT_STATUS=$?
           stop_server
 
           NODE_ENV=production \
@@ -829,7 +840,7 @@ jobs:
             echo "### Timeline viewport gate"
             echo "- Default arm exit: ${DEFAULT_STATUS}"
             echo "- Explicitly disabled arm exit: ${DISABLED_STATUS}"
-            echo "- Work per scroll tick against perf-ceilings.json exit: ${COUNT_STATUS}"
+            echo "- Work per scroll step against perf-ceilings.json exit: ${COUNT_STATUS}"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 || COUNT_STATUS != 0 )); then
@@ -858,7 +869,8 @@ jobs:
             node packages/studio/tests/e2e/studio-open-counts.mjs \
             | tee /tmp/studio-open-counts.json
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
-            packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json
+            packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
+            /tmp/base-perf-ceilings.json
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.

@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
- * Work-count ratchet: each gated counter has a ceiling in perf-ceilings.json
- * that may only go down. A journey fails when any gated counter rises above it.
+ * Work-count ratchet: each gated counter has a ceiling in perf-ceilings.json that may only go
+ * down. A journey fails when a counter rises above its ceiling or falls below it (bank the
+ * improvement), or when a ceiling was raised or removed against the base branch's file.
  *
- *   node perf-ratchet.mjs check <ceilings.json> <journey> <evidence.json>
+ *   node perf-ratchet.mjs check <ceilings.json> <journey> <evidence.json> [<base-ceilings.json>]
  *   node perf-ratchet.mjs lower <ceilings.json> <journey> <evidence.json>
  *   node perf-ratchet.mjs correlate <variant>=<evidence.json> ...
  *
- * Evidence is a journey's JSON output: `workCounts` (flat counter map) and `wallMs`.
+ * Ceilings: `{ <journey>: { browser: "<Chrome major>", counts: { <counter>: n } } }`.
+ * Evidence is a journey's JSON output: `workCounts`, `wallMs` and the browser it ran in.
  */
-import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 // A counter gates only if it tracks wall-clock across variants and repeats exactly within
@@ -17,30 +19,45 @@ import { pathToFileURL } from "node:url";
 const MIN_CORRELATION = 0.7;
 const MAX_SPREAD_RATIO = 0;
 
-export function checkCeilings(ceilings, counts) {
-  const rows = Object.entries(ceilings).map(([counter, ceiling]) => {
-    const value = counts[counter];
-    if (!Number.isFinite(value)) return { counter, ceiling, value: null, status: "missing" };
-    if (value > ceiling) return { counter, ceiling, value, status: "rose" };
-    return { counter, ceiling, value, status: value < ceiling ? "below" : "at" };
-  });
+function ceilingRow(counter, ceiling, value, base) {
+  if (Number.isFinite(base) && ceiling > base) return { counter, ceiling, base, status: "raised" };
+  if (!Number.isFinite(value)) return { counter, ceiling, value: null, status: "missing" };
+  if (value === ceiling) return { counter, ceiling, value, status: "at" };
+  return { counter, ceiling, value, status: value > ceiling ? "rose" : "below" };
+}
+
+/** Passes only when every gated counter sits exactly at a ceiling no higher than the base's. */
+export function checkCeilings(ceilings, counts, baseCeilings = {}) {
+  const rows = Object.entries(ceilings).map(([counter, ceiling]) =>
+    ceilingRow(counter, ceiling, counts[counter], baseCeilings[counter]),
+  );
   if (rows.length === 0)
     throw new Error("no gated counters: a ratchet that checks nothing passes nothing");
-  return { passed: rows.every((row) => row.status === "at" || row.status === "below"), rows };
+  for (const [counter, base] of Object.entries(baseCeilings)) {
+    if (!(counter in ceilings)) rows.push({ counter, base, status: "removed" });
+  }
+  return { passed: rows.every((row) => row.status === "at"), rows };
 }
 
 /** `, +67%`: a rise as a share of its ceiling, or nothing for a zero ceiling. */
 const riseShare = (rise, ceiling) =>
   ceiling === 0 ? "" : `, +${Math.round((rise / ceiling) * 100)}%`;
 
-export function formatRow({ counter, ceiling, value, status }) {
-  if (status === "missing") return `FAIL ${counter}: not measured (ceiling ${ceiling})`;
-  if (status === "rose") {
-    const rise = value - ceiling;
-    return `FAIL ${counter} rose ${ceiling} -> ${value} (+${round(rise)}${riseShare(rise, ceiling)})`;
-  }
-  if (status === "below") return `ok   ${counter} ${value}, below its ceiling ${ceiling}: lower it`;
-  return `ok   ${counter} ${value}`;
+const ROW_TEXT = {
+  at: ({ counter, value }) => `ok   ${counter} ${value}`,
+  missing: ({ counter, ceiling }) => `FAIL ${counter}: not measured (ceiling ${ceiling})`,
+  rose: ({ counter, ceiling, value }) =>
+    `FAIL ${counter} rose ${ceiling} -> ${value} (+${round(value - ceiling)}${riseShare(value - ceiling, ceiling)})`,
+  below: ({ counter, ceiling, value }) =>
+    `FAIL ${counter} fell ${ceiling} -> ${value}: bank it by setting its ceiling to ${value} (perf-ratchet.mjs lower)`,
+  raised: ({ counter, ceiling, base }) =>
+    `FAIL ${counter}: ceiling raised ${base} -> ${ceiling} against the base branch; ceilings only go down`,
+  removed: ({ counter, base }) =>
+    `FAIL ${counter}: ceiling ${base} removed against the base branch; ceilings only go down`,
+};
+
+export function formatRow(row) {
+  return ROW_TEXT[row.status](row);
 }
 
 /** New ceilings: each gated counter drops to what was measured, never rises. */
@@ -104,24 +121,52 @@ function pearson(xs, ys) {
 const round = (value) => Math.round(value * 100) / 100;
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
-/** The whole ceilings file, the journey named in it, and that journey's measured counts. */
+/** Chrome's major version from a journey's evidence, e.g. "153" from "HeadlessChrome/153.0.1.2". */
+export function browserMajor(evidence) {
+  return /\/(\d+)\./.exec(evidence.browser ?? evidence.environment?.browser ?? "")?.[1] ?? null;
+}
+
+/** The whole ceilings file, the journey named in it, and that journey's evidence. */
 function journeyInputs([ceilingsPath, journey, evidencePath]) {
   const all = readJson(ceilingsPath);
   if (!all[journey]) throw new Error(`${ceilingsPath} has no journey "${journey}"`);
-  return { all, ceilingsPath, journey, counts: readJson(evidencePath).workCounts ?? {} };
+  const evidence = readJson(evidencePath);
+  return { all, ceilingsPath, journey, evidence, counts: evidence.workCounts ?? {} };
 }
 
 function runCheck(args) {
-  const { all, journey, counts } = journeyInputs(args);
-  const { passed, rows } = checkCeilings(all[journey], counts);
+  const { all, journey, evidence, counts } = journeyInputs(args);
+  // The base branch's copy of this file; absent while the journey is new there.
+  const basePath = args[3];
+  const base = basePath && existsSync(basePath) ? readJson(basePath)[journey]?.counts : undefined;
+  const { passed, rows } = checkCeilings(all[journey].counts, counts, base);
   console.log(`[perf-ratchet] ${journey}: ${passed ? "PASS" : "FAIL"}`);
   for (const row of rows) console.log(`[perf-ratchet]   ${formatRow(row)}`);
+  const measuredOn = browserMajor(evidence);
+  if (measuredOn !== all[journey].browser) {
+    console.log(
+      `[perf-ratchet]   note: measured on Chrome ${measuredOn}, ceilings recorded on Chrome ${all[journey].browser}`,
+    );
+  }
+  if (rows.some((row) => row.status === "rose")) {
+    console.log(
+      "[perf-ratchet]   If this change should not add that work, confirm the counter still repeats " +
+        "exactly: run the journey a few times and compare with perf-ratchet.mjs correlate.",
+    );
+  }
   return passed ? 0 : 1;
 }
 
 function runLower(args) {
-  const { all, ceilingsPath, journey, counts } = journeyInputs(args);
-  all[journey] = lowerCeilings(all[journey], counts);
+  const { all, ceilingsPath, journey, evidence, counts } = journeyInputs(args);
+  const measuredOn = browserMajor(evidence);
+  if (measuredOn !== all[journey].browser) {
+    throw new Error(
+      `evidence is from Chrome ${measuredOn} but ${journey}'s ceilings were recorded on Chrome ` +
+        `${all[journey].browser}: take the evidence from the CI job, which runs that browser`,
+    );
+  }
+  all[journey].counts = lowerCeilings(all[journey].counts, counts);
   writeFileSync(ceilingsPath, `${JSON.stringify(all, null, 2)}\n`);
   return 0;
 }
@@ -144,7 +189,9 @@ const COMMANDS = { check: runCheck, lower: runLower, correlate: runCorrelate };
 
 function main([command, ...args]) {
   if (Object.hasOwn(COMMANDS, command)) return COMMANDS[command](args);
-  console.error("usage: perf-ratchet.mjs check|lower <ceilings.json> <journey> <evidence.json>");
+  console.error(
+    "usage: perf-ratchet.mjs check|lower <ceilings.json> <journey> <evidence.json> [<base-ceilings.json>]",
+  );
   console.error("       perf-ratchet.mjs correlate <variant>=<evidence.json> ...");
   return 2;
 }
