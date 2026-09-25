@@ -1,5 +1,5 @@
 import type { DomEditSelection } from "./domEditingTypes";
-import { findPreviewElement } from "../../player/lib/timelineElementHelpers";
+import { findElementForSelection } from "./domEditingElement";
 
 /**
  * Build the "live preview" callback the 3D-transform sub-view fires while a
@@ -9,17 +9,17 @@ import { findPreviewElement } from "../../player/lib/timelineElementHelpers";
  * Extracted so the identical closure exists once — shared by the legacy
  * PropertyPanel Layout section and the flat Layout group (PropertyPanelFlat).
  */
-// Resolve by id when unique, otherwise by selector + selectorIndex — a bare
-// querySelector(selector) always hits the FIRST match, so dragging on the
-// second of two same-selector siblings would animate the wrong element.
+// hf-ids and ids repeat across flattened sub-compositions and a selector's first match may be a sibling, so look in
+// the selection's own file first, then anywhere.
 function resolvePreviewNode(
   doc: Document | null | undefined,
   el: DomEditSelection,
 ): Element | null {
   if (!doc) return null;
-  if (el.hfId || el.id) return findPreviewElement(doc, el);
-  if (!el.selector) return null;
-  return doc.querySelectorAll(el.selector)[el.selectorIndex ?? 0] ?? null;
+  return (
+    findElementForSelection(doc, el) ??
+    findElementForSelection(doc, { ...el, sourceFile: undefined })
+  );
 }
 
 export function createGsapLivePreview(iframeRef: { readonly current: HTMLIFrameElement | null }) {

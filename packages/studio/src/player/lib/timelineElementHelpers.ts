@@ -458,15 +458,23 @@ function findInClipScope(
   return lone;
 }
 
-/** A preview element by the `data-hf-id` the timeline bound it with, then by id, which can repeat across files. */
+/** A preview element by `data-hf-id` then id, which both repeat across files, preferring one in its own file. */
 export function findPreviewElement(
   doc: Document,
-  target: { hfId?: string; id?: string },
+  target: { hfId?: string; id?: string | null; sourceFile?: string },
 ): Element | null {
-  const byHfId = target.hfId
-    ? doc.querySelector(`[data-hf-id="${CSS.escape(target.hfId)}"]`)
-    : null;
-  return byHfId ?? (target.id ? doc.getElementById(target.id) : null);
+  const selectors = [
+    target.hfId && `[data-hf-id="${CSS.escape(target.hfId)}"]`,
+    target.id && `[id="${CSS.escape(target.id)}"]`,
+  ];
+  const matches = selectors.flatMap((selector) =>
+    selector ? Array.from(doc.querySelectorAll(selector)) : [],
+  );
+  return (
+    matches.find((node) => getTimelineElementSourceFile(node) === target.sourceFile) ??
+    matches[0] ??
+    null
+  );
 }
 
 export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {

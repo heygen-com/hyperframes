@@ -58,7 +58,11 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
   usePlayerStore.setState((state) => {
     let changed = false;
     const elements = state.elements.map((element) => {
-      const node = findPreviewElement(doc, { hfId: element.hfId, id: element.domId ?? element.id });
+      const node = findPreviewElement(doc, {
+        hfId: element.hfId,
+        id: element.domId ?? element.id,
+        sourceFile: element.sourceFile,
+      });
       if (!node) return element;
       const fields = syncedFields(doc, element, node);
       // Same array back when nothing moved: `elements` keys memos all over the

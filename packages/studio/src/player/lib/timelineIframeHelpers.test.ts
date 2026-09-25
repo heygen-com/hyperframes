@@ -9,6 +9,7 @@ import {
   stopScrubPreviewAudio,
 } from "./timelineIframeHelpers";
 import type { IframeWindow } from "./playbackTypes";
+import type { TimelineElement } from "../store/playerStore";
 
 function makeDoc(html: string): Document {
   const d = document.implementation.createHTMLDocument();
@@ -17,6 +18,31 @@ function makeDoc(html: string): Document {
 }
 
 describe("buildMissingCompositionElements — hfId (R7)", () => {
+  it("labels a row from its own host when a sub-composition repeats the host's id", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main">
+        <div data-composition-id="strip" data-composition-src="compositions/strip.html"><div id="scene"></div></div>
+        <div id="scene" data-hf-id="hf-scene" data-composition-id="scene" data-composition-file="compositions/scene.html"></div>
+      </div>
+    `);
+    const row = {
+      id: "scene",
+      key: "scene",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      hfId: "hf-scene",
+    };
+    const { updatedEls, patched } = buildMissingCompositionElements(
+      doc,
+      window as IframeWindow,
+      [row],
+      10,
+    );
+    expect([patched, updatedEls[0]?.compositionSrc]).toEqual([true, "compositions/scene.html"]);
+  });
+
   it("harvests hfId from data-hf-id on composition host elements", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">

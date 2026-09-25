@@ -516,8 +516,11 @@ export function buildMissingCompositionElements(
   const updatedEls = (currentEls as TimelineElement[]).map((existing) => {
     if (existing.compositionSrc) return existing;
     const host =
-      findPreviewElement(doc, { hfId: existing.hfId, id: existing.domId ?? existing.id }) ??
-      doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
+      findPreviewElement(doc, {
+        hfId: existing.hfId,
+        id: existing.domId ?? existing.id,
+        sourceFile: existing.sourceFile,
+      }) ?? doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
     if (!host) return existing;
     const compSrc =
       host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file");
