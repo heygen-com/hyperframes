@@ -1,0 +1,88 @@
+// @vitest-environment jsdom
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import { afterEach, describe, expect, it } from "vitest";
+import { useElementPicker } from "./useElementPicker";
+
+// As the host leaves it on disk: hf-ids pinned, no element ids.
+const SAVED = ensureHfIds(`<!doctype html><html><body>
+<div data-composition-id="main" data-start="0" data-duration="10">
+<h1 class="clip" data-start="2" data-duration="3" data-track-index="0">Title</h1>
+</div></body></html>`);
+
+let root: Root | null = null;
+afterEach(() => {
+  act(() => root?.unmount());
+  root = null;
+  document.body.innerHTML = "";
+});
+
+// The preview page: the saved markup plus what the runtime adds to it.
+function mountPreview(): HTMLIFrameElement {
+  const iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument as Document;
+  doc.open();
+  doc.write(SAVED);
+  doc.close();
+  (doc.querySelector("h1") as HTMLElement).style.cssText = "visibility: hidden; display: none";
+  doc.body.append(Object.assign(doc.createElement("script"), { textContent: "/* runtime */" }));
+  return iframe;
+}
+
+function mountPicker(files: Record<string, string>) {
+  const iframe = mountPreview();
+  const synced: Record<string, string>[] = [];
+  let api: ReturnType<typeof useElementPicker> | null = null;
+  function Harness() {
+    api = useElementPicker(
+      { current: iframe },
+      { workspaceFiles: files, onSyncFiles: (changed) => synced.push(changed) },
+    );
+    return null;
+  }
+  root = createRoot(document.createElement("div"));
+  act(() => root?.render(React.createElement(Harness)));
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframe.contentWindow,
+        data: {
+          source: "hf-preview",
+          type: "element-picked",
+          elementInfo: { selector: "h1", tagName: "h1" },
+          ...runtimeProtocolMetadata(30),
+        },
+      }),
+    );
+  });
+  const picker = () => api as ReturnType<typeof useElementPicker>;
+  return { picker, synced };
+}
+
+describe("an edit to a picked element without an id", () => {
+  it("writes only that edit into the saved file", () => {
+    const { picker, synced } = mountPicker({ "index.html": SAVED });
+    expect(picker().pickedElement?.selector).toBe("h1");
+    act(() => picker().setStyle("color", "red"));
+    expect(synced).toHaveLength(1);
+    const written = synced[0]?.["index.html"] ?? "";
+    expect(written).toMatch(/<h1 [^>]*style="color: red"[^>]*>Title<\/h1>/);
+    expect(written).not.toContain("display: none");
+    expect(written).not.toContain("/* runtime */");
+  });
+
+  it("persists a text edit", () => {
+    const { picker, synced } = mountPicker({ "index.html": SAVED });
+    act(() => picker().setTextContent("Hello"));
+    expect(synced[0]?.["index.html"]).toMatch(/>Hello<\/h1>/);
+  });
+
+  it("writes nothing when no saved file holds the element", () => {
+    const { picker, synced } = mountPicker({ "index.html": "<div>other</div>" });
+    act(() => picker().setStyle("color", "red"));
+    expect(synced).toEqual([]);
+  });
+});
