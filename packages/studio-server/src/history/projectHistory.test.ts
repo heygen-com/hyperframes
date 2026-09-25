@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion } from "../helpers/fileVersion";
+import { HistoryBusyError } from "./ownerLock";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
@@ -207,6 +208,37 @@ describe("openProjectHistory", () => {
     await history.close();
     const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"]);
     writeFileSync(join(historyRoot, history.projectId, "owner.pid"), dead.stdout);
+    expect((await open(projectDir, historyRoot, { ownerWaitMs: 0 })).projectId).toBe(
+      history.projectId,
+    );
+  });
+
+  it("never removes a lock another process holds: not on close, not while another evicts a dead owner", async () => {
+    const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    const lock = join(historyRoot, history.projectId, "owner.pid");
+    const other = String(process.ppid); // a live process that is not this one
+    writeFileSync(lock, other);
+    await history.close();
+    expect(readFileSync(lock, "utf-8"), "a close leaves a later owner's lock").toBe(other);
+
+    const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"]);
+    writeFileSync(lock, dead.stdout);
+    writeFileSync(`${lock}.evict`, other);
+    await expect(
+      openProjectHistory({ projectDir, historyRoot, ownerWaitMs: 200 }),
+      "only the evictor that holds the evict lock removes a dead owner",
+    ).rejects.toThrow(HistoryBusyError);
+
+    writeFileSync(`${lock}.evict`, dead.stdout);
+    expect((await open(projectDir, historyRoot, { ownerWaitMs: 200 })).projectId).toBe(
+      history.projectId,
+    );
+  });
+
+  it("takes over a lock file that holds no pid", async () => {
+    const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    writeFileSync(join(historyRoot, history.projectId, "owner.pid"), "");
     expect((await open(projectDir, historyRoot, { ownerWaitMs: 0 })).projectId).toBe(
       history.projectId,
     );

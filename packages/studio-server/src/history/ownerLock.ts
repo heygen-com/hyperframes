@@ -10,6 +10,7 @@ export class HistoryBusyError extends Error {
 }
 
 function alive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
     return true;
@@ -18,44 +19,76 @@ function alive(pid: number): boolean {
   }
 }
 
+/** The pid in `file`; null when there is no file, NaN when it holds no pid (so it reads as dead). */
 function ownerOf(file: string): number | null {
   try {
-    return Number(readFileSync(file, "utf-8"));
+    const text = readFileSync(file, "utf-8");
+    return /^\d+$/.test(text) ? Number(text) : Number.NaN;
   } catch {
     return null;
   }
 }
 
+/** Takes `file` if nobody holds it: written aside and linked in, so a reader never sees it without its pid. */
+function claim(file: string): boolean {
+  const draft = `${file}-${randomUUID()}.tmp`;
+  writeFileSync(draft, String(process.pid));
+  try {
+    linkSync(draft, file);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return false;
+  } finally {
+    rmSync(draft, { force: true });
+  }
+}
+
+/** Removes `file` only while it names this process, so a release never takes a later owner's lock. */
+function releaseOwn(file: string): void {
+  if (ownerOf(file) === process.pid) rmSync(file, { force: true });
+}
+
+/**
+ * Removes a dead owner's lock. One evictor at a time, re-reading the owner under its own lock, so a lock a live
+ * process took after the caller's check survives. False when another evictor is at it. ponytail: an evictor that
+ * dies mid-eviction leaves its lock to the next one that finds it dead, unguarded.
+ */
+function evictDeadOwner(file: string): boolean {
+  const evictor = `${file}.evict`;
+  if (!claim(evictor)) {
+    const holder = ownerOf(evictor);
+    if (holder !== null && !alive(holder)) rmSync(evictor, { force: true });
+    return false;
+  }
+  try {
+    const pid = ownerOf(file);
+    if (pid !== null && !alive(pid)) rmSync(file, { force: true });
+    return true;
+  } finally {
+    releaseOwn(evictor);
+  }
+}
+
 /**
  * One process at a time keeps a project's history open (a second opener would fork the log). Waits up to `waitMs`
- * for the owner to close, takes over a dead owner's lock. ponytail: two takeovers of one dead owner can both win.
+ * for the owner to close, takes over a dead owner's lock.
  */
 export async function takeHistoryOwnership(home: string, waitMs: number): Promise<() => void> {
   const file = join(home, "owner.pid");
   const deadline = Date.now() + waitMs;
   mkdirSync(home, { recursive: true });
   for (;;) {
-    // Written aside and linked in, so a reader never sees the file without its pid.
-    const draft = join(home, `owner-${randomUUID()}.tmp`);
-    writeFileSync(draft, String(process.pid));
-    try {
-      linkSync(draft, file);
+    if (claim(file)) {
       let held = true;
       return () => {
-        if (held) rmSync(file, { force: true });
+        if (held) releaseOwn(file);
         held = false;
       };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    } finally {
-      rmSync(draft, { force: true });
     }
     const pid = ownerOf(file);
     if (pid === null) continue;
-    if (!alive(pid)) {
-      rmSync(file, { force: true });
-      continue;
-    }
+    if (!alive(pid) && evictDeadOwner(file)) continue;
     if (Date.now() >= deadline) throw new HistoryBusyError(pid);
     await new Promise((settle) => setTimeout(settle, 50));
   }
