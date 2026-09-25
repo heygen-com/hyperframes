@@ -108,6 +108,8 @@ export interface ProjectHistory {
    * file writes with it, so the watcher's echo reads as the caller's own write.
    */
   step(direction: "back" | "forward", who: HistoryWho, options?: Writing): Promise<HistoryResult>;
+  /** The entry the next step reverts, as of the last write taken in. */
+  next(direction: "back" | "forward"): HistoryEntry | undefined;
   /** A conflict (a file changed since) returns the choice; pass `mode` to take one. */
   undo(
     id: string,
@@ -591,9 +593,7 @@ class Engine {
     mode?: "just-this" | "back-to-before",
   ): Promise<HistoryResult> {
     const entry = this.entry(id);
-    const changed = entry.files.filter(
-      (file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after,
-    );
+    const changed = this.movedOn(entry);
     if (changed.length && !mode) return { ok: false, conflict: this.conflict(entry, changed) };
     if (mode === "back-to-before") {
       const index = this.log.entries.indexOf(entry);
@@ -608,6 +608,27 @@ class Engine {
       ok: true,
       entry: await this.writeAs(who, this.undoLabel(entry), target, { undoes: id }),
     };
+  }
+
+  /** The entry's files that no longer hold what it left. */
+  movedOn(entry: HistoryEntry): HistoryFileChange[] {
+    return entry.files.filter((file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after);
+  }
+
+  /**
+   * Back reverts the newest change in effect, unless its files moved on under an edit that ended before it (a
+   * person's edit during an agent's turn): then the newest such edit, if it still applies, so Cmd+Z cannot jam.
+   */
+  next(direction: "back" | "forward"): HistoryEntry | undefined {
+    const top = stepTarget(this.log.entries, direction);
+    const moved = new Set(top && direction === "back" ? this.movedOn(top).map((f) => f.path) : []);
+    if (!top || !moved.size) return top;
+    const undone = undoneIds(this.log.entries);
+    const under = this.log.entries
+      .slice(0, this.log.entries.indexOf(top))
+      .reverse()
+      .find((e) => !e.undoes && !undone.has(e.id) && e.files.some((f) => moved.has(f.path)));
+    return under && !this.movedOn(under).length ? under : top;
   }
 
   conflict(
@@ -665,7 +686,7 @@ class Engine {
       },
       step: (direction, who, { writeToken } = {}) =>
         this.operation(writeToken, async () => {
-          const target = stepTarget(this.log.entries, direction);
+          const target = this.next(direction);
           return target ? this.undoNow(target.id, who) : { ok: true, entry: null };
         }),
       undo: (id, { who, mode, writeToken }) =>
@@ -678,6 +699,7 @@ class Engine {
         const files = manifestAt(this.log, point);
         return files && Object.fromEntries(files);
       },
+      next: (direction) => this.next(direction),
       readBlob: (hash) => this.blobs.read(hash),
       pin: (id, pinned) => {
         this.entry(id);

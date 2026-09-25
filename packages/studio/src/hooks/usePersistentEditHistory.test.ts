@@ -89,18 +89,24 @@ it("an edit Studio saved is undone and redone by the project's history, with the
 
 it("a drag's edits under one key undo as one step, even before the drag goes idle", async () => {
   const { hook, file, save, readFile } = await studio();
-  for (const content of ["B", "C"]) {
-    save(content);
+  const writes: Array<[before: string, after: string]> = [
+    ["A", "B"],
+    ["B", "C"],
+  ];
+  for (const [before, after] of writes) {
+    save(after);
     await act(() =>
       hook().recordEdit({
         label: "Dragged Title",
         kind: "manual",
         coalesceKey: "drag",
         coalesceMs: 60_000,
-        files: { "index.html": { before: "A", after: content } },
+        files: { "index.html": { before, after } },
       }),
     );
   }
+  // The held drag is not in the history's list yet: only its own paths say what to read before the step.
+  expect(hook().undoLabel).toBeUndefined();
   const undone = await act(() => hook().undo({ readFile }));
   expect(undone).toMatchObject({
     ok: true,
@@ -154,4 +160,78 @@ it("without a history on the server an edit still saves, and there is nothing to
   expect(hook().canUndo).toBe(false);
   expect(await act(() => hook().undo({ readFile }))).toEqual({ ok: false, reason: "empty" });
   expect(file()).toBe("B");
+});
+
+/** Answers requests to `route` with `reply` instead of the engine, every other request as before; returns the undo. */
+function answer(route: "/history/step" | "/history/claim", status: number, reply: object | string) {
+  const real = globalThis.fetch;
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+    url.endsWith(route)
+      ? Promise.resolve(
+          new Response(typeof reply === "string" ? reply : JSON.stringify(reply), { status }),
+        )
+      : real(url, init),
+  );
+  return () => vi.stubGlobal("fetch", real);
+}
+
+it("a step the server could not take says why, instead of reading as nothing to undo", async () => {
+  const { hook, readFile } = await studio();
+  answer("/history/step", 500, { error: "disk full" });
+  expect(await act(() => hook().undo({ readFile }))).toEqual({
+    ok: false,
+    reason: "failed",
+    message: "disk full",
+  });
+});
+
+it("a refused step names the files that changed since its edit", async () => {
+  const { hook, save, readFile } = await studio();
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Moved Title",
+      kind: "manual",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  await vi.waitFor(() => expect(hook().undoLabel).toBe("Moved Title"));
+  answer("/history/step", 200, { ok: false, conflict: { files: ["index.html"], newer: [] } });
+  expect(await act(() => hook().undo({ readFile }))).toEqual({
+    ok: false,
+    reason: "content-mismatch",
+    paths: ["index.html"],
+  });
+});
+
+it("a claim the server refused is logged, and the write stays undoable as a change made outside", async () => {
+  const { hook, file, save, readFile } = await studio();
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  cleanup.push(() => logged.mockRestore());
+  const restoreFetch = answer("/history/claim", 500, { error: "disk full" });
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Moved Title",
+      kind: "manual",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  expect(logged).toHaveBeenCalledWith('"Moved Title" was not recorded as your edit: disk full');
+  restoreFetch();
+  expect(await act(() => hook().undo({ readFile }))).toMatchObject({
+    ok: true,
+    label: "Undid: Changed outside the app",
+  });
+  expect(file()).toBe("A");
+});
+
+it("a step whose reply cannot be read says so, instead of throwing", async () => {
+  const { hook, readFile } = await studio();
+  answer("/history/step", 200, "<html>");
+  expect(await act(() => hook().undo({ readFile }))).toEqual({
+    ok: false,
+    reason: "failed",
+    message: "The history's reply was unreadable.",
+  });
 });
