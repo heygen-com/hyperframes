@@ -836,6 +836,16 @@ test("a TODO whose parentheses name nobody fails", (t) => {
 });
 test("a TODO linking its issue passes", (t) =>
   passes(t, "// TODO: cache this, https://github.com/heygen-com/hyperframes/issues/4012"));
+test("a TODO's issue link ending a sentence passes", (t) =>
+  passes(t, "// TODO: cache this, see https://github.com/heygen-com/hyperframes/issues/4012."));
+test("an issue path on another host does not stand in for the issue", (t) => {
+  for (const url of [
+    "https://evil.example/github.com/heygen-com/hyperframes/issues/4012",
+    "https://evil.example/?next=github.com/heygen-com/hyperframes/issues/4012",
+    "https://github.com.evil.example/heygen-com/hyperframes/issues/4012",
+  ])
+    failsWith(t, `// TODO: cache this, ${url}`, /TODO/);
+});
 test("a colour on the TODO's own line does not stand in for its issue", (t) =>
   failsWith(t, "// TODO: fix the border colour #123456", /TODO/));
 test("a sentence that mentions a TODO is prose", (t) =>

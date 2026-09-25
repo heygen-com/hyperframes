@@ -431,9 +431,16 @@ const OWNER = "(?:@?[A-Za-z][\\w .-]*|#\\d+)";
 const TODO_OWNED = new RegExp(`\\b(?:TODO|FIXME|XXX)\\s*\\(${OWNER}(?:,\\s*${OWNER})*\\)`);
 // Owner or issue go in the parentheses, `TODO(name):` or `TODO(#1234):`: a bare `#123456` could be a
 // colour. Otherwise the TODO's own line links the issue.
-const ISSUE_LINK = /github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/;
 const COPIED = /\b(?:copied|adapted|ported|borrowed) from\b/i;
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`)\]]*/g;
+const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+// The host is parsed, not matched: `evil.example/github.com/...` is no issue link.
+const ISSUE_PATH = /^\/[\w.-]+\/[\w.-]+\/issues\/\d+\/?$/;
+const linksIssue = (text) =>
+  [...text.matchAll(URL_IN_TEXT)].some(([raw]) => {
+    const url = URL.parse(raw.replace(TRAILING_PUNCTUATION, ""));
+    return url?.hostname === "github.com" && ISSUE_PATH.test(url.pathname);
+  });
 // Loopback is left alone: comments describe dev servers and CORS origins by it, not as links.
 const LOOPBACK = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?:[:/]|$)/i;
 const PRIVATE_HOST =
@@ -454,7 +461,7 @@ const words = (text) =>
 // Why a URL in a comment cannot be followed by a reader, or null when it can. Placeholders
 // (`https://${host}`, `https://<host>`) are templates, not links.
 function urlProblem(raw) {
-  const cited = raw.replace(/[.,;:!?]+$/, "");
+  const cited = raw.replace(TRAILING_PUNCTUATION, "");
   if (/^https?:\/\/$/.test(cited) || /[{}$*…]/.test(cited) || LOOPBACK.test(cited)) return null;
   let url;
   try {
@@ -500,7 +507,7 @@ export function practiceFindings(source, ext) {
     const linked = /\bhttps?:\/\//.test(joined);
     for (const { line, text } of block) {
       const at = { from: line, to: line, cite: text.trim().slice(0, 100) };
-      if (TODO_MARK.test(text) && !TODO_OWNED.test(text) && !ISSUE_LINK.test(text)) {
+      if (TODO_MARK.test(text) && !TODO_OWNED.test(text) && !linksIssue(text)) {
         found.push({
           ...at,
           rule: "todo",
