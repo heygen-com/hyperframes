@@ -46,13 +46,13 @@ export function refuse(kind: string, detail: { reason: string; fix: string }, js
   refusal(`${kind}: ${detail.reason}`, detail.fix, json);
 }
 
-export function publicReceipt(receipt: AppliedFileMutation) {
+export function publicReceipt(receipt: AppliedFileMutation, entryId: string | null) {
   return {
     file: receipt.sourceFile,
     version: receipt.version,
     writeToken: receipt.writeToken,
     changed: receipt.changed,
-    backupPath: receipt.backupPath,
+    entryId,
   };
 }
 

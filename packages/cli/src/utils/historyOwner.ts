@@ -36,7 +36,31 @@ export interface Owner {
   pin(id: string, pinned: boolean): Promise<void>;
   begin(who: HistoryWho, label: string): Promise<string>;
   end(id: string): Promise<HistoryEntry | null>;
+  /** Runs `write` inside a window of its own: the entry it made, or null when it changed nothing. */
+  record<T>(who: HistoryWho, label: string, write: () => T): Promise<Recorded<T>>;
   close(): Promise<void>;
+}
+
+interface Recorded<T> {
+  result: T;
+  entry: HistoryEntry | null;
+}
+
+async function writeIn<T>(
+  close: () => Promise<HistoryEntry | null>,
+  write: () => T,
+): Promise<Recorded<T>> {
+  let result: T;
+  try {
+    result = write();
+  } catch (error) {
+    // The write's own error is the one to report; a history that also fails to record it is logged.
+    await close().catch((closeError: Error) =>
+      console.error(`The history could not record this: ${closeError.message}`),
+    );
+    throw error;
+  }
+  return { result, entry: await close() };
 }
 
 /** Swapped by tests. */
@@ -97,6 +121,10 @@ function previewOwner(route: (path: string) => string): Owner {
       json(`/window/${id}/close`, {})
         .then((closed) => closed.entry as HistoryEntry | null)
         .catch(async () => (await list()).find((entry) => entry.id === id) ?? null),
+    record: async (who, label, write) => {
+      const { windowId } = await json("/window", { who, label });
+      return writeIn(async () => (await json(`/window/${windowId}/close`, {})).entry, write);
+    },
     close: async () => {},
   };
 }
@@ -128,6 +156,10 @@ async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner
     // Opening filed every earlier write; the turn's own writes are filed to it when the next open passes it.
     begin: async () => randomUUID(),
     end: async (id) => history.list().find((entry) => entry.id === id) ?? null,
+    record: async (who, label, write) => {
+      const window = await history.beginWindow(who, label);
+      return writeIn(() => window.close(), write);
+    },
     close: () => history.close(),
   };
 }
@@ -166,5 +198,27 @@ export async function withOwner<T>(
       const lastWriteAt = kept ? kept.endedAt : turn.lastWriteAt;
       writeTurn(projectDir, { ...turn, via: "direct", id: randomUUID(), lastWriteAt });
     }
+  }
+}
+
+/**
+ * Runs a write as one history entry, under the open turn's writer, else the person. When another process holds the
+ * history (no preview to reach it through), writes anyway: that owner files the write as a change made outside.
+ */
+export async function recordInHistory<T>(
+  dir: string,
+  label: string,
+  write: () => T,
+): Promise<{ result: T; entryId: string | null }> {
+  try {
+    return await withOwner(dir, async (owner, turn) => {
+      const who = turn?.who ?? { kind: "person" as const, name: "You" };
+      const { result, entry } = await owner.record(who, label, write);
+      return { result, entryId: entry?.id ?? null };
+    });
+  } catch (error) {
+    if ((error as Error).name !== "HistoryBusyError") throw error;
+    console.error(`${(error as Error).message} Wrote without an entry of its own.`);
+    return { result: write(), entryId: null };
   }
 }

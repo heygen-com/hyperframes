@@ -41,6 +41,14 @@ const STORYBOARD_VIEW_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio-server/src/helpers/backupJournal.ts",
+    "the per-write .hyperframes/backup journal is replaced by the project history; timeline undo goes through it",
+  ],
+  [
+    "packages/studio-server/src/helpers/backupJournal.test.ts",
+    "tests for the removed backup journal",
+  ],
+  [
     "packages/studio/src/components/nle/TimelinePane.test.ts",
     "its only subject, the expandedParentStart rebase wrappers, is dead code now removed",
   ],

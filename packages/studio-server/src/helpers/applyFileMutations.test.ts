@@ -13,7 +13,7 @@ function expectStaleMutation(after: string): void {
     const expectedVersion = fileContentVersion(readFileSync(path, "utf8"));
     writeFileSync(path, "external", "utf8");
     expect(() =>
-      applyFileMutations(projectDir, [
+      applyFileMutations([
         { sourceFile: "index.html", absPath: path, before: "before", after, expectedVersion },
       ]),
     ).toThrow("file changed since the timeline was read");
@@ -43,7 +43,6 @@ describe("applyFileMutations", () => {
       let writes = 0;
       expect(() =>
         applyFileMutations(
-          projectDir,
           [
             {
               sourceFile: "first.html",

@@ -245,6 +245,8 @@ const sub = <A>(
     run: ({ args: parsed }) => guarded(run)(parsed as A),
   });
 
+export const undoEntry = guarded(runUndo);
+
 const listEntries = async (args: {
   _?: string[];
   since?: string;

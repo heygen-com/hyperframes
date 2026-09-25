@@ -73,9 +73,13 @@ export default defineCommand({
       }),
     undo: () =>
       defineCommand({
-        meta: { name: "undo", description: "Restore a timeline mutation receipt" },
+        meta: { name: "undo", description: "Undo the history entry a timeline receipt names" },
         args: {
           receipt: { type: "positional", required: true },
+          who: {
+            type: "string",
+            description: "Your name, when an agent undoes (as history undo --who)",
+          },
           dir: { type: "string" },
           json: { type: "boolean", default: false },
         },

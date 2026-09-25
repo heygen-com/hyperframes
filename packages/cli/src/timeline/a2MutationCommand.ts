@@ -1,3 +1,4 @@
+import { recordInHistory } from "../utils/historyOwner.js";
 import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-server";
 import type { AppliedFileMutation } from "@hyperframes/studio-server";
 import { readFileSync } from "node:fs";
@@ -184,14 +185,18 @@ async function applyAndPrint(args: {
   result: ReturnType<typeof mutationResult>;
   describeSource: (source: string) => Promise<ProjectTimeline>;
 }): Promise<void> {
-  const receipt = applyMutation(args.setup, args.after);
+  const { result: receipt, entryId } = await recordInHistory(
+    args.setup.project.dir,
+    `timeline ${args.verb} ${args.setup.ref}`,
+    () => applyMutation(args.setup, args.after),
+  );
   if (receipt && "error" in receipt)
     return refusal(receipt.error, "re-run hyperframes timeline", args.json);
   if (!receipt && args.after !== args.before) {
     return refusal("mutation produced no receipt", "re-run hyperframes timeline", args.json);
   }
   args.result.after = rowsForFile(await args.describeSource(args.after), args.row.file);
-  args.result.receipt = receipt ? publicReceipt(receipt) : null;
+  args.result.receipt = receipt ? publicReceipt(receipt, entryId) : null;
   if (args.json) {
     console.log(JSON.stringify(withMeta(args.result), null, 2));
     return;
@@ -239,7 +244,7 @@ function applyMutation(
   after: string,
 ): AppliedFileMutation | { error: string } | undefined {
   try {
-    return applyFileMutations(setup.project.dir, [
+    return applyFileMutations([
       {
         sourceFile: setup.row.file,
         absPath: setup.filePath,

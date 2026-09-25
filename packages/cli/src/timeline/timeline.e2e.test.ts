@@ -16,17 +16,18 @@ function project(): string {
   return dir;
 }
 
+/** Runs `hyperframes <command...> --dir <dir> --json` with the project's history kept under <dir>/.home. */
+function hf(dir: string, command: string[], args: string[]) {
+  return spawnSync("bun", ["run", cliEntry, ...command, "--dir", dir, "--json", ...args], {
+    cwd: dir,
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { ...process.env, HOME: join(dir, ".home"), HYPERFRAMES_SKIP_UPDATE_CHECK: "1" },
+  });
+}
+
 function run(dir: string, ...args: string[]) {
-  return spawnSync(
-    "bun",
-    ["run", cliEntry, "timeline", args[0]!, "--dir", dir, "--json", ...args.slice(1)],
-    {
-      cwd: dir,
-      encoding: "utf8",
-      timeout: 30_000,
-      env: { ...process.env, HYPERFRAMES_SKIP_UPDATE_CHECK: "1" },
-    },
-  );
+  return hf(dir, ["timeline", args[0]!], args.slice(1));
 }
 
 describe("timeline edit command", () => {
@@ -316,6 +317,43 @@ describe("timeline edit command", () => {
       const undone = run(dir, "undo", JSON.stringify(appliedJson.receipt[0]));
       expect(undone.status, undone.stderr).toBe(0);
       expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("records an edit as one history entry named on its receipt, and undo reverts that entry", () => {
+    const dir = project();
+    try {
+      const before = readFileSync(join(dir, "index.html"), "utf8");
+      const moved = run(dir, "move", "#clip", "+1");
+      expect(moved.status, moved.stderr).toBe(0);
+      const receipt = (JSON.parse(moved.stdout) as { receipt: { entryId: string } }).receipt;
+      const listed = JSON.parse(hf(dir, ["history"], []).stdout) as {
+        entries: Array<{ id: string; label: string; files: string[] }>;
+      };
+      expect(listed.entries).toMatchObject([
+        { id: receipt.entryId, label: "timeline move #clip", files: ["index.html"] },
+      ]);
+
+      const undone = run(dir, "undo", moved.stdout);
+      expect(undone.status, undone.stderr).toBe(0);
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a receipt from before the history and points at history undo", () => {
+    const dir = project();
+    try {
+      const old = { file: "index.html", version: '"x"', backupPath: ".hyperframes/backup/x" };
+      const refused = run(dir, "undo", JSON.stringify(old));
+      expect(refused.status).toBe(2);
+      expect(JSON.parse(refused.stderr)).toMatchObject({
+        ok: false,
+        fix: expect.stringContaining("hyperframes history undo"),
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

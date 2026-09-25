@@ -1,15 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { parseHTML } from "linkedom";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commitElementPatchBatches, registerFileRoutes } from "./files";
@@ -355,7 +347,7 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(path)).toEqual(existing);
   });
 
-  it("versions binary bytes exactly while preserving conflicts, backups, and write receipts", async () => {
+  it("versions binary bytes exactly while preserving conflicts and write receipts", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
     registerFileRoutes(app, createAdapter(projectDir));
@@ -383,7 +375,7 @@ describe("registerFileRoutes", () => {
     const payload = await response.json();
     expect(response.status).toBe(200);
     expect(readFileSync(path)).toEqual(after);
-    expect(readFileSync(join(projectDir, payload.backupPath))).toEqual(before);
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
     expect(payload.version).toBe(fileContentVersion(after));
     expect(response.headers.get("etag")).toBe(payload.version);
     expect(identifyFileWrite(path, payload.version)).toEqual({
@@ -473,7 +465,7 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(current);
   });
 
-  it("backs up the previous file content before PUT overwrite", async () => {
+  it("overwrites on PUT without leaving a backup copy in the project", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, "index.html"), "before");
     const app = new Hono();
@@ -491,7 +483,6 @@ describe("registerFileRoutes", () => {
       path?: string;
       version?: string;
       writeToken?: string;
-      backupPath?: string;
     };
 
     expect(response.status).toBe(200);
@@ -504,33 +495,11 @@ describe("registerFileRoutes", () => {
       version: payload.version,
       writeToken: "studio-write-1",
     });
-    expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
-    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe("before");
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("after");
   });
 
-  it("fails PUT closed when the backup cannot be created", async () => {
-    const projectDir = createProjectDir();
-    const original = "before";
-    writeFileSync(join(projectDir, "index.html"), original);
-    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
-    const app = new Hono();
-    registerFileRoutes(app, createAdapter(projectDir));
-
-    const response = await app.request("http://localhost/projects/demo/files/index.html", {
-      method: "PUT",
-      headers: { "If-Match": fileContentVersion(original) },
-      body: "after",
-    });
-
-    expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
-      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
-    });
-    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
-  });
-
-  it("backs up the previous file content before delete", async () => {
+  it("deletes without leaving a backup copy in the project", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, "index.html"), "before delete");
     const app = new Hono();
@@ -539,33 +508,11 @@ describe("registerFileRoutes", () => {
     const response = await app.request("http://localhost/projects/demo/files/index.html", {
       method: "DELETE",
     });
-    const payload = (await response.json()) as { backupPath?: string };
-
     expect(response.status).toBe(200);
-    expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
-    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe("before delete");
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
   });
 
-  it("fails DELETE closed when the backup cannot be created", async () => {
-    const projectDir = createProjectDir();
-    const original = "before delete";
-    writeFileSync(join(projectDir, "index.html"), original);
-    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
-    const app = new Hono();
-    registerFileRoutes(app, createAdapter(projectDir));
-
-    const response = await app.request("http://localhost/projects/demo/files/index.html", {
-      method: "DELETE",
-    });
-
-    expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
-      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
-    });
-    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
-  });
-
-  it("backs up the previous file content before structured DOM mutations", async () => {
+  it("applies structured DOM mutations without leaving a backup copy in the project", async () => {
     const projectDir = createProjectDir();
     writeFileSync(projectDir + "/index.html", '<div id="title">Before</div>');
     const app = new Hono();
@@ -587,7 +534,6 @@ describe("registerFileRoutes", () => {
       changed?: boolean;
       path?: string;
       version?: string;
-      backupPath?: string;
     };
 
     expect(payload.changed).toBe(true);
@@ -595,38 +541,8 @@ describe("registerFileRoutes", () => {
     expect(payload.version).toBe(
       fileContentVersion(readFileSync(join(projectDir, "index.html"), "utf-8")),
     );
-    expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
-    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(
-      '<div id="title">Before</div>',
-    );
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
-  });
-
-  it("fails structured DOM mutations closed when the backup cannot be created", async () => {
-    const projectDir = createProjectDir();
-    const original = '<div id="title">Before</div>';
-    writeFileSync(join(projectDir, "index.html"), original);
-    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
-    const app = new Hono();
-    registerFileRoutes(app, createAdapter(projectDir));
-
-    const response = await app.request(
-      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target: { id: "title" },
-          operations: [{ type: "text-content", property: "textContent", value: "After" }],
-        }),
-      },
-    );
-
-    expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
-      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
-    });
-    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
   });
 
   it("returns the current durable version for a matched no-op element patch", async () => {
@@ -652,7 +568,6 @@ describe("registerFileRoutes", () => {
       matched?: boolean;
       path?: string;
       version?: string;
-      backupPath?: string;
     };
 
     expect(response.status).toBe(200);
@@ -662,7 +577,6 @@ describe("registerFileRoutes", () => {
       path: "index.html",
       version: fileContentVersion(original),
     });
-    expect(payload.backupPath).toBeUndefined();
     expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
   });
 
@@ -727,7 +641,6 @@ describe("registerFileRoutes", () => {
       changed?: boolean;
       matched?: boolean[];
       content?: string;
-      backupPath?: string;
     };
 
     expect(response.status).toBe(200);
@@ -736,14 +649,13 @@ describe("registerFileRoutes", () => {
     expect(payload.content).toBe(readFileSync(join(projectDir, "index.html"), "utf-8"));
     expect(payload.content).toContain('id="back" style="z-index: 2"');
     expect(payload.content).toContain('id="front" style="z-index: 1"');
-    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(original);
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
     const version = fileContentVersion(payload.content!);
     expect(identifyFileWrite(join(projectDir, "index.html"), version)).toEqual({
       path: "index.html",
       version,
       writeToken: "studio-layer-order-1",
     });
-    expect(readdirSync(join(projectDir, ".hyperframes", "backup"))).toHaveLength(1);
   });
 
   it("returns changed false without writing for a no-op element patch batch", async () => {
@@ -764,13 +676,11 @@ describe("registerFileRoutes", () => {
       changed?: boolean;
       matched?: boolean[];
       content?: string;
-      backupPath?: string;
     };
 
     expect(payload.changed).toBe(false);
     expect(payload.matched).toEqual([true]);
     expect(payload.content).toBe(original);
-    expect(payload.backupPath).toBeUndefined();
     expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
   });
 
@@ -795,11 +705,9 @@ describe("registerFileRoutes", () => {
       changed?: boolean;
       matched?: boolean[];
       content?: string;
-      backupPath?: string;
     };
 
     expect(payload).toMatchObject({ changed: false, matched: [true, false], content: original });
-    expect(payload.backupPath).toBeUndefined();
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
     expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
   });
@@ -1395,7 +1303,6 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
       changed: boolean;
       before: string;
       after: string;
-      backupPath: string;
       parsed: { animations: Array<{ fromProperties?: Record<string, number | string> }> };
     };
 
@@ -1404,7 +1311,7 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
     expect(result.changed).toBe(true);
     expect(result.before).toBe(FROMTO_COMP);
     expect(result.after).toBe(readFileSync(join(projectDir, "comp.html"), "utf-8"));
-    expect(readFileSync(join(projectDir, result.backupPath), "utf-8")).toBe(FROMTO_COMP);
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
     expect(result.parsed.animations[0].fromProperties).toMatchObject({ opacity: 0.2, x: -25 });
   });
 
