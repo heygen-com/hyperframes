@@ -2,7 +2,15 @@ import {
   readPreviewCompositionSize,
   type PreviewCompositionSize,
 } from "../../utils/previewCompositionSize";
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Player } from "../../player";
 import type { PreviewIframeSlot } from "../../player/hooks/useTimelineSyncCallbacks";
 import {
@@ -66,18 +74,15 @@ const SHADOW_IFRAME_STYLE: React.CSSProperties = {
   pointerEvents: "none",
 };
 
+const isFitZoom = (zoomPercent: number) => Math.abs(zoomPercent - 100) < 0.5;
+
 function isPreviewAtFit(state: PreviewZoomState): boolean {
-  return (
-    Math.abs(state.zoomPercent - 100) < 0.5 &&
-    Math.abs(state.panX) < 0.1 &&
-    Math.abs(state.panY) < 0.1
-  );
+  return isFitZoom(state.zoomPercent) && Math.abs(state.panX) < 0.1 && Math.abs(state.panY) < 0.1;
 }
 
-/** A pan at 100% is off Fit without a zoom. */
+/** Off Fit at the fit scale means the frame was only moved. */
 function zoomChipLabel(zoomPercent: number): string {
-  const rounded = Math.round(zoomPercent);
-  return rounded === 100 ? "Panned" : `Zoomed ${rounded}%`;
+  return isFitZoom(zoomPercent) ? "Panned" : `Zoomed ${Math.round(zoomPercent)}%`;
 }
 
 /** The navigator's frame box: the composition's shape, its long side NAVIGATOR_PX. */
@@ -166,7 +171,7 @@ export const NLEPreview = memo(function NLEPreview({
 
   // Every project opens at Fit; a zoom lasts only while the project stays open.
   const zoomRef = useRef<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
-  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(() => zoomRef.current);
+  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const hudRef = useRef<HTMLDivElement>(null);
   const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -277,7 +282,8 @@ export const NLEPreview = memo(function NLEPreview({
   );
 
   const zoomProjectRef = useRef(projectId);
-  useEffect(() => {
+  // Before paint, so the next project never shows a frame at the previous one's zoom.
+  useLayoutEffect(() => {
     if (zoomProjectRef.current === projectId) return;
     zoomProjectRef.current = projectId;
     zoomRef.current = DEFAULT_PREVIEW_ZOOM;
@@ -347,8 +353,8 @@ export const NLEPreview = memo(function NLEPreview({
 
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
-    if (Math.abs(z.zoomPercent - 100) > 0.5 || Math.abs(z.panX) > 0.1 || Math.abs(z.panY) > 0.1) {
-      // A reload can land in a smaller viewport than the pan was made in; clamp first.
+    if (!isPreviewAtFit(z)) {
+      // A composition reload can bring a different frame size than the pan was made on; clamp first.
       const viewport = viewportRef.current;
       const rect = viewport?.getBoundingClientRect();
       const sz = stageSizeRef.current;
@@ -616,6 +622,8 @@ export const NLEPreview = memo(function NLEPreview({
             <div
               className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 rounded-md py-1 pl-2.5 pr-1 text-xs text-white/80 bg-black/60 backdrop-blur-xs"
               data-testid="preview-zoom-chip"
+              // The pane clears the timeline selection on a pointerdown outside the frame.
+              onPointerDown={(event) => event.stopPropagation()}
             >
               <span className="tabular-nums">{zoomChipLabel(settledZoom.zoomPercent)}</span>
               <span aria-hidden="true" className="text-white/30">
@@ -624,7 +632,10 @@ export const NLEPreview = memo(function NLEPreview({
               <button
                 type="button"
                 className="rounded px-1.5 py-0.5 font-medium text-studio-accent hover:bg-white/10 transition-colors"
-                onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
+                onClick={() => {
+                  applyZoom(DEFAULT_PREVIEW_ZOOM);
+                  viewportRef.current?.focus();
+                }}
                 aria-label="Fit the whole frame in view"
                 data-testid="preview-zoom-fit"
               >

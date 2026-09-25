@@ -238,22 +238,6 @@ describe("NLEPreview", () => {
     view.cleanup();
   });
 
-  it("labels a pan away from Fit without a zoom as panned", () => {
-    vi.useFakeTimers();
-    const view = renderPreview();
-    act(() => {
-      view.stage.dispatchEvent(
-        new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -30, deltaY: 0 }),
-      );
-    });
-    act(() => vi.advanceTimersByTime(300));
-    expect(view.host.querySelector('[data-testid="preview-zoom-chip"]')?.textContent).toBe(
-      "Panned·Fit",
-    );
-    view.cleanup();
-    vi.useRealTimers();
-  });
-
   it("pans the preview with a two-finger wheel gesture", () => {
     const view = renderPreview();
     const target = document.createElement("div");
@@ -308,6 +292,34 @@ describe("NLEPreview", () => {
       view.host.querySelector('[data-testid="preview-zoom-chip"]');
     const navigator = (view: ReturnType<typeof renderPreview>) =>
       view.host.querySelector('[data-testid="preview-zoom-navigator"]');
+
+    it("labels a pan away from Fit without a zoom as panned", () => {
+      const view = renderPreview();
+      act(() => {
+        view.stage.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -30, deltaY: 0 }),
+        );
+      });
+      act(() => vi.advanceTimersByTime(300));
+      expect(chip(view)?.textContent).toBe("Panned·Fit");
+      view.cleanup();
+    });
+
+    it("keeps a click on Fit from reaching the pane behind it", () => {
+      const view = renderPreview();
+      // Above React's root, as the preview pane's handler is: React stops the event before either.
+      const pane = vi.fn();
+      document.body.addEventListener("pointerdown", pane);
+      pinchIn(view, 10);
+      act(() => {
+        view.host
+          .querySelector('[data-testid="preview-zoom-fit"]')!
+          .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      });
+      document.body.removeEventListener("pointerdown", pane);
+      expect(pane).not.toHaveBeenCalled();
+      view.cleanup();
+    });
 
     it("opens at Fit even when an older Studio saved a zoom", () => {
       localStorage.setItem(

@@ -347,4 +347,19 @@ describe("resolvePreviewVisibleRegion", () => {
     expect(panned.left).toBeCloseTo(centre.left - 300 / 1600);
     expect(panned.width).toBeCloseTo(centre.width);
   });
+
+  it("is the whole frame below 100%, and stops at the frame's edge in an overscroll", () => {
+    const small = resolvePreviewVisibleRegion({
+      state: { zoomPercent: 50, panX: 0, panY: 0 },
+      ...frame,
+    });
+    expect(small).toEqual({ left: 0, top: 0, width: 1, height: 1 });
+
+    const past = resolvePreviewVisibleRegion({
+      state: { zoomPercent: 200, panX: 400, panY: 0 },
+      ...frame,
+    });
+    expect(past.left).toBe(0);
+    expect(past.width).toBeCloseTo((1000 / 2 - 400 + 800) / 1600);
+  });
 });
