@@ -819,10 +819,17 @@ describe("syncRuntimeMedia", () => {
       }
     });
 
-    it("releases a loading video that stops fetching before it has data", async () => {
+    it("keeps holding a loading video through a suspend between range requests", async () => {
       const clip = seekLoadingVideo();
       const barrier = waitForSeekCompletion();
       clip.el.dispatchEvent(new Event("suspend"));
+      expect(await barrierSettled(barrier)).toBe(false);
+      Object.defineProperty(clip.el, "seeking", { value: true, configurable: true });
+      clip.el.dispatchEvent(new Event("loadedmetadata"));
+      clip.el.dispatchEvent(new Event("seeking"));
+      expect(await barrierSettled(barrier)).toBe(false);
+      Object.defineProperty(clip.el, "seeking", { value: false, configurable: true });
+      clip.el.dispatchEvent(new Event("seeked"));
       expect(await barrierSettled(barrier)).toBe(true);
     });
 

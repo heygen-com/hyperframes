@@ -19,13 +19,13 @@ export function readElementPlaybackStart(el: Element): number {
   return readMediaStart(el);
 }
 
-const HOLD_END_EVENTS = ["seeked", "loadeddata", "suspend", "error", "emptied", "abort"] as const;
+const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
 const HOLD_CAP_MS = 5000;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
-// waits for metadata without setting `seeking`); frame captures wait on the seek barrier until it lands. Each seek
-// re-arms a 5 s cap, and listeners run in the capture phase so a failing <source> child releases the hold.
+// waits for metadata without setting `seeking`); frame captures wait on the barrier until it lands. The 5 s cap is
+// the only end for a stalled source (`suspend` also fires between range requests); capture phase catches <source>.
 function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
   const loading =
     el.readyState < el.HAVE_CURRENT_DATA &&
@@ -36,7 +36,7 @@ function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
   registerSeekCompletion(
     new Promise<void>((resolve) => {
       const done = (event?: Event) => {
-        if ((event?.type === "loadeddata" || event?.type === "suspend") && el.seeking) return;
+        if (event?.type === "loadeddata" && el.seeking) return;
         clearTimeout(cap);
         for (const type of HOLD_END_EVENTS) el.removeEventListener(type, done, true);
         if (releaseHeldVideo.get(el) === done) releaseHeldVideo.delete(el);
