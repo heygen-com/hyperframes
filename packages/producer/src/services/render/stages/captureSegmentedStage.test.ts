@@ -700,6 +700,26 @@ describe("runCaptureSegmentedStage", () => {
     expect(createdSessionConfigs).toEqual([expect.objectContaining({ enableBrowserPool: false })]);
   });
 
+  it("closes a fresh session whose initialization fails", async () => {
+    closeCaptureSession.mockClear();
+    failInitializeSession = true;
+    try {
+      await expect(
+        runCaptureSegmentedStage({
+          ...fakeStageInput({ totalFrames: 3 }),
+          probeSession: null,
+          segmentFrames: 3,
+          segmentDir: join(fixtureRoot, "initfail"),
+        }),
+      ).rejects.toThrow(/initialize failed/);
+    } finally {
+      failInitializeSession = false;
+    }
+    expect(closeCaptureSession.mock.calls.map((c) => c[0])).toEqual([
+      expect.objectContaining({ isInitialized: false }),
+    ]);
+  });
+
   it("closes the workers already opened when a later worker fails to launch", async () => {
     const closed: number[] = [];
     let id = 0;

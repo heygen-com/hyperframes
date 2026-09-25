@@ -296,8 +296,13 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
         openSegmentedSessionReuse(input, probeSession);
         probeSession = null;
       }
-      if (!session.isInitialized) await initializeSession(session);
-      await completeDeferredDrawElementInit(session);
+      try {
+        if (!session.isInitialized) await initializeSession(session);
+        await completeDeferredDrawElementInit(session);
+      } catch (error) {
+        await closeCaptureSession(session).catch(() => {});
+        throw error;
+      }
       return session;
     },
   };
@@ -565,7 +570,7 @@ export async function runCaptureSegmentedStage(
 
   const workers: SegmentWorker[] = [];
   const consoleOf = () => workers[0]?.ctx.session.browserConsoleBuffer ?? [];
-  let lastBrowserConsole: string[] = consoleOf();
+  let lastBrowserConsole: string[] = [];
 
   /** Pull segments until the queue drains, another worker failed, or we fell back. */
   const runWorkerLoop = async (worker: SegmentWorker): Promise<void> => {
