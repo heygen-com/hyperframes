@@ -11,6 +11,9 @@
  */
 import { PLAYHEAD_HEAD_W } from "./timelineLayout";
 
+/** Widest part of the playhead, centred on its line. */
+export const PLAYHEAD_GLOW_W = 13;
+
 interface PlayheadIndicatorProps {
   /** CSS color, defaults to the HF accent variable */
   color?: string;
@@ -50,7 +53,7 @@ export function PlayheadIndicator({
         className="absolute top-0 bottom-0"
         style={{
           left: "50%",
-          width: 13,
+          width: PLAYHEAD_GLOW_W,
           transform: "translateX(-50%)",
           background: `radial-gradient(closest-side, ${glowColor}, transparent)`,
         }}

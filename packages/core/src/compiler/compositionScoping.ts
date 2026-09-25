@@ -283,6 +283,7 @@ export function wrapScopedCompositionScript(
   scopeSelectorOverride?: string,
   timelineCompositionId = compositionId,
   authoredRootId?: string | null,
+  compositionSrc?: string | null,
 ): string {
   const compositionIdLiteral = jsonScriptLiteral(compositionId);
   const timelineCompositionIdLiteral = jsonScriptLiteral(timelineCompositionId);
@@ -304,6 +305,7 @@ export function wrapScopedCompositionScript(
   var __hfTimelineCompId = ${timelineCompositionIdLiteral};
   var __hfErrorLabel = ${errorLabelLiteral};
   var __hfAuthoredRootId = ${authoredRootIdLiteral};
+  var __hfCompositionSrc = ${jsonScriptLiteral(compositionSrc?.trim() || null)};
   var __hfAuthoredRootAttr = ${jsonScriptLiteral(AUTHORED_ROOT_ID_ATTR)};
   var __hfEscapeAttr = function(value) {
     return (value + "").replace(/\\\\/g, "\\\\\\\\").replace(/"/g, "\\\\\\"");
@@ -612,6 +614,10 @@ export function wrapScopedCompositionScript(
   var __hfScopedHyperframes = !__hfBaseHyperframes
     ? __hfBaseHyperframes
     : Object.assign({}, __hfBaseHyperframes, {
+        assetUrl: function(path) {
+          var page = window.document.baseURI;
+          return new URL(path, __hfCompositionSrc ? new URL(__hfCompositionSrc, page) : page).href;
+        },
         getVariables: function() {
           var byComp = window.__hfVariablesByComp;
           var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;

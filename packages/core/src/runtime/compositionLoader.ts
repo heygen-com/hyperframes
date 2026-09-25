@@ -566,6 +566,7 @@ async function mountCompositionContent(params: {
         runtimeScopeSelector,
         runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
         authoredRootId,
+        params.compositionUrl?.href,
       );
     } else {
       injectedScript.textContent = `(function(){${scriptPayload.content}})();`;
