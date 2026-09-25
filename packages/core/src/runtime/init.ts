@@ -196,8 +196,6 @@ function createSettledTracker(
   };
 }
 
-// A paused player that asked for a slow idle heartbeat confirms its state once a second, not
-// every `bridgeMaxPostIntervalMs`: each wake reads every animation on the page and posts to the host.
 const SLOW_IDLE_HEARTBEAT_MS = 1000;
 
 export function initSandboxRuntimeModular(): void {
@@ -3717,8 +3715,8 @@ export function initSandboxRuntimeModular(): void {
    * The parked loop. Two jobs the 60 Hz loop used to do implicitly:
    *
    * 1. Keep the control bridge's paused heartbeat on its documented interval
-   *    (`state.bridgeMaxPostIntervalMs`) so a paused timeline still confirms
-   *    its position to any listener.
+   *    (`state.bridgeMaxPostIntervalMs`; a second after `set-idle-heartbeat`,
+   *    once a timeline is bound) so a paused timeline confirms its position.
    * 2. Re-read everything nothing can push (`readParkedPollWitness`). Polling
    *    that 12 times a second instead of 60 is the whole reason the safety net
    *    exists.
@@ -3745,7 +3743,9 @@ export function initSandboxRuntimeModular(): void {
   const armParkTimer = () => {
     transportParkTimerId = window.setTimeout(
       parkedTransportHeartbeat,
-      slowIdleHeartbeat ? SLOW_IDLE_HEARTBEAT_MS : state.bridgeMaxPostIntervalMs,
+      slowIdleHeartbeat && state.capturedTimeline
+        ? SLOW_IDLE_HEARTBEAT_MS
+        : state.bridgeMaxPostIntervalMs,
     );
   };
 
@@ -4257,6 +4257,7 @@ export function initSandboxRuntimeModular(): void {
     },
     onSetIdleHeartbeat: (slow) => {
       slowIdleHeartbeat = slow;
+      wakeTransport();
     },
     onSetRootDuration: growRootDurationLive,
     onSetColorGrading: (target, grading) => {

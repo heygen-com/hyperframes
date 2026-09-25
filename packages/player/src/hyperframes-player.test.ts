@@ -2114,6 +2114,17 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     });
   });
 
+  it("sends low-power-idle to a ready runtime as soon as it changes", () => {
+    player._onMessage(readyMessage());
+    postSpy.mockClear();
+    player.setAttribute("low-power-idle", "");
+    expect(findControlCalls("set-idle-heartbeat")[0]?.[0]).toMatchObject({ slow: true });
+
+    postSpy.mockClear();
+    player.removeAttribute("low-power-idle");
+    expect(findControlCalls("set-idle-heartbeat")[0]?.[0]).toMatchObject({ slow: false });
+  });
+
   it("keeps runtime WebAudio media enabled outside slideshow embeds", () => {
     postSpy.mockClear();
 

@@ -207,31 +207,47 @@ describe("parked transport loop", () => {
     expect(raf.pending()).toBe(0);
   });
 
+  const setIdleHeartbeat = (slow: boolean) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "set-idle-heartbeat", slow },
+      }),
+    );
+  const states = () => posted.filter((m) => m["type"] === "state").length;
+
   it("slows the parked heartbeat to once a second when the host asks, and back when it stops", () => {
     mount();
     initSandboxRuntimeModular();
     quiesce();
-    const setIdleHeartbeat = (slow: boolean) =>
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          source: window.parent,
-          data: { source: "hf-parent", type: "control", action: "set-idle-heartbeat", slow },
-        }),
-      );
-    const states = () => posted.filter((m) => m["type"] === "state").length;
 
     setIdleHeartbeat(true);
-    const before = states();
+    quiesce();
+    const slow = states();
     vi.advanceTimersByTime(3000);
-    // The heartbeat already armed at 80 ms fires once, then one per second.
-    expect(states() - before).toBeLessThanOrEqual(4);
+    expect(states() - slow).toBe(3);
     expect(raf.pending()).toBe(0);
 
     setIdleHeartbeat(false);
-    vi.advanceTimersByTime(1000);
+    quiesce();
     const resumed = states();
     for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
     expect(states() - resumed).toBe(3);
+  });
+
+  it("keeps the fast heartbeat under a slow request until a timeline is bound", () => {
+    mount();
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+    document.getElementById("root")!.removeAttribute("data-duration");
+    setIdleHeartbeat(true);
+    quiesce();
+
+    // A composition that registers its timeline late (after fonts load) must still be seen at once.
+    window.__timelines!["main"] = createMockTimeline(12);
+    vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    settle();
+    expect(window.__player!.getDuration()).toBeCloseTo(12, 3);
   });
 
   it("delivers a live data-duration edit while parked", async () => {

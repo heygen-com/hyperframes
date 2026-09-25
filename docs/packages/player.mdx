@@ -61,7 +61,7 @@ Set `autoplay muted` only when playback should start without a user gesture.
 | `audio-src`     | string  | —       | Optional primary audio URL to preload in the parent frame |
 | `audio-locked`  | boolean | false   | Force muted playback and hide volume controls             |
 | `assets-loading-ui` | `player` or `none` | `player` | `none` hides the loading-assets card; asset events still fire |
-| `low-power-idle` | boolean | false | While paused, check in with the composition once a second instead of every 80 ms; for pages showing many paused players |
+| `low-power-idle` | boolean | false | While paused, check in once a second, not every 80 ms (many-player pages) |
 
 Player also accepts `shader-capture-scale` and `shader-loading` for previewing
 projects that use shader transitions. These are preview controls, not composition
