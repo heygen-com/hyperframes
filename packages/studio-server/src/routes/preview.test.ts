@@ -82,6 +82,25 @@ async function getPreviewSignature(projectDir: string): Promise<string> {
 }
 
 describe("registerPreviewRoutes", () => {
+  it("adds its <base> even when a script mentions one, and keeps an authored <base>", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><script>if (0) document.write('<base href="../">');</script></head><body></body></html>`,
+    );
+    const injected = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(injected).toContain('<base href="/api/projects/demo/preview/">');
+
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><base href="/cdn/"></head><body></body></html>`,
+    );
+    const authored = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(authored).not.toContain('<base href="/api/projects/demo/preview/">');
+  });
+
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
     const projectDir = createProjectDir();
     writeFileSync(

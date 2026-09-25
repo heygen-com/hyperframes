@@ -1057,12 +1057,16 @@ function inlineSubCompositions(
     head.appendChild(styleEl);
   }
 
-  // Inject external CDN scripts before inline scripts so plugins (e.g.
-  // TextPlugin, ScrollTrigger) are registered before composition code runs.
-  // Deduplicate against scripts already present in the document.
+  // CDN and integrity-pinned scripts go first so plugins (e.g. TextPlugin,
+  // ScrollTrigger) register before composition code, as in htmlBundler. A local
+  // src script keeps its authored place among the inline scripts (see below).
+  const isHoisted = (item: { src: string; integrity?: string }) =>
+    Boolean(item.integrity?.trim()) || isNonRelativeUrl(item.src);
   if (body) {
     for (const item of result.scriptItems) {
-      if (item.kind === "external") ensureExternalScriptTag(document, item.src, item);
+      if (item.kind === "external" && isHoisted(item)) {
+        ensureExternalScriptTag(document, item.src, item);
+      }
     }
   }
 
@@ -1075,13 +1079,24 @@ function inlineSubCompositions(
   // text (issue #2064). Same shared builder as the bundler so they stay in
   // lockstep.
   const variablesByCompScript = buildVariablesByCompScript(result.variablesByComp);
-  const inlineScripts = variablesByCompScript
-    ? [variablesByCompScript, ...result.scripts]
-    : result.scripts;
-  if (inlineScripts.length && body) {
-    const scriptEl = document.createElement("script");
-    scriptEl.textContent = inlineScripts.join("\n;\n");
-    body.appendChild(scriptEl);
+  if (body) {
+    let pending = variablesByCompScript ? [variablesByCompScript] : [];
+    const flushInline = () => {
+      if (!pending.length) return;
+      const scriptEl = document.createElement("script");
+      scriptEl.textContent = pending.join("\n;\n");
+      body.appendChild(scriptEl);
+      pending = [];
+    };
+    for (const item of result.scriptItems) {
+      if (item.kind === "inline") {
+        pending.push(item.content);
+      } else if (!isHoisted(item)) {
+        flushInline();
+        ensureExternalScriptTag(document, item.src, item);
+      }
+    }
+    flushInline();
   }
   if (body) {
     emitMountedModuleScripts(

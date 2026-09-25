@@ -8,7 +8,7 @@ import { usePlayerStore } from "../player";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
-import { buildPatchTarget } from "./timelineEditingHelpers";
+import { buildPatchTarget, removeIframeTimelineElements } from "./timelineEditingHelpers";
 import { captureDurationRollback, readFileContent } from "./timelineTimingSync";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
@@ -172,6 +172,7 @@ export function useTimelineDeleteOps({
           throw error;
         }
 
+        removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         const deletedKeys = new Set(sameFile.map((te) => te.key ?? te.id));
         const survivors = timelineElements.filter((te) => !deletedKeys.has(te.key ?? te.id));
 
@@ -184,10 +185,11 @@ export function useTimelineDeleteOps({
           sameFile,
           usePlayerStore.getState().rippleEditEnabled,
         );
-        let rippleApplied: TimelineGroupMoveChange[] | null = null;
+        const rippleChanges = rippleShifts ? resolveShiftedElements(survivors, rippleShifts) : null;
+        // The timeline follows the delete's write at once, as the owner of the ripple's optimistic update.
+        usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         let rippleFailed = false;
-        if (rippleShifts) {
-          const rippleChanges = resolveShiftedElements(survivors, rippleShifts);
+        if (rippleChanges) {
           try {
             await handleTimelineGroupMove(rippleChanges, {
               coalesceKey,
@@ -200,18 +202,17 @@ export function useTimelineDeleteOps({
               // the generic one would tell the user about one action twice.
               suppressFailureToast: true,
             });
-            rippleApplied = rippleChanges;
           } catch (error) {
             // The delete already committed; a failed ripple leaves the gap the
             // toggle-off behaviour would have left anyway — not worth undoing
             // an otherwise-successful delete over.
             rippleFailed = true;
+            usePlayerStore.getState().setElements(survivors);
             console.error("[Timeline] ripple-edit failed to persist after delete", error);
             showToast("Clip deleted, but the gap could not be closed.", "error");
           }
         }
 
-        usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleApplied));
         usePlayerStore.getState().setSelectedElementId(null);
         usePlayerStore.getState().setSelectedElementIds(new Set());
         forceReloadSdkSession?.();
@@ -224,7 +225,7 @@ export function useTimelineDeleteOps({
             "info",
           );
         }
-        if (rippleApplied && !rippleNoticeShownRef.current) {
+        if (rippleChanges && !rippleFailed && !rippleNoticeShownRef.current) {
           rippleNoticeShownRef.current = true;
           showToast(
             "Ripple closed the gap on the main track. Undo (⌘Z) restores it, or turn off " +
