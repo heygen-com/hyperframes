@@ -448,15 +448,49 @@ describe("initSandboxRuntimeModular", () => {
   it.each([
     ["1080px", "1920px"],
     ["1080.5", "1920"],
-  ])("lays the stage out at whole px for %s x %s", (width, height) => {
+  ])("lays the stage out at the authored size for %s x %s", (width, height) => {
     document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4" data-width="${width}" data-height="${height}"></div>`;
     window.__timelines = { main: createMockTimeline(4) };
 
     initSandboxRuntimeModular();
 
     const root = document.querySelector<HTMLElement>("[data-composition-id]")!;
-    expect(root.style.width).toBe("1080px");
+    expect(root.style.width).toBe(`${parseFloat(width)}px`);
     expect(root.style.height).toBe("1920px");
+  });
+
+  it("keeps a subpixel size on a timed clip", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4" data-width="1920" data-height="1080"><div id="hairline" data-start="0" data-duration="4" data-width="0.5" data-height="0.5"></div></div>`;
+    window.__timelines = { main: createMockTimeline(4) };
+
+    initSandboxRuntimeModular();
+
+    const clip = document.getElementById("hairline")!;
+    expect(clip.style.width).toBe("0.5px");
+    expect(clip.style.height).toBe("0.5px");
+  });
+
+  it("reports the explicit root's size when another composition comes first", () => {
+    const outbound: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message === "object" && message !== null) {
+        outbound.push(message as Record<string, unknown>);
+      }
+    });
+    document.body.innerHTML = `<div data-composition-id="card" data-width="800px" data-height="600px"></div><div data-composition-id="main" data-root="true" data-duration="4" data-width="1920" data-height="1080"></div>`;
+    window.__timelines = { main: createMockTimeline(4) };
+
+    initSandboxRuntimeModular();
+
+    const sizes = outbound
+      .filter((m) => m.type === "stage-size" || m.type === "timeline")
+      .map((m) =>
+        m.type === "stage-size"
+          ? `${m.width}x${m.height}`
+          : `${m.compositionWidth}x${m.compositionHeight}`,
+      );
+    expect(sizes.length).toBeGreaterThan(1);
+    expect(new Set(sizes)).toEqual(new Set(["1920x1080"]));
   });
 
   it("reports a collapsed stage for a px-suffixed root size", () => {

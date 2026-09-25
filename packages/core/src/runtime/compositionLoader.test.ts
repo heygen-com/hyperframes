@@ -109,14 +109,14 @@ describe("loadExternalCompositions", () => {
     ).toBe(false);
   });
 
-  it("sizes a flattened inner root from a px-suffixed size", async () => {
+  it("sizes a flattened inner root from a px-suffixed or fractional size", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/comp.html");
     host.setAttribute("data-composition-id", "scene-1");
     document.body.appendChild(host);
     const compositionHtml = `
       <html><body>
-        <div data-composition-id="scene-1" data-width="1080px" data-height="1920px"><p>Hi</p></div>
+        <div data-composition-id="scene-1" data-width="1080px" data-height="540.5"><p>Hi</p></div>
       </body></html>
     `;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
@@ -125,7 +125,7 @@ describe("loadExternalCompositions", () => {
 
     const flattened = host.querySelector("p")?.parentElement;
     expect(flattened?.style.width).toBe("1080px");
-    expect(flattened?.style.height).toBe("1920px");
+    expect(flattened?.style.height).toBe("540.5px");
   });
 
   it("injects styles into document head", async () => {

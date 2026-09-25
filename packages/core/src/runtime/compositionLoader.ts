@@ -8,7 +8,7 @@ import {
   wrapScopedCompositionScript,
 } from "../compiler/compositionScoping";
 import { parseImportMap } from "../compiler/importMaps";
-import { parseCompositionDimension } from "./compositionDimension";
+import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
   applyCssVariables,
@@ -210,8 +210,8 @@ function stripExtractedCompositionAssets(node: ParentNode): void {
 function prepareFlattenedInnerRoot(innerRoot: HTMLElement): HTMLElement {
   const prepared = document.importNode(innerRoot, true) as HTMLElement;
   markFlattenedInnerRoot(prepared);
-  const w = parseCompositionDimension(prepared.getAttribute("data-width"));
-  const h = parseCompositionDimension(prepared.getAttribute("data-height"));
+  const w = parseLayoutDimension(prepared.getAttribute("data-width"));
+  const h = parseLayoutDimension(prepared.getAttribute("data-height"));
   prepared.style.width = w === null ? "100%" : `${w}px`;
   prepared.style.height = h === null ? "100%" : `${h}px`;
   return prepared;
