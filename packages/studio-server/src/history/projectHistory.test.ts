@@ -634,7 +634,7 @@ describe("openProjectHistory", () => {
     expect(readFileSync(idFile, "utf-8").trim()).toBe(history.projectId);
   });
 
-  it("commits a window that is never closed when the history flushes, so Cmd+Z still reaches its writes", async () => {
+  it("commits a window that is never closed when the history flushes, so an undo still reaches its writes", async () => {
     const { history, write, read } = await project({ "index.html": "a" });
     await history.beginWindow(agent, "never closed");
     write("index.html", "b, an outside edit");
@@ -756,12 +756,12 @@ describe("claim: a writer that records after writing", () => {
       ["person", "Moved Title"],
     ]);
     await undoNewest(history);
-    expect(read("index.html"), "Cmd+Z undoes only the person's edit").toBe("B");
+    expect(read("index.html"), "undoing the turn leaves only the person's edit").toBe("B");
     await undoNewest(history);
     expect(read("index.html")).toBe("A");
   });
 
-  it("an agent's turn cut by Studio's edit becomes an entry before it and one after, so Cmd+Z walks back in order", async () => {
+  it("an agent's turn cut by Studio's edit becomes an entry before it and one after, so undoing walks back in order", async () => {
     const { history, write, read } = await project({ "index.html": "A" });
     const window = await history.beginWindow(agent, "Agent turn");
     write("index.html", "B");
@@ -815,7 +815,7 @@ describe("claim: a writer that records after writing", () => {
     }
   });
 
-  it("a held drag across an agent's write ends at that write, so Cmd+Z walks back every step", async () => {
+  it("a held drag across an agent's write ends at that write, so undoing walks back every step", async () => {
     const { history, write, read } = await project({ "index.html": "A" });
     const window = await history.beginWindow(agent, "Agent turn");
     const drag = (overwrote: string) =>
@@ -1157,6 +1157,79 @@ describe("claim: a writer that records after writing", () => {
       entry: { label: "Undid: Changed outside the app" },
     });
     expect([read("index.html"), read("r.js")]).toEqual(["B", "1"]);
+  });
+
+  it("Cmd+Z names an outside edit pending over a held drag and reverts the outside edit first", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "r.js": "1" });
+    write("index.html", "B");
+    await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+      idleMs: 60_000,
+      overwrote: { "index.html": fileContentVersion("A") },
+    });
+    write("r.js", "2");
+    history.noteChange("r.js");
+
+    await vi.waitFor(() =>
+      expect(history.next("back", you)?.label).toBe("Changed outside the app"),
+    );
+    expect(await history.step("back", you)).toMatchObject({
+      entry: { label: "Undid: Changed outside the app" },
+    });
+    expect([read("index.html"), read("r.js")]).toEqual(["B", "1"]);
+  });
+
+  it("Cmd+Z names a window the person has open and reverts its writes", async () => {
+    const { history, write, read } = await project({ "index.html": "A" });
+    await history.beginWindow(you, "Moved Title");
+    write("index.html", "B");
+    history.noteChange("index.html");
+
+    await vi.waitFor(() => expect(history.next("back", you)?.label).toBe("Moved Title"));
+    expect(await history.step("back", you)).toMatchObject({
+      entry: { label: "Undid: Moved Title" },
+    });
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("Cmd+Shift+Z never redoes an agent's own undo of its turn", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    await window.close();
+    const [turn] = history.list();
+    await history.undo(turn!.id, { who: agent });
+
+    expect(history.next("forward", you)).toBeUndefined();
+  });
+
+  it("Cmd+Shift+Z redoes the person's edit across an agent's write to another file", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "r.js": "1" });
+    write("index.html", "B");
+    await history.claim(you, "Moved Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("A") },
+    });
+    await history.step("back", you);
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("r.js", "2");
+    await window.close();
+
+    expect(await history.step("forward", you)).toMatchObject({
+      entry: { label: "Redid: Moved Title" },
+    });
+    expect([read("index.html"), read("r.js")]).toEqual(["B", "2"]);
+  });
+
+  it("an agent's turn the person undid and redid is the person's to Cmd+Z", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    await window.close();
+    const [turn] = history.list();
+    await history.undo(turn!.id, { who: you });
+    await history.step("forward", you);
+
+    expect(history.next("back", you)?.id).toBe(turn!.id);
   });
 
   it("undoes a turn's parts last first and keeps the person's edit between them", async () => {

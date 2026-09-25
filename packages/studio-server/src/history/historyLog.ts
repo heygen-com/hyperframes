@@ -145,8 +145,8 @@ export function undoneIds(entries: readonly HistoryEntry[]): Set<string> {
 }
 
 /**
- * What Cmd+Z (back) or Cmd+Shift+Z (forward) reverts, whoever made the change. Back: the newest change still in
- * effect. Forward: the newest undo of a change that is still in effect, while no change has been made since.
+ * What Cmd+Z (back) or Cmd+Shift+Z (forward) reverts for `mine`. Back: the newest change `mine` owns that is still
+ * in effect. Forward: the newest of `mine`'s undos still in effect, while `mine` has made no change since.
  */
 export function stepTarget(
   entries: readonly HistoryEntry[],

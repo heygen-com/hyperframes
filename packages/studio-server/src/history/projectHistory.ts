@@ -109,7 +109,7 @@ export interface ProjectHistory {
   /**
    * For a writer that records after writing (Studio): moves the uncommitted changes to `paths` into one entry of
    * `who`'s, each cut at the `overwrote` version so earlier parts stay their writer's. Same-key claims merge until
-   * another key, idle, an operation, a window opening or closing, or another write. Null when a drag nets to nothing.
+   * another key, idle, an operation, a window, or another write. Null when nothing was claimed or a drag nets to 0.
    */
   claim(
     who: HistoryWho,
@@ -124,7 +124,7 @@ export interface ProjectHistory {
   step(direction: "back" | "forward", who: HistoryWho, options?: Writing): Promise<HistoryResult>;
   /** The entry `who`'s next step reverts, pending changes included, as of the last scan (a step scans first). */
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined;
-  /** A conflict (a file changed since) returns the choice; pass `mode` to take one. */
+  /** A file changed since returns a conflict; `mode` takes a choice (keep-later-edits: null when none is left). */
   undo(id: string, options: { who: HistoryWho; mode?: UndoMode } & Writing): Promise<HistoryResult>;
   /** Makes the files equal what they were right after `point` (an entry id, or START). */
   restore(point: string, who: HistoryWho, options?: Writing): Promise<HistoryEntry | null>;
@@ -205,7 +205,7 @@ class Engine {
   tracked = new Map<string, Tracked>();
   windows: Group[] = [];
   outside: Group | null = null;
-  /** A coalescing claim, open until another key, its idle timer, an operation, or a window opening or closing. */
+  /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer: NodeJS.Timeout } | null = null;
   writeToken: string | undefined;
   quietTimer: NodeJS.Timeout | undefined;
@@ -507,11 +507,9 @@ class Engine {
 
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
     if (!group.changes.size) return null;
-    const { id, who, label, startedAt, lastWriteAt, changes } = group;
-    const files = [...changes.values()].sort((a, b) => a.path.localeCompare(b.path));
-    const previousEnd = this.log.entries.at(-1)?.endedAt ?? 0;
-    const endedAt = Math.max(lastWriteAt ?? this.now(), previousEnd);
-    const entry: HistoryEntry = { id, who, label, startedAt, endedAt, files, ...extra };
+    const pending = this.pendingEntry(group);
+    const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
+    const entry: HistoryEntry = { ...pending, endedAt, ...extra };
     this.log.entries.push(entry);
     try {
       saveRecord(this.logFile, this.log, { type: "entry", entry });
@@ -659,8 +657,6 @@ class Engine {
     const entry = this.entry(id);
     const changed = this.movedOn(entry);
     if (changed.length && !mode) return { ok: false, conflict: this.conflict(entry, changed) };
-    const kept =
-      mode === "keep-later-edits" ? new Set(changed.map((file) => file.path)) : new Set();
     if (mode === "back-to-before") {
       const index = this.log.entries.indexOf(entry);
       const point = index > 0 ? this.log.entries[index - 1]!.id : START;
@@ -670,7 +666,9 @@ class Engine {
       };
     }
     const target = new Map(
-      entry.files.filter((file) => !kept.has(file.path)).map((file) => [file.path, file.before]),
+      entry.files
+        .filter((file) => mode !== "keep-later-edits" || !changed.includes(file))
+        .map((file) => [file.path, file.before]),
     );
     return {
       ok: true,
@@ -685,14 +683,14 @@ class Engine {
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined {
     // An outside change has no known author, so it is everyone's; a step commits it after the held claim.
     const mine = (author: HistoryWho) => sameWho(author, who) || sameWho(author, OUTSIDE);
-    const pending = [this.outside, this.claimed?.group].find(
+    const pending = [...[...this.windows].reverse(), this.outside, this.claimed?.group].find(
       (group) => group?.changes.size && mine(group.who),
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
     return stepTarget(this.log.entries, direction, (entry) => mine(entry.who));
   }
 
-  /** A pending group as the entry it becomes once committed. */
+  /** A pending group as the entry it becomes once committed (a window's part gets a fresh id). */
   pendingEntry(group: Group): HistoryEntry {
     const files = [...group.changes.values()].sort((a, b) => a.path.localeCompare(b.path));
     const { id, who, label, startedAt, lastWriteAt } = group;
