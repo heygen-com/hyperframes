@@ -86,6 +86,7 @@ export type HistoryResult =
 
 export interface HistoryWindow {
   readonly id: string;
+  readonly startedAt: number;
   /** Records everything written since the window opened as one entry (null when nothing changed); after the window
    * ended by itself or by flush, returns the entry it became. */
   close(): Promise<HistoryEntry | null>;
@@ -299,7 +300,7 @@ class Engine {
     if (!existsSync(this.dir)) return;
     const sweptAt = Date.now();
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
-      Math.max(file.mtimeMs, file.ctimeMs);
+      Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
     const seen = listProjectFiles(this.dir).sort((a, b) => changedAt(a) - changedAt(b));
     let changed = false;
     for (const file of seen)
@@ -309,7 +310,7 @@ class Engine {
       if (present.has(path)) continue;
       this.tracked.delete(path);
       const removedAt = sweptAt;
-      this.record(path, known.hash, null, removedAt);
+      await this.record(path, known.hash, null, removedAt);
       changed = true;
     }
     if (changed) this.saveStatCache();
@@ -331,12 +332,20 @@ class Engine {
     const hash = await this.storeIfPresent(path);
     if (hash === null) return false;
     this.tracked.set(path, { hash, stat });
-    if (known.hash !== hash) this.record(path, known.hash, hash, at);
+    if (known.hash !== hash) await this.record(path, known.hash, hash, at);
     return known.hash !== hash || known.stat !== stat;
   }
 
-  record(path: string, before: string | null, after: string | null, at: number): void {
-    const window = [...this.windows].reverse().find((open) => takesWrite(open, at));
+  async record(
+    path: string,
+    before: string | null,
+    after: string | null,
+    at: number,
+  ): Promise<void> {
+    const endedBeforeThisWrite = this.windows.filter((open) => !takesWrite(open, at));
+    if (endedBeforeThisWrite.length) await this.commitOutside();
+    for (const window of endedBeforeThisWrite) await this.endWindow(window);
+    const window = this.windows.at(-1);
     if (window) this.touch(window, at);
     addChange(window ?? this.outsideGroup(), path, before, after);
   }
@@ -490,7 +499,8 @@ class Engine {
     if (!group.changes.size) return null;
     const { id, who, label, startedAt, lastWriteAt, changes } = group;
     const files = [...changes.values()].sort((a, b) => a.path.localeCompare(b.path));
-    const endedAt = lastWriteAt ?? this.now();
+    const previousEnd = this.log.entries.at(-1)?.endedAt ?? 0;
+    const endedAt = Math.max(lastWriteAt ?? this.now(), previousEnd);
     const entry: HistoryEntry = { id, who, label, startedAt, endedAt, files, ...extra };
     this.log.entries.push(entry);
     try {
@@ -549,8 +559,9 @@ class Engine {
       await this.sweep();
       const window = { ...this.newGroup(who, label), idleMs };
       this.windows.push(window);
-      this.touch(window, window.startedAt);
-      return { id: window.id, close: () => this.queue(() => this.sweepAndEnd(window)) };
+      this.touch(window, Date.now());
+      const close = () => this.queue(() => this.sweepAndEnd(window));
+      return { id: window.id, startedAt: window.startedAt, close };
     });
   }
 

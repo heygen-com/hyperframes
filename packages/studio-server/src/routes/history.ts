@@ -147,7 +147,7 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
       );
       windows.set(window.id, { history, window });
       // The window's id is the id of the entry it becomes (its last one, when a claim cut it).
-      return { windowId: window.id };
+      return { windowId: window.id, startedAt: window.startedAt };
     }),
   );
   api.post(`${base}/window/:windowId/close`, (c) =>

@@ -36,7 +36,7 @@ export interface Owner {
   undo(id: string, who: HistoryWho, mode?: UndoMode): Promise<HistoryResult>;
   restore(point: string, who: HistoryWho): Promise<HistoryEntry | null>;
   pin(id: string, pinned: boolean): Promise<void>;
-  begin(who: HistoryWho, label: string): Promise<string>;
+  begin(who: HistoryWho, label: string): Promise<{ id: string; startedAt: number }>;
   end(id: string): Promise<HistoryEntry | null>;
   close(): Promise<void>;
 }
@@ -87,6 +87,13 @@ export function lastTurnParts(dir: string, name: string): string[] | null {
   return readLastTurns(dir)[name] ?? null;
 }
 
+type TurnKey = Pick<HistoryEntry, "who" | "label" | "startedAt">;
+const samePart = (a: TurnKey, b: TurnKey) =>
+  a.who.kind === b.who.kind &&
+  a.who.name === b.who.name &&
+  a.label === b.label &&
+  a.startedAt === b.startedAt;
+
 /** Ends an open turn: its last part is the entry `end` returns, and every part is kept as its agent's last turn. */
 export async function endTurn(
   owner: Owner,
@@ -94,7 +101,10 @@ export async function endTurn(
   dir: string,
 ): Promise<{ entry: HistoryEntry | null; parts: string[] }> {
   const entry = await owner.end(turn.id);
-  const parts = entry ? [...turn.parts, entry.id] : turn.parts;
+  // A Studio claim can cut a turn: each cut part is an entry with the turn's who, label and start.
+  const cut = (await owner.list()).filter((other) => samePart(other, entry ?? turn));
+  const own = entry ? [entry.id] : [];
+  const parts = [...new Set([...turn.parts, ...cut.map((part) => part.id), ...own])];
   // Recorded before the marker goes, so a crash between the two never leaves the older turn as the last one.
   const draft = `${lastTurnsFile(dir)}.${process.pid}.tmp`;
   mkdirSync(dirname(draft), { recursive: true });
@@ -126,8 +136,10 @@ function previewOwner(route: (path: string) => string): Owner {
     undo: (id, who, mode) => json("/undo", { entryId: id, who, mode }),
     restore: (point, who) => json("/restore", { point, who }),
     pin: async (id, pinned) => void (await json("/pin", { entryId: id, pinned })),
-    begin: async (who, label) =>
-      (await json("/window", { who, label, idleMs: historyDeps.turnIdleMs })).windowId,
+    begin: async (who, label) => {
+      const opened = await json("/window", { who, label, idleMs: historyDeps.turnIdleMs });
+      return { id: opened.windowId, startedAt: opened.startedAt ?? Date.now() };
+    },
     // A preview restarted since begin committed the window on its way down.
     end: (id) =>
       json(`/window/${id}/close`, {})
@@ -162,7 +174,7 @@ async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner
     restore: (point, who) => history.restore(point, who),
     pin: async (id, pinned) => history.pin(id, pinned),
     // Opening filed every earlier write; the turn's own writes are filed to it when the next open passes it.
-    begin: async () => randomUUID(),
+    begin: async () => ({ id: randomUUID(), startedAt: Date.now() }),
     end: async (id) => history.list().find((entry) => entry.id === id) ?? null,
     close: () => history.close(),
   };

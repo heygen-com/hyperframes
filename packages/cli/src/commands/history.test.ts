@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { createAdaptorServer } from "@hono/node-server";
 import {
   createStudioApi,
+  fileContentVersion,
   openProjectHistory,
   type StudioApiAdapter,
 } from "@hyperframes/studio-server";
@@ -264,21 +265,58 @@ describe("hyperframes history, one owner", () => {
     });
   });
 
-  it("a turn whose writes come closer together than the idle limit stays the agent's past it", async () => {
-    const { dir, write, json, hf } = project();
-    await hf();
-    historyDeps.turnIdleMs = 400;
-    // Written "later" by their times, so the test never races the clock.
-    const writeAt = (path: string, at: number) => {
-      write(path, "2");
-      utimesSync(join(dir, path), at / 1000, at / 1000);
-    };
+  it("undo --who also reverts the part of a turn that a Studio edit cut off", async () => {
+    const { dir, read, write, hf, json } = project();
+    const held = await preview(dir);
+    const studio = { kind: "person", name: "You" } as const;
     await hf("begin", "--who", "claude", "--label", "Retitle");
-    const at = Date.now() + 300;
-    writeAt("index.html", at);
+    write("index.html", "A2");
+    await held.claim(studio, "Nothing", []); // a claim scans first: the agent's write is seen
+    write("index.html", "A3");
+    await held.claim(studio, "Dragged Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("A2") },
+    });
+    write("notes.html", "N2");
+    expect((await json("end")).parts).toHaveLength(2);
+
+    const undo = await hf("undo", "--who", "claude", "--just-this");
+    expect(undo.code, undo.err).toBe(0);
+    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N"]);
+  });
+
+  it("undo --who reverts a turn a Studio edit cut off whole, after the preview stopped", async () => {
+    const { dir, read, write, hf, json } = project();
+    const held = await preview(dir);
+    const studio = { kind: "person", name: "You" } as const;
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    write("index.html", "A2");
+    await held.claim(studio, "Nothing", []);
+    write("index.html", "A3");
+    await held.claim(studio, "Dragged Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("A2") },
+    });
+    await held.close();
+    historyDeps.findServer = async () => null;
+    expect((await json("end")).parts).toHaveLength(1);
+
+    const undo = await hf("undo", "--who", "claude", "--just-this");
+    expect(undo.code, undo.err).toBe(0);
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("a turn whose writes come closer together than the idle limit stays the agent's past it", async () => {
+    const { write, json, hf } = project();
+    await hf();
+    historyDeps.turnIdleMs = 1000;
+    // Each write 600 ms after the one before, past 1000 ms in all.
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    await pause(600);
+    write("index.html", "2");
     await hf(); // a command mid-turn files the turn so far; the rest counts from index.html
-    writeAt("notes.html", at + 300);
-    writeAt("extra.html", at + 600);
+    await pause(600);
+    write("notes.html", "2");
+    await pause(600);
+    write("extra.html", "2");
     await hf("end");
     const entries = (await json()).entries.reverse();
     expect(
@@ -290,15 +328,14 @@ describe("hyperframes history, one owner", () => {
   });
 
   it("undo --who refuses when the agent's last turn recorded nothing, and leaves its earlier turn alone", async () => {
-    const { dir, read, write, hf, turn } = project();
+    const { read, write, hf, turn } = project();
     await hf();
     historyDeps.turnIdleMs = 400;
     await turn("claude", "Earlier", "notes.html", "N2");
     await hf("begin", "--who", "claude", "--label", "Retitle");
     // The only change lands past the idle limit (the person's edit over the agent's), so it is Outside.
+    await pause(700);
     write("index.html", "A2");
-    const later = Date.now() + 60_000;
-    utimesSync(join(dir, "index.html"), later / 1000, later / 1000);
 
     const refused = await hf("undo", "--who", "claude");
     expect([refused.code, refused.err]).toEqual([

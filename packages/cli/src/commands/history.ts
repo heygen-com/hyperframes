@@ -416,8 +416,7 @@ export default defineCommand({
           withOwner("begin", args.dir, async (owner, turn, projectDir) => {
             if (turn) await endTurn(owner, turn, projectDir);
             const who = whoOf(args.who);
-            const id = await owner.begin(who, args.label);
-            const startedAt = Date.now();
+            const { id, startedAt } = await owner.begin(who, args.label);
             writeTurn(projectDir, {
               via: owner.via,
               id,
