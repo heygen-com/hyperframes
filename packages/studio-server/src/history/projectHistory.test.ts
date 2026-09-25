@@ -8,6 +8,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -235,15 +236,15 @@ describe("openProjectHistory", () => {
       "c.html": "c1",
     });
     await history.close();
-    const lastWriteAt = Date.now();
-    const pause = () => new Promise((settle) => setTimeout(settle, 250));
-    await pause();
-    write("a.html", "a2");
-    await pause();
-    write("b.html", "b2"); // 250 ms after a.html: still the window's, 500 ms after its last write
-    await pause();
-    await pause();
-    write("c.html", "c2"); // 500 ms without a write: the window had ended
+    // Written "later" by their times, so the test never races the clock.
+    const lastWriteAt = Date.now() + 60_000;
+    const writeAt = (path: string, at: number) => {
+      write(path, "2");
+      utimesSync(join(projectDir, path), at / 1000, at / 1000);
+    };
+    writeAt("a.html", lastWriteAt + 300);
+    writeAt("b.html", lastWriteAt + 600); // 300 ms after a.html: still the window's
+    writeAt("c.html", lastWriteAt + 1100); // 500 ms without a write: the window had ended
     const closedWindow = { id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt };
 
     const reopened = await open(projectDir, historyRoot, {
