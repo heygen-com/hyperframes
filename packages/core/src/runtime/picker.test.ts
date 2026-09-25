@@ -222,6 +222,32 @@ describe("createPickerModule", () => {
       }
     });
 
+    it("names an element by a selector that finds only it when its id or track is shared", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<div id="root" data-composition-id="main">
+        <div data-composition-id="card"><div id="root"><span id="t">x</span></div></div>
+        <div data-track-index="1">a</div><div data-track-index="1" id="clip-b-parent"><p>b</p></div></div>`;
+      const inner = document.querySelector('[data-composition-id="card"] > #root')!;
+      const outer = document.querySelector('[data-composition-id="main"]')!;
+      const clipB = document.getElementById("clip-b-parent")!;
+      clipB.removeAttribute("id");
+      const selectorOf = (el: Element) => {
+        const restore = emulateHitTest(() => [el]);
+        try {
+          return (window as any).__HF_PICKER_API.pickAtPoint(10, 10)?.selector as string;
+        } finally {
+          restore();
+        }
+      };
+
+      expect(selectorOf(inner)).toBe('[data-composition-id="card"] > #root');
+      for (const el of [inner, outer, clipB]) {
+        expect([...document.querySelectorAll(selectorOf(el))]).toEqual([el]);
+      }
+      expect(selectorOf(document.getElementById("t")!)).toBe("#t");
+    });
+
     it("adopts the override only for the hit test, leaving the DOM and a saved outerHTML untouched", () => {
       const adopted: CSSStyleSheet[] = [];
       Object.defineProperty(document, "adoptedStyleSheets", {

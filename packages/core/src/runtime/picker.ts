@@ -169,6 +169,24 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   }
 
   function buildElementSelector(el: Element): string {
+    const own = ownSelector(el);
+    const parent = el.parentElement;
+    if (!parent || matchesOnly(document, own, el)) return own;
+    const step = matchesOnly(parent, `:scope > ${own}`, el) ? own : nthOfType(el, parent);
+    return `${buildElementSelector(parent)} > ${step}`;
+  }
+
+  function matchesOnly(scope: ParentNode, selector: string, el: Element): boolean {
+    const found = scope.querySelectorAll(selector);
+    return found.length === 1 && found[0] === el;
+  }
+
+  function nthOfType(el: Element, parent: Element): string {
+    const index = [...parent.children].filter((child) => child.tagName === el.tagName).indexOf(el);
+    return `${el.tagName.toLowerCase()}:nth-of-type(${index + 1})`;
+  }
+
+  function ownSelector(el: Element): string {
     const innerRoot = innerRootSelector(el);
     if (innerRoot) return innerRoot;
     const htmlEl = el as HTMLElement;
@@ -186,11 +204,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     const parent = el.parentElement;
     if (!parent) return tag;
     const siblings = parent.querySelectorAll(`:scope > ${tag}`);
-    if (siblings.length === 1) return tag;
-    for (let i = 0; i < siblings.length; i += 1) {
-      if (siblings[i] === el) return `${tag}:nth-of-type(${i + 1})`;
-    }
-    return tag;
+    return siblings.length === 1 ? tag : nthOfType(el, parent);
   }
 
   function buildElementLabel(el: Element): string {
