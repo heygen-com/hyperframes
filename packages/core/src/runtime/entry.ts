@@ -2,12 +2,14 @@ import { initSandboxRuntimeModular } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
+import { assetUrl } from "./assetUrl";
 import { getVariables } from "./getVariables";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
   __hyperframes?: {
+    assetUrl: typeof assetUrl;
     fitTextFontSize: typeof fitTextFontSize;
     getVariables: typeof getVariables;
     pretext: typeof pretext;
@@ -30,6 +32,7 @@ installAuthoredOpacityCapture();
 // before DOMContentLoaded (font sizing runs during script evaluation, and
 // getVariables is read by composition setup before the timeline is built).
 (window as HyperframeWindow).__hyperframes = {
+  assetUrl,
   fitTextFontSize,
   getVariables,
   pretext,
