@@ -126,8 +126,8 @@ describe("module blocks' catalog import map", () => {
       assert.ok(imported.length > 0);
       const out = inlineCatalogScripts(name, html, dir, vendorUrls);
       const mapped = /imports:\{(.*?)\}\}\);/.exec(out)?.[1] ?? "";
-      for (const spec of imported)
-        assert.match(mapped, new RegExp(`(^|,)"?${spec.replace(/[./]/g, "\\$&")}"?:`), spec);
+      const keys = [...mapped.matchAll(/(?:^|,)"?([^",:]+)"?:/g)].map((m) => m[1]);
+      for (const spec of imported) assert.ok(keys.includes(spec), spec);
       assert.doesNotMatch(out, /<script type="importmap">/);
     });
   }
