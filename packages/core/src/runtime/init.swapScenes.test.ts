@@ -251,6 +251,28 @@ describe("__hfSwapScenes", () => {
     delete (window as unknown as { gsap?: unknown }).gsap;
   });
 
+  it("rewinds a swapped caption scene's timeline so the redraw renders its rewritten colours", async () => {
+    const { root } = trackingRoot();
+    (window as unknown as { gsap: unknown }).gsap = { set: () => {}, getTweensOf: () => [] };
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response("null", { status: 404 }),
+    );
+    const captions = (label: string, hash: string): Scene => ({
+      ...B,
+      label,
+      hash,
+      body: '<div class="caption-group"><span>w</span></div>',
+    });
+    boot([A1, captions("b", "hb")], root);
+    await tick();
+    // The new scene's timeline has already rendered at its end, as the playhead is past it.
+    made.n1!.totalTime(2);
+    const rewinds = vi.spyOn(made.n1!, "totalTime");
+    await window.__hfSwapScenes!(preview([A1, captions("n1", "hb2")]).html);
+    expect(rewinds).toHaveBeenCalledWith(0, true);
+    delete (window as unknown as { gsap?: unknown }).gsap;
+  });
+
   it("rejects a scene the bundler marked as not swappable, naming why", async () => {
     const { root } = trackingRoot();
     const marked = (s: Scene): Scene => ({

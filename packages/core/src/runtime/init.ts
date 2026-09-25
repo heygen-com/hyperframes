@@ -3169,6 +3169,13 @@ export function initSandboxRuntimeModular(): void {
     await settleSceneDom(captionHosts);
     if (state.tornDown) throw new Error("the preview was torn down during the swap");
     releaseDetachedMedia();
+    // The redraw seek never re-renders a timeline already at its end, so rewritten caption tweens would not show.
+    for (const host of captionHosts) {
+      for (const el of [host, ...host.querySelectorAll("[data-composition-id]")]) {
+        const id = el.getAttribute("data-composition-id");
+        if (id) timelines[id]?.totalTime?.(0, true);
+      }
+    }
     childrenBound = false;
     bindRootTimelineIfAvailable();
     const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
