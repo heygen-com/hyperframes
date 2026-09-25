@@ -441,11 +441,11 @@ function nodeInClipScope(node: Element, clip: ClipManifestClip): boolean {
   return ids.length === scope.length && ids.every((id, index) => id === scope[index]);
 }
 
-/** The first node for `selector` inside the clip's own composition. */
+/** The `selector` match in the clip's composition; a lone match stands, as healed hosts can stale the chain. */
 function firstInClipScope(doc: Document, selector: string, clip: ClipManifestClip): Element | null {
-  return (
-    Array.from(doc.querySelectorAll(selector)).find((node) => nodeInClipScope(node, clip)) ?? null
-  );
+  const nodes = Array.from(doc.querySelectorAll(selector));
+  if (nodes.length === 1) return nodes[0];
+  return nodes.find((node) => nodeInClipScope(node, clip)) ?? null;
 }
 
 /** The clip's id in its own composition: an id can repeat in a mounted sub-composition, earlier in the document. */

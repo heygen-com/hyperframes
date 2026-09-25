@@ -70,6 +70,19 @@ describe("live DOM manifest hydration", () => {
     );
     expect([element.hfId, element.sourceFile]).toEqual(["hf-root", undefined]);
   });
+  it("keeps a unique id bound while its host's composition id is healed after the manifest", () => {
+    // The wrapper's data-composition-id arrived after the runtime recorded the clip's chain as ["main"].
+    const doc = documentWith(
+      '<div id="ho" data-hf-id="ho" data-start="0" data-duration="4"></div>' +
+        '<div id="hs-layer" data-composition-id="hs-comp">' +
+        '<div id="hs" data-hf-id="hs" data-start="0" data-duration="4"></div></div>',
+    );
+    const [element] = buildTimelineElementsFromClips(
+      [clip({ id: "hs", compositionAncestors: ["main"] })],
+      doc,
+    );
+    expect(element.hfId).toBe("hs");
+  });
   it("does not bind a cross-tag direct identity", () => {
     const doc = documentWith('<div id="collision" data-start="0" data-duration="4"></div>');
     expect(
