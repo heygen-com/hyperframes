@@ -1119,6 +1119,15 @@ describe("composition rules", () => {
   });
 
   describe("invalid_composition_variables_declaration", () => {
+    it("checks a declaration on the composition root too", async () => {
+      const html = `<html><body><div data-composition-id="x" data-composition-variables='[{"id":12345}]'></div></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "invalid_composition_variables_declaration",
+      );
+      expect(finding).toBeDefined();
+    });
+
     it("warns when data-composition-variables is unparseable JSON", async () => {
       const html = `<html data-composition-variables='[{not json'><body><div data-composition-id="x"></div></body></html>`;
       const result = await lintHyperframeHtml(html);
