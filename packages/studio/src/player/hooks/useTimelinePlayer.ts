@@ -180,6 +180,7 @@ export function useTimelinePlayer({
     applyPreviewAudioFlags(iframeRef.current, audioMuted, audioVolume);
   }, []);
   const play = useCallback(() => {
+    if (!usePlayerStore.getState().timelineReady) return;
     stopRAFLoop();
     stopReverseLoop();
     stopScrubPreviewAudio();

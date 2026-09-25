@@ -2,7 +2,10 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback, type ReactNode } from "react";
 import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
-import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
+import {
+  compositionPathOfPreviewUrl,
+  resolveThumbnailSeekTime,
+} from "../player/components/CompositionThumbnail";
 import type { TimelineElement } from "../player";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { audioPillFlags } from "../player/components/audioClipLink";
@@ -157,8 +160,8 @@ export function useRenderClipContent({
           label: "",
           labelColor: style.label,
 
-          seekTime: 0,
-          duration: el.duration,
+          seekTime: resolveThumbnailSeekTime(el.duration),
+          duration: 0,
           projectId: pid,
           sessionEpoch,
           contentRevision: thumbnailRevisionOf(thumbnailRevisions, compSrc),

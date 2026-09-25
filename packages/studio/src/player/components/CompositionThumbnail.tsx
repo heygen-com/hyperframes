@@ -24,6 +24,20 @@ interface CompositionThumbnailProps {
 
 const CLIP_HEIGHT = 66;
 const THUMBNAIL_URL_VERSION = "v3";
+export const THUMBNAIL_SEEK_TIME_SECONDS = 3;
+
+export function resolveThumbnailSeekTime(durationSeconds: number | null | undefined): number {
+  if (
+    Number.isFinite(durationSeconds) &&
+    durationSeconds != null &&
+    durationSeconds > 0 &&
+    durationSeconds <= THUMBNAIL_SEEK_TIME_SECONDS
+  ) {
+    return durationSeconds / 2;
+  }
+
+  return THUMBNAIL_SEEK_TIME_SECONDS;
+}
 
 export function buildCompositionThumbnailUrl({
   previewUrl,

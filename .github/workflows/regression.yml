@@ -17,6 +17,8 @@ concurrency:
   cancel-in-progress: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
 
 on:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       catalog_publish:

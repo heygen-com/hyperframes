@@ -26,6 +26,7 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
+export { stampProjectHfIds } from "./helpers/hfIdPersist.js";
 export {
   patchElementInHtml,
   splitElementInHtml,
@@ -44,6 +45,7 @@ export {
 } from "./helpers/applyFileMutations.js";
 export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
 export { PREVIEW_BUNDLE_OPTIONS } from "./routes/preview.js";
+export { createPreviewDocumentStore } from "./helpers/previewDocumentStore.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
 export { requestSubPath } from "./helpers/requestSubPath.js";
 export {

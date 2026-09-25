@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { fileContentVersion } from "@hyperframes/studio-server";
+import { createProjectSignature, fileContentVersion } from "@hyperframes/studio-server";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
@@ -65,6 +65,7 @@ vi.mock("@hyperframes/studio-server", async (importOriginal) => {
   const original = await importOriginal<typeof import("@hyperframes/studio-server")>();
   return {
     ...original,
+    createProjectSignature: vi.fn(original.createProjectSignature),
     openProjectHistory: (...args: Parameters<typeof original.openProjectHistory>) =>
       historyState.open ? historyState.open(...args) : original.openProjectHistory(...args),
   };
@@ -437,6 +438,66 @@ describe("createStudioServer shutdown", () => {
     await expect(late).resolves.toBeNull();
     expect(newPage).toHaveBeenCalledTimes(1);
     await shutdownPromise;
+  });
+});
+
+describe("Studio thumbnail capture", () => {
+  function fakePageBrowser(onEvaluate = () => {}) {
+    const screenshot = vi.fn(async () => Buffer.from("jpeg"));
+    const evaluate = vi.fn(async () => onEvaluate());
+    const page = new Proxy(
+      { screenshot, evaluate },
+      {
+        get: (target, key) =>
+          key === "then"
+            ? undefined
+            : key in target
+              ? target[key as keyof typeof target]
+              : async () => {},
+      },
+    );
+    engineState.acquireBrowser = async () => ({
+      browser: { connected: true, newPage: async () => page, on: () => {} },
+      release: async () => {},
+    });
+    return { screenshot };
+  }
+  const opts = (dir: string, signal = new AbortController().signal) => ({
+    project: { id: "demo", dir, title: "demo" },
+    compPath: "index.html",
+    seekTime: 0.5,
+    width: 640,
+    height: 360,
+    outputWidth: 640,
+    outputHeight: 360,
+    previewUrl: "http://localhost/preview",
+    signal,
+  });
+
+  it("stops a thumbnail whose request is aborted before its screenshot", async () => {
+    let abortOnEvaluate: AbortController | undefined;
+    const { screenshot } = fakePageBrowser(() => abortOnEvaluate?.abort());
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await expect(server.adapter.generateThumbnail?.(opts(dir))).resolves.toBeInstanceOf(Buffer);
+    expect(screenshot).toHaveBeenCalledTimes(1);
+
+    const aborting = new AbortController();
+    abortOnEvaluate = aborting;
+    await expect(
+      server.adapter.generateThumbnail?.(opts(dir, aborting.signal)),
+    ).resolves.toBeNull();
+    expect(screenshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the cached project signature instead of walking the project per thumbnail", async () => {
+    fakePageBrowser();
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await server.adapter.generateThumbnail?.(opts(dir));
+    const walks = vi.mocked(createProjectSignature).mock.calls.length;
+    for (let i = 0; i < 3; i++) await server.adapter.generateThumbnail?.(opts(dir));
+    expect(vi.mocked(createProjectSignature).mock.calls.length).toBe(walks);
   });
 });
 

@@ -219,6 +219,7 @@ export function useShadowPreviewReload({
     shadowIframeRef.current = null;
     isRefreshingRef.current = false;
     pendingSeekRef.current = null;
+    usePlayerStore.getState().setTimelineReady(false);
     setPreviewSlots(planShadowDiscard);
     thumbnailScheduler.setPreviewReloading(false);
   }, [stopPendingShadow, isRefreshingRef, pendingSeekRef]);

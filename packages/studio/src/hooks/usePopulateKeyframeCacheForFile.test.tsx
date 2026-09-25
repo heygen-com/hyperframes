@@ -18,6 +18,8 @@ let container: HTMLElement | null = null;
 
 beforeEach(() => {
   usePlayerStore.setState({
+    timelineProjectId: "demo",
+    previewBooted: true,
     elements: [
       {
         id: "lab",

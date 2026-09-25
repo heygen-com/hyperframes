@@ -8,6 +8,8 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
 import { homedir } from "node:os";
 import { readBundleFile } from "./readBundleFile.js";
@@ -30,6 +32,8 @@ import {
 } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { isDevMode } from "../utils/env.js";
+import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
@@ -43,10 +47,12 @@ import {
   compositionsAffectedBy,
   type PreviewApiAdapter,
   PREVIEW_BUNDLE_OPTIONS,
+  createPreviewDocumentStore,
   thumbnailDeviceScaleFactor,
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
+  stampProjectHfIds,
   openProjectHistory,
   type ProjectHistory,
 } from "@hyperframes/studio-server";
@@ -56,6 +62,7 @@ import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip"
 import type { RenderJob } from "@hyperframes/producer";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
+import { createThumbnailPages } from "./thumbnailPages.js";
 import {
   assertWebGpuAdapterAvailable,
   compositionRequiresWebGpu,
@@ -222,6 +229,7 @@ async function downloadRemoteGifImageSources(
 // share a single Chrome process instead of running two independent ones.
 
 let _thumbnailBrowserLease: import("@hyperframes/engine").BrowserLease | null = null;
+const thumbnailPages = createThumbnailPages();
 let _thumbnailBrowserInitializing: Promise<ThumbnailBrowserSession | null> | null = null;
 let _thumbnailBrowserModes: {
   requested: BrowserGpuMode;
@@ -303,6 +311,7 @@ async function getThumbnailBrowser(
 }
 
 async function closeThumbnailBrowser(): Promise<void> {
+  thumbnailPages.closeAll();
   // A launch kicked off just before this call isn't in _thumbnailBrowserLease
   // yet; awaiting it here closes a browser that was mid-launch when the stop
   // signal arrived, instead of leaving it running, unreferenced, after exit.
@@ -401,6 +410,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const browserGpuMode = options.browserGpuMode ?? resolveLocalBrowserGpuMode();
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
+  stampProjectHfIds(projectDir);
   const watcher = createProjectWatcher(projectDir);
 
   // ── CLI adapter for the shared studio API ──────────────────────────────
@@ -412,6 +422,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       cachedProjectSignature = null;
     }
   });
+  const projectSignature = (dir: string): string => {
+    if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
+    cachedProjectSignature ??= createProjectSignature(projectDir);
+    return cachedProjectSignature;
+  };
 
   // Opened on first use, so a server that never serves Studio's history never writes one. A failed open stays off
   // for this run.
@@ -443,6 +458,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     autoProxy: options.autoProxy ?? resolveAutoProxy(projectDir, undefined),
 
     listProjects: () => [project],
+
+    // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
+    previewDocuments: createPreviewDocumentStore(
+      join(projectDir, ".hyperframes", "preview"),
+      createHash("sha256")
+        .update(readFileSync(fileURLToPath(import.meta.url)))
+        .digest("hex"),
+    ),
 
     resolveProject: (id: string) => (id === projectId ? project : null),
 
@@ -489,21 +512,21 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return injectDeterministicFontFaces(prepared.html);
     },
 
-    getProjectSignature(dir: string): string {
-      if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
-      cachedProjectSignature ??= createProjectSignature(projectDir);
-      return cachedProjectSignature;
-    },
+    getProjectSignature: projectSignature,
 
     async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
       return await lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
 
-    async lintProject(dir: string) {
-      const { lintProject } = await import("@hyperframes/lint");
-      return await lintProject(dir, undefined, { host: "studio" });
-    },
+    // Out of process: linting a large composition is seconds of synchronous parsing, and on
+    // this event loop it stalls every other Studio request, the preview included.
+    lintProject: (dir: string) =>
+      runRenderSetupWorker<ProjectLintResult>(
+        "lint",
+        { projectDir: dir, host: "studio" },
+        { maxBufferBytes: 8 * 1024 * 1024 },
+      ),
 
     runtimeUrl: "/api/runtime.js",
 
@@ -653,66 +676,68 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const requiresWebGpu = existsSync(sourcePath)
         ? compositionRequiresWebGpu(readFileSync(sourcePath, "utf-8"))
         : false;
-      let page: import("puppeteer-core").Page | null = null;
-      const closePage = () => void page?.close().catch(() => {});
-      opts.signal.addEventListener("abort", closePage, { once: true });
+      if (opts.signal.aborted) return null;
+      const width = opts.width || 1920;
+      const height = opts.height || 1080;
+      const viewport = { width, height, deviceScaleFactor: thumbnailDeviceScaleFactor(opts) };
       try {
-        page = await session.browser.newPage();
-        if (opts.signal.aborted) return null;
-        const width = opts.width || 1920;
-        const height = opts.height || 1080;
-        await page.setViewport({
-          width,
-          height,
-          deviceScaleFactor: thumbnailDeviceScaleFactor(opts),
-        });
-        await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-        await assertWebGpuAdapterAvailable(page, requiresWebGpu);
-        await page
-          .waitForFunction(
-            () => {
-              const w = window as Window & {
-                __timelines?: Record<string, unknown>;
-              };
-              return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
-            },
-            { timeout: 5000 },
-          )
-          .catch(() => {});
-        await seekCompositionTimeline(page, opts.seekTime, {
-          fallbackToBridgeAndTimelines: true,
-          waitForPreferredSeekTargetMs: 500,
-          animationFrameSettle: "double",
-          waitForFontsMs: 500,
-        });
-        const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
-        await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
-        await page.evaluate(() => {
-          void document.fonts?.ready;
-          const body = document.body;
-          if (body && getComputedStyle(body).backgroundColor === "rgba(0, 0, 0, 0)") {
-            body.style.backgroundColor = "#1c2028";
-          }
-        });
-        await new Promise((r) => setTimeout(r, 200));
-        await reapplyStudioManualEditsToThumbnailPage(page);
-        let clip: ScreenshotClip | undefined;
-        if (opts.selector) {
-          clip = await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex);
-        }
-        const screenshot = (await page.screenshot(
-          opts.format === "png"
-            ? {
-                type: "png",
-                ...(clip ? { clip } : {}),
+        return await thumbnailPages.withPage(
+          session.browser,
+          opts.previewUrl,
+          projectSignature(opts.project.dir),
+          opts.seekTime,
+          async (page) => {
+            await page.setViewport(viewport);
+            await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+            await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+            await page
+              .waitForFunction(
+                () => {
+                  const w = window as Window & {
+                    __timelines?: Record<string, unknown>;
+                  };
+                  return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
+                },
+                { timeout: 5000 },
+              )
+              .catch(() => {});
+          },
+          async (page) => {
+            if (opts.signal.aborted) return null;
+            await page.setViewport(viewport);
+            await seekCompositionTimeline(page, opts.seekTime, {
+              fallbackToBridgeAndTimelines: true,
+              waitForPreferredSeekTargetMs: 500,
+              animationFrameSettle: "double",
+              waitForFontsMs: 500,
+            });
+            const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
+            await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
+            await page.evaluate(() => {
+              void document.fonts?.ready;
+              const body = document.body;
+              if (body && getComputedStyle(body).backgroundColor === "rgba(0, 0, 0, 0)") {
+                body.style.backgroundColor = "#1c2028";
               }
-            : {
-                type: "jpeg",
-                quality: 80,
-                ...(clip ? { clip } : {}),
-              },
-        )) as Buffer;
-        return screenshot;
+            });
+            await new Promise((r) => setTimeout(r, 200));
+            await reapplyStudioManualEditsToThumbnailPage(page);
+            if (opts.signal.aborted) return null;
+            let clip: ScreenshotClip | undefined;
+            if (opts.selector) {
+              clip = await page.evaluate(
+                getElementScreenshotClip,
+                opts.selector,
+                opts.selectorIndex,
+              );
+            }
+            return (await page.screenshot(
+              opts.format === "png"
+                ? { type: "png", ...(clip ? { clip } : {}) }
+                : { type: "jpeg", quality: 80, ...(clip ? { clip } : {}) },
+            )) as Buffer;
+          },
+        );
       } catch (err) {
         if (!opts.signal.aborted) {
           console.warn(
@@ -721,9 +746,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           );
         }
         return null;
-      } finally {
-        opts.signal.removeEventListener("abort", closePage);
-        await page?.close().catch(() => {});
       }
     },
 

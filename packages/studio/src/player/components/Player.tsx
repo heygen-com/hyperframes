@@ -4,6 +4,7 @@ import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readin
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
+import { usePlayerStore } from "../store/playerStore";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -57,6 +58,7 @@ function getShaderTransitionLoading(event: Event): boolean | null {
 }
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
+const PREVIEW_BOOT_DEADLINE_MS = 5000;
 const DEFAULT_PREVIEW_ERROR = "The composition preview did not become ready.";
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
@@ -427,13 +429,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       setAssetsLoading(false);
     };
 
-    const readyToShow =
-      loaded &&
-      painted &&
-      !compositionLoading &&
-      !shaderTransitionLoading &&
-      !assetsLoading &&
-      !previewError;
+    const firstFrameShown =
+      loaded && painted && !compositionLoading && !shaderTransitionLoading && !previewError;
+    const readyToShow = firstFrameShown && !assetsLoading;
+    // Work waiting on the boot starts at the first frame, while media still buffers.
+    useEffect(() => {
+      if (firstFrameShown) usePlayerStore.getState().markPreviewBooted();
+    }, [firstFrameShown]);
     // `painted` means the player's own loader has finished fading; two frames of grace on top.
     useEffect(() => {
       if (!readyToShow) {
@@ -449,6 +451,18 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         cancelAnimationFrame(second);
       };
     }, [readyToShow]);
+
+    useEffect(() => {
+      if (previewError) usePlayerStore.getState().markPreviewBooted();
+    }, [previewError]);
+
+    useEffect(() => {
+      const timer = setTimeout(
+        () => usePlayerStore.getState().markPreviewBooted(),
+        PREVIEW_BOOT_DEADLINE_MS,
+      );
+      return () => clearTimeout(timer);
+    }, [projectId]);
 
     const showCompositionOverlay =
       !suppressLoadingOverlay &&

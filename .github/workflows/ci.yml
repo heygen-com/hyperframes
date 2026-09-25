@@ -11,6 +11,8 @@ env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
 on:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       catalog_publish:
@@ -179,10 +181,16 @@ jobs:
   build:
     name: Build
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -352,10 +360,16 @@ jobs:
   typecheck:
     name: Typecheck
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -453,10 +467,15 @@ jobs:
     needs: [changes, producer-source-tests, test-studio, test-runtime, test-support, test-skills]
     # Keep the existing required `Test` context authoritative for producer
     # failures too. It also fails closed if any package shard fails or is cancelled.
-    if: always() && (needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - name: Require producer source tests
         if: needs.changes.outputs.code == 'true' && needs.producer-source-tests.result != 'success'
         run: |
@@ -667,10 +686,16 @@ jobs:
   test-runtime-contract:
     name: "Test: runtime contract"
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true

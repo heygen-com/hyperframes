@@ -42,6 +42,8 @@
     "packages/producer/src/services/shaderTransitionWorker.ts",
     // Off-main-thread /health endpoint, spawned by path from healthWorker.ts.
     "packages/producer/src/services/healthWorkerThread.ts",
+    // Render-setup worker, spawned by path from cancellableProcess.ts.
+    "packages/cli/src/renderSetupWorker.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
     // option from the crash-recovery tests; has no import-graph referrer.
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",

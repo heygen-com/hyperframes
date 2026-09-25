@@ -9,7 +9,7 @@ import {
   type BundleOptions,
 } from "@hyperframes/core/compiler";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
-import type { StudioApiAdapter } from "../types.js";
+import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
@@ -314,10 +314,12 @@ function resolveProjectMainHtml(
 }
 
 /** The bundler options every adapter's `bundle()` uses. This route serves project files under a
- * `<base href>`, so assets keep their URLs: inlined base64 multiplies the document per reference. */
+ * `<base href>`, so assets keep their URLs: inlined base64 multiplies the document per reference.
+ * The lint route owns linting, so the bundle skips its own contract lint. */
 export const PREVIEW_BUNDLE_OPTIONS = {
   runtime: "placeholder",
   inlineAssets: false,
+  staticGuard: false,
 } as const satisfies BundleOptions;
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
@@ -331,27 +333,24 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   // benefit in scanProjectMediaCodecMap actually applies.
   const mediaCodecProbeCache = resolvePreviewMediaCodecProbeCache(adapter);
 
-  // Bundled composition preview
+  // A build is a function of the project content its ETag names, so it is served again until the
+  // content changes, to a cold browser as well as a revalidating one.
+  const builtPreviews = new Map<string, string>();
+  const rememberPreview = (key: string, html: string) => {
+    builtPreviews.delete(key);
+    builtPreviews.set(key, html);
+    if (builtPreviews.size > 4) builtPreviews.delete(builtPreviews.keys().next().value!);
+  };
+
+  // Concurrent requests for one document (an early prefetch and the player's own load) share a build.
+  const previewBuilds = new Map<string, Promise<string | null>>();
+
   // fallow-ignore-next-line complexity
-  api.get("/projects/:id/preview", async (c) => {
-    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
-    if (!resolved) return c.json({ error: "not found" }, 404);
-    const { project, signature } = resolved;
-
-    // fallow-ignore-next-line code-duplication
-    const vars = previewVariablesFromRequest(c.req.query("variables"));
-    if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
-    const previewVariables = vars.values;
-
-    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
-
+  async function buildPreview(
+    project: ResolvedProject,
+    previewVariables: Record<string, unknown> | null,
+    builtKey: string,
+  ): Promise<string | null> {
     // Normalize + persist data-hf-id to disk before bundle reads it. Idempotent.
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
     const normalizedDisk = diskMain
@@ -362,7 +361,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       let bundled = await adapter.bundle(project.dir);
       let mainCompositionPath = "index.html";
       if (!bundled) {
-        if (!diskMain) return c.text("not found", 404);
+        if (!diskMain) return null;
         // Disk HTML may carry a baked inline runtime from a prior export; strip
         // it so the preview runtime injected below isn't double-loaded (the
         // bundled path already strips via htmlBundler). Idempotent if absent.
@@ -406,7 +405,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mainCompositionPath,
         mediaCodecProbeCache,
       );
-      return c.html(bundled, 200, previewCacheHeaders(etag));
+      rememberPreview(builtKey, bundled);
+      adapter.previewDocuments?.write(builtKey, bundled);
+      return bundled;
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
@@ -432,10 +433,48 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           fallback.compositionPath,
           mediaCodecProbeCache,
         );
-        return c.html(fallbackAugmented, 200, previewCacheHeaders(etag));
+        return fallbackAugmented;
       }
-      return c.text("not found", 404);
+      return null;
     }
+  }
+
+  // Bundled composition preview
+  // fallow-ignore-next-line complexity
+  api.get("/projects/:id/preview", async (c) => {
+    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
+    if (!resolved) return c.json({ error: "not found" }, 404);
+    const { project, signature } = resolved;
+
+    // fallow-ignore-next-line code-duplication
+    const vars = previewVariablesFromRequest(c.req.query("variables"));
+    if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
+    const previewVariables = vars.values;
+
+    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
+    const ifNoneMatch = c.req.header("If-None-Match");
+    if (ifNoneMatch === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: previewCacheHeaders(etag),
+      });
+    }
+    const builtKey = `${project.id}\n${etag}`;
+    const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
+    if (cached) {
+      rememberPreview(builtKey, cached);
+      return c.html(cached, 200, previewCacheHeaders(etag));
+    }
+    let pending = previewBuilds.get(builtKey);
+    if (!pending) {
+      pending = buildPreview(project, previewVariables, builtKey).finally(() =>
+        previewBuilds.delete(builtKey),
+      );
+      previewBuilds.set(builtKey, pending);
+    }
+    const html = await pending;
+    if (!html) return c.text("not found", 404);
+    return c.html(html, 200, previewCacheHeaders(etag));
   });
 
   /**

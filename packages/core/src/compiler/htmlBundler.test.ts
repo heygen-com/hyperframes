@@ -1613,6 +1613,28 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
+  it("runs the StaticGuard lint unless staticGuard is false", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+</body></html>`,
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const guardWarnings = () =>
+      warnSpy.mock.calls
+        .map((call) => String(call[0] ?? ""))
+        .filter((line) => line.includes("[StaticGuard]"));
+    try {
+      await bundleToSingleHtml(dir, { staticGuard: false });
+      expect(guardWarnings()).toEqual([]);
+
+      await bundleToSingleHtml(dir);
+      expect(guardWarnings()).toHaveLength(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   describe("symlink path traversal (security: F-005)", () => {
     it("does not inline CSS from a symlink pointing outside projectDir", async () => {
       const { dir, outsideDir } = makeSymlinkProject(
