@@ -80,7 +80,6 @@ function readBasePosition(element: HTMLElement, iframeEl: HTMLIFrameElement): Ba
 function connectGsapRuntime(
   element: HTMLElement,
   iframeEl: HTMLIFrameElement,
-  selector: string | null,
   elementEndTime: number | undefined,
 ): GsapRuntime | null {
   try {
@@ -97,7 +96,7 @@ function connectGsapRuntime(
           ([key, value]) => key !== "__proxied" && typeof value?.seek === "function",
         )?.[1] ?? null)
       : null;
-    if (win?.gsap?.set && tl?.seek && selector) {
+    if (win?.gsap?.set && tl?.seek && element.id) {
       const tlDuration = tl.duration();
       return {
         timeline: tl,
@@ -322,8 +321,7 @@ export function useGestureRecording() {
       r.scale = computeIframeScale(iframeEl);
 
       // --- Phase 3: Connect to the iframe GSAP runtime ---
-      const selector = element.id ? `#${element.id}` : null;
-      r.runtime = connectGsapRuntime(element, iframeEl, selector, elementEndTime);
+      r.runtime = connectGsapRuntime(element, iframeEl, elementEndTime);
       // Clear the optimistic path offset only while a live runtime owns the
       // preview. releaseRuntimePreview restores it on every exit path.
       if (r.runtime && (base.cssOffX || base.cssOffY)) {

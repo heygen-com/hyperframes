@@ -4,7 +4,7 @@ import type { DomEditSelection } from "./domEditing";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { TimelineElement } from "../../player";
 import { roundToCenti } from "../../utils/rounding";
-import { findPreviewNode } from "./gsapLivePreview";
+import { findPreviewNode } from "./domEditingElement";
 
 export type {
   BackgroundRemovalProgress,

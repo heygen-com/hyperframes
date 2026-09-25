@@ -218,9 +218,9 @@ let scrubStopTimer: ReturnType<typeof setTimeout> | null = null;
 let scrubPrevMuted: boolean | null = null;
 let scrubPrevVolume: number | null = null;
 
-// Resolve the SAME element the store identified as music: prefer its id, then
-// the role attribute, and only fall back to the first <audio> (which could be a
-// voiceover, so the id hint matters).
+// Resolve the SAME element the store identified as music: prefer that row's own
+// element, then the role attribute, and only fall back to the first <audio>
+// (which could be a voiceover, so the row hint matters).
 /**
  * `doc` is the preview iframe's document, so its `<audio>` nodes are instances of
  * the IFRAME's `HTMLAudioElement`, never this module's. `instanceof
@@ -239,7 +239,7 @@ function isAudioNode(node: Element | null): node is HTMLAudioElement {
 
 function resolveScrubAudioEl(doc: Document, music?: PreviewTarget | null): HTMLAudioElement | null {
   if (music) {
-    const byId = previewElementFinder(doc)(music);
+    const byId = previewElementFinder(doc, "audio")(music);
     if (isAudioNode(byId)) return byId;
   }
   return (

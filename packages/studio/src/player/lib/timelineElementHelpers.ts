@@ -462,13 +462,21 @@ export type PreviewTarget = Pick<TimelineElement, "hfId" | "domId" | "id" | "sou
 
 /** Finds a row's preview element by `data-hf-id`, then id, preferring one in the row's own file: both repeat across
  * files. Indexes the document once, so a pass over every row costs one scan. */
-export function previewElementFinder(doc: Document): (target: PreviewTarget) => Element | null {
+export function previewElementFinder(
+  doc: Document,
+  selector = "[data-hf-id], [id]",
+): (target: PreviewTarget) => Element | null {
   const byKey = new Map<string, Element[]>();
-  const add = (key: string, node: Element) => byKey.set(key, [...(byKey.get(key) ?? []), node]);
-  for (const node of doc.querySelectorAll("[data-hf-id], [id]")) {
+  const add = (key: string, node: Element) => {
+    const nodes = byKey.get(key);
+    if (nodes) nodes.push(node);
+    else byKey.set(key, [node]);
+  };
+  for (const node of doc.querySelectorAll(selector)) {
     const hfId = node.getAttribute("data-hf-id");
+    const id = node.getAttribute("id");
     if (hfId) add(`hf:${hfId}`, node);
-    if (node.id) add(`id:${node.id}`, node);
+    if (id) add(`id:${id}`, node);
   }
   return (target) => {
     const matches = [

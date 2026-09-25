@@ -9,7 +9,6 @@ import {
   stopScrubPreviewAudio,
 } from "./timelineIframeHelpers";
 import type { IframeWindow } from "./playbackTypes";
-import type { TimelineElement } from "../store/playerStore";
 
 function makeDoc(html: string): Document {
   const d = document.implementation.createHTMLDocument();
