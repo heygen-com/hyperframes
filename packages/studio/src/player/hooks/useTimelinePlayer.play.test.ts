@@ -95,6 +95,25 @@ it.each([30, 0])(
   },
 );
 
+it("settles a load whose runtime learns its duration after its only readiness post", async () => {
+  const { api, root } = renderTimelinePlayerHarness();
+  let duration = 0;
+  const { adapter, win } = makeAdapterWindow();
+  adapter.getDuration = () => duration;
+  act(() => {
+    api.iframeRef.current = makeFakeIframe(win);
+    api.onIframeLoad();
+  });
+  postFromRuntime(win, { type: "state" });
+  expect(adapter.pause).not.toHaveBeenCalled();
+
+  // No further post comes: a paused low-power preview checks in only once a second.
+  duration = 30;
+  await act(() => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))));
+  expect(adapter.pause).toHaveBeenCalled();
+  act(() => root.unmount());
+});
+
 it("does not let the blank page's load step enable Play for the preview that replaces it", async () => {
   const { api, root } = renderTimelinePlayerHarness();
   // The iframe's first load is about:blank, before the runtime exists; its load step waits for runtime messages.
