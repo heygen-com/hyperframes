@@ -1,5 +1,5 @@
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
-import { findAuthoredElement } from "./authoredSource";
+import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
 
 type IframeWindow = Window & {
@@ -302,9 +302,7 @@ export function applySoftReload(
   const findAuthoredSource = (el: HTMLElement): Element | null => {
     if (authoredDoc === undefined) {
       try {
-        authoredDoc = authoredHtml
-          ? new DOMParser().parseFromString(authoredHtml, "text/html")
-          : null;
+        authoredDoc = authoredHtml ? parseSavedSource(authoredHtml) : null;
       } catch {
         authoredDoc = null;
       }
