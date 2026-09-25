@@ -1771,6 +1771,57 @@ describe("initSandboxRuntimeModular", () => {
     expect(hiddenClip.style.display).toBe("");
   });
 
+  describe("a clip the visibility pass hides gets the author's inline display back", () => {
+    // A relative clip under a plain wrapper stays in flow (applyClipLayout only touches
+    // root children), so the pass hides it with display:none rather than visibility.
+    const mountClip = (display: string, priority = "") => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-duration", "10");
+      document.body.appendChild(root);
+      const wrapper = document.createElement("div");
+      root.appendChild(wrapper);
+      const clip = document.createElement("div");
+      clip.style.position = "relative";
+      clip.style.setProperty("display", display, priority);
+      clip.setAttribute("data-start", "2");
+      clip.setAttribute("data-duration", "4");
+      wrapper.appendChild(clip);
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+      return clip;
+    };
+
+    it("keeps the author's display:flex when a later clip appears", () => {
+      const clip = mountClip("flex");
+      window.__player?.seek(0);
+      expect(clip.style.display).toBe("none");
+      window.__player?.seek(3);
+      expect(clip.style.display).toBe("flex");
+    });
+
+    it("keeps an author's display:none !important once the clip's time comes", () => {
+      const clip = mountClip("none", "important");
+      window.__player?.seek(0);
+      window.__player?.seek(3);
+      expect(clip.style.getPropertyValue("display")).toBe("none");
+      expect(clip.style.getPropertyPriority("display")).toBe("important");
+    });
+
+    it("keeps a data-hidden clip's own display, priority included, when the attribute goes", () => {
+      const clip = mountClip("grid", "important");
+      clip.setAttribute("data-hidden", "");
+      window.__player?.seek(3);
+      expect(clip.style.display).toBe("none");
+      clip.removeAttribute("data-hidden");
+      window.__player?.seek(3);
+      expect(clip.style.getPropertyValue("display")).toBe("grid");
+      expect(clip.style.getPropertyPriority("display")).toBe("important");
+    });
+  });
+
   it("excludes a data-hidden audio clip from Web Audio scheduling", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

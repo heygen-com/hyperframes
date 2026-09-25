@@ -2397,15 +2397,25 @@ export function initSandboxRuntimeModular(): void {
     timedClipIsLeaf = new WeakMap<Element, boolean>();
   };
 
-  // Which elements carry a `display:none` the visibility pass itself applied, so
-  // the un-hide branch can undo exactly that instead of re-deriving
-  // `isTimedClipInFlow`. That derived answer can flip between the hide and the
-  // show pass for the SAME element — `applyClipLayout` force-absolutizes a
-  // root-level clip after an earlier pass already cached it as in-flow and hid
-  // it — and the corrected, no-longer-in-flow reading then skips the removal,
-  // stranding the clip hidden for the rest of the render.
-  const timedClipDisplayNoneApplied = new WeakSet<HTMLElement>();
-  const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
+  // The author's inline display (value and priority) under each `display:none` the
+  // visibility pass applied, so showing the element puts exactly that back. Keyed on
+  // what was applied, not on `isTimedClipInFlow`: that answer can flip between the hide
+  // and the show pass once `applyClipLayout` force-absolutizes the clip.
+  const displayBeforeHide = new WeakMap<HTMLElement, { value: string; priority: string }>();
+  const hideByDisplay = (el: HTMLElement) => {
+    if (!displayBeforeHide.has(el)) {
+      const value = el.style.getPropertyValue("display");
+      displayBeforeHide.set(el, { value, priority: el.style.getPropertyPriority("display") });
+    }
+    el.style.display = "none";
+  };
+  const restoreDisplay = (el: HTMLElement) => {
+    const before = displayBeforeHide.get(el);
+    if (!before) return;
+    displayBeforeHide.delete(el);
+    if (before.value) el.style.setProperty("display", before.value, before.priority);
+    else el.style.removeProperty("display");
+  };
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
   // WebAudio playback so the hidden clip's source is dropped/restored mid-
@@ -2462,12 +2472,11 @@ export function initSandboxRuntimeModular(): void {
 
       if (rawNode.hasAttribute("data-hidden")) {
         if (!dataHiddenDisplayNodes.has(rawNode)) {
-          dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
           dataHiddenDisplayNodes.add(rawNode);
           if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
           groupMuteDirty = true;
         }
-        rawNode.style.display = "none";
+        hideByDisplay(rawNode);
         if (isVideoElement(rawNode) || isImageElement(rawNode)) {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
@@ -2475,13 +2484,7 @@ export function initSandboxRuntimeModular(): void {
       }
 
       if (dataHiddenDisplayNodes.has(rawNode)) {
-        const previousDisplay = dataHiddenDisplayRestores.get(rawNode);
-        if (previousDisplay) {
-          rawNode.style.display = previousDisplay;
-        } else {
-          rawNode.style.removeProperty("display");
-        }
-        dataHiddenDisplayRestores.delete(rawNode);
+        restoreDisplay(rawNode);
         dataHiddenDisplayNodes.delete(rawNode);
         if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
         groupMuteDirty = true;
@@ -2526,13 +2529,9 @@ export function initSandboxRuntimeModular(): void {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
       if (isVisibleNow) {
-        if (timedClipDisplayNoneApplied.has(rawNode)) {
-          rawNode.style.removeProperty("display");
-          timedClipDisplayNoneApplied.delete(rawNode);
-        }
+        restoreDisplay(rawNode);
       } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
-        rawNode.style.display = "none";
-        timedClipDisplayNoneApplied.add(rawNode);
+        hideByDisplay(rawNode);
       }
     }
     if (decidedTimedClip && revealTimedClipsAfterFirstPass()) colorGradingRuntime?.refresh();
