@@ -397,16 +397,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Latest successful main run: each half of Studio is roughly 168s.
-          # Adding Core's 81s to one lane and Engine's 102s plus the 45s runtime
-          # contract to the other keeps elapsed work close without running
-          # Studio concurrently with the process-heavy Engine and CLI suites.
-          - lane: studio-core
+          # One suite group per runner: Studio's halves and the process-heavy Engine and CLI
+          # suites never share a runner, and no lane waits for another group's tests.
+          - lane: studio-1
             studio_shard: 1/2
-            packages: --filter @hyperframes/core --filter @hyperframes/player --filter @hyperframes/shader-transitions
-            runtime_contract: false
-          - lane: studio-engine-cli
+          - lane: studio-2
             studio_shard: 2/2
+          - lane: core
+            packages: --filter @hyperframes/core --filter @hyperframes/player --filter @hyperframes/shader-transitions
+          - lane: engine-cli
             packages: --filter @hyperframes/engine --filter @hyperframes/cli
             runtime_contract: true
 
@@ -468,32 +467,34 @@ jobs:
           bun run --cwd packages/core build
 
       - name: Run Studio shard ${{ matrix.studio_shard }}
+        if: matrix.studio_shard
         shell: pwsh
         run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2
 
       - name: Run ${{ matrix.lane }} package tests
+        if: matrix.packages
         shell: pwsh
         # Each package starts its own Vitest pool. Bound every pool so concurrent
         # package scripts cannot oversubscribe the hosted Windows runner.
         run: bun run ${{ matrix.packages }} test -- --maxWorkers=2
 
       - name: Verify waveform cache writes on Windows
-        if: matrix.lane == 'studio-engine-cli'
+        if: matrix.lane == 'engine-cli'
         shell: pwsh
         run: bun run --cwd packages/studio-server test -- src/helpers/waveform.test.ts src/helpers/waveform.file-race.test.ts --maxWorkers=2
 
       - name: Verify producer lint entry reads on Windows
-        if: matrix.lane == 'studio-engine-cli'
+        if: matrix.lane == 'engine-cli'
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/hyperframeLint.file-race.test.ts --maxWorkers=2
 
       - name: Verify Windows frame staging
-        if: matrix.lane == 'studio-engine-cli'
+        if: matrix.lane == 'engine-cli'
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/windowsFrameStaging.test.ts --maxWorkers=2
 
       - name: Verify catalog file operations on Windows
-        if: matrix.lane == 'studio-engine-cli'
+        if: matrix.lane == 'engine-cli'
         shell: pwsh
         run: bunx vitest run scripts/catalog/catalog-payload-assets.file-race.test.ts scripts/catalog/catalog-payload-assets.cache-race.test.ts --maxWorkers=2
 
@@ -502,7 +503,7 @@ jobs:
         shell: pwsh
         run: bun run --filter "@hyperframes/core" test:hyperframe-runtime-ci
 
-  # Preserve the existing required check name while the two balanced lanes stay
+  # Preserve the existing required check name while the lanes stay
   # independently visible and rerunnable.
   test-windows:
     name: Tests on windows-latest
