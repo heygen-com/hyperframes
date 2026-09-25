@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { EXCLUDED_TAGS, mintHfId, walkCompositionDescendants } from "@hyperframes/parsers/hf-ids";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
@@ -100,10 +101,10 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
   return maxTrack + 1;
 }
 
-/** Strips data-hf-id from the root and every descendant so a clone re-mints
- *  its own. DOMParser, not a bracket-scoped regex, so a `>` inside an earlier
- *  attribute value or a single-quoted id can't defeat the strip. */
-function stripHfIds(html: string, parser: DOMParser): string {
+/** Gives a clone's root and every descendant a fresh data-hf-id, clear of `taken`. Minted here,
+ *  inside the edit, or the server stamps them on the next preview load, behind undo's back.
+ *  DOMParser, not a regex, so a `>` inside an attribute value can't defeat it. */
+function remintHfIds(html: string, parser: DOMParser, taken: Set<string>): string {
   const root = parser.parseFromString(html, "text/html").body.firstElementChild;
   if (!root) {
     // A tag the HTML parser hoists out of <body> (title/meta/style/base/link)
@@ -112,9 +113,26 @@ function stripHfIds(html: string, parser: DOMParser): string {
     // of these tags today.
     return html.replace(/\sdata-hf-id=("[^"]*"|'[^']*')/g, "");
   }
-  root.querySelectorAll("[data-hf-id]").forEach((el) => el.removeAttribute("data-hf-id"));
-  root.removeAttribute("data-hf-id");
+  const elements = [root];
+  walkCompositionDescendants(root, (el) => elements.push(el));
+  for (const el of elements) {
+    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) el.removeAttribute("data-hf-id");
+    else el.setAttribute("data-hf-id", mintHfId(el, taken));
+  }
   return root.outerHTML;
+}
+
+const HF_ID_ATTR_RE = /\bdata-hf-id\s*=\s*["']?([^"'\s>]+)/gi;
+const hfIdsInFile = (content: string) =>
+  new Set(Array.from(content.matchAll(HF_ID_ATTR_RE), (match) => match[1]));
+
+export function pasteElementHtml(
+  content: string,
+  payload: { html: string; originSelector?: string; originSelectorIndex?: number },
+): string {
+  const reminted = remintHfIds(payload.html, new DOMParser(), hfIdsInFile(content));
+  const deduped = deduplicateIds(reminted, collectHtmlIds(content));
+  return insertAsSibling(content, deduped, payload.originSelector, payload.originSelectorIndex);
 }
 
 /** Shared insertion path for paste and duplicate, anchored at the playhead or
@@ -138,9 +156,10 @@ export function pasteTimelineClips(
   let result = content;
   let requiredEnd = 0;
   const domParser = new DOMParser();
+  const takenHfIds = hfIdsInFile(content);
   for (const clip of clips) {
-    const stripped = stripHfIds(clip.html, domParser);
-    const deduped = deduplicateIds(stripped, existingIds);
+    const reminted = remintHfIds(clip.html, domParser, takenHfIds);
+    const deduped = deduplicateIds(reminted, existingIds);
     existingIds = existingIds.concat(collectHtmlIds(deduped));
     const newStart = anchorTime + (clip.start - groupMinStart);
     const newTrack = resolveFreeTrack(
@@ -280,13 +299,7 @@ export function useClipboard({
         patchedContent = extendRootDurationInSource(pasted.content, pasted.requiredEnd);
         pastedIds = pasted.ids;
       } else {
-        const deduped = deduplicateIds(payload.html, collectHtmlIds(originalContent));
-        patchedContent = insertAsSibling(
-          originalContent,
-          deduped,
-          payload.originSelector,
-          payload.originSelectorIndex,
-        );
+        patchedContent = pasteElementHtml(originalContent, payload);
       }
 
       const label =
