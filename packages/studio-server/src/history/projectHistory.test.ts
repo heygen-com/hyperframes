@@ -231,7 +231,7 @@ describe("openProjectHistory", () => {
     ).rejects.toThrow("no longer kept");
   });
 
-  it("checks out each entry's own change even when entries were logged out of write order", async () => {
+  it("checks out each entry's own change around a drag held when an agent turn starts", async () => {
     const { history, write } = await project({ "index.html": "A" });
     const drag = (overwrote: string) =>
       history.claim(you, "Dragged Title", ["index.html"], {
@@ -259,7 +259,7 @@ describe("openProjectHistory", () => {
     };
     const changes = [];
     for (const entry of history.list()) changes.push(`${entry.label}: ${await sides(entry.id)}`);
-    expect(changes.sort()).toEqual(["Agent turn: B>C", "Dragged Title: A>B", "Dragged Title: C>D"]);
+    expect(changes).toEqual(["Dragged Title: A>B", "Agent turn: B>C", "Dragged Title: C>D"]);
   });
 
   it("logs the outside change that turned a file into a folder before the agent turn that followed", async () => {
@@ -315,10 +315,31 @@ describe("openProjectHistory", () => {
     },
   );
 
+  it("checks out beside the project into a folder whose name starts with the project's", async () => {
+    const { history, write, projectDir } = await project({ "index.html": "v1" });
+    const entry = await change(history, you, "Second", () => write("index.html", "v2"));
+    const sibling = `${projectDir}-copy`;
+    cleanup.push(() => rmSync(sibling, { recursive: true, force: true }));
+
+    await history.checkout(entry.id, "after", sibling);
+    expect(inside(sibling, "index.html")).toBe("v2");
+  });
+
+  it("refuses a checkout once the project folder is gone", async () => {
+    const { history, write, projectDir } = await project({ "index.html": "v1" });
+    const entry = await change(history, you, "Second", () => write("index.html", "v2"));
+    rmSync(projectDir, { recursive: true, force: true });
+
+    await expect(history.checkout(entry.id, "after", join(projectDir, "archive"))).rejects.toThrow(
+      "project folder is gone",
+    );
+    expect(existsSync(projectDir)).toBe(false);
+  });
+
   it("leaves the folder empty when a checkout fails partway, so it can be retried", async () => {
-    const { history, write, historyRoot } = await project({ "a.txt": "a", "b.txt": "b" });
-    const entry = await change(history, you, "Edit", () => write("b.txt", "b2"));
-    const lost = history.peek(entry.id)!["b.txt"]!;
+    const { history, write, historyRoot } = await project({ "a/a.txt": "a", "z.txt": "z" });
+    const entry = await change(history, you, "Edit", () => write("z.txt", "z2"));
+    const lost = history.peek(entry.id)!["z.txt"]!;
     const blob = readdirSync(historyRoot, { recursive: true }).find((path) =>
       String(path).endsWith(lost),
     );
@@ -964,7 +985,7 @@ describe("claim: a writer that records after writing", () => {
     expect(history.list().filter((entry) => entry.label === "Dragged Title")).toHaveLength(1);
   });
 
-  it("a cut takes only the cut file's earlier part out of the turn, so undoing the turn reverts its other files", async () => {
+  it("a person's edit during an agent turn splits the turn around it, each part logged in write order", async () => {
     const { history, write, read } = await project({ "index.html": "A", "b.js": "1" });
     const window = await history.beginWindow(agent, "Agent turn");
     write("index.html", "B");
@@ -976,11 +997,16 @@ describe("claim: a writer that records after writing", () => {
     });
     write("index.html", "D");
     const turn = await window.close();
-    expect(history.list()[0]!.files.map((file) => file.path)).toEqual(["index.html"]);
+    expect(
+      history.list().map((entry) => [entry.label, entry.files.map((file) => file.path)]),
+    ).toEqual([
+      ["Agent turn", ["b.js", "index.html"]],
+      ["Moved Title", ["index.html"]],
+      ["Agent turn", ["index.html"]],
+    ]);
     expect(turn).toMatchObject({ id: window.id });
-    expect(turn!.files.map((file) => file.path)).toEqual(["b.js", "index.html"]);
     expect(await history.undo(turn!.id, { who: agent })).toMatchObject({ ok: true });
-    expect([read("index.html"), read("b.js")]).toEqual(["C", "1"]);
+    expect([read("index.html"), read("b.js")]).toEqual(["C", "2"]);
   });
 
   it("a drag claimed during an agent turn ends at the turn and is logged before the turn's last part", async () => {
@@ -997,6 +1023,87 @@ describe("claim: a writer that records after writing", () => {
       expect(await history.step("back", you)).toMatchObject({ ok: true });
       expect(read("index.html")).toBe(expected);
     }
+  });
+
+  it("a drag held when an agent turn starts ends there, and its next step logs after the turn's earlier writes", async () => {
+    const { history, write } = await project({ "index.html": "A", "other.js": "1" });
+    const drag = (overwrote: string) =>
+      history.claim(you, "Dragged Title", ["index.html"], {
+        coalesceKey: "drag",
+        idleMs: 60_000,
+        overwrote: { "index.html": fileContentVersion(overwrote) },
+      });
+    write("index.html", "B");
+    await drag("A");
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("other.js", "2");
+    write("index.html", "C");
+    await drag("B");
+    await window.close();
+    expect(history.list().map((entry) => entry.label)).toEqual([
+      "Dragged Title",
+      "Agent turn",
+      "Dragged Title",
+    ]);
+  });
+
+  it("logs an agent turn's writes before a second agent's overlapping turn that closes first", async () => {
+    const { history, projectDir } = await project({ a: "file" });
+    const first = await history.beginWindow(agent, "Agent one");
+    rmSync(join(projectDir, "a"));
+    mkdirSync(join(projectDir, "a"));
+    writeFileSync(join(projectDir, "a", "b.txt"), "b0");
+    const second = await history.beginWindow({ kind: "agent", name: "Other" }, "Agent two");
+    writeFileSync(join(projectDir, "a", "b.txt"), "b1");
+    const two = await second.close();
+    await first.close();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Agent one", "Agent two"]);
+
+    for (const [side, content] of [
+      ["before", "b0"],
+      ["after", "b1"],
+    ] as const) {
+      const dir = tempDir("hf-history-checkout-");
+      await history.checkout(two!.id, side, dir);
+      expect(inside(dir, "a/b.txt")).toBe(content);
+    }
+  });
+
+  it("reopens after a restore run inside an open agent turn without inventing an outside change", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "A" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    await history.restore(START, you);
+    await window.close();
+    await history.close();
+
+    const reopened = await open(projectDir, historyRoot);
+    await reopened.flush();
+    expect(reopened.list().map((entry) => entry.label)).toEqual([
+      "Agent turn",
+      "Restored: the start",
+    ]);
+  });
+
+  it("a held drag ends when a write to another file is pending", async () => {
+    const { history, write } = await project({ "index.html": "A", "r.js": "1" });
+    const drag = (overwrote: string) =>
+      history.claim(you, "Dragged Title", ["index.html"], {
+        coalesceKey: "drag",
+        idleMs: 60_000,
+        overwrote: { "index.html": fileContentVersion(overwrote) },
+      });
+    write("index.html", "B");
+    await drag("A");
+    write("r.js", "2");
+    write("index.html", "C");
+    await drag("B");
+    await history.flush();
+    expect(history.list().map((entry) => entry.label)).toEqual([
+      "Dragged Title",
+      "Changed outside the app",
+      "Dragged Title",
+    ]);
   });
 
   it("reopens after a drag claimed during an agent turn without inventing an outside change", async () => {

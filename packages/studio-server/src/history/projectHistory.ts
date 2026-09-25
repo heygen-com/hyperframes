@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import {
   DELETED_VERSION,
@@ -106,7 +106,7 @@ export interface ProjectHistory {
   /**
    * For a writer that records after writing (Studio): moves the uncommitted changes to `paths` into one entry of
    * `who`'s, each cut at the `overwrote` version so earlier parts stay their writer's. Same-key claims merge until
-   * another key, `idleMs` idle, or any operation. Null when nothing was claimed or a drag nets to nothing.
+   * another key, `idleMs` idle, an operation, or a window opening or closing. Null when nothing was claimed.
    */
   claim(
     who: HistoryWho,
@@ -205,7 +205,7 @@ class Engine {
   tracked = new Map<string, Tracked>();
   windows: Group[] = [];
   outside: Group | null = null;
-  /** A coalescing claim, open until another key, its idle timer, or an operation commits it. */
+  /** A coalescing claim, open until another key, its idle timer, an operation, or a window opening or closing. */
   claimed: { group: Group; key: string; timer: NodeJS.Timeout } | null = null;
   writeToken: string | undefined;
   quietTimer: NodeJS.Timeout | undefined;
@@ -254,9 +254,7 @@ class Engine {
     }
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
-    await this.sweep();
-    for (const window of [...this.windows]) await this.endWindow(window);
-    await this.commitOutside();
+    await this.settleAll();
   }
 
   reopenClosedWindow(): void {
@@ -364,15 +362,15 @@ class Engine {
     { coalesceKey, idleMs, overwrote = {} }: ClaimOptions,
   ): Promise<{ id: string } | null> {
     await this.sweep();
-    const { taken, cut } = this.takeClaimed(who, paths, overwrote);
+    const taken = this.takeClaimed(who, paths, overwrote);
     if (!taken.length) {
       // A claim under another key still ends the held one.
       if (coalesceKey !== this.claimed?.key) await this.commitClaim();
       return null;
     }
-    const held = this.heldFor(coalesceKey, taken);
+    const held = this.pendingElsewhere() ? null : this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
-    await this.commitOlder(cut);
+    await this.commitPending();
     const group = held ?? this.newGroup(who, label);
     for (const change of taken) addChange(group, change.path, change.before, change.after);
     if (coalesceKey) return this.holdClaim(group, coalesceKey, idleMs);
@@ -380,10 +378,17 @@ class Engine {
     return entry && { id: entry.id };
   }
 
-  async commitOlder(cut: Map<Group, string[]>): Promise<void> {
-    if (this.outside) cut.delete(this.outside);
+  /** Commits every other writer's pending changes, oldest first; open windows stay open. */
+  async commitPending(): Promise<void> {
     await this.commitOutside();
-    for (const [window, paths] of cut) await this.commitCut(window, paths);
+    for (const window of [...this.windows])
+      if (window.changes.size) await this.commitCut(window, [...window.changes.keys()]);
+  }
+
+  pendingElsewhere(): boolean {
+    return (
+      Boolean(this.outside?.changes.size) || this.windows.some((open) => open.changes.size > 0)
+    );
   }
 
   /** The held claim `taken` continues: same key, each file from its own last change, no held file changed since. */
@@ -407,12 +412,12 @@ class Engine {
     return relative(this.dir, resolve(this.dir, path)).split(sep).join("/");
   }
 
-  /** Takes `paths`' uncommitted changes from others, cut at what `who` overwrote; `cut`: paths each group keeps. */
+  /** Takes `paths`' uncommitted changes from others, cut at what `who` overwrote. */
   takeClaimed(
     who: HistoryWho,
     paths: readonly string[],
     overwrote: Readonly<Record<string, string>>,
-  ): { taken: HistoryFileChange[]; cut: Map<Group, string[]> } {
+  ): HistoryFileChange[] {
     const wanted = new Set(paths.map((path) => this.logPath(path)));
     const at = new Map(
       Object.entries(overwrote).map(([path, version]) => [
@@ -423,23 +428,21 @@ class Engine {
     const others = this.windows.filter((open) => !sameWho(open.who, who));
     const groups = this.outside ? [this.outside, ...others] : others;
     const taken: HistoryFileChange[] = [];
-    const cut = new Map<Group, string[]>();
     for (const group of groups) {
       for (const change of [...group.changes.values()]) {
         if (!wanted.has(change.path)) continue;
-        const [kept, claimed] = this.cutOut(group, change, at.get(change.path));
+        const claimed = this.cutOut(group, change, at.get(change.path));
         if (claimed) taken.push(claimed);
-        if (kept && claimed) cut.set(group, [...(cut.get(group) ?? []), change.path]);
       }
     }
-    return { taken, cut };
+    return taken;
   }
 
   cutOut(group: Group, change: HistoryFileChange, cut: string | undefined) {
     const [kept, claimed] = splitAt(change, cut, cut !== undefined && this.blobs.has(cut));
     group.changes.delete(change.path);
     if (kept) group.changes.set(kept.path, kept);
-    return [kept, claimed] as const;
+    return claimed;
   }
 
   /** Commits the window's cut `paths` as their own entry, other files staying: a window holds one change per file,
@@ -538,11 +541,11 @@ class Engine {
     if (folded) writeLog(this.logFile, this.log);
   }
 
-  /** Before an operation: every write so far is filed, and the outside group is closed so it sorts first. */
+  /** Before an operation or a window: every write is filed and every pending change committed, in write order. */
   async settle(): Promise<void> {
     await this.sweep();
     await this.commitClaim();
-    await this.commitOutside();
+    await this.commitPending();
   }
 
   /** A watcher saw a write: one sweep per burst takes it in (a deleted folder is reported by its name alone). */
@@ -592,8 +595,8 @@ class Engine {
   async endWindow(window: Group): Promise<HistoryEntry | null> {
     if (!this.windows.includes(window)) return window.entry ?? null;
     clearTimeout(window.idleTimer);
-    this.windows = this.windows.filter((open) => open !== window);
     await this.commitClaim();
+    this.windows = this.windows.filter((open) => open !== window);
     window.entry = (await this.commit(window)) ?? window.entry ?? null;
     return window.entry;
   }
@@ -678,8 +681,8 @@ class Engine {
     return entry.files.filter((file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after);
   }
 
-  /** Back reverts the newest change in effect, unless its files moved on under an earlier-ending edit (a held drag
-   * committed after an agent's turn): then that edit, if it still applies. */
+  /** Back reverts the newest change in effect, unless its files moved on under an earlier-ending edit: then that
+   * edit, if it still applies. */
   next(direction: "back" | "forward"): HistoryEntry | undefined {
     const top = stepTarget(this.log.entries, direction);
     const moved = new Set(top && direction === "back" ? this.movedOn(top).map((f) => f.path) : []);
@@ -763,7 +766,8 @@ class Engine {
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
           this.entry(entryId);
-          if (!existsSync(this.dir) || isWithin(this.dir, emptyDir))
+          if (!existsSync(this.dir)) throw new Error(`The project folder is gone: ${this.dir}`);
+          if (isWithin(this.dir, emptyDir))
             throw new Error(`Checkout writes outside the project only: ${emptyDir}`);
           if ((await readdir(emptyDir).catch(missingIsEmpty)).length > 0)
             throw new Error(`Checkout writes into an empty folder only: ${emptyDir}`);
@@ -801,9 +805,8 @@ class Engine {
 function isWithin(dir: string, path: string): boolean {
   let probe = resolve(path);
   while (!existsSync(probe) && dirname(probe) !== probe) probe = dirname(probe);
-  const root = realpathSync.native(dir);
-  const found = realpathSync.native(probe);
-  return found === root || found.startsWith(root + sep);
+  const rel = relative(realpathSync.native(dir), realpathSync.native(probe));
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 function missingIsEmpty(error: NodeJS.ErrnoException): string[] {
