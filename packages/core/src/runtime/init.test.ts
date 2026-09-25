@@ -17,6 +17,14 @@ it("schedules WebAudio element gain from author volume without bridge volume", (
   expect(source).not.toMatch(/vol\s*\*\s*state\.bridgeVolume/);
 });
 
+// The page log crosses into the host as text, so it must be one string.
+function loggedRuntimeFps(infoSpy: { mock: { calls: unknown[][] } }): unknown {
+  const prefix = "[hyperframes] render runtime fps ";
+  const call = infoSpy.mock.calls.find(([message]) => String(message).startsWith(prefix));
+  expect(call).toHaveLength(1);
+  return JSON.parse(String(call?.[0]).slice(prefix.length));
+}
+
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };
   return {
@@ -631,15 +639,12 @@ describe("initSandboxRuntimeModular", () => {
     window.__player?.renderSeek(1 / 60);
 
     expect(timeline.time()).toBeCloseTo(1 / 60, 6);
-    expect(infoSpy).toHaveBeenCalledWith(
-      "[hyperframes] render runtime fps",
-      expect.objectContaining({
-        canonicalFps: 60,
-        source: "render-options",
-        rawFpsSource: "render-options",
-        rawFps: 60,
-      }),
-    );
+    expect(loggedRuntimeFps(infoSpy)).toMatchObject({
+      canonicalFps: 60,
+      source: "render-options",
+      rawFpsSource: "render-options",
+      rawFps: 60,
+    });
   });
 
   it("activates a nested outro on frame 584 when its authored start rounds just above it", () => {
@@ -807,14 +812,11 @@ describe("initSandboxRuntimeModular", () => {
 
     initSandboxRuntimeModular();
 
-    expect(infoSpy).toHaveBeenCalledWith(
-      "[hyperframes] render runtime fps",
-      expect.objectContaining({
-        canonicalFps: 60,
-        source: "unknown",
-        rawFpsSource: "future-source",
-      }),
-    );
+    expect(loggedRuntimeFps(infoSpy)).toMatchObject({
+      canonicalFps: 60,
+      source: "unknown",
+      rawFpsSource: "future-source",
+    });
   });
 
   it("keeps the default 30fps renderSeek grid when export render fps is absent", () => {

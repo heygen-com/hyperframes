@@ -150,9 +150,9 @@ describe("isFontResourceError", () => {
 describe("formatConsoleDiagnostic", () => {
   it("surfaces HyperFrames page logs with a dedicated host prefix", () => {
     expect(
-      formatConsoleDiagnostic("info", "[hyperframes] render runtime fps JSHandle@object", ""),
+      formatConsoleDiagnostic("info", '[hyperframes] render runtime fps {"canonicalFps":30}', ""),
     ).toEqual({
-      text: "[HyperFrames] render runtime fps JSHandle@object",
+      text: '[HyperFrames] render runtime fps {"canonicalFps":30}',
       suppressHostLog: false,
     });
   });
