@@ -43,7 +43,7 @@ export function applyFileMutations(
     PreparedMutation & { version: string; writeToken: string; written: boolean }
   > = [];
   for (const mutation of prepared)
-    assertExpectedVersion(mutation.expectedVersion, readFileSync(mutation.absPath, "utf-8"));
+    assertExpectedVersion(mutation, readFileSync(mutation.absPath, "utf-8"));
   try {
     for (const mutation of prepared) {
       results.push(applyOneMutation(projectDir, mutation, requestToken, writeFile, attempted));
@@ -80,7 +80,7 @@ function applyOneMutation(
   attempted: Array<PreparedMutation & { version: string; writeToken: string; written: boolean }>,
 ): AppliedFileMutation {
   const current = readFileSync(mutation.absPath, "utf-8");
-  assertExpectedVersion(mutation.expectedVersion, current);
+  assertExpectedVersion(mutation, current);
   if (mutation.after === mutation.before) {
     return {
       ...mutation,
@@ -115,8 +115,16 @@ function applyOneMutation(
   };
 }
 
-function assertExpectedVersion(expectedVersion: string | undefined, current: string): void {
-  if (expectedVersion !== undefined && fileContentVersion(current) !== expectedVersion) {
-    throw new Error("file changed since the timeline was read");
+export class FileChangedError extends Error {
+  constructor(readonly sourceFile: string) {
+    super("file changed since the timeline was read");
   }
+}
+
+function assertExpectedVersion(mutation: PreparedMutation, current: string): void {
+  const stale =
+    mutation.expectedVersion === undefined
+      ? current !== mutation.before
+      : fileContentVersion(current) !== mutation.expectedVersion;
+  if (stale) throw new FileChangedError(mutation.sourceFile);
 }

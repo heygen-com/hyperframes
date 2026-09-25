@@ -34,7 +34,7 @@ import {
   fileContentVersion,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
-import { applyFileMutations } from "../helpers/applyFileMutations.js";
+import { applyFileMutations, FileChangedError } from "../helpers/applyFileMutations.js";
 import {
   findUnsafeDomPatchValues,
   findUnsafeMutationValues,
@@ -361,13 +361,19 @@ function foldElementPatches(
   return { content, matched };
 }
 
+const PATCH_CONFLICT_ATTEMPTS = 3;
+
+type ElementPatchCommitResult =
+  | { error: "duplicate" | "forbidden" | "not-found" | "conflict"; sourceFile: string }
+  | { durable: boolean; files: ElementPatchBatchFileResult[] };
+
 /**
  * The single commit owner for element patch batches. All files are resolved,
  * read, and folded before the first write; any unmatched target refuses the
- * whole request. Studio Server is intentionally single-process; within that
- * process the final snapshots/writes are synchronous, so another route cannot
- * interleave once the commit section begins. A multi-process deployment must
- * replace this process-local guarantee with a shared per-project file lock.
+ * whole request, and a write from elsewhere mid-fold refolds (3 tries, then 409).
+ * Studio Server is single-process; within it the final snapshots/writes are
+ * synchronous, so another route cannot interleave once the commit begins. A
+ * multi-process deployment needs a shared per-project file lock instead.
  */
 export function commitElementPatchBatches(
   projectDir: string,
@@ -375,9 +381,24 @@ export function commitElementPatchBatches(
   writeFile: (path: string, content: string, encoding: "utf-8") => void = (path, content) =>
     replaceFileAtomically(path, content, statSync(path).mode),
   requestToken?: string,
-):
-  | { error: "duplicate" | "forbidden" | "not-found"; sourceFile: string }
-  | { durable: boolean; files: ElementPatchBatchFileResult[] } {
+): ElementPatchCommitResult {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return foldAndCommitElementPatchBatches(projectDir, batches, writeFile, requestToken);
+    } catch (error) {
+      if (!(error instanceof FileChangedError)) throw error;
+      if (attempt === PATCH_CONFLICT_ATTEMPTS)
+        return { error: "conflict", sourceFile: error.sourceFile };
+    }
+  }
+}
+
+function foldAndCommitElementPatchBatches(
+  projectDir: string,
+  batches: ElementPatchBatchRequest[],
+  writeFile: (path: string, content: string, encoding: "utf-8") => void,
+  requestToken: string | undefined,
+): ElementPatchCommitResult {
   const resolvedPaths = new Set<string>();
   const prepared: Array<{
     sourceFile: string;
@@ -453,7 +474,7 @@ function commitElementPatchBatchesWithReceipts(
   return commitElementPatchBatches(
     projectDir,
     batches,
-    writeFileSync,
+    undefined,
     c.req.header("X-Hyperframes-Write-Token"),
   );
 }
@@ -497,7 +518,11 @@ function writeMutationResult(
   filePath: string,
   absPath: string,
   html: string,
+  original: string,
 ): { backupPath: string | null; version: string } | Response {
+  if (readFileSync(absPath, "utf-8") !== original) {
+    return c.json({ error: "file changed", conflict: true, path: filePath }, 409);
+  }
   const backup = snapshotBeforeWrite(projectDir, absPath);
   if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
   const { version } = writeFileWithReceipt(c, filePath, absPath, html);
@@ -516,7 +541,7 @@ function writeIfChanged(
   if (next === original) {
     return c.json({ ok: true, changed: false, content: original, path: filePath });
   }
-  const mutationResult = writeMutationResult(c, projectDir, filePath, absPath, next);
+  const mutationResult = writeMutationResult(c, projectDir, filePath, absPath, next, original);
   if (mutationResult instanceof Response) return mutationResult;
   const { backupPath } = mutationResult;
   return c.json({
@@ -544,9 +569,11 @@ function rejectUnsafeMutationValues(
 
 function elementPatchBatchCommitErrorResponse(
   c: RouteContext,
-  error: "duplicate" | "forbidden" | "not-found",
+  error: Extract<ElementPatchCommitResult, { error: unknown }>["error"],
   sourceFile: string,
 ): Response {
+  if (error === "conflict")
+    return c.json({ error: "file changed", conflict: true, sourceFile }, 409);
   if (error === "not-found") return c.json({ error, sourceFile }, 404);
   if (error === "forbidden") return c.json({ error, sourceFile }, 403);
   return c.json({ error: "duplicate source file", sourceFile }, 400);
@@ -1358,6 +1385,7 @@ async function applyGsapMutations(
       res.filePath,
       res.absPath,
       newHtml,
+      beforeHtml,
     );
     if (mutationResult instanceof Response) return mutationResult;
     backupPath = mutationResult.backupPath;
@@ -2853,6 +2881,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       ctx.filePath,
       ctx.absPath,
       result.html,
+      originalContent,
     );
     if (mutationResult instanceof Response) return mutationResult;
     const { version, backupPath } = mutationResult;
@@ -2885,48 +2914,53 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return rejectUnsafeMutationValues(c, unsafeFields);
     }
 
-    let originalContent: string;
-    try {
-      originalContent = readFileSync(ctx.absPath, "utf-8");
-    } catch {
-      return c.json({ error: "not found" }, 404);
-    }
-    const { html: patched, matched } = patchElementInHtml(
-      originalContent,
-      parsed.target,
-      parsed.body.operations,
-    );
-    if (patched === originalContent) {
-      const version = fileContentVersion(originalContent);
+    for (let attempt = 1; ; attempt += 1) {
+      let originalContent: string;
+      try {
+        originalContent = readFileSync(ctx.absPath, "utf-8");
+      } catch {
+        return c.json({ error: "not found" }, 404);
+      }
+      const { html: patched, matched } = patchElementInHtml(
+        originalContent,
+        parsed.target,
+        parsed.body.operations,
+      );
+      if (patched === originalContent) {
+        const version = fileContentVersion(originalContent);
+        c.header("ETag", version);
+        return c.json({
+          ok: true,
+          changed: false,
+          matched,
+          content: originalContent,
+          path: ctx.filePath,
+          version,
+        });
+      }
+      const raced = readFileSync(ctx.absPath, "utf-8") !== originalContent;
+      if (raced && attempt < PATCH_CONFLICT_ATTEMPTS) continue;
+      const mutationResult = writeMutationResult(
+        c,
+        ctx.project.dir,
+        ctx.filePath,
+        ctx.absPath,
+        patched,
+        originalContent,
+      );
+      if (mutationResult instanceof Response) return mutationResult;
+      const { backupPath, version } = mutationResult;
       c.header("ETag", version);
       return c.json({
         ok: true,
-        changed: false,
+        changed: true,
         matched,
-        content: originalContent,
+        content: patched,
         path: ctx.filePath,
         version,
+        backupPath,
       });
     }
-    const mutationResult = writeMutationResult(
-      c,
-      ctx.project.dir,
-      ctx.filePath,
-      ctx.absPath,
-      patched,
-    );
-    if (mutationResult instanceof Response) return mutationResult;
-    const { backupPath, version } = mutationResult;
-    c.header("ETag", version);
-    return c.json({
-      ok: true,
-      changed: true,
-      matched,
-      content: patched,
-      path: ctx.filePath,
-      version,
-      backupPath,
-    });
   });
 
   api.post("/projects/:id/file-mutations/patch-element-batches", async (c) => {
@@ -3054,6 +3088,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       ctx.filePath,
       ctx.absPath,
       result.html,
+      originalContent,
     );
     if (mutationResult instanceof Response) return mutationResult;
     const { backupPath } = mutationResult;
