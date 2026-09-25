@@ -9,9 +9,8 @@ function missesPath() {
 }
 
 export function recordMiss({ type, intent, provider_override, local_only }) {
-  // Outside the try: the media-home guard must fail a test run, not be swallowed here.
-  const path = missesPath();
   try {
+    const path = missesPath();
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(
       path,
