@@ -196,6 +196,10 @@ function createSettledTracker(
   };
 }
 
+// A paused player that asked for a slow idle heartbeat confirms its state once a second, not
+// every `bridgeMaxPostIntervalMs`: each wake reads every animation on the page and posts to the host.
+const SLOW_IDLE_HEARTBEAT_MS = 1000;
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   // Runtime-data handlers may replace the timeline object they mutate. Keep the
@@ -3432,6 +3436,8 @@ export function initSandboxRuntimeModular(): void {
   let pausedSeekDeferredByManualGesture = false;
   // Set while the transport is parked (see scheduleNextTransportFrame).
   let transportParkTimerId: number | null = null;
+  // An embedder showing many paused players at once (a catalog grid) asks for a slow heartbeat.
+  let slowIdleHeartbeat = false;
   let transportWakeRequested = false;
   let parkedPollWitness = "";
   let lastSeenTimingRevision = -1;
@@ -3740,7 +3746,7 @@ export function initSandboxRuntimeModular(): void {
   const armParkTimer = () => {
     transportParkTimerId = window.setTimeout(
       parkedTransportHeartbeat,
-      state.bridgeMaxPostIntervalMs,
+      slowIdleHeartbeat ? SLOW_IDLE_HEARTBEAT_MS : state.bridgeMaxPostIntervalMs,
     );
   };
 
@@ -4249,6 +4255,9 @@ export function initSandboxRuntimeModular(): void {
       applyPlaybackRate(rate);
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
+    },
+    onSetIdleHeartbeat: (slow) => {
+      slowIdleHeartbeat = slow;
     },
     onSetRootDuration: growRootDurationLive,
     onSetColorGrading: (target, grading) => {

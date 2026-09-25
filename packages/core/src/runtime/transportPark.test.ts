@@ -207,6 +207,33 @@ describe("parked transport loop", () => {
     expect(raf.pending()).toBe(0);
   });
 
+  it("slows the parked heartbeat to once a second when the host asks, and back when it stops", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    const setIdleHeartbeat = (slow: boolean) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: window.parent,
+          data: { source: "hf-parent", type: "control", action: "set-idle-heartbeat", slow },
+        }),
+      );
+    const states = () => posted.filter((m) => m["type"] === "state").length;
+
+    setIdleHeartbeat(true);
+    const before = states();
+    vi.advanceTimersByTime(3000);
+    // The heartbeat already armed at 80 ms fires once, then one per second.
+    expect(states() - before).toBeLessThanOrEqual(4);
+    expect(raf.pending()).toBe(0);
+
+    setIdleHeartbeat(false);
+    vi.advanceTimersByTime(1000);
+    const resumed = states();
+    for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    expect(states() - resumed).toBe(3);
+  });
+
   it("delivers a live data-duration edit while parked", async () => {
     mount();
     initSandboxRuntimeModular();

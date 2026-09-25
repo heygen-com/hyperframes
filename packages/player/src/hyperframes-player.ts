@@ -44,6 +44,8 @@ const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
 // "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
 const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
+// For pages showing many paused players: the paused runtime checks in once a second, not every 80 ms.
+const LOW_POWER_IDLE_ATTR = "low-power-idle";
 // paint-and-idle now always has a frame to wait on, so the overlay would
 // flash on every single Play without this debounce. ponytail: 150ms is
 // unmeasured, retune once there's production data on paint-and-idle timing.
@@ -99,6 +101,7 @@ class HyperframesPlayer extends HTMLElement {
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
       ASSETS_LOADING_UI_ATTR,
+      LOW_POWER_IDLE_ATTR,
     ];
   }
 
@@ -316,6 +319,9 @@ class HyperframesPlayer extends HTMLElement {
         break;
       case ASSETS_LOADING_UI_ATTR:
         if (val === "none") this.shaderLoader.hideAssetsLoading();
+        break;
+      case LOW_POWER_IDLE_ATTR:
+        this._sendControl("set-idle-heartbeat", { slow: val !== null });
         break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
@@ -839,6 +845,7 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("set-web-audio-media-disabled", {
       disabled: this._isSlideshowPlayer(),
     });
+    this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
   }
 
   private _reloadShaderOptions(): void {
