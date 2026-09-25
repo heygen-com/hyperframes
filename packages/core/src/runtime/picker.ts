@@ -31,6 +31,57 @@ const PICKABLE_ROOTS_RULE = `${PICKABLE_ROOTS}{pointer-events:auto!important}`;
 // inside the author's own layer, or inline, still wins; an adopted sheet's layer always orders last.
 const PICKABLE_ROOTS_LAYERED = `@layer hf-picker{${PICKABLE_ROOTS_RULE}}`;
 
+const MEDIA_TAGS = new Set([
+  "img",
+  "video",
+  "canvas",
+  "iframe",
+  "picture",
+  "object",
+  "embed",
+  "input",
+  "textarea",
+]);
+const isClear = (color: string) =>
+  color === "" || color === "transparent" || /^rgba\(.*,\s*0\)$/.test(color);
+
+/** Whether the element draws anything of its own: text, media, SVG, a fill, a border, a shadow, a backdrop filter
+ * or a ::before/::after box. */
+function paintsItself(el: Element): boolean {
+  if (MEDIA_TAGS.has(el.tagName.toLowerCase())) return true;
+  if (el.namespaceURI === "http://www.w3.org/2000/svg") return true;
+  if (Array.from(el.childNodes).some((node) => node.nodeType === 3 && node.textContent?.trim()))
+    return true;
+  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+  if (!style) return false;
+  const border = ["top", "right", "bottom", "left"].some(
+    (side) =>
+      Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) > 0 &&
+      style.getPropertyValue(`border-${side}-style`) !== "none",
+  );
+  const set = (value: string) => value !== "" && value !== "none" && value !== "normal";
+  const pseudo = ["::before", "::after"].some((which) =>
+    set(el.ownerDocument.defaultView?.getComputedStyle(el, which).content ?? ""),
+  );
+  return (
+    !isClear(style.backgroundColor) ||
+    set(style.backgroundImage) ||
+    set(style.boxShadow) ||
+    set(style.backdropFilter) ||
+    border ||
+    pseudo
+  );
+}
+
+/** elementsFromPoint lists every box containing the point, so a transparent full-frame wrapper (a clip holding
+ * elsewhere-placed dust motes) outranks the sign under the pointer. Drop a candidate that draws nothing there itself
+ * and holds none of what does; when nothing under the point draws, keep them all (a bare section background). */
+function withoutEmptyOverlays(candidates: Element[]): Element[] {
+  const painters = candidates.filter(paintsItself);
+  if (painters.length === 0) return candidates;
+  return candidates.filter((el) => painters.some((painter) => el.contains(painter)));
+}
+
 export type PickerModule = {
   enablePickMode: () => void;
   disablePickMode: () => void;
@@ -228,9 +279,8 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
       if (dedupe[key]) continue;
       dedupe[key] = true;
       candidates.push(node);
-      if (candidates.length >= maxCandidates) break;
     }
-    return candidates;
+    return withoutEmptyOverlays(candidates).slice(0, maxCandidates);
   }
 
   function extractElementInfo(el: Element): RuntimePickerElementInfo {

@@ -324,6 +324,65 @@ describe("createPickerModule", () => {
       }
     });
 
+    it("a transparent full-frame clip does not outrank the sign under the pointer", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      // A storefront scene: the dust clip spans the frame, but its motes are elsewhere.
+      document.body.innerHTML = `<div id="stage"><div id="sheen" style="background-color: rgb(22, 15, 13)"></div>
+        <div id="camera"><div id="sign-clip" class="clip"><div id="sign-face"
+          style="background-color: rgb(94, 44, 29)"><div id="kicker">A little later</div></div></div>
+        <div id="dust-clip" class="clip"><div id="mote" style="background-color: rgb(255, 217, 166)"></div></div></div></div>`;
+      const at = (id: string) => document.getElementById(id)!;
+      const restore = emulateHitTest(() => [
+        at("dust-clip"),
+        at("sign-face"),
+        at("sign-clip"),
+        at("camera"),
+        at("sheen"),
+        at("stage"),
+      ]);
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        const found = api.getCandidatesAtPoint(10, 10);
+        expect(found.map((c: any) => c.selector)).toEqual([
+          "#sign-face",
+          "#sign-clip",
+          "#camera",
+          "#sheen",
+          "#stage",
+        ]);
+        expect(found[0].label).toBe("A little later");
+        expect(api.pickAtPoint(10, 10)?.selector).toBe("#sign-face");
+      } finally {
+        restore();
+      }
+    });
+
+    it("an element drawn only by its ::before still counts as drawn", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<div id="stage"><div id="back" style="background-color: rgb(0, 0, 0)"></div>
+        <div id="ring"></div></div>`;
+      const at = (id: string) => document.getElementById(id)!;
+      // jsdom does not compute pseudo-elements; answer as a browser does for `#ring::before { content: "" }`.
+      const computed = window.getComputedStyle.bind(window);
+      const pseudo = vi
+        .spyOn(window, "getComputedStyle")
+        .mockImplementation((el, which) =>
+          which === "::before" && el === at("ring")
+            ? ({ content: '""' } as CSSStyleDeclaration)
+            : computed(el, which),
+        );
+      const restore = emulateHitTest(() => [at("ring"), at("back"), at("stage")]);
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10)[0]?.selector).toBe("#ring");
+      } finally {
+        restore();
+        pseudo.mockRestore();
+      }
+    });
+
     it("pickAtPoint returns null for invalid coords", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();
