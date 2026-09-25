@@ -351,17 +351,17 @@
         /* corrupt declarations must not blank the composition */
       }
       const HEADLINE1 = String(V.headline1 ?? "Understory");
-      const HEADLINE2 = String(V.headline2 ?? "MOVE SLOWLY");
+      const HEADLINE2 = String(V.headline2 ?? "Move slowly");
       /* Headline typography is a PARAMETER — never a Design-panel edit. Any
          Google Fonts family name works; falls back through Gelasio/serif
          while (or if never) loading. */
-      const FONT = (String(V.font || "Gelasio").trim() || "Gelasio").replace(/["']/g, "");
+      const FONT = (String(V.font || "Helvetica").trim() || "Helvetica").replace(/["']/g, "");
       const FONT_WEIGHT = Math.max(
         100,
         Math.min(
           900,
           Math.round(
-            isFinite(Number(V.fontWeight)) && Number(V.fontWeight) ? Number(V.fontWeight) : 500,
+            isFinite(Number(V.fontWeight)) && Number(V.fontWeight) ? Number(V.fontWeight) : 900,
           ),
         ),
       );
@@ -376,7 +376,7 @@
       );
       const LETTER_SP = Math.max(
         -0.2,
-        Math.min(1, isFinite(Number(V.letterSpacing)) ? Number(V.letterSpacing) : 0.1),
+        Math.min(1, isFinite(Number(V.letterSpacing)) ? Number(V.letterSpacing) : 0.01),
       );
       const FONT_STACK = '"' + FONT + '", Gelasio, Georgia, serif';
       if (!/^(Helvetica|Arial|Gelasio|Georgia|serif|sans-serif|monospace)$/i.test(FONT)) {
