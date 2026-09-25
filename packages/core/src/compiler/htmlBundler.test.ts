@@ -2111,6 +2111,26 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(rendered).not.toContain("data-hf-scene-no-swap");
   });
 
+  it("runs a scene's local script file in source order with its inline scripts, as a render does", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><p>A</p>
+  <script>window.__assetBase = "compositions/assets/";</script>
+  <script src="reader.js"></script></div></template>`,
+      "compositions/reader.js": `window.__readBase = window.__assetBase;`,
+    });
+    const order = (html: string) => [html.indexOf("__assetBase = "), html.indexOf("__readBase =")];
+    const [setPreview, readPreview] = order(await bundleToSingleHtml(dir, { sceneParts: true }));
+    const [setRender, readRender] = order(await bundleToSingleHtml(dir));
+    expect(setRender).toBeGreaterThan(-1);
+    expect(setRender).toBeLessThan(readRender);
+    expect(setPreview).toBeGreaterThan(-1);
+    expect(setPreview).toBeLessThan(readPreview);
+  });
+
   it("refuses to swap a scene that runs a module script or an import map", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head></head><body>
@@ -2121,6 +2141,8 @@ describe("bundleToSingleHtml sceneParts", () => {
       "compositions/m.html": `<template id="m-template"><div data-composition-id="m"><p>M</p>
   <script type="module">window.__mRan = true;</script></div></template>`,
       "compositions/i.html": `<template id="i-template"><div data-composition-id="i"><p>I</p>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div></div></template>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
   <script type="importmap">{"imports":{"x":"./x.js"}}</script></div></template>`,
     });
     const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
@@ -2177,6 +2199,13 @@ describe("bundleToSingleHtml sceneParts", () => {
       'document.querySelector("body").append(s)',
       "gsap.to(el, { x: 1, repeat: -1 })",
       "onresize = f",
+      'Object.defineProperty(window, "__ready", { value: true })',
+      "matchMedia(q).addListener(f)",
+      "tl.repeat(-1)",
+      "document.fonts.add(face)",
+      "document.adoptedStyleSheets = [sheet]",
+      'history.pushState({}, "", u)',
+      'new BroadcastChannel("c")',
     ];
     const files: Record<string, string> = {};
     const hosts = leaks

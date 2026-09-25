@@ -1012,8 +1012,8 @@ export async function bundleToSingleHtml(
   });
   // With sceneParts, a scene's own styles and inline scripts are emitted as their own tagged parts.
   const sceneStyleChunks = new Map<string, string[]>();
-  const sceneScriptChunks = new Map<string, string[]>();
-  const addScenePart = (parts: Map<string, string[]>, scene: string, chunk: string) =>
+  const sceneScriptChunks = new Map<string, DeferredScriptChunk[]>();
+  const addScenePart = <T>(parts: Map<string, T[]>, scene: string, chunk: T) =>
     parts.set(scene, [...(parts.get(scene) ?? []), chunk]);
   const compStyleChunks: string[] = subCompResult.styleScenes.length
     ? []
@@ -1045,9 +1045,11 @@ export async function bundleToSingleHtml(
       const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
-        compScriptChunks.push(() =>
-          preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js,
-        );
+        const chunk = () =>
+          preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js;
+        // Kept in its scene's part so it runs in source order with that scene's inline scripts.
+        if (scriptItem.scene) addScenePart(sceneScriptChunks, scriptItem.scene, chunk);
+        else compScriptChunks.push(chunk);
         continue;
       }
     }
@@ -1241,7 +1243,9 @@ export async function bundleToSingleHtml(
   for (const [scene, chunks] of sceneScriptChunks) {
     const script = document.createElement("script");
     script.setAttribute(SCENE_PART_ATTR, scene);
-    script.textContent = joinJsChunks(chunks);
+    script.textContent = joinJsChunks(
+      chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
+    );
     document.body.appendChild(script);
   }
   emitMountedModuleScripts(document, subCompResult.importMaps, subCompResult.moduleScripts);

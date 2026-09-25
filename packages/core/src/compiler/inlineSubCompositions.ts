@@ -38,7 +38,7 @@ import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 // Anything a scene script can leave running, pending or registered outside its timeline, or that
 // throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
 const SIDE_EFFECT_RE =
-  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']/;
+  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|defineProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']/;
 
 /** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
 function sceneScriptSwapRefusal(script: string): string | null {
@@ -160,7 +160,7 @@ export interface InlineSubCompositionsResult {
   externalScriptSrcs: string[];
   scriptItems: Array<
     | { kind: "inline"; content: string; scene?: string }
-    | ({ kind: "external"; src: string } & ExternalScriptAttributes)
+    | ({ kind: "external"; src: string; scene?: string } & ExternalScriptAttributes)
   >;
   externalLinks: { href: string; rel: string; crossorigin?: string }[];
   variablesByComp: Record<string, Record<string, unknown>>;
@@ -308,11 +308,12 @@ export function inlineSubCompositions(
       hostEl.setAttribute(SCENE_PART_ATTR, scene);
       sceneHosts.set(scene, hostEl);
     }
-    const refuseSwap = (reason: string | null) => {
+    // Lazy, so renders (no scene hosts) never run the refusal checks.
+    const refuseSwap = (why: () => string | null) => {
       const host = scene ? sceneHosts.get(scene) : undefined;
-      if (reason && host && !host.hasAttribute(SCENE_NO_SWAP_ATTR)) {
-        host.setAttribute(SCENE_NO_SWAP_ATTR, reason);
-      }
+      if (!host || host.hasAttribute(SCENE_NO_SWAP_ATTR)) return;
+      const reason = why();
+      if (reason) host.setAttribute(SCENE_NO_SWAP_ATTR, reason);
     };
 
     // Variable merging (bundler feature). Read declared defaults from the
@@ -389,7 +390,7 @@ export function inlineSubCompositions(
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
       const type = (scriptEl.getAttribute("type") || "").trim().toLowerCase();
       // A swap never re-runs external or module scripts: a library URL is fine, a scene's own file is not.
-      refuseSwap(
+      refuseSwap(() =>
         type === "importmap" || type === "module"
           ? "it runs a module script or import map"
           : !externalSrc
@@ -424,6 +425,7 @@ export function inlineSubCompositions(
           kind: "external",
           src: externalSrc,
           ...readExternalScriptAttributes(scriptEl),
+          ...(scene ? { scene } : {}),
         });
       } else {
         const wrappedScript = scriptCompositionId
