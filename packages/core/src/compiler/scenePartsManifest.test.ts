@@ -44,6 +44,8 @@ describe("addScenePartsManifest", () => {
   it("puts the manifest right after a head tag with attributes, in linear time", () => {
     const withLang = addScenePartsManifest(doc("one", "").replace("<head>", '<head lang="en">'));
     expect(withLang).toContain('<head lang="en"><meta name="hf-scene-parts"');
+    const unclosed = `<body><div data-hf-scene="a"></div><head `;
+    expect(addScenePartsManifest(unclosed)).toBe(unclosed);
     const started = performance.now();
     addScenePartsManifest(`<body><div data-hf-scene="a"></div>${"<head ".repeat(40_000)}`);
     expect(performance.now() - started).toBeLessThan(1000);

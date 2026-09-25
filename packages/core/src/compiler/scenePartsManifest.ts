@@ -28,7 +28,8 @@ export function addScenePartsManifest(html: string, ignore: readonly string[] = 
   };
   const content = JSON.stringify(manifest).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   const head = html.search(/<head[\s>]/i);
-  if (head < 0) return html;
-  const at = html.indexOf(">", head) + 1;
+  const end = head < 0 ? -1 : html.indexOf(">", head);
+  if (end < 0) return html;
+  const at = end + 1;
   return `${html.slice(0, at)}<meta name="${SCENE_PARTS_META}" content="${content}">${html.slice(at)}`;
 }
