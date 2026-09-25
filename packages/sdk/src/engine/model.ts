@@ -176,14 +176,11 @@ export function isNewHostBoundary(el: Element): boolean {
  * strips, so its declarations must live on the composition root div.
  */
 export function declarationElement(document: Document, wrapped: boolean): Element | null {
-  if (wrapped) return findRoot(document);
-  const html = (document as Document & { documentElement?: Element }).documentElement ?? null;
-  if (html?.hasAttribute(DECLARATIONS_ATTR)) return html;
   const root = findRoot(document);
-  return root?.hasAttribute(DECLARATIONS_ATTR) ? root : html;
+  // The root first: the runtime merges it after <html>, so its entries win.
+  if (wrapped || root?.hasAttribute("data-composition-variables")) return root;
+  return (document as Document & { documentElement?: Element }).documentElement ?? null;
 }
-
-const DECLARATIONS_ATTR = "data-composition-variables";
 
 export function findRoot(document: Document): Element | null {
   return (

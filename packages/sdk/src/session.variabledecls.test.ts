@@ -160,6 +160,34 @@ describe("a full document declaring on its composition root", () => {
     const reopened = await openComposition(saved);
     expect(reopened.getVariableDeclarations().map((d) => d.id)).toEqual(["title", "dark"]);
   });
+
+  it("undo of removing the last declaration restores it on the root, not <html>", async () => {
+    const comp = await openComposition(ROOT_DECLARED_HTML);
+    comp.removeVariableDeclaration("title");
+    comp.removeVariableDeclaration("count");
+    comp.undo();
+    comp.undo();
+    const saved = comp.serialize();
+    expect(saved).toMatch(/<html lang="en">/);
+    const reopened = await openComposition(saved);
+    expect(
+      reopened
+        .getVariableDeclarations()
+        .map((d) => d.id)
+        .sort(),
+    ).toEqual(["count", "title"]);
+  });
+
+  it("prefers the root when <html> declares too, as the runtime does", async () => {
+    const both = ROOT_DECLARED_HTML.replace(
+      '<html lang="en">',
+      `<html lang="en" data-composition-variables='${JSON.stringify([{ ...TITLE_DECL, default: "HTML" }])}'>`,
+    );
+    const comp = await openComposition(both);
+    expect(comp.getVariableDeclarations()).toEqual([TITLE_DECL, COUNT_DECL]);
+    comp.updateVariableDeclaration("title", { ...TITLE_DECL, default: "Edited" });
+    expect(comp.serialize()).toMatch(/<html lang="en" data-composition-variables="[^"]*HTML/);
+  });
 });
 
 describe("updateVariableDeclaration", () => {
