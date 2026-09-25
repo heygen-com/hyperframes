@@ -132,6 +132,29 @@ describe("a copy installed beside the CLI", () => {
     }
   });
 
+  it("ignores it when its manifest is unreadable, instead of throwing", () => {
+    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+    writeFileSync(join(root, "node_modules", "onnxruntime-node", "package.json"), "{ version: 1");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+      expect(installedOptionalPackageVersion("onnxruntime-node", "/no-cache", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("checks the copy require would load first, not a later pinned one", () => {
+    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+    const nearer = join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node");
+    mkdirSync(nearer, { recursive: true });
+    writeFileSync(join(nearer, "index.js"), `module.exports = { copy: "unversioned" };`);
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("ignores it at any other version, so the cache install is used", () => {
     const { root, cliUrl } = layout("1.0.0");
     try {

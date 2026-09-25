@@ -111,10 +111,14 @@ function loadInstalled(dir: string, name: string): unknown | null {
 
 function pinnedCopyBesideCli(name: OptionalPackage, cliUrl: string): boolean {
   const paths = createRequire(cliUrl).resolve.paths(name) ?? [];
-  const manifest = paths.map((dir) => join(dir, name, "package.json")).find(existsSync);
-  if (!manifest) return false;
-  const { version } = JSON.parse(readFileSync(manifest, "utf-8")) as { version?: string };
-  return version === OPTIONAL_PACKAGES[name];
+  const firstCopy = paths.map((dir) => join(dir, name)).find(existsSync);
+  if (!firstCopy) return false;
+  try {
+    const manifest = readFileSync(join(firstCopy, "package.json"), "utf-8");
+    return (JSON.parse(manifest) as { version?: string }).version === OPTIONAL_PACKAGES[name];
+  } catch {
+    return false;
+  }
 }
 
 export function loadBesideCli(name: OptionalPackage, cliUrl = import.meta.url): unknown | null {
