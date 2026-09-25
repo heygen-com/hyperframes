@@ -403,11 +403,12 @@ jobs:
             studio_shard: 1/2
           - lane: studio-2
             studio_shard: 2/2
+          # The runtime contract tests core only; the core lane is the lightest.
           - lane: core
             packages: --filter @hyperframes/core --filter @hyperframes/player --filter @hyperframes/shader-transitions
+            runtime_contract: true
           - lane: engine-cli
             packages: --filter @hyperframes/engine --filter @hyperframes/cli
-            runtime_contract: true
 
     steps:
       - name: Disable Windows Defender real-time monitoring
