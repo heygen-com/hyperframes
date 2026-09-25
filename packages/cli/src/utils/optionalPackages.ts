@@ -5,13 +5,14 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
 
 /** Module type of each optional package; the keys are the only names the loader accepts. */
@@ -110,11 +111,14 @@ function loadInstalled(dir: string, name: string): unknown | null {
 }
 
 function pinnedCopyBesideCli(name: OptionalPackage, cliUrl: string): boolean {
-  const paths = createRequire(cliUrl).resolve.paths(name) ?? [];
-  const firstCopy = paths.map((dir) => join(dir, name)).find(existsSync);
-  if (!firstCopy) return false;
+  const req = createRequire(cliUrl);
   try {
-    const manifest = readFileSync(join(firstCopy, "package.json"), "utf-8");
+    const entry = req.resolve(name);
+    const copy = (req.resolve.paths(name) ?? [])
+      .map((dir) => join(dir, name))
+      .find((dir) => existsSync(dir) && entry.startsWith(realpathSync(dir) + sep));
+    if (!copy) return false;
+    const manifest = readFileSync(join(copy, "package.json"), "utf-8");
     return (JSON.parse(manifest) as { version?: string }).version === OPTIONAL_PACKAGES[name];
   } catch {
     return false;

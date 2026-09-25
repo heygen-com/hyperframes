@@ -155,6 +155,31 @@ describe("a copy installed beside the CLI", () => {
     }
   });
 
+  it("looks past an empty folder that require skips", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    mkdirSync(join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node"), {
+      recursive: true,
+    });
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores a file require would load before the pinned folder", () => {
+    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+    const nearer = join(root, "node_modules", "hyperframes", "node_modules");
+    mkdirSync(nearer, { recursive: true });
+    writeFileSync(join(nearer, "onnxruntime-node.js"), `module.exports = { copy: "file" };`);
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("ignores it at any other version, so the cache install is used", () => {
     const { root, cliUrl } = layout("1.0.0");
     try {
