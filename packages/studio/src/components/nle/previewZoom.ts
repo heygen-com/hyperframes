@@ -17,6 +17,12 @@ export const DEFAULT_PREVIEW_ZOOM: PreviewZoomState = {
 const ZOOM_SENSITIVITY = 0.007;
 const MAX_DELTA = 10;
 
+export const isFitZoom = (zoomPercent: number) => Math.abs(zoomPercent - 100) < 0.5;
+
+export function isPreviewAtFit(state: PreviewZoomState): boolean {
+  return isFitZoom(state.zoomPercent) && Math.abs(state.panX) < 0.1 && Math.abs(state.panY) < 0.1;
+}
+
 export function toDomPrecision(value: number): number {
   return Math.round(value * 10000) / 10000;
 }

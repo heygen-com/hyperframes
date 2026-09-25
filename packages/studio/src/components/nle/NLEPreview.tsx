@@ -18,14 +18,15 @@ import {
   canStartPreviewPan,
   clampPreviewPan,
   clampPreviewZoomPercent,
+  isPreviewAtFit,
   ownsPreviewPanTarget,
-  resolvePreviewVisibleRegion,
   resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
   toDomPrecision,
   type PreviewZoomState,
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
+import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps {
@@ -62,7 +63,6 @@ export function getPreviewPlayerKey({
 const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
 const PREVIEW_STAGE_INSET_PX = 8;
-const NAVIGATOR_PX = 112;
 
 // clip-path as well as visibility: the player's loading overlay sets its own
 // visibility:visible and would otherwise paint over the live frame.
@@ -73,23 +73,6 @@ const SHADOW_IFRAME_STYLE: React.CSSProperties = {
   clipPath: "inset(100%)",
   pointerEvents: "none",
 };
-
-const isFitZoom = (zoomPercent: number) => Math.abs(zoomPercent - 100) < 0.5;
-
-function isPreviewAtFit(state: PreviewZoomState): boolean {
-  return isFitZoom(state.zoomPercent) && Math.abs(state.panX) < 0.1 && Math.abs(state.panY) < 0.1;
-}
-
-function zoomChipLabel(zoomPercent: number): string {
-  return isFitZoom(zoomPercent) ? "Panned" : `Zoomed ${Math.round(zoomPercent)}%`;
-}
-
-function navigatorFrameSize(stage: { width: number; height: number }) {
-  const ratio = stage.width > 0 && stage.height > 0 ? stage.width / stage.height : 16 / 9;
-  return ratio >= 1
-    ? { width: NAVIGATOR_PX, height: toDomPrecision(NAVIGATOR_PX / ratio) }
-    : { width: toDomPrecision(NAVIGATOR_PX * ratio), height: NAVIGATOR_PX };
-}
 
 export function resolvePreviewStageSize(
   viewportWidth: number,
@@ -239,32 +222,11 @@ export const NLEPreview = memo(function NLEPreview({
   const stageSizeRef = useRef(stageSize);
   stageSizeRef.current = stageSize;
 
-  const navigatorRegionRef = useRef<HTMLDivElement | null>(null);
-  const drawNavigator = useCallback((state: PreviewZoomState) => {
-    const region = navigatorRegionRef.current;
-    const rect = viewportRef.current?.getBoundingClientRect();
-    if (!region || !rect) return;
-    const visible = resolvePreviewVisibleRegion({
-      state,
-      viewportWidth: rect.width,
-      viewportHeight: rect.height,
-      contentWidth: stageSizeRef.current.width,
-      contentHeight: stageSizeRef.current.height,
-    });
-    region.style.left = `${visible.left * 100}%`;
-    region.style.top = `${visible.top * 100}%`;
-    region.style.width = `${visible.width * 100}%`;
-    region.style.height = `${visible.height * 100}%`;
-  }, []);
-  const setNavigatorRegion = useCallback(
-    (node: HTMLDivElement | null) => {
-      navigatorRegionRef.current = node;
-      drawNavigator(zoomRef.current);
-    },
-    [drawNavigator],
+  const { draw: drawNavigator, setRegion: setNavigatorRegion } = usePreviewNavigator(
+    viewportRef,
+    stageSize,
+    zoomRef,
   );
-  useEffect(() => drawNavigator(zoomRef.current), [stageSize, drawNavigator]);
-
   const writeTransform = useCallback(
     (state: PreviewZoomState) => {
       const stage = stageRef.current;
@@ -614,49 +576,15 @@ export const NLEPreview = memo(function NLEPreview({
           style={{ opacity: 0, transition: "opacity 200ms ease-in" }}
           aria-live="polite"
         />
-        {!isPreviewAtFit(settledZoom) && (
-          <>
-            <div
-              className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 rounded-md py-1 pl-2.5 pr-1 text-xs text-white/80 bg-black/60 backdrop-blur-xs"
-              data-testid="preview-zoom-chip"
-              // The pane clears the timeline selection on a pointerdown outside the frame.
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <span className="tabular-nums">{zoomChipLabel(settledZoom.zoomPercent)}</span>
-              <span aria-hidden="true" className="text-white/30">
-                ·
-              </span>
-              <button
-                type="button"
-                className="rounded px-1.5 py-0.5 font-medium text-studio-accent hover:bg-white/10 transition-colors"
-                onClick={() => {
-                  applyZoom(DEFAULT_PREVIEW_ZOOM);
-                  viewportRef.current?.focus();
-                }}
-                aria-label="Fit the whole frame in view"
-                data-testid="preview-zoom-fit"
-              >
-                Fit
-              </button>
-            </div>
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-3 right-3 z-50 rounded-md p-1.5 bg-black/60 backdrop-blur-xs"
-              data-testid="preview-zoom-navigator"
-            >
-              <div
-                className="relative overflow-hidden bg-white/10"
-                style={navigatorFrameSize(stageSize)}
-              >
-                <div
-                  ref={setNavigatorRegion}
-                  className="absolute rounded-[1px] border border-studio-accent bg-studio-accent/15"
-                  data-testid="preview-zoom-navigator-region"
-                />
-              </div>
-            </div>
-          </>
-        )}
+        <PreviewZoomOverlay
+          zoom={settledZoom}
+          stageSize={stageSize}
+          onFit={() => {
+            applyZoom(DEFAULT_PREVIEW_ZOOM);
+            viewportRef.current?.focus();
+          }}
+          navigatorRegionRef={setNavigatorRegion}
+        />
       </div>
     </div>
   );
