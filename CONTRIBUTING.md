@@ -80,7 +80,9 @@ The `Comments` check (`scripts/check-comment-citations.mjs`) grades the comments
 - **No commented-out code.** Delete it; git keeps it.
 - **No block over 40 lines.** Cut it to the why and the invariant. A block that must stay whole (a licence, a diagram, a protocol table) starts with `comment-length: <reason>`.
 
-Only comment blocks holding a line your PR added can fail. Findings elsewhere in a file you touched are printed as warnings, and fixing one while you are there is welcome. To grade files by hand, pass their paths: `node scripts/check-comment-citations.mjs path/to/file.ts`.
+- **A package file's comment share may not rise** (`scripts/comment-ratchet.mjs`). For source under `packages/*/src` (tests excluded), a file you change may not end up with a higher share of comment lines than it had where your branch forked, unless you only deleted code. It may not gain a new comment block over 12 lines, and a new file may not start above its package's share. Move the explanation into a name, a type or the PR description.
+
+Only comment blocks holding a line your PR added can fail the citation and block rules. Findings elsewhere in a file you touched are printed as warnings, and fixing one while you are there is welcome. To grade files by hand, pass their paths: `node scripts/check-comment-citations.mjs path/to/file.ts`.
 
 ## Adding Registry Items (Blocks & Components)
 
