@@ -110,6 +110,22 @@ it("a drag's edits under one key undo as one step, even before the drag goes idl
   expect(file()).toBe("A");
 });
 
+it("an agent's edit made seconds before Studio's stays the agent's: Cmd+Z undoes only Studio's", async () => {
+  const { hook, file, save, readFile } = await studio();
+  save("B");
+  await act(() => hook().recordEdit({ label: "sweep", kind: "manual", files: {} }));
+  save("C");
+  await act(() =>
+    hook().recordEdit({
+      label: "Moved Title",
+      kind: "manual",
+      files: { "index.html": { before: "B", after: "C" } },
+    }),
+  );
+  expect(await act(() => hook().undo({ readFile }))).toMatchObject({ label: "Undid: Moved Title" });
+  expect(file()).toBe("B");
+});
+
 it("an undo's writes carry the write token Studio marked, so their echo is not read as an outside edit", async () => {
   const { dir, hook, save, readFile } = await studio();
   save("B");

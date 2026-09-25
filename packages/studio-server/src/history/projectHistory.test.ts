@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fileContentVersion } from "../helpers/fileVersion";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
@@ -295,19 +296,16 @@ describe("openProjectHistory", () => {
 });
 
 describe("claim: a writer that records after writing", () => {
-  it("files the claimed paths' writes as the claimer's entry; other outside writes stay outside", async () => {
+  it("files the claimed paths' writes as the claimer's entry; other outside writes stay outside, logged first", async () => {
     const { history, write, read } = await project({ "index.html": "A", "notes.md": "n" });
     write("index.html", "B");
     write("notes.md", "agent notes");
     const claimed = await history.claim(you, "Moved Title", ["index.html"]);
-    expect(history.list()).toMatchObject([
-      { id: claimed!.id, who: you, label: "Moved Title", files: [{ path: "index.html" }] },
-    ]);
-    await history.flush();
     expect(history.list().map((entry) => [entry.who.kind, entry.files[0]!.path])).toEqual([
-      ["person", "index.html"],
       ["outside", "notes.md"],
+      ["person", "index.html"],
     ]);
+    expect(history.list()[1]).toMatchObject({ id: claimed!.id, label: "Moved Title" });
     await history.undo(claimed!.id, { who: you });
     expect(read("index.html")).toBe("A");
     expect(await history.claim(you, "Nothing", ["index.html"]), "nothing left to claim").toBeNull();
@@ -346,6 +344,55 @@ describe("claim: a writer that records after writing", () => {
     ).toBeNull();
     await history.flush();
     expect(history.list()).toEqual([]);
+  });
+
+  it("an agent's write seconds before Studio's stays the agent's, cut at the version Studio overwrote", async () => {
+    const { history, write, read } = await project({ "index.html": "A" });
+    write("index.html", "B");
+    await history.claim(you, "sweep", []);
+    write("index.html", "C");
+    await history.claim(you, "Moved Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("B") },
+    });
+    expect(history.list().map((entry) => [entry.who.kind, entry.label])).toEqual([
+      ["outside", "Changed outside the app"],
+      ["person", "Moved Title"],
+    ]);
+    await history.step("back", you);
+    expect(read("index.html"), "Cmd+Z undoes only the person's edit").toBe("B");
+    await history.step("back", you);
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("takes Studio's write out of an agent's open window, and leaves the agent's own writes there", async () => {
+    const { history, write } = await project({ "index.html": "A", "a.js": "1" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("a.js", "2");
+    write("index.html", "B");
+    const claimed = await history.claim(you, "Moved Title", ["index.html"]);
+    const entry = await window.close();
+    expect(claimed).not.toBeNull();
+    expect(entry?.files.map((file) => file.path)).toEqual(["a.js"]);
+    expect(history.list().find((item) => item.id === claimed!.id)?.files).toMatchObject([
+      { path: "index.html" },
+    ]);
+  });
+
+  it("a claim under another key that takes nothing still ends the held one", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    write("index.html", "B");
+    await history.claim(you, "Dragged Title", ["index.html"], { coalesceKey: "drag" });
+    expect(
+      await history.claim(you, "Nothing", ["index.html"], { coalesceKey: "other" }),
+    ).toBeNull();
+    expect(history.list()).toMatchObject([{ label: "Dragged Title" }]);
+  });
+
+  it("reads no blob outside its store", async () => {
+    const { history } = await project({ "index.html": "A" });
+    await expect(history.readBlob("../../../../../../../../etc/hostname")).rejects.toThrow(
+      "not a history blob",
+    );
   });
 
   it("a claim with another key, or its idle time, ends the coalescing claim", async () => {

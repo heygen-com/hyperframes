@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server";
 import type { EditHistoryKind } from "../utils/editHistory";
-import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 
 interface RecordEditInput {
   label: string;
@@ -63,6 +63,17 @@ async function post(url: string, body: object, headers: Record<string, string> =
     body: JSON.stringify(body),
   });
   return response.ok ? response.json() : null;
+}
+
+/** Per path, the version each edit overwrote, so the history keeps earlier writers' changes theirs. */
+async function overwroteVersions(files: RecordEditInput["files"]): Promise<Record<string, string>> {
+  const pairs = await Promise.all(
+    Object.entries(files).map(async ([path, { before }]) => [
+      path,
+      await studioFileContentVersion(before),
+    ]),
+  );
+  return Object.fromEntries(pairs);
 }
 
 /** Reads every path, or null when one cannot be read (a file the step creates or deletes). */
@@ -133,6 +144,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       const reply = await post(historyUrl(projectId, "/claim"), {
         label,
         paths,
+        overwrote: await overwroteVersions(files),
         ...(coalesceKey && { coalesceKey, idleMs: coalesceMs ?? DEFAULT_COALESCE_MS }),
       }).catch(() => null);
       heldClaimRef.current = coalesceKey && reply?.claimed ? { paths, at: Date.now() } : null;

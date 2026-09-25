@@ -4,7 +4,12 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
-import { DELETED_VERSION, hashVersion, recordFileWriteReceipt } from "../helpers/fileVersion.js";
+import {
+  DELETED_VERSION,
+  hashOfVersion,
+  hashVersion,
+  recordFileWriteReceipt,
+} from "../helpers/fileVersion.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { projectHistoryId } from "./historyId.js";
@@ -43,6 +48,13 @@ export interface ProjectHistoryOptions {
   onError?: (error: unknown) => void;
 }
 
+interface ClaimOptions {
+  coalesceKey?: string;
+  idleMs?: number;
+  /** Per path, the version (fileContentVersion) the claimer overwrote: earlier changes stay their writer's. */
+  overwrote?: Readonly<Record<string, string>>;
+}
+
 interface Writing {
   writeToken?: string;
 }
@@ -76,15 +88,17 @@ export interface ProjectHistory {
   ): Promise<HistoryWindow>;
   /**
    * For a writer that records after writing (Studio): takes in every write so far and moves the not yet committed
-   * outside changes to `paths` into one entry of `who`'s. Claims with the same coalesceKey merge until a claim with
-   * another key, `idleMs` (default quietMs) without one, or any operation. Null when nothing was claimed, or
-   * when a coalescing claim's writes net to nothing (a drag back to where it started).
+   * changes to `paths`, filed outside or in another writer's open window, into one entry of `who`'s. With
+   * `overwrote`, a change that began before the claimer's write keeps that earlier part as its writer's. Claims with
+   * the same coalesceKey merge until a claim with another key, `idleMs` (default quietMs) without one, or any
+   * operation. Null when nothing was claimed, or when a coalescing claim's writes net to nothing (a drag back to
+   * where it started).
    */
   claim(
     who: HistoryWho,
     label: string,
     paths: readonly string[],
-    options?: { coalesceKey?: string; idleMs?: number },
+    options?: ClaimOptions,
   ): Promise<{ id: string } | null>;
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
@@ -140,6 +154,25 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
   sweptAt - Math.max(file.mtimeMs, file.ctimeMs) < RACY_MS
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
+
+const sameWho = (a: HistoryWho, b: HistoryWho) => a.kind === b.kind && a.name === b.name;
+
+/**
+ * Cuts a change at `at`, the content the claimer overwrote: what came before it stays [0], the rest is claimed [1].
+ * `at` unknown, or its bytes not kept, claims the whole change.
+ */
+function splitAt(
+  change: HistoryFileChange,
+  at: string | undefined,
+  kept: boolean,
+): [HistoryFileChange | null, HistoryFileChange | null] {
+  if (at === change.after) return [change, null];
+  if (!at || at === change.before || !kept) return [null, change];
+  return [
+    { ...change, after: at },
+    { ...change, before: at },
+  ];
+}
 
 /** Files one change to a group; a later change to the same path keeps the group's first "before". */
 function addChange(group: Group, path: string, before: string | null, after: string | null): void {
@@ -289,19 +322,25 @@ class Engine {
   }
 
   /**
-   * ponytail: a claim takes every uncommitted outside change to its paths, so another writer's write to the same file
-   * between Studio's write and its claim (milliseconds) folds into Studio's entry. Per-write tokens would split them.
-   * A write filed to another writer's open window stays that window's.
+   * ponytail: a claim cuts each change at the version the claimer says it overwrote, so an earlier write stays its
+   * writer's. Another writer's write between Studio's write and the sweep that saw it (milliseconds) has no kept
+   * version to cut at and folds into Studio's entry. Per-write tokens would split them.
    */
   async claimNow(
     who: HistoryWho,
     label: string,
     paths: readonly string[],
-    { coalesceKey, idleMs }: { coalesceKey?: string; idleMs?: number },
+    { coalesceKey, idleMs, overwrote = {} }: ClaimOptions,
   ): Promise<{ id: string } | null> {
     await this.sweep();
-    const taken = this.takeOutside(paths);
-    if (!taken.length) return null;
+    const taken = this.takeClaimed(who, paths, overwrote);
+    if (!taken.length) {
+      // A claim under another key still ends the held one.
+      if (coalesceKey !== this.claimed?.key) await this.commitClaim();
+      return null;
+    }
+    // What happened outside before this write is older than it, so it is logged first.
+    await this.commitOutside();
     const group = await this.claimGroup(who, label, coalesceKey);
     for (const change of taken) addChange(group, change.path, change.before, change.after);
     if (coalesceKey) return this.holdClaim(group, coalesceKey, idleMs);
@@ -316,15 +355,40 @@ class Engine {
     return this.newGroup(who, label);
   }
 
-  /** Removes and returns the uncommitted outside changes to `paths` (project-relative or absolute). */
-  takeOutside(paths: readonly string[]): HistoryFileChange[] {
-    const outside = this.outside;
-    if (!outside) return [];
-    const wanted = new Set(
-      paths.map((path) => relative(this.dir, resolve(this.dir, path)).split(sep).join("/")),
+  /** A path as the log names it: project-relative, forward slashes. */
+  logPath(path: string): string {
+    return relative(this.dir, resolve(this.dir, path)).split(sep).join("/");
+  }
+
+  /**
+   * Removes and returns the uncommitted changes to `paths` (project-relative or absolute) filed outside or in another
+   * writer's open window, each cut at the version `who` overwrote.
+   */
+  takeClaimed(
+    who: HistoryWho,
+    paths: readonly string[],
+    overwrote: Readonly<Record<string, string>>,
+  ): HistoryFileChange[] {
+    const wanted = new Set(paths.map((path) => this.logPath(path)));
+    const at = new Map(
+      Object.entries(overwrote).map(([path, version]) => [
+        this.logPath(path),
+        hashOfVersion(version),
+      ]),
     );
-    const taken = [...outside.changes.values()].filter((change) => wanted.has(change.path));
-    for (const change of taken) outside.changes.delete(change.path);
+    const others = this.windows.filter((open) => !sameWho(open.who, who));
+    const groups = this.outside ? [this.outside, ...others] : others;
+    const taken: HistoryFileChange[] = [];
+    for (const group of groups) {
+      for (const change of [...group.changes.values()]) {
+        if (!wanted.has(change.path)) continue;
+        const cut = at.get(change.path);
+        const [kept, claimed] = splitAt(change, cut, cut !== undefined && this.blobs.has(cut));
+        group.changes.delete(change.path);
+        if (kept) group.changes.set(kept.path, kept);
+        if (claimed) taken.push(claimed);
+      }
+    }
     return taken;
   }
 
