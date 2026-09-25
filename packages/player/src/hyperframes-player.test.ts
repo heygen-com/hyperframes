@@ -2041,6 +2041,11 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     scenes: Array<{ id: string; start: number; duration: number }>;
     iframe: HTMLIFrameElement;
     _onMessage: (event: MessageEvent) => void;
+    _onProbeReady: (r: {
+      duration: number;
+      adapter: { kind: string; getDuration: () => number };
+      compositionSize: { width: number; height: number } | null;
+    }) => void;
     _onIframeLoad: () => void;
     _runtimeBridgeReady: boolean;
   }
@@ -2283,15 +2288,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
       readyEvents.push((event as CustomEvent).detail);
     });
 
-    (
-      player as unknown as {
-        _onProbeReady: (r: {
-          duration: number;
-          adapter: { kind: string; getDuration: () => number };
-          compositionSize: { width: number; height: number };
-        }) => void;
-      }
-    )._onProbeReady({
+    player._onProbeReady({
       duration: 5,
       adapter: { kind: "runtime", getDuration: () => 5 },
       compositionSize: { width: 1080, height: 1350 },
@@ -2300,15 +2297,27 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     expect(readyEvents).toEqual([{ duration: 5, compositionWidth: 1080, compositionHeight: 1350 }]);
   });
 
-  it("applies a timeline message's scenes before ready and durationchange fire", () => {
+  it("fires a timeline message's events only after the whole message is applied", () => {
     const seen: string[] = [];
-    const sceneIds = () => player.scenes.map((scene) => scene.id).join(",");
-    player.addEventListener("ready", () => seen.push(`ready:${sceneIds()}`));
-    player.addEventListener("durationchange", () => seen.push(`durationchange:${sceneIds()}`));
+    const state = () =>
+      `ready=${player.ready} d=${player.duration} ` +
+      `${player.compositionWidth}x${player.compositionHeight} scenes=${player.scenes.length}`;
+    for (const type of ["resize", "scenes", "durationchange", "ready"]) {
+      player.addEventListener(type, () => seen.push(`${type}: ${state()}`));
+    }
 
-    player._onMessage(timelineMessage(120, { scenes: [{ id: "a", start: 0, duration: 4 }] }));
+    player._onMessage(
+      timelineMessage(120, {
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        scenes: [{ id: "a", start: 0, duration: 4 }],
+      }),
+    );
+    seen.push("--");
     player._onMessage(
       timelineMessage(180, {
+        compositionWidth: 1280,
+        compositionHeight: 720,
         scenes: [
           { id: "a", start: 0, duration: 4 },
           { id: "b", start: 4, duration: 2 },
@@ -2316,21 +2325,34 @@ describe("HyperframesPlayer runtime ready handshake", () => {
       }),
     );
 
-    expect(seen).toEqual(["ready:a", "durationchange:a,b"]);
+    expect(seen).toEqual([
+      "resize: ready=true d=4 1080x1920 scenes=1",
+      "ready: ready=true d=4 1080x1920 scenes=1",
+      "scenes: ready=true d=4 1080x1920 scenes=1",
+      "--",
+      "resize: ready=true d=6 1280x720 scenes=2",
+      "durationchange: ready=true d=6 1280x720 scenes=2",
+      "scenes: ready=true d=6 1280x720 scenes=2",
+    ]);
   });
 
-  it("warns once when the same-origin probe readies a zero-size player", () => {
+  it("fires the probe path's resize only once ready is set", () => {
+    const seen: string[] = [];
+    player.addEventListener("resize", () => seen.push(`resize ready=${player.ready}`));
+
+    player._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: { width: 1080, height: 1350 },
+    });
+
+    expect(seen).toEqual(["resize ready=true"]);
+  });
+
+  it("warns when the same-origin probe readies a zero-size player", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    (
-      player as unknown as {
-        _onProbeReady: (r: {
-          duration: number;
-          adapter: { kind: string; getDuration: () => number };
-          compositionSize: { width: number; height: number };
-        }) => void;
-      }
-    )._onProbeReady({
+    player._onProbeReady({
       duration: 5,
       adapter: { kind: "runtime", getDuration: () => 5 },
       compositionSize: { width: 1080, height: 1920 },

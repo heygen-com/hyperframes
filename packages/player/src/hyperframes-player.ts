@@ -142,6 +142,7 @@ class HyperframesPlayer extends HTMLElement {
   private _runtimeData = new Map<string, unknown>();
   private _runtimeDataRequestId = 0;
   private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
+  private _queuedEvents: Event[] | null = null;
 
   constructor() {
     super();
@@ -957,6 +958,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onMessage(e: MessageEvent) {
+    this._applyThenEmit(() => this._handleRuntimeMessage(e));
+  }
+
+  private _handleRuntimeMessage(e: MessageEvent) {
     handleRuntimeMessage(e, this.iframe.contentWindow, {
       getPlaybackState: () => ({
         currentTime: this._currentTime,
@@ -997,11 +1002,11 @@ class HyperframesPlayer extends HTMLElement {
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
         this._scenes = scenes;
-        this.dispatchEvent(new CustomEvent("scenes", { detail: { scenes } }));
+        this._emit(new CustomEvent("scenes", { detail: { scenes } }));
       },
       updateControlsTime: (t, d) => this.controlsApi?.updateTime(t, d),
       updateControlsPlaying: (p) => this.controlsApi?.updatePlaying(p),
-      dispatchEvent: (ev) => this.dispatchEvent(ev),
+      dispatchEvent: (ev) => this._emit(ev),
       seek: (t) => this.seek(t),
       play: () => this.play(),
       getLoop: () => this.loop,
@@ -1017,10 +1022,6 @@ class HyperframesPlayer extends HTMLElement {
     this._ready = true;
     this.controlsApi?.updateTime(this._currentTime, duration);
     this._dispatchReady();
-    // stage-size may not have arrived yet (race in the runtime's postTimeline
-    // resolving the root's data-width/data-height on first paint) — rescale
-    // here too so cross-origin compositions never stay unscaled/untransformed.
-    this._rescale();
 
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
@@ -1031,15 +1032,17 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
   }
 
-  private _onProbeReady({ duration, adapter, compositionSize }: ProbeResult) {
+  private _onProbeReady(result: ProbeResult) {
+    this._applyThenEmit(() => this._applyProbeResult(result));
+  }
+
+  private _applyProbeResult({ duration, adapter, compositionSize }: ProbeResult) {
     this._setDuration(duration);
     this._directTimelineAdapter = adapter.kind === "direct-timeline" ? adapter.timeline : null;
     if (compositionSize) this._setCompositionSize(compositionSize.width, compositionSize.height);
     this._ready = true;
     this.controlsApi?.updateTime(0, duration);
     this._dispatchReady();
-    // Again once ready, so a player stuck at zero size reports it (see _rescale).
-    this._rescale();
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
@@ -1164,15 +1167,16 @@ class HyperframesPlayer extends HTMLElement {
       compositionWidth: this._compositionWidth,
       compositionHeight: this._compositionHeight,
     };
-    this.dispatchEvent(new CustomEvent("ready", { detail }));
+    this._emit(new CustomEvent("ready", { detail }));
+    // Once ready: covers a size message that never came, and lets a zero-size player warn.
+    this._rescale();
   }
 
   /** `ready` carries the first duration; later changes fire `durationchange`. */
   private _setDuration(duration: number): void {
     if (duration === this._duration) return;
     this._duration = duration;
-    if (this._ready)
-      this.dispatchEvent(new CustomEvent("durationchange", { detail: { duration } }));
+    if (this._ready) this._emit(new CustomEvent("durationchange", { detail: { duration } }));
   }
 
   private _setCompositionSize(width: number, height: number): void {
@@ -1182,7 +1186,25 @@ class HyperframesPlayer extends HTMLElement {
     this._rescale();
     if (!changed) return;
     const detail = { compositionWidth: width, compositionHeight: height };
-    this.dispatchEvent(new CustomEvent("resize", { detail }));
+    this._emit(new CustomEvent("resize", { detail }));
+  }
+
+  /** Runs one update (a runtime message, a probe result), then fires the events it raised,
+   *  so every listener sees the whole update applied. */
+  private _applyThenEmit(apply: () => void): void {
+    const queue: Event[] = [];
+    this._queuedEvents = queue;
+    try {
+      apply();
+    } finally {
+      this._queuedEvents = null;
+      for (const event of queue) this.dispatchEvent(event);
+    }
+  }
+
+  private _emit(event: Event): void {
+    if (this._queuedEvents) this._queuedEvents.push(event);
+    else this.dispatchEvent(event);
   }
 
   private _rescale() {
