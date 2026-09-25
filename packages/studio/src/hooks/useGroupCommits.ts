@@ -146,7 +146,6 @@ async function commitStructuralMutation(
   await saveProjectFilesWithHistory({
     projectId: pid,
     label,
-    kind: "manual",
     files: { [targetPath]: patchedContent },
     readFile: async () => originalContent,
     writeFile: deps.writeProjectFile,

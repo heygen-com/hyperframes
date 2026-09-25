@@ -5,7 +5,6 @@ import type {
   VariableUsageReport,
   VariableValidationIssue,
 } from "@hyperframes/sdk";
-import type { EditHistoryKind } from "../../utils/editHistory";
 import type { PublishSdkSession } from "../../utils/sdkCutover";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
@@ -37,7 +36,6 @@ export interface StudioEditPersistenceProps {
   reloadPreview: () => void;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
 }

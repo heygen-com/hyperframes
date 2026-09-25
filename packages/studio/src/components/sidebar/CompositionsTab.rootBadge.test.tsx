@@ -39,6 +39,20 @@ function mount(compositions: string[], masterCompositionPath: string | null) {
   return host;
 }
 
+describe("CompositionsTab card thumbnails", () => {
+  it("waits for the live preview to boot and keeps them through edit reloads", () => {
+    usePlayerStore.getState().reset();
+    const host = mount(["index.html"], "index.html");
+    expect(host.querySelector("img")).toBeNull();
+
+    act(() => usePlayerStore.getState().markPreviewBooted());
+    expect(host.querySelector("img")?.getAttribute("src")).toContain("/thumbnail/index.html");
+
+    act(() => usePlayerStore.getState().setTimelineReady(false));
+    expect(host.querySelector("img")).not.toBeNull();
+  });
+});
+
 describe("CompositionsTab root badge", () => {
   it("marks the composition matching masterCompositionPath as root", () => {
     const compositions = ["index.html", "compositions/headline.html"];

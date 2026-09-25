@@ -7,6 +7,7 @@ import {
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
+import { computeResizePreview } from "../components/timelineClipDragPreview";
 import { invalidateGroupInfoCache } from "./timelineGroupInfo";
 import type { TimelineElement } from "../store/playerStore";
 
@@ -284,6 +285,34 @@ describe("createTimelineElementFromManifestClip — source-scoped selector ident
     });
   });
 
+  it("keeps the host it was given when a sub-composition is mounted twice", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root" data-composition-file="index.html">
+        <div id="a" data-hf-id="hf-a" data-composition-id="card" data-composition-src="card.html"></div>
+        <div id="b" data-hf-id="hf-b" data-composition-id="card" data-composition-src="card.html"></div>
+      </div>
+    `);
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "b",
+        label: "Card",
+        kind: "composition",
+        tagName: "div",
+        start: 4,
+        duration: 4,
+        track: 0,
+        compositionId: "card",
+        parentCompositionId: "root",
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 1,
+      doc,
+      hostEl: doc.getElementById("b"),
+    });
+    expect(element).toMatchObject({ domId: "b", hfId: "hf-b", compositionSrc: "card.html" });
+  });
+
   it("ignores an index.html duplicate when indexing a scene.html selector", () => {
     const doc = makeDoc(`
       <div data-composition-id="root" data-composition-file="index.html">
@@ -390,5 +419,90 @@ describe("audio FX attributes on parsed elements", () => {
     const [bgm] = parseTimelineFromDOM(doc, 10).filter((e) => e.domId === "bgm");
     expect(bgm?.fxChain).toBeUndefined();
     expect(bgm?.automation).toBeUndefined();
+  });
+});
+
+// A composition clip trimmed by 30 px collapsed to its first nested video's 1.77 s: that length capped the trim.
+describe("a composition clip's source length", () => {
+  const scene = `
+    <div data-composition-id="root">
+      <div id="host" data-composition-id="scene" data-composition-src="scene.html"
+        data-start="0" data-duration="18" data-track-index="1">
+        <div data-composition-id="scene">
+          <video id="bg" src="bg.mp4" data-source-duration="1.77" data-start="2" data-duration="1.75"></video>
+        </div>
+      </div>
+      <div id="wrapper" class="clip" data-start="0" data-duration="3" data-track-index="2">
+        <video src="talk.mp4" data-source-duration="4"></video>
+      </div>
+    </div>
+  `;
+
+  it("is not taken from media inside the composition, parsed from the DOM", () => {
+    const parsed = parseTimelineFromDOM(makeDoc(scene), 18);
+    const host = parsed.find((entry) => entry.domId === "host");
+    expect(host?.sourceDuration).toBeUndefined();
+    expect(host?.tag).not.toBe("video");
+    expect(parsed.find((entry) => entry.domId === "wrapper")?.sourceDuration).toBe(4);
+  });
+
+  it("does not cap trimming the composition's end at that media's length", () => {
+    const host = parseTimelineFromDOM(makeDoc(scene), 18).find((entry) => entry.domId === "host");
+    const trimmed = computeResizePreview(
+      {
+        element: host!,
+        edge: "end",
+        originClientX: 360,
+        previewStart: 0,
+        previewDuration: 18,
+        started: true,
+      },
+      330,
+      { scroll: null, pps: 20, buildSnapTargets: () => [] },
+    );
+    expect(trimmed.previewDuration).toBeCloseTo(16.5, 3);
+  });
+
+  it("is not taken from media inside the composition, from the runtime manifest", () => {
+    const doc = makeDoc(scene);
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "host",
+        label: "Scene",
+        kind: "composition",
+        tagName: "div",
+        start: 0,
+        duration: 18,
+        track: 1,
+        compositionId: "scene",
+        parentCompositionId: "root",
+        compositionSrc: "scene.html",
+        playbackStart: null,
+        playbackRate: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("host"),
+    });
+    expect(element.sourceDuration).toBeUndefined();
+    expect(element.src).toBeUndefined();
+  });
+
+  it("still shows an inline composition's image as its thumbnail", () => {
+    const parsed = parseTimelineFromDOM(
+      makeDoc(`
+        <div data-composition-id="root">
+          <div id="card" data-composition-id="card" data-start="0" data-duration="5" data-track-index="1">
+            <img src="card.png" />
+          </div>
+        </div>
+      `),
+      5,
+    );
+    const card = parsed.find((entry) => entry.domId === "card");
+    expect(card?.tag).toBe("img");
+    expect(card?.src).toBe("card.png");
+    expect(card?.sourceDuration).toBeUndefined();
   });
 });

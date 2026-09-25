@@ -45,6 +45,15 @@ A `StudioApiAdapter` supplies:
 Use the interface exported by your installed version as the exact contract. It
 changes as Studio gains capabilities.
 
+`bundle(projectDir, options)` must pass `options` through to `bundleToSingleHtml`,
+spread over your own options. The preview sets `stampHfIds` there so each element
+is served with the id its source file mints. If a host drops it, a composition
+the bundler inlines can be served with ids that a later save does not mint.
+
+```ts
+bundle: (dir, options) => bundleToSingleHtml(dir, { runtime: "inline", ...options }),
+```
+
 ## Other entry points
 
 | Import | Purpose |

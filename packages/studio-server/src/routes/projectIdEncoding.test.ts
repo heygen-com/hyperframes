@@ -1,30 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files.js";
+import { registerPreviewRoutes } from "./preview.js";
+import { registerThumbnailRoutes } from "./thumbnail.js";
+import { registerWaveformRoutes } from "./waveform.js";
+import { buildWaveformCacheKey } from "../helpers/waveform.js";
 import type { StudioApiAdapter } from "../types.js";
 
-/**
- * Pins the path-resolution contract of the project-file read that Studio's SDK
- * session depends on. If this route fails, `openComposition` never runs and
- * every edit in that project silently falls back to the server path.
- *
- * The shapes here are the ones that looked most likely to break it, because
- * `resolveProjectPath` strips a prefix built from the *decoded* `project.id`
- * out of `c.req.path`, and the CLI derives that id straight from the folder
- * name (`projectId = projectName || basename(projectDir)`). A folder named with
- * a space or non-ASCII character therefore produces an id that percent-encodes,
- * and sub-compositions — the house pattern, one per scene — put a separator in
- * the file path that encodes as %2F.
- *
- * All of them pass today: Hono hands `c.req.path` over already decoded. These
- * are regression tests, not a reproduction — they were written while hunting a
- * production failure (`stage: read`) that turned out to be something else, and
- * they are kept because the decoded/encoded seam is a real latent hazard that a
- * refactor of `resolveProjectPath` could reopen silently.
- */
+// Project ids come from folder names, so any character a folder allows must survive the URL.
 function createAdapter(projectDir: string): StudioApiAdapter {
   return {
     listProjects: () => [],
@@ -90,5 +76,120 @@ describe("project ids that percent-encode in a URL", () => {
     const result = await readComposition("demo-project", "scenes/scene-1.html");
     expect(result.status).toBe(200);
     expect(result.content).toContain("SCENE ONE");
+  });
+});
+
+// A Home sentence with an @ mention names the project; Hono leaves %40 %25 %23 %26 %3F encoded in c.req.path.
+const RESERVED_NAMES = [
+  "A @HyperFrames launch",
+  "50% off",
+  "#2 take",
+  "Tom & Jerry",
+  "why?",
+  "two  spaces",
+  "café crème",
+  "🎬 film",
+];
+
+type ThumbnailCall = { compPath: string; previewUrl: string };
+
+async function requestProject(projectId: string, route: string, encodedSubPath: string) {
+  const { dir, cleanup } = projectWithComposition();
+  writeFileSync(join(dir, "scenes", "voice.wav"), "RIFF");
+  // The waveform route's own cache hit, so no audio decoder runs.
+  const voice = statSync(join(dir, "scenes", "voice.wav"));
+  mkdirSync(join(dir, ".waveform-cache"));
+  writeFileSync(
+    join(dir, ".waveform-cache", buildWaveformCacheKey("scenes/voice.wav", voice)),
+    "[0.5]",
+  );
+  const thumbnails: ThumbnailCall[] = [];
+  const adapter = {
+    ...createAdapter(dir),
+    generateThumbnail: async (opts: ThumbnailCall) => {
+      thumbnails.push({ compPath: opts.compPath, previewUrl: opts.previewUrl });
+      return Buffer.from("jpeg");
+    },
+  } as StudioApiAdapter;
+  try {
+    const app = new Hono();
+    registerFileRoutes(app, adapter);
+    registerPreviewRoutes(app, adapter);
+    registerThumbnailRoutes(app, adapter);
+    registerWaveformRoutes(app, adapter);
+    const response = await app.request(
+      `http://localhost/projects/${encodeURIComponent(projectId)}/${route}/${encodedSubPath}`,
+    );
+    return { status: response.status, text: await response.text(), thumbnails };
+  } finally {
+    cleanup();
+  }
+}
+
+describe.each(RESERVED_NAMES)("project id %j", (projectId) => {
+  it("reads a project file", async () => {
+    const result = await readComposition(projectId, "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.content).toContain("SCENE ONE");
+  });
+
+  it("serves a preview asset", async () => {
+    const result = await requestProject(projectId, "preview", "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.text).toContain("SCENE ONE");
+  });
+
+  it("serves a preview sub-composition", async () => {
+    const result = await requestProject(projectId, "preview/comp", "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.text).toContain("SCENE ONE");
+  });
+
+  it("thumbnails a sub-composition through a preview URL that parses back to it", async () => {
+    const result = await requestProject(projectId, "thumbnail", "scenes/scene-1.html");
+    expect(result.status).toBe(200);
+    expect(result.thumbnails).toHaveLength(1);
+    expect(result.thumbnails[0]?.compPath).toBe("scenes/scene-1.html");
+    const url = new URL(result.thumbnails[0]?.previewUrl ?? "");
+    expect(url.search + url.hash).toBe("");
+    const segments = url.pathname.split("/").map(decodeURIComponent);
+    expect(segments).toEqual([
+      "",
+      "api",
+      "projects",
+      projectId,
+      "preview",
+      "comp",
+      "scenes",
+      "scene-1.html",
+    ]);
+  });
+
+  it("serves an audio waveform", async () => {
+    const result = await requestProject(projectId, "waveform", "scenes/voice.wav");
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.text)).toEqual({ peaks: [0.5] });
+  });
+});
+
+// Encoded as one segment: a literal ../ is normalised away before routing.
+const OUTSIDE_PROJECT = encodeURIComponent(`${"../".repeat(24)}etc/hosts`);
+
+describe("a sub-path that decodes to a parent directory", () => {
+  it("is not thumbnailed", async () => {
+    const result = await requestProject("demo-project", "thumbnail", OUTSIDE_PROJECT);
+    expect(result.status).toBe(404);
+    expect(result.thumbnails).toHaveLength(0);
+  });
+
+  it("thumbnails nothing for the project folder itself", async () => {
+    const result = await requestProject("demo-project", "thumbnail", "");
+    expect(result.status).toBe(404);
+    expect(result.thumbnails).toHaveLength(0);
+  });
+
+  it("is not read for a waveform", async () => {
+    const result = await requestProject("demo-project", "waveform", OUTSIDE_PROJECT);
+    expect(result.status).toBe(404);
   });
 });

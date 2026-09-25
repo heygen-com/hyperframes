@@ -17,6 +17,14 @@ it("schedules WebAudio element gain from author volume without bridge volume", (
   expect(source).not.toMatch(/vol\s*\*\s*state\.bridgeVolume/);
 });
 
+// The page log crosses into the host as text, so it must be one string.
+function loggedRuntimeFps(infoSpy: { mock: { calls: unknown[][] } }): unknown {
+  const prefix = "[hyperframes] render runtime fps ";
+  const call = infoSpy.mock.calls.find(([message]) => String(message).startsWith(prefix));
+  expect(call).toHaveLength(1);
+  return JSON.parse(String(call?.[0]).slice(prefix.length));
+}
+
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };
   return {
@@ -631,15 +639,12 @@ describe("initSandboxRuntimeModular", () => {
     window.__player?.renderSeek(1 / 60);
 
     expect(timeline.time()).toBeCloseTo(1 / 60, 6);
-    expect(infoSpy).toHaveBeenCalledWith(
-      "[hyperframes] render runtime fps",
-      expect.objectContaining({
-        canonicalFps: 60,
-        source: "render-options",
-        rawFpsSource: "render-options",
-        rawFps: 60,
-      }),
-    );
+    expect(loggedRuntimeFps(infoSpy)).toMatchObject({
+      canonicalFps: 60,
+      source: "render-options",
+      rawFpsSource: "render-options",
+      rawFps: 60,
+    });
   });
 
   it("activates a nested outro on frame 584 when its authored start rounds just above it", () => {
@@ -807,14 +812,11 @@ describe("initSandboxRuntimeModular", () => {
 
     initSandboxRuntimeModular();
 
-    expect(infoSpy).toHaveBeenCalledWith(
-      "[hyperframes] render runtime fps",
-      expect.objectContaining({
-        canonicalFps: 60,
-        source: "unknown",
-        rawFpsSource: "future-source",
-      }),
-    );
+    expect(loggedRuntimeFps(infoSpy)).toMatchObject({
+      canonicalFps: 60,
+      source: "unknown",
+      rawFpsSource: "future-source",
+    });
   });
 
   it("keeps the default 30fps renderSeek grid when export render fps is absent", () => {
@@ -2559,8 +2561,8 @@ describe("initSandboxRuntimeModular", () => {
     expect(getContextSpy).toHaveBeenCalledTimes(1);
     expect(document.getElementById("first")?.style.visibility).toBe("visible");
     expect(document.getElementById("second")?.style.visibility).toBe("hidden");
-    expect(futureComposition.style.visibility).toBe("");
-    expect(futureComposition.style.display).toBe("");
+    expect(futureComposition.style.visibility).toBe("hidden");
+    expect(futureComposition.style.display).toBe("none");
 
     window.__player?.seek(3);
 
@@ -2803,6 +2805,59 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__playerReady).toBe(true);
     expect(window.__renderReady).toBe(true);
     expect(window.__player).toBeDefined();
+  });
+
+  function mountRootWithClip(start: string): HTMLElement {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    return appendClip(root, start);
+  }
+
+  function appendClip(parent: Element, start: string): HTMLElement {
+    const clip = document.createElement("div");
+    clip.className = "clip";
+    clip.setAttribute("data-start", start);
+    clip.setAttribute("data-duration", "2");
+    clip.setAttribute("data-track-index", "1");
+    parent.appendChild(clip);
+    return clip;
+  }
+
+  it("publishes render readiness with out-of-window clips already hidden, no seek needed", () => {
+    const caption = mountRootWithClip("5");
+    window.__timelines = { main: createMockTimeline(10) };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(caption.style.visibility).toBe("hidden");
+  });
+
+  it("paints clips mounted before readiness at the time sought before readiness", () => {
+    mountRootWithClip("0");
+    const root = document.querySelector("[data-composition-id='main']")!;
+    window.__timelines = { main: createMockTimeline(10) };
+    window.__hfTimelinesBuilding = true;
+
+    initSandboxRuntimeModular();
+    expect(window.__renderReady).toBe(false);
+    window.__player?.seek(6);
+    const inWindow = appendClip(root, "5");
+    const outOfWindow = appendClip(root, "0");
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getTime()).toBe(6);
+    expect([inWindow.style.visibility, outOfWindow.style.visibility]).toEqual([
+      "visible",
+      "hidden",
+    ]);
   });
 
   it("waits for GSAP batching to finish before publishing render readiness", () => {
@@ -3969,68 +4024,80 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
-  // #3458: cross-origin media with no CORS opt-in. `createMediaElementSource`
-  // returns a node that outputs silence per the Web Audio spec rather than
-  // throwing, so the composition played through with visuals animating and no
-  // sound, and nothing was logged.
-  describe("cross-origin audio without a CORS opt-in", () => {
-    // `WebAudioTransport.init()` does `new AudioContext()`, which jsdom does not
-    // provide — without a stub it returns false, `webAudioReady` stays false,
-    // and `scheduleWebAudioForActiveClips` is never reached at all, so every
-    // assertion below would pass for the wrong reason.
+  // jsdom has no AudioContext; without one `WebAudioTransport.init()` fails, Web Audio scheduling
+  // never runs, and every Web Audio assertion passes for the wrong reason.
+  function useMockAudioContext() {
+    const ctx = { time: 0, mediaElementSources: 0 };
     class MockAudioContext {
-      currentTime = 0;
       state = "running";
       destination = {};
+      get currentTime() {
+        return ctx.time;
+      }
       resume() {
         return Promise.resolve();
       }
       createGain() {
         return { gain: { value: 1 }, connect() {}, disconnect() {} };
       }
+      createMediaElementSource() {
+        ctx.mediaElementSources += 1;
+        return { connect() {}, disconnect() {} };
+      }
     }
     const originalAudioContext = (globalThis as Record<string, unknown>).AudioContext;
 
     beforeEach(() => {
+      ctx.time = 0;
+      ctx.mediaElementSources = 0;
       (globalThis as Record<string, unknown>).AudioContext = MockAudioContext;
     });
 
     afterEach(() => {
       (globalThis as Record<string, unknown>).AudioContext = originalAudioContext;
     });
+    return ctx;
+  }
 
-    /** `webAudio.init()` resolves on a microtask, so `webAudioReady` is still
-     *  false on the tick `initSandboxRuntimeModular()` returns. */
-    async function startPlayback() {
-      initSandboxRuntimeModular();
-      await Promise.resolve();
-      window.__player?.play();
-      await Promise.resolve();
-      await Promise.resolve();
-    }
+  /** `webAudio.init()` resolves on a microtask, so `webAudioReady` is still
+   *  false on the tick `initSandboxRuntimeModular()` returns. */
+  async function startPlayback() {
+    initSandboxRuntimeModular();
+    await Promise.resolve();
+    window.__player?.play();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
 
-    function mountAudio(src: string, attrs: Record<string, string> = {}) {
-      const root = document.createElement("div");
-      root.setAttribute("data-composition-id", "main");
-      root.setAttribute("data-root", "true");
-      root.setAttribute("data-start", "0");
-      root.setAttribute("data-duration", "10");
-      root.setAttribute("data-width", "1920");
-      root.setAttribute("data-height", "1080");
-      document.body.appendChild(root);
+  function mountAudio(src: string, attrs: Record<string, string> = {}) {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
 
-      const audio = document.createElement("audio");
-      audio.setAttribute("data-start", "0");
-      audio.setAttribute("data-duration", "10");
-      audio.setAttribute("src", src);
-      for (const [name, value] of Object.entries(attrs)) audio.setAttribute(name, value);
-      audio.load = () => {};
-      audio.play = vi.fn(() => Promise.resolve());
-      root.appendChild(audio);
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("src", src);
+    for (const [name, value] of Object.entries(attrs)) audio.setAttribute(name, value);
+    audio.load = () => {};
+    audio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audio);
 
-      window.__timelines = { main: createMockTimeline(10) };
-      return audio;
-    }
+    window.__timelines = { main: createMockTimeline(10) };
+    return audio;
+  }
+
+  // #3458: cross-origin media with no CORS opt-in. `createMediaElementSource`
+  // returns a node that outputs silence per the Web Audio spec rather than
+  // throwing, so the composition played through with visuals animating and no
+  // sound, and nothing was logged.
+  describe("cross-origin audio without a CORS opt-in", () => {
+    useMockAudioContext();
 
     it("withholds Web Audio capture but still tries decode, which keeps the FX graph", async () => {
       // Decode is the BEST outcome here, not a consolation: a CDN that sends
@@ -4182,6 +4249,39 @@ describe("initSandboxRuntimeModular", () => {
 
         expect(audio.muted).toBe(false);
       });
+    });
+  });
+
+  describe("a voiceover routed through Web Audio", () => {
+    const ctx = useMockAudioContext();
+
+    it("holds the timeline while the voiceover buffers instead of seeking it forward", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      const audio = mountAudio("/assets/vo.mp3");
+      // Playing, but stuck buffering at 0 like a cold mp3.
+      const seeks: number[] = [];
+      Object.defineProperty(audio, "paused", { value: false, configurable: true });
+      Object.defineProperty(audio, "readyState", { value: 1, configurable: true });
+      Object.defineProperty(audio, "currentTime", {
+        get: () => 0,
+        set: (t: number) => seeks.push(t),
+        configurable: true,
+      });
+
+      await startPlayback();
+      expect(ctx.mediaElementSources).toBe(1);
+
+      for (let frame = 0; frame < 120; frame++) {
+        ctx.time += 1 / 60;
+        raf.step(1000 / 60);
+      }
+
+      expect(window.__player?.getTime()).toBeLessThan(0.1);
+      expect(seeks.filter((t) => t > 0.1)).toEqual([]);
     });
   });
 });

@@ -8,11 +8,6 @@ import {
   type DragCommitDeps,
   type TimelineMoveEdit,
 } from "./timelineClipDragCommit";
-import {
-  buildEditHistoryEntry,
-  createEmptyEditHistory,
-  pushEditHistoryEntry,
-} from "../../utils/editHistory";
 import { normalizeToZones } from "./timelineZones";
 import { resolveZMirrorLaneMove } from "./timelineZMirror";
 import type { StackingPatch } from "./timelineStackingSync";
@@ -1151,48 +1146,21 @@ describe("commitDraggedClipMove", () => {
       return { onMoveElements, onStackingPatches };
     };
 
-    it("threads ONE shared coalesceKey to both the move persist and the z-sync, so the two records merge into a single undo entry", async () => {
+    it("threads ONE shared coalesceKey to both the move persist and the z-sync, so the server can fold them into a single undo entry", async () => {
       const { onMoveElements, onStackingPatches } = commitLaneChange(overlapping());
       await flushMicrotasks();
 
-      // Both sides receive the SAME non-empty gesture key (second arg).
+      // Both sides receive the SAME non-empty gesture key (second arg). That
+      // shared, non-empty coalesceKey is what lets the server
+      // (projectHistory.ts, "claim: a writer that records after writing")
+      // fold the "Move timeline clips" write and the "Reorder layers" z patch,
+      // both to the same file, into one undo entry — folding itself is the
+      // server's own tested behaviour, not re-proven here via a reducer.
       const moveKey = onMoveElements.mock.calls[0][1];
       const zKey = onStackingPatches.mock.calls[0][1];
       expect(typeof moveKey).toBe("string");
       expect(moveKey).not.toBe("");
       expect(zKey).toBe(moveKey);
-
-      // With that shared key, editHistory folds the two consecutive records (the
-      // "Move timeline clips" write + the "Reorder layers" z patch, same file,
-      // inside the coalesce window) into ONE undo entry spanning before→after.
-      const now = 1_000;
-      const moveEntry = buildEditHistoryEntry({
-        id: "m",
-        projectId: "p",
-        label: "Move timeline clips",
-        kind: "timeline",
-        coalesceKey: moveKey,
-        now,
-        files: { "index.html": { before: "<v0>", after: "<v1>" } },
-      });
-      const zEntry = buildEditHistoryEntry({
-        id: "z",
-        projectId: "p",
-        label: "Reorder layers",
-        kind: "timeline",
-        coalesceKey: zKey,
-        now: now + 50,
-        files: { "index.html": { before: "<v1>", after: "<v2>" } },
-      });
-      const state = pushEditHistoryEntry(
-        pushEditHistoryEntry(createEmptyEditHistory(), moveEntry),
-        zEntry,
-      );
-      expect(state.undo).toHaveLength(1);
-      expect(state.undo[0].files["index.html"]).toMatchObject({
-        before: "<v0>",
-        after: "<v2>",
-      });
     });
 
     it("distinct gestures get distinct keys (independent moves never cross-merge)", async () => {

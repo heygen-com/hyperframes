@@ -31,6 +31,8 @@ declare global {
     __timelines: Record<string, RuntimeTimelineLike>;
     __player?: PlayerAPI;
     __hyperframes?: {
+      /** A path the calling composition wrote relative to its own file, as a URL the page can load. */
+      assetUrl?: (path: string) => string;
       registerRuntimeDataHandler?: (
         channel: string,
         handler: (payload: unknown) => void,

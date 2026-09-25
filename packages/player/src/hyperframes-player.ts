@@ -42,6 +42,9 @@ const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // asset or a composition that never goes quiet must not block playback forever.
 const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
+// "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
+const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
+const LOW_POWER_IDLE_ATTR = "low-power-idle";
 // paint-and-idle now always has a frame to wait on, so the overlay would
 // flash on every single Play without this debounce. ponytail: 150ms is
 // unmeasured, retune once there's production data on paint-and-idle timing.
@@ -96,6 +99,8 @@ class HyperframesPlayer extends HTMLElement {
       RUNTIME_SRC_ATTR,
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
+      ASSETS_LOADING_UI_ATTR,
+      LOW_POWER_IDLE_ATTR,
     ];
   }
 
@@ -231,10 +236,8 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
-    this._ready = false;
-    this._invalidateAssetsWait();
-    this._runtimeBridgeReady = false;
-    this._rejectAllRuntimeDataDeliveries("Player disconnected before runtime data was applied");
+    this._pendingPlay = false;
+    this._abandonComposition("Player disconnected before runtime data was applied");
   }
 
   // fallow-ignore-next-line complexity
@@ -247,23 +250,16 @@ class HyperframesPlayer extends HTMLElement {
         // attributes are applied below by connectedCallback; only live changes navigate here.
         if (!this.isConnected) break;
         if (val) {
-          this._ready = false;
-          this._invalidateAssetsWait();
-          this._runtimeBridgeReady = false;
-          this._rejectAllRuntimeDataDeliveries(
-            "Composition navigated before runtime data was applied",
-          );
+          // A different composition: like a <video> given a new src, it does not inherit a queued play.
+          this._pendingPlay = false;
+          this._abandonComposition("Composition navigated before runtime data was applied");
           this.iframe.src = prepareSrcForElement(this, val);
         }
         break;
       case "srcdoc":
         if (!this.isConnected) break;
-        this._ready = false;
-        this._invalidateAssetsWait();
-        this._runtimeBridgeReady = false;
-        this._rejectAllRuntimeDataDeliveries(
-          "Composition navigated before runtime data was applied",
-        );
+        this._pendingPlay = false;
+        this._abandonComposition("Composition navigated before runtime data was applied");
         if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
         else this.iframe.removeAttribute("srcdoc");
         break;
@@ -320,6 +316,12 @@ class HyperframesPlayer extends HTMLElement {
         if (val) this._media.setupFromUrl(val);
         else this._media.teardownUrlAudio();
         break;
+      case ASSETS_LOADING_UI_ATTR:
+        if (val === "none") this.shaderLoader.hideAssetsLoading();
+        break;
+      case LOW_POWER_IDLE_ATTR:
+        this._sendControl("set-idle-heartbeat", { slow: val !== null });
+        break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
       case RUNTIME_SRC_ATTR:
@@ -339,10 +341,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _reloadForSandboxOriginPolicy(): void {
-    this._ready = false;
-    this._invalidateAssetsWait();
-    this._runtimeBridgeReady = false;
-    this._rejectAllRuntimeDataDeliveries("Sandbox policy changed before runtime data was applied");
+    this._abandonComposition("Sandbox policy changed before runtime data was applied");
     const srcdoc = this.getAttribute("srcdoc");
     if (srcdoc !== null) {
       this.iframe.srcdoc = prepareSrcdocForElement(this, srcdoc);
@@ -560,6 +559,14 @@ class HyperframesPlayer extends HTMLElement {
   set shaderLoading(mode: ShaderLoadingMode) {
     if (mode === "composition") this.removeAttribute(SHADER_LOADING_ATTR);
     else this.setAttribute(SHADER_LOADING_ATTR, mode);
+  }
+
+  get assetsLoadingUi(): "player" | "none" {
+    return this.getAttribute(ASSETS_LOADING_UI_ATTR) === "none" ? "none" : "player";
+  }
+  set assetsLoadingUi(mode: "player" | "none") {
+    if (mode === "none") this.setAttribute(ASSETS_LOADING_UI_ATTR, "none");
+    else this.removeAttribute(ASSETS_LOADING_UI_ATTR);
   }
 
   get muted() {
@@ -837,6 +844,7 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("set-web-audio-media-disabled", {
       disabled: this._isSlideshowPlayer(),
     });
+    this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
   }
 
   private _reloadShaderOptions(): void {
@@ -844,10 +852,7 @@ class HyperframesPlayer extends HTMLElement {
     // `_runtimeBridgeReady` true lets a delivery post into a document that is being
     // replaced, where it can only end in a delivery timeout rather than the immediate,
     // explanatory rejection the caller gets from every other navigating path.
-    this._ready = false;
-    this._invalidateAssetsWait();
-    this._runtimeBridgeReady = false;
-    this._rejectAllRuntimeDataDeliveries("Shader options changed before runtime data was applied");
+    this._abandonComposition("Shader options changed before runtime data was applied");
     if (getShaderModeFromElement(this) !== "player") this.shaderLoader.reset();
     if (this.hasAttribute("srcdoc")) {
       this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
@@ -1074,7 +1079,7 @@ class HyperframesPlayer extends HTMLElement {
       this._assetsLoadingShowTimer = null;
       if (generation !== this._assetsGeneration || this._assetsReady) return;
       this.setAttribute(ASSETS_LOADING_ATTR, "");
-      this.shaderLoader.showAssetsLoading();
+      if (this.assetsLoadingUi !== "none") this.shaderLoader.showAssetsLoading();
     }, ASSETS_LOADING_SHOW_DELAY_MS);
   }
 
@@ -1108,7 +1113,7 @@ class HyperframesPlayer extends HTMLElement {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = true;
     this.removeAttribute(ASSETS_LOADING_ATTR);
-    this.shaderLoader.hide();
+    this.shaderLoader.hideAssetsLoading();
     this.dispatchEvent(new Event("assetsready"));
     this.shaderLoader.whenHidden(() => {
       if (generation !== this._assetsGeneration) return;
@@ -1118,13 +1123,21 @@ class HyperframesPlayer extends HTMLElement {
     if (this._pendingPlay) this.play();
   }
 
+  /** Every host-driven navigation or teardown: the old document's handshake, asset wait and
+   *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
+  private _abandonComposition(reason: string): void {
+    this._ready = false;
+    this._invalidateAssetsWait();
+    this._runtimeBridgeReady = false;
+    this._rejectAllRuntimeDataDeliveries(reason);
+  }
+
   /** Abandons any in-flight asset wait — every `_ready = false` site calls
    *  this first, so a stale wait's settle can't apply to what comes next. */
   private _invalidateAssetsWait(): void {
     this._clearAssetsLoadingShowTimer();
     this._assetsReady = false;
     this._painted = false;
-    this._pendingPlay = false;
     this._assetsGeneration++;
     this.removeAttribute(ASSETS_LOADING_ATTR);
     this.shaderLoader.hide();
