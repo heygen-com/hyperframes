@@ -67,7 +67,7 @@ point.position.set(0, -3, 1);
 scene.add(point);
 
 /* ---- Environment + matcap (glass look) ---- */
-const hdrTex = await new HDRLoader().loadAsync("assets/ferndale_studio_01_1k.hdr");
+const hdrTex = await new HDRLoader().loadAsync(document.getElementById("gst-hdr").href);
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envRT = pmrem.fromEquirectangular(hdrTex);
 scene.environment = envRT.texture;
@@ -75,7 +75,9 @@ scene.environmentRotation = new THREE.Euler(0, 0.6, 0);
 hdrTex.dispose();
 pmrem.dispose();
 
-const matcapTex = await new THREE.TextureLoader().loadAsync("assets/matcap-1.png");
+const matcapTex = await new THREE.TextureLoader().loadAsync(
+  document.getElementById("gst-matcap").href,
+);
 matcapTex.colorSpace = THREE.SRGBColorSpace;
 matcapTex.wrapS = matcapTex.wrapT = THREE.RepeatWrapping;
 const mk = 1 / 0.2;

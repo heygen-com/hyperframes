@@ -167,6 +167,13 @@ export interface CaptureSession {
   scriptLoadFailures: string[];
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /**
+   * Composition ids still unregistered when the timeline wait gave up. Already
+   * computed for the stderr warning; kept on the session so the STRUCTURED
+   * warning can name them too — a programmatic caller reads `warnings`, not
+   * our console output.
+   */
+  pendingTimelineIds?: string[];
   /** Structured readiness warnings surfaced to the producer's render policy. */
   warnings: CaptureWarning[];
   initTelemetry?: {
@@ -1730,6 +1737,9 @@ export async function pollSubCompositionTimelines(
   // is cut to `scriptFailureGraceMs` from its start.
   getScriptLoadFailures?: () => readonly string[],
   scriptFailureGraceMs: number = 2_000,
+  // Reports the composition ids still unregistered at bail time, so the caller
+  // can put them in the structured warning as well as in stderr.
+  onPending?: (ids: readonly string[]) => void,
 ): Promise<SubTimelineWaitOutcome> {
   // Hosts may opt out of the timeline wait with `data-no-timeline` —
   // compositions driven purely by CSS animations / rAF (the render-compat
@@ -1788,7 +1798,7 @@ export async function pollSubCompositionTimelines(
   // reason — a script-failure bail used to skip this entirely, so a render
   // with multiple sub-compositions only named the failed script URL(s), not
   // which composition(s) it was still waiting on (review).
-  const missing = await page.evaluate(`(function() {
+  const evaluated = await page.evaluate(`(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     var timelines = window.__timelines || {};
     var m = [];
@@ -1797,8 +1807,15 @@ export async function pollSubCompositionTimelines(
       var id = hosts[i].getAttribute("data-composition-id");
       if (id && !timelines[id]) m.push(id);
     }
-    return m.join(", ");
+    return m;
   })()`);
+  // This block exists to BUILD A WARNING, so it must never be the thing that
+  // throws. `page.evaluate` is loosely typed, and a caller that stubs it (or a
+  // runtime that returns nothing here) would turn a blind `as string[]` cast
+  // into a TypeError on the diagnostic path. Normalise instead of asserting.
+  const pendingIds = Array.isArray(evaluated) ? evaluated.map((id) => String(id)) : [];
+  onPending?.(pendingIds);
+  const missing = pendingIds.join(", ");
   if (scriptFailureBail) {
     console.warn(`[FrameCapture] Composition(s) still waiting on the failed script: ${missing}.`);
   } else {
@@ -1975,10 +1992,12 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
   }
 }
 
-function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
+export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
   if (session.subTimelineWaitOutcome === "ready" || !session.subTimelineWaitOutcome) return;
   const scriptFailure = session.subTimelineWaitOutcome === "script_failure";
   const hasRuntimeErrors = session.scriptLoadFailures.some((f) => f.startsWith("runtime-error:"));
+  const pending = session.pendingTimelineIds ?? [];
+  const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   recordCaptureWarnings(session, [
     {
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
@@ -1986,8 +2005,16 @@ function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): v
         ? hasRuntimeErrors
           ? `A sub-composition script threw during execution — timeline registration never arrived (${session.scriptLoadFailures.join(", ")})`
           : `A sub-composition timeline script failed to load (${session.scriptLoadFailures.join(", ")})`
-        : `Sub-composition timelines did not become ready within ${timeoutMs}ms`,
-      details: { timeoutMs, sources: [...session.scriptLoadFailures] },
+        : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
+          `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
+          `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
+          `Otherwise, a composition that sets up asynchronously must register window.__timelines[id] ` +
+          `once setup completes.`,
+      details: {
+        timeoutMs,
+        sources: [...session.scriptLoadFailures],
+        pendingCompositionIds: [...pending],
+      },
     },
   ]);
 }
@@ -2294,6 +2321,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       pageReadyTimeout,
       undefined,
       () => session.scriptLoadFailures,
+      undefined,
+      (ids) => {
+        session.pendingTimelineIds = [...ids];
+      },
     );
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
     recordSubTimelineWarning(session, pageReadyTimeout);
@@ -2457,6 +2488,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     pageReadyTimeout,
     undefined,
     () => session.scriptLoadFailures,
+    undefined,
+    (ids) => {
+      session.pendingTimelineIds = [...ids];
+    },
   );
   logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
   recordSubTimelineWarning(session, pageReadyTimeout);
