@@ -26,6 +26,11 @@ export function hashVersion(hex: string): string {
   return `"sha256:${hex}"`;
 }
 
+/** The sha256 a version names, or undefined when it is not a content version. */
+export function hashOfVersion(version: string): string | undefined {
+  return /^"sha256:([0-9a-f]{64})"$/.exec(version)?.[1];
+}
+
 /** A validator from a file's inode, change time and size, or null while the change is under three
  * seconds old. Change time, not mtime: copy tools (`cp -p`, rsync, robocopy) set mtime back but not
  * ctime, which Node reads from NTFS ChangeTime on Windows. A same-size rewrite within one tick keeps
