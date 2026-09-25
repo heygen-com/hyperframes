@@ -2336,6 +2336,22 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     ]);
   });
 
+  it("keeps ready ahead of the events it causes on an opaque-origin timeline", () => {
+    Object.defineProperty(player.iframe, "contentDocument", {
+      configurable: true,
+      get: () => null,
+    });
+    player.setAttribute("autoplay", "");
+    const seen: string[] = [];
+    for (const type of ["ready", "assetsready", "play"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+
+    player._onMessage(timelineMessage(120));
+
+    expect(seen).toEqual(["ready", "assetsready", "play"]);
+  });
+
   it("fires the probe path's resize only once ready is set", () => {
     const seen: string[] = [];
     player.addEventListener("resize", () => seen.push(`resize ready=${player.ready}`));

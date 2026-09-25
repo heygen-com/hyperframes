@@ -157,7 +157,7 @@ class HyperframesPlayer extends HTMLElement {
     this.shaderLoader = new ShaderLoaderState(loaderElements);
 
     this._media = new ParentMediaManager({
-      dispatchEvent: (e) => this.dispatchEvent(e),
+      dispatchEvent: (e) => this._emit(e),
       getMuted: () => this.muted,
       getVolume: () => this._volume,
       getPlaybackRate: () => this.playbackRate,
@@ -169,7 +169,7 @@ class HyperframesPlayer extends HTMLElement {
       onTimeUpdate: (currentTime, duration) => {
         this._currentTime = currentTime;
         this.controlsApi?.updateTime(currentTime, duration);
-        this.dispatchEvent(new CustomEvent("timeupdate", { detail: { currentTime } }));
+        this._emit(new CustomEvent("timeupdate", { detail: { currentTime } }));
       },
       getLoop: () => this.loop,
       restart: () => {
@@ -180,14 +180,14 @@ class HyperframesPlayer extends HTMLElement {
         if (this._media.audioOwner === "parent") this._media.pauseAll();
         this._paused = true;
         this.controlsApi?.updatePlaying(false);
-        this.dispatchEvent(new Event("ended"));
+        this._emit(new Event("ended"));
       },
       onEnded: () => this.loop,
     });
 
     this.probe = new CompositionProbe(this.iframe, {
       onReady: (result) => this._onProbeReady(result),
-      onError: (message) => this.dispatchEvent(new CustomEvent("error", { detail: { message } })),
+      onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
     });
 
     this.addEventListener("click", (event) => {
@@ -294,7 +294,7 @@ class HyperframesPlayer extends HTMLElement {
         this._sendControl("set-playback-rate", { playbackRate: rate });
         this._directTimelineAdapter?.timeScale?.(rate);
         this.controlsApi?.updateSpeed(rate);
-        this.dispatchEvent(new Event("ratechange"));
+        this._emit(new Event("ratechange"));
         break;
       }
       case "muted":
@@ -309,7 +309,7 @@ class HyperframesPlayer extends HTMLElement {
         this._media.updateVolume(v);
         this._sendControl("set-volume", { volume: v });
         this.controlsApi?.updateVolume(v);
-        this.dispatchEvent(new Event("volumechange"));
+        this._emit(new Event("volumechange"));
         break;
       }
       case "audio-src":
@@ -398,7 +398,7 @@ class HyperframesPlayer extends HTMLElement {
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     this.controlsApi?.updatePlaying(true);
-    if (!queuedForReady) this.dispatchEvent(new Event("play"));
+    if (!queuedForReady) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
       this._directTimelineClock.start(
         this._directTimelineAdapter,
@@ -420,7 +420,7 @@ class HyperframesPlayer extends HTMLElement {
     if (this._media.audioOwner === "parent") this._media.pauseAll();
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
-    this.dispatchEvent(new Event("pause"));
+    this._emit(new Event("pause"));
   }
 
   stopMedia() {
@@ -631,7 +631,7 @@ class HyperframesPlayer extends HTMLElement {
     this._setIframeMediaMuted(val !== null);
     this._sendControl("set-muted", { muted: val !== null });
     this.controlsApi?.updateMuted(val !== null);
-    this.dispatchEvent(new Event("volumechange"));
+    this._emit(new Event("volumechange"));
   }
 
   /**
@@ -768,7 +768,7 @@ class HyperframesPlayer extends HTMLElement {
   private _resolveRuntimeDataDelivery(channel: unknown, requestId: unknown): void {
     const pending = this._takeRuntimeDataDelivery(channel, requestId);
     if (!pending) return;
-    this.dispatchEvent(
+    this._emit(
       new CustomEvent("runtimedataapplied", {
         detail: { channel, requestId: pending.requestId },
       }),
@@ -778,7 +778,7 @@ class HyperframesPlayer extends HTMLElement {
   private _rejectRuntimeDataDelivery(channel: unknown, requestId: unknown, message: unknown): void {
     const pending = this._takeRuntimeDataDelivery(channel, requestId);
     if (!pending) return;
-    this.dispatchEvent(
+    this._emit(
       new CustomEvent("runtimedataerror", {
         detail: {
           channel,
@@ -1126,11 +1126,11 @@ class HyperframesPlayer extends HTMLElement {
     this._assetsReady = true;
     this.removeAttribute(ASSETS_LOADING_ATTR);
     this.shaderLoader.hideAssetsLoading();
-    this.dispatchEvent(new Event("assetsready"));
+    this._emit(new Event("assetsready"));
     this.shaderLoader.whenHidden(() => {
       if (generation !== this._assetsGeneration) return;
       this._painted = true;
-      this.dispatchEvent(new Event("painted"));
+      this._emit(new Event("painted"));
     });
     if (this._pendingPlay) this.play();
   }
@@ -1192,6 +1192,11 @@ class HyperframesPlayer extends HTMLElement {
   /** Runs one update (a runtime message, a probe result), then fires the events it raised,
    *  so every listener sees the whole update applied. */
   private _applyThenEmit(apply: () => void): void {
+    // A nested update joins the outer one's queue.
+    if (this._queuedEvents) {
+      apply();
+      return;
+    }
     const queue: Event[] = [];
     this._queuedEvents = queue;
     try {
@@ -1202,6 +1207,7 @@ class HyperframesPlayer extends HTMLElement {
     }
   }
 
+  /** Every event the player raises goes through here, so an update's events keep their order. */
   private _emit(event: Event): void {
     if (this._queuedEvents) this._queuedEvents.push(event);
     else this.dispatchEvent(event);
