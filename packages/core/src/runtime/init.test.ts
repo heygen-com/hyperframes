@@ -418,7 +418,7 @@ describe("initSandboxRuntimeModular", () => {
 
   it.each([
     ["1080px", "1920px", "1080x1920"],
-    ["1080.5", "1920", "1080.5x1920"],
+    ["1080.5", "1920", "1080x1920"],
   ])(
     "reports one composition size in stage-size and timeline for %s x %s",
     (width, height, size) => {
@@ -444,6 +444,20 @@ describe("initSandboxRuntimeModular", () => {
       expect(new Set([...stageSizes, ...timelineSizes])).toEqual(new Set([size]));
     },
   );
+
+  it.each([
+    ["1080px", "1920px"],
+    ["1080.5", "1920"],
+  ])("lays the stage out at whole px for %s x %s", (width, height) => {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4" data-width="${width}" data-height="${height}"></div>`;
+    window.__timelines = { main: createMockTimeline(4) };
+
+    initSandboxRuntimeModular();
+
+    const root = document.querySelector<HTMLElement>("[data-composition-id]")!;
+    expect(root.style.width).toBe("1080px");
+    expect(root.style.height).toBe("1920px");
+  });
 
   it("reports a collapsed stage for a px-suffixed root size", () => {
     const outbound: Array<Record<string, unknown>> = [];
