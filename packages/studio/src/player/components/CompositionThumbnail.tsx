@@ -31,7 +31,7 @@ export function resolveThumbnailSeekTime(durationSeconds: number | null | undefi
     Number.isFinite(durationSeconds) &&
     durationSeconds != null &&
     durationSeconds > 0 &&
-    durationSeconds < THUMBNAIL_SEEK_TIME_SECONDS
+    durationSeconds <= THUMBNAIL_SEEK_TIME_SECONDS
   ) {
     return durationSeconds / 2;
   }

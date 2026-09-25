@@ -8,7 +8,7 @@ import { settleCompositionReadiness } from "@hyperframes/core/composition-readin
 
 export interface PlaybackReadinessSlice {
   timelineReady: boolean;
-  /** Latched when the project's first preview shows and can play (or fails), kept through edit
+  /** Latched when the project's first preview shows its first frame (or fails), kept through edit
    *  reloads, so work that must not compete with the boot waits for it once. */
   previewBooted: boolean;
   setTimelineReady: (ready: boolean) => void;

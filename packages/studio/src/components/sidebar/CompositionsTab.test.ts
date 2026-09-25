@@ -42,8 +42,9 @@ describe("resolveThumbnailSeekTime", () => {
     expect(resolveThumbnailSeekTime(6)).toBe(3);
   });
 
-  it("uses the midpoint for compositions shorter than 3s", () => {
+  it("uses the midpoint for compositions of 3s or shorter, never their end frame", () => {
     expect(resolveThumbnailSeekTime(2)).toBe(1);
+    expect(resolveThumbnailSeekTime(3)).toBe(1.5);
   });
 
   it("falls back to the default 3s frame when duration is unknown", () => {

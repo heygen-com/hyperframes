@@ -8,6 +8,7 @@ import {
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
+import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { Tooltip } from "../ui/Tooltip";
 
@@ -63,7 +64,7 @@ export function compositionCardThumbnailUrl(
   contentRevision: number,
 ): string {
   return buildCompositionThumbnailUrl({
-    previewUrl: buildProjectApiPath(projectId, `/preview/comp/${comp}`),
+    previewUrl: buildProjectApiPath(projectId, `/preview/comp/${encodePreviewPath(comp)}`),
     seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
     duration: 0,
     origin: window.location.origin,
