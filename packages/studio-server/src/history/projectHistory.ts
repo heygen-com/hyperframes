@@ -348,7 +348,12 @@ class Engine {
       const own = group?.changes.get(path);
       return own ? own.after : before;
     };
-    return group && taken.every((change) => after(change.path, change.before) === change.before)
+    const takenPaths = new Set(taken.map((change) => change.path));
+    const untouched = (change: HistoryFileChange) =>
+      takenPaths.has(change.path) || (this.tracked.get(change.path)?.hash ?? null) === change.after;
+    return group &&
+      taken.every((change) => after(change.path, change.before) === change.before) &&
+      [...group.changes.values()].every(untouched)
       ? group
       : null;
   }

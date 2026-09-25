@@ -493,6 +493,61 @@ describe("claim: a writer that records after writing", () => {
     }
   });
 
+  it("a held drag ends when someone else changed a file it holds, even if its next step writes another", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "r.js": "1" });
+    const drag = (path: string, overwrote: string) =>
+      history.claim(you, "Dragged Title", [path], {
+        coalesceKey: "drag",
+        idleMs: 60_000,
+        overwrote: { [path]: fileContentVersion(overwrote) },
+      });
+    write("index.html", "B");
+    await drag("index.html", "A");
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "C");
+    write("r.js", "2");
+    await window.close();
+    write("r.js", "3");
+    await drag("r.js", "2");
+    await history.flush();
+    for (const expected of [
+      ["C", "2"],
+      ["B", "1"],
+      ["A", "1"],
+    ]) {
+      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect([read("index.html"), read("r.js")]).toEqual(expected);
+    }
+  });
+
+  it("a held drag ends when one file of its next step continues and another does not", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "r.js": "1" });
+    const drag = (overwrote: Record<string, string>) =>
+      history.claim(you, "Dragged Title", Object.keys(overwrote), {
+        coalesceKey: "drag",
+        idleMs: 60_000,
+        overwrote: Object.fromEntries(
+          Object.entries(overwrote).map(([path, text]) => [path, fileContentVersion(text)]),
+        ),
+      });
+    write("index.html", "B");
+    await drag({ "index.html": "A" });
+    write("index.html", "C");
+    await history.claim(you, "scan", [], { coalesceKey: "drag" });
+    write("index.html", "D");
+    write("r.js", "2");
+    await drag({ "index.html": "C", "r.js": "1" });
+    await history.flush();
+    for (const expected of [
+      ["C", "1"],
+      ["B", "1"],
+      ["A", "1"],
+    ]) {
+      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect([read("index.html"), read("r.js")]).toEqual(expected);
+    }
+  });
+
   it("a held claim that deleted a file ends where someone else recreated it", async () => {
     const { history, write, read, has, projectDir } = await project({ "index.html": "A" });
     const claim = (overwrote: string) =>
