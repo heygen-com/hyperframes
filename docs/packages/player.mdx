@@ -47,7 +47,8 @@ Set `autoplay muted` only when playback should start without a user gesture.
 
 | Attribute       | Type    | Default | Description                                               |
 | --------------- | ------- | ------- | --------------------------------------------------------- |
-| `src`           | string  | —       | URL or relative path to composition HTML                  |
+| `src`           | string  | —       | URL or relative path to composition HTML, or to a video file with `type` |
+| `type`          | string  | —       | A `video/...` type (e.g. `video/mp4`) plays `src` as a video file |
 | `srcdoc`        | string  | —       | Composition HTML already available as a string            |
 | `width`         | number  | 1920    | Native composition width used for aspect ratio            |
 | `height`        | number  | 1080    | Native composition height used for aspect ratio           |
@@ -113,7 +114,7 @@ player.addEventListener("timeupdate", (event) => {
 | `ratechange`   | —                 | Playback rate changed                                        |
 | `volumechange` | —                 | Volume or muted state changed                                |
 | `scenes`       | `{ scenes }`      | The runtime reported its scene list                          |
-| `error`        | `{ message }`     | Load or runtime error                                        |
+| `error`        | `{ message }`     | Load or runtime error; a video adds its `MediaError` `code`  |
 
 ## Advanced: iframe access
 

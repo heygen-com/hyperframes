@@ -38,6 +38,19 @@ import "@hyperframes/player";
 // Vue:   <hyperframes-player :src="url" controls />
 ```
 
+### Video files
+
+Set `type` to a video type and the player plays `src` in a `<video playsinline>` instead of loading it as a composition. The same API and events apply: `play()`, `pause()`, `seek()`, `currentTime`, `duration`, `ready`, `timeupdate`, `play`, `pause`, `ended`, `durationchange` and `resize`, with the video's own size as `compositionWidth`/`compositionHeight`. A video that fails to load fires `error` at once with `{ message, code }`, where `code` is the `MediaError` code. A `play()` the browser blocks (for example, unmuted autoplay) fires `playbackerror` with `{ source: "video" }` and leaves the player paused. `poster`, `controls`, `loop`, `muted`, `volume`, `playback-rate` and `autoplay` work as they do for a composition.
+
+```html
+<hyperframes-player
+  type="video/mp4"
+  src="./render.mp4"
+  poster="./poster.jpg"
+  controls
+></hyperframes-player>
+```
+
 ### Poster image
 
 Show a static image before playback starts:
@@ -54,7 +67,8 @@ Show a static image before playback starts:
 
 | Attribute               | Type                            | Default       | Description                                                                 |
 | ----------------------- | ------------------------------- | ------------- | --------------------------------------------------------------------------- |
-| `src`                   | string                          | —             | URL to the composition HTML file                                            |
+| `src`                   | string                          | —             | URL to the composition HTML file, or to a video file with `type`            |
+| `type`                  | string                          | —             | A `video/...` type (e.g. `video/mp4`) plays `src` as a video file           |
 | `audio-src`             | string                          | —             | Audio URL for parent-frame playback (mobile)                                |
 | `width`                 | number                          | 1920          | Composition width in pixels (aspect ratio)                                  |
 | `height`                | number                          | 1080          | Composition height in pixels (aspect ratio)                                 |
@@ -236,7 +250,7 @@ function StudioPreview({ src }: { src: string }) {
 | `pause`                 | —                                                   | Playback paused                            |
 | `timeupdate`            | `{ currentTime }`                                   | Playback position changed (~10 fps)        |
 | `ended`                 | —                                                   | Reached the end (when not looping)         |
-| `error`                 | `{ message }`                                       | Composition failed to load                 |
+| `error`                 | `{ message }` (video mode: `{ message, code }`)     | Composition or video failed to load        |
 | `shadertransitionstate` | `{ compositionId, state }`                          | Shader transition cache/capture progress   |
 
 ```js

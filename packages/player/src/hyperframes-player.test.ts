@@ -2833,6 +2833,258 @@ describe("HyperframesPlayer composition dimension attributes", () => {
   });
 });
 
+describe("HyperframesPlayer video mode", () => {
+  type VideoPlayer = HTMLElement & {
+    play: () => void;
+    pause: () => void;
+    seek: (t: number) => void;
+    currentTime: number;
+    duration: number;
+    paused: boolean;
+    ready: boolean;
+    muted: boolean;
+    volume: number;
+    iframeElement: HTMLIFrameElement;
+    _onIframeLoad: () => void;
+  };
+
+  const FILM = "https://cdn.example.com/film.mp4";
+  let player: VideoPlayer;
+  let playSpy: MockInstance<HTMLMediaElement["play"]>;
+  let frames: FrameRequestCallback[];
+
+  function createPlayer(attrs: Record<string, string>): VideoPlayer {
+    const el = document.createElement("hyperframes-player") as VideoPlayer;
+    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function videoOf(el: VideoPlayer): HTMLVideoElement {
+    const video = el.shadowRoot?.querySelector("video");
+    if (!video) throw new Error("no <video> in the player");
+    return video;
+  }
+
+  function setMedia(video: HTMLVideoElement, props: Record<string, unknown>) {
+    for (const [name, value] of Object.entries(props)) {
+      Object.defineProperty(video, name, { configurable: true, writable: true, value });
+    }
+  }
+
+  function loadMetadata(video: HTMLVideoElement, duration = 6, width = 1080, height = 1920) {
+    setMedia(video, { duration, videoWidth: width, videoHeight: height });
+    video.dispatchEvent(new Event("durationchange"));
+    video.dispatchEvent(new Event("loadedmetadata"));
+  }
+
+  function flushFrame() {
+    const frame = frames.shift();
+    if (!frame) throw new Error("no animation frame queued");
+    frame(performance.now());
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    frames = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    player = createPlayer({ type: "video/mp4", src: FILM });
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("plays a video file in a <video playsinline>, not in the composition iframe", () => {
+    const video = videoOf(player);
+
+    expect(video.getAttribute("src")).toBe(FILM);
+    expect(video.playsInline).toBe(true);
+    expect(player.iframeElement.src).not.toContain("film.mp4");
+    expect(player.iframeElement.hidden).toBe(true);
+  });
+
+  it("keeps a composition player free of any <video>", () => {
+    const composition = createPlayer({ src: "https://cdn.example.com/index.html" });
+
+    expect(composition.shadowRoot?.querySelector("video")).toBeNull();
+    expect(composition.iframeElement.src).toContain("index.html");
+  });
+
+  it("fires ready with the video's duration and size", () => {
+    const readies: unknown[] = [];
+    player.addEventListener("ready", (event) => readies.push((event as CustomEvent).detail));
+
+    loadMetadata(videoOf(player));
+
+    expect(readies).toEqual([{ duration: 6, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(player.ready).toBe(true);
+  });
+
+  it("fires the video's first resize with the player already ready", () => {
+    const seen: string[] = [];
+    player.addEventListener("resize", () =>
+      seen.push(`resize ready=${player.ready} d=${player.duration}`),
+    );
+
+    loadMetadata(videoOf(player));
+
+    expect(seen).toEqual(["resize ready=true d=6"]);
+  });
+
+  it("stays ready when the hidden iframe finishes loading", () => {
+    loadMetadata(videoOf(player));
+
+    player._onIframeLoad();
+
+    expect(player.ready).toBe(true);
+    expect(player.duration).toBe(6);
+  });
+
+  it("drives the video with play, pause and seek", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+
+    player.play();
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(player.paused).toBe(false);
+
+    player.seek(2.5);
+    expect(video.currentTime).toBe(2.5);
+    expect(player.currentTime).toBe(2.5);
+    expect(player.paused).toBe(true);
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+  });
+
+  it("reports time while playing and fires ended at the end", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    const times: number[] = [];
+    let ended = 0;
+    player.addEventListener("timeupdate", (event) =>
+      times.push((event as CustomEvent<{ currentTime: number }>).detail.currentTime),
+    );
+    player.addEventListener("ended", () => ended++);
+
+    player.play();
+    setMedia(video, { currentTime: 6 });
+    flushFrame();
+
+    expect(times).toEqual([6]);
+    expect(ended).toBe(1);
+    expect(player.paused).toBe(true);
+  });
+
+  it("restarts at the end with loop instead of firing ended", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.setAttribute("loop", "");
+    let ended = 0;
+    player.addEventListener("ended", () => ended++);
+
+    player.play();
+    setMedia(video, { currentTime: 6 });
+    flushFrame();
+
+    expect(ended).toBe(0);
+    expect(video.currentTime).toBe(0);
+    expect(playSpy).toHaveBeenCalledTimes(2);
+    expect(player.paused).toBe(false);
+  });
+
+  it("fires error at once with the video's error code", () => {
+    const video = videoOf(player);
+    const errors: unknown[] = [];
+    player.addEventListener("error", (event) =>
+      errors.push((event as unknown as CustomEvent).detail),
+    );
+
+    setMedia(video, { error: { code: 4, message: "Format not supported" } });
+    video.dispatchEvent(new Event("error"));
+
+    expect(errors).toEqual([{ message: "Format not supported", code: 4 }]);
+  });
+
+  it("fires durationchange and resize when the video changes after ready", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    const seen: string[] = [];
+    player.addEventListener("durationchange", (event) =>
+      seen.push(`duration ${(event as CustomEvent<{ duration: number }>).detail.duration}`),
+    );
+    player.addEventListener("resize", () => seen.push("resize"));
+
+    setMedia(video, { duration: 8, videoWidth: 1920, videoHeight: 1080 });
+    video.dispatchEvent(new Event("durationchange"));
+    video.dispatchEvent(new Event("resize"));
+
+    expect(seen).toEqual(["duration 8", "resize"]);
+  });
+
+  it("mirrors muted and volume onto the video", () => {
+    const video = videoOf(player);
+
+    player.muted = true;
+    player.volume = 0.25;
+
+    expect(video.muted).toBe(true);
+    expect(video.volume).toBe(0.25);
+  });
+
+  it("plays on ready with autoplay", () => {
+    const autoplay = createPlayer({ type: "video/mp4", src: FILM, autoplay: "", muted: "" });
+
+    loadMetadata(videoOf(autoplay));
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(autoplay.paused).toBe(false);
+  });
+
+  it("reports a blocked play and lands paused", async () => {
+    loadMetadata(videoOf(player));
+    playSpy.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
+    const errors: unknown[] = [];
+    player.addEventListener("playbackerror", (event) =>
+      errors.push((event as CustomEvent<{ source: string }>).detail.source),
+    );
+
+    player.play();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(errors).toEqual(["video"]);
+    expect(player.paused).toBe(true);
+  });
+
+  it("ignores a play interrupted by pause", async () => {
+    loadMetadata(videoOf(player));
+    playSpy.mockRejectedValueOnce(new DOMException("interrupted", "AbortError"));
+    const errors: unknown[] = [];
+    player.addEventListener("playbackerror", (event) => errors.push(event));
+
+    player.play();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(errors).toEqual([]);
+  });
+
+  it("goes back to a composition when the video type is removed", () => {
+    player.removeAttribute("type");
+
+    expect(player.shadowRoot?.querySelector("video")).toBeNull();
+    expect(player.iframeElement.hidden).toBe(false);
+    expect(player.iframeElement.src).toContain("film.mp4");
+  });
+});
+
 describe("HyperframesPlayer click-to-play", () => {
   type ClickPlayer = HTMLElement & {
     play: () => void;
