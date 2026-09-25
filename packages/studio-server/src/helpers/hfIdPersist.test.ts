@@ -1,13 +1,26 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stampFileHfIds } from "./hfIdPersist.js";
+
+const hooks = vi.hoisted(() => ({ minting: undefined as (() => void) | undefined }));
+vi.mock("@hyperframes/parsers/hf-ids", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hyperframes/parsers/hf-ids")>();
+  return {
+    ...actual,
+    ensureHfIds: (html: string) => {
+      hooks.minting?.();
+      return actual.ensureHfIds(html);
+    },
+  };
+});
 
 describe("stampFileHfIds", () => {
   const tmpDirs: string[] = [];
 
   afterEach(() => {
+    hooks.minting = undefined;
     for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
     tmpDirs.length = 0;
   });
@@ -34,6 +47,25 @@ describe("stampFileHfIds", () => {
 
     expect(readFileSync(file, "utf-8")).toBe(returned);
     expect(readdirSync(file.replace(/\/[^/]+$/, ""))).toEqual(["scene.html"]);
+  });
+
+  it.each([
+    ["in place", (file: string, html: string) => writeFileSync(file, html)],
+    [
+      "by rename",
+      (file: string, html: string) => {
+        writeFileSync(`${file}.tmp`, html);
+        renameSync(`${file}.tmp`, file);
+      },
+    ],
+  ])("keeps a write that lands %s while ids are minted", (_, write) => {
+    const file = tmpFile(`<div class="clip" data-start="0" data-end="3">Hi</div>`);
+    const agentWrite = `<div class="clip" data-start="0" data-end="5">Agent</div>`;
+    hooks.minting = () => write(file, agentWrite);
+
+    stampFileHfIds(file);
+
+    expect(readFileSync(file, "utf-8")).toBe(agentWrite);
   });
 
   it("does not rewrite an already-stamped file", () => {

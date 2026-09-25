@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { readdirSync } from "node:fs";
+import { readdirSync, type Dirent } from "node:fs";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
@@ -30,10 +30,18 @@ export function isInHiddenOrVendorDir(relPath: string): boolean {
   return segments.slice(0, -1).some((seg) => seg.startsWith(".") || seg === "node_modules");
 }
 
-/** Recursively walk a directory and return relative file paths. */
+/** Recursively walk a directory and return relative file paths. Only an unreadable `dir` itself
+ * throws; a subfolder that is unreadable or removed mid-walk is skipped. */
 export function walkDir(dir: string, prefix = ""): string[] {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (!prefix) throw err;
+    return [];
+  }
   const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of entries) {
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (IGNORE_DIRS.has(entry.name) || shouldIgnoreDir(rel)) continue;
     if (entry.isDirectory()) {
