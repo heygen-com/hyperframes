@@ -2,7 +2,12 @@ import {
   planCompositionAssembly,
   EXTRACTED_COMPOSITION_ASSET_SELECTOR,
 } from "../compiler/compositionAssembly";
-import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/compositionScoping";
+import {
+  scopeCssToComposition,
+  scopedModulePrelude,
+  wrapScopedCompositionScript,
+} from "../compiler/compositionScoping";
+import { parseImportMap } from "../compiler/importMaps";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
   applyCssVariables,
@@ -556,8 +561,19 @@ async function mountCompositionContent(params: {
     injectedScript.async = false;
     if (scriptPayload.kind === "external") {
       injectedScript.src = scriptPayload.src;
+    } else if (scriptPayload.type.toLowerCase() === "importmap") {
+      const map = parseImportMap(scriptPayload.content, (url) =>
+        resolveScriptSourceUrl(url, params.compositionUrl),
+      );
+      injectedScript.textContent = map ? JSON.stringify(map) : scriptPayload.content;
     } else if (scriptPayload.type.toLowerCase() === "module") {
-      injectedScript.textContent = scriptPayload.content;
+      const prelude = scriptPayload.scopeCompositionId
+        ? scopedModulePrelude(
+            runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
+            params.compositionUrl?.href,
+          )
+        : "";
+      injectedScript.textContent = prelude + scriptPayload.content;
     } else if (scriptPayload.scopeCompositionId) {
       injectedScript.textContent = wrapScopedCompositionScript(
         scriptPayload.content,
@@ -566,6 +582,7 @@ async function mountCompositionContent(params: {
         runtimeScopeSelector,
         runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
         authoredRootId,
+        params.compositionUrl?.href,
       );
     } else {
       injectedScript.textContent = `(function(){${scriptPayload.content}})();`;

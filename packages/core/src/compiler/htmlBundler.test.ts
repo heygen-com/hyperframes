@@ -179,6 +179,100 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('document.getElementById("scene")');
   });
 
+  it("binds a mounted composition's scripts to its own file for __hyperframes.assetUrl", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <script>window.__envUrl = __hyperframes.assetUrl("assets/env.hdr");</script>
+</div>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
+  });
+
+  it("keeps a mounted file's import map and module script as such, bound to that file", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/assets/three.js": "export const REVISION = 1;",
+      "compositions/blk/assets/addons/env.js": "export const ENV = 1;",
+      "compositions/blk/assets/scene.js": 'import * as THREE from "three"; export const SCENE = 1;',
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <script type="module" src="./assets/scene.js"></script>
+  <script type="module" src="https://cdn.test/mod.js"></script>
+  <script type="importmap">{ "imports": { "three": "./assets/three.js", "three/addons/": "./assets/addons/", "cdn": "https://cdn.test/x.js" } }</script>
+  <script type="module">import * as THREE from "three"; window.__url = __hyperframes.assetUrl("assets/leaf.webp");</script>
+  <script>window.__classic = 1;</script>
+</div>`,
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const importMaps = [...document.querySelectorAll('script[type="importmap"]')];
+    const modules = [...document.querySelectorAll('script[type="module"]')];
+    const classic = [...document.querySelectorAll("script:not([type])")].map((s) => s.textContent);
+
+    expect(importMaps).toHaveLength(1);
+    expect(JSON.parse(importMaps[0]!.textContent || "")).toEqual({
+      imports: {
+        three: "./compositions/blk/assets/three.js",
+        "three/addons/": "./compositions/blk/assets/addons/",
+        cdn: "https://cdn.test/x.js",
+      },
+    });
+    expect(modules.map((m) => m.getAttribute("src")).filter(Boolean)).toEqual([
+      "compositions/blk/assets/scene.js",
+      "https://cdn.test/mod.js",
+    ]);
+    const inline = modules.filter((m) => !m.hasAttribute("src"));
+    expect(inline).toHaveLength(1);
+    expect(inline[0]!.textContent).toMatch(/^const __hyperframes = /);
+    expect(inline[0]!.textContent).toContain('"compositions/blk/blk.html"');
+    expect(inline[0]!.textContent).toContain('import * as THREE from "three";');
+    expect(classic.join("")).not.toContain("SCENE");
+    expect(classic.join("")).toContain(".__classic = 1;");
+    expect(classic.join("")).not.toContain('"imports"');
+    expect(classic.join("")).not.toContain("import * as THREE");
+  });
+
+  it("binds a <template> composition authored in a mounted file to that file", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="blk-host" data-composition-id="blk" data-composition-src="compositions/blk/blk.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/blk/blk.html": `<div data-composition-id="blk" data-width="1920" data-height="1080">
+  <template id="chip-template">
+    <div data-composition-id="chip" data-width="200" data-height="200">
+      <script>window.__chipUrl = __hyperframes.assetUrl("assets/chip.png");</script>
+    </div>
+  </template>
+  <div data-composition-id="chip"></div>
+</div>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toMatch(
+      /var __hfCompId = "chip";(?:(?!__hfCompId)[\s\S])*var __hfCompositionSrc = "compositions\/blk\/blk\.html";/,
+    );
+  });
+
   it("inlines an in-project sub-composition script but not one reached through a symlink escaping the project root", async () => {
     // Security: a shared/cloned project may carry a symlink pointing outside the
     // root (e.g. ext -> /etc). The bundler reads+inlines local assets, so it must

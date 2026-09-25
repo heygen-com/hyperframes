@@ -172,7 +172,9 @@ npx hyperframes catalog --human-friendly         # picker; installs on select
 
 Filter with `--type` (`block` or `component`) and `--tag` (`social`,
 `transition`, `text`, …). Default output is a table of name, type, description,
-and tags, shaped for agents to parse; `--json` is the structured form.
+and tags, shaped for agents to parse; `--json` is the structured form. Each
+`--json` row has the item's name, type, title, description and tags, plus its
+dimensions, duration and `preview` (`video` and `poster` URLs) when it has them.
 `--human-friendly` opens a picker that runs `add` on whatever you select.
 
 ## Bring in source material

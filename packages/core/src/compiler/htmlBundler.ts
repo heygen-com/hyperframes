@@ -4,6 +4,7 @@ import {
   readExternalScriptAttributes,
   type ExternalScriptAttributes,
 } from "./externalScripts";
+import { emitMountedModuleScripts } from "./importMaps";
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
@@ -852,7 +853,7 @@ function hoistExternalScript(
   }
   if (seenSrcs.has(src)) return;
   seenSrcs.add(src);
-  if (!isNonRelativeUrl(src) && !isAbsolute(src)) {
+  if (!isNonRelativeUrl(src) && !isAbsolute(src) && attributes.type !== "module") {
     const jsPath = resolveWithinProject(projectDir, src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js != null) {
@@ -1031,7 +1032,7 @@ export async function bundleToSingleHtml(
     }
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
-    if (isRelativeUrl(extSrc)) {
+    if (isRelativeUrl(extSrc) && scriptItem.type !== "module") {
       const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
@@ -1222,6 +1223,7 @@ export async function bundleToSingleHtml(
     );
     document.body.appendChild(compScript);
   }
+  emitMountedModuleScripts(document, subCompResult.importMaps, subCompResult.moduleScripts);
 
   emitRootCompositionVariableStyles(document, compVariablesByComp);
 

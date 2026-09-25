@@ -1,5 +1,5 @@
-import { memo, useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
-import { TIMELINE_SCROLL_SETTLE_MS } from "./useTimelineScrollViewport";
+import { memo, type RefObject } from "react";
+import { useSettledScrollLeft } from "./useSettledScrollLeft";
 import type { TimelineTheme } from "./timelineTheme";
 import { RULER_H, getTimelineBeatEntries } from "./timelineLayout";
 import { formatTimelineTickLabel } from "./timelineRulerGeometry";
@@ -41,11 +41,8 @@ function tickIndexUnderHeader(major: number[], pps: number, scrollLeft: number):
   return found;
 }
 
-/**
- * Paints over the one label the header corner would slice, once a scroll settles. Moving it
- * on every tick crossing cost 2-3x the scroll budget on a large timeline, so mid-scroll a
- * fragment can still show.
- */
+// Paints over the one label the header corner would slice, once a scroll settles; mid-scroll a
+// fragment can still show.
 const HeaderSlicedLabelMask = memo(function HeaderSlicedLabelMask({
   scrollRef,
   major,
@@ -57,39 +54,9 @@ const HeaderSlicedLabelMask = memo(function HeaderSlicedLabelMask({
   pps: number;
   background: string;
 }) {
-  const scrollingRef = useRef(false);
-  const subscribe = useCallback(
-    (onChange: () => void) => {
-      const el = scrollRef.current;
-      let settle: ReturnType<typeof setTimeout> | undefined;
-      const onScroll = () => {
-        if (!scrollingRef.current) {
-          scrollingRef.current = true;
-          onChange();
-        }
-        clearTimeout(settle);
-        settle = setTimeout(() => {
-          scrollingRef.current = false;
-          onChange();
-        }, TIMELINE_SCROLL_SETTLE_MS);
-      };
-      el?.addEventListener("scroll", onScroll, { passive: true });
-      return () => {
-        clearTimeout(settle);
-        scrollingRef.current = false;
-        el?.removeEventListener("scroll", onScroll);
-      };
-    },
-    [scrollRef],
-  );
-  const index = useSyncExternalStore(
-    subscribe,
-    () =>
-      scrollingRef.current
-        ? -1
-        : tickIndexUnderHeader(major, pps, scrollRef.current?.scrollLeft ?? 0),
-    () => -1,
-  );
+  const settledScrollLeft = useSettledScrollLeft(scrollRef);
+  const index =
+    settledScrollLeft === null ? -1 : tickIndexUnderHeader(major, pps, settledScrollLeft);
   if (index < 0) return null;
   const labelLeft = major[index]! * pps - 0.5 + TICK_LABEL_INSET_PX;
   const next = major[index + 1];
