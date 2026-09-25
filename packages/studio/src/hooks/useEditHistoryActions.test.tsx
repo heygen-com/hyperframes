@@ -17,10 +17,16 @@ function mount(result: {
   message?: string;
   label?: string;
   paths?: string[];
+  changedSince?: { id: string; label: string };
 }) {
   const editHistory = {
     undo: vi.fn<EditHistoryHandle["undo"]>(async () => result),
     redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
+    undoEntry: vi.fn<NonNullable<EditHistoryHandle["undoEntry"]>>(async () => ({
+      ok: true,
+      label: "Undid: Agent turn",
+      paths: ["index.html"],
+    })),
   };
   const deps = {
     editHistory,
@@ -64,6 +70,27 @@ describe("useEditHistoryActions", () => {
     await act(() => actions.redo());
     expect(deps.forceReloadSdkSession).not.toHaveBeenCalled();
     expect(deps.showToast).toHaveBeenCalledWith("Redid: Split clip", "info");
+  });
+
+  it("names the agent that changed the files since, and offers to undo its change first", async () => {
+    const { deps, actions } = mount({
+      ok: false,
+      reason: "content-mismatch",
+      paths: ["index.html"],
+      changedSince: { id: "turn-1", label: "Agent turn" },
+    });
+    await act(() => actions.undo());
+    expect(deps.showToast).toHaveBeenCalledWith(
+      "Can't undo: Agent turn changed index.html since that edit.",
+      "info",
+      { label: "Undo Agent turn", run: expect.any(Function) },
+    );
+    const [, , offer] = deps.showToast.mock.calls[0]!;
+    await act(async () => offer.run());
+    await vi.waitFor(() =>
+      expect(deps.showToast).toHaveBeenCalledWith("Undid: Agent turn", "info"),
+    );
+    expect(deps.editHistory.undoEntry).toHaveBeenCalledWith("turn-1", expect.anything());
   });
 
   it("names the files that changed since the edit when an undo is refused", async () => {

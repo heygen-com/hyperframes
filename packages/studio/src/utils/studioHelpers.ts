@@ -10,9 +10,15 @@ export interface EditingFile {
   content: string | null;
 }
 
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface AppToast {
   message: string;
   tone: "error" | "info";
+  action?: ToastAction;
 }
 
 export type RightPanelTab =

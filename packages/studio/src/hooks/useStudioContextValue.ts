@@ -21,6 +21,7 @@ interface StudioContextInput {
     canUndo: boolean;
     canRedo: boolean;
     undoLabel: string | undefined;
+    undoChangedSince?: string;
     redoLabel: string | undefined;
   };
   handleUndo: StudioContextValue["handleUndo"];

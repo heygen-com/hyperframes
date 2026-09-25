@@ -31,6 +31,12 @@ interface ApplyResult {
   label?: string;
   paths?: string[];
   files?: Record<string, ApplyRestoredFile>;
+  changedSince?: EntryName;
+}
+
+interface EntryName {
+  id: string;
+  label: string;
 }
 
 interface NextStep {
@@ -38,6 +44,7 @@ interface NextStep {
   label: string;
   endedAt: number;
   paths: string[];
+  changedSince?: EntryName;
 }
 
 interface HistoryView {
@@ -160,27 +167,27 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     [projectId, refresh],
   );
 
-  const step = useCallback(
-    async (direction: "undo" | "redo", callbacks: ApplyCallbacks): Promise<ApplyResult> => {
+  const apply = useCallback(
+    async (
+      path: string,
+      body: object,
+      paths: string[],
+      callbacks: ApplyCallbacks,
+    ): Promise<ApplyResult> => {
       if (!projectId) return { ok: false, reason: "empty" };
-      const next = direction === "undo" ? view.back : view.forward;
-      const paths = [...new Set([...(next?.paths ?? []), ...(heldClaimRef.current?.paths ?? [])])];
       const run = async (): Promise<ApplyResult> => {
         const previous = await readAll(paths, callbacks.readFile);
-        const posted = await post(
-          historyUrl(projectId, "/step"),
-          { direction: direction === "undo" ? "back" : "forward" },
-          studioWriteHeaders(),
-        );
+        const posted = await post(historyUrl(projectId, path), body, studioWriteHeaders());
         heldClaimRef.current = null;
         void refresh();
         // 404: this app keeps no history, so there is nothing to step.
         if (!posted.ok && posted.status === 404) return { ok: false, reason: "empty" };
         if (!posted.ok) return { ok: false, reason: "failed", message: posted.error };
-        const reply = posted.body as HistoryResult;
+        const reply = posted.body as HistoryResult & { changedSince?: EntryName };
         if (!reply.ok) {
           const { files } = reply.conflict;
-          return { ok: false, reason: "content-mismatch", paths: files };
+          const { changedSince } = reply;
+          return { ok: false, reason: "content-mismatch", paths: files, changedSince };
         }
         if (!reply.entry) return { ok: false, reason: "empty" };
         const changed = reply.entry.files.map((file) => file.path);
@@ -193,7 +200,26 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       };
       return callbacks.serialize ? callbacks.serialize(paths, run) : run();
     },
-    [projectId, view, refresh],
+    [projectId, refresh],
+  );
+
+  const step = useCallback(
+    (direction: "undo" | "redo", callbacks: ApplyCallbacks) => {
+      const next = direction === "undo" ? view.back : view.forward;
+      const paths = [...new Set([...(next?.paths ?? []), ...(heldClaimRef.current?.paths ?? [])])];
+      const body = { direction: direction === "undo" ? "back" : "forward" };
+      return apply("/step", body, paths, callbacks);
+    },
+    [view, apply],
+  );
+
+  const undoEntry = useCallback(
+    (entryId: string, callbacks: ApplyCallbacks) => {
+      const entry = view.entries.find((candidate) => candidate.id === entryId);
+      const paths = entry?.files.map((file) => file.path) ?? [];
+      return apply("/undo", { entryId }, paths, callbacks);
+    },
+    [view, apply],
   );
 
   const undo = useCallback((callbacks: ApplyCallbacks) => step("undo", callbacks), [step]);
@@ -213,6 +239,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     canUndo: Boolean(view.back),
     canRedo: Boolean(view.forward),
     undoLabel: view.back?.label,
+    undoChangedSince: view.back?.changedSince?.label,
     redoLabel: view.forward?.label,
     undoPaths: view.back?.paths ?? [],
     redoPaths: view.forward?.paths ?? [],
@@ -220,5 +247,6 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     recordEdit,
     undo,
     redo,
+    undoEntry,
   };
 }

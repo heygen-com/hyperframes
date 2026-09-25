@@ -2,6 +2,7 @@
 import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import type { ToastAction } from "../utils/studioHelpers";
 
 interface HistoryResult {
   ok: boolean;
@@ -11,6 +12,7 @@ interface HistoryResult {
   paths?: string[];
   /** Per-file restored/previous content, used to soft-apply the preview. */
   files?: Record<string, { previous: string; restored: string }>;
+  changedSince?: { id: string; label: string };
 }
 interface HistoryFileCallbacks {
   readFile: (path: string) => Promise<string>;
@@ -19,6 +21,7 @@ interface HistoryFileCallbacks {
 export interface EditHistoryHandle {
   undo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
   redo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
+  undoEntry?: (entryId: string, cb: HistoryFileCallbacks) => Promise<HistoryResult>;
   state: {
     undo: ReadonlyArray<{ createdAt: number }>;
     redo: ReadonlyArray<{ createdAt: number }>;
@@ -26,11 +29,11 @@ export interface EditHistoryHandle {
 }
 
 export interface UseEditHistoryActionsOptions {
-  editHistory: Pick<EditHistoryHandle, "undo" | "redo">;
+  editHistory: Pick<EditHistoryHandle, "undo" | "redo" | "undoEntry">;
   readOptionalProjectFile: (path: string) => Promise<string>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
-  showToast: (message: string, tone?: "error" | "info") => void;
+  showToast: (message: string, tone?: "error" | "info", action?: ToastAction) => void;
   syncHistoryPreviewAfterApply: (restore: Pick<HistoryResult, "paths" | "files">) => Promise<void>;
   waitForPendingDomEditSaves: () => Promise<void>;
   onAfterUndoRedo?: () => void;
@@ -65,18 +68,29 @@ export function useEditHistoryActions({
   );
 
   const apply = useCallback(
-    async (direction: "undo" | "redo") => {
+    async (
+      direction: "undo" | "redo",
+      take: (cb: HistoryFileCallbacks) => Promise<HistoryResult>,
+    ): Promise<void> => {
       const noun = direction === "undo" ? "Undo" : "Redo";
       await waitForPendingDomEditSaves();
-      const result = await editHistory[direction]({
-        readFile: readHistoryFile,
-        serialize: serializeHistoryFiles,
-      });
+      const result = await take({ readFile: readHistoryFile, serialize: serializeHistoryFiles });
       if (!result.ok && result.reason === "content-mismatch") {
-        showToast(
-          `Can't ${direction}: ${result.paths?.join(", ")} changed since that edit.`,
-          "info",
-        );
+        const files = result.paths?.join(", ");
+        const since = result.changedSince;
+        const { undoEntry } = editHistory;
+        if (since && undoEntry) {
+          showToast(
+            `Can't ${direction}: ${since.label} changed ${files} since that edit.`,
+            "info",
+            {
+              label: `Undo ${since.label}`,
+              run: () => void apply("undo", (cb) => undoEntry(since.id, cb)),
+            },
+          );
+          return;
+        }
+        showToast(`Can't ${direction}: ${files} changed since that edit.`, "info");
         return;
       }
       if (!result.ok && result.reason === "failed") {
@@ -105,7 +119,7 @@ export function useEditHistoryActions({
     ],
   );
 
-  const undo = useCallback(() => apply("undo"), [apply]);
-  const redo = useCallback(() => apply("redo"), [apply]);
+  const undo = useCallback(() => apply("undo", editHistory.undo), [apply, editHistory]);
+  const redo = useCallback(() => apply("redo", editHistory.redo), [apply, editHistory]);
   return useMemo(() => ({ undo, redo }), [undo, redo]);
 }

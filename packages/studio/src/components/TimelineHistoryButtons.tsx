@@ -40,7 +40,11 @@ export function TimelineHistoryButtons() {
       <HistoryButton
         action="undo"
         enabled={editHistory.canUndo}
-        label={editHistory.undoLabel}
+        label={
+          editHistory.undoChangedSince
+            ? `${editHistory.undoLabel}, changed since by ${editHistory.undoChangedSince}`
+            : editHistory.undoLabel
+        }
         onClick={handleUndo}
       />
       <HistoryButton

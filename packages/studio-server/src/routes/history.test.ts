@@ -129,6 +129,23 @@ describe("history routes", () => {
     expect((await (await call("")).json()).back).toMatchObject({ label: "Dragged Title" });
   });
 
+  it("name the entry that changed the person's edit since, on the label and on the refused step", async () => {
+    const { projectDir, history, call } = await demoProject();
+    const write = (text: string) => writeFileSync(join(projectDir, "index.html"), text);
+    write("B");
+    await call("/claim", { label: "Moved Title", paths: ["index.html"] });
+    const window = await history.beginWindow({ kind: "agent", name: "Agent" }, "Agent turn");
+    write("C");
+    await window.close();
+
+    const { back } = await (await call("")).json();
+    expect(back).toMatchObject({ label: "Moved Title", changedSince: { label: "Agent turn" } });
+    expect(await (await call("/step", { direction: "back" })).json()).toMatchObject({
+      ok: false,
+      changedSince: { id: back.changedSince.id, label: "Agent turn" },
+    });
+  });
+
   it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {
     const { projectDir, call } = await demoProject();
     writeFileSync(join(projectDir, "index.html"), "B");

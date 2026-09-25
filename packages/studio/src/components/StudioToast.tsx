@@ -1,12 +1,15 @@
+import type { ToastAction } from "../utils/studioHelpers";
+
 interface StudioToastProps {
   message: string;
   tone?: "error" | "info";
   /** Plays the exit animation when true (owner removes the node after ~160ms). */
   leaving?: boolean;
+  action?: ToastAction;
   onDismiss?: () => void;
 }
 
-export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastProps) {
+export function StudioToast({ message, tone, leaving, action, onDismiss }: StudioToastProps) {
   const isError = tone === "error";
   return (
     <div
@@ -34,6 +37,15 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
         >
           {message}
         </span>
+        {action && (
+          <button
+            type="button"
+            onClick={action.run}
+            className="shrink-0 rounded-md px-2 py-1 font-medium text-neutral-100 transition-colors hover:bg-white/10"
+          >
+            {action.label}
+          </button>
+        )}
         {onDismiss && (
           <button
             type="button"

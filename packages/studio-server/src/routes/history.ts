@@ -7,7 +7,7 @@ import {
   type HistoryWindow,
   type ProjectHistory,
 } from "../history/projectHistory.js";
-import type { HistoryWho } from "../history/historyLog.js";
+import type { HistoryEntry, HistoryWho } from "../history/historyLog.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
 
@@ -58,7 +58,12 @@ function nextStep(history: ProjectHistory, direction: "back" | "forward") {
   const target = history.next(direction, YOU);
   if (!target) return null;
   const paths = target.files.map((file) => file.path);
-  return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
+  const changedSince = direction === "back" ? nameOf(history.changedSince(target)) : undefined;
+  return { id: target.id, label: target.label, endedAt: target.endedAt, paths, changedSince };
+}
+
+function nameOf(entry: HistoryEntry | undefined) {
+  return entry && { id: entry.id, label: entry.label };
 }
 
 /** Runs `task` on the project's history; no history is a 404, an engine refusal ("no longer kept") a 409. */
@@ -89,9 +94,19 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
     }),
   );
   api.post(`${base}/step`, (c) =>
-    withHistory(adapter, c, (history, body) =>
-      history.step(body.direction === "forward" ? "forward" : "back", YOU, writing(c)),
-    ),
+    withHistory(adapter, c, async (history, body) => {
+      const result = await history.step(
+        body.direction === "forward" ? "forward" : "back",
+        YOU,
+        writing(c),
+      );
+      if (result.ok) return result;
+      const newest = result.conflict.newer.at(-1);
+      return {
+        ...result,
+        changedSince: nameOf(history.list().find((entry) => entry.id === newest)),
+      };
+    }),
   );
   api.post(`${base}/undo`, (c) =>
     withHistory(adapter, c, (history, body) => {

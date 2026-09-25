@@ -57,7 +57,7 @@ async function studio({ withHistory = true } = {}) {
   const file = () => readFileSync(join(dir, "index.html"), "utf8");
   const save = (content: string) => writeFileSync(join(dir, "index.html"), content);
   const readFile = async (path: string) => readFileSync(join(dir, path), "utf8");
-  return { dir, hook: () => hook, file, save, readFile };
+  return { dir, history, hook: () => hook, file, save, readFile };
 }
 
 it("an edit Studio saved is undone and redone by the project's history, with the preview's before and after", async () => {
@@ -126,6 +126,38 @@ it("an agent's edit made seconds before Studio's stays the agent's: Cmd+Z undoes
   );
   expect(await act(() => hook().undo({ readFile }))).toMatchObject({ label: "Undid: Moved Title" });
   expect(file()).toBe("B");
+});
+
+it("a refused undo names the agent's later change, and undoing that first lets Cmd+Z through", async () => {
+  const { history, hook, file, save, readFile } = await studio();
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Moved Title",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  const window = await history.beginWindow({ kind: "agent", name: "Agent" }, "Agent turn");
+  save("C");
+  await window.close();
+
+  const refused = await act(() => hook().undo({ readFile }));
+  expect(refused).toMatchObject({
+    ok: false,
+    reason: "content-mismatch",
+    changedSince: { label: "Agent turn" },
+  });
+  await vi.waitFor(() => expect(hook().undoChangedSince).toBe("Agent turn"));
+  expect(await act(() => hook().undoEntry(refused.changedSince!.id, { readFile }))).toMatchObject({
+    ok: true,
+    label: "Undid: Agent turn",
+    files: { "index.html": { previous: "C", restored: "B" } },
+  });
+  expect(await act(() => hook().undo({ readFile }))).toMatchObject({
+    ok: true,
+    label: "Undid: Moved Title",
+  });
+  expect(file()).toBe("A");
 });
 
 it("an undo's writes carry the write token Studio marked, so their echo is not read as an outside edit", async () => {
