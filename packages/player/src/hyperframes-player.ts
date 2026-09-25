@@ -45,6 +45,7 @@ const ASSETS_LOADING_ATTR = "assets-loading";
 // "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
 const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
+const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
 // paint-and-idle now always has a frame to wait on, so the overlay would
 // flash on every single Play without this debounce. ponytail: 150ms is
 // unmeasured, retune once there's production data on paint-and-idle timing.
@@ -189,7 +190,7 @@ class HyperframesPlayer extends HTMLElement {
     });
 
     this.addEventListener("click", (event) => {
-      if (isControlsClick(event)) return;
+      if (this.disableClickToPlay || isControlsClick(event)) return;
       if (this._paused) this.play();
       else this.pause();
     });
@@ -271,12 +272,10 @@ class HyperframesPlayer extends HTMLElement {
       // reach scaleIframeToFit as scale(NaN) or a division by zero and
       // blank the player); fall back to the defaults instead.
       case "width":
-        this._compositionWidth = readPositiveDimension(val) ?? 1920;
-        this._rescale();
+        this._setCompositionSize(readPositiveDimension(val) ?? 1920, this._compositionHeight);
         break;
       case "height":
-        this._compositionHeight = readPositiveDimension(val) ?? 1080;
-        this._rescale();
+        this._setCompositionSize(this._compositionWidth, readPositiveDimension(val) ?? 1080);
         break;
       case "controls":
         if (val !== null) this._setupControls();
@@ -519,6 +518,14 @@ class HyperframesPlayer extends HTMLElement {
   get duration() {
     return this._duration;
   }
+
+  /** The composition's own picture size, from the runtime or the width/height attributes. */
+  get compositionWidth() {
+    return this._compositionWidth;
+  }
+  get compositionHeight() {
+    return this._compositionHeight;
+  }
   get paused() {
     return this._paused;
   }
@@ -641,6 +648,13 @@ class HyperframesPlayer extends HTMLElement {
   }
   set volume(v: number) {
     this.setAttribute("volume", String(Math.max(0, Math.min(1, v))));
+  }
+
+  get disableClickToPlay() {
+    return this.hasAttribute(DISABLE_CLICK_TO_PLAY_ATTR);
+  }
+  set disableClickToPlay(disabled: boolean) {
+    this.toggleAttribute(DISABLE_CLICK_TO_PLAY_ATTR, disabled);
   }
 
   get loop() {
@@ -886,7 +900,7 @@ class HyperframesPlayer extends HTMLElement {
       if (resolved && resolved !== this._directTimelineAdapter) {
         const duration = resolved.duration();
         if (Number.isFinite(duration) && duration > 0) {
-          this._duration = duration;
+          this._setDuration(duration);
           this.controlsApi?.updateTime(this._currentTime, duration);
         }
       }
@@ -951,17 +965,13 @@ class HyperframesPlayer extends HTMLElement {
       }),
       setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs }) => {
         this._currentTime = currentTime;
-        this._duration = duration;
+        this._setDuration(duration);
         this._paused = paused;
         this._lastUpdateMs = lastUpdateMs;
       },
       getShaderLoadingMode: () => getShaderModeFromElement(this),
       shaderLoader: this.shaderLoader,
-      setCompositionSize: (w, h) => {
-        this._compositionWidth = w;
-        this._compositionHeight = h;
-        this._rescale();
-      },
+      setCompositionSize: (w, h) => this._setCompositionSize(w, h),
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
       onRuntimeReady: () => {
@@ -1001,11 +1011,11 @@ class HyperframesPlayer extends HTMLElement {
   private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
     if (this._ready) return;
     this.probe.stop();
-    this._duration = duration;
+    this._setDuration(duration);
     this._directTimelineAdapter = null;
     this._ready = true;
     this.controlsApi?.updateTime(this._currentTime, duration);
-    this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
+    this._dispatchReady();
     // stage-size may not have arrived yet (race in the runtime's postTimeline
     // resolving the root's data-width/data-height on first paint) — rescale
     // here too so cross-origin compositions never stay unscaled/untransformed.
@@ -1021,16 +1031,12 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onProbeReady({ duration, adapter, compositionSize }: ProbeResult) {
-    this._duration = duration;
+    this._setDuration(duration);
     this._directTimelineAdapter = adapter.kind === "direct-timeline" ? adapter.timeline : null;
+    if (compositionSize) this._setCompositionSize(compositionSize.width, compositionSize.height);
     this._ready = true;
     this.controlsApi?.updateTime(0, duration);
-    this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
-    if (compositionSize) {
-      this._compositionWidth = compositionSize.width;
-      this._compositionHeight = compositionSize.height;
-      this._rescale();
-    }
+    this._dispatchReady();
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
@@ -1147,6 +1153,33 @@ class HyperframesPlayer extends HTMLElement {
     if (this._assetsLoadingShowTimer === null) return;
     clearTimeout(this._assetsLoadingShowTimer);
     this._assetsLoadingShowTimer = null;
+  }
+
+  private _dispatchReady(): void {
+    const detail = {
+      duration: this._duration,
+      compositionWidth: this._compositionWidth,
+      compositionHeight: this._compositionHeight,
+    };
+    this.dispatchEvent(new CustomEvent("ready", { detail }));
+  }
+
+  /** `ready` carries the first duration; later changes fire `durationchange`. */
+  private _setDuration(duration: number): void {
+    if (duration === this._duration) return;
+    this._duration = duration;
+    if (this._ready)
+      this.dispatchEvent(new CustomEvent("durationchange", { detail: { duration } }));
+  }
+
+  private _setCompositionSize(width: number, height: number): void {
+    const changed = width !== this._compositionWidth || height !== this._compositionHeight;
+    this._compositionWidth = width;
+    this._compositionHeight = height;
+    this._rescale();
+    if (!changed) return;
+    const detail = { compositionWidth: width, compositionHeight: height };
+    this.dispatchEvent(new CustomEvent("resize", { detail }));
   }
 
   private _rescale() {

@@ -1146,6 +1146,29 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it("fires durationchange when a ready composition replaces its timeline", () => {
+    const makeTimeline = (duration: number): TimelineStub => ({
+      duration: vi.fn(() => duration),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    });
+    const timelines = { main: makeTimeline(5) };
+    stubContentWindow({ __timelines: timelines, postMessage: vi.fn() });
+    const durations: number[] = [];
+    player.addEventListener("durationchange", (event) => {
+      durations.push((event as CustomEvent<{ duration: number }>).detail.duration);
+    });
+
+    player.seek(1);
+    (player as unknown as { _ready: boolean })._ready = true;
+    timelines.main = makeTimeline(8);
+    player.seek(6);
+
+    expect(durations).toEqual([8]);
+  });
+
   it("plays and pauses same-origin __timelines when no runtime bridge exists", () => {
     const timeline: TimelineStub = {
       duration: vi.fn(() => 5),
@@ -2013,6 +2036,8 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     ready: boolean;
     duration: number;
     paused: boolean;
+    compositionWidth: number;
+    compositionHeight: number;
     iframe: HTMLIFrameElement;
     _onMessage: (event: MessageEvent) => void;
     _onIframeLoad: () => void;
@@ -2030,7 +2055,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     });
   }
 
-  function timelineMessage(durationInFrames = 120) {
+  function timelineMessage(durationInFrames = 120, extra: Record<string, unknown> = {}) {
     return new MessageEvent("message", {
       source: frameWindow,
       data: {
@@ -2038,7 +2063,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
         type: "timeline",
         durationInFrames,
         scenes: [],
+        ...extra,
       },
+    });
+  }
+
+  function stageSizeMessage(width: number, height: number) {
+    return new MessageEvent("message", {
+      source: frameWindow,
+      data: { source: "hf-preview", type: "stage-size", width, height },
     });
   }
 
@@ -2218,16 +2251,82 @@ describe("HyperframesPlayer runtime ready handshake", () => {
   });
 
   it("treats a cross-origin runtime timeline message as player ready", () => {
-    const readyEvents: Array<{ duration: number }> = [];
+    const readyEvents: unknown[] = [];
     player.addEventListener("ready", (event) => {
-      readyEvents.push((event as CustomEvent<{ duration: number }>).detail);
+      readyEvents.push((event as CustomEvent).detail);
     });
 
     player._onMessage(timelineMessage(120));
 
     expect(player.ready).toBe(true);
     expect(player.duration).toBe(4);
-    expect(readyEvents).toEqual([{ duration: 4 }]);
+    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1920, compositionHeight: 1080 }]);
+  });
+
+  it("reports the picture size in ready and as public properties", () => {
+    const readyEvents: unknown[] = [];
+    player.addEventListener("ready", (event) => {
+      readyEvents.push((event as CustomEvent).detail);
+    });
+
+    player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
+
+    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(player.compositionWidth).toBe(1080);
+    expect(player.compositionHeight).toBe(1920);
+  });
+
+  it("reports the picture size in ready on the same-origin probe path", () => {
+    const readyEvents: unknown[] = [];
+    player.addEventListener("ready", (event) => {
+      readyEvents.push((event as CustomEvent).detail);
+    });
+
+    (
+      player as unknown as {
+        _onProbeReady: (r: {
+          duration: number;
+          adapter: { kind: string; getDuration: () => number };
+          compositionSize: { width: number; height: number };
+        }) => void;
+      }
+    )._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: { width: 1080, height: 1350 },
+    });
+
+    expect(readyEvents).toEqual([{ duration: 5, compositionWidth: 1080, compositionHeight: 1350 }]);
+  });
+
+  it("fires resize only when the picture size changes", () => {
+    const sizes: unknown[] = [];
+    player.addEventListener("resize", (event) => {
+      sizes.push((event as unknown as CustomEvent).detail);
+    });
+
+    player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
+    player._onMessage(stageSizeMessage(1080, 1920));
+    player._onMessage(stageSizeMessage(1280, 720));
+
+    expect(sizes).toEqual([
+      { compositionWidth: 1080, compositionHeight: 1920 },
+      { compositionWidth: 1280, compositionHeight: 720 },
+    ]);
+  });
+
+  it("fires durationchange when the duration changes after ready, not at ready", () => {
+    const durations: number[] = [];
+    player.addEventListener("durationchange", (event) => {
+      durations.push((event as CustomEvent<{ duration: number }>).detail.duration);
+    });
+
+    player._onMessage(timelineMessage(120));
+    player._onMessage(timelineMessage(120));
+    player._onMessage(timelineMessage(180));
+
+    expect(durations).toEqual([6]);
+    expect(player.duration).toBe(6);
   });
 
   it("honors autoplay after cross-origin runtime timeline readiness", async () => {
@@ -2559,6 +2658,47 @@ describe("HyperframesPlayer composition dimension attributes", () => {
     player.setAttribute("width", "1280");
     player.removeAttribute("width");
     expect(player._compositionWidth).toBe(1920);
+  });
+});
+
+describe("HyperframesPlayer click-to-play", () => {
+  type ClickPlayer = HTMLElement & {
+    play: () => void;
+    pause: () => void;
+    disableClickToPlay: boolean;
+  };
+
+  let player: ClickPlayer;
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    player = document.createElement("hyperframes-player") as ClickPlayer;
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    player.remove();
+    vi.restoreAllMocks();
+  });
+
+  it("plays on a click by default", () => {
+    const play = vi.spyOn(player, "play").mockImplementation(() => undefined);
+
+    player.click();
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves clicks to the host with disable-click-to-play", () => {
+    const play = vi.spyOn(player, "play").mockImplementation(() => undefined);
+    const pause = vi.spyOn(player, "pause").mockImplementation(() => undefined);
+
+    player.disableClickToPlay = true;
+    player.click();
+
+    expect(player.hasAttribute("disable-click-to-play")).toBe(true);
+    expect(play).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
   });
 });
 
