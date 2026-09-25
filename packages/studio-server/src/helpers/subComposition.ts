@@ -274,8 +274,8 @@ export function buildSubCompositionHtml(
   if (!existsSync(compFile)) return null;
 
   // rawOverride lets the preview route thread the hf-id-stamped content in
-  // directly, so the build uses pinned ids even when the persist-to-disk write
-  // was skipped (read-only fs, concurrent-save TOCTOU guard).
+  // directly, so the build uses ids minted from the raw file, which is never
+  // written by serving.
   const rawComp = rawOverride ?? readFileSync(compFile, "utf-8");
 
   let compHeadContent = "";

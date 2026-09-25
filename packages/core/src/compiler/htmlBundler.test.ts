@@ -9,6 +9,7 @@ import { ensureExternalScriptTag } from "./externalScripts";
 import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
+import { ensureHfIds } from "../parsers/hfIds";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-bundler-test-"));
@@ -2003,5 +2004,33 @@ describe("bundleToSingleHtml script order", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("stampHfIds", () => {
+  const project = () =>
+    makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body><div id="root" data-composition-id="main" data-width="1920" data-height="1080"><div id="s" data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="3"></div></div></body></html>`,
+      "compositions/scene.html": `<template id="scene-template"><div data-composition-id="scene" data-width="1920" data-height="1080"><img class="logo" src="logo.png"></div></template>`,
+      "compositions/logo.png": "png",
+    });
+  const logo = (html: string) => /<img[^>]*class="logo"[^>]*>/.exec(html)?.[0] ?? "";
+
+  it("gives an inlined element the id its source file mints, though the bundle re-points its src", async () => {
+    const dir = project();
+    const html = await bundleToSingleHtml(dir, { inlineAssets: false, stampHfIds: true });
+    const source = ensureHfIds(
+      `<template id="scene-template"><div data-composition-id="scene" data-width="1920" data-height="1080"><img class="logo" src="logo.png"></div></template>`,
+    );
+    expect(logo(html)).toContain("compositions/logo.png");
+    expect(/data-hf-id="([^"]+)"/.exec(logo(html))?.[1]).toBe(
+      /<img[^>]*data-hf-id="([^"]+)"/.exec(source)?.[1],
+    );
+  });
+
+  it("leaves a render's bundle without ids", async () => {
+    const html = await bundleToSingleHtml(project(), { inlineAssets: false });
+    expect(logo(html)).toContain("compositions/logo.png");
+    expect(logo(html)).not.toContain("data-hf-id");
   });
 });

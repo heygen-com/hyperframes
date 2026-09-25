@@ -232,10 +232,10 @@ export function createViteAdapter(
       return { id, dir: realpathSync(projectDir) };
     },
 
-    async bundle(dir: string) {
+    async bundle(dir, options) {
       const bundler = await getBundler();
       if (!bundler) return null;
-      let html = await bundler(dir, PREVIEW_BUNDLE_OPTIONS);
+      let html = await bundler(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options });
       html = html.replace(
         'data-hyperframes-preview-runtime="1" src=""',
         `data-hyperframes-preview-runtime="1" src="${this.runtimeUrl}"`,

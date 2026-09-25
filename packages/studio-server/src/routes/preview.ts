@@ -22,7 +22,6 @@ import {
   STUDIO_MOTION_PATH,
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { settledFileTag } from "../helpers/fileVersion.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
@@ -351,14 +350,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     previewVariables: Record<string, unknown> | null,
     builtKey: string,
   ): Promise<string | null> {
-    // Normalize + persist data-hf-id to disk before bundle reads it. Idempotent.
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
-    const normalizedDisk = diskMain
-      ? persistHfIdsIfNeeded(join(project.dir, diskMain.compositionPath), diskMain.html)
-      : null;
+    const normalizedDisk = diskMain ? ensureHfIds(diskMain.html) : null;
 
     try {
-      let bundled = await adapter.bundle(project.dir);
+      let bundled = await adapter.bundle(project.dir, { stampHfIds: true });
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
@@ -386,11 +382,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
       }
 
-      // ensureHfIds runs after transformPreviewHtml in case the adapter injected
-      // new elements. On the no-bundle path bundled=normalizedDisk (already tagged)
-      // so this is idempotent. On the bundled path the bundler may return untagged
-      // HTML (stale cache); because ids are content-keyed the minted ids will match
-      // the ids already written to disk by persistHfIdsIfNeeded above.
+      // Also covers elements the adapter injected; ids already present are kept.
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
         adapter,
@@ -413,10 +405,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);
       if (fallback) {
-        const fallbackHtml = persistHfIdsIfNeeded(
-          join(project.dir, fallback.compositionPath),
-          fallback.html,
-        );
+        const fallbackHtml = ensureHfIds(fallback.html);
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
           adapter,
@@ -477,27 +466,15 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     return c.html(html, 200, previewCacheHeaders(etag));
   });
 
-  /**
-   * Pin hf-ids to the RAW sub-comp file before the build pipeline mutates
-   * attributes (rewriteRelativePaths etc.) — minting is content-keyed over
-   * attrs, so stamping only AFTER the rewrite mints preview-only ids that
-   * exist nowhere in the source. Pinned ids ride through the rewrite
-   * unchanged, keeping the served DOM, the disk file, and the studio SDK
-   * session in one id space. Mirrors the main-preview route's
-   * persistHfIdsIfNeeded call.
-   *
-   * Gated to composition files: the wildcard route serves any project path,
-   * and stamping a non-HTML file (SVG, etc.) would corrupt it on disk.
-   *
-   * Returns the stamped content to thread into the build (so served ids match
-   * the mint even when the disk write is skipped — read-only fs), undefined
-   * for non-HTML paths, or null when the file vanished after the caller's
-   * stat. stampFileHfIds does its validation, read, and write through one
-   * file descriptor, so there is no check/read/write path gap to race.
-   */
+  /** Ids minted from the raw file before the build rewrites attributes, so they match the source's;
+   * in memory only, since a write here reaches the watcher as an outside edit. null: the file vanished. */
   function pinSubCompHfIds(compFile: string, compPath: string): string | undefined | null {
     if (!/\.html?$/i.test(compPath)) return undefined;
-    return stampFileHfIds(compFile);
+    try {
+      return ensureHfIds(readFileSync(compFile, "utf-8"));
+    } catch {
+      return null;
+    }
   }
 
   // Sub-composition preview
@@ -558,7 +535,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // Assets are read-only and should mirror the renderer: permit a path that
     // is lexically inside the project even if an explicit project symlink
     // targets a shared directory outside it. Composition source files still
-    // use resolveWithinProject because preview mutates their data-hf-id values.
+    // use resolveWithinProject because saves write their data-hf-id values.
     const candidate = resolve(project.dir, subPath);
     const file = isWithinProjectRoot(project.dir, candidate) ? candidate : null;
     if (!file) {

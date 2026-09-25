@@ -33,6 +33,7 @@ import { readDeclaredDefaults } from "../runtime/getVariables";
 import { inlineSubCompositions } from "./inlineSubCompositions";
 import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
@@ -763,6 +764,7 @@ function stripJsCommentsParserSafe(source: string): string {
 export interface BundleOptions {
   /** Project-relative HTML entry to bundle. Defaults to `index.html`. */
   entryFile?: string;
+  stampHfIds?: boolean;
   /** Optional media duration prober (e.g., ffprobe). If omitted, media durations are not resolved. */
   probeMediaDuration?: MediaDurationProber;
   /**
@@ -922,7 +924,8 @@ export async function bundleToSingleHtml(
     return isSafePath(projectDir, resolved) ? resolved : null;
   };
 
-  const rawHtml = readFileSync(indexPath, "utf-8");
+  const readSource = options?.stampHfIds ? ensureHfIds : (html: string) => html;
+  const rawHtml = readSource(readFileSync(indexPath, "utf-8"));
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
   if (options?.staticGuard !== false) {
@@ -983,7 +986,8 @@ export async function bundleToSingleHtml(
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
       const compPath = resolveEntryPath(srcPath);
-      return compPath ? safeReadFile(compPath) : null;
+      const html = compPath ? safeReadFile(compPath) : null;
+      return html === null ? null : readSource(html);
     },
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
 
 const SCENES = Array.from({ length: 24 }, (_, i) => `s${String(i).padStart(2, "0")}`);
@@ -51,6 +52,24 @@ describe("opening a film of external scenes", () => {
     expect(changed).toEqual([]);
     const stamped = fs.readFileSync(path.join(dir, "compositions", "s23.html"), "utf-8");
     expect(stamped).toContain("data-hf-id=");
+  });
+
+  it("serves a scene added after open with the ids its source mints, so a save can find them", async () => {
+    server = createStudioServer({ projectDir: dir, projectName: "film" });
+    const added = `<template id="added-template"><div data-composition-id="added" data-width="320" data-height="180"><img class="logo" src="logo.png"></div></template>`;
+    fs.writeFileSync(path.join(dir, "compositions", "added.html"), added);
+    fs.writeFileSync(path.join(dir, "compositions", "logo.png"), "png");
+    fs.writeFileSync(path.join(dir, "index.html"), root(["added"]));
+
+    const html = await (await server.app.request("/api/projects/film/preview")).text();
+
+    const img = /<img[^>]*class="logo"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(img).toContain("compositions/logo.png");
+    expect(/data-hf-id="([^"]+)"/.exec(img)?.[1]).toBe(
+      /<img[^>]*data-hf-id="([^"]+)"/.exec(ensureHfIds(added))?.[1],
+    );
+    expect(fs.readFileSync(path.join(dir, "compositions", "added.html"), "utf-8")).toBe(added);
+    expect(fs.readFileSync(path.join(dir, "index.html"), "utf-8")).toBe(root(["added"]));
   });
 
   it("stamps a composition rewritten since the last open even when its size and mtime match", () => {

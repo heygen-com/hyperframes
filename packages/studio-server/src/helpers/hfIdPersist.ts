@@ -7,7 +7,6 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -57,42 +56,6 @@ export function stampProjectHfIds(projectDir: string): void {
   }
 }
 
-/**
- * Ensure `html` has `data-hf-id` attributes minted, and write the result back
- * to `filePath` if new ids were added.
- *
- * **Invariant:** `html` must be the raw file content read from `filePath` just
- * before this call. If `html` is constructed or transformed HTML the TOCTOU
- * guard (`current === html`) will never match and writes will silently be
- * skipped — no ids will reach disk.
- */
-export function persistHfIdsIfNeeded(filePath: string, html: string): string {
-  const normalized = ensureHfIds(html);
-  // Use attribute count instead of string equality: linkedom serialization may
-  // normalize quote style and whitespace even when no ids were actually minted,
-  // which would cause spurious writes on every request.
-  const idsBefore = (html.match(/\bdata-hf-id=/g) ?? []).length;
-  const idsAfter = (normalized.match(/\bdata-hf-id=/g) ?? []).length;
-  if (idsAfter > idsBefore) {
-    try {
-      // Re-read before writing to guard against concurrent user saves. If the
-      // file changed since we read it, skip the write — serving with ids is
-      // still correct; the next request will re-persist. Best-effort only: a
-      // user save landing between readFileSync and writeFileSync below can
-      // still be overwritten (microsecond window).
-      const current = readFileSync(filePath, "utf-8");
-      if (current === html) {
-        replaceFileAtomically(filePath, normalized, statSync(filePath).mode);
-      }
-    } catch (err) {
-      // Non-fatal — serve with ids even if the disk write fails (e.g. read-only
-      // filesystem, sandboxed environment). Log so the failure is diagnosable.
-      console.warn("[hyperframes] persistHfIdsIfNeeded: failed to write ids to disk:", err);
-    }
-  }
-  return normalized;
-}
-
 function openNoFollow(filePath: string, flags: number): number | null {
   // O_NOFOLLOW is undefined on Windows; opening without it is the platform norm there.
   const noFollow = constants.O_NOFOLLOW ?? 0;
@@ -118,8 +81,7 @@ function openNoFollow(filePath: string, flags: number): number | null {
  * Returns null when the file is missing, unreadable, or not a regular file.
  *
  * Best-effort on concurrent saves: a user save landing between the read and
- * the write below can still be overwritten (same microsecond window
- * persistHfIdsIfNeeded documents) — the next save simply re-persists.
+ * the write below can still be overwritten — the next save simply re-persists.
  */
 export function stampFileHfIds(filePath: string): string | null {
   let fd: number | null = openNoFollow(filePath, constants.O_RDWR);
@@ -134,7 +96,7 @@ export function stampFileHfIds(filePath: string): string | null {
     const html = readFileSync(fd, "utf-8");
     const normalized = ensureHfIds(html);
     // Attribute count, not string equality — linkedom serialization normalizes
-    // quote style/whitespace even when no ids were minted (see persistHfIdsIfNeeded).
+    // quote style/whitespace even when no ids were minted.
     const idsBefore = (html.match(/\bdata-hf-id=/g) ?? []).length;
     const idsAfter = (normalized.match(/\bdata-hf-id=/g) ?? []).length;
     if (writable && idsAfter > idsBefore) {

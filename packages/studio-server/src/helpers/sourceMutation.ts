@@ -20,10 +20,11 @@ export interface SourceMutationTarget {
   selectorIndex?: number;
 }
 
-export function parseSourceDocument(source: string): {
+export function parseSourceDocument(raw: string): {
   document: Document;
   wrappedFragment: boolean;
 } {
+  const source = ensureHfIds(raw);
   const hasDocumentShell = /<!doctype|<html[\s>]/i.test(source);
   if (hasDocumentShell) {
     return { document: parseHTML(source).document, wrappedFragment: false };
