@@ -5,6 +5,7 @@ import type {
   RuntimeTimelineLike,
 } from "./types";
 import { stableClipId } from "./clipTree";
+import { parseCompositionDimension } from "./compositionDimension";
 import {
   AUTHORED_DURATION_ATTR,
   AUTHORED_END_ATTR,
@@ -705,7 +706,7 @@ export function collectRuntimeTimelinePayload(params: {
     durationInFrames,
     clips,
     scenes,
-    compositionWidth: parseNum(root?.getAttribute("data-width")) ?? 1920,
-    compositionHeight: parseNum(root?.getAttribute("data-height")) ?? 1080,
+    compositionWidth: parseCompositionDimension(root?.getAttribute("data-width")) ?? 1920,
+    compositionHeight: parseCompositionDimension(root?.getAttribute("data-height")) ?? 1080,
   };
 }

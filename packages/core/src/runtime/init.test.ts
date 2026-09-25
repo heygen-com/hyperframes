@@ -416,6 +416,34 @@ describe("initSandboxRuntimeModular", () => {
     expect(innerTimeline._ease).toBeTypeOf("function");
   });
 
+  it.each([
+    ["1080px", "1920px"],
+    ["1080.5", "1920"],
+  ])("reports one composition size in stage-size and timeline for %s x %s", (width, height) => {
+    const outbound: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message === "object" && message !== null) {
+        outbound.push(message as Record<string, unknown>);
+      }
+    });
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4" data-width="${width}" data-height="${height}"></div>`;
+    window.__timelines = { main: createMockTimeline(4) };
+
+    initSandboxRuntimeModular();
+
+    const stageSizes = outbound
+      .filter((m) => m.type === "stage-size")
+      .map((m) => `${m.width}x${m.height}`);
+    const timelineSizes = outbound
+      .filter((m) => m.type === "timeline")
+      .map((m) => `${m.compositionWidth}x${m.compositionHeight}`);
+    expect(stageSizes.length).toBeGreaterThan(0);
+    expect(timelineSizes.length).toBeGreaterThan(0);
+    expect(new Set([...stageSizes, ...timelineSizes])).toEqual(
+      new Set([`${parseFloat(width)}x${parseFloat(height)}`]),
+    );
+  });
+
   it("isolates a failed keyframe ease repair and reports it without skipping siblings", () => {
     const outbound: Array<{ type?: string; event?: string }> = [];
     vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {

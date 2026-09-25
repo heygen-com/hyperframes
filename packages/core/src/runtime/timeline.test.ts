@@ -497,6 +497,19 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.compositionHeight).toBe(2160);
   });
 
+  it("reads a px-suffixed composition size the way the runtime lays it out", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-width", "1080px");
+    root.setAttribute("data-height", "1920px");
+    root.setAttribute("data-duration", "5");
+    document.body.appendChild(root);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.compositionWidth).toBe(1080);
+    expect(result.compositionHeight).toBe(1920);
+  });
+
   it("defaults composition dimensions to 1920x1080", () => {
     const result = collectRuntimeTimelinePayload(defaultParams);
     expect(result.compositionWidth).toBe(1920);

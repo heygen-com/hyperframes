@@ -38,6 +38,7 @@ import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload, isRuntimeElementVisibleAt } from "./timeline";
+import { parseCompositionDimension } from "./compositionDimension";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
@@ -552,10 +553,8 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const parseDimensionPx = (value: string | null): string | null => {
-    if (value == null || value.trim() === "") return null;
-    const parsed = Number.parseFloat(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return `${parsed}px`;
+    const parsed = parseCompositionDimension(value);
+    return parsed === null ? null : `${parsed}px`;
   };
 
   const resolveRootCompositionElement = (): HTMLElement | null => findRootCompositionEl();
@@ -2869,11 +2868,9 @@ export function initSandboxRuntimeModular(): void {
     // Post resolved stage size so the parent can scale the iframe container
     const stageSizeRootEl = resolveRootCompositionElement();
     if (stageSizeRootEl) {
-      const w = parseDimensionPx(stageSizeRootEl.getAttribute("data-width"));
-      const h = parseDimensionPx(stageSizeRootEl.getAttribute("data-height"));
-      const width = w ? parseInt(w, 10) : 0;
-      const height = h ? parseInt(h, 10) : 0;
-      if (width > 0 && height > 0) {
+      const width = parseCompositionDimension(stageSizeRootEl.getAttribute("data-width"));
+      const height = parseCompositionDimension(stageSizeRootEl.getAttribute("data-height"));
+      if (width !== null && height !== null) {
         postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
       }
     }
