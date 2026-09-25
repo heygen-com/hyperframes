@@ -1,4 +1,5 @@
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
+import { parseImportMap, type ImportMap } from "./importMaps";
 /**
  * Shared sub-composition inlining logic.
  *
@@ -20,6 +21,7 @@ import { warnUnknownEnumValues } from "../runtime/getVariables";
 import {
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
+  scopedModulePrelude,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
 import {
@@ -142,6 +144,10 @@ export interface InlineSubCompositionsResult {
   >;
   externalLinks: { href: string; rel: string; crossorigin?: string }[];
   variablesByComp: Record<string, Record<string, unknown>>;
+  /** Mounted files' import maps, addresses rebased; emit with `emitMountedModuleScripts`. */
+  importMaps: ImportMap[];
+  /** Mounted files' inline module scripts, each already carrying its scoped `__hyperframes`. */
+  moduleScripts: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +203,8 @@ export function inlineSubCompositions(
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
   const scriptItems: InlineSubCompositionsResult["scriptItems"] = [];
+  const importMaps: ImportMap[] = [];
+  const moduleScripts: string[] = [];
   const externalLinks: { href: string; rel: string; crossorigin?: string }[] = [];
   const seenLinkHrefs = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
@@ -340,7 +348,26 @@ export function inlineSubCompositions(
     // discarded on render while the mount path executed it.
     for (const scriptEl of plan.scriptSources) {
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
-      if (externalSrc) {
+      const type = (scriptEl.getAttribute("type") || "").trim().toLowerCase();
+      if (type === "importmap") {
+        const map = parseImportMap(scriptEl.textContent || "", (url) => {
+          // The rebase drops a leading "./" and a trailing "/"; an import map address needs both.
+          const authored = url.trim();
+          const rebased = resolveSubAssetPath(authored);
+          if (rebased === authored) return rebased;
+          const urlLike = /^(\/|\.\.?\/|[a-z][a-z\d+.-]*:)/i.test(rebased)
+            ? rebased
+            : `./${rebased}`;
+          return authored.endsWith("/") && !urlLike.endsWith("/") ? `${urlLike}/` : urlLike;
+        });
+        if (map) importMaps.push(map);
+        else console.warn(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`);
+      } else if (type === "module" && !externalSrc) {
+        const prelude = scriptCompositionId
+          ? scopedModulePrelude(runtimeCompId || scopeCompId || scriptCompositionId, src)
+          : "";
+        moduleScripts.push(prelude + (scriptEl.textContent || ""));
+      } else if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
         }
@@ -461,5 +488,14 @@ export function inlineSubCompositions(
     }
   }
 
-  return { styles, scripts, externalScriptSrcs, scriptItems, externalLinks, variablesByComp };
+  return {
+    styles,
+    scripts,
+    externalScriptSrcs,
+    scriptItems,
+    externalLinks,
+    variablesByComp,
+    importMaps,
+    moduleScripts,
+  };
 }

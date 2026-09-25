@@ -4,6 +4,7 @@ import {
   buildVariablesByCompScript,
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
+  scopedModulePrelude,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
 
@@ -163,6 +164,26 @@ body { margin: 0; }
     new Function("window", wrapped)(fakeWindow);
 
     expect(fakeWindow.__captured).toEqual({ title: "Pro", price: "$29" });
+  });
+
+  it("gives a mounted module script its composition's own __hyperframes", () => {
+    const { document } = parseHTML(`<div></div>`);
+    Object.defineProperty(document, "baseURI", { value: "https://p.test/preview/" });
+    const fakeWindow = {
+      document,
+      __hfVariablesByComp: { blk: { title: "Hi" }, other: { title: "No" } },
+      __hyperframes: { assetUrl: () => "TOP-LEVEL", getVariables: () => ({}), fitTextFontSize: 1 },
+    };
+    const scoped = new Function(
+      "window",
+      `${scopedModulePrelude("blk", "compositions/blk/blk.html")}return __hyperframes;`,
+    )(fakeWindow);
+
+    expect(scoped.assetUrl("assets/env.hdr")).toBe(
+      "https://p.test/preview/compositions/blk/assets/env.hdr",
+    );
+    expect(scoped.getVariables()).toEqual({ title: "Hi" });
+    expect(scoped.fitTextFontSize).toBe(1);
   });
 
   it("resolves __hyperframes.assetUrl against the mounted composition's own file", () => {

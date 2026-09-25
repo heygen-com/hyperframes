@@ -276,6 +276,30 @@ function jsonScriptLiteral(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+const SCOPED_HYPERFRAMES_EXPRESSION = `!__hfBaseHyperframes
+    ? __hfBaseHyperframes
+    : Object.assign({}, __hfBaseHyperframes, {
+        assetUrl: function(path) {
+          var page = window.document.baseURI;
+          return new URL(path, __hfCompositionSrc ? new URL(__hfCompositionSrc, page) : page).href;
+        },
+        getVariables: function() {
+          var byComp = window.__hfVariablesByComp;
+          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
+          return scoped ? Object.assign({}, scoped) : {};
+        },
+      })`;
+
+export function scopedModulePrelude(
+  timelineCompositionId: string,
+  compositionSrc?: string | null,
+): string {
+  return `const __hyperframes = (function(__hfBaseHyperframes, __hfTimelineCompId, __hfCompositionSrc) {
+  return ${SCOPED_HYPERFRAMES_EXPRESSION};
+})(window.__hyperframes, ${jsonScriptLiteral(timelineCompositionId)}, ${jsonScriptLiteral(compositionSrc?.trim() || null)});
+`;
+}
+
 export function wrapScopedCompositionScript(
   source: string,
   compositionId: string,
@@ -611,19 +635,7 @@ export function wrapScopedCompositionScript(
         },
       });
   var __hfBaseHyperframes = window.__hyperframes;
-  var __hfScopedHyperframes = !__hfBaseHyperframes
-    ? __hfBaseHyperframes
-    : Object.assign({}, __hfBaseHyperframes, {
-        assetUrl: function(path) {
-          var page = window.document.baseURI;
-          return new URL(path, __hfCompositionSrc ? new URL(__hfCompositionSrc, page) : page).href;
-        },
-        getVariables: function() {
-          var byComp = window.__hfVariablesByComp;
-          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
-          return scoped ? Object.assign({}, scoped) : {};
-        },
-      });
+  var __hfScopedHyperframes = ${SCOPED_HYPERFRAMES_EXPRESSION};
   var __hfRun = function() {
     try {
       (function(document, gsap, window, __hyperframes) {
