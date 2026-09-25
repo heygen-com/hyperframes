@@ -39,11 +39,12 @@ export function applyRuntimeStateMessage(
   callbacks: PlaybackStateCallbacks,
 ): PlaybackState {
   const rawTime = (data.frame ?? 0) / fps;
-  const currentTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
+  const postedFrameRoundingSeconds = 0.5 / fps;
+  const atEnd = current.duration > 0 && rawTime >= current.duration - postedFrameRoundingSeconds;
+  const currentTime = atEnd ? current.duration : rawTime;
   const wasPlaying = !current.paused;
   const nextPaused = !data.isPlaying;
-  const completedPlayback =
-    current.duration > 0 && currentTime >= current.duration && (wasPlaying || data.isPlaying);
+  const completedPlayback = atEnd && (wasPlaying || data.isPlaying);
 
   if (completedPlayback && callbacks.getLoop()) {
     if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
