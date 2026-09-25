@@ -8,6 +8,7 @@ import {
   HistoryBusyError,
   type HistoryEntry,
   type HistoryListItem,
+  type HistoryResult,
   type HistoryWho,
 } from "@hyperframes/studio-server";
 import type { Example } from "./_examples.js";
@@ -204,6 +205,28 @@ function turnTargets(entries: HistoryListItem[], who: HistoryWho, dir: string): 
   return targets;
 }
 
+type Undone = { target: HistoryListItem; undo: HistoryEntry };
+type Refused = { target: HistoryListItem; result: Extract<HistoryResult, { ok: false }> };
+
+/** A turn is undone whole or not at all: on a conflict, the parts this run already undid are redone. */
+async function undoWhole(
+  owner: Owner,
+  targets: HistoryListItem[],
+  who: HistoryWho,
+  mode: UndoMode | undefined,
+): Promise<{ undid: Undone[]; refused?: Refused }> {
+  const undid: Undone[] = [];
+  for (const target of targets) {
+    const result = await owner.undo(target.id, who, mode);
+    if (!result.ok) {
+      for (const done of undid.reverse()) await owner.undo(done.undo.id, who);
+      return { undid: [], refused: { target, result } };
+    }
+    if (result.entry) undid.push({ target, undo: result.entry });
+  }
+  return { undid };
+}
+
 async function runUndo(args: {
   ref?: string;
   who?: string;
@@ -223,15 +246,9 @@ async function runUndo(args: {
     if (turn?.who.name === who.name) await endTurn(owner, turn, projectDir);
     const entries = await owner.list();
     const targets = args.ref ? [entryOf(entries, args.ref)] : turnTargets(entries, who, projectDir);
-    const undid: Array<{ target: HistoryListItem; undo: HistoryEntry }> = [];
-    for (const target of targets) {
-      const result = await owner.undo(target.id, who, mode);
-      if (result.ok) {
-        if (result.entry) undid.push({ target, undo: result.entry });
-        continue;
-      }
-      // A turn is undone whole or not at all: redo the parts this run already undid.
-      for (const done of undid.reverse()) await owner.undo(done.undo.id, who);
+    const { undid, refused } = await undoWhole(owner, targets, who, mode);
+    if (refused) {
+      const { target, result } = refused;
       setCommandExitCode(2);
       const now = await owner.list();
       const newer = result.conflict.newer.map((id) => entryOf(now, id));

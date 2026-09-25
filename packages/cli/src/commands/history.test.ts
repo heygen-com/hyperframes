@@ -14,7 +14,7 @@ import {
 } from "@hyperframes/studio-server";
 import { runCommand } from "citty";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
 import { historyDeps } from "../utils/historyOwner.js";
 import historyCommand from "./history.js";
@@ -26,15 +26,13 @@ vi.mock("../telemetry/events.js", () => ({
   trackHistoryAction: (props: { action: string; via: string }) => tracked.push(props),
 }));
 
-const cleanup: Array<() => unknown> = [];
-afterEach(async () => {
-  for (const step of cleanup.splice(0).reverse()) await step();
+afterEach(() => {
   tracked.length = 0;
 });
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
 
@@ -48,6 +46,7 @@ function project() {
   historyDeps.turnIdleMs = 60_000;
   const write = (path: string, text: string) => writeFileSync(join(dir, path), text);
   const read = (path: string) => readFileSync(join(dir, path), "utf-8");
+  const files = () => [read("index.html"), read("notes.html")];
   async function hf(...args: string[]) {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -68,7 +67,7 @@ function project() {
     write(path, text);
     return (await json("end")).entry;
   }
-  return { dir, write, read, hf, json, turn };
+  return { dir, write, read, files, hf, json, turn };
 }
 
 /** A running preview over the project's history, as `hyperframes preview` serves it. */
@@ -87,7 +86,7 @@ async function preview(dir: string) {
     fetch: new Hono().route("/api", createStudioApi(adapter)).fetch,
   });
   await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
-  cleanup.push(async () => {
+  onTestFinished(async () => {
     server.close();
     await history.close();
   });
@@ -102,6 +101,23 @@ async function preview(dir: string) {
       pid: null,
     }) as never;
   return history;
+}
+
+async function turnCutByStudio(
+  dir: string,
+  write: (path: string, text: string) => void,
+  hf: (...args: string[]) => Promise<unknown>,
+) {
+  const held = await preview(dir);
+  const studio = { kind: "person", name: "You" } as const;
+  await hf("begin", "--who", "claude", "--label", "Retitle");
+  write("index.html", "A2");
+  await held.claim(studio, "Nothing", []); // a claim scans first: the agent's write is seen
+  write("index.html", "A3");
+  await held.claim(studio, "Dragged Title", ["index.html"], {
+    overwrote: { "index.html": fileContentVersion("A2") },
+  });
+  return held;
 }
 
 describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
@@ -120,7 +136,7 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
   }
 
   it("an agent's labelled turn, a person's edit after it: --since shows both, undo of the turn keeps the edit", async () => {
-    const { read, json, hf, turn, personWrites } = await setup();
+    const { json, hf, turn, personWrites, files } = await setup();
     const startedAt = new Date(Date.now() - 1).toISOString();
     await turn("claude", "Bigger title", "index.html", "A2");
     await personWrites("notes.html", "N2");
@@ -137,7 +153,7 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
 
     const undo = await hf("undo", "--who", "claude");
     expect(undo.code, undo.err).toBe(0);
-    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N2"]);
+    expect(files()).toEqual(["A", "N2"]);
     expect(tracked.map((event) => event.via)).toContain(mode);
     expect(tracked.map((event) => event.action)).toEqual(
       expect.arrayContaining(["begin", "end", "list", "undo"]),
@@ -145,7 +161,7 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
   });
 
   it("a turn left open ends after the idle limit: a person's later edit stays theirs through undo of the turn", async () => {
-    const { write, read, hf, personWrites } = await setup();
+    const { write, hf, personWrites, files } = await setup();
     historyDeps.turnIdleMs = 300;
     await hf("begin", "--who", "claude", "--label", "Retitle");
     write("index.html", "A2");
@@ -154,7 +170,7 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
 
     const undo = await hf("undo", "--who", "claude");
     expect(undo.code, undo.err).toBe(0);
-    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N2"]);
+    expect(files()).toEqual(["A", "N2"]);
   });
 
   it("undo by one agent leaves another agent's open turn open", async () => {
@@ -266,35 +282,19 @@ describe("hyperframes history, one owner", () => {
   });
 
   it("undo --who also reverts the part of a turn that a Studio edit cut off", async () => {
-    const { dir, read, write, hf, json } = project();
-    const held = await preview(dir);
-    const studio = { kind: "person", name: "You" } as const;
-    await hf("begin", "--who", "claude", "--label", "Retitle");
-    write("index.html", "A2");
-    await held.claim(studio, "Nothing", []); // a claim scans first: the agent's write is seen
-    write("index.html", "A3");
-    await held.claim(studio, "Dragged Title", ["index.html"], {
-      overwrote: { "index.html": fileContentVersion("A2") },
-    });
+    const { dir, write, hf, json, files } = project();
+    await turnCutByStudio(dir, write, hf);
     write("notes.html", "N2");
     expect((await json("end")).parts).toHaveLength(2);
 
     const undo = await hf("undo", "--who", "claude", "--just-this");
     expect(undo.code, undo.err).toBe(0);
-    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N"]);
+    expect(files()).toEqual(["A", "N"]);
   });
 
   it("undo --who reverts a turn a Studio edit cut off whole, after the preview stopped", async () => {
     const { dir, read, write, hf, json } = project();
-    const held = await preview(dir);
-    const studio = { kind: "person", name: "You" } as const;
-    await hf("begin", "--who", "claude", "--label", "Retitle");
-    write("index.html", "A2");
-    await held.claim(studio, "Nothing", []);
-    write("index.html", "A3");
-    await held.claim(studio, "Dragged Title", ["index.html"], {
-      overwrote: { "index.html": fileContentVersion("A2") },
-    });
+    const held = await turnCutByStudio(dir, write, hf);
     await held.close();
     historyDeps.findServer = async () => null;
     expect((await json("end")).parts).toHaveLength(1);
@@ -328,7 +328,7 @@ describe("hyperframes history, one owner", () => {
   });
 
   it("undo --who refuses when the agent's last turn recorded nothing, and leaves its earlier turn alone", async () => {
-    const { read, write, hf, turn } = project();
+    const { write, hf, turn, files } = project();
     await hf();
     historyDeps.turnIdleMs = 400;
     await turn("claude", "Earlier", "notes.html", "N2");
@@ -342,11 +342,11 @@ describe("hyperframes history, one owner", () => {
       2,
       "claude's last turn has no change still in effect; undo an older entry by its id",
     ]);
-    expect([read("index.html"), read("notes.html")]).toEqual(["A2", "N2"]);
+    expect(files()).toEqual(["A2", "N2"]);
   });
 
   it("undo --who reverts every part of a turn that a mid-turn command split", async () => {
-    const { read, write, hf, json } = project();
+    const { write, hf, json, files } = project();
     await hf();
     await hf("begin", "--who", "claude", "--label", "Retitle");
     write("index.html", "A2");
@@ -356,11 +356,11 @@ describe("hyperframes history, one owner", () => {
 
     const undo = await hf("undo", "--who", "claude");
     expect(undo.code, undo.err).toBe(0);
-    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N"]);
+    expect(files()).toEqual(["A", "N"]);
   });
 
   it("undo --who of a split turn with a conflict changes nothing and offers the choices for the whole turn", async () => {
-    const { read, write, hf } = project();
+    const { write, hf, files } = project();
     await hf();
     await hf("begin", "--who", "claude", "--label", "Retitle");
     write("index.html", "A2");
@@ -372,10 +372,10 @@ describe("hyperframes history, one owner", () => {
     const refused = await hf("undo", "--who", "claude");
     expect(refused.code).toBe(2);
     expect(refused.out).toContain("hyperframes history undo --who claude --just-this");
-    expect([read("index.html"), read("notes.html")], "no part stays undone").toEqual(["A3", "N2"]);
+    expect(files(), "no part stays undone").toEqual(["A3", "N2"]);
 
     expect((await hf("undo", "--who", "claude", "--just-this")).code).toBe(0);
-    expect([read("index.html"), read("notes.html")]).toEqual(["A", "N"]);
+    expect(files()).toEqual(["A", "N"]);
   });
 
   it("a turn marker with no last write time has ended, so the next edit is not the agent's", async () => {
@@ -475,7 +475,7 @@ describe("hyperframes history, refusals", () => {
   it("exits 2 with the holder's pid when another process keeps the history past the wait", async () => {
     const { dir, hf } = project();
     await openProjectHistory({ projectDir: dir, historyRoot: historyDeps.historyRoot }).then(
-      (held) => cleanup.push(() => held.close()),
+      (held) => onTestFinished(() => held.close()),
     );
     const busy = await hf();
     expect([busy.code, busy.err]).toEqual([

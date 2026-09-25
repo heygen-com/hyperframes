@@ -250,14 +250,17 @@ class Engine {
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
     // What changed while the project was closed is one outside entry, or the closed window's.
-    const closed = this.options.closedWindow;
-    if (closed && !this.log.entries.some((entry) => entry.id === closed.id)) {
-      const { id, who, label, startedAt, lastWriteAt, idleMs } = closed;
-      this.windows.push({ id, who, label, startedAt, lastWriteAt, idleMs, changes: new Map() });
-    }
+    this.reopenClosedWindow();
     await this.sweep();
     for (const window of [...this.windows]) await this.endWindow(window);
     await this.commitOutside();
+  }
+
+  reopenClosedWindow(): void {
+    const closed = this.options.closedWindow;
+    if (!closed || this.log.entries.some((entry) => entry.id === closed.id)) return;
+    const { id, who, label, startedAt, lastWriteAt, idleMs } = closed;
+    this.windows.push({ id, who, label, startedAt, lastWriteAt, idleMs, changes: new Map() });
   }
 
   async firstOpen(): Promise<void> {

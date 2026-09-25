@@ -6,7 +6,7 @@ import {
   type HistoryWindow,
   type ProjectHistory,
 } from "../history/projectHistory.js";
-import { stepTarget, type HistoryEntry, type HistoryWho } from "../history/historyLog.js";
+import type { HistoryWho } from "../history/historyLog.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
 
