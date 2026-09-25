@@ -9,6 +9,37 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.75"
+  description="Released - 2026-09-25"
+  tags={["Release", "Studio", "Core", "CLI"]}
+>
+A composition's scripts can now load their own files, and preview keeps a history of every project change. In Studio, a reload keeps a playing film playing, deleted clips leave the timeline at once, and `catalog --json` now includes preview videos.
+
+## Features
+
+- **Core:** A composition's script can load its own files with __hyperframes.assetUrl ([b8dd023a97](https://github.com/heygen-com/hyperframes/commit/b8dd023a97bf6e960601258db154ca3ab1fc7437), [#4434](https://github.com/heygen-com/hyperframes/pull/4434)).
+- **CLI:** Preview keeps project history, and Studio can claim its own edits ([177464b4c1](https://github.com/heygen-com/hyperframes/commit/177464b4c148a5091ccd745ca16d69d9bedd53f6), [#4437](https://github.com/heygen-com/hyperframes/pull/4437)).
+
+## Fixes
+
+- **Studio:** A playhead scrolled off to the left no longer draws over the track names ([225c22b6b9](https://github.com/heygen-com/hyperframes/commit/225c22b6b981ba2688efbd5e4b03e4d9623b81bf), [#4436](https://github.com/heygen-com/hyperframes/pull/4436)).
+- **Studio:** A deleted clip leaves the timeline as soon as the file drops it ([65a266b29d](https://github.com/heygen-com/hyperframes/commit/65a266b29d475336b1c928499229b814e4d003e9), [#4447](https://github.com/heygen-com/hyperframes/pull/4447)).
+- **Studio:** A preview reload keeps a playing film playing where it was ([2fe37e3406](https://github.com/heygen-com/hyperframes/commit/2fe37e3406fa079a02f6e3d1e5119bedb9ef584c), [#4438](https://github.com/heygen-com/hyperframes/pull/4438)).
+- **CLI:** The block snippet from add carries the block's own composition id ([359106aa3a](https://github.com/heygen-com/hyperframes/commit/359106aa3af028382d08f2ef40bce58b4ea4a209), [#4432](https://github.com/heygen-com/hyperframes/pull/4432)).
+
+## Catalog
+
+- **CLI:** Catalog --json carries each item's preview video and poster ([8af615a48e](https://github.com/heygen-com/hyperframes/commit/8af615a48e713ca4dba7ef792ccffe2afd13fc78), [#4443](https://github.com/heygen-com/hyperframes/pull/4443)).
+
+## Internal
+
+- Skip Windows runs for player and Studio UI-only changes ([1f0cfa7c3e](https://github.com/heygen-com/hyperframes/commit/1f0cfa7c3ebecb90486ec5b9edea575ab3c8b258), [#4442](https://github.com/heygen-com/hyperframes/pull/4442)).
+- Grade the comments each PR touches ([3194c2ae87](https://github.com/heygen-com/hyperframes/commit/3194c2ae8725a729a3a4a90b7d2e254df4aef7d8), [#4444](https://github.com/heygen-com/hyperframes/pull/4444)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.74...v0.8.75).
+</Update>
+
+<Update
   label="HyperFrames v0.8.74"
   description="Released - 2026-09-24"
   tags={["Release", "Studio Server", "CLI", "Lint"]}
