@@ -981,6 +981,36 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
+  it("re-seeks the paused preview off and back after a saved optimistic style commit", async () => {
+    stubPatchFetch({
+      ok: true,
+      changed: true,
+      matched: true,
+      path: "index.html",
+      version: '"sha256:changed"',
+    });
+    const { iframe, element } = createPreviewElement();
+    const seek = vi.fn();
+    Object.defineProperty(iframe.contentWindow, "__player", {
+      configurable: true,
+      value: { seek },
+    });
+    usePlayerStore.setState({ currentTime: 2.4 });
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomStyleCommit("color", "blue");
+      });
+
+      expect(seek.mock.calls).toEqual([[2.399], [2.4]]);
+      expect(rendered.reloadPreview).not.toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+      usePlayerStore.getState().reset();
+    }
+  });
+
   it("toasts and reverts a style commit when the patch request rejects", async () => {
     const { element, rendered, cleanup } = await commitStyleAgainst(new Error("network down"));
 
