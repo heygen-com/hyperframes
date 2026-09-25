@@ -182,6 +182,17 @@ export function patchIframeDomTiming(
   }
 }
 
+/** Takes deleted clips out of the live preview at once: until the reload lands, anything that re-reads the
+ *  preview (composition enrichment) would otherwise put them back on the timeline. */
+export function removeIframeTimelineElements(
+  iframe: HTMLIFrameElement | null,
+  elements: TimelineElement[],
+  activeCompositionPath: string | null = null,
+): void {
+  for (const element of elements)
+    findTimelineElementInIframe(iframe, element, activeCompositionPath)?.remove();
+}
+
 export function playbackStartAttributeForElement(
   element: Pick<TimelineElement, "kind" | "playbackStartAttr">,
 ): "data-media-start" | "data-playback-start" {

@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TimelineElement } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
 import { applyRippleShifts, useTimelineDeleteOps } from "./useTimelineDeleteOps";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 import { useTrackPendingTimelineEdit } from "./useTrackPendingTimelineEdit";
@@ -78,8 +78,29 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       return null;
     }
     mountReactHarness(<Harness />);
-    return { b: elements[1], getHook: () => hook! };
+    return { elements, b: elements[1], getHook: () => hook! };
   }
+
+  it("drops the deleted clip from the timeline while the ripple is still saving", async () => {
+    let finishRipple = () => {};
+    const handleTimelineGroupMove = vi.fn(
+      () => new Promise<void>((resolve) => (finishRipple = resolve)),
+    );
+    const { elements, b, getHook } = mountDeleteHarness({ handleTimelineGroupMove });
+    usePlayerStore.getState().setElements(elements);
+
+    let deleting = Promise.resolve();
+    await act(async () => {
+      deleting = getHook().handleTimelineElementDelete(b);
+      await vi.waitFor(() => expect(handleTimelineGroupMove).toHaveBeenCalled());
+    });
+    expect(usePlayerStore.getState().elements.map((e) => e.id)).toEqual(["hf-a", "hf-c"]);
+
+    await act(async () => {
+      finishRipple();
+      await deleting;
+    });
+  });
 
   // editHistory.ts's coalescing keeps the LAST recordEdit call's label, so the
   // folded ripple move must carry the delete's label, not its own.
@@ -226,5 +247,67 @@ describe("useTimelineDeleteOps: undo race", () => {
     await act(async () => {
       await flushStudioPendingEdits();
     });
+  });
+});
+
+// Regression: the live preview kept a deleted clip until its reload landed, and composition
+// enrichment re-read it from there, so the clip stayed drawn after the file dropped it.
+describe("useTimelineDeleteOps: live preview", () => {
+  const html = `<!DOCTYPE html><html data-composition-variables='[]'><body>
+<div data-hf-id="hf-stage" data-composition-id="main" data-duration="4">
+<div data-hf-id="hf-a" data-start="0" data-duration="2"></div>
+<div data-hf-id="hf-b" data-start="2" data-duration="2"></div>
+</div>
+</body></html>`;
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ changed: true, content: html }))),
+    );
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+  });
+
+  it("takes the deleted clip out of the live preview before its reload", async () => {
+    const preview = document.implementation.createHTMLDocument();
+    preview.documentElement.innerHTML = html;
+    const iframe = { contentDocument: preview } as unknown as HTMLIFrameElement;
+    const clip = (id: string, start: number): TimelineElement => ({
+      id,
+      tag: "div",
+      start,
+      duration: 2,
+      track: 0,
+      hfId: id,
+      sourceFile: "index.html",
+    });
+    const elements = [clip("hf-a", 0), clip("hf-b", 2)];
+    let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
+    function Harness() {
+      hook = useTimelineDeleteOps({
+        projectIdRef: { current: "test-project" },
+        activeCompPath: "index.html",
+        timelineElements: elements,
+        showToast: vi.fn(),
+        writeProjectFile: vi.fn().mockResolvedValue(undefined),
+        recordEdit: vi.fn().mockResolvedValue(undefined),
+        reloadPreview: vi.fn(),
+        previewIframeRef: { current: iframe },
+        handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
+      });
+      return null;
+    }
+    mountReactHarness(<Harness />);
+
+    await act(async () => {
+      await hook!.handleTimelineElementDelete(elements[1]);
+    });
+
+    expect(preview.querySelector('[data-hf-id="hf-b"]')).toBeNull();
+    expect(preview.querySelector('[data-hf-id="hf-a"]')).not.toBeNull();
   });
 });

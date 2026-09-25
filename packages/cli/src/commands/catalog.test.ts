@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import type { RegistryItem } from "@hyperframes/core";
+import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -665,5 +666,32 @@ describe("the on-device download offer", () => {
 
     expect(state.downloads).toBe(0);
     expect(state.consentRecorded).toEqual([]);
+  });
+});
+
+describe("catalogRow", () => {
+  const block = {
+    name: "app-showcase",
+    type: "hyperframes:block",
+    title: "App Showcase",
+    description: "Three phones",
+    tags: ["showcase"],
+    dimensions: { width: 1920, height: 1080 },
+    duration: 5,
+    files: [],
+  } as unknown as RegistryItem;
+
+  it("carries the preview so an app can show the item before add downloads it", () => {
+    const preview = { video: "https://example.test/a.mp4", poster: "https://example.test/a.png" };
+    expect(catalogRow({ ...block, preview } as RegistryItem)).toEqual({
+      name: "app-showcase",
+      type: "block",
+      title: "App Showcase",
+      description: "Three phones",
+      tags: ["showcase"],
+      dimensions: { width: 1920, height: 1080 },
+      duration: 5,
+      preview,
+    });
   });
 });
