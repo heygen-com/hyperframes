@@ -228,8 +228,10 @@ describe("parked transport loop", () => {
     expect(states() - slow).toBe(3);
     expect(raf.pending()).toBe(0);
 
+    // Turned off mid-interval, the 80 ms beat resumes without waiting out the second.
+    vi.advanceTimersByTime(500);
     setIdleHeartbeat(false);
-    quiesce();
+    settle();
     const resumed = states();
     for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
     expect(states() - resumed).toBe(3);
@@ -248,6 +250,17 @@ describe("parked transport loop", () => {
     vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
     settle();
     expect(window.__player!.getDuration()).toBeCloseTo(12, 3);
+  });
+
+  it("keeps the fast heartbeat under a slow request while a sub-composition is unbound", () => {
+    mount('<div data-composition-id="child"></div>');
+    initSandboxRuntimeModular();
+    setIdleHeartbeat(true);
+    quiesce();
+
+    const before = states();
+    for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    expect(states() - before).toBe(3);
   });
 
   it("delivers a live data-duration edit while parked", async () => {

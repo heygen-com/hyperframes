@@ -3712,14 +3712,14 @@ export function initSandboxRuntimeModular(): void {
     state.capturedTimeline === lastTransportSeekTimeline;
 
   /**
-   * The parked loop. Two jobs the 60 Hz loop used to do implicitly:
+   * The parked loop has two jobs:
    *
    * 1. Keep the control bridge's paused heartbeat on its documented interval
    *    (`state.bridgeMaxPostIntervalMs`; a second after `set-idle-heartbeat`,
-   *    once a timeline is bound) so a paused timeline confirms its position.
-   * 2. Re-read everything nothing can push (`readParkedPollWitness`). Polling
-   *    that 12 times a second instead of 60 is the whole reason the safety net
-   *    exists.
+   *    once the whole timeline is bound) so a paused timeline confirms its position.
+   * 2. Re-read everything nothing can push (`readParkedPollWitness`) on that
+   *    same beat: a timer, not a frame loop, is what keeps a paused runtime
+   *    cheap.
    */
   /**
    * Everything a parked transport still has to LOOK at, because no observer
@@ -3743,7 +3743,7 @@ export function initSandboxRuntimeModular(): void {
   const armParkTimer = () => {
     transportParkTimerId = window.setTimeout(
       parkedTransportHeartbeat,
-      slowIdleHeartbeat && state.capturedTimeline
+      slowIdleHeartbeat && state.capturedTimeline && childrenBound
         ? SLOW_IDLE_HEARTBEAT_MS
         : state.bridgeMaxPostIntervalMs,
     );
