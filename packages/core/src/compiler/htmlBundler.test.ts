@@ -2111,6 +2111,26 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(rendered).not.toContain("data-hf-scene-no-swap");
   });
 
+  it("refuses to swap a scene that runs a module script or an import map", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="m" data-composition-src="compositions/m.html" data-start="0" data-duration="1"></div>
+    <div data-composition-id="i" data-composition-src="compositions/i.html" data-start="1" data-duration="1"></div>
+  </div></body></html>`,
+      "compositions/m.html": `<template id="m-template"><div data-composition-id="m"><p>M</p>
+  <script type="module">window.__mRan = true;</script></div></template>`,
+      "compositions/i.html": `<template id="i-template"><div data-composition-id="i"><p>I</p>
+  <script type="importmap">{"imports":{"x":"./x.js"}}</script></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    for (const id of ["m", "i"]) {
+      expect(
+        doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-no-swap"),
+      ).toBe("it runs a module script or import map");
+    }
+  });
+
   it("refuses to swap a scene for every kind of work its script can leave behind", async () => {
     const leaks = [
       'window.addEventListener("resize", f)',
