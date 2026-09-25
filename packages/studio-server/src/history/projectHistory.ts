@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
-import { isSafePath } from "../helpers/safePath.js";
 import {
   DELETED_VERSION,
   hashOfVersion,
@@ -764,7 +763,7 @@ class Engine {
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
           this.entry(entryId);
-          if (!existsSync(this.dir) || isSafePath(this.dir, emptyDir))
+          if (!existsSync(this.dir) || isWithin(this.dir, emptyDir))
             throw new Error(`Checkout writes outside the project only: ${emptyDir}`);
           if ((await readdir(emptyDir).catch(missingIsEmpty)).length > 0)
             throw new Error(`Checkout writes into an empty folder only: ${emptyDir}`);
@@ -796,6 +795,15 @@ class Engine {
       },
     };
   }
+}
+
+/** Compares real on-disk paths; `.native` gives a case-insensitive disk's real letter case, so no alias gets in. */
+function isWithin(dir: string, path: string): boolean {
+  let probe = resolve(path);
+  while (!existsSync(probe) && dirname(probe) !== probe) probe = dirname(probe);
+  const root = realpathSync.native(dir);
+  const found = realpathSync.native(probe);
+  return found === root || found.startsWith(root + sep);
 }
 
 function missingIsEmpty(error: NodeJS.ErrnoException): string[] {

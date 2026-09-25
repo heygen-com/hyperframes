@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion } from "../helpers/fileVersion";
 import { HistoryBusyError } from "./ownerLock";
@@ -32,6 +32,15 @@ afterEach(async () => {
 });
 
 const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
+
+function caseInsensitive(): boolean {
+  const dir = mkdtempSync(join(tmpdir(), "hf-history-case-"));
+  try {
+    return existsSync(dir.toUpperCase());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -291,6 +300,20 @@ describe("openProjectHistory", () => {
     await history.flush();
     expect(history.list()).toHaveLength(1);
   });
+
+  it.skipIf(!caseInsensitive())(
+    "refuses a checkout folder inside the project spelled in other letter case",
+    async () => {
+      const { history, write, projectDir, has } = await project({ "index.html": "v1" });
+      const entry = await change(history, you, "Second", () => write("index.html", "v2"));
+      const recased = join(dirname(projectDir), basename(projectDir).toUpperCase(), "archive");
+
+      await expect(history.checkout(entry.id, "after", recased)).rejects.toThrow(
+        "outside the project",
+      );
+      expect(has("archive")).toBe(false);
+    },
+  );
 
   it("leaves the folder empty when a checkout fails partway, so it can be retried", async () => {
     const { history, write, historyRoot } = await project({ "a.txt": "a", "b.txt": "b" });
