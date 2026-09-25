@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { isValidProjectId } from "./src/utils/projectRouting";
-import { createStudioApi } from "@hyperframes/studio-server";
+import { createStudioApi, type ProjectHistory } from "@hyperframes/studio-server";
 import type { ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 
@@ -24,7 +25,7 @@ function fixture() {
     data,
     {} as ViteDevServer,
     createProjectSignatureCache({ compute: () => "test" }),
-    join(root, "history"),
+    { historyRoot: join(root, "history") },
   );
   const app = createStudioApi(adapter);
   return { root, data, sessions, adapter, app };
@@ -50,6 +51,27 @@ describe("Studio's dev server keeps each project's history", () => {
     } finally {
       await history?.close();
     }
+  });
+});
+
+describe("Studio's dev server closes the histories it opened when it stops", () => {
+  it("closes each through the opener it was given, so an open edit keeps its label", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-project-history-close-"));
+    roots.push(root);
+    mkdirSync(join(root, "demo"));
+    const httpServer = new EventEmitter();
+    const close = vi.fn(async () => {});
+    const openHistory = vi.fn(async () => ({ close }) as unknown as ProjectHistory);
+    const adapter = createViteAdapter(
+      root,
+      { httpServer } as unknown as ViteDevServer,
+      createProjectSignatureCache({ compute: () => "test" }),
+      { openHistory },
+    );
+    await adapter.history!(adapter.resolveProject("demo")!);
+    httpServer.emit("close");
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(openHistory).toHaveBeenCalledOnce();
   });
 });
 

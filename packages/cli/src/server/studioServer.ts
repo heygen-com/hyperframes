@@ -40,6 +40,7 @@ import {
   createProjectSignature,
   createBackgroundRemovalJob,
   identifyFileWrite,
+  DELETED_VERSION,
   fileContentVersion,
   getMimeType,
   affectsProjectSignature,
@@ -863,7 +864,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // `version` ships even when no receipt matches: it is the client's only
         // identity for an unlabelled change, and without it every duplicate
         // delivery of one watcher event drains and reloads again.
-        const receipt = version ? identifyFileWrite(absPath, version) : null;
+        const receipt = identifyFileWrite(absPath, version ?? DELETED_VERSION);
         // `projectId` so a stale tab — one still pointed at a project this
         // server no longer serves, because `hyperframes preview` reused this
         // port for a different folder (see ProjectUnreachableBanner's doc

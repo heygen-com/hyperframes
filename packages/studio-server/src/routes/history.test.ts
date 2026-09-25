@@ -1,10 +1,10 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "../createStudioApi";
-import { fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
+import { DELETED_VERSION, fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory";
 import type { StudioApiAdapter } from "../types";
 
@@ -91,6 +91,17 @@ describe("history routes", () => {
     ).toMatchObject({
       path: "index.html",
       writeToken: "studio-1",
+    });
+  });
+
+  it("label a deletion an undo makes with Studio's write token too", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "extra.html"), "added");
+    await call("/claim", { label: "Added a section", paths: ["extra.html"] });
+    await call("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-2" });
+    expect(existsSync(join(projectDir, "extra.html"))).toBe(false);
+    expect(identifyFileWrite(join(projectDir, "extra.html"), DELETED_VERSION)).toMatchObject({
+      writeToken: "studio-2",
     });
   });
 

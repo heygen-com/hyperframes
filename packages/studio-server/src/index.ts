@@ -53,6 +53,7 @@ export {
   consumeFileWriteReceipt,
   identifyFileWrite,
   fileContentVersion,
+  DELETED_VERSION,
   settledFileTag,
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";

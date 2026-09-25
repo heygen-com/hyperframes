@@ -15,6 +15,7 @@ import { watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
+import type { openProjectHistory } from "@hyperframes/studio-server";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -145,6 +146,8 @@ function devProjectApi(): Plugin {
           expectedVersion: string,
         ) => { path: string; version: string; writeToken: string } | null;
         fileContentVersion: (content: string) => string;
+        DELETED_VERSION: string;
+        openProjectHistory: typeof openProjectHistory;
       } | null = null;
       const getApi = async () => {
         if (!_api) {
@@ -156,13 +159,20 @@ function devProjectApi(): Plugin {
           >;
           // The cast above is the only thing standing between a renamed export and
           // a dev server that silently reports every Studio write as external.
-          for (const name of ["identifyFileWrite", "fileContentVersion"] as const) {
+          for (const name of [
+            "identifyFileWrite",
+            "fileContentVersion",
+            "openProjectHistory",
+          ] as const) {
             if (typeof mod[name] !== "function") {
               throw new Error(`@hyperframes/studio-server dev module is missing ${name}()`);
             }
           }
           _studioServerModule = mod;
-          const adapter = createViteAdapter(dataDir, server, signatureCache);
+          // The engine records its write receipts in this module, where the watcher below reads them.
+          const adapter = createViteAdapter(dataDir, server, signatureCache, {
+            openHistory: mod.openProjectHistory,
+          });
           _api = mod.createStudioApi(adapter);
         }
         return _api;
@@ -256,8 +266,9 @@ function devProjectApi(): Plugin {
         } catch {
           // A deletion has no current bytes to match a write receipt against.
         }
-        const receipt =
-          version && studioServer ? studioServer.identifyFileWrite(filePath, version) : null;
+        const receipt = studioServer
+          ? studioServer.identifyFileWrite(filePath, version ?? studioServer.DELETED_VERSION)
+          : null;
         // First path segment under `dataDir` is the project id (`data/projects/<id>/...`).
         // Mirrors the CLI host's `project.id` field on the same event — see its
         // doc comment for why a stale tab needs this to ignore another
