@@ -964,8 +964,6 @@ export function trackCompareSheet(props: {
   });
 }
 
-// `hyperframes history` (a trial command): which subcommand ran, and whether through a running preview's
-// history or the project's history opened directly. Both low-cardinality.
 export function trackHistoryAction(props: { action: string; via: "preview" | "direct" }): void {
   trackEvent("cli_history", props);
 }

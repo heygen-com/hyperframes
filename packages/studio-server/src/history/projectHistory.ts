@@ -49,10 +49,7 @@ export interface ProjectHistoryOptions {
   onError?: (error: unknown) => void;
   /** How long an open waits for another process to close the same history (default 5 s). */
   ownerWaitMs?: number;
-  /**
-   * A window a writer began on an earlier open and never closed (a CLI turn): what changed since that open, until
-   * the window's idle limit ran out, is filed to it as the entry with its id. Ignored once that id is kept.
-   */
+  /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
 }
 
@@ -76,7 +73,6 @@ export interface ClosedWindow {
   idleMs: number;
 }
 
-/** The longest a window may wait for its next write. */
 export const MAX_WINDOW_IDLE_MS = 10 * 60_000;
 
 export interface HistoryListItem extends HistoryEntry {
@@ -302,7 +298,6 @@ class Engine {
     // A missing project folder was moved or removed, not emptied: that is no change to its files.
     if (!existsSync(this.dir)) return;
     const sweptAt = Date.now();
-    // Oldest write first, so a window's idle limit is checked in the order the writes happened.
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.max(file.mtimeMs, file.ctimeMs);
     const seen = listProjectFiles(this.dir).sort((a, b) => changedAt(a) - changedAt(b));
@@ -313,8 +308,8 @@ class Engine {
     for (const [path, known] of this.tracked) {
       if (present.has(path)) continue;
       this.tracked.delete(path);
-      // A removal leaves no time behind: it counts as now.
-      this.record(path, known.hash, null, sweptAt);
+      const removedAt = sweptAt;
+      this.record(path, known.hash, null, removedAt);
       changed = true;
     }
     if (changed) this.saveStatCache();
@@ -495,7 +490,6 @@ class Engine {
     if (!group.changes.size) return null;
     const { id, who, label, startedAt, lastWriteAt, changes } = group;
     const files = [...changes.values()].sort((a, b) => a.path.localeCompare(b.path));
-    // A window ends at its last write, not when its idle timer or a later open noticed it had ended.
     const endedAt = lastWriteAt ?? this.now();
     const entry: HistoryEntry = { id, who, label, startedAt, endedAt, files, ...extra };
     this.log.entries.push(entry);
