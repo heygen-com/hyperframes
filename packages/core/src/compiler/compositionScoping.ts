@@ -276,10 +276,6 @@ function jsonScriptLiteral(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
-/**
- * A composition's own `__hyperframes`: getVariables and assetUrl bound to it. Reads
- * `__hfBaseHyperframes`, `__hfTimelineCompId` and `__hfCompositionSrc` from the enclosing scope.
- */
 const SCOPED_HYPERFRAMES_EXPRESSION = `!__hfBaseHyperframes
     ? __hfBaseHyperframes
     : Object.assign({}, __hfBaseHyperframes, {
@@ -294,10 +290,6 @@ const SCOPED_HYPERFRAMES_EXPRESSION = `!__hfBaseHyperframes
         },
       })`;
 
-/**
- * Prepended to a mounted composition's `<script type="module">`, which cannot sit inside the
- * classic wrapper: its bare `__hyperframes` becomes the composition's own, as in a classic script.
- */
 export function scopedModulePrelude(
   timelineCompositionId: string,
   compositionSrc?: string | null,

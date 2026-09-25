@@ -33,8 +33,13 @@ jobs:
       # The commented-out-code rule asks the TypeScript parser, a root dependency.
       - run: bash scripts/ci/install-workspace-dependencies.sh --ignore-scripts
       - name: Test the checker
-        run: node --test scripts/check-comment-citations.test.mjs
+        run: node --test scripts/check-comment-citations.test.mjs scripts/comment-ratchet.test.mjs
       - name: Check the comments this diff touched
         env:
           COMMENT_CHECK_BASE: ${{ github.event.pull_request.base.sha }}
         run: node scripts/check-comment-citations.mjs
+      - name: A package file's comment share may not rise
+        if: ${{ !cancelled() }}
+        env:
+          COMMENT_CHECK_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/comment-ratchet.mjs

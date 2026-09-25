@@ -55,13 +55,15 @@ jobs:
         id: filter
         with:
           token: ""
+          # A file counts only if it matches every pattern. Player and Studio `src/` run in a browser
+          # and no code reads a package README, so a diff confined to them skips Windows.
+          predicate-quantifier: every
           filters: |
             code:
-              - "packages/**"
-              - "scripts/**"
-              - "package.json"
-              - "bun.lock"
-              - ".github/workflows/windows-render.yml"
+              - "{packages/**,scripts/**,package.json,bun.lock,.github/workflows/windows-render.yml}"
+              - "!packages/player/src/**"
+              - "!packages/studio/src/**"
+              - "!packages/*/README.md"
 
   preflight:
     name: Preflight (lint + format)
