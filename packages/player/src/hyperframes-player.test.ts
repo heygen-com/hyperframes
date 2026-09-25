@@ -2038,6 +2038,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     paused: boolean;
     compositionWidth: number;
     compositionHeight: number;
+    scenes: Array<{ id: string; start: number; duration: number }>;
     iframe: HTMLIFrameElement;
     _onMessage: (event: MessageEvent) => void;
     _onIframeLoad: () => void;
@@ -2297,6 +2298,48 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     });
 
     expect(readyEvents).toEqual([{ duration: 5, compositionWidth: 1080, compositionHeight: 1350 }]);
+  });
+
+  it("applies a timeline message's scenes before ready and durationchange fire", () => {
+    const seen: string[] = [];
+    const sceneIds = () => player.scenes.map((scene) => scene.id).join(",");
+    player.addEventListener("ready", () => seen.push(`ready:${sceneIds()}`));
+    player.addEventListener("durationchange", () => seen.push(`durationchange:${sceneIds()}`));
+
+    player._onMessage(timelineMessage(120, { scenes: [{ id: "a", start: 0, duration: 4 }] }));
+    player._onMessage(
+      timelineMessage(180, {
+        scenes: [
+          { id: "a", start: 0, duration: 4 },
+          { id: "b", start: 4, duration: 2 },
+        ],
+      }),
+    );
+
+    expect(seen).toEqual(["ready:a", "durationchange:a,b"]);
+  });
+
+  it("warns once when the same-origin probe readies a zero-size player", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    (
+      player as unknown as {
+        _onProbeReady: (r: {
+          duration: number;
+          adapter: { kind: string; getDuration: () => number };
+          compositionSize: { width: number; height: number };
+        }) => void;
+      }
+    )._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: { width: 1080, height: 1920 },
+    });
+
+    const rescaleWarnings = warnSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("rescale no-op after ready"),
+    );
+    expect(rescaleWarnings).toHaveLength(1);
   });
 
   it("fires resize only when the picture size changes", () => {

@@ -1038,6 +1038,8 @@ class HyperframesPlayer extends HTMLElement {
     this._ready = true;
     this.controlsApi?.updateTime(0, duration);
     this._dispatchReady();
+    // Again once ready, so a player stuck at zero size reports it (see _rescale).
+    this._rescale();
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);

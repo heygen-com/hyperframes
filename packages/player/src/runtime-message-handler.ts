@@ -145,7 +145,7 @@ export function handleRuntimeMessage(
       Number.isFinite(declaredDuration) && declaredDuration > 0
         ? declaredDuration
         : frameDuration / protocol.fps;
-    // Size first, so the `ready` fired below carries this composition's size.
+    // Size and scenes first, so `durationchange` and `ready` fire on a fully applied message.
     if (
       Number.isFinite(data["compositionWidth"]) &&
       (data["compositionWidth"] as number) > 0 &&
@@ -157,6 +157,7 @@ export function handleRuntimeMessage(
         data["compositionHeight"] as number,
       );
     }
+    callbacks.setScenes(extractScenes(data["scenes"]));
     if (Number.isFinite(duration) && duration > 0) {
       const pb = callbacks.getPlaybackState();
       callbacks.setPlaybackState({ ...pb, duration });
@@ -166,7 +167,6 @@ export function handleRuntimeMessage(
         typeof data["assetsReady"] === "boolean" ? data["assetsReady"] : undefined,
       );
     }
-    callbacks.setScenes(extractScenes(data["scenes"]));
     return;
   }
 
