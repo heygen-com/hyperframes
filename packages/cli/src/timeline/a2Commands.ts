@@ -34,7 +34,15 @@ export async function runIds(args: Record<string, unknown>): Promise<void> {
     const after = ensureHfIds(before);
     return after === before
       ? []
-      : [{ sourceFile: file, absPath: join(project.dir, file), before, after }];
+      : [
+          {
+            sourceFile: file,
+            absPath: join(project.dir, file),
+            before,
+            after,
+            expectedVersion: fileContentVersion(before),
+          },
+        ];
   });
   const receipts = inputs.length > 0 ? applyFileMutations(project.dir, inputs) : [];
   const afterTimeline = await describeProject(project.indexPath);
