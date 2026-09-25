@@ -3,13 +3,17 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
+import { lintHyperframeHtml } from "@hyperframes/lint";
+import type { RunAddResult } from "./add.js";
 import {
   AddError,
   buildSnippet,
+  compositionRootId,
   describeInstallFailure,
   parseVariableValues,
   remapTarget,
   runAdd,
+  tagAddJson,
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
@@ -158,6 +162,12 @@ const ITEM_BY_NAME: Record<string, RegistryItem> = {
 
 const DEP_BLOCK_HTML = `<div data-composition-variables='[{ "id": "maths", "type": "boolean", "label": "Maths", "default": false }]'></div>`;
 
+const FILE_BODIES: Record<string, string> = {
+  "dep-block.html": DEP_BLOCK_HTML,
+  "deprecated-block.html": `<div data-composition-id="deprecated-block"></div>`,
+  "my-block.html": `<div data-composition-id="my-block-root" data-width="1080" data-height="1350"></div>`,
+};
+
 function mockFetch(): void {
   vi.stubGlobal(
     "fetch",
@@ -173,11 +183,8 @@ function mockFetch(): void {
       }
       // File fetch — match `/<type-dir>/<name>/<rest>` and serve synthetic content.
       const f = /\/(examples|blocks|components)\/([^/]+)\/(.+)$/.exec(url);
-      if (f?.[3] === "dep-block.html") {
-        return new Response(DEP_BLOCK_HTML, { status: 200 });
-      }
       if (f) {
-        return new Response(`/* ${f[3]} */\n`, { status: 200 });
+        return new Response(FILE_BODIES[f[3]!] ?? `/* ${f[3]} */\n`, { status: 200 });
       }
       return new Response("not found", { status: 404 });
     }),
@@ -255,6 +262,26 @@ describe("add command pure helpers", () => {
       expect(snip).toContain('data-duration="6"');
     });
 
+    it("reads a composition's root id, inside its <template> when it has one", () => {
+      expect(compositionRootId(`<div data-composition-id="plain" data-width="1"></div>`)).toBe(
+        "plain",
+      );
+      expect(
+        compositionRootId(
+          `<html><head><template id="t"><div data-composition-id="templated"></div></template></head><body></body></html>`,
+        ),
+      ).toBe("templated");
+      expect(compositionRootId(`<div>no root</div>`)).toBeUndefined();
+    });
+
+    it("gives the block host the composition id that check requires", async () => {
+      const snip = buildSnippet(BLOCK_ITEM, "compositions/my-block.html", null, "my-block-root");
+      const html = `<!doctype html><html><body><div data-composition-id="root" data-width="1080" data-height="1350">${snip}</div></body></html>`;
+      const { findings } = await lintHyperframeHtml(html);
+      expect(findings.map((f) => f.code)).not.toContain("host_missing_composition_id");
+      expect(snip).toContain('data-composition-id="my-block-root"');
+    });
+
     it("emits a paste hint for components", () => {
       const snip = buildSnippet(COMPONENT_ITEM, "src/fx/my-component/my-component.html");
       expect(snip).toContain("paste from");
@@ -292,8 +319,9 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
       const installed = readFileSync(join(dir, "compositions/my-block.html"), "utf-8");
       expect(installed).toContain("<!-- hyperframes-registry-item: my-block -->");
-      expect(installed).toContain("my-block.html");
+      expect(installed).toContain('data-composition-id="my-block-root"');
       expect(result.snippet).toContain("compositions/my-block.html");
+      expect(result.snippet).toContain('data-composition-id="my-block-root"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -392,6 +420,9 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "compositions/dep-block.html"))).toBe(true);
       // Snippet points at the requested block, not the dependency.
       expect(result.snippet).toContain("compositions/dep-block.html");
+      expect(result.warnings).toEqual([
+        expect.stringContaining("compositions/dep-block.html declares no data-composition-id"),
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -529,5 +560,17 @@ describe("describeInstallFailure", () => {
     const message = describeInstallFailure(new Error('Unsafe target "../x"'));
 
     expect(message).toBe('Install failed: Unsafe target "../x"');
+  });
+});
+
+describe("tagAddJson", () => {
+  it("carries every installed item's warnings", () => {
+    const result = (name: string, warnings: string[]) => ({ name, warnings }) as RunAddResult;
+    expect(tagAddJson("lower-thirds", [result("a", []), result("b", ["no id"])])).toEqual({
+      ok: true,
+      tag: "lower-thirds",
+      installed: ["a", "b"],
+      warnings: ["b: no id"],
+    });
   });
 });

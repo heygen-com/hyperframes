@@ -69,6 +69,19 @@ If you must add a cast, add a comment:
 const event = data as unknown as RuntimeEvent;
 ```
 
+#### Comments
+
+A comment says what the code cannot: the reason, the invariant, the non-obvious constraint. Names, types and tests carry the rest, and reasoning or history goes in the PR description, where it stays attached to the change.
+
+The `Comments` check (`scripts/check-comment-citations.mjs`) grades the comments a PR adds or edits:
+
+- **Citations must resolve.** A backticked path, a `path:line`, a backticked camelCase symbol, or "pinned by" / "covered by" / "see" plus a test file must point at something in the repo. A comment that names its source reads as evidence, so a stale one sends the next reader to a dead end.
+- **No history.** "used to", "previously", "was removed", "before this change", "PR #123" describe the past, which git already records. State what is true now.
+- **No commented-out code.** Delete it; git keeps it.
+- **No block over 40 lines.** Cut it to the why and the invariant. A block that must stay whole (a licence, a diagram, a protocol table) starts with `comment-length: <reason>`.
+
+Only comment blocks holding a line your PR added can fail. Findings elsewhere in a file you touched are printed as warnings, and fixing one while you are there is welcome. To grade files by hand, pass their paths: `node scripts/check-comment-citations.mjs path/to/file.ts`.
+
 ## Adding Registry Items (Blocks & Components)
 
 The registry at `registry/` contains reusable items installable via `hyperframes add <name>`. Each item lives in its own directory under `registry/blocks/` or `registry/components/`.

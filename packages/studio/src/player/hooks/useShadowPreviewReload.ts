@@ -14,6 +14,7 @@ import {
 } from "./useTimelineSyncCallbacks";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
+import { usePlayerStore } from "../store/playerStore";
 
 // One wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
 // leaves about 6.5s for the document load and runtime boot. Nothing shorter may fail the swap.
@@ -35,6 +36,8 @@ type UseShadowPreviewReloadParams = Omit<
   onPromoted?: () => void;
   /** A shadow that never became ready was dropped; the live preview is unchanged. */
   onReloadFailed?: (message: string) => void;
+  /** Puts the promoted document at the live frame's time, playing if the live frame was. */
+  handOverPlayback: (time: number, playing: boolean) => void;
 };
 
 export function useShadowPreviewReload({
@@ -51,6 +54,7 @@ export function useShadowPreviewReload({
   applyPreviewAudioState,
   onPromoted,
   onReloadFailed,
+  handOverPlayback,
 }: UseShadowPreviewReloadParams) {
   const shadowIframeRef = useRef<HTMLIFrameElement | null>(null);
   const shadowProbeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -62,6 +66,8 @@ export function useShadowPreviewReload({
   onPromotedRef.current = onPromoted;
   const onReloadFailedRef = useRef(onReloadFailed);
   onReloadFailedRef.current = onReloadFailed;
+  const handOverPlaybackRef = useRef(handOverPlayback);
+  handOverPlaybackRef.current = handOverPlayback;
   const readyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const budgetsSpentRef = useRef(0);
   // The shadow still owed a wait budget, so a hidden tab can resume it when it becomes visible.
@@ -102,6 +108,11 @@ export function useShadowPreviewReload({
       const ready = pending?.gen === gen && visuallyReadyGenRef.current === gen;
       if (!shadow || !pending || !ready || gen !== shadowGenRef.current) return;
       stopPendingShadow();
+      // The live frame kept playing, stopped at the end or was seeked while the shadow loaded.
+      const live = getAdapter();
+      const liveTime = live?.getTime();
+      const playing = usePlayerStore.getState().isPlaying;
+      live?.pause();
       // The store takes the new document's timeline only now that it is the one on screen.
       pending.commit();
       iframeRef.current = shadow;
@@ -109,10 +120,17 @@ export function useShadowPreviewReload({
       attachIframeShortcutListeners();
       applyPreviewAudioState();
       setPreviewSlots((prev) => planShadowPromotion(prev, gen));
+      if (liveTime != null) handOverPlaybackRef.current(liveTime, playing);
       onPromotedRef.current?.();
       thumbnailScheduler.setPreviewReloading(false);
     },
-    [stopPendingShadow, iframeRef, attachIframeShortcutListeners, applyPreviewAudioState],
+    [
+      stopPendingShadow,
+      getAdapter,
+      iframeRef,
+      attachIframeShortcutListeners,
+      applyPreviewAudioState,
+    ],
   );
 
   const getShadowAdapter = useCallback(() => getAdapter(shadowIframeRef.current), [getAdapter]);
