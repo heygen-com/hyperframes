@@ -9,6 +9,28 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.77"
+  description="Released - 2026-09-25"
+  tags={["Release", "Studio", "Studio Server", "Core"]}
+>
+A captured frame, such as a preview poster, now waits for a video that is still loading instead of leaving it out. Studio opens every project's preview at Fit and finds the right element when an id repeats.
+
+## Fixes
+
+- **Studio Server:** Inject page tags at the document's own head and body, not inside a script ([f1f370e96c](https://github.com/heygen-com/hyperframes/commit/f1f370e96c211fd1c7bf28a14cba7e809e9102c3), [#4484](https://github.com/heygen-com/hyperframes/pull/4484)).
+- **Core:** A frame capture waits for a video that is still loading its first data ([a486c0f8d9](https://github.com/heygen-com/hyperframes/commit/a486c0f8d906efab5fcec4388ba7a28ddf754468), [#4487](https://github.com/heygen-com/hyperframes/pull/4487)).
+- **Studio Server:** One process at a time keeps a project's history open ([31441701fc](https://github.com/heygen-com/hyperframes/commit/31441701fc6b3f3537a178ac0f6b22e509a54805), [#4448](https://github.com/heygen-com/hyperframes/pull/4448)).
+- **Studio:** Preview lookups use the right element when an id repeats across files ([4dc1bee9c2](https://github.com/heygen-com/hyperframes/commit/4dc1bee9c239e36b086c4449d1f587d03d372c47), [#4486](https://github.com/heygen-com/hyperframes/pull/4486)).
+- **Studio:** Every project opens its preview at Fit, and a zoom says so ([224388ad29](https://github.com/heygen-com/hyperframes/commit/224388ad292167f0291da00bacea0bdd95cdd7de), [#4473](https://github.com/heygen-com/hyperframes/pull/4473)).
+
+## Docs & Examples
+
+- **Release:** List the three changes v0.8.76 also shipped ([5f95787cce](https://github.com/heygen-com/hyperframes/commit/5f95787cceb29cc52e09d8d31edb2c0947ff544f), [#4488](https://github.com/heygen-com/hyperframes/pull/4488)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.76...v0.8.77).
+</Update>
+
+<Update
   label="HyperFrames v0.8.76"
   description="Released - 2026-09-25"
   tags={["Release", "Studio", "Player", "Studio Server", "Core"]}
