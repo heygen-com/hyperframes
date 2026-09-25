@@ -170,7 +170,6 @@ export interface PreviewVisibleRegion {
   height: number;
 }
 
-/** The part of the frame the viewport shows, as fractions of the frame; the stage is centred and scaled about its centre. */
 export function resolvePreviewVisibleRegion(input: {
   state: PreviewZoomState;
   viewportWidth: number;

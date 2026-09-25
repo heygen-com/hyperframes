@@ -80,12 +80,10 @@ function isPreviewAtFit(state: PreviewZoomState): boolean {
   return isFitZoom(state.zoomPercent) && Math.abs(state.panX) < 0.1 && Math.abs(state.panY) < 0.1;
 }
 
-/** Off Fit at the fit scale means the frame was only moved. */
 function zoomChipLabel(zoomPercent: number): string {
   return isFitZoom(zoomPercent) ? "Panned" : `Zoomed ${Math.round(zoomPercent)}%`;
 }
 
-/** The navigator's frame box: the composition's shape, its long side NAVIGATOR_PX. */
 function navigatorFrameSize(stage: { width: number; height: number }) {
   const ratio = stage.width > 0 && stage.height > 0 ? stage.width / stage.height : 16 / 9;
   return ratio >= 1
@@ -169,7 +167,6 @@ export const NLEPreview = memo(function NLEPreview({
   const insetPx = fillBox ? 0 : PREVIEW_STAGE_INSET_PX;
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
-  // Every project opens at Fit; a zoom lasts only while the project stays open.
   const zoomRef = useRef<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const hudRef = useRef<HTMLDivElement>(null);
