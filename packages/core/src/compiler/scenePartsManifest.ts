@@ -27,8 +27,8 @@ export function addScenePartsManifest(html: string, ignore: readonly string[] = 
     scenes: Object.fromEntries([...byScene].map(([scene, html]) => [scene, hash(html.join("\n"))])),
   };
   const content = JSON.stringify(manifest).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-  return html.replace(
-    /<head(\s[^>]*)?>/i,
-    (head) => `${head}<meta name="${SCENE_PARTS_META}" content="${content}">`,
-  );
+  const head = html.search(/<head[\s>]/i);
+  if (head < 0) return html;
+  const at = html.indexOf(">", head) + 1;
+  return `${html.slice(0, at)}<meta name="${SCENE_PARTS_META}" content="${content}">${html.slice(at)}`;
 }

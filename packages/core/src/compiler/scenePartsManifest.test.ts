@@ -41,6 +41,14 @@ describe("addScenePartsManifest", () => {
     expect(addScenePartsManifest(html)).toBe(html);
   });
 
+  it("puts the manifest right after a head tag with attributes, in linear time", () => {
+    const withLang = addScenePartsManifest(doc("one", "").replace("<head>", '<head lang="en">'));
+    expect(withLang).toContain('<head lang="en"><meta name="hf-scene-parts"');
+    const started = performance.now();
+    addScenePartsManifest(`<body><div data-hf-scene="a"></div>${"<head ".repeat(40_000)}`);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it("changes the shared hash when scenes are reordered", () => {
     const page = (first: string, second: string) => `<html><head></head><body><div id="main">
 <div data-hf-scene="${first}"><p>${first}</p></div><div data-hf-scene="${second}"><p>${second}</p></div>
