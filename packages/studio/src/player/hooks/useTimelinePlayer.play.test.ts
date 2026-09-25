@@ -114,6 +114,22 @@ it("settles a load whose runtime learns its duration after its only readiness po
   act(() => root.unmount());
 });
 
+it("stops retrying a pending load once the player unmounts", async () => {
+  const { api, root } = renderTimelinePlayerHarness();
+  const { adapter, win } = makeAdapterWindow();
+  let lookups = 0;
+  adapter.getDuration = () => (lookups++, 0);
+  act(() => {
+    api.iframeRef.current = makeFakeIframe(win);
+    api.onIframeLoad();
+  });
+  postFromRuntime(win, { type: "state" });
+  act(() => root.unmount());
+  const atUnmount = lookups;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  expect(lookups).toBe(atUnmount);
+});
+
 it("does not let the blank page's load step enable Play for the preview that replaces it", async () => {
   const { api, root } = renderTimelinePlayerHarness();
   // The iframe's first load is about:blank, before the runtime exists; its load step waits for runtime messages.

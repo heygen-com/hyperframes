@@ -362,21 +362,25 @@ export function useTimelinePlayer({
       seek,
     });
 
-  const { processTimelineMessageRef, enrichMissingCompositionsRef, onIframeLoad } =
-    useTimelineSyncCallbacks({
-      iframeRef,
-      probeIntervalRef,
-      pendingSeekRef,
-      isRefreshingRef,
-      getAdapter,
-      syncTimelineElements,
-      setDuration,
-      setCurrentTime,
-      requestTimelineReady,
-      setIsPlaying,
-      attachIframeShortcutListeners,
-      applyPreviewAudioState,
-    });
+  const {
+    processTimelineMessageRef,
+    enrichMissingCompositionsRef,
+    onIframeLoad,
+    cancelPendingLoad,
+  } = useTimelineSyncCallbacks({
+    iframeRef,
+    probeIntervalRef,
+    pendingSeekRef,
+    isRefreshingRef,
+    getAdapter,
+    syncTimelineElements,
+    setDuration,
+    setCurrentTime,
+    requestTimelineReady,
+    setIsPlaying,
+    attachIframeShortcutListeners,
+    applyPreviewAudioState,
+  });
 
   // Full-reload edits load behind a hidden shadow iframe (useShadowPreviewReload.ts).
   const {
@@ -494,7 +498,7 @@ export function useTimelinePlayer({
       stopReverseLoop();
       stopScrubPreviewAudio();
       releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-      if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+      cancelPendingLoad();
     };
   });
 
