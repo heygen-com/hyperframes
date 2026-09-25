@@ -58,13 +58,17 @@ export function resolveCompositionPreviewScale(input: {
   return Math.min(scaleX, scaleY);
 }
 
+function compositionPreviewUrl(projectId: string, comp: string): string {
+  return buildProjectApiPath(projectId, `/preview/comp/${encodePreviewPath(comp)}`);
+}
+
 export function compositionCardThumbnailUrl(
   projectId: string,
   comp: string,
   contentRevision: number,
 ): string {
   return buildCompositionThumbnailUrl({
-    previewUrl: buildProjectApiPath(projectId, `/preview/comp/${encodePreviewPath(comp)}`),
+    previewUrl: compositionPreviewUrl(projectId, comp),
     seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
     duration: 0,
     origin: window.location.origin,
@@ -186,7 +190,7 @@ function CompCard({
     setLivePreviewLoaded(false);
   };
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
-  const previewUrl = buildProjectApiPath(projectId, `/preview/comp/${comp}`);
+  const previewUrl = compositionPreviewUrl(projectId, comp);
   const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
   const thumbnailFailed = failedThumbnailUrl === thumbnailUrl;
   const previewScale = resolveCompositionPreviewScale({

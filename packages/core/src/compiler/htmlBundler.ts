@@ -788,15 +788,14 @@ export interface BundleOptions {
    */
   inlineColorGradingLuts?: boolean;
   /**
-   * Inline fonts, raster images (img/href/poster/srcset/CSS url()) and color
-   * grading LUTs as data URLs, up to the per-asset size ceiling. Default:
-   * true, for a genuinely self-contained bundle. Set false when the caller
-   * serves the project's own files alongside the bundle (e.g. a same-origin
-   * asset route): assets then keep their authored relative URL, which the
-   * caller resolves. `inlineColorGradingLuts` narrows LUTs further; it cannot
-   * inline a LUT that this option has already excluded.
+   * Inline fonts, raster images (img/href/poster/srcset/CSS url()) and color grading LUTs as data
+   * URLs, up to the per-asset size ceiling. Default: true, for a genuinely self-contained bundle. Set
+   * false when the caller serves the project's own files alongside the bundle (e.g. a same-origin
+   * asset route): assets then keep their authored relative URL, which the caller resolves.
+   * `inlineColorGradingLuts` narrows LUTs further; it cannot inline a LUT this option excluded.
    */
   inlineAssets?: boolean;
+  /** Warn when the compiled HTML breaks the HyperFrames contract (default true). */
   staticGuard?: boolean;
 }
 
