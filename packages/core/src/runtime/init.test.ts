@@ -3921,8 +3921,8 @@ describe("initSandboxRuntimeModular", () => {
     };
 
     // jsdom does no layout, so a static clip can report computed top "auto" or
-    // "" inconsistently. Pin the values the anchor gate keys on so the assertion
-    // reflects the real-browser path deterministically.
+    // "" inconsistently. Pin the values the layout pass reads so the assertion
+    // is deterministic.
     const overrideComputed = (
       target: HTMLElement,
       overrides: Partial<Record<"position" | "top" | "left" | "bottom" | "right", string>>,
@@ -4028,6 +4028,23 @@ describe("initSandboxRuntimeModular", () => {
       expect(card.style.display).toBe("none");
       expect(card.style.width).toBe("100%");
       expect(card.style.height).toBe("100%");
+    });
+
+    it("puts back an author's display:none !important after measuring the clip", () => {
+      const root = makeRoot();
+      const card = document.createElement("div");
+      card.setAttribute("data-start", "0");
+      card.setAttribute("data-duration", "5");
+      card.style.setProperty("display", "none", "important");
+      root.appendChild(card);
+      modelBrowserLayout(card, { width: "0px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(card.style.width).toBe("100%");
+      expect(card.style.getPropertyValue("display")).toBe("none");
+      expect(card.style.getPropertyPriority("display")).toBe("important");
     });
 
     it("leaves a runtime-stamped flow child untouched so the layout is preserved", () => {

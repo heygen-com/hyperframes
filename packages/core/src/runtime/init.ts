@@ -629,11 +629,10 @@ export function initSandboxRuntimeModular(): void {
     const rootHeight = parseDimensionPx(rootEl.getAttribute("data-height"));
     if (rootWidth) rootEl.style.width = rootWidth;
     if (rootHeight) rootEl.style.height = rootHeight;
-    const children = Array.from(rootEl.children) as HTMLElement[];
-    for (const el of children) {
+    const clips = (Array.from(rootEl.children) as HTMLElement[]).filter((el) => {
       const tag = el.tagName.toLowerCase();
-      if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
-      if (!el.hasAttribute("data-start")) continue;
+      if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return false;
+      if (!el.hasAttribute("data-start")) return false;
       // Runtime-stamped clips are NOT authored overlay clips. In Studio/preview
       // the runtime stamps `data-start` onto ID'd or GSAP-targeted flow children
       // (a <header>/<footer> in a flex column) so the design panel can discover
@@ -642,14 +641,16 @@ export function initSandboxRuntimeModular(): void {
       // `justify-content: space-between` clusters in the top-left. Leave them in
       // flow so the preview matches the rendered video, which never stamps
       // (production renders run as the top-level page, not in an iframe).
-      if (el.hasAttribute("data-hf-autostamped")) continue;
-      // A clip that has not started is display:none, which measures as "auto". Measure it
-      // shown, so a clip starting later lays out like one showing at load.
-      const hiddenPriority =
-        el.style.getPropertyValue("display") === "none"
-          ? el.style.getPropertyPriority("display")
-          : null;
-      if (hiddenPriority !== null) el.style.removeProperty("display");
+      return !el.hasAttribute("data-hf-autostamped");
+    });
+    // An inline display:none (a clip not started yet, or data-hidden) measures as "auto", so lay
+    // every clip out shown. Lifting them all at once keeps a pass to one forced layout.
+    const hidden = clips
+      .filter((el) => el.style.getPropertyValue("display") === "none")
+      .map((el) => ({ el, priority: el.style.getPropertyPriority("display") }));
+    for (const { el } of hidden) el.style.removeProperty("display");
+    for (const el of clips) {
+      const tag = el.tagName.toLowerCase();
       const hasLegacyAnchoredDefaults =
         (el.style.top === "0px" || el.style.top === "0") &&
         (el.style.left === "0px" || el.style.left === "0") &&
@@ -694,8 +695,6 @@ export function initSandboxRuntimeModular(): void {
       if (shouldForceAbsolute) {
         el.style.position = "absolute";
       }
-      // No top/left is set: an absolute clip keeps the spot its CSS gives it (a flex-centred
-      // title stays centred).
       if (tag !== "audio") {
         const forcedWidth = parseDimensionPx(el.getAttribute("data-width"));
         const forcedHeight = parseDimensionPx(el.getAttribute("data-height"));
@@ -716,8 +715,8 @@ export function initSandboxRuntimeModular(): void {
           el.style.height = "100%";
         }
       }
-      if (hiddenPriority !== null) el.style.setProperty("display", "none", hiddenPriority);
     }
+    for (const { el, priority } of hidden) el.style.setProperty("display", "none", priority);
   };
 
   const createTimingResolver = (includeAuthoredTimingAttrs: boolean) =>
