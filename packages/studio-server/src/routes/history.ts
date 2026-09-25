@@ -3,6 +3,7 @@ import type { StudioApiAdapter } from "../types.js";
 import { createWriteToken } from "../helpers/fileVersion.js";
 import {
   MAX_WINDOW_IDLE_MS,
+  UNDO_MODES,
   type HistoryWindow,
   type ProjectHistory,
 } from "../history/projectHistory.js";
@@ -54,7 +55,7 @@ function versionsOf(value: unknown): Record<string, string> | undefined {
 
 /** What Cmd+Z or Cmd+Shift+Z would revert next, so Studio can name it on its buttons. */
 function nextStep(history: ProjectHistory, direction: "back" | "forward") {
-  const target = history.next(direction);
+  const target = history.next(direction, YOU);
   if (!target) return null;
   const paths = target.files.map((file) => file.path);
   return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
@@ -94,8 +95,7 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
   );
   api.post(`${base}/undo`, (c) =>
     withHistory(adapter, c, (history, body) => {
-      const mode =
-        body.mode === "just-this" || body.mode === "back-to-before" ? body.mode : undefined;
+      const mode = UNDO_MODES.find((known) => known === body.mode);
       return history.undo(text(body.entryId) ?? "", { who: whoOf(body), mode, ...writing(c) });
     }),
   );
@@ -146,7 +146,7 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
         idleMs ? { idleMs } : undefined,
       );
       windows.set(window.id, { history, window });
-      // The window's id is the id of the entry it becomes (its last one, when a claim cut it).
+      // The window's id is its last entry's id, unless nothing was left after its last part.
       return { windowId: window.id, startedAt: window.startedAt };
     }),
   );

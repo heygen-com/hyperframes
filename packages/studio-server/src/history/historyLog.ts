@@ -151,17 +151,30 @@ export function undoneIds(entries: readonly HistoryEntry[]): Set<string> {
 export function stepTarget(
   entries: readonly HistoryEntry[],
   direction: "back" | "forward",
+  mine: (entry: HistoryEntry) => boolean,
 ): HistoryEntry | undefined {
   const undone = undoneIds(entries);
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const redoneBy = new Map<string, HistoryEntry>();
+  for (const entry of entries) {
+    const target = entry.undoes ? byId.get(entry.undoes) : undefined;
+    if (target?.undoes) redoneBy.set(target.undoes, entry);
+  }
+  // A change is yours to step over if you made it, or your redo is what brought it back.
+  const owns = (entry: HistoryEntry) => mine(entry) || mine(redoneBy.get(entry.id) ?? entry);
   for (let i = entries.length - 1; i >= 0; i -= 1) {
     const entry = entries[i]!;
     const isChange = !entry.undoes;
-    if (direction === "back" && isChange && !undone.has(entry.id)) return entry;
-    if (direction !== "forward") continue;
-    if (isChange) return undefined;
+    if (direction === "back") {
+      if (isChange && !undone.has(entry.id) && owns(entry)) return entry;
+      continue;
+    }
+    if (isChange) {
+      if (owns(entry)) return undefined;
+      continue;
+    }
     const target = byId.get(entry.undoes!);
-    if (!undone.has(entry.id) && target && !target.undoes) return entry;
+    if (mine(entry) && !undone.has(entry.id) && target && !target.undoes) return entry;
   }
   return undefined;
 }

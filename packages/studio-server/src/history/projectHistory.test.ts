@@ -68,6 +68,12 @@ async function project(files: Record<string, string | Buffer>, options = {}) {
   return { projectDir, historyRoot, history, write, read, has };
 }
 
+/** Undoes the newest change still in effect, whoever made it; Cmd+Z steps only over the caller's own. */
+async function undoNewest(history: ProjectHistory) {
+  const newest = [...history.list()].reverse().find((entry) => !entry.undoes && !entry.undone);
+  return history.undo(newest!.id, { who: you });
+}
+
 /** An agent turn writes B, C, D; the person's drag claims C (written over B) and is held when the turn closes. */
 async function dragDuringTurn(
   history: ProjectHistory,
@@ -365,7 +371,7 @@ describe("openProjectHistory", () => {
     const reopened = await open(moved, historyRoot);
     expect(reopened.projectId).toBe(history.projectId);
     expect(reopened.list()).toHaveLength(2);
-    await reopened.step("back", you);
+    await undoNewest(reopened);
     expect(readFileSync(join(moved, "index.html"), "utf-8")).toBe("v2");
 
     const copy = tempDir("hf-history-copy-");
@@ -634,7 +640,7 @@ describe("openProjectHistory", () => {
     write("index.html", "b, an outside edit");
     await history.flush();
     expect(history.list()).toHaveLength(1);
-    expect(await history.step("back", you)).toMatchObject({
+    expect(await undoNewest(history)).toMatchObject({
       ok: true,
       entry: { label: "Undid: never closed" },
     });
@@ -749,9 +755,9 @@ describe("claim: a writer that records after writing", () => {
       ["outside", "Changed outside the app"],
       ["person", "Moved Title"],
     ]);
-    await history.step("back", you);
+    await undoNewest(history);
     expect(read("index.html"), "Cmd+Z undoes only the person's edit").toBe("B");
-    await history.step("back", you);
+    await undoNewest(history);
     expect(read("index.html")).toBe("A");
   });
 
@@ -774,7 +780,7 @@ describe("claim: a writer that records after writing", () => {
       "Agent turn",
     ]);
     for (const expected of ["C", "B", "A"]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect(read("index.html")).toBe(expected);
     }
   });
@@ -804,7 +810,7 @@ describe("claim: a writer that records after writing", () => {
       ["B", "1"],
       ["A", "1"],
     ]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect([read("index.html"), read("b.js")]).toEqual([index, b]);
     }
   });
@@ -831,7 +837,7 @@ describe("claim: a writer that records after writing", () => {
     await history.flush();
     await window.close();
     for (const expected of ["D", "C", "B", "A"]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect(read("index.html")).toBe(expected);
     }
   });
@@ -857,7 +863,7 @@ describe("claim: a writer that records after writing", () => {
       "Dragged Title",
     ]);
     for (const expected of ["C", "B", "A"]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect(read("index.html")).toBe(expected);
     }
   });
@@ -879,7 +885,7 @@ describe("claim: a writer that records after writing", () => {
     await drag("C");
     await history.flush();
     for (const expected of ["C", "B", "A"]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect(read("index.html")).toBe(expected);
     }
   });
@@ -906,7 +912,7 @@ describe("claim: a writer that records after writing", () => {
       ["B", "1"],
       ["A", "1"],
     ]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect([read("index.html"), read("r.js")]).toEqual(expected);
     }
   });
@@ -934,7 +940,7 @@ describe("claim: a writer that records after writing", () => {
       ["B", "1"],
       ["A", "1"],
     ]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect([read("index.html"), read("r.js")]).toEqual(expected);
     }
   });
@@ -954,11 +960,11 @@ describe("claim: a writer that records after writing", () => {
     write("index.html", "Y");
     await claim("X");
     await history.flush();
-    await history.step("back", you);
+    await undoNewest(history);
     expect(read("index.html")).toBe("X");
-    await history.step("back", you);
+    await undoNewest(history);
     expect(has("index.html")).toBe(false);
-    await history.step("back", you);
+    await undoNewest(history);
     expect(read("index.html")).toBe("A");
   });
 
@@ -1018,9 +1024,8 @@ describe("claim: a writer that records after writing", () => {
       "Dragged Title",
       "Agent turn",
     ]);
-    expect(history.next("back")?.label, "the button names the step Cmd+Z takes").toBe("Agent turn");
     for (const expected of ["C", "B", "A"]) {
-      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(await undoNewest(history)).toMatchObject({ ok: true });
       expect(read("index.html")).toBe(expected);
     }
   });
@@ -1103,6 +1108,131 @@ describe("claim: a writer that records after writing", () => {
       "Dragged Title",
       "Changed outside the app",
       "Dragged Title",
+    ]);
+  });
+
+  it("Cmd+Z during an agent turn reverts the person's last edit, names it, and leaves the agent's writes", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "r.js": "1" });
+    write("index.html", "B");
+    await history.claim(you, "Moved Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("A") },
+    });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("r.js", "2");
+
+    expect(history.next("back", you)?.label).toBe("Moved Title");
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect([read("index.html"), read("r.js")]).toEqual(["A", "2"]);
+    await window.close();
+    expect(history.next("back", you)).toBeUndefined();
+  });
+
+  it("Cmd+Z names a held drag and reverts it", async () => {
+    const { history, write, read } = await project({ "index.html": "A" });
+    write("index.html", "B");
+    await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+      idleMs: 60_000,
+      overwrote: { "index.html": fileContentVersion("A") },
+    });
+
+    expect(history.next("back", you)?.label).toBe("Dragged Title");
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("Cmd+Z names an outside edit still pending and reverts it before the person's own", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "r.js": "1" });
+    write("index.html", "B");
+    await history.claim(you, "Moved Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("A") },
+    });
+    write("r.js", "2");
+    history.noteChange("r.js");
+
+    await vi.waitFor(() =>
+      expect(history.next("back", you)?.label).toBe("Changed outside the app"),
+    );
+    expect(await history.step("back", you)).toMatchObject({
+      entry: { label: "Undid: Changed outside the app" },
+    });
+    expect([read("index.html"), read("r.js")]).toEqual(["B", "1"]);
+  });
+
+  it("undoes a turn's parts last first and keeps the person's edit between them", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "b.js": "1" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    write("b.js", "2");
+    await history.claim(you, "scan", []);
+    write("index.html", "C");
+    await history.claim(you, "Moved Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("B") },
+    });
+    write("index.html", "D");
+    await window.close();
+    const [first, , last] = history.list();
+    const keep = { who: agent, mode: "keep-later-edits" } as const;
+
+    expect(await history.undo(last!.id, keep)).toMatchObject({ ok: true });
+    expect(await history.undo(first!.id, keep)).toMatchObject({ ok: true });
+    expect([read("index.html"), read("b.js")]).toEqual(["C", "1"]);
+    expect(await history.undo(first!.id, keep)).toEqual({ ok: true, entry: null });
+  });
+
+  it("a window opening ends a held drag even when nothing else was written", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    const drag = (overwrote: string) =>
+      history.claim(you, "Dragged Title", ["index.html"], {
+        coalesceKey: "drag",
+        idleMs: 60_000,
+        overwrote: { "index.html": fileContentVersion(overwrote) },
+      });
+    write("index.html", "B");
+    await drag("A");
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "C");
+    await drag("B");
+    await window.close();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Dragged Title", "Dragged Title"]);
+  });
+
+  it("a drag held inside an agent turn ends when the agent writes another file", async () => {
+    const { history, write } = await project({ "index.html": "A", "other.js": "1" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    const drag = (overwrote: string) =>
+      history.claim(you, "Dragged Title", ["index.html"], {
+        coalesceKey: "drag",
+        idleMs: 60_000,
+        overwrote: { "index.html": fileContentVersion(overwrote) },
+      });
+    write("index.html", "B");
+    await drag("A");
+    write("other.js", "2");
+    write("index.html", "C");
+    await drag("B");
+    await window.close();
+    expect(history.list().map((entry) => entry.label)).toEqual([
+      "Dragged Title",
+      "Agent turn",
+      "Dragged Title",
+    ]);
+  });
+
+  it("an outside write logs after a drag held before it, however long it waits", async () => {
+    const { history, write } = await project({ "index.html": "A", "r.js": "1" }, { quietMs: 20 });
+    write("index.html", "B");
+    await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+      idleMs: 60_000,
+      overwrote: { "index.html": fileContentVersion("A") },
+    });
+    write("r.js", "2");
+    history.noteChange("r.js");
+    await vi.waitFor(() => expect(history.list()).toHaveLength(2));
+    expect(history.list().map((entry) => entry.label)).toEqual([
+      "Dragged Title",
+      "Changed outside the app",
     ]);
   });
 

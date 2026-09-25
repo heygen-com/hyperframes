@@ -77,6 +77,9 @@ export interface ClosedWindow {
 
 export const MAX_WINDOW_IDLE_MS = 10 * 60_000;
 
+export const UNDO_MODES = ["just-this", "back-to-before", "keep-later-edits"] as const;
+export type UndoMode = (typeof UNDO_MODES)[number];
+
 export interface HistoryListItem extends HistoryEntry {
   pinned: boolean;
   undone: boolean;
@@ -96,8 +99,8 @@ export interface HistoryWindow {
 
 export interface ProjectHistory {
   readonly projectId: string;
-  /** Writes until close() are one entry with the window's id; a claim cutting a file out commits that file's part
-   * first (fresh id), returned by close() if nothing else remained. Idle windows end; overlaps go to the newest. */
+  /** Writes until close() are one entry with the window's id; another writer or an operation meanwhile commits the
+   * part so far first (fresh id), returned by close() if nothing else remained. Overlaps go to the newest. */
   beginWindow(
     who: HistoryWho,
     label: string,
@@ -106,7 +109,7 @@ export interface ProjectHistory {
   /**
    * For a writer that records after writing (Studio): moves the uncommitted changes to `paths` into one entry of
    * `who`'s, each cut at the `overwrote` version so earlier parts stay their writer's. Same-key claims merge until
-   * another key, `idleMs` idle, an operation, or a window opening or closing. Null when nothing was claimed.
+   * another key, idle, an operation, a window opening or closing, or another write. Null when a drag nets to nothing.
    */
   claim(
     who: HistoryWho,
@@ -117,15 +120,12 @@ export interface ProjectHistory {
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
   list(): HistoryListItem[];
-  /** Cmd+Z (back) and Cmd+Shift+Z (forward), whoever made the change; `writeToken` labels the writes' echo. */
+  /** Cmd+Z (back) and Cmd+Shift+Z (forward) over `who`'s own and outside changes; `writeToken` labels the echo. */
   step(direction: "back" | "forward", who: HistoryWho, options?: Writing): Promise<HistoryResult>;
-  /** The entry the next step reverts, as of the last scan (a step scans first). */
-  next(direction: "back" | "forward"): HistoryEntry | undefined;
+  /** The entry `who`'s next step reverts, pending changes included, as of the last scan (a step scans first). */
+  next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined;
   /** A conflict (a file changed since) returns the choice; pass `mode` to take one. */
-  undo(
-    id: string,
-    options: { who: HistoryWho; mode?: "just-this" | "back-to-before" } & Writing,
-  ): Promise<HistoryResult>;
+  undo(id: string, options: { who: HistoryWho; mode?: UndoMode } & Writing): Promise<HistoryResult>;
   /** Makes the files equal what they were right after `point` (an entry id, or START). */
   restore(point: string, who: HistoryWho, options?: Writing): Promise<HistoryEntry | null>;
   /** The files at `point` without writing anything: path to hash, read through readBlob. */
@@ -497,6 +497,7 @@ class Engine {
   }
 
   async commitOutside(): Promise<void> {
+    if (this.outside?.changes.size) await this.commitClaim();
     clearTimeout(this.quietTimer);
     clearTimeout(this.maxTimer);
     const group = this.outside;
@@ -654,14 +655,12 @@ class Engine {
     return `Redid: ${original?.label ?? entry.label}`;
   }
 
-  async undoNow(
-    id: string,
-    who: HistoryWho,
-    mode?: "just-this" | "back-to-before",
-  ): Promise<HistoryResult> {
+  async undoNow(id: string, who: HistoryWho, mode?: UndoMode): Promise<HistoryResult> {
     const entry = this.entry(id);
     const changed = this.movedOn(entry);
     if (changed.length && !mode) return { ok: false, conflict: this.conflict(entry, changed) };
+    const kept =
+      mode === "keep-later-edits" ? new Set(changed.map((file) => file.path)) : new Set();
     if (mode === "back-to-before") {
       const index = this.log.entries.indexOf(entry);
       const point = index > 0 ? this.log.entries[index - 1]!.id : START;
@@ -670,7 +669,9 @@ class Engine {
         entry: await this.restoreNow(point, who, `Went back to before: ${entry.label}`),
       };
     }
-    const target = new Map(entry.files.map((file) => [file.path, file.before]));
+    const target = new Map(
+      entry.files.filter((file) => !kept.has(file.path)).map((file) => [file.path, file.before]),
+    );
     return {
       ok: true,
       entry: await this.writeAs(who, this.undoLabel(entry), target, { undoes: id }),
@@ -681,18 +682,21 @@ class Engine {
     return entry.files.filter((file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after);
   }
 
-  /** Back reverts the newest change in effect, unless its files moved on under an earlier-ending edit: then that
-   * edit, if it still applies. */
-  next(direction: "back" | "forward"): HistoryEntry | undefined {
-    const top = stepTarget(this.log.entries, direction);
-    const moved = new Set(top && direction === "back" ? this.movedOn(top).map((f) => f.path) : []);
-    if (!top || !moved.size) return top;
-    const undone = undoneIds(this.log.entries);
-    const under = this.log.entries
-      .slice(0, this.log.entries.indexOf(top))
-      .reverse()
-      .find((e) => !e.undoes && !undone.has(e.id) && e.files.some((f) => moved.has(f.path)));
-    return under && !this.movedOn(under).length ? under : top;
+  next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined {
+    // An outside change has no known author, so it is everyone's; a step commits it after the held claim.
+    const mine = (author: HistoryWho) => sameWho(author, who) || sameWho(author, OUTSIDE);
+    const pending = [this.outside, this.claimed?.group].find(
+      (group) => group?.changes.size && mine(group.who),
+    );
+    if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
+    return stepTarget(this.log.entries, direction, (entry) => mine(entry.who));
+  }
+
+  /** A pending group as the entry it becomes once committed. */
+  pendingEntry(group: Group): HistoryEntry {
+    const files = [...group.changes.values()].sort((a, b) => a.path.localeCompare(b.path));
+    const { id, who, label, startedAt, lastWriteAt } = group;
+    return { id, who, label, startedAt, endedAt: lastWriteAt ?? this.now(), files };
   }
 
   conflict(
@@ -750,7 +754,7 @@ class Engine {
       },
       step: (direction, who, { writeToken } = {}) =>
         this.operation(writeToken, async () => {
-          const target = this.next(direction);
+          const target = this.next(direction, who);
           return target ? this.undoNow(target.id, who) : { ok: true, entry: null };
         }),
       undo: (id, { who, mode, writeToken }) =>
@@ -780,7 +784,7 @@ class Engine {
             throw error;
           }
         }),
-      next: (direction) => this.next(direction),
+      next: (direction, who) => this.next(direction, who),
       readBlob: (hash) => this.blobs.read(hash),
       pin: (id, pinned) => {
         this.entry(id);
