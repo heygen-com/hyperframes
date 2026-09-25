@@ -142,7 +142,7 @@ class HyperframesPlayer extends HTMLElement {
   private _runtimeData = new Map<string, unknown>();
   private _runtimeDataRequestId = 0;
   private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
-  private _queuedEvents: Array<Event | (() => void)> | null = null;
+  private _afterUpdate: Array<() => void> | null = null;
 
   constructor() {
     super();
@@ -1191,32 +1191,31 @@ class HyperframesPlayer extends HTMLElement {
     this._emit(new CustomEvent("resize", { detail }));
   }
 
-  /** Runs one update (a runtime message, a probe result), then fires the events it raised,
+  /** Runs one update (a runtime message, a probe result), then the events and actions it raised,
    *  so every listener sees the whole update applied. */
   private _applyThenEmit(apply: () => void): void {
     // A nested update joins the outer one's queue.
-    if (this._queuedEvents) {
+    if (this._afterUpdate) {
       apply();
       return;
     }
-    const queue: Array<Event | (() => void)> = [];
-    this._queuedEvents = queue;
+    const queue: Array<() => void> = [];
+    this._afterUpdate = queue;
     try {
       apply();
     } finally {
-      // Still open while flushing: an event a listener raises goes behind the rest.
-      for (let i = 0; i < queue.length; i++) {
-        const item = queue[i]!;
-        if (item instanceof Event) this.dispatchEvent(item);
-        else item();
+      // Still open while flushing: whatever a listener raises goes behind the rest.
+      try {
+        for (const action of queue) action();
+      } finally {
+        this._afterUpdate = null;
       }
-      this._queuedEvents = null;
     }
   }
 
   /** Runs `action` once the current update's events have fired (at once outside an update). */
   private _afterEvents(action: () => void): void {
-    if (this._queuedEvents) this._queuedEvents.push(action);
+    if (this._afterUpdate) this._afterUpdate.push(action);
     else action();
   }
 
@@ -1229,8 +1228,7 @@ class HyperframesPlayer extends HTMLElement {
 
   /** Every event the player raises goes through here, so an update's events keep their order. */
   private _emit(event: Event): void {
-    if (this._queuedEvents) this._queuedEvents.push(event);
-    else this.dispatchEvent(event);
+    this._afterEvents(() => this.dispatchEvent(event));
   }
 
   private _rescale() {

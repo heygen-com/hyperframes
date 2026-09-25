@@ -5,7 +5,7 @@ import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 // new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
 // shape; routing through a named helper keeps the per-test bodies focused on
 // the actual assertion.
-function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document): void {
+function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document | null): void {
   Object.defineProperty(iframe, "contentDocument", {
     configurable: true,
     get: () => doc,
@@ -1484,6 +1484,21 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(player._paused).toBe(false);
   });
 
+  it("keeps playing when an ended listener calls play", () => {
+    player._duration = 4;
+    player._paused = false;
+    player.addEventListener("ended", () => player.play(), { once: true });
+
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "state", frame: 120, isPlaying: false },
+      }),
+    );
+
+    expect(player._paused).toBe(false);
+  });
+
   it("clamps _currentTime to _duration when a state message reports a frame past the end", () => {
     // Regression test: the postMessage state path previously set _currentTime
     // without clamping, while the direct timeline path already clamped. A frame
@@ -2041,6 +2056,9 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     compositionHeight: number;
     scenes: Array<{ id: string; start: number; duration: number }>;
     iframe: HTMLIFrameElement;
+    play: () => void;
+    pause: () => void;
+    seek: (t: number) => void;
     _onMessage: (event: MessageEvent) => void;
     _onProbeReady: (r: {
       duration: number;
@@ -2338,10 +2356,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
   });
 
   it("keeps ready ahead of the events it causes on an opaque-origin timeline", () => {
-    Object.defineProperty(player.iframe, "contentDocument", {
-      configurable: true,
-      get: () => null,
-    });
+    stubIframeContentDocument(player.iframe, null);
     player.setAttribute("autoplay", "");
     const seen: string[] = [];
     for (const type of ["ready", "assetsready", "play"]) {
@@ -2354,39 +2369,25 @@ describe("HyperframesPlayer runtime ready handshake", () => {
   });
 
   it("fires an event a ready listener raises after the rest of the update", () => {
-    Object.defineProperty(player.iframe, "contentDocument", {
-      configurable: true,
-      get: () => null,
-    });
+    stubIframeContentDocument(player.iframe, null);
     player.setAttribute("autoplay", "");
     const seen: string[] = [];
     for (const type of ["ready", "assetsready", "play", "pause"]) {
       player.addEventListener(type, () => seen.push(type));
     }
-    player.addEventListener("ready", () => (player as unknown as { pause: () => void }).pause(), {
-      once: true,
-    });
+    player.addEventListener("ready", () => player.pause(), { once: true });
 
     player._onMessage(timelineMessage(120));
 
-    // Autoplay is decided after `ready`'s listeners, as it was before events were queued.
+    // Autoplay is decided after `ready`'s listeners.
     expect(seen).toEqual(["ready", "assetsready", "pause", "play"]);
     expect(player.paused).toBe(false);
   });
 
   it("keeps autoplay when a ready listener seeks", () => {
-    Object.defineProperty(player.iframe, "contentDocument", {
-      configurable: true,
-      get: () => null,
-    });
+    stubIframeContentDocument(player.iframe, null);
     player.setAttribute("autoplay", "");
-    player.addEventListener(
-      "ready",
-      () => (player as unknown as { seek: (t: number) => void }).seek(1),
-      {
-        once: true,
-      },
-    );
+    player.addEventListener("ready", () => player.seek(1), { once: true });
 
     player._onMessage(timelineMessage(120));
 
@@ -2404,6 +2405,23 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     player._onMessage(timelineMessage(120));
 
     expect(seen).toEqual(["ready d=4", "scenes d=6", "durationchange d=6", "scenes d=6"]);
+  });
+
+  it("keeps raising events after an action throws inside an update", () => {
+    stubIframeContentDocument(player.iframe, null);
+    player.setAttribute("autoplay", "");
+    vi.spyOn(player, "play").mockImplementationOnce(() => {
+      throw new Error("play failed");
+    });
+    expect(() => player._onMessage(timelineMessage(120))).toThrow("play failed");
+    const durations: number[] = [];
+    player.addEventListener("durationchange", (event) => {
+      durations.push((event as CustomEvent<{ duration: number }>).detail.duration);
+    });
+
+    player._onMessage(timelineMessage(180));
+
+    expect(durations).toEqual([6]);
   });
 
   it("fires the probe path's resize only once ready is set", () => {
@@ -3164,6 +3182,26 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player._ready).toBe(true);
     expect(player._pendingPlay).toBe(false);
     expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
+  it("drops a queued play when an assetsready listener pauses", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    player.play();
+    const seen: string[] = [];
+    for (const type of ["assetsready", "play", "pause"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+    player.addEventListener("assetsready", () => player.pause(), { once: true });
+
+    post(player, { type: "assets-ready", timedOut: false });
+
+    expect(seen).toEqual(["assetsready", "pause"]);
+    expect(player._paused).toBe(true);
 
     player.remove();
   });
