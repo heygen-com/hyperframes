@@ -15,6 +15,7 @@ describe("browserTelemetryAllowed", () => {
 
   beforeEach(async () => {
     localStorage.clear();
+    delete window.__HF_CLI_TELEMETRY_DISABLED;
     vi.resetModules();
     // vitest sets import.meta.env.DEV; the policy suppresses under it, so the
     // baseline has to be an explicitly production-like env.
@@ -26,6 +27,15 @@ describe("browserTelemetryAllowed", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("refuses a CLI opt-out even when browser storage permits telemetry", () => {
+    expect(browserTelemetryAllowed()).toBe(true);
+    window.__HF_CLI_TELEMETRY_DISABLED = true;
+    expect(browserTelemetryAllowed()).toBe(false);
+    expect(localStorage.getItem(DOCUMENTED_OPT_OUT)).toBeNull();
+    window.__HF_CLI_TELEMETRY_DISABLED = false;
+    expect(browserTelemetryAllowed()).toBe(true);
   });
 
   it("allows telemetry with no control set", () => {

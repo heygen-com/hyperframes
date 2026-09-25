@@ -133,6 +133,8 @@ jobs:
           echo "Mode:  ${{ matrix.mode }}"
           echo "Args:  ${{ matrix.args }}"
           docker run --rm \
+            -e HYPERFRAMES_NO_TELEMETRY=1 \
+            -e DO_NOT_TRACK=1 \
             --security-opt seccomp=unconfined \
             --shm-size=4g \
             -v ${{ github.workspace }}/packages/producer/tests:/app/packages/producer/tests \

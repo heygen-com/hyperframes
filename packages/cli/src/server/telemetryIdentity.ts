@@ -130,6 +130,7 @@ function resolveCliCanaryDecisions(): Record<string, CliCanaryDecision> | null {
 export function buildCliIdentityScript(options: { includeIdentity?: boolean } = {}): string {
   const { includeIdentity = true } = options;
   const parts: string[] = [];
+  parts.push(`window.__HF_CLI_TELEMETRY_DISABLED=${!telemetryShouldTrack()};`);
 
   // Identity is the only part gated on a trusted Host. The decisions map below
   // is not identifying, and withholding it would push a LAN/remote Studio
