@@ -2101,8 +2101,9 @@ describe("HyperframesPlayer runtime ready handshake", () => {
   });
 
   it("replays low-power-idle as a slow idle heartbeat, and a normal one without it", () => {
+    postSpy.mockClear();
     player._onMessage(readyMessage());
-    expect(findControlCalls("set-idle-heartbeat").at(-1)?.[0]).toMatchObject({ slow: false });
+    expect(findControlCalls("set-idle-heartbeat")[0]?.[0]).toMatchObject({ slow: false });
 
     player.setAttribute("low-power-idle", "");
     postSpy.mockClear();

@@ -3436,7 +3436,6 @@ export function initSandboxRuntimeModular(): void {
   let pausedSeekDeferredByManualGesture = false;
   // Set while the transport is parked (see scheduleNextTransportFrame).
   let transportParkTimerId: number | null = null;
-  // An embedder showing many paused players at once (a catalog grid) asks for a slow heartbeat.
   let slowIdleHeartbeat = false;
   let transportWakeRequested = false;
   let parkedPollWitness = "";

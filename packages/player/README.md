@@ -68,7 +68,7 @@ Show a static image before playback starts:
 | `shader-capture-scale` | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`) |
 | `shader-loading`       | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
 | `assets-loading-ui`    | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
-| `low-power-idle`       | boolean                         | false         | While paused, check in with the composition once a second instead of every 80 ms; for pages showing many paused players |
+| `low-power-idle`       | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
 
 ### Shader transition previews
 

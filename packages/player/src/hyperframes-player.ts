@@ -44,7 +44,7 @@ const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
 // "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
 const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
-// For pages showing many paused players: the paused runtime checks in once a second, not every 80 ms.
+// For pages showing many paused players: the paused runtime checks in once a second.
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
 // paint-and-idle now always has a frame to wait on, so the overlay would
 // flash on every single Play without this debounce. ponytail: 150ms is
