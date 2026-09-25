@@ -183,7 +183,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
 
   function nthOfType(el: Element, parent: Element): string {
     const index = [...parent.children].filter((child) => child.tagName === el.tagName).indexOf(el);
-    return `${el.tagName.toLowerCase()}:nth-of-type(${index + 1})`;
+    return `${el.localName}:nth-of-type(${index + 1})`;
   }
 
   function ownSelector(el: Element): string {
@@ -200,7 +200,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (compositionSrc) return `[data-composition-src="${CSS.escape(compositionSrc)}"]`;
     const track = el.getAttribute("data-track-index");
     if (track) return `[data-track-index="${CSS.escape(track)}"]`;
-    const tag = el.tagName.toLowerCase();
+    const tag = el.localName;
     const parent = el.parentElement;
     if (!parent) return tag;
     const siblings = parent.querySelectorAll(`:scope > ${tag}`);

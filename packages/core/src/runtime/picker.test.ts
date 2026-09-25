@@ -248,6 +248,22 @@ describe("createPickerModule", () => {
       expect(selectorOf(document.getElementById("t")!)).toBe("#t");
     });
 
+    it("names an element under an SVG foreignObject by a selector that finds it", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<svg><foreignObject><span>a</span></foreignObject></svg>
+        <svg><foreignObject><span>b</span></foreignObject></svg>`;
+      const target = document.querySelectorAll("span")[1]!;
+      const restore = emulateHitTest(() => [target]);
+      try {
+        const selector = (window as any).__HF_PICKER_API.pickAtPoint(10, 10)?.selector as string;
+        expect(selector).toContain("foreignObject");
+        expect([...document.querySelectorAll(selector)]).toEqual([target]);
+      } finally {
+        restore();
+      }
+    });
+
     it("adopts the override only for the hit test, leaving the DOM and a saved outerHTML untouched", () => {
       const adopted: CSSStyleSheet[] = [];
       Object.defineProperty(document, "adoptedStyleSheets", {
