@@ -151,28 +151,33 @@ function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache): void 
   }
 }
 
+function variableSrcFor(el: Element, cache: ScopeValuesCache): string | null {
+  const id = el.getAttribute("data-var-src")?.trim();
+  if (!id) return null;
+  // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
+  // src on <iframe>/<script>/<embed> is a code-execution sink, not a media ref.
+  if (!VAR_SRC_TAGS.has(el.tagName.toLowerCase())) {
+    console.warn(
+      `[hyperframes] Ignoring data-var-src on <${el.tagName.toLowerCase()}>: variable-bound src is only allowed on ${Array.from(VAR_SRC_TAGS).join("/")}.`,
+    );
+    return null;
+  }
+  const url = resolveUrl(valuesForElement(el, cache)[id]);
+  if (url === null) return null;
+  if (!isSafeMediaUrl(url)) {
+    console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
+    return null;
+  }
+  return url;
+}
+
 export function applyVariableBindings(doc: Document): void {
   const cache: ScopeValuesCache = new Map();
   applyCssCustomProperties(doc, cache);
 
   for (const el of Array.from(doc.querySelectorAll("[data-var-src]"))) {
-    const id = el.getAttribute("data-var-src")?.trim();
-    if (!id) continue;
-    // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
-    // src on <iframe>/<script>/<embed> is a code-execution sink, not a media ref.
-    if (!VAR_SRC_TAGS.has(el.tagName.toLowerCase())) {
-      console.warn(
-        `[hyperframes] Ignoring data-var-src on <${el.tagName.toLowerCase()}>: variable-bound src is only allowed on ${Array.from(VAR_SRC_TAGS).join("/")}.`,
-      );
-      continue;
-    }
-    const url = resolveUrl(valuesForElement(el, cache)[id]);
-    if (url === null) continue;
-    if (!isSafeMediaUrl(url)) {
-      console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
-      continue;
-    }
-    el.setAttribute("src", url);
+    const url = variableSrcFor(el, cache);
+    if (url !== null && el.getAttribute("src") !== url) el.setAttribute("src", url);
   }
 
   for (const el of Array.from(doc.querySelectorAll("[data-var-text]"))) {

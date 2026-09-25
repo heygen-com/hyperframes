@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { resetRuntimeDataForTests } from "./runtimeData";
+import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
+
+vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
+  return { ...actual, probeAndCacheElementVolume: vi.fn(actual.probeAndCacheElementVolume) };
+});
 
 type Tl = RuntimeTimelineLike & { kill: ReturnType<typeof vi.fn>; label: string };
 
@@ -161,6 +167,7 @@ describe("__hfSwapScenes", () => {
     expect(children).toContainEqual({ child: made.a2, at: 1 });
     expect(children.map((c) => c.child)).not.toContain(made.a1);
     expect(window.__player?.getTime()).toBe(2);
+    expect(made.a2!.time()).toBe(1);
     const meta =
       document.querySelector('meta[name="hf-scene-parts"]')?.getAttribute("content") ?? "";
     expect(JSON.parse(meta).scenes.a).toBe("ha2");
@@ -218,13 +225,14 @@ describe("__hfSwapScenes", () => {
     const { root } = trackingRoot();
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
-    const video = (tag: string) => ({ ...A1, body: `<video>${tag}</video>` });
-    boot([video('<source src="https://example.com/a.mp4">'), B], root);
+    const video = (text: string) => ({
+      ...A1,
+      body: `<video><source src="https://example.com/a.mp4"></video><p>${text}</p>`,
+    });
+    boot([video("one"), B], root);
     await tick();
     const old = document.querySelector("video")!;
-    await window.__hfSwapScenes!(
-      preview([{ ...video('<source src="https://example.com/b.mp4">'), hash: "hv2" }, B]).html,
-    );
+    await window.__hfSwapScenes!(preview([{ ...video("two"), hash: "hv2" }, B]).html);
     expect(document.querySelector("video")).not.toBe(old);
     expect(old.querySelector("source")).toBeNull();
     expect(load).toHaveBeenCalled();
@@ -251,11 +259,17 @@ describe("__hfSwapScenes", () => {
     delete (window as unknown as { gsap?: unknown }).gsap;
   });
 
-  it("rewinds a swapped caption scene's timeline so the redraw renders its rewritten colours", async () => {
+  it("rewinds a swapped caption scene's timeline before rewriting its colour tweens", async () => {
     const { root } = trackingRoot();
-    (window as unknown as { gsap: unknown }).gsap = { set: () => {}, getTweensOf: () => [] };
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      async () => new Response("null", { status: 404 }),
+    const order: string[] = [];
+    const tween = {
+      vars: { color: "#dim" },
+      startTime: () => 0,
+      invalidate: () => void order.push("rewrite"),
+    };
+    (window as unknown as { gsap: unknown }).gsap = { set: () => {}, getTweensOf: () => [tween] };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json([{ wordIndex: 0, dimColor: "#111", activeColor: "#eee" }]),
     );
     const captions = (label: string, hash: string): Scene => ({
       ...B,
@@ -264,13 +278,63 @@ describe("__hfSwapScenes", () => {
       body: '<div class="caption-group"><span>w</span></div>',
     });
     boot([A1, captions("b", "hb")], root);
-    await tick();
-    // The new scene's timeline has already rendered at its end, as the playhead is past it.
+    for (let i = 0; i < 5; i++) await tick();
+    order.length = 0;
+    // The playhead is past the scene, so its new timeline has already rendered at its end.
     made.n1!.totalTime(2);
-    const rewinds = vi.spyOn(made.n1!, "totalTime");
+    const rewind = made.n1!.totalTime.bind(made.n1);
+    made.n1!.totalTime = ((t?: number) => (
+      t === 0 && order.push("rewind"), rewind(t)
+    )) as Tl["totalTime"];
     await window.__hfSwapScenes!(preview([A1, captions("n1", "hb2")]).html);
-    expect(rewinds).toHaveBeenCalledWith(0, true);
+    expect(order.slice(0, 2)).toEqual(["rewind", "rewrite"]);
     delete (window as unknown as { gsap?: unknown }).gsap;
+  });
+
+  it("refuses a swap that brings in media or images the preview has not loaded", async () => {
+    const { root } = trackingRoot();
+    boot([A1, B], root);
+    await tick();
+    const withImage = { ...A2, body: '<img src="new.png">' };
+    await expect(window.__hfSwapScenes!(preview([withImage, B]).html)).rejects.toThrow(
+      "it loads media the preview has not loaded",
+    );
+    const withBackground = { ...A2, css: ".a{background:url(new.png)}" };
+    await expect(window.__hfSwapScenes!(preview([withBackground, B]).html)).rejects.toThrow(
+      "it loads media the preview has not loaded",
+    );
+    expect(document.querySelector('[data-hf-scene="a"]:not(style):not(script)')?.textContent).toBe(
+      "A one",
+    );
+  });
+
+  it("probes the swapped scene's media for volume once the scene is in the root timeline", async () => {
+    const { root, children } = trackingRoot();
+    const withAudio = (s: Scene, text: string): Scene => ({
+      ...s,
+      body: `<p>${text}</p><audio src="music.mp3" data-start="1" data-duration="2"></audio>`,
+    });
+    boot([withAudio(A1, "A one"), B], root);
+    await tick();
+    const probe = vi.mocked(probeAndCacheElementVolume);
+    probe.mockClear();
+    const nestedWhenProbed: boolean[] = [];
+    probe.mockImplementation((el) => {
+      if (el.isConnected) nestedWhenProbed.push(children.some((c) => c.child === made.a2));
+    });
+    await window.__hfSwapScenes!(preview([withAudio(A2, "A two"), B]).html);
+    expect(nestedWhenProbed).toContain(true);
+    probe.mockReset();
+  });
+
+  it("re-applies a moved element's position edit after the swap", async () => {
+    const { root } = trackingRoot();
+    boot([A1, B], root);
+    await tick();
+    const moved = { ...A2, body: '<p data-x="30" data-hf-edit-base-x="0">A two</p>' };
+    await window.__hfSwapScenes!(preview([moved, B]).html);
+    const p = document.querySelector('[data-hf-scene="a"]:not(style):not(script) p') as HTMLElement;
+    expect(p.style.translate).toContain("30");
   });
 
   it("rejects a scene the bundler marked as not swappable, naming why", async () => {

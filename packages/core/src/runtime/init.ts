@@ -3040,12 +3040,11 @@ export function initSandboxRuntimeModular(): void {
   );
 
   // Passes that must see scene DOM, which arrives after init: when scenes mount, or when one is
-  // swapped. Resolves when caption overrides (all, or only those inside `captionsIn`) have landed.
-  const settleSceneDom = (captionsIn?: readonly Element[]): Promise<void> => {
+  // swapped. Resolves when caption overrides have landed.
+  const settleSceneDom = (): Promise<void> => {
     bindMediaMetadataListeners();
     installAssetFailureDiagnostics();
-    const captionsApplied =
-      captionsIn?.length === 0 ? Promise.resolve() : applyCaptionOverrides(captionsIn);
+    const captionsApplied = applyCaptionOverrides();
     // Per-instance scoped values: data-var-* / --{id} bindings inside scenes. Idempotent.
     applyVariableBindings(document);
     // An unregistered vfx chain paints nothing and logs nothing, so re-scan the new DOM.
@@ -3085,8 +3084,26 @@ export function initSandboxRuntimeModular(): void {
     void applyCaptionOverrides();
   }
 
-  // Swap edited scenes in place from a rebuilt preview document. Rejects, changing nothing, unless
-  // the documents differ only inside existing scenes (their manifests say so); the caller reloads.
+  const sceneUrls = (parts: Element[]): Set<string> => {
+    const urls = new Set<string>();
+    const addCssUrls = (css: string | null) => {
+      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/g)) urls.add(m[2]!);
+    };
+    for (const part of parts) {
+      if (part.tagName === "STYLE") addCssUrls(part.textContent);
+      if (part.tagName === "STYLE" || part.tagName === "SCRIPT") continue;
+      for (const el of [part, ...part.querySelectorAll("*")]) {
+        for (const attr of ["src", "poster", "srcset"]) {
+          const value = el.getAttribute(attr);
+          if (value) urls.add(value);
+        }
+        addCssUrls(el.getAttribute("style"));
+      }
+    }
+    return urls;
+  };
+  // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
+  // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
   const swapScenes = async (html: string): Promise<void> => {
     const next = new DOMParser().parseFromString(html, "text/html");
     const liveParts = readSceneParts(document);
@@ -3123,6 +3140,12 @@ export function initSandboxRuntimeModular(): void {
       const refusal =
         oldHost.getAttribute(SCENE_NO_SWAP_ATTR) ?? newHost.getAttribute(SCENE_NO_SWAP_ATTR);
       if (refusal !== null) throw new Error(`scene ${name} cannot be swapped: ${refusal}`);
+      const loaded = sceneUrls(oldParts);
+      if ([...sceneUrls(newParts)].some((url) => !loaded.has(url))) {
+        throw new Error(
+          `scene ${name} cannot be swapped: it loads media the preview has not loaded`,
+        );
+      }
       return { oldParts, newParts, oldHost, newHost };
     });
     const timelines = (window.__timelines ??= {}) as Record<
@@ -3134,6 +3157,7 @@ export function initSandboxRuntimeModular(): void {
       | null;
     // Overrides re-dim every word they touch, so only the swapped scenes' captions get them.
     const captionHosts: Element[] = [];
+    const swappedHosts: Element[] = [];
     for (const { oldParts, newParts, oldHost, newHost } of swaps) {
       for (const el of [oldHost, ...oldHost.querySelectorAll("[data-composition-id]")]) {
         const id = el.getAttribute("data-composition-id");
@@ -3153,6 +3177,7 @@ export function initSandboxRuntimeModular(): void {
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
       oldHost.replaceWith(host);
+      swappedHosts.push(host);
       if (host.querySelector(".caption-group")) captionHosts.push(host);
       for (const el of newParts) {
         if (el.tagName !== "SCRIPT") continue;
@@ -3166,18 +3191,33 @@ export function initSandboxRuntimeModular(): void {
     document
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
       ?.setAttribute("content", JSON.stringify(nextParts));
-    await settleSceneDom(captionHosts);
+    bindMediaMetadataListeners();
+    // Rewound before the rewrite, so each rewritten tween re-reads its start from the reset word.
+    const rewindCaptionTimelines = () => {
+      for (const host of captionHosts) {
+        for (const el of [host, ...host.querySelectorAll("[data-composition-id]")]) {
+          const id = el.getAttribute("data-composition-id");
+          if (id) timelines[id]?.totalTime?.(0, true);
+        }
+      }
+    };
+    const captionsApplied = captionHosts.length
+      ? applyCaptionOverrides(captionHosts, rewindCaptionTimelines)
+      : Promise.resolve();
+    applyVariableBindings(document);
+    initVfx(document.body, state.canonicalFps);
+    await captionsApplied;
     if (state.tornDown) throw new Error("the preview was torn down during the swap");
     releaseDetachedMedia();
-    // The redraw seek never re-renders a timeline already at its end, so rewritten caption tweens would not show.
-    for (const host of captionHosts) {
-      for (const el of [host, ...host.querySelectorAll("[data-composition-id]")]) {
-        const id = el.getAttribute("data-composition-id");
-        if (id) timelines[id]?.totalTime?.(0, true);
-      }
-    }
     childrenBound = false;
     bindRootTimelineIfAvailable();
+    // Probed before the scene was nested, so the new media found no volume envelope.
+    for (const host of swappedHosts) {
+      for (const el of host.querySelectorAll<HTMLMediaElement>("video, audio")) {
+        volumeKeyframeCache.delete(el);
+        probeAndCacheVolumeKeyframes(el);
+      }
+    }
     const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (duration > 0) clock.setDuration(duration);
     // Adapters drive only the elements they found at discover time; the new scene's are new.

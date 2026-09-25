@@ -114,7 +114,10 @@ function getOrCreateCaptionWrapper(el: HTMLElement): HTMLElement {
   return wrapper;
 }
 
-export function applyCaptionOverrides(within?: readonly Element[]): Promise<void> {
+export function applyCaptionOverrides(
+  within?: readonly Element[],
+  beforeRewrite: () => void = () => {},
+): Promise<void> {
   const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
   if (!gsap) return Promise.resolve();
 
@@ -130,6 +133,7 @@ export function applyCaptionOverrides(within?: readonly Element[]): Promise<void
       if (data === null) return;
       const overrides = parseCaptionOverridePayload(data);
       if (overrides.length === 0) return;
+      beforeRewrite();
 
       // Build word element index for wordIndex fallback
       const wordEls = getCaptionWordElements();
