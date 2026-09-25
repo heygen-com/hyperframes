@@ -54,6 +54,17 @@ test("recordMiss swallows filesystem failures", () => {
   }
 });
 
+test("recordMiss stays best-effort when the media home cannot be resolved", () => {
+  const savedEnv = { ...process.env };
+  delete process.env.HYPERFRAMES_MEDIA_HOME;
+  process.env.HYPERFRAMES_MEDIA_HOME_REQUIRED = "1";
+  try {
+    assert.doesNotThrow(() => recordMiss({ type: "sfx", intent: "no home", local_only: true }));
+  } finally {
+    restoreEnv(savedEnv);
+  }
+});
+
 test("readMisses skips corrupt lines", () => {
   const savedEnv = { ...process.env };
   const { root, home } = sandbox();
