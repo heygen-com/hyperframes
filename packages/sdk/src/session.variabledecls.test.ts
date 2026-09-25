@@ -133,6 +133,35 @@ describe("declareVariable", () => {
   });
 });
 
+describe("a full document declaring on its composition root", () => {
+  // The shape cosmic-orb and bar-chart-race ship: <html> carries nothing, the root div does.
+  const ROOT_DECLARED_HTML = `<!DOCTYPE html>
+<html lang="en">
+<body>
+<div id="co-root" data-composition-id="orb" data-width="1280" data-height="720" data-duration="5"
+  data-composition-variables='${JSON.stringify([TITLE_DECL, COUNT_DECL])}'>
+  <h1 data-start="0" data-end="3">Hello</h1>
+</div>
+</body>
+</html>`;
+
+  it("reads the root's declarations", async () => {
+    const comp = await openComposition(ROOT_DECLARED_HTML);
+    expect(comp.getVariableDeclarations()).toEqual([TITLE_DECL, COUNT_DECL]);
+  });
+
+  it("edits them on the root and leaves <html> without any", async () => {
+    const comp = await openComposition(ROOT_DECLARED_HTML);
+    comp.declareVariable({ id: "dark", type: "boolean", label: "Dark", default: false });
+    comp.removeVariableDeclaration("count");
+
+    const saved = comp.serialize();
+    expect(saved).toMatch(/<html lang="en">/);
+    const reopened = await openComposition(saved);
+    expect(reopened.getVariableDeclarations().map((d) => d.id)).toEqual(["title", "dark"]);
+  });
+});
+
 describe("updateVariableDeclaration", () => {
   it("replaces the declaration wholesale", async () => {
     const comp = await openComposition(DECLARED_HTML);

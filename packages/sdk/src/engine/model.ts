@@ -170,15 +170,20 @@ export function isNewHostBoundary(el: Element): boolean {
 
 /**
  * The element that carries composition-level declarations
- * (`data-composition-variables`). Full-document comps use `<html>`; a wrapped
- * template/fragment comp has a synthetic `<html>` that serialize() strips, so
- * its declarations must live on the composition root div (where values/metadata
- * already live) to survive save.
+ * (`data-composition-variables`). Full-document comps use `<html>`, or their
+ * composition root when that is where they declare (the runtime reads both); a
+ * wrapped template/fragment comp has a synthetic `<html>` that serialize()
+ * strips, so its declarations must live on the composition root div.
  */
 export function declarationElement(document: Document, wrapped: boolean): Element | null {
   if (wrapped) return findRoot(document);
-  return (document as Document & { documentElement?: Element }).documentElement ?? null;
+  const html = (document as Document & { documentElement?: Element }).documentElement ?? null;
+  if (html?.hasAttribute(DECLARATIONS_ATTR)) return html;
+  const root = findRoot(document);
+  return root?.hasAttribute(DECLARATIONS_ATTR) ? root : html;
 }
+
+const DECLARATIONS_ATTR = "data-composition-variables";
 
 export function findRoot(document: Document): Element | null {
   return (
