@@ -364,7 +364,7 @@ describe("claim: a writer that records after writing", () => {
     expect(read("index.html")).toBe("A");
   });
 
-  it("an agent's turn that ends after Studio's edit to the same file does not jam Cmd+Z", async () => {
+  it("an agent's turn cut by Studio's edit becomes an entry before it and one after, so Cmd+Z walks back in order", async () => {
     const { history, write, read } = await project({ "index.html": "A" });
     const window = await history.beginWindow(agent, "Agent turn");
     write("index.html", "B");
@@ -373,15 +373,92 @@ describe("claim: a writer that records after writing", () => {
     await history.claim(you, "Moved Title", ["index.html"], {
       overwrote: { "index.html": fileContentVersion("B") },
     });
-    await window.close();
-    expect(history.list().map((entry) => entry.label)).toEqual(["Moved Title", "Agent turn"]);
-    expect(history.next("back")?.label, "the button names the step Cmd+Z takes").toBe(
+    write("index.html", "D");
+    expect(await window.close(), "the window still returns the entry it became").toMatchObject({
+      id: window.id,
+    });
+    expect(history.list().map((entry) => entry.label)).toEqual([
+      "Agent turn",
       "Moved Title",
-    );
-    expect(await history.step("back", you)).toMatchObject({ ok: true });
-    expect(read("index.html")).toBe("B");
-    expect(await history.step("back", you)).toMatchObject({ ok: true });
-    expect(read("index.html")).toBe("A");
+      "Agent turn",
+    ]);
+    for (const expected of ["C", "B", "A"]) {
+      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(read("index.html")).toBe(expected);
+    }
+  });
+
+  it("a cut agent turn with nothing after the cut ends as the entry it became at the cut", async () => {
+    const { history, write, read } = await project({ "index.html": "A", "b.js": "1" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    await history.claim(you, "sweep", []);
+    write("index.html", "C");
+    write("b.js", "2");
+    await history.claim(you, "Moved Title", ["index.html", "b.js"], {
+      overwrote: { "index.html": fileContentVersion("B"), "b.js": fileContentVersion("1") },
+    });
+    write("b.js", "3");
+    await history.claim(you, "Recolored", ["b.js"], {
+      overwrote: { "b.js": fileContentVersion("2") },
+    });
+    const cutAt = history.list()[0]!;
+    expect(cutAt).toMatchObject({ label: "Agent turn", who: agent });
+    expect(
+      await window.close(),
+      "close returns the entry the window became at the cut",
+    ).toMatchObject({ id: cutAt.id });
+    for (const [index, b] of [
+      ["C", "2"],
+      ["B", "1"],
+      ["A", "1"],
+    ]) {
+      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect([read("index.html"), read("b.js")]).toEqual([index, b]);
+    }
+  });
+
+  it("Cmd+Z undoes an agent's later write first when a held drag claim commits after the agent's turn", async () => {
+    const { history, write, read } = await project({ "index.html": "A" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    await history.claim(you, "sweep", []);
+    write("index.html", "C");
+    await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+      idleMs: 60_000,
+      overwrote: { "index.html": fileContentVersion("B") },
+    });
+    write("index.html", "D");
+    await window.close();
+    await history.flush();
+    expect(history.list().map((entry) => entry.label)).toEqual([
+      "Agent turn",
+      "Agent turn",
+      "Dragged Title",
+    ]);
+    expect(history.next("back")?.label, "the button names the step Cmd+Z takes").toBe("Agent turn");
+    for (const expected of ["C", "B", "A"]) {
+      expect(await history.step("back", you)).toMatchObject({ ok: true });
+      expect(read("index.html")).toBe(expected);
+    }
+  });
+
+  it("logs an entry with only its own fields, not its window's timer", async () => {
+    const { history, write } = await project({ "index.html": "A" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    await window.close();
+    expect(Object.keys(history.list()[0]!).sort()).toEqual([
+      "endedAt",
+      "files",
+      "id",
+      "label",
+      "pinned",
+      "startedAt",
+      "undone",
+      "who",
+    ]);
   });
 
   it("takes Studio's write out of an agent's open window, and leaves the agent's own writes there", async () => {

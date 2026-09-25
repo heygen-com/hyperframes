@@ -235,3 +235,16 @@ it("a step whose reply cannot be read says so, instead of throwing", async () =>
     message: "The history's reply was unreadable.",
   });
 });
+
+it("a step that cannot reach the server says so", async () => {
+  const { hook, readFile } = await studio();
+  const real = globalThis.fetch;
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+    url.endsWith("/history/step") ? Promise.reject(new TypeError("fetch failed")) : real(url, init),
+  );
+  expect(await act(() => hook().undo({ readFile }))).toEqual({
+    ok: false,
+    reason: "failed",
+    message: "Studio could not reach its server.",
+  });
+});
