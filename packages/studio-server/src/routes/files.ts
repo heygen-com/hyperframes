@@ -370,7 +370,7 @@ type ElementPatchCommitResult =
 /**
  * The single commit owner for element patch batches. All files are resolved,
  * read, and folded before the first write; any unmatched target refuses the
- * whole request, and a write from elsewhere mid-fold refolds (3 tries, then 409).
+ * whole request, and a write from elsewhere mid-fold refolds before it answers 409.
  * Studio Server is single-process; within it the final snapshots/writes are
  * synchronous, so another route cannot interleave once the commit begins. A
  * multi-process deployment needs a shared per-project file lock instead.
@@ -520,11 +520,11 @@ function writeMutationResult(
   html: string,
   original: string,
 ): { backupPath: string | null; version: string } | Response {
+  const backup = snapshotBeforeWrite(projectDir, absPath);
+  if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
   if (readFileSync(absPath, "utf-8") !== original) {
     return c.json({ error: "file changed", conflict: true, path: filePath }, 409);
   }
-  const backup = snapshotBeforeWrite(projectDir, absPath);
-  if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
   const { version } = writeFileWithReceipt(c, filePath, absPath, html);
   return { backupPath: backupPathForResponse(projectDir, backup.backupPath), version };
 }
@@ -2607,6 +2607,11 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
     if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
+    const current = readFileSync(ctx.absPath, "utf-8");
+    if (current !== before) {
+      const currentVersion = fileContentVersion(current);
+      return c.json({ error: "file conflict", currentVersion, currentContent: current }, 409);
+    }
     const { version, writeToken } = writeFileWithReceipt(
       c,
       ctx.filePath,

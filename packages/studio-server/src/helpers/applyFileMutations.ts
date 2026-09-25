@@ -93,6 +93,7 @@ function applyOneMutation(
   }
   const backup = snapshotBeforeWrite(projectDir, mutation.absPath);
   if (backup.error) throw new Error(`backup failed: ${backup.error}`);
+  assertExpectedVersion(mutation, readFileSync(mutation.absPath, "utf-8"));
   const before = current;
   const version = fileContentVersion(mutation.after);
   const writeToken = createWriteToken(requestToken);

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fileContentVersion } from "../helpers/fileVersion";
 import { registerFileRoutes } from "./files";
 
 const hooks = vi.hoisted(() => ({ transforming: undefined as (() => void) | undefined }));
@@ -100,11 +101,44 @@ describe("element edits with another writer racing them", () => {
       const response = await post(route, body);
 
       expect(response.status).toBe(409);
-      expect(await response.json()).toMatchObject({ conflict: true });
+      expect(await response.json()).toMatchObject({ error: "file changed", conflict: true });
       expect(writes).toBe(3);
       expect(read()).toBe(saved(writes));
     },
   );
+
+  it("patch-element answers with the version of what it wrote", async () => {
+    const { post, read } = project();
+
+    const response = await post(...ROUTES["patch-element"]);
+
+    const version = fileContentVersion(read());
+    expect(response.headers.get("ETag")).toBe(version);
+    expect(await response.json()).toMatchObject({ changed: true, version, content: read() });
+  });
+
+  it("refolds a two-file batch when its first file changes after it was read", async () => {
+    const { post, path, read } = project();
+    const scene = join(path, "..", "scene.html");
+    writeFileSync(scene, `<h2 id="sub">Sub</h2>`);
+    let folds = 0;
+    hooks.transforming = () => {
+      folds += 1;
+      if (folds === 2) writeFileSync(path, saved(1));
+    };
+
+    const response = await post("patch-element-batches", {
+      batches: [
+        { sourceFile: "index.html", patches: [{ target: { id: "title" }, operations: zIndex }] },
+        { sourceFile: "scene.html", patches: [{ target: { id: "sub" }, operations: zIndex }] },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    expect(read()).toContain("agent 1");
+    expect(read()).toContain("z-index: 2");
+    expect(readFileSync(scene, "utf-8")).toContain("z-index: 2");
+  });
 
   it("remove-element answers 409 instead of writing over a save that lands mid-edit", async () => {
     const { post, path, read } = project();
