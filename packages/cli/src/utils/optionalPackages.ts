@@ -32,6 +32,8 @@ const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
 
 export interface OptionalPackageDeps {
   cacheDir: string;
+  /** The pinned copy installed beside the CLI, else null. */
+  loadBesideCli(name: OptionalPackage): unknown | null;
   /** The package's exports when already installed in `dir`, else null. */
   loadInstalled(dir: string, name: string): unknown | null;
   /** Install `name@version` into `dir`; rejects with npm's output on failure. */
@@ -48,7 +50,9 @@ export function optionalPackageDir(name: OptionalPackage, cacheDir = CACHE_DIR):
 export function installedOptionalPackageVersion(
   name: OptionalPackage,
   cacheDir = CACHE_DIR,
+  cliUrl = import.meta.url,
 ): string | null {
+  if (pinnedCopyBesideCli(name, cliUrl)) return OPTIONAL_PACKAGES[name];
   const dir = optionalPackageDir(name, cacheDir);
   if (!isInstalled(dir, name)) return null;
   return (JSON.parse(readFileSync(manifestPath(dir, name), "utf-8")) as { version: string })
@@ -64,6 +68,8 @@ export async function loadOptionalPackage<N extends OptionalPackage>(
   feature: string,
   deps: OptionalPackageDeps = defaultDeps,
 ): Promise<OptionalPackageModules[N]> {
+  const beside = deps.loadBesideCli(name);
+  if (beside !== null) return beside as OptionalPackageModules[N];
   const dir = optionalPackageDir(name, deps.cacheDir);
   const installed = deps.loadInstalled(dir, name);
   if (installed !== null) return installed as OptionalPackageModules[N];
@@ -102,6 +108,19 @@ function isInstalled(dir: string, name: string): boolean {
 function loadInstalled(dir: string, name: string): unknown | null {
   if (!isInstalled(dir, name)) return null;
   return createRequire(join(dir, "package.json"))(name);
+}
+
+/** True when the copy `require` finds from the CLI's own install is the pinned version. */
+function pinnedCopyBesideCli(name: OptionalPackage, cliUrl: string): boolean {
+  const paths = createRequire(cliUrl).resolve.paths(name) ?? [];
+  const manifest = paths.map((dir) => join(dir, name, "package.json")).find(existsSync);
+  if (!manifest) return false;
+  const { version } = JSON.parse(readFileSync(manifest, "utf-8")) as { version?: string };
+  return version === OPTIONAL_PACKAGES[name];
+}
+
+export function loadBesideCli(name: OptionalPackage, cliUrl = import.meta.url): unknown | null {
+  return pinnedCopyBesideCli(name, cliUrl) ? createRequire(cliUrl)(name) : null;
 }
 
 function runNpm(args: string[]): Promise<void> {
@@ -186,6 +205,7 @@ export async function install(
 
 const defaultDeps: OptionalPackageDeps = {
   cacheDir: CACHE_DIR,
+  loadBesideCli: (name) => loadBesideCli(name),
   loadInstalled,
   install,
   log: (line) => console.error(line),
