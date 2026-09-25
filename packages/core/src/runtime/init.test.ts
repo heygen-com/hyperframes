@@ -3902,12 +3902,9 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(5);
   });
 
-  // applyClipLayout force-absolutizes authored root-level timed clips so they
-  // stack as overlays. But in Studio/preview the runtime also stamps `data-start`
-  // onto ID'd / GSAP-targeted *flow* children (a <header>/<footer> in a column)
-  // so the design panel can discover them — those must NOT be force-absolutized,
-  // or the layout collapses (footer shrink-wraps, `space-between` clusters). The
-  // marker `data-hf-autostamped` distinguishes them; these tests pin both halves.
+  // applyClipLayout force-absolutizes authored root-level timed clips, leaves their
+  // position to CSS, and measures hidden clips as shown. Runtime-stamped flow
+  // children (`data-hf-autostamped`) stay in flow, or a flex column collapses.
   describe("applyClipLayout", () => {
     const makeRoot = () => {
       const root = document.createElement("div");
