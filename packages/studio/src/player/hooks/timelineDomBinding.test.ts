@@ -83,6 +83,20 @@ describe("live DOM manifest hydration", () => {
     );
     expect(element.hfId).toBe("hs");
   });
+  it("binds an id-less host by its composition id over a lone id inside that sub-composition", () => {
+    const doc = documentWith(
+      '<div data-composition-id="card" data-composition-src="compositions/card.html" data-start="0" data-duration="4">' +
+        '<div data-composition-id="card"><div id="card" data-start="0" data-duration="4"></div></div></div>',
+    );
+    const host = doc.querySelector('[data-composition-src="compositions/card.html"]');
+    const card = clip({
+      id: "card",
+      kind: "composition",
+      compositionId: "card",
+      compositionAncestors: ["main"],
+    });
+    expect(findTimelineDomNodeForClip(doc, card, 0)).toBe(host);
+  });
   it("does not bind a cross-tag direct identity", () => {
     const doc = documentWith('<div id="collision" data-start="0" data-duration="4"></div>');
     expect(

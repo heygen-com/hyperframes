@@ -441,30 +441,42 @@ function nodeInClipScope(node: Element, clip: ClipManifestClip): boolean {
   return ids.length === scope.length && ids.every((id, index) => id === scope[index]);
 }
 
-/** The `selector` match in the clip's composition; a lone match stands, as healed hosts can stale the chain. */
-function firstInClipScope(doc: Document, selector: string, clip: ClipManifestClip): Element | null {
-  const nodes = Array.from(doc.querySelectorAll(selector));
-  if (nodes.length === 1) return nodes[0];
-  return nodes.find((node) => nodeInClipScope(node, clip)) ?? null;
+/** The first match in the clip's composition across `selectors`; a lone match stands only when none is in scope, as a
+ * healed host can stale the clip's chain for a pass. An id can repeat in a sub-composition earlier in the document. */
+function findInClipScope(
+  doc: Document,
+  clip: ClipManifestClip,
+  selectors: string[],
+): Element | null {
+  let lone: Element | null = null;
+  for (const selector of selectors) {
+    const nodes = Array.from(doc.querySelectorAll(selector));
+    const scoped = nodes.find((node) => nodeInClipScope(node, clip));
+    if (scoped) return scoped;
+    if (nodes.length === 1) lone ??= nodes[0];
+  }
+  return lone;
 }
 
-/** The clip's id in its own composition: an id can repeat in a mounted sub-composition, earlier in the document. */
 export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {
   if (!clip.id) return null;
   const first = doc.getElementById(clip.id);
   if (!first || nodeInClipScope(first, clip)) return first;
-  return firstInClipScope(doc, `[id="${CSS.escape(clip.id)}"]`, clip);
+  return findInClipScope(doc, clip, [`[id="${CSS.escape(clip.id)}"]`]);
 }
 
 function findTimelineDomNode(doc: Document, clip: ClipManifestClip): Element | null {
   if (!clip.id) return null;
+  const first = doc.getElementById(clip.id);
+  if (first && nodeInClipScope(first, clip)) return first;
   const id = CSS.escape(clip.id);
-  return (
-    findClipElementById(doc, clip) ??
-    firstInClipScope(doc, `[data-hf-id="${id}"]`, clip) ??
-    firstInClipScope(doc, `[data-composition-id="${id}"]`, clip) ??
-    firstInClipScope(doc, `.${id}`, clip)
-  );
+  const selectors = [
+    `[id="${id}"]`,
+    `[data-hf-id="${id}"]`,
+    `[data-composition-id="${id}"]`,
+    `.${id}`,
+  ];
+  return findInClipScope(doc, clip, selectors);
 }
 
 export function findTimelineDomNodeForClip(
