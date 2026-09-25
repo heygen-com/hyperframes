@@ -1,0 +1,40 @@
+name: Comments
+
+permissions:
+  contents: read
+
+# No secrets and a read-only token, so fork PRs run it too. Rules: CONTRIBUTING.md, "Comments".
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: comments-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  comments:
+    name: Comments
+    # A release PR carries commits that each passed this gate on their own PR.
+    if: ${{ !startsWith(github.head_ref, 'release/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # The PR's own head, graded against its merge-base: not the merge preview, which would
+          # charge the branch for every comment main changed since it forked.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      # The commented-out-code rule asks the TypeScript parser, a root dependency.
+      - run: bash scripts/ci/install-workspace-dependencies.sh --ignore-scripts
+      - name: Test the checker
+        run: node --test scripts/check-comment-citations.test.mjs
+      - name: Check the comments this diff touched
+        env:
+          COMMENT_CHECK_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-comment-citations.mjs
