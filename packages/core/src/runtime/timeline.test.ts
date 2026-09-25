@@ -510,6 +510,16 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.compositionHeight).toBe(1920);
   });
 
+  it("reads the size and duration of the explicit root when another composition comes first", () => {
+    document.body.innerHTML = `<div data-composition-id="card" data-duration="3" data-width="800" data-height="600"></div><div data-composition-id="main" data-root="true" data-width="1920" data-height="1080"></div>`;
+    (window as TimelineTestWindow).__timelines = { main: { duration: () => 7 } };
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.compositionWidth).toBe(1920);
+    expect(result.compositionHeight).toBe(1080);
+    expect(result.durationInFrames).toBe(210);
+  });
+
   it("defaults composition dimensions to 1920x1080", () => {
     const result = collectRuntimeTimelinePayload(defaultParams);
     expect(result.compositionWidth).toBe(1920);

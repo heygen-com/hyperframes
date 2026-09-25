@@ -3243,8 +3243,7 @@ export function initSandboxRuntimeModular(): void {
 
   emitAnalyticsEvent("composition_loaded", {
     duration: player.getDuration(),
-    compositionId:
-      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null,
+    compositionId: findRootCompositionElement()?.getAttribute("data-composition-id") ?? null,
   });
 
   state.deterministicAdapters = [

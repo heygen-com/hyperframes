@@ -491,6 +491,8 @@ describe("initSandboxRuntimeModular", () => {
       );
     expect(sizes.length).toBeGreaterThan(1);
     expect(new Set(sizes)).toEqual(new Set(["1920x1080"]));
+    const loaded = outbound.find((m) => m.event === "composition_loaded");
+    expect(loaded?.properties).toMatchObject({ compositionId: "main" });
   });
 
   it("reports a collapsed stage for a px-suffixed root size", () => {

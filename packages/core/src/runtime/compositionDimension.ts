@@ -7,7 +7,7 @@ export function parseLayoutDimension(value: string | null | undefined): number |
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-// The size the runtime reports to its host: whole px, read with `parseInt` as the renderer does.
+/** The size the runtime reports to its host: whole px, read with `parseInt` as the renderer does. */
 export function parseCompositionDimension(value: string | null | undefined): number | null {
   if (value == null || value.trim() === "") return null;
   const parsed = Number.parseInt(value, 10);
@@ -17,8 +17,6 @@ export function parseCompositionDimension(value: string | null | undefined): num
 export function findRootCompositionElement(): HTMLElement | null {
   const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
   if (isHtmlElement(explicitRoot)) return explicitRoot;
-  const nodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
-  return (
-    nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ?? nodes[0] ?? null
-  );
+  // The first composition in document order never sits inside another one.
+  return document.querySelector<HTMLElement>("[data-composition-id]");
 }
