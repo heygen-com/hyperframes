@@ -129,7 +129,7 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
         idleMs ? { idleMs } : undefined,
       );
       windows.set(window.id, { history, window });
-      // The window's id is the id of the entry it becomes.
+      // The window's id is the id of the entry it becomes (its last one, when a claim cut it).
       return { windowId: window.id };
     }),
   );

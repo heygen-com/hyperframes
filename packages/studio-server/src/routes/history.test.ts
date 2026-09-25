@@ -80,6 +80,26 @@ describe("history routes", () => {
     });
   });
 
+  it("name the step the engine takes when it steps past an entry whose file moved on", async () => {
+    const { projectDir, history, call } = await demoProject();
+    const write = (text: string) => writeFileSync(join(projectDir, "index.html"), text);
+    const agent = { kind: "agent" as const, name: "Agent" };
+    const you = { kind: "person" as const, name: "You" };
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("B");
+    await history.claim(you, "sweep", []);
+    write("C");
+    await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+      idleMs: 60_000,
+      overwrote: { "index.html": fileContentVersion("B") },
+    });
+    write("D");
+    await window.close();
+    await history.flush();
+    expect((await (await call("")).json()).back).toMatchObject({ label: "Agent turn" });
+  });
+
   it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {
     const { projectDir, call } = await demoProject();
     writeFileSync(join(projectDir, "index.html"), "B");
