@@ -470,13 +470,8 @@ function findTimelineDomNode(doc: Document, clip: ClipManifestClip): Element | n
   const first = doc.getElementById(clip.id);
   if (first && nodeInClipScope(first, clip)) return first;
   const id = CSS.escape(clip.id);
-  const selectors = [
-    `[id="${id}"]`,
-    `[data-hf-id="${id}"]`,
-    `[data-composition-id="${id}"]`,
-    `.${id}`,
-  ];
-  return findInClipScope(doc, clip, selectors);
+  const byOtherKeys = [`[data-hf-id="${id}"]`, `[data-composition-id="${id}"]`, `.${id}`];
+  return findInClipScope(doc, clip, first ? [`[id="${id}"]`, ...byOtherKeys] : byOtherKeys);
 }
 
 export function findTimelineDomNodeForClip(
