@@ -54,9 +54,9 @@ CLI says why and falls back to word match.
 | Vector size | 384 numbers per item |
 | Download | 32 MB model and a 0.7 MB tokenizer, 33 MB in total |
 
-It was chosen because its average score on the MTEB benchmark is close to that of the larger hosted
-embedding model it replaces (62.17 against 62.3) with vectors a quarter of the size (384 numbers
-instead of 1,536), and it is small enough to download on request. The CLI has no hosted search. It is pinned to one revision because the
+It was chosen because its average score on the MTEB benchmark is close to OpenAI's
+`text-embedding-3-small` (62.17 against 62.3) with vectors a quarter of the size (384 numbers instead
+of 1,536), and it is small enough to download on request. It is pinned to one revision because the
 catalog's vectors were made with those exact weights: a model that changed underneath them would still
 return results, just wrong ones.
 
@@ -110,7 +110,7 @@ bun scripts/catalog/build-local-vectors.ts
 It reads `registry/blocks/*` and `registry/components/*` from the repository, sorts them by name, and
 embeds them 16 at a time with the pinned model. The batch size matters: within a batch the texts are
 padded to the same length, which changes the quantized result, so the same text embedded alone comes
-out slightly different (cosine 0.9969). Rebuilding in batches of 16 reproduces the shipped rows
+out slightly different. Rebuilding in batches of 16 reproduces the shipped rows
 exactly, which is how to check that an index came from this registry and this model.
 
 The `revision` is a SHA-256 over the model, its revision, the vector size, the batch size and every
