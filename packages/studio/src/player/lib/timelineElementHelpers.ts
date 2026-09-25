@@ -441,15 +441,14 @@ function nodeInClipScope(node: Element, clip: ClipManifestClip): boolean {
   return ids.length === scope.length && ids.every((id, index) => id === scope[index]);
 }
 
-/** The first node for `selector` inside the clip's own composition. An id can repeat across the root and a mounted
- * sub-composition, and the first one in document order may be the other composition's. */
+/** The first node for `selector` inside the clip's own composition. */
 function firstInClipScope(doc: Document, selector: string, clip: ClipManifestClip): Element | null {
   return (
     Array.from(doc.querySelectorAll(selector)).find((node) => nodeInClipScope(node, clip)) ?? null
   );
 }
 
-/** The element with the clip's id in the clip's own composition; one lookup in the common case of a unique id. */
+/** The clip's id in its own composition: an id can repeat in a mounted sub-composition, earlier in the document. */
 export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {
   if (!clip.id) return null;
   const first = doc.getElementById(clip.id);
