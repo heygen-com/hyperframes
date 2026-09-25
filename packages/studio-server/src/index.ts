@@ -4,6 +4,8 @@ export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export {
   openProjectHistory,
   DEFAULT_HISTORY_ROOT,
+  MAX_WINDOW_IDLE_MS,
+  type ClosedWindow,
   type ProjectHistory,
   type ProjectHistoryOptions,
   type HistoryListItem,

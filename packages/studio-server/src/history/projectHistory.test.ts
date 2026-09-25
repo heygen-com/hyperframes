@@ -205,7 +205,14 @@ describe("openProjectHistory", () => {
     const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
     await history.close();
     write("index.html", "v2");
-    const closedWindow = { id: "turn-1", who: agent, label: "Bigger title", startedAt: 1 };
+    const closedWindow = {
+      id: "turn-1",
+      who: agent,
+      label: "Bigger title",
+      startedAt: 1,
+      lastWriteAt: Date.now(),
+      idleMs: 60_000,
+    };
 
     const reopened = await open(projectDir, historyRoot, { closedWindow });
     expect(reopened.list()).toMatchObject([{ id: "turn-1", who: agent, label: "Bigger title" }]);
@@ -217,6 +224,54 @@ describe("openProjectHistory", () => {
       again.list().map((entry) => entry.who),
       "an id already kept is not reused",
     ).toEqual([agent, { kind: "outside", name: "Outside" }]);
+  });
+
+  it("files to a closed window only the writes before its idle limit ran out, counting from each write", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "a.html": "a1",
+      "b.html": "b1",
+      "c.html": "c1",
+    });
+    await history.close();
+    const lastWriteAt = Date.now();
+    const pause = () => new Promise((settle) => setTimeout(settle, 250));
+    await pause();
+    write("a.html", "a2");
+    await pause();
+    write("b.html", "b2"); // 250 ms after a.html: still the window's, 500 ms after its last write
+    await pause();
+    await pause();
+    write("c.html", "c2"); // 500 ms without a write: the window had ended
+    const closedWindow = { id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt };
+
+    const reopened = await open(projectDir, historyRoot, {
+      closedWindow: { ...closedWindow, idleMs: 400, via: "direct" },
+    });
+    const [turn, outside] = reopened.list();
+    expect([turn, outside].map((entry) => entry?.files.map((file) => file.path))).toEqual([
+      ["a.html", "b.html"],
+      ["c.html"],
+    ]);
+    expect(outside?.who.kind).toBe("outside");
+    const onDisk = readFileSync(join(historyRoot, reopened.projectId, "log.jsonl"), "utf-8");
+    expect(Object.keys(JSON.parse(onDisk.trim().split("\n")[1]!).entry).sort()).toEqual(
+      ["endedAt", "files", "id", "label", "startedAt", "who"],
+    );
+  });
+
+  it("gives a claimed path back from another writer's open window to the claimer", async () => {
+    const { history, write } = await project({ "index.html": "A", "notes.html": "N" });
+    const window = await history.beginWindow(agent, "Retitle");
+    write("index.html", "A2");
+    write("notes.html", "N2");
+
+    expect(await history.claim(you, "Edited notes", ["notes.html"])).not.toBeNull();
+    const entry = await window.close();
+    expect(entry?.files.map((file) => file.path)).toEqual(["index.html"]);
+    expect(history.list().map((e) => [e.who, e.files.map((file) => file.path)])).toEqual([
+      [you, ["notes.html"]],
+      [agent, ["index.html"]],
+    ]);
   });
 
   it("takes over the lock of an owner that died without closing", async () => {
