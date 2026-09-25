@@ -1,7 +1,6 @@
 export interface ExternalScriptAttributes {
   integrity?: string;
   crossorigin?: string;
-  /** Kept so a module never gets folded into a classic script or emitted as one. */
   type?: "module";
 }
 
