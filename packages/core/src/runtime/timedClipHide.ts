@@ -24,9 +24,11 @@ export function hideTimedClipsUntilFirstPass(): void {
   win.__hfFirstPassHidden = true;
 }
 
-export function revealTimedClipsAfterFirstPass(): void {
+/** True when this call lifted the rule. */
+export function revealTimedClipsAfterFirstPass(): boolean {
   const win = window as FirstPassWindow;
-  if (!win.__hfFirstPassHidden) return;
+  if (!win.__hfFirstPassHidden) return false;
   win.__hfFirstPassHidden = false;
   for (const style of document.querySelectorAll(`style[${HIDE_ATTR}]`)) style.remove();
+  return true;
 }

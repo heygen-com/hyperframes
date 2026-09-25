@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
 import type { RuntimeTimelineLike } from "./types";
 
 function pausedTimeline(duration: number): RuntimeTimelineLike {
@@ -103,9 +104,29 @@ describe("runtime entry", () => {
 
     await evaluateRuntime();
     await evaluateRuntime();
-    window.__player?.seek(1);
-
+    // Paused and never sought: no later pass would lift a rule the second copy added.
     expect(visibility(root, current)).toEqual(["visible", "visible"]);
     expect(document.querySelectorAll("style[data-hf-first-pass-hide]")).toHaveLength(0);
+  });
+
+  it("grades media inside a clip once the first pass shows the clip, with no seek", async () => {
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const scene = timed(mountRoot(), "div", "0");
+    // Untimed: the video inherits the scene's window, so no pass writes its visibility.
+    const video = document.createElement("video");
+    video.setAttribute(
+      HF_COLOR_GRADING_ATTR,
+      serializeHfColorGrading({ adjust: { exposure: 0.5 } }),
+    );
+    Object.defineProperty(video, "readyState", { value: HTMLMediaElement.HAVE_CURRENT_DATA });
+    Object.defineProperty(video, "videoWidth", { value: 640 });
+    Object.defineProperty(video, "videoHeight", { value: 360 });
+    scene.appendChild(video);
+
+    await evaluateRuntime();
+
+    expect(window.__renderReady).toBe(true);
+    expect(getContext.mock.calls.some(([type]) => String(type).startsWith("webgl"))).toBe(true);
+    getContext.mockRestore();
   });
 });
