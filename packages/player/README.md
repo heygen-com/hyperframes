@@ -69,7 +69,7 @@ Show a static image before playback starts:
 | `shader-loading`        | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
 | `assets-loading-ui`     | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
 | `low-power-idle`        | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
-| `disable-click-to-play` | boolean                         | false         | A click on the picture no longer plays or pauses (host overlays own clicks) |
+| `disable-click-to-play` | boolean                         | false         | A click on the player no longer plays or pauses (host overlays own clicks)  |
 
 ### Shader transition previews
 
@@ -128,8 +128,8 @@ player.currentTime; // number (read/write)
 player.duration; // number (read-only)
 player.paused; // boolean (read-only)
 player.ready; // boolean (read-only)
-player.compositionWidth; // number (read-only), the composition's picture width
-player.compositionHeight; // number (read-only), the composition's picture height
+player.compositionWidth; // number (read-only), the composition's width
+player.compositionHeight; // number (read-only), the composition's height
 player.disableClickToPlay; // boolean (read/write)
 player.playbackRate; // number (read/write)
 player.muted; // boolean (read/write)
@@ -231,7 +231,7 @@ function StudioPreview({ src }: { src: string }) {
 | ----------------------- | --------------------------------------------------- | ------------------------------------------ |
 | `ready`                 | `{ duration, compositionWidth, compositionHeight }` | Composition loaded and duration determined |
 | `durationchange`        | `{ duration }`                                      | The duration changed after `ready`         |
-| `resize`                | `{ compositionWidth, compositionHeight }`           | The composition's picture size changed     |
+| `resize`                | `{ compositionWidth, compositionHeight }`           | The composition's size changed             |
 | `play`                  | —                                                   | Playback started                           |
 | `pause`                 | —                                                   | Playback paused                            |
 | `timeupdate`            | `{ currentTime }`                                   | Playback position changed (~10 fps)        |

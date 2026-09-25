@@ -145,7 +145,7 @@ export function handleRuntimeMessage(
       Number.isFinite(declaredDuration) && declaredDuration > 0
         ? declaredDuration
         : frameDuration / protocol.fps;
-    // Size first, so the `ready` fired below carries this composition's picture size.
+    // Size first, so the `ready` fired below carries this composition's size.
     if (
       Number.isFinite(data["compositionWidth"]) &&
       (data["compositionWidth"] as number) > 0 &&

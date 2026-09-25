@@ -519,10 +519,11 @@ class HyperframesPlayer extends HTMLElement {
     return this._duration;
   }
 
-  /** The composition's own picture size, from the runtime or the width/height attributes. */
+  /** The composition's width, from the runtime or the `width` attribute. */
   get compositionWidth() {
     return this._compositionWidth;
   }
+  /** The composition's height, from the runtime or the `height` attribute. */
   get compositionHeight() {
     return this._compositionHeight;
   }
