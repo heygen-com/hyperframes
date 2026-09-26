@@ -781,6 +781,8 @@ export class WebAudioTransport {
     }
     this._activeSources = [];
     this._paused = true;
+    // A schedule still waiting on resume() would otherwise land after this stop.
+    this._playGeneration += 1;
   }
 
   setVolume(volume: number): void {

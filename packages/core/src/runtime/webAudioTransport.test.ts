@@ -134,6 +134,20 @@ describe("WebAudioTransport", () => {
       expect(transport.ownsClock()).toBe(false);
     });
 
+    it("drops a schedule still waiting on resume() when stopAll comes first", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      let resume!: () => void;
+      mock.ctx.state = "suspended";
+      mock.ctx.resume = vi.fn(() => new Promise<void>((r) => (resume = r)));
+
+      const pending = transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.stopAll();
+      resume();
+
+      expect(await pending).toBeNull();
+      expect(transport.routesElement(mockEl)).toBe(false);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 

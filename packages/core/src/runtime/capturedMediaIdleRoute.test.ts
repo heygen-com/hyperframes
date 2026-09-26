@@ -174,4 +174,19 @@ describe("an element Web Audio captured, outside a play", () => {
     expect(audible(source)).toBe(true);
     expect(source.outputs.has(destination)).toBe(false);
   });
+
+  it("does not let a track hidden while playing sound for a frame on its idle route", async () => {
+    mount(`<audio data-start="0" data-duration="10" src="/assets/music.mp3"></audio>`);
+    const music = document.querySelector("audio")!;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    stepFrames(2);
+
+    music.setAttribute("data-hidden", "");
+    stepFrames(1);
+
+    expect(music.volume).toBe(0);
+  });
 });

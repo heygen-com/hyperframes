@@ -2520,6 +2520,10 @@ export function initSandboxRuntimeModular(): void {
     // that rebuilt an identical set.
     if (hiddenAudioDirty && clock.isPlaying()) {
       webAudio.stopAll();
+      // stopAll hands every track back its own volume; a newly hidden one must not sound for a frame.
+      for (const el of document.querySelectorAll("audio[data-start]")) {
+        if (isMediaElement(el) && isSilencedByHidden(el)) el.volume = 0;
+      }
       scheduleWebAudioForActiveClips();
     }
     hiddenAudioDirty = false;
