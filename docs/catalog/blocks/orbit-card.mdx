@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Orbit Card"
   description="A single feature card orbits a dot sphere on approved Blender camera motion."
   variables={[{"id":"feature1Title","type":"string","label":"Card title","default":"Always in sync","maxLength":28},{"id":"feature1Desc","type":"string","label":"Card description","default":"Changes reach every screen the moment they happen.","maxLength":110},{"id":"feature1Accent","type":"color","label":"Card accent","default":"#4cc9ff"},{"id":"cardOrbitDegrees","type":"number","label":"Card orbit degrees","description":"Total card-only vertical orbit during Blender frames 150–180 (4.9667–5.9667 seconds). Enter 180, 360, 720, or any angle. The sphere keeps its independent spin. The final angle holds after frame 180.","default":360,"min":-36000,"max":36000,"step":1}]}
-  meta={{"duration":10,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":102}}
+  meta={{"duration":10,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":109}}
   attribution={{"path":"registry/blocks/orbit-card","tags":["3d-motion","cards","feature-reveal","dots","orbit","blender-motion","sphere"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/orbit-card/orbit-card.html"
@@ -99,8 +99,15 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         <span style="font-weight: 400">Aa</span><span style="font-weight: 600">Aa</span>
       </div>
     </div>
+    <script type="importmap">
+      { "imports": { "orbit-card/scene": "./assets/orbit-scene.js" } }
+    </script>
     <script type="module">
-      import { renderAt } from "./assets/orbit-scene.js";
+      import { createOrbitScene } from "orbit-card/scene";
+      // Bare __hyperframes is this composition's own in a module.
+      const renderAt = createOrbitScene(
+        (typeof __hyperframes !== "undefined" && __hyperframes.getVariables?.()) || {},
+      );
       const state = { time: 0 };
       const timeline = gsap.timeline({ paused: true });
       timeline.to(state, {
