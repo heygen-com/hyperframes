@@ -38,7 +38,7 @@ import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 // Anything a scene script can leave running, pending or registered outside its timeline, or that
 // throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
 const SIDE_EFFECT_RE =
-  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']/;
+  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']|\bgsap\s*\.\s*(?:to|from|fromTo)\s*\(/;
 
 // npm packages that only define globals when loaded; lottie-web is absent because it scans the page on load.
 const SWAP_SAFE_LIBRARY_URL =
@@ -50,6 +50,18 @@ const isSwapSafeLibrary = (src: string) =>
 function sceneScriptSwapRefusal(script: string): string | null {
   const match = SIDE_EFFECT_RE.exec(script);
   return match ? `its script uses ${match[0].trim()}` : null;
+}
+
+// A listener, observer or loop outside the scenes can hold a scene's old nodes after a swap.
+const HOLDS_SCENE_NODES_RE =
+  /\b(addEventListener|\w*Observer|setInterval|requestAnimationFrame)\b|\.on[a-z]+\s*=(?!=)/;
+
+/** Marks every scene not swappable when a script outside them can hold their nodes. */
+export function refuseSwapsHeldByRootScripts(document: Document, rootScripts: string[]): void {
+  const match = rootScripts.map((script) => HOLDS_SCENE_NODES_RE.exec(script)).find(Boolean);
+  if (!match) return;
+  for (const host of document.querySelectorAll(`[${SCENE_PART_ATTR}]:not([${SCENE_NO_SWAP_ATTR}])`))
+    host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scenes uses ${match[0].trim()}`);
 }
 
 // ---------------------------------------------------------------------------

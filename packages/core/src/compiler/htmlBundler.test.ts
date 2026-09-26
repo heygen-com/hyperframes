@@ -2176,6 +2176,32 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(rendered).not.toContain("data-hf-scene-no-swap");
   });
 
+  it.each([
+    ["inline", `<script>BIND</script>`, {}],
+    ["in a local file", `<script src="root.js"></script>`, { "root.js": "BIND" }],
+  ])(
+    "marks every scene not swappable when a script outside them, %s, binds a listener",
+    async (_, tag, extra) => {
+      const bind = `document.querySelector(".go").addEventListener("click", () => {});`;
+      const dir = makeTempProject({
+        "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="1"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="1" data-duration="1"></div>
+  </div>${tag.replace("BIND", bind)}</body></html>`,
+        ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, v.replace("BIND", bind)])),
+        "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><button class="go">Go</button></div></template>`,
+        "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p></div></template>`,
+      });
+      const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+      for (const id of ["a", "b"]) {
+        expect(
+          doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-no-swap"),
+        ).toBe("a script outside the scenes uses addEventListener");
+      }
+    },
+  );
+
   it("runs a scene's local script file in source order with its inline scripts, as a render does", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head></head><body>
@@ -2271,6 +2297,7 @@ describe("bundleToSingleHtml sceneParts", () => {
       "document.adoptedStyleSheets = [sheet]",
       'history.pushState({}, "", u)',
       'new BroadcastChannel("c")',
+      "gsap.to(window.__shared, { value: 200, duration: 10 })",
     ];
     const files: Record<string, string> = {};
     const hosts = leaks
