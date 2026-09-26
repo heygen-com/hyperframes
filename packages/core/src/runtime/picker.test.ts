@@ -92,6 +92,7 @@ describe("createPickerModule", () => {
       picker.enablePickMode();
       picker.enablePickMode();
       expect(document.body.classList.contains("__hf-pick-active")).toBe(true);
+      picker.disablePickMode();
     });
 
     it("disabling when not active is safe", () => {
@@ -353,6 +354,39 @@ describe("createPickerModule", () => {
     });
   });
 
+  describe("pick mode under a resting pointer", () => {
+    const at = (id: string) => document.getElementById(id)!;
+    const move = () =>
+      document.dispatchEvent(
+        new MouseEvent("mousemove", { clientX: 10, clientY: 10, bubbles: true }),
+      );
+
+    it("keeps the highlight on what the pointer is over, and offers it on click", () => {
+      const postMessage = createMockPostMessage();
+      const picker = createPickerModule({ postMessage });
+      picker.installPickerApi();
+      document.body.innerHTML = `<div id="bg" style="background: rgb(245, 238, 220)"><h1 id="title">Hi</h1></div>`;
+      const restore = emulateHitTest(() => [at("title"), at("bg")]);
+      try {
+        picker.enablePickMode();
+        move();
+        move();
+        expect(at("title").classList.contains("__hf-pick-highlight")).toBe(true);
+        expect(at("bg").classList.contains("__hf-pick-highlight")).toBe(false);
+        document.dispatchEvent(
+          new MouseEvent("click", { clientX: 10, clientY: 10, bubbles: true }),
+        );
+        const picked = postMessage.mock.calls
+          .map(([message]) => message)
+          .find((message) => message.type === "element-pick-candidates");
+        expect(picked.candidates.map((c: any) => c.selector)).toEqual(["#title", "#bg"]);
+      } finally {
+        picker.disablePickMode();
+        restore();
+      }
+    });
+  });
+
   describe("escape key handler", () => {
     it("disables pick mode and posts cancel message on Escape", () => {
       const postMessage = createMockPostMessage();
@@ -377,6 +411,7 @@ describe("createPickerModule", () => {
 
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       expect(document.body.classList.contains("__hf-pick-active")).toBe(true);
+      picker.disablePickMode();
     });
   });
 
