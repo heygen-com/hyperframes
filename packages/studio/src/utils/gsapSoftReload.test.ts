@@ -488,6 +488,35 @@ describe("applySoftReload authored-opacity restore", () => {
     expect(el.style.getPropertyPriority("opacity")).toBe("");
   });
 
+  it("keeps the stamp for an element whose hf-id the written file lacks, even if it shares an id", () => {
+    const el = document.createElement("img");
+    el.id = "title-card";
+    el.setAttribute("data-hf-id", "hf-from-another-file");
+    el.setAttribute("data-hf-authored-opacity", "0.5");
+    el.style.opacity = "0";
+
+    const opacity = restoreOpacity(
+      el,
+      '<html><body><img id="title-card" style="opacity: 0.9"></body></html>',
+    );
+
+    expect(opacity).toBe("0.5");
+  });
+
+  it("does not take a runtime clone's opacity from its plain template", () => {
+    const el = document.createElement("li");
+    el.id = "item";
+    el.setAttribute("data-hf-authored-opacity", "0.5");
+    el.style.opacity = "0";
+
+    const opacity = restoreOpacity(
+      el,
+      '<html><body><template><li id="item" style="opacity: 0.3"></li></template></body></html>',
+    );
+
+    expect(opacity).toBe("0.5");
+  });
+
   it("falls back to the parse-time stamp when no after-write HTML is given", () => {
     const el = document.createElement("img");
     el.setAttribute("data-hf-authored-opacity", "0.75");

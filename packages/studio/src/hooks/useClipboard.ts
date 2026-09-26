@@ -19,7 +19,12 @@ import { findElementForSelection } from "../components/editor/domEditingElement"
 import { findTimelineElementInIframe, readFileContent } from "./timelineEditingHelpers";
 import { buildTimelineElementKey } from "../player/lib/timelineElementHelpers";
 import { timeRangesOverlap } from "../player/components/timelineCollision";
-import { findAuthoredElement, parseSavedSource } from "../utils/authoredSource";
+import {
+  authoredMarkup,
+  findAuthoredElement,
+  findAuthoredElementById,
+  parseSavedSource,
+} from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 
 interface RecordEditInput {
@@ -39,6 +44,7 @@ interface UseClipboardOptions {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
+  waitForPendingDomEditSaves: () => Promise<void>;
 }
 
 /** The timeline element(s) a copy/cut/duplicate acts on: the multi-selection
@@ -80,8 +86,9 @@ function getSelectedDomElement(
   return findElementForSelection(doc, selection, activeCompositionPath);
 }
 
-function savedOuterHtmlElseLive(sourceContent: string, live: Element): string {
-  return findAuthoredElement(parseSavedSource(sourceContent), live)?.outerHTML ?? live.outerHTML;
+function savedMarkupElseLive(saved: Document, live: Element, sourceFile: string): string {
+  const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
+  return authored ? authoredMarkup(authored, live, sourceFile) : live.outerHTML;
 }
 
 async function readSavedMarkup(
@@ -89,12 +96,12 @@ async function readSavedMarkup(
   paths: string[],
   lives: Element[],
 ): Promise<string[]> {
-  const sources = new Map<string, Promise<string>>();
+  const sources = new Map<string, Promise<Document>>();
   return Promise.all(
     paths.map(async (path, index) => {
-      if (!sources.has(path)) sources.set(path, readSaved(path));
-      const source = await (sources.get(path) as Promise<string>);
-      return savedOuterHtmlElseLive(source, lives[index] as Element);
+      if (!sources.has(path)) sources.set(path, readSaved(path).then(parseSavedSource));
+      const saved = await (sources.get(path) as Promise<Document>);
+      return savedMarkupElseLive(saved, lives[index] as Element, path);
     }),
   );
 }
@@ -216,6 +223,7 @@ export function useClipboard({
   handleTimelineElementsDelete,
   handleDomEditElementDelete,
   previewIframeRef,
+  waitForPendingDomEditSaves,
 }: UseClipboardOptions) {
   const clipboardRef = useRef<Promise<ClipboardPayload | null> | null>(null);
   const projectIdRef = useRef(projectId);
@@ -223,14 +231,15 @@ export function useClipboard({
 
   // After any save still in flight on the file, so a copy right after an edit takes the edit.
   const readSaved = useCallback(
-    (path: string): Promise<string> => {
+    async (path: string): Promise<string> => {
       const pid = projectIdRef.current;
-      if (!pid) return Promise.reject(new Error("No project is open."));
+      if (!pid) throw new Error("No project is open.");
+      await waitForPendingDomEditSaves();
       return serializeStudioFileMutations(writeProjectFile, [path], () =>
         readFileContent(pid, path),
       );
     },
-    [writeProjectFile],
+    [waitForPendingDomEditSaves, writeProjectFile],
   );
 
   // Resolved through findTimelineElementInIframe, the same composition-aware
@@ -296,7 +305,7 @@ export function useClipboard({
         showToast("Copied element", "info");
         return {
           kind: "dom-element",
-          html: savedOuterHtmlElseLive(content, live),
+          html: savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
           sourceFile,
           originSelector: domSelection.selector,
           originSelectorIndex: domSelection.selectorIndex,

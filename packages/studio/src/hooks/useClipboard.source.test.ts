@@ -52,42 +52,55 @@ afterEach(() => {
 
 // The preview page: the saved markup with the preview's in-memory ids, a sub-composition
 // mounted inline, and the runtime's hide on both clips.
-function mountPreview(): HTMLIFrameElement {
+function mountPreview(sub: string, bundle: (host: Element) => void): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument as Document;
   doc.open();
   doc.write(ensureHfIds(SAVED));
   doc.close();
-  const sub = new DOMParser().parseFromString(ensureHfIds(SUB), "text/html");
-  const subRoot = (sub.querySelector("template") as HTMLTemplateElement).content.firstElementChild;
+  const parsed = new DOMParser().parseFromString(ensureHfIds(sub), "text/html");
+  const subRoot = (parsed.querySelector("template") as HTMLTemplateElement).content
+    .firstElementChild;
   const host = doc.createElement("div");
   host.setAttribute("data-composition-src", "compositions/sub.html");
   host.append(doc.importNode(subRoot as Element, true));
+  bundle(host);
   doc.querySelector('[data-composition-id="main"]')?.append(host);
   for (const clip of doc.querySelectorAll(".clip"))
     (clip as HTMLElement).style.cssText = RUNTIME_HIDE;
   return iframe;
 }
 
-function stubFiles(files: Record<string, string>, fail: { on: boolean }) {
+function stubFiles(
+  files: Record<string, string>,
+  fail: { on: boolean },
+  delayMs: Record<string, number>,
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      // The server answers later, so a write that lands first is what the read sees.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      if (fail.on) return new Response("", { status: 500 });
       const path = decodeURIComponent(String(url).split("/files/")[1] ?? "");
+      // The server answers later, so a write that lands first is what the read sees.
+      await new Promise((resolve) => setTimeout(resolve, delayMs[path] ?? 0));
+      if (fail.on) return new Response("", { status: 500 });
       return new Response(JSON.stringify({ content: files[path] }));
     }),
   );
 }
 
-function mountClipboard(domSelection: DomEditSelection | null = null) {
-  const files: Record<string, string> = { "index.html": SAVED, "compositions/sub.html": SUB };
+function mountClipboard(
+  domSelection: DomEditSelection | null = null,
+  sub = SUB,
+  bundle: (host: Element) => void = () => {},
+) {
+  const files: Record<string, string> = { "index.html": SAVED, "compositions/sub.html": sub };
   const fail = { on: false };
-  stubFiles(files, fail);
-  const iframe = mountPreview();
+  const delayMs: Record<string, number> = {};
+  const domEditSave = { pending: Promise.resolve() };
+  const domSelectionRef = { current: domSelection };
+  stubFiles(files, fail, delayMs);
+  const iframe = mountPreview(sub, bundle);
   const writes: string[] = [];
   const deleted: string[] = [];
   const writeProjectFile = async (_path: string, content: string) => {
@@ -98,7 +111,7 @@ function mountClipboard(domSelection: DomEditSelection | null = null) {
     api = useClipboard({
       projectId: "p",
       activeCompPath: "index.html",
-      domEditSelectionRef: { current: domSelection },
+      domEditSelectionRef: domSelectionRef,
       showToast: () => {},
       writeProjectFile,
       recordEdit: async () => {},
@@ -109,13 +122,25 @@ function mountClipboard(domSelection: DomEditSelection | null = null) {
       },
       handleDomEditElementDelete: async () => {},
       previewIframeRef: { current: iframe },
+      waitForPendingDomEditSaves: () => domEditSave.pending,
     });
     return null;
   }
   root = createRoot(document.createElement("div"));
   act(() => root?.render(React.createElement(Harness)));
   const clipboard = () => api as ReturnType<typeof useClipboard>;
-  return { clipboard, writes, deleted, files, fail, writeProjectFile, iframe };
+  return {
+    clipboard,
+    writes,
+    deleted,
+    files,
+    fail,
+    writeProjectFile,
+    iframe,
+    delayMs,
+    domEditSave,
+    domSelectionRef,
+  };
 }
 
 function selectTitle() {
@@ -191,6 +216,88 @@ describe("copy takes a clip's saved markup, not the runtime's live styling", () 
     clipboard().handleCopy();
     await clipboard().handlePaste();
     expect(writes[0]?.match(/>Title v2<\/h1>/g)).toHaveLength(2);
+    expect(writes[0]).not.toContain("display: none");
+  });
+});
+
+const SUB_SELECTION = {
+  hfId: SUB_HF_ID,
+  selector: "h2",
+  selectorIndex: 0,
+  sourceFile: "compositions/sub.html",
+} as DomEditSelection;
+
+describe("copy of a sub-composition clip", () => {
+  it("rebases its relative asset paths to the project root, as the preview does", async () => {
+    clearSelection();
+    const sub = SUB.replace(
+      ">Sub<",
+      '><img src="../assets/logo.png?v=2"><img src="logo.png"><img src="assets/shared.png">Sub<',
+    );
+    const selection = { ...SUB_SELECTION, hfId: stampedHfId(sub, "h2") };
+    const { clipboard, writes } = mountClipboard(selection, sub, (host) => {
+      const [up, sibling] = Array.from(host.querySelectorAll("img"));
+      up?.setAttribute("src", "assets/logo.png?v=2");
+      sibling?.setAttribute("src", "compositions/logo.png");
+    });
+    clipboard().handleCopy();
+    await clipboard().handlePaste();
+    expect(writes[0]).toContain('src="assets/logo.png?v=2"');
+    expect(writes[0]).toContain('src="compositions/logo.png"');
+    expect(writes[0]).toContain('src="assets/shared.png"');
+    expect(writes[0]).not.toContain("../assets");
+    expect(writes[0]).not.toContain("display: none");
+  });
+});
+
+describe("copy order", () => {
+  it("waits for a DOM edit save still in flight", async () => {
+    selectTitle();
+    const { clipboard, writes, files, domEditSave } = mountClipboard();
+    domEditSave.pending = new Promise((resolve) =>
+      setTimeout(() => {
+        files["index.html"] = ensureHfIds(SAVED).replace(">Title<", ">Title v2<");
+        resolve();
+      }, 5),
+    );
+    clipboard().handleCopy();
+    await clipboard().handlePaste();
+    expect(writes[0]?.match(/>Title v2<\/h1>/g)).toHaveLength(2);
+  });
+
+  it("pastes the second of two copies", async () => {
+    selectTitle();
+    const { clipboard, writes, domSelectionRef } = mountClipboard();
+    clipboard().handleCopy();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    clearSelection();
+    domSelectionRef.current = SUB_SELECTION;
+    clipboard().handleCopy();
+    await clipboard().handlePaste();
+    expect(writes[0]).toContain(">Sub</h2>");
+    expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(1);
+  });
+
+  it("pastes the later copy even when the earlier copy's read lands last", async () => {
+    selectTitle();
+    const { clipboard, writes, delayMs, domSelectionRef } = mountClipboard();
+    delayMs["index.html"] = 20;
+    clipboard().handleCopy();
+    clearSelection();
+    domSelectionRef.current = SUB_SELECTION;
+    clipboard().handleCopy();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    delayMs["index.html"] = 0;
+    await clipboard().handlePaste();
+    expect(writes[0]).toContain(">Sub</h2>");
+    expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(1);
+  });
+
+  it("duplicates a hidden clip with its saved markup", async () => {
+    selectTitle();
+    const { clipboard, writes } = mountClipboard();
+    await clipboard().handleDuplicate();
+    expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(2);
     expect(writes[0]).not.toContain("display: none");
   });
 });
