@@ -131,6 +131,9 @@ describe("HyperframesPlayer parent-frame media", () => {
     seek: (t: number) => void;
     _audioOwner?: "runtime" | "parent";
     _promoteToParentProxy?: () => void;
+    _ready?: boolean;
+    _assetsReady?: boolean;
+    _parentTickRaf?: number | null;
   };
 
   let player: PlayerElement;
@@ -254,6 +257,23 @@ describe("HyperframesPlayer parent-frame media", () => {
 
     player.pause();
     expect(mockAudio.pause).toHaveBeenCalled();
+  });
+
+  it("hands audio back to the iframe and pauses the proxy as soon as the source changes", () => {
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+    player._promoteToParentProxy?.();
+    player._ready = true;
+    player._assetsReady = true;
+    player.play();
+    expect(player._parentTickRaf).not.toBeNull();
+    mockAudio.pause.mockClear();
+
+    player.setAttribute("src", "next-composition.html");
+
+    expect(player._audioOwner).toBe("runtime");
+    expect(mockAudio.pause).toHaveBeenCalled();
+    expect(player._parentTickRaf).toBeNull();
   });
 
   function dispatchAutoplayBlockedFromPlayerFrame(player: HTMLElement): HTMLMediaElement {
@@ -461,10 +481,11 @@ describe("HyperframesPlayer parent-frame media", () => {
       windowAdd.mock.calls.filter(([eventName]) => eventName === "message").length -
         windowRemove.mock.calls.filter(([eventName]) => eventName === "message").length,
     ).toBe(1);
+    // The one load listener is added in the constructor, before these spies.
     expect(
       iframeAdd.mock.calls.filter(([eventName]) => eventName === "load").length -
         iframeRemove.mock.calls.filter(([eventName]) => eventName === "load").length,
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it("returns parent-media ownership to the runtime after reconnect", () => {
@@ -3310,6 +3331,76 @@ describe("HyperframesPlayer asset-ready gate", () => {
       data: { source: "hf-preview", ...data },
     } as unknown as MessageEvent);
 
+  it("ignores its iframe's blank-document load that arrives before it is connected", () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal & {
+      probe: { start(): void };
+    };
+    const start = vi.spyOn(player.probe, "start");
+
+    player.iframe.dispatchEvent(new Event("load"));
+
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("handles its iframe's load before a host's load listener runs", async () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal & {
+      _readyDocument: Document | null;
+    };
+    const readyAtHostLoad: boolean[] = [];
+    player.iframe.addEventListener("load", () => readyAtHostLoad.push(player._ready));
+    document.body.appendChild(player);
+    await vi.waitFor(() => expect(readyAtHostLoad).toHaveLength(1));
+    player._ready = true;
+    player._readyDocument = document.implementation.createHTMLDocument("previous document");
+
+    player.iframe.dispatchEvent(new Event("load"));
+
+    expect(readyAtHostLoad[1]).toBe(false);
+    player.remove();
+  });
+
+  it("paints a document before its load when nothing first-frame is pending", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = player.iframe.contentDocument!;
+    Object.defineProperty(doc, "readyState", { get: () => "interactive", configurable: true });
+    const holdLoad = (e: Event) => e.stopImmediatePropagation();
+    doc.defaultView!.addEventListener("load", holdLoad, { capture: true });
+    try {
+      post(player, { type: "timeline", durationInFrames: 60 });
+
+      await vi.waitFor(() => expect(player.painted).toBe(true));
+    } finally {
+      doc.defaultView!.removeEventListener("load", holdLoad, { capture: true });
+      delete (doc as { readyState?: unknown }).readyState;
+      player.remove();
+    }
+  });
+
+  it("stays unpainted for first-frame media a script adds before the document's load", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = player.iframe.contentDocument!;
+    let readyState: DocumentReadyState = "interactive";
+    Object.defineProperty(doc, "readyState", { get: () => readyState, configurable: true });
+    post(player, { type: "timeline", durationInFrames: 60 });
+
+    const video = doc.createElement("video");
+    video.setAttribute("data-start", "0");
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+    doc.body.appendChild(video);
+    readyState = "complete";
+    doc.defaultView!.dispatchEvent(new Event("load"));
+    player._onIframeLoad();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(false);
+    expect(player.painted).toBe(false);
+    delete (doc as { readyState?: unknown }).readyState;
+    player.remove();
+  });
+
   it("holds an opaque-origin composition until its runtime posts assets-ready", async () => {
     const player = await createConnectedPlayer();
     player._ready = false;
@@ -3376,6 +3467,31 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player.assetsReady).toBe(true);
     player.play();
     expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
+  it("keeps a same-origin handshake when that document's load event arrives after ready", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = document.implementation.createHTMLDocument("composition");
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => doc, configurable: true });
+    post(player, { type: "timeline", durationInFrames: 60 });
+    await vi.waitFor(() => expect(player.assetsReady).toBe(true));
+
+    const settled = vi.fn();
+    player.addEventListener("assetsready", settled);
+    player._onIframeLoad();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(true);
+    expect(settled).not.toHaveBeenCalled();
+
+    const next = document.implementation.createHTMLDocument("next composition");
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => next });
+    player._onIframeLoad();
+    expect(player._ready).toBe(false);
 
     player.remove();
   });

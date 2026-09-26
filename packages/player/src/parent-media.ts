@@ -94,6 +94,10 @@ export class ParentMediaManager {
     const wasPromoted = this._audioOwner === "parent";
     this._audioOwner = "runtime";
     this.pauseAll();
+    for (const m of this._entries) if (m !== this._urlAudioEntry) m.el.src = "";
+    this._entries = this._urlAudioEntry ? [this._urlAudioEntry] : [];
+    if (this._urlAudioSrc && !this._urlAudioEntry)
+      this._urlAudioEntry = this._createEntry(this._urlAudioSrc, "audio", 0, Infinity);
     this.teardownObserver();
     if (wasPromoted) {
       this._dispatchEvent(
@@ -300,13 +304,10 @@ export class ParentMediaManager {
     if (this._urlAudioSrc === audioSrc && this._urlAudioEntry) return;
     this.teardownUrlAudio();
     const entry = this._createEntry(audioSrc, "audio", 0, Infinity);
-    // `_createEntry` returns null when a proxy for this URL already exists
-    // (e.g. the composition already adopted the same media). In that case we do
-    // not own a proxy, so leave the tracking cleared rather than recording a
-    // src with no entry — otherwise teardown would target nothing and the
-    // no-op guard would never engage.
+    // Null when the composition already has a proxy for this URL: that one stays the
+    // composition's, and a reset creates ours once that document's proxies are gone.
     this._urlAudioEntry = entry;
-    this._urlAudioSrc = entry ? audioSrc : null;
+    this._urlAudioSrc = audioSrc;
     // If the parent already owns playback, bring the fresh proxy online so a
     // mid-playback swap is not silent until the next play tick.
     if (entry && this._audioOwner === "parent" && !this._isPaused()) {
