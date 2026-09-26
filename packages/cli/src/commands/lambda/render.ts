@@ -21,12 +21,6 @@ import {
 import { warnOnDimensionMismatch } from "./_dimensions.js";
 import { requireStack, stateFilePath } from "./state.js";
 
-// Dynamic-import the SDK so tsup keeps it out of the static-import head of
-// the CLI bundle. See sites.ts loadSDK() for the full rationale.
-async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> {
-  return import("@hyperframes/aws-lambda/sdk");
-}
-
 export interface RenderArgs {
   projectDir: string;
   stackName: string;
@@ -141,7 +135,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
       }
     : undefined;
 
-  const { renderToLambda } = await loadSDK();
+  const { renderToLambda } = await import("@hyperframes/aws-lambda/sdk");
   const handle = await renderToLambda({
     projectDir: siteHandle ? undefined : projectDir,
     siteHandle,
@@ -188,7 +182,7 @@ async function waitForCompletion(
   json: boolean,
 ): Promise<void> {
   // Lazy import to avoid pulling SFN client when only `render --no-wait` is used.
-  const { getRenderProgress } = await loadSDK();
+  const { getRenderProgress } = await import("@hyperframes/aws-lambda/sdk");
   let lastRendered = -1;
   while (true) {
     const progress = await getRenderProgress({

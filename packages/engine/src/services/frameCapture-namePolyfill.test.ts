@@ -15,15 +15,7 @@ import { dirname, resolve } from "node:path";
 // browser and throw `ReferenceError: __name is not defined` unless we
 // install a no-op shim first.
 //
-// These tests intentionally do NOT launch a browser — the rest of this
-// package follows the same pure-unit-test convention. Instead they:
-//   1. Assert the polyfill is wired up at the source level so it cannot
-//      be silently removed by a careless edit.
-//   2. Probe the current Vitest runtime so a future maintainer can see at
-//      a glance whether nested named functions still get `__name(...)`
-//      wrappers under the test transformer. This is advisory: both
-//      outcomes are acceptable — the reported observation is what makes
-//      the test useful when the upstream behavior shifts.
+// These source-wiring checks do not launch a browser.
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FRAME_CAPTURE_PATH = resolve(__dirname, "frameCapture.ts");
@@ -46,33 +38,5 @@ describe("frameCapture __name polyfill", () => {
     expect(polyfillIndex).toBeGreaterThan(-1);
     expect(versionIndex).toBeGreaterThan(-1);
     expect(polyfillIndex).toBeLessThan(versionIndex);
-  });
-
-  it("documents the current transpiler behavior for nested named functions", () => {
-    function outer(): { wrapsNested: boolean; wrapsArrow: boolean } {
-      // The unused declarations are deliberate: we are inspecting whether the
-      // active transpiler rewrites `outer.toString()` to include
-      // `__name(nested, ...)` / `__name(arrowNested, ...)` wrappers.
-      // eslint-disable-next-line no-unused-vars
-      function nested() {
-        return 1;
-      }
-      // eslint-disable-next-line no-unused-vars
-      const arrowNested = () => 2;
-      const src = outer.toString();
-      return {
-        wrapsNested: /__name\(\s*nested\s*,/.test(src),
-        wrapsArrow: /__name\(\s*\(\)\s*=>\s*2\s*,/.test(src) || /__name\(\s*arrowNested/.test(src),
-      };
-    }
-
-    const { wrapsNested, wrapsArrow } = outer();
-
-    // Both outcomes are acceptable; the value of this test is in surfacing
-    // the runtime's behavior on the next failure (or first inspection).
-    // If both flags become false everywhere this engine is consumed, the
-    // polyfill above can probably be dropped. Until then it stays.
-    expect(typeof wrapsNested).toBe("boolean");
-    expect(typeof wrapsArrow).toBe("boolean");
   });
 });

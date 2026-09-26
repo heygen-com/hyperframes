@@ -4,17 +4,6 @@ export const STUDIO_MOTION_PATH = ".hyperframes/studio-motion.json";
 export const STUDIO_MOTION_TIMELINE_ID = "studio-motion";
 
 export const STUDIO_MOTION_ATTR = "data-hf-studio-motion";
-export const STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR = "data-hf-studio-motion-original-transform";
-export const STUDIO_MOTION_ORIGINAL_OPACITY_ATTR = "data-hf-studio-motion-original-opacity";
-export const STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR = "data-hf-studio-motion-original-visibility";
-
-export interface StudioMotionTarget {
-  sourceFile: string;
-  selector?: string;
-  selectorIndex?: number;
-  id?: string;
-}
-
 export interface StudioGsapMotionValues {
   x?: number;
   y?: number;
@@ -36,50 +25,14 @@ export interface StudioCustomEaseControlPoints {
   y2: number;
 }
 
-export interface StudioGsapMotion {
-  kind: "gsap-motion";
-  target: StudioMotionTarget;
+export interface StudioMotionPayload {
   start: number;
   duration: number;
   ease: string;
   customEase?: StudioGsapCustomEase;
   from: StudioGsapMotionValues;
   to: StudioGsapMotionValues;
-  updatedAt?: string;
 }
-
-export type StudioGsapMotionPreset = "fade-up" | "slide" | "pop";
-export type StudioGsapMotionDirection = "up" | "down" | "left" | "right";
-
-export const STUDIO_GSAP_EASE_OPTIONS = [
-  "none",
-  "power1.in",
-  "power1.out",
-  "power1.inOut",
-  "power2.in",
-  "power2.out",
-  "power2.inOut",
-  "power3.in",
-  "power3.out",
-  "power3.inOut",
-  "power4.in",
-  "power4.out",
-  "power4.inOut",
-  "sine.in",
-  "sine.out",
-  "sine.inOut",
-  "expo.in",
-  "expo.out",
-  "expo.inOut",
-  "circ.in",
-  "circ.out",
-  "circ.inOut",
-  "back.in(1.7)",
-  "back.out(1.7)",
-  "back.inOut(1.7)",
-  "elastic.out(1, 0.45)",
-  "bounce.out",
-] as const;
 
 export const DEFAULT_CUSTOM_EASE_POINTS: StudioCustomEaseControlPoints = {
   x1: 0.215,
@@ -120,20 +73,6 @@ export const GSAP_EASE_CONTROL_POINTS: Record<string, StudioCustomEaseControlPoi
 
 export const CUSTOM_EASE_DATA_PATTERN =
   /^M\s*0\s*,\s*0\s*C\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s+1\s*,\s*1\s*$/i;
-
-export interface StudioGsapPresetMotionOptions {
-  start: number;
-  duration: number;
-  distance: number;
-  ease: string;
-  direction?: StudioGsapMotionDirection;
-  customEase?: StudioGsapCustomEase;
-}
-
-export interface StudioMotionManifest {
-  version: 1;
-  motions: StudioGsapMotion[];
-}
 
 export interface StudioGsapTimeline {
   fromTo?: (

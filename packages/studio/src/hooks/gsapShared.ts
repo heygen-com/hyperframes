@@ -19,19 +19,7 @@ export interface IframeGsap {
   set?: (target: string, vars: Record<string, number | string>) => void;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-export const PROPERTY_DEFAULTS: Record<string, number> = {
-  opacity: 1,
-  x: 0,
-  y: 0,
-  scale: 1,
-  scaleX: 1,
-  scaleY: 1,
-  rotation: 0,
-  width: 100,
-  height: 100,
-};
+export { GSAP_PROPERTY_DEFAULTS as PROPERTY_DEFAULTS } from "@hyperframes/parsers/gsap-parser";
 
 /**
  * A timeline write that applies an instantaneous value and then holds it.

@@ -2,10 +2,7 @@
 /**
  * Browser-safe GSAP read path — acorn + acorn-walk.
  *
- * T6b oracle: produces identical ParsedGsap output to gsapParser.ts (recast).
- * Replaces recast as the shared implementation once T6d passes.
- *
- * Write path (T6c) will add magic-string splice once read parity is confirmed.
+ * The writer uses this parser with magic-string to preserve untouched source.
  * No Node globals, no fs, no require — safe to bundle for browser use.
  */
 import * as acorn from "acorn";
@@ -19,7 +16,7 @@ import type {
   ParsedGsap,
 } from "./gsapSerialize.js";
 import { classifyTweenPropertyGroup } from "./gsapConstants.js";
-import { buildArcPath } from "./gsapSerialize.js";
+import { buildArcPath, resolvePositionString } from "./gsapSerialize.js";
 import { inlineComputedTimelines, readProvenance } from "./gsapInline.js";
 import { getObjectArrayKeyframeTiming } from "./gsapObjectArrayTiming.js";
 
@@ -1469,32 +1466,6 @@ function annotateStaggeredCollections(anims: Omit<GsapAnimation, "id">[]): void 
 // ── Timeline position resolution ─────────────────────────────────────────────
 
 const GSAP_DEFAULT_DURATION = 0.5;
-
-// fallow-ignore-next-line complexity
-function resolvePositionString(pos: string, cursor: number, prevStart: number): number | null {
-  const trimmed = pos.trim();
-  if (trimmed === "") return cursor;
-  if (trimmed.startsWith("+=")) {
-    const n = Number.parseFloat(trimmed.slice(2));
-    return Number.isFinite(n) ? cursor + n : null;
-  }
-  if (trimmed.startsWith("-=")) {
-    const n = Number.parseFloat(trimmed.slice(2));
-    return Number.isFinite(n) ? cursor - n : null;
-  }
-  if (trimmed === "<") return prevStart;
-  if (trimmed === ">") return cursor;
-  if (trimmed.startsWith("<")) {
-    const n = Number.parseFloat(trimmed.slice(1));
-    return Number.isFinite(n) ? prevStart + n : null;
-  }
-  if (trimmed.startsWith(">")) {
-    const n = Number.parseFloat(trimmed.slice(1));
-    return Number.isFinite(n) ? cursor + n : null;
-  }
-  const n = Number.parseFloat(trimmed);
-  return Number.isFinite(n) ? n : null;
-}
 
 // ── set() pre-state seeding (#3 in eval) ──────────────────────────────────────
 

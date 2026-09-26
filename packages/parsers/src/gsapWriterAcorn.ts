@@ -18,6 +18,10 @@ import {
   extractArcWaypoints,
   buildMotionPathObjectCode,
   mergePercentageKeyframes,
+  isStudioHoldSet,
+  positionHoldForAnimation,
+  STUDIO_HOLD_MARKER,
+  safeJsKey as safeKey,
 } from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
@@ -49,10 +53,6 @@ function valueToCode(value: unknown): string {
   if (typeof value === "number") return Number.isNaN(value) ? "0" : String(value);
   if (typeof value === "boolean") return String(value);
   return JSON.stringify(value);
-}
-
-function safeKey(key: string): string {
-  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 // fallow-ignore-next-line complexity
@@ -2296,48 +2296,12 @@ function insertInheritedStateSetInScript(
   return ms.toString();
 }
 
-const STUDIO_HOLD_MARKER = "hf-hold";
-
-function isStudioHoldSet(animation: GsapAnimation): boolean {
-  return animation.method === "set" && animation.properties.data === STUDIO_HOLD_MARKER;
-}
-
 function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): string {
   const staleHolds = parsed.located.filter((entry) => isStudioHoldSet(entry.animation));
   if (staleHolds.length === 0) return script;
   const ms = new MagicString(script);
   for (const hold of staleHolds) removeCallFromMagicString(ms, hold.call, script);
   return ms.toString();
-}
-
-function animationStart(animation: GsapAnimation): number {
-  if (animation.resolvedStart !== undefined) return animation.resolvedStart;
-  return typeof animation.position === "number" ? animation.position : 0;
-}
-
-function positionProperties(
-  properties: Record<string, number | string>,
-): Record<string, number | string> {
-  const position: Record<string, number | string> = {};
-  for (const [property, value] of Object.entries(properties)) {
-    if (classifyPropertyGroup(property) === "position" && typeof value === "number") {
-      position[property] = value;
-    }
-  }
-  return position;
-}
-
-function positionHoldForAnimation(
-  animation: GsapAnimation,
-): Record<string, number | string> | null {
-  if (!animation.keyframes) return null;
-  if (!(animationStart(animation) > 0.001)) return null;
-  const first = [...animation.keyframes.keyframes].sort(
-    (left, right) => left.percentage - right.percentage,
-  )[0];
-  if (!first) return null;
-  const position = positionProperties(first.properties);
-  return Object.keys(position).length > 0 ? position : null;
 }
 
 /** Acorn-native, byte-preserving hold synchronization used after mutations. */

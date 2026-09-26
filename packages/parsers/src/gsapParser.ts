@@ -2,7 +2,7 @@
  * Node-only GSAP AST parser. Depends on recast / @babel/parser, which compile
  * to CommonJS that calls `require("fs")` — so this module must never be in the
  * static import graph of isomorphic/browser code. It is reachable only via the
- * `@hyperframes/core/gsap-parser` subpath (studio-api mutations + the linter).
+ * `@hyperframes/parsers/gsap-parser-recast` subpath.
  *
  * Recast-free helpers (serialization, keyframe conversion, validation, types)
  * live in `./gsapSerialize` and are re-exported here so this subpath exposes the
@@ -22,6 +22,10 @@ import {
   safeJsKey as safeKey,
   resolveConversionProps,
   mergePercentageKeyframes,
+  isStudioHoldSet,
+  positionHoldForAnimation,
+  resolvePositionString,
+  STUDIO_HOLD_MARKER,
 } from "./gsapSerialize";
 
 export type {
@@ -35,6 +39,7 @@ export type {
   GsapKeyframeFormat,
 } from "./gsapSerialize";
 export {
+  isStudioHoldSet,
   serializeGsapAnimations,
   getAnimationsForElementId,
   validateCompositionGsap,
@@ -1047,33 +1052,6 @@ function tweenCallToAnimation(
 
 const GSAP_DEFAULT_DURATION = 0.5;
 
-// NOTE: Label-based positions (e.g. "myLabel+=0.5") are not yet resolved —
-// they fall through to parseFloat which returns null for non-numeric strings.
-function resolvePositionString(pos: string, cursor: number, prevStart: number): number | null {
-  const trimmed = pos.trim();
-  if (trimmed === "") return cursor;
-  if (trimmed.startsWith("+=")) {
-    const n = Number.parseFloat(trimmed.slice(2));
-    return Number.isFinite(n) ? cursor + n : null;
-  }
-  if (trimmed.startsWith("-=")) {
-    const n = Number.parseFloat(trimmed.slice(2));
-    return Number.isFinite(n) ? cursor - n : null;
-  }
-  if (trimmed === "<") return prevStart;
-  if (trimmed === ">") return cursor;
-  if (trimmed.startsWith("<")) {
-    const n = Number.parseFloat(trimmed.slice(1));
-    return Number.isFinite(n) ? prevStart + n : null;
-  }
-  if (trimmed.startsWith(">")) {
-    const n = Number.parseFloat(trimmed.slice(1));
-    return Number.isFinite(n) ? cursor + n : null;
-  }
-  const n = Number.parseFloat(trimmed);
-  return Number.isFinite(n) ? n : null;
-}
-
 function applyTimelineDefaults(
   anims: Omit<GsapAnimation, "id">[],
   defaults?: TimelineDefaults,
@@ -1725,17 +1703,6 @@ function insertInheritedStateSet(
   return recast.print(parsed.ast).code;
 }
 
-/** Marker on Studio-emitted pre-keyframe hold `set`s. `data` is a GSAP-reserved
- * config key (attached to the tween, never applied to the target), so it carries
- * the tag without triggering GSAP's "Invalid property" warning. */
-const STUDIO_HOLD_MARKER = "hf-hold";
-
-/** True for a `tl.set(...)` this module emitted to hold a keyframe before its tween.
- * The Studio filters these out so they never appear as user keyframes/diamonds. */
-export function isStudioHoldSet(anim: GsapAnimation): boolean {
-  return anim.method === "set" && anim.properties?.data === STUDIO_HOLD_MARKER;
-}
-
 /**
  * Keep a `tl.set(selector, {x,y}, 0)` "hold" in front of every position-keyframed
  * tween that starts after t=0, so the element holds its first keyframe's position
@@ -1768,16 +1735,8 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
     return result;
   }
   for (const anim of reparsed.animations) {
-    if (!anim.keyframes) continue;
-    const start = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
-    if (!(start > 0.001)) continue;
-    const firstKf = [...anim.keyframes.keyframes].sort((a, b) => a.percentage - b.percentage)[0];
-    if (!firstKf) continue;
-    const posProps: Record<string, number | string> = {};
-    for (const [k, v] of Object.entries(firstKf.properties)) {
-      if (classifyPropertyGroup(k) === "position" && typeof v === "number") posProps[k] = v;
-    }
-    if (Object.keys(posProps).length === 0) continue;
+    const posProps = positionHoldForAnimation(anim);
+    if (!posProps) continue;
     result = insertInheritedStateSet(result, anim.targetSelector, 0, {
       ...posProps,
       data: STUDIO_HOLD_MARKER,

@@ -41,12 +41,6 @@ import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import { warnOnDimensionMismatch } from "./_dimensions.js";
 import { requireStack } from "./state.js";
 
-// Dynamic-import the SDK so tsup keeps it out of the static-import head of
-// the CLI bundle. See sites.ts loadSDK() for the full rationale.
-async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> {
-  return import("@hyperframes/aws-lambda/sdk");
-}
-
 /** Arguments accepted by `hyperframes lambda render-batch`. */
 export interface RenderBatchArgs {
   projectDir: string;
@@ -227,7 +221,7 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
   } else if (args.dryRun) {
     siteHandle = makePlaceholderSiteHandle("dry-run-site", stack.bucketName);
   } else {
-    const { deploySite } = await loadSDK();
+    const { deploySite } = await import("@hyperframes/aws-lambda/sdk");
     siteHandle = await deploySite({
       projectDir,
       bucketName: stack.bucketName,
@@ -249,7 +243,9 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
   // Skip the SDK import entirely on --dry-run; the startEntry closure
   // short-circuits before touching `renderToLambda` so it can stay
   // undefined.
-  const renderToLambda = args.dryRun ? undefined : (await loadSDK()).renderToLambda;
+  const renderToLambda = args.dryRun
+    ? undefined
+    : (await import("@hyperframes/aws-lambda/sdk")).renderToLambda;
 
   const startEntry = async (item: {
     entry: BatchEntry;

@@ -7,6 +7,15 @@ const APPEAR_OPACITY = 0.5;
 const FRAME_TOLERANCE = 1;
 /** Default longest allowed fully-static window for keepsMoving, in seconds. */
 const DEFAULT_MAX_STATIC_SEC = 2;
+const MOTION_FPS = 20;
+const MOTION_MAX_SAMPLES = 300;
+
+export function buildMotionSampleTimes(duration: number): number[] {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const count = Math.min(MOTION_MAX_SAMPLES, Math.max(2, Math.ceil(duration * MOTION_FPS) + 1));
+  const step = duration / (count - 1);
+  return Array.from({ length: count }, (_, index) => Math.round(index * step * 1000) / 1000);
+}
 
 export interface FrameSample {
   rect: LayoutRect;

@@ -152,11 +152,6 @@ export class CompositionProbe {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member
-  resolveDirectTimelineAdapterFromWindow(win: Window): DirectTimelineAdapter | null {
-    return this._resolveDirectTimelineAdapterFromWindow(win);
-  }
-
   hasRuntimeBridge(win: Window): boolean {
     return Reflect.get(win, "__hf") !== undefined || isObjectRecord(Reflect.get(win, "__player"));
   }

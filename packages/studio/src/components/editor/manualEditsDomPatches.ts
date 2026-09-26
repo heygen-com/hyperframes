@@ -31,13 +31,6 @@ import {
   STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
   STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
 } from "./manualEditsTypes";
-import {
-  STUDIO_MOTION_ATTR,
-  STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR,
-  STUDIO_MOTION_ORIGINAL_OPACITY_ATTR,
-  STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
-} from "./studioMotionTypes";
-
 /* ── Shared helpers ──────────────────────────────────────────────── */
 
 function collectInlineStyleOps(
@@ -228,31 +221,4 @@ export function buildClearRotationPatches(element: HTMLElement): PatchOperation[
   ];
   appendTransformDisplayOps(element, ops);
   return ops;
-}
-
-/* ── Motion patches ──────────────────────────────────────────────── */
-
-const MOTION_ORIG_ATTRS = [
-  STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR,
-  STUDIO_MOTION_ORIGINAL_OPACITY_ATTR,
-  STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
-] as const;
-
-export function buildMotionPatches(element: HTMLElement): PatchOperation[] {
-  const motionJson = element.getAttribute(STUDIO_MOTION_ATTR);
-  if (!motionJson) return [];
-  const ops: PatchOperation[] = [
-    { type: "attribute", property: STUDIO_MOTION_ATTR, value: motionJson },
-  ];
-  collectAttributeOps(element, MOTION_ORIG_ATTRS, ops);
-  return ops;
-}
-
-export function buildClearMotionPatches(_element: HTMLElement): PatchOperation[] {
-  return [
-    { type: "attribute", property: STUDIO_MOTION_ATTR, value: null },
-    { type: "attribute", property: STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR, value: null },
-    { type: "attribute", property: STUDIO_MOTION_ORIGINAL_OPACITY_ATTR, value: null },
-    { type: "attribute", property: STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR, value: null },
-  ];
 }

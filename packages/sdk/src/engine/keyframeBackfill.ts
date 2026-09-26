@@ -13,24 +13,7 @@
  * any prop whose default is null).
  */
 
-// Numeric rest values for editable transform/style props. Props absent here have
-// no safe static default and are intentionally omitted from the backfill set.
-//
-// KEEP IN SYNC WITH packages/studio/src/hooks/gsapShared.ts:PROPERTY_DEFAULTS —
-// the studio (recast) and SDK (acorn) paths must derive the same defaults or
-// SDK-written keyframes drift from server-written ones (the exact bug this fixes).
-// TODO: lift the canonical table into @hyperframes/core and import from both.
-const KEYFRAME_PROPERTY_DEFAULTS: Record<string, number> = {
-  opacity: 1,
-  x: 0,
-  y: 0,
-  scale: 1,
-  scaleX: 1,
-  scaleY: 1,
-  rotation: 0,
-  width: 100,
-  height: 100,
-};
+import { GSAP_PROPERTY_DEFAULTS } from "@hyperframes/parsers/gsap-parser";
 
 /** Derive the backfillDefaults for an add-keyframe op (numeric-default props only). */
 export function deriveKeyframeBackfillDefaults(
@@ -38,7 +21,7 @@ export function deriveKeyframeBackfillDefaults(
 ): Record<string, number | string> {
   const defaults: Record<string, number | string> = {};
   for (const key of Object.keys(value)) {
-    const def = KEYFRAME_PROPERTY_DEFAULTS[key];
+    const def = GSAP_PROPERTY_DEFAULTS[key];
     if (def !== undefined) defaults[key] = def;
   }
   return defaults;

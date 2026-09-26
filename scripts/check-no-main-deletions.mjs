@@ -38,6 +38,14 @@ const BASE_FLAG = "--base";
  */
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/producer/src/services/audioExtractor.ts",
+    "orphaned audio pipeline with no import, export, or build entrypoint; live audio processing remains owned by the engine",
+  ],
+  [
+    "packages/producer/src/services/compilationRunner.ts",
+    "orphaned compilation harness with no import, export, or build entrypoint; the active regression harness remains",
+  ],
+  [
     "packages/cli/src/templates/remote.test.ts",
     "tests only unused constants removed with the unreachable template listing; registry and init behavior remains covered",
   ],
@@ -58,120 +66,12 @@ export const ALLOWED_DELETIONS = new Map([
     "used only by the unreachable marquee implementation removed in this change; active marquee selection remains covered",
   ],
   [
-    "docs/catalog/components/ai-generation-canvas.mdx",
-    "owner-directed removal of the AI Generation Canvas catalog item and its generated documentation",
-  ],
-  [
-    "docs/catalog/components/ai-prompt-flow.mdx",
-    "owner-directed removal of the AI Prompt Flow catalog item and its generated documentation",
-  ],
-  [
-    "docs/catalog/components/checkout-flow.mdx",
-    "owner-directed removal of the Checkout Flow catalog item and its generated documentation",
-  ],
-  [
-    "docs/public/catalog/components/ai-generation-canvas.json",
-    "owner-directed removal of the AI Generation Canvas catalog item and its generated public payload",
-  ],
-  [
-    "docs/public/catalog/components/ai-prompt-flow.json",
-    "owner-directed removal of the AI Prompt Flow catalog item and its generated public payload",
-  ],
-  [
-    "docs/public/catalog/components/checkout-flow.json",
-    "owner-directed removal of the Checkout Flow catalog item and its generated public payload",
-  ],
-  [
-    "registry/components/ai-generation-canvas/ai-generation-canvas.html",
-    "owner-directed removal of the AI Generation Canvas catalog source component",
-  ],
-  [
-    "registry/components/ai-generation-canvas/demo.html",
-    "owner-directed removal of the AI Generation Canvas catalog preview source",
-  ],
-  [
-    "registry/components/ai-generation-canvas/registry-item.json",
-    "owner-directed removal of the AI Generation Canvas catalog registry entry",
-  ],
-  [
-    "registry/components/ai-prompt-flow/ai-prompt-flow.html",
-    "owner-directed removal of the AI Prompt Flow catalog source component",
-  ],
-  [
-    "registry/components/ai-prompt-flow/demo.html",
-    "owner-directed removal of the AI Prompt Flow catalog preview source",
-  ],
-  [
-    "registry/components/ai-prompt-flow/registry-item.json",
-    "owner-directed removal of the AI Prompt Flow catalog registry entry",
-  ],
-  [
-    "registry/components/checkout-flow/checkout-flow.html",
-    "owner-directed removal of the Checkout Flow catalog source component",
-  ],
-  [
-    "registry/components/checkout-flow/demo.html",
-    "owner-directed removal of the Checkout Flow catalog preview source",
-  ],
-  [
-    "registry/components/checkout-flow/registry-item.json",
-    "owner-directed removal of the Checkout Flow catalog registry entry",
-  ],
-  [
-    "packages/studio/src/components/StudioFeedbackBar.tsx",
-    "replaced by components/feedback/StudioFeedbackCard.tsx; too little shared content for git to pair as a rename",
-  ],
-  [
-    "skills/embedded-captions/references/test-set.md",
-    "#3219: orphaned in the shipped skill (zero inbound references across all 140 files) and its corpus lives only at ~/Downloads/heygen_relevant_videos/, so it was neither reachable nor runnable on any install",
-  ],
-  [
-    "skills/embedded-captions/themes/PORTING.md",
-    "#3219: same, zero inbound references; a theme-authoring procedure whose inputs (cap_fx3 demos, frame corpora, CONTRACT.md) are not distributed with the skill",
-  ],
-  [
     "packages/core/scripts/build-audio-fx-runtime.ts",
     "merged into build-inline-artifact.ts: this and build-position-edits-render.ts were a byte-for-byte clone differing only in five names, which fallow's duplication check kept re-flagging on every unrelated line shift",
   ],
   [
     "packages/core/scripts/build-position-edits-render.ts",
     "merged into build-inline-artifact.ts, same reason as build-audio-fx-runtime.ts above",
-  ],
-  [
-    "packages/core/scripts/build-inline-artifact.ts",
-    "a later branch in this stack (wa-20b2-lfo-fixes) independently deduped the same two build scripts a different way — buildInjectedArtifact.ts plus two thin per-target files — before this consolidation and that one had merged; this branch's tree keeps that shape instead, so build-inline-artifact.ts is the one that goes.",
-  ],
-  [
-    "packages/studio/src/hooks/useAudioSoloBridge.ts",
-    "#3453 removes the obsolete solo bridge after its last consumer leaves",
-  ],
-  [
-    "packages/studio/src/hooks/useGroupLevel.ts",
-    "#3454 deliberately removes the group level meter with the group volume strip",
-  ],
-  [
-    "packages/studio/src/player/components/TimelineGroupBusStrip.test.tsx",
-    "#3454 deliberately removes the group volume and level-meter strip and its tests",
-  ],
-  [
-    "packages/studio/src/player/components/TimelineGroupBusStrip.tsx",
-    "#3454 deliberately removes the group volume and level-meter strip",
-  ],
-  [
-    "packages/studio/src/player/components/TimelineSoloButton.tsx",
-    "#3454 deliberately removes track and group solo controls",
-  ],
-  [
-    "packages/studio/src/player/store/audioSoloSlice.test.ts",
-    "#3454 deliberately removes session solo state and its tests",
-  ],
-  [
-    "packages/studio/src/player/store/audioSoloSlice.ts",
-    "#3454 deliberately removes session solo state",
-  ],
-  [
-    "packages/studio/src/player/store/groupLevels.ts",
-    "#3454 deliberately removes group level-meter state",
   ],
 ]);
 

@@ -4,10 +4,10 @@
  *
  * This module MUST NOT import recast / @babel/parser. It is part of the
  * isomorphic core layer that the barrel and browser code depend on. AST
- * parsing of GSAP source lives in the Node-only `./gsapParser` module.
+ * parsing of GSAP source lives in the separate parser modules.
  */
 import type { Keyframe, KeyframeProperties, ValidationResult } from "./types.js";
-import type { PropertyGroupName } from "./gsapConstants";
+import { classifyPropertyGroup, type PropertyGroupName } from "./gsapConstants";
 
 export type GsapMethod = "set" | "to" | "from" | "fromTo";
 
@@ -647,4 +647,59 @@ export function buildMotionPathObjectCode(config: {
   const curviness = segments[0]?.curviness ?? 1;
   const curvPart = curviness !== 1 ? `, curviness: ${curviness}` : "";
   return `{ path: [${pathEntries.join(", ")}]${curvPart}${arSuffix} }`;
+}
+
+export const STUDIO_HOLD_MARKER = "hf-hold";
+
+/** Studio-generated holds are hidden from the authored keyframe list. */
+export function isStudioHoldSet(animation: GsapAnimation): boolean {
+  return animation.method === "set" && animation.properties?.data === STUDIO_HOLD_MARKER;
+}
+
+/** Position before a delayed first keyframe, excluding other property groups. */
+export function positionHoldForAnimation(
+  animation: GsapAnimation,
+): Record<string, number | string> | null {
+  if (!animation.keyframes) return null;
+  const start =
+    animation.resolvedStart ?? (typeof animation.position === "number" ? animation.position : 0);
+  if (!(start > 0.001)) return null;
+  const first = [...animation.keyframes.keyframes].sort((a, b) => a.percentage - b.percentage)[0];
+  if (!first) return null;
+  const position: Record<string, number | string> = {};
+  for (const [key, value] of Object.entries(first.properties)) {
+    if (classifyPropertyGroup(key) === "position" && typeof value === "number")
+      position[key] = value;
+  }
+  return Object.keys(position).length > 0 ? position : null;
+}
+
+// fallow-ignore-next-line complexity
+export function resolvePositionString(
+  pos: string,
+  cursor: number,
+  prevStart: number,
+): number | null {
+  const trimmed = pos.trim();
+  if (trimmed === "") return cursor;
+  if (trimmed.startsWith("+=")) {
+    const n = Number.parseFloat(trimmed.slice(2));
+    return Number.isFinite(n) ? cursor + n : null;
+  }
+  if (trimmed.startsWith("-=")) {
+    const n = Number.parseFloat(trimmed.slice(2));
+    return Number.isFinite(n) ? cursor - n : null;
+  }
+  if (trimmed === "<") return prevStart;
+  if (trimmed === ">") return cursor;
+  if (trimmed.startsWith("<")) {
+    const n = Number.parseFloat(trimmed.slice(1));
+    return Number.isFinite(n) ? prevStart + n : null;
+  }
+  if (trimmed.startsWith(">")) {
+    const n = Number.parseFloat(trimmed.slice(1));
+    return Number.isFinite(n) ? cursor + n : null;
+  }
+  const n = Number.parseFloat(trimmed);
+  return Number.isFinite(n) ? n : null;
 }

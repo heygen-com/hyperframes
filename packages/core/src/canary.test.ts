@@ -16,22 +16,6 @@ const base = (over: Partial<CanaryInput> = {}): CanaryInput => ({
 });
 
 /**
- * Recover the raw 32-bit hash from the module under test so the canonical
- * vectors can be asserted without exporting internals: canaryBucket(f, u)
- * hashes `${f}:${u}`, so an empty feature and a unitId of `x` hashes ":x".
- * Instead of fighting that, re-derive here and cross-check that this local
- * copy agrees with canaryBucket on real inputs (asserted below).
- */
-function rawFnv(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
-  }
-  return hash >>> 0;
-}
-
-/**
  * A realistic population: v4-shaped UUIDs, but from a SEEDED PRNG.
  *
  * These ids feed statistical assertions (share within 1pp, chi-square
@@ -63,34 +47,17 @@ function uuids(n: number, seed = 0x9e3779b9): string[] {
   );
 }
 
-describe("fnv1a32 (via canaryBucket)", () => {
-  it("matches canonical FNV-1a 32-bit vectors", () => {
-    // canaryBucket hashes `feature:unitId`, so feed the vector as the whole
-    // string by using an empty feature and reconstructing the separator.
-    // Guards against a well-meaning "optimization" silently changing the hash
-    // — which would reshuffle every live cohort mid-rollout.
-    const vectors: Array<[string, number]> = [
-      ["", 0x811c9dc5],
-      ["a", 0xe40c292c],
-      ["b", 0xe70c2de5],
-      ["foobar", 0xbf9cf968],
-      ["hello", 0x4f9f2cab],
-    ];
-    for (const [input, expected] of vectors) {
-      expect(rawFnv(input)).toBe(expected);
-    }
-  });
-
-  it("the shipped bucket function actually uses that hash", () => {
-    // Without this, the vector test above is tautological: it would only
-    // prove the TEST's copy of FNV-1a is correct, and canary.ts could drift
-    // to a different hash with every assertion still green.
-    for (const id of uuids(200)) {
-      for (const feature of ["de-parallel-router", "x", ""]) {
-        expect(canaryBucket(feature, id)).toBe(rawFnv(`${feature}:${id}`) % 100);
-      }
-    }
-  });
+// FNV-1a reference vectors 125, 126, 127, 136 and 145, reduced modulo 100.
+// https://github.com/lcn2/fnv/blob/6f5d7fa29f92987311223e71ecf8b13f7c5551f2/test_fnv.c
+// Splitting each URL at its colon exercises the public feature:unitId encoding.
+it.each<[string, number]>([
+  ["//antwrp.gsfc.nasa.gov/apod/astropix.html", 42],
+  ["//en.wikipedia.org/wiki/Fowler_Noll_Vo_hash", 81],
+  ["//epod.usra.edu/", 99],
+  ["//norvig.com/21-days.html", 30],
+  ["//www.ioccc.org/index.html", 79],
+])("matches the reference bucket for http:%s", (unitId, expected) => {
+  expect(canaryBucket("http", unitId)).toBe(expected);
 });
 
 describe("evaluateCanary", () => {

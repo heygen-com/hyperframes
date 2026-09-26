@@ -126,3 +126,16 @@ export const SUPPORTED_EASES = [
   "hold",
   "steps(1)",
 ];
+
+/** Numeric rest values shared by keyframe editors; unknown properties have no default. */
+export const GSAP_PROPERTY_DEFAULTS: Record<string, number> = {
+  opacity: 1,
+  x: 0,
+  y: 0,
+  scale: 1,
+  scaleX: 1,
+  scaleY: 1,
+  rotation: 0,
+  width: 100,
+  height: 100,
+};

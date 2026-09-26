@@ -13,15 +13,6 @@ import { resolve as resolvePath } from "node:path";
 import { c } from "../../ui/colors.js";
 import { DEFAULT_STACK_NAME, requireStack } from "./state.js";
 
-// `@hyperframes/aws-lambda` is a workspace devDependency in `packages/cli`
-// so the published CLI install stays small for users who don't deploy to
-// Lambda. The lambda subverbs dynamic-import it on call. The dispatcher in
-// `commands/lambda.ts` checks the import resolves before any subverb runs
-// and prints a friendly install hint on `ERR_MODULE_NOT_FOUND`.
-async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> {
-  return import("@hyperframes/aws-lambda/sdk");
-}
-
 export interface SitesCreateArgs {
   projectDir: string;
   stackName: string;
@@ -34,7 +25,12 @@ export async function runSitesCreate(args: SitesCreateArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
 
-  const { deploySite } = await loadSDK();
+  // `@hyperframes/aws-lambda` is a workspace devDependency in `packages/cli`
+  // so the published CLI install stays small for users who don't deploy to
+  // Lambda. The lambda subverbs dynamic-import it on call. The dispatcher in
+  // `commands/lambda.ts` checks the import resolves before any subverb runs
+  // and prints a friendly install hint on `ERR_MODULE_NOT_FOUND`.
+  const { deploySite } = await import("@hyperframes/aws-lambda/sdk");
   const handle = await deploySite({
     projectDir,
     bucketName: stack.bucketName,

@@ -27,7 +27,7 @@ export async function runProgress(args: ProgressArgs): Promise<void> {
     : executionArnFromName(stack.stateMachineArn, args.target);
 
   // Dynamic-import the SDK so tsup keeps it out of the static-import head
-  // of the CLI bundle. See sites.ts loadSDK() for the full rationale.
+  // of the CLI bundle. See sites.ts for the full rationale.
   const { getRenderProgress } = await import("@hyperframes/aws-lambda/sdk");
   const progress = await getRenderProgress({
     executionArn,

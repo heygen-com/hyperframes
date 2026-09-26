@@ -1,14 +1,5 @@
-/**
- * @hyperframes/core/gsap-parser subpath entry.
- *
- * Re-exports all public types and helpers that external packages (studio, sdk,
- * registry) import via the `@hyperframes/core/gsap-parser` subpath.
- *
- * The recast-based AST parser (gsapParser.ts) was retired in WS-3.F. The read
- * path now uses `parseGsapScriptAcorn` from gsapParserAcorn; the write path
- * uses gsapWriterAcorn. This file remains the stable public surface for types
- * and serialize helpers.
- */
+/** Browser-safe GSAP entry: shared helpers and the Acorn reader.
+ * Legacy AST mutations remain available through the gsap-parser-recast subpath. */
 export type {
   GsapAnimation,
   GsapMethod,
@@ -23,6 +14,7 @@ export type {
   KeyframeEditability,
 } from "./gsapSerialize.js";
 export {
+  isStudioHoldSet,
   serializeGsapAnimations,
   getAnimationsForElementId,
   validateCompositionGsap,
@@ -32,12 +24,9 @@ export {
   SUPPORTED_PROPS,
   SUPPORTED_EASES,
 } from "./gsapSerialize.js";
-// Studio position-hold predicate (`tl.set(...,{data:"hf-hold"})`). A pure
-// GsapAnimation helper — re-exported here so studio can filter holds via the
-// public entry even though gsapParser.ts is otherwise an internal module.
-export { isStudioHoldSet } from "./gsapParser.js";
 export type { PropertyGroupName } from "./gsapConstants.js";
 export {
+  GSAP_PROPERTY_DEFAULTS,
   PROPERTY_GROUPS,
   classifyPropertyGroup,
   classifyTweenPropertyGroup,
