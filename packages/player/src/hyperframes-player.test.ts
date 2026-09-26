@@ -3330,6 +3330,24 @@ describe("HyperframesPlayer asset-ready gate", () => {
       data: { source: "hf-preview", ...data },
     } as unknown as MessageEvent);
 
+  it("paints a document before its load when nothing first-frame is pending", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = player.iframe.contentDocument!;
+    Object.defineProperty(doc, "readyState", { get: () => "interactive", configurable: true });
+    const holdLoad = (e: Event) => e.stopImmediatePropagation();
+    doc.defaultView!.addEventListener("load", holdLoad, { capture: true });
+    try {
+      post(player, { type: "timeline", durationInFrames: 60 });
+
+      await vi.waitFor(() => expect(player.painted).toBe(true));
+    } finally {
+      doc.defaultView!.removeEventListener("load", holdLoad, { capture: true });
+      delete (doc as { readyState?: unknown }).readyState;
+      player.remove();
+    }
+  });
+
   it("stays unpainted for first-frame media a script adds before the document's load", async () => {
     const player = await createConnectedPlayer();
     player._ready = false;
@@ -3350,6 +3368,7 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player._ready).toBe(true);
     expect(player.assetsReady).toBe(false);
     expect(player.painted).toBe(false);
+    delete (doc as { readyState?: unknown }).readyState;
     player.remove();
   });
 

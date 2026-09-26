@@ -1099,6 +1099,13 @@ class HyperframesPlayer extends HTMLElement {
    *  now. Compute can cause the timeout, so it's reported too. A hidden
    *  document can starve paint-and-idle of frames for the full 8s — that's
    *  reported directly rather than inferred, since it can't be bounded. */
+  private _hasPendingFirstFrameAssets(doc: Document): boolean {
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
+      scope: FIRST_FRAME_READINESS_SCOPE,
+    });
+    return pendingMedia.length > 0 || pendingImages.length > 0 || fontsLoading;
+  }
+
   private _warnStuckAssets(doc: Document): void {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,
@@ -1274,7 +1281,12 @@ class HyperframesPlayer extends HTMLElement {
     // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
     // host-initiated navigation clears `_ready` first. So a ready player already holds this
     // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
-    if (this._ready && this._getSameOriginIframeDocument() === this._readyDocument) return;
+    const doc = this._getSameOriginIframeDocument();
+    if (this._ready && doc === this._readyDocument) {
+      // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
+      if (doc && this._hasPendingFirstFrameAssets(doc)) this._waitForAssetsReady(doc);
+      return;
+    }
 
     this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
