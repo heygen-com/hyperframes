@@ -2286,6 +2286,9 @@ describe("bundleToSingleHtml sceneParts", () => {
   it.each([
     ["an upper-case tag name", "BUTTON", [selects("BUTTON"), null]],
     ["everything", "*", [selects("*"), selects("*")]],
+    ["everything, padded", " * ", [selects(" * "), selects(" * ")]],
+    ["a tag above the scenes", "body button", [selects("body button"), null]],
+    ["everything below a tag above the scenes", "body *", [selects("body *"), selects("body *")]],
   ] as const)(
     "marks the scenes a script outside them reaches by %s",
     async (_, selector, marks) => {
@@ -2295,7 +2298,8 @@ describe("bundleToSingleHtml sceneParts", () => {
   );
 
   it("keeps scenes swappable when a script outside them never names their nodes", async () => {
-    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {}); parent.postMessage({}, "*"); document.querySelectorAll("NAV"); document.getElementById("Count");
+    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {}); parent.postMessage({ at: Date.now() },
+    "*"); document.querySelectorAll("NAV"); document.getElementById("Count");
   document.body.append(document.createElement("div"), document.createElementNS("http://www.w3.org/2000/svg", "span"));</script>
   <script type="application/json">{"note": "addEventListener"}</script>`;
     expect(await swapMarks(rootProject(root))).toEqual([null, null]);

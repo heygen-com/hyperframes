@@ -54,9 +54,12 @@ function sceneScriptSwapRefusal(script: string): string | null {
 
 // A quoted string in a script, in any of the three quote styles.
 const STRING_LITERAL_RE = /(["'`])((?:\\.|(?!\1)[^\\\n])*?)\1/g;
-// Text ending where a string is a new node's tag or a message's target origin: it selects nothing.
-const NOT_A_SELECTOR_RE =
-  /createElement\s*\(\s*$|createElementNS\s*\([^()]*,\s*$|postMessage\s*\([^()]*,\s*$/;
+// Text ending where createElement takes its tag: that string makes a node, it selects none.
+const CREATES_ELEMENT_RE = /createElement\s*\(\s*$|createElementNS\s*\([^()]*,\s*$/;
+// A "*" after a comma is a later argument, like postMessage's target origin; selector calls take it first.
+const isNotASelector = (script: string, at: number, literal: string) =>
+  CREATES_ELEMENT_RE.test(script.slice(Math.max(0, at - 60), at)) ||
+  (literal.trim() === "*" && /,\s*$/.test(script.slice(Math.max(0, at - 20), at)));
 
 /** Marks each scene whose nodes a script outside it names by selector, id or class: a swap would strand it. */
 export function refuseSwapsReachedByRootScripts(document: Document, rootScripts: string[]): void {
@@ -73,19 +76,24 @@ export function refuseSwapsReachedByRootScripts(document: Document, rootScripts:
       }
     }
   }
-  // A selector naming a tag no scene has cannot match, so it is not worth a query.
+  // A selector naming a tag the document lacks cannot match, so it is not worth a query.
   const namesKnown = (selector: string) =>
     selector
       .split(",")
       .some((alt) =>
         alt
           .split(/[\s>+~]+/)
-          .every((part) => !/^[a-z][\w-]*$/i.test(part) || byName.has(part.toLowerCase())),
+          .every(
+            (part) =>
+              !/^[a-z][\w-]*$/i.test(part) ||
+              byName.has(part.toLowerCase()) ||
+              document.querySelector(part) !== null,
+          ),
       );
   const literals = new Set(
     rootScripts.flatMap((s) =>
       [...s.matchAll(STRING_LITERAL_RE)]
-        .filter((m) => !NOT_A_SELECTOR_RE.test(s.slice(Math.max(0, m.index - 60), m.index)))
+        .filter((m) => !isNotASelector(s, m.index, m[2] ?? ""))
         .map((m) => m[2] ?? ""),
     ),
   );
@@ -94,7 +102,7 @@ export function refuseSwapsReachedByRootScripts(document: Document, rootScripts:
     if (open.length === 0) return;
     // Tag names match in any case; ids and classes do not.
     const reached =
-      literal === "*"
+      literal.trim() === "*"
         ? open
         : /^[A-Za-z_][\w-]*$/.test(literal)
           ? [literal.toLowerCase(), `#${literal}`, `.${literal}`].flatMap((name) => [
