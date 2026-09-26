@@ -48,28 +48,6 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     return animationTimeMs;
   };
 
-  const readTiming = (animation: Animation): ComputedEffectTiming | null => {
-    try {
-      return animation.effect?.getComputedTiming?.() ?? null;
-    } catch (err) {
-      swallow("runtime.adapters.waapi.site4", err);
-      return null;
-    }
-  };
-
-  const ownedByCssAdapter = (animation: Animation) =>
-    (typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation) ||
-    (typeof CSSTransition !== "undefined" && animation instanceof CSSTransition);
-
-  // Recorded when first tracked, so an animation that finishes and leaves getAnimations() still counts.
-  let cycleEndMs = 0;
-  const recordCycleEnd = (animation: Animation, compositionTimeMs: number) => {
-    const timing = ownedByCssAdapter(animation) ? null : readTiming(animation);
-    if (!timing) return;
-    const endMs = compositionTimeMs + Number(timing.delay) + Number(timing.duration);
-    if (Number.isFinite(endMs)) cycleEndMs = Math.max(cycleEndMs, endMs);
-  };
-
   const ensureBaseline = (animation: Animation, compositionTimeMs: number) => {
     const existing = baselines.get(animation);
     if (existing) {
@@ -83,7 +61,6 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
         : readAnimationTimeMs(animation),
     };
     baselines.set(animation, baseline);
-    recordCycleEnd(animation, compositionTimeMs);
     return baseline;
   };
 
@@ -149,7 +126,12 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
   const inferAnimationEndSeconds = (
     animation: Animation,
   ): { endSeconds?: number; unbounded?: true } => {
-    const timing = readTiming(animation);
+    let timing: ComputedEffectTiming | null = null;
+    try {
+      timing = animation.effect?.getComputedTiming?.() ?? null;
+    } catch (err) {
+      swallow("runtime.adapters.waapi.site4", err);
+    }
     if (!timing) return {};
     const endTimeMs = Number(timing.endTime);
     if (!Number.isFinite(endTimeMs)) return { unbounded: true };
@@ -210,7 +192,6 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     revert: () => {
       animations.clear();
       baselines = new WeakMap();
-      cycleEndMs = 0;
       didDiscover = false;
       lastSeekTimeMs = 0;
       if (
@@ -245,6 +226,5 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       }
       return maxEndSeconds > 0 ? maxEndSeconds : null;
     },
-    getAnimationCycleEndSeconds: () => (cycleEndMs > 0 ? cycleEndMs / 1000 : null),
   };
 }

@@ -387,5 +387,24 @@ describe("css adapter", () => {
       expect(adapter.getAnimationCycleEndSeconds?.()).toBe(3);
       expect(el.style.animationDelay).toBe("");
     });
+
+    it("skips an element removed after discover", () => {
+      const el = mountAnimated({});
+      vi.mocked(window.getComputedStyle).mockImplementation(
+        (node) =>
+          ({
+            animationName: node === el ? "a" : "none",
+            animationDuration: "1s",
+            animationDelay: "0s",
+          }) as CSSStyleDeclaration,
+      );
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(3);
+      el.remove();
+
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBeNull();
+    });
   });
 });

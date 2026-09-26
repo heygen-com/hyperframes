@@ -1519,7 +1519,16 @@ describe("initSandboxRuntimeModular", () => {
       expect(window.__hf?.animationEnd?.()).toBe(2.5);
     });
 
-    it("counts one iteration of a repeating WAAPI animation", () => {
+    it("skips a child that is still endless and keeps the others", () => {
+      mountRoot("3");
+      window.__timelines = { main: createMockTimelineOf([mockTween(0, 2), mockTween(0, 1e10)]) };
+      initSandboxRuntimeModular();
+
+      expect(window.__hf?.animationEnd?.()).toBe(2);
+    });
+
+    // Its end is anchored where the runtime first sees it, so it would move with seeks and swaps.
+    it("does not count a script-created WAAPI animation", () => {
       mountRoot("10");
       const doc = document as Document & { getAnimations?: () => unknown[] };
       doc.getAnimations = () => [
@@ -1540,7 +1549,7 @@ describe("initSandboxRuntimeModular", () => {
       window.__timelines = { main: createMockTimelineOf([mockTween(0, 0.5)]) };
       try {
         initSandboxRuntimeModular();
-        expect(window.__hf?.animationEnd?.()).toBe(1);
+        expect(window.__hf?.animationEnd?.()).toBe(0.5);
       } finally {
         delete doc.getAnimations;
       }
@@ -1595,23 +1604,59 @@ describe("initSandboxRuntimeModular", () => {
         expect(window.__hf?.animationEnd?.()).toBe(3);
       });
 
-      it("skips an endless stagger and keeps the other animations", () => {
-        const dots = [{ x: 0 }, { x: 0 }, { x: 0 }];
-        const root = paused()
-          .to({ x: 0 }, { x: 1, duration: 4 }, 0)
-          .to(dots, { x: 1, duration: 1, stagger: { each: 0.2, repeat: -1 } }, 0);
+      const dots = (n: number) => Array.from({ length: n }, () => ({ x: 0 }));
+
+      it("counts the first pass of a stagger that repeats each item", () => {
+        const root = paused().to(
+          dots(3),
+          { x: 1, duration: 1, stagger: { each: 0.2, repeat: 2 } },
+          0,
+        );
         initWithRoot("10", root);
 
-        expect(window.__hf?.animationEnd?.()).toBe(4);
+        expect(root.getChildren()[0]!.duration()).toBeCloseTo(3.4, 6);
+        expect(window.__hf?.animationEnd?.()).toBeCloseTo(1.4, 6);
       });
 
-      it("skips a paused child that never plays", () => {
+      it("counts the first pass of a stagger that repeats each item forever", () => {
         const root = paused()
-          .to({ x: 0 }, { x: 1, duration: 4 }, 0)
-          .add(gsap.to({ x: 0 }, { x: 1, duration: 20, paused: true }), 0);
+          .to({ x: 0 }, { x: 1, duration: 1 }, 0)
+          .to(dots(5), { x: 1, duration: 1, stagger: { each: 1, repeat: -1 } }, 0);
         initWithRoot("10", root);
 
-        expect(window.__hf?.animationEnd?.()).toBe(4);
+        expect(window.__hf?.animationEnd?.()).toBe(5);
+      });
+
+      it("counts one cycle of repeating keyframes", () => {
+        const keyframes = [
+          { x: 1, duration: 1 },
+          { x: 2, duration: 1 },
+        ];
+        const root = paused().to({ x: 0 }, { keyframes, repeat: 3 }, 0);
+        initWithRoot("10", root);
+
+        expect(root.getChildren()[0]!.totalDuration()).toBe(8);
+        expect(window.__hf?.animationEnd?.()).toBe(2);
+      });
+
+      it("counts a plain stagger to its last item's end", () => {
+        const root = paused().to(dots(3), { x: 1, duration: 1, stagger: 0.2 }, 0.5);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBeCloseTo(1.9, 6);
+      });
+
+      // GSAP leaves a paused child out of its parent, but author code may play it later.
+      it("counts a paused child the same before and after author code plays it", () => {
+        const sub = paused().to({ x: 0 }, { x: 100, duration: 6 });
+        const root = paused().to({ x: 0 }, { x: 1, duration: 1 }, 0).add(sub, 1);
+        root.call(() => void sub.play(), undefined, 0.5);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBe(7);
+        root.seek(2, false);
+        expect(sub.paused()).toBe(false);
+        expect(window.__hf?.animationEnd?.()).toBe(7);
       });
 
       it("caps an auto-nested sub-composition at its host clip's end", () => {

@@ -1068,8 +1068,9 @@ export function initSandboxRuntimeModular(): void {
   const resolveAdapterDurationFloorSeconds = (oneCycle = false): number | null => {
     let maxSeconds = 0;
     for (const adapter of state.deterministicAdapters) {
-      const getter =
-        (oneCycle && adapter.getAnimationCycleEndSeconds) || adapter.getInferredDurationSeconds;
+      const getter = oneCycle
+        ? adapter.getAnimationCycleEndSeconds
+        : adapter.getInferredDurationSeconds;
       if (typeof getter !== "function") continue;
       let inferred: number | null = null;
       try {
@@ -2799,16 +2800,17 @@ export function initSandboxRuntimeModular(): void {
     let end = 0;
     for (const child of children) {
       if (child.data === RUNTIME_FILLER) continue;
-      // GSAP leaves a paused child out; the runtime keeps registered scenes paused between seeks.
-      const paused = (child as { paused?: () => boolean }).paused?.();
-      if (paused && !Object.values(window.__timelines ?? {}).includes(child as never)) continue;
-      const cycle = child.getChildren
-        ? readOneCycleEndSeconds(child.getChildren(false, true, true))
+      // A stagger or keyframes tween runs an inner timeline; its duration() counts per-item repeats.
+      const nested = child.getChildren
+        ? child
+        : (child as { timeline?: RuntimeTimelineChildLike }).timeline;
+      const cycle = nested?.getChildren
+        ? readOneCycleEndSeconds(nested.getChildren(false, true, true))
         : Number(child.duration?.()) || 0;
       // startTime() is in the parent's time, the cycle in the child's own; reversed reports -1.
       const scale = Math.abs(Number((child as { timeScale?: () => number }).timeScale?.()) || 1);
       const childEnd = (Number(child.startTime?.()) || 0) + cycle / scale;
-      // An endless stagger reports its ~1e10 s inner timeline; skip it, as the adapters skip loops.
+      // A child still endless here reports ~1e10 s; skip it, as the adapters skip loops.
       if (childEnd >= LOOP_INFLATED_TIMELINE_SECONDS) continue;
       end = Math.max(end, Math.min(childEnd, autoNestedHostEndSeconds(child)));
     }

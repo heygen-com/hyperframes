@@ -62,7 +62,7 @@ export function createLottieAdapter(params?: {
     return Math.max(0, pageTime - params.resolveStartSeconds(composition));
   };
 
-  return {
+  const adapter: RuntimeDeterministicAdapter = {
     name: "lottie",
 
     discover: () => {
@@ -190,6 +190,8 @@ export function createLottieAdapter(params?: {
       return sawAny ? maxSeconds : null;
     },
   };
+  adapter.getAnimationCycleEndSeconds = adapter.getInferredDurationSeconds;
+  return adapter;
 }
 
 /** `frame` wrapped into [0, total); a float hair under a whole cycle is the next cycle's first frame. */
