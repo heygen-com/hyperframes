@@ -8,19 +8,27 @@ const blocksDir = join(import.meta.dirname, "..", "..", "registry", "blocks");
 // sample image when the variable resolves to nothing.
 const FALLBACK = /varUrl\(V\[id\]\)\s*\|\|\s*([^\n]*)DATA\.cards\[i % DATA\.cards\.length\]\.file/g;
 
-function fallbacks(): Array<{ block: string; prefix: string }> {
-  return readdirSync(blocksDir).flatMap((block) => {
-    const html = readFileSync(join(blocksDir, block, `${block}.html`), "utf8");
-    return [...html.matchAll(FALLBACK)].map((match) => ({ block, prefix: match[1] ?? "" }));
-  });
+function carousels(): Array<{ block: string; prefixes: string[] }> {
+  return readdirSync(blocksDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map(({ name }) => ({
+      block: name,
+      html: readFileSync(join(blocksDir, name, `${name}.html`), "utf8"),
+    }))
+    .filter(({ html }) => html.includes("varUrl(V[id])"))
+    .map(({ block, html }) => ({
+      block,
+      prefixes: [...html.matchAll(FALLBACK)].map((match) => match[1] ?? ""),
+    }));
 }
 
 describe("carousel image fallback", () => {
   it("loads the sample image from the block's assets folder, not a bare file name", () => {
-    const found = fallbacks();
+    const found = carousels();
     expect(found.length).toBeGreaterThan(0);
-    for (const { block, prefix } of found) {
-      expect(prefix, block).toContain('"assets/carousel-images/" +');
+    for (const { block, prefixes } of found) {
+      expect(prefixes.length, block).toBeGreaterThan(0);
+      for (const prefix of prefixes) expect(prefix, block).toContain('"assets/carousel-images/" +');
     }
   });
 });
