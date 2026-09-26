@@ -3223,9 +3223,11 @@ export function initSandboxRuntimeModular(): void {
         const id = el.getAttribute("data-composition-id");
         const previous = id ? timelines[id] : undefined;
         if (!id || !previous) continue;
-        previous.totalTime?.(0, true);
+        const old = previous as { revert?: () => void; kill?: () => void };
+        if (old.revert) old.revert();
+        else previous.totalTime?.(0, true);
         root?.remove?.(previous);
-        (previous as { kill?: () => void }).kill?.();
+        old.kill?.();
         delete timelines[id];
       }
       // Each new style takes its own old one's place: same-named @keyframes resolve by order.

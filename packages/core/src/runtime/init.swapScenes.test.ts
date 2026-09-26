@@ -449,7 +449,10 @@ describe("__hfSwapScenes", () => {
     expect(video?.getAttribute("preload")).toBe("auto");
   });
 
-  it("rewinds the old timeline first, so a kept video carries none of its tweens' values", async () => {
+  it.each([
+    ["rewinds an old timeline that cannot revert", false, "1"],
+    ["reverts an old timeline that can, dropping the inline values it wrote", true, ""],
+  ])("%s, so a kept video carries none of its tweens' values", async (_, canRevert, opacity) => {
     const { root } = trackingRoot();
     quietMedia();
     const scene = (text: string, label: string, hash: string): Scene => ({
@@ -466,10 +469,11 @@ describe("__hfSwapScenes", () => {
       t !== undefined && (video.style.opacity = String(1 - t / 20)), seek(t)
     );
     made.a1!.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
+    if (canRevert) Object.assign(made.a1!, { revert: () => video.style.removeProperty("opacity") });
     made.a1!.totalTime(10);
     await window.__hfSwapScenes!(preview([scene("A two", "a2", "ha2"), B]).html);
     expect(sceneHost("a").querySelector("video")).toBe(video);
-    expect(video.style.opacity).toBe("1");
+    expect(video.style.opacity).toBe(opacity);
   });
 
   it.each([
