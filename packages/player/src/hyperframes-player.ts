@@ -1025,7 +1025,6 @@ class HyperframesPlayer extends HTMLElement {
     this._dispatchReady();
 
     const doc = this._getSameOriginIframeDocument();
-    this._readyDocument = doc;
     if (doc) this._media.setupFromIframe(doc);
 
     this._replayBridgeState();
@@ -1046,7 +1045,6 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.updateTime(0, duration);
     this._dispatchReady();
     const doc = this._getSameOriginIframeDocument();
-    this._readyDocument = doc;
     if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc);
@@ -1168,6 +1166,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _dispatchReady(): void {
+    this._readyDocument = this._getSameOriginIframeDocument();
     const detail = {
       duration: this._duration,
       compositionWidth: this._compositionWidth,
