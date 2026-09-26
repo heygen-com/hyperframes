@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #snow-demo {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      #snow-demo-backdrop,
+      #snow-demo-overlay {
+        position: absolute;
+        inset: 0;
+      }
+
+      #snow-demo-backdrop {
+        background: linear-gradient(180deg, #1c2b3d 0%, #0d1620 62%, #06090f 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="snow-demo"
+      data-composition-id="snow-demo"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="snow-demo-backdrop"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      ></div>
+      <div
+        id="snow-demo-overlay"
+        data-composition-id="snow"
+        data-composition-src="snow.html"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: 6, ease: "none" }, 0);
+      window.__timelines["snow-demo"] = tl;
+    </script>
+  </body>
+</html>
