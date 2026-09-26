@@ -252,12 +252,8 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
 /** Drift a playing audio element may carry before sync pulls it back onto the playhead. */
 const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
 
-/**
- * A playing video cannot be seeked back into sync without resetting its
- * decoder, so drift past the sync tolerance is closed by running it a few
- * percent fast or slow (pitch is preserved) until it is nearly back. The rate
- * changes only when steering starts or stops: every rate write costs a frame.
- */
+// A playing video is steered back by rate, not seeked (a seek resets its decoder).
+// Its rate is written only when steering starts or stops: every write costs a frame.
 const VIDEO_STEER = 0.03;
 const VIDEO_STEER_RELEASE_SECONDS = 0.01;
 
