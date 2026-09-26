@@ -437,11 +437,13 @@ describe("useAutomationLanes saves report what happened", () => {
   );
 
   it.each([
-    { lane: "clip", target: music, field: "automation" },
-    { lane: "group", target: group, field: "audioGroupAutomation" },
+    { lane: "clip", target: music, field: "automation", dragReadFails: false },
+    { lane: "clip", target: music, field: "automation", dragReadFails: true },
+    { lane: "group", target: group, field: "audioGroupAutomation", dragReadFails: false },
+    { lane: "group", target: group, field: "audioGroupAutomation", dragReadFails: true },
   ] as const)(
-    "never verifies a $lane drag's before-value that an unsaved paste left behind",
-    async ({ target, field }) => {
+    "never verifies a $lane drag's before-value that an unsaved paste left behind (drag read fails: $dragReadFails)",
+    async ({ target, field, dragReadFails }) => {
       const { startCommit, commit, preview, writeProjectFile, iframe, failRead } =
         mountLanes(target);
       const at = (v: number) => ({
@@ -459,6 +461,7 @@ describe("useAutomationLanes saves report what happened", () => {
         .mockRejectedValueOnce(new Error("offline"));
       failRead(2);
       failRead(4);
+      if (dragReadFails) failRead(3);
       const paste = startCommit(at(0.5));
       await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
       preview(at(0.9));
@@ -672,6 +675,43 @@ describe("useAutomationLanes saves report what happened", () => {
       expect(usePlayerStore.getState().elements[0]?.[field]).toBeUndefined();
     },
   );
+
+  it("reads a failed save back from its own project while another save is in flight across a switch", async () => {
+    const { startCommit, writeProjectFile, iframe, failRead, holdRead, reads, switchProject } =
+      mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    let failFirst = () => {};
+    writeProjectFile
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            failFirst = () => reject(new Error("offline"));
+          }),
+      )
+      .mockRejectedValueOnce(new Error("offline"));
+    const first = startCommit(at(0.5));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    const second = startCommit(at(0.7));
+    const doc = new DOMParser().parseFromString(SOURCE, "text/html");
+    doc.getElementById("music")!.setAttribute("data-automation", serializeAutomation(at(0.3)));
+    switchProject("p2", doc.body.innerHTML);
+    const releaseSecond = holdRead(4);
+    failRead(4);
+    failFirst();
+    await act(() => vi.waitFor(() => expect(reads()).toBe(4)));
+    switchProject("p1");
+    releaseSecond();
+    await act(async () => {
+      await Promise.all([first, second]);
+    });
+    expect(iframe.contentDocument!.getElementById("music")?.hasAttribute("data-automation")).toBe(
+      false,
+    );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
+  });
 
   it("leaves the store to a newer pending save when an older one lands", async () => {
     const { startCommit, writeProjectFile, setFile, holdRead } = mountLanes(music);

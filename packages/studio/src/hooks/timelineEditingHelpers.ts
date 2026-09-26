@@ -456,7 +456,10 @@ export function createLiveLanes(project: () => string | null) {
             verified.delete(key);
           }
           if (value === undefined || overtaken(key, mine) || !open()) return;
-          if (before.has(key)) before.set(key, value);
+          if (before.has(key)) {
+            before.set(key, value);
+            clean.add(key);
+          }
           apply.store(value);
           preview(value);
         },
