@@ -155,3 +155,43 @@ it("without a history on the server an edit still saves, and there is nothing to
   expect(await act(() => hook().undo({ readFile }))).toEqual({ ok: false, reason: "empty" });
   expect(file()).toBe("B");
 });
+
+/** Answers Cmd+Z's step with `reply` instead of the engine, every other request as before. */
+function answerStep(status: number, reply: object) {
+  const real = globalThis.fetch;
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+    url.endsWith("/history/step")
+      ? Promise.resolve(new Response(JSON.stringify(reply), { status }))
+      : real(url, init),
+  );
+}
+
+it("a step the server could not take says why, instead of reading as nothing to undo", async () => {
+  const { hook, readFile } = await studio();
+  answerStep(500, { error: "disk full" });
+  expect(await act(() => hook().undo({ readFile }))).toEqual({
+    ok: false,
+    reason: "failed",
+    message: "disk full",
+  });
+});
+
+it("a refused step names the edit it would have undone and the files that changed after it", async () => {
+  const { hook, save, readFile } = await studio();
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Moved Title",
+      kind: "manual",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  await vi.waitFor(() => expect(hook().undoLabel).toBe("Moved Title"));
+  answerStep(200, { ok: false, conflict: { files: ["index.html"], newer: [] } });
+  expect(await act(() => hook().undo({ readFile }))).toEqual({
+    ok: false,
+    reason: "content-mismatch",
+    label: "Moved Title",
+    paths: ["index.html"],
+  });
+});

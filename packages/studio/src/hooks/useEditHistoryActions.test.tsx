@@ -11,7 +11,13 @@ import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryA
 let root: Root | null = null;
 afterEach(() => act(() => root?.unmount()));
 
-function mount(result: { ok: boolean; reason?: string; label?: string; paths?: string[] }) {
+function mount(result: {
+  ok: boolean;
+  reason?: string;
+  message?: string;
+  label?: string;
+  paths?: string[];
+}) {
   const editHistory = {
     undo: vi.fn<EditHistoryHandle["undo"]>(async () => result),
     redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
@@ -60,13 +66,25 @@ describe("useEditHistoryActions", () => {
     expect(deps.showToast).toHaveBeenCalledWith("Redid: Split clip", "info");
   });
 
-  it("explains a refused undo when the file changed on disk", async () => {
-    const { deps, actions } = mount({ ok: false, reason: "content-mismatch" });
+  it("names the step and the files that changed after it when an undo is refused", async () => {
+    const { deps, actions } = mount({
+      ok: false,
+      reason: "content-mismatch",
+      label: "Moved Title",
+      paths: ["index.html"],
+    });
     await act(() => actions.undo());
     expect(deps.showToast).toHaveBeenCalledWith(
-      "File changed outside Studio. Undo history was not applied.",
+      'Can\'t undo "Moved Title": index.html changed after it.',
       "info",
     );
+    expect(deps.syncHistoryPreviewAfterApply).not.toHaveBeenCalled();
+  });
+
+  it("says why when the history could not take the step", async () => {
+    const { deps, actions } = mount({ ok: false, reason: "failed", message: "disk full" });
+    await act(() => actions.undo());
+    expect(deps.showToast).toHaveBeenCalledWith("Undo failed: disk full", "error");
     expect(deps.syncHistoryPreviewAfterApply).not.toHaveBeenCalled();
   });
 

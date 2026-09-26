@@ -28,7 +28,9 @@ interface ApplyRestoredFile {
 
 interface ApplyResult {
   ok: boolean;
-  reason?: "empty" | "content-mismatch";
+  /** content-mismatch: `paths` changed after the step's entry, named by `label`. failed: `message` says why. */
+  reason?: "empty" | "content-mismatch" | "failed";
+  message?: string;
   label?: string;
   paths?: string[];
   files?: Record<string, ApplyRestoredFile>;
@@ -56,13 +58,21 @@ function historyUrl(projectId: string, path = ""): string {
   return `/api/projects/${encodeURIComponent(projectId)}/history${path}`;
 }
 
-async function post(url: string, body: object, headers: Record<string, string> = {}) {
+/** The server's JSON reply, or why there is none (the server's own error, or that it was unreachable). */
+async function post(
+  url: string,
+  body: object,
+  headers: Record<string, string> = {},
+): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }> {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
-  });
-  return response.ok ? response.json() : null;
+  }).catch(() => null);
+  if (!response) return { ok: false, status: 0, error: "Studio could not reach its server." };
+  const reply = (await response.json().catch(() => null)) as { error?: string } | null;
+  if (response.ok) return { ok: true, body: reply };
+  return { ok: false, status: response.status, error: reply?.error ?? `HTTP ${response.status}` };
 }
 
 /** Per path, the version each edit overwrote, so the history keeps earlier writers' changes theirs. */
@@ -146,8 +156,14 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
         paths,
         overwrote: await overwroteVersions(files),
         ...(coalesceKey && { coalesceKey, idleMs: coalesceMs ?? DEFAULT_COALESCE_MS }),
-      }).catch(() => null);
-      heldClaimRef.current = coalesceKey && reply?.claimed ? { paths, at: Date.now() } : null;
+      });
+      // The write still reaches the history, as a change made outside the app. 404: no history here.
+      if (!reply.ok && reply.status !== 404)
+        console.error(`"${label}" was not recorded as your edit: ${reply.error}`);
+      heldClaimRef.current =
+        coalesceKey && reply.ok && (reply.body as { claimed?: boolean } | null)?.claimed
+          ? { paths, at: Date.now() }
+          : null;
       void refresh();
     },
     [projectId, refresh],
@@ -160,15 +176,21 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       const paths = [...new Set([...(next?.paths ?? []), ...(heldClaimRef.current?.paths ?? [])])];
       const run = async (): Promise<ApplyResult> => {
         const previous = await readAll(paths, callbacks.readFile);
-        const reply = (await post(
+        const posted = await post(
           historyUrl(projectId, "/step"),
           { direction: direction === "undo" ? "back" : "forward" },
           studioWriteHeaders(),
-        ).catch(() => null)) as HistoryResult | null;
+        );
         heldClaimRef.current = null;
         void refresh();
-        if (!reply) return { ok: false, reason: "empty" };
-        if (!reply.ok) return { ok: false, reason: "content-mismatch" };
+        // 404: this app keeps no history, so there is nothing to step.
+        if (!posted.ok && posted.status === 404) return { ok: false, reason: "empty" };
+        if (!posted.ok) return { ok: false, reason: "failed", message: posted.error };
+        const reply = posted.body as HistoryResult;
+        if (!reply.ok) {
+          const { files } = reply.conflict;
+          return { ok: false, reason: "content-mismatch", label: next?.label, paths: files };
+        }
         if (!reply.entry) return { ok: false, reason: "empty" };
         const changed = reply.entry.files.map((file) => file.path);
         return {

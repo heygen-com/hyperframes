@@ -6,6 +6,7 @@ import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordin
 interface HistoryResult {
   ok: boolean;
   reason?: string;
+  message?: string;
   label?: string;
   paths?: string[];
   /** Per-file restored/previous content, used to soft-apply the preview. */
@@ -72,7 +73,15 @@ export function useEditHistoryActions({
         serialize: serializeHistoryFiles,
       });
       if (!result.ok && result.reason === "content-mismatch") {
-        showToast(`File changed outside Studio. ${noun} history was not applied.`, "info");
+        const step = result.label ? ` "${result.label}"` : "";
+        showToast(
+          `Can't ${direction}${step}: ${result.paths?.join(", ")} changed after it.`,
+          "info",
+        );
+        return;
+      }
+      if (!result.ok && result.reason === "failed") {
+        showToast(`${noun} failed: ${result.message}`, "error");
         return;
       }
       if (result.ok && result.label) {

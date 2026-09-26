@@ -364,6 +364,26 @@ describe("claim: a writer that records after writing", () => {
     expect(read("index.html")).toBe("A");
   });
 
+  it("an agent's turn that ends after Studio's edit to the same file does not jam Cmd+Z", async () => {
+    const { history, write, read } = await project({ "index.html": "A" });
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "B");
+    await history.claim(you, "sweep", []);
+    write("index.html", "C");
+    await history.claim(you, "Moved Title", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("B") },
+    });
+    await window.close();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Moved Title", "Agent turn"]);
+    expect(history.next("back")?.label, "the button names the step Cmd+Z takes").toBe(
+      "Moved Title",
+    );
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("B");
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("A");
+  });
+
   it("takes Studio's write out of an agent's open window, and leaves the agent's own writes there", async () => {
     const { history, write } = await project({ "index.html": "A", "a.js": "1" });
     const window = await history.beginWindow(agent, "Agent turn");
