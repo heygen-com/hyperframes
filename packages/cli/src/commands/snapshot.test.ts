@@ -180,6 +180,26 @@ describe("resolveSnapshotVideoFrameTime", () => {
     },
   );
 
+  it.each([
+    [5, 0, 5],
+    [7, 0, 7],
+    [3, 0, 8],
+  ])(
+    "holds a video whose source ends before its slot on its last frame at %s, as the preview does",
+    (globalTime, clipStart, relativeTime) => {
+      expect(
+        resolveSnapshotVideoFrameTime({
+          globalTime,
+          clipStart,
+          clipDuration: 10,
+          relativeTime,
+          sourceDuration: 5,
+          compositionDuration: 20,
+        }),
+      ).toBeCloseTo(5 - 1 / 30, 6);
+    },
+  );
+
   it("keeps ordinary in-window media timestamps unchanged", () => {
     expect(
       resolveSnapshotVideoFrameTime({

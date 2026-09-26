@@ -82,8 +82,8 @@ export function formatSnapshotTimestamp(time: number): string {
   return `${Number(time.toFixed(3))}s`;
 }
 
-/** Shows media by the runtime's visibility rule. A clip held at the composition end samples one
- * nominal 30fps frame inside its source, since FFmpeg cannot decode at a source's exclusive duration. */
+/** Shows media by the runtime's visibility rule. A clip held at the composition end, or past the end of a source
+ * shorter than its slot, samples one nominal 30fps frame inside the source; FFmpeg has no frame at or past its end. */
 export function resolveSnapshotVideoFrameTime(input: {
   globalTime: number;
   clipStart: number;
@@ -98,7 +98,8 @@ export function resolveSnapshotVideoFrameTime(input: {
   const relativeTime =
     globalTime < clipStart ? Math.max(0, input.relativeTime) : input.relativeTime;
   if (relativeTime < 0) return null;
-  if (isInClipWindow(globalTime, clipStart, clipEnd)) return relativeTime;
+  const pastSource = sourceDuration > 0 && relativeTime >= sourceDuration;
+  if (isInClipWindow(globalTime, clipStart, clipEnd) && !pastSource) return relativeTime;
 
   const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
