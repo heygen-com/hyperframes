@@ -90,6 +90,25 @@ describe("buildSubCompositionHtml", () => {
     expect(html).toContain('lang="en"');
   });
 
+  it("keeps an installed block's <html> variables though a marker comment precedes the doctype", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body></body></html>`,
+      "compositions/blk.html": `<!-- hyperframes-registry-item: blk -->
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"image1","type":"image","default":"assets/blk/one.jpg"}]'>
+  <body>
+    <div id="root" data-composition-id="blk" data-width="1920" data-height="1080"></div>
+  </body>
+</html>`,
+    });
+
+    const html = buildSubCompositionHtml(dir, "compositions/blk.html", "/api/runtime.js", "/p/");
+
+    expect(html).toContain("data-composition-variables=");
+    expect(html!.slice(html!.indexOf("<body"))).not.toContain("<html");
+  });
+
   it("handles raw fragment compositions (no template, no full document)", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

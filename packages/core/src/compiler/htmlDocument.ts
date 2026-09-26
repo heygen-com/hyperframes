@@ -22,15 +22,18 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
   /^window\.__renderReady\s*=\s*(?:true|false)\s*;?$/,
 ];
 
-const LEADING_COMMENTS = /^(?:\s|<!--[\s\S]*?-->)*/;
+const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
+
+export function isFullHtmlDocument(html: string): boolean {
+  return /^(?:<!doctype[\s>]|<html[\s>])/i.test(html.replace(LEADING_COMMENTS, ""));
+}
 
 /**
  * Parse a full HTML document or wrap a fragment so linkedom consistently puts
  * fragment content under document.body.
  */
 export function parseHTMLContent(html: string): Document {
-  const trimmed = html.replace(LEADING_COMMENTS, "").toLowerCase();
-  if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
+  if (isFullHtmlDocument(html)) {
     return parseHTML(html).document;
   }
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
