@@ -482,6 +482,31 @@ globalThis.gsap.to("p", { x: 1 });
     },
   );
 
+  it("records a set, which completes as it is made, without leaving it on GSAP's global timeline", () => {
+    const { document } = parseHTML(
+      `<html><head><meta name="hf-scene-parts" content="{}"></head><body><div data-composition-id="scene"><p>x</p></div></body></html>`,
+    );
+    const children: object[] = [];
+    // As the library does: the global timeline drops each animation the moment it completes.
+    const globalTimeline = {
+      autoRemoveChildren: true,
+      getChildren: () => [...children],
+      remove: (child: object) => void children.splice(children.indexOf(child), 1),
+    };
+    const set = () => {
+      const tween = { totalProgress: () => 1 };
+      if (!globalTimeline.autoRemoveChildren) children.push(tween);
+      return tween;
+    };
+    const gsap = { globalTimeline, set };
+    const fakeWindow: Record<string, unknown> = { document, __timelines: {}, gsap };
+    const wrapped = wrapScopedCompositionScript(`gsap.set("p", { opacity: 0 });`, "scene");
+    new Function("window", "gsap", wrapped)(fakeWindow, gsap);
+    expect(fakeWindow.__hfSceneAnimations).toEqual({ scene: [expect.any(Object)] });
+    expect(children).toEqual([]);
+    expect(globalTimeline.autoRemoveChildren).toBe(true);
+  });
+
   it("scopes each selector in a GSAP target array to the composition root", () => {
     const { document } = parseHTML(`
       <div data-composition-id="scene">

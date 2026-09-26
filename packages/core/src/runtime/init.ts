@@ -3281,7 +3281,8 @@ export function initSandboxRuntimeModular(): void {
     for (const { oldParts, newParts, oldHost, newHost } of swaps) {
       const stopped = new Set<unknown>();
       for (const id of compositionIdsIn(oldHost)) {
-        for (const previous of [timelines[id], ...(sceneAnimations[id] ?? [])]) {
+        // Newest first: each revert restores what the animation before it wrote.
+        for (const previous of [...(sceneAnimations[id] ?? []).slice().reverse(), timelines[id]]) {
           if (!previous || stopped.has(previous)) continue;
           stopped.add(previous);
           const old = previous as SceneAnimation;

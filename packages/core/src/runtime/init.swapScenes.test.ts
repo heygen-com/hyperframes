@@ -803,6 +803,18 @@ describe("__hfSwapScenes", () => {
     expect(revert).toHaveBeenCalledTimes(1);
   });
 
+  it("reverts a scene's recorded animations newest first, so each restores what the one before it wrote", async () => {
+    const { root } = trackingRoot();
+    const order: string[] = [];
+    const animation = (name: string) => ({ revert: () => void order.push(name) });
+    Object.assign(made.a1!, animation("timeline"));
+    boot([A1, B], root);
+    await tick();
+    window.__hfSceneAnimations = { a: [made.a1!, animation("first set"), animation("second set")] };
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect(order).toEqual(["second set", "first set", "timeline"]);
+  });
+
   it("rejects a scene with more than one host rather than dropping one", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);
