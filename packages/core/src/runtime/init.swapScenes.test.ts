@@ -308,20 +308,42 @@ describe("__hfSwapScenes", () => {
     delete (window as unknown as { gsap?: unknown }).gsap;
   });
 
-  it("refuses a swap that brings in media or images the preview has not loaded", async () => {
+  it("refuses a swap that brings in media or images this scene has not loaded", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);
     await tick();
     const withImage = { ...A2, body: '<img src="new.png">' };
     await expect(window.__hfSwapScenes!(preview([withImage, B]).html)).rejects.toThrow(
-      "it loads media the preview has not loaded",
+      "it loads media this scene has not loaded",
     );
     const withBackground = { ...A2, css: ".a{background:url(new.png)}" };
     await expect(window.__hfSwapScenes!(preview([withBackground, B]).html)).rejects.toThrow(
-      "it loads media the preview has not loaded",
+      "it loads media this scene has not loaded",
     );
     expect(document.querySelector('[data-hf-scene="a"]:not(style):not(script)')?.textContent).toBe(
       "A one",
+    );
+  });
+
+  it.each([
+    ["an inline style url()", '<p style="background:url(new.png)">A two</p>', ""],
+    ["a poster", '<video poster="new.png"></video>', ""],
+    ["a srcset", '<img srcset="new.png 2x">', ""],
+    ["an uppercase URL()", "", ".a{background:URL(new.png)}"],
+    ["an image-set()", "", '.a{background:image-set("new.png" 1x)}'],
+    ["an @import", "", '@import "new.css";'],
+    ["an SVG <image href>", '<svg><image href="new.png"></image></svg>', ""],
+    ["an SVG <image xlink:href>", '<svg><image xlink:href="new.png"></image></svg>', ""],
+    ["an <object data>", '<object data="new.svg"></object>', ""],
+    ["a <source src>", '<video><source src="new.mp4"></video>', ""],
+  ])("refuses new media brought in by %s", async (_, body, css) => {
+    const { root } = trackingRoot();
+    quietMedia();
+    boot([A1, B], root);
+    await tick();
+    const edited = { ...A2, body: body || A2.body, css: A2.css + css };
+    await expect(window.__hfSwapScenes!(preview([edited, B]).html)).rejects.toThrow(
+      "scene a cannot be swapped: it loads media this scene has not loaded",
     );
   });
 

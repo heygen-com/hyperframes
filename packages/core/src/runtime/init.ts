@@ -212,6 +212,12 @@ function readSceneParts(doc: Document): SceneParts | null {
   }
 }
 
+// URL attributes a scene swap checks besides src, poster and srcset, by tag.
+const MEDIA_URL_ATTRS = new Map([
+  ["image", ["href", "xlink:href"]],
+  ["object", ["data"]],
+]);
+
 const SLOW_IDLE_HEARTBEAT_MS = 1000;
 
 export function initSandboxRuntimeModular(): void {
@@ -3087,16 +3093,19 @@ export function initSandboxRuntimeModular(): void {
   const sceneUrls = (parts: Element[]): Set<string> => {
     const urls = new Set<string>();
     const addCssUrls = (css: string | null) => {
-      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/g)) urls.add(m[2]!);
+      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)|@import\s+(['"])(.*?)\3/gi))
+        urls.add(m[2] ?? m[4]!);
+      for (const set of (css ?? "").matchAll(/image-set\((?:[^()]|\([^()]*\))*\)/gi))
+        for (const m of set[0].matchAll(/(['"])(.*?)\1/g)) urls.add(m[2]!);
     };
     for (const part of parts) {
       if (part.tagName === "STYLE") addCssUrls(part.textContent);
       if (part.tagName === "STYLE" || part.tagName === "SCRIPT") continue;
       for (const el of [part, ...part.querySelectorAll("*")]) {
+        const attrs = MEDIA_URL_ATTRS.get(el.localName) ?? [];
         const values = [
           unproxiedMediaSrc(el),
-          el.getAttribute("poster"),
-          el.getAttribute("srcset"),
+          ...[...attrs, "poster", "srcset"].map((a) => el.getAttribute(a)),
         ];
         for (const value of values) if (value) urls.add(value);
         addCssUrls(el.getAttribute("style"));
@@ -3166,7 +3175,7 @@ export function initSandboxRuntimeModular(): void {
       const loaded = sceneUrls(oldParts);
       if ([...sceneUrls(newParts)].some((url) => !loaded.has(url))) {
         throw new Error(
-          `scene ${name} cannot be swapped: it loads media the preview has not loaded`,
+          `scene ${name} cannot be swapped: it loads media this scene has not loaded`,
         );
       }
       return { oldParts, newParts, oldHost, newHost };
