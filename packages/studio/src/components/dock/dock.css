@@ -2,15 +2,16 @@
 
 .hf-dock {
   --dv-group-view-background-color: var(--color-panel-bg);
-  --dv-tabs-and-actions-container-background-color: var(--color-panel-surface);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--color-panel-bg);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--color-panel-surface);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-panel-bg);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--color-panel-surface);
-  --dv-activegroup-visiblepanel-tab-color: var(--color-panel-text-1);
-  --dv-activegroup-hiddenpanel-tab-color: var(--color-panel-text-3);
+  --dv-tabs-and-actions-container-background-color: var(--panel-strip-bg);
+  --dv-tabs-and-actions-container-height: 36px;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--panel-tab-bg-active);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--panel-tab-bg-active-muted);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--panel-tab-text-active);
+  --dv-activegroup-hiddenpanel-tab-color: var(--panel-tab-text);
   --dv-inactivegroup-visiblepanel-tab-color: var(--color-panel-text-2);
-  --dv-inactivegroup-hiddenpanel-tab-color: var(--color-panel-text-4);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--panel-tab-text);
   --dv-tab-divider-color: var(--color-panel-border);
   --dv-separator-border: var(--color-panel-border);
   --dv-paneview-header-border-color: var(--color-panel-border);
@@ -18,11 +19,153 @@
   --dv-active-sash-color: var(--color-panel-accent);
   --dv-drag-over-background-color: color-mix(in srgb, var(--color-panel-accent) 12%, transparent);
   --dv-drag-over-border-color: var(--color-panel-accent);
-  --dv-tab-font-size: 11px;
-  --dv-tabs-and-actions-container-font-size: 11px;
+  --dv-tab-font-size: 12px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tab-margin: 0;
 }
 
 .hf-dock .dv-sash:focus-visible {
   background-color: var(--dv-active-sash-color);
   outline: none;
+}
+
+.hf-dock .dv-tabs-and-actions-container {
+  align-items: center;
+  height: 36px;
+  padding: 4px 6px;
+  background-color: var(--panel-strip-bg);
+  border-bottom: 1px solid var(--panel-strip-border);
+}
+
+.hf-dock .dv-tabs-container {
+  align-items: center;
+  gap: 2px;
+}
+
+/* Dockview draws a 1px rule from --dv-tab-divider-color on every tab but the
+   first. The token also strokes menus, so the rule is removed here only. */
+.hf-dock .dv-tabs-container .dv-tab::before {
+  content: none;
+}
+
+.hf-dock .dv-tab {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+/* A lone preview or timeline tab is a pill, not a bar stretched across the header. */
+.hf-dock .dv-tabs-and-actions-container.dv-single-tab.dv-full-width-single-tab .dv-tabs-container .dv-tab {
+  flex-grow: 0;
+  width: auto;
+  padding: 0 10px;
+}
+
+.hf-dock .dv-tab:has(.dv-default-tab-action) {
+  padding-right: 6px;
+}
+
+.hf-dock .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tabs-container > .dv-tab.dv-inactive-tab:hover,
+.hf-dock .dv-groupview.dv-inactive-group > .dv-tabs-and-actions-container .dv-tabs-container > .dv-tab.dv-inactive-tab:hover {
+  background-color: var(--panel-tab-bg-hover);
+  color: var(--color-panel-text-2);
+}
+
+.hf-dock .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tabs-container > .dv-tab.dv-active-tab {
+  background-image: linear-gradient(var(--panel-tab-indicator), var(--panel-tab-indicator));
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: 16px 2px;
+}
+
+.hf-dock .dv-groupview.dv-inactive-group > .dv-tabs-and-actions-container .dv-tabs-container > .dv-tab.dv-active-tab {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--panel-tab-indicator) 50%, transparent),
+    color-mix(in srgb, var(--panel-tab-indicator) 50%, transparent)
+  );
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: 16px 2px;
+}
+
+/* Dockview's own focus ring is `outline: 1px solid var(--dv-tab-divider-color) !important`. */
+.hf-dock .dv-tab:focus-visible::after,
+.hf-dock .dv-tab:has(:focus-visible)::after {
+  outline: 1.5px solid var(--panel-tab-ring) !important;
+  outline-offset: -1.5px;
+}
+
+.hf-dock .dv-tab .dv-default-tab {
+  gap: 6px;
+}
+
+.hf-dock .dv-tab .dv-default-tab .dv-default-tab-content {
+  flex-grow: 0;
+  min-width: 0;
+  max-width: 140px;
+  margin-right: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hf-dock .dv-tab .dv-default-tab .dv-default-tab-action {
+  position: relative;
+  visibility: visible;
+  opacity: 0;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  color: inherit;
+}
+
+.hf-dock .dv-tab:hover .dv-default-tab .dv-default-tab-action,
+.hf-dock .dv-tab:focus-within .dv-default-tab .dv-default-tab-action,
+.hf-dock .dv-tab.dv-active-tab .dv-default-tab .dv-default-tab-action {
+  opacity: 0.7;
+}
+
+.hf-dock .dv-tab .dv-default-tab .dv-default-tab-action:hover {
+  opacity: 1;
+  border-radius: 6px;
+  background-color: transparent;
+}
+
+@media (hover: none) {
+  .hf-dock .dv-tab .dv-default-tab .dv-default-tab-action {
+    opacity: 0.7;
+  }
+}
+
+/* Filled 11px glyph, replaced by a 12px stroke centered in the 20px target. */
+.hf-dock .dv-default-tab-action .dv-svg {
+  display: none;
+}
+
+.hf-dock .dv-default-tab-action::before,
+.hf-dock .dv-default-tab-action::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 9.25px;
+  width: 12px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.hf-dock .dv-default-tab-action::before {
+  transform: rotate(45deg);
+}
+
+.hf-dock .dv-default-tab-action::after {
+  transform: rotate(-45deg);
 }
