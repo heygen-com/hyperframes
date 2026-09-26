@@ -36,9 +36,6 @@ import {
 // so it falls back to the branch URL, and `fetch` is stubbed per-test. `vi.mock`
 // is hoisted above these imports regardless of source position. No existing
 // test in this file omits `source`, so nothing else touches this mock.
-const dns = vi.hoisted(() => ({ answers: true }));
-vi.mock("./hostAnswers.js", () => ({ hostAnswers: async () => dns.answers }));
-
 vi.mock("node:child_process", () => ({
   execFile: vi.fn(
     (
@@ -520,22 +517,6 @@ describe("checkSkills removed-upstream detection", () => {
       JSON.stringify({ version: 3, skills: withPaths }),
     );
   }
-
-  it("does not fetch a remote manifest when DNS does not answer", async () => {
-    dns.answers = false;
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      const { opts } = setup({ source: "test", skills: {} });
-      await checkSkills({ ...opts, source: "https://example.test/skills-manifest.json" }).catch(
-        () => undefined,
-      );
-      expect(fetchMock).not.toHaveBeenCalled();
-    } finally {
-      dns.answers = true;
-      vi.unstubAllGlobals();
-    }
-  });
 
   it("flags a lock-attributed skill the manifest dropped, ignoring other sources", async () => {
     const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });

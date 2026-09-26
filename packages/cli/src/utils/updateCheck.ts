@@ -42,7 +42,7 @@ export interface UpdateMeta {
  * Check npm registry for the latest version. Uses a 24h cache to avoid
  * hitting the registry on every invocation.
  *
- * @param force - Skip cache and fetch fresh data
+ * @param force - Skip the cache and the DNS probe; the caller waits for the registry
  */
 export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult> {
   const config = readConfig();
@@ -67,7 +67,7 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   }
 
   try {
-    if (!(await hostAnswers(new URL(NPM_REGISTRY_URL).hostname))) {
+    if (!force && !(await hostAnswers(new URL(NPM_REGISTRY_URL).hostname))) {
       return fallbackResult(config.latestVersion);
     }
     const controller = new AbortController();

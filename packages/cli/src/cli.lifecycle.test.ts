@@ -13,7 +13,6 @@ afterEach(() => {
   vi.doUnmock("./utils/updateCheck.js");
   vi.doUnmock("./utils/skillsUpdateCheck.js");
   vi.doUnmock("./utils/autoUpdate.js");
-  vi.unstubAllEnvs();
   vi.resetModules();
 });
 
@@ -46,30 +45,20 @@ describe("CLI lifecycle", () => {
       });
       await new Promise((resolve) => setImmediate(resolve));
     };
-    return { checkForUpdate, checkSkillsForUpdate, settled };
+    return { checkForUpdate, settled };
   }
 
-  it("starts no update or skills fetch in an unattended run", async () => {
+  it.each([
+    [true, "skips"],
+    [false, "runs"],
+  ])("with notices suppressed=%s, the update check %s", async (unattended) => {
     mockInitCommand(() => {});
     mockTelemetry();
-    const { checkForUpdate, checkSkillsForUpdate, settled } = mockBackgroundChecks(true);
+    const { checkForUpdate, settled } = mockBackgroundChecks(unattended);
     process.argv = ["node", "cli.ts", "init"];
     await import("./cli.js");
     await settled();
-    expect(checkForUpdate).not.toHaveBeenCalled();
-    expect(checkSkillsForUpdate).not.toHaveBeenCalled();
-  });
-
-  it("skips the skills fetch under HYPERFRAMES_SKIP_SKILLS", async () => {
-    vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
-    mockInitCommand(() => {});
-    mockTelemetry();
-    const { checkForUpdate, checkSkillsForUpdate, settled } = mockBackgroundChecks(false);
-    process.argv = ["node", "cli.ts", "init"];
-    await import("./cli.js");
-    await settled();
-    expect(checkForUpdate).toHaveBeenCalled();
-    expect(checkSkillsForUpdate).not.toHaveBeenCalled();
+    expect(checkForUpdate).toHaveBeenCalledTimes(unattended ? 0 : 1);
   });
 
   it("queues a command failure before finalizing telemetry", async () => {

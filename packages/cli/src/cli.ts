@@ -277,23 +277,21 @@ if (
   // we don't over-print.
   import("./utils/autoUpdate.js").then((mod) => mod.reportCompletedUpdate()).catch(() => {});
 
-  const unattended = import("./utils/updateCheck.js").then(async (mod) => {
+  import("./utils/updateCheck.js").then(async (mod) => {
     _printUpdateNotice = mod.printUpdateNotice;
     _printStalePinNotice = mod.printStalePinNotice;
-    if (mod.updateNoticesSuppressed()) return true;
+    if (mod.updateNoticesSuppressed()) return;
     const result = await mod.checkForUpdate().catch(() => null);
     if (result?.updateAvailable) {
       const auto = await import("./utils/autoUpdate.js").catch(() => null);
       auto?.scheduleBackgroundInstall(result.latest, result.current);
     }
-    return false;
   });
 
   // Skills freshness nudge — same gating as the CLI self-update notice. The
   // check is cached (24h) and best-effort: it never blocks or fails the command.
   import("./utils/skillsUpdateCheck.js").then(async (mod) => {
     _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-    if (process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || (await unattended)) return;
     await mod.checkSkillsForUpdate().catch(() => null);
   });
 }
