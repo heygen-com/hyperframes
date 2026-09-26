@@ -136,6 +136,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  pendingResume = null;
   window.__hfRuntimeTeardown?.();
   document.body.innerHTML = "";
   document.documentElement.removeAttribute("style");
@@ -212,5 +213,6 @@ describe("an element Web Audio captured, outside a play", () => {
     await flush();
 
     expect(vo.muted).toBe(false);
+    expect(audible(sources.get(vo))).toBe(true);
   });
 });
