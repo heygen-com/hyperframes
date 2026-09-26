@@ -28,6 +28,7 @@ import { appendFileSync, mkdirSync, openSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { compareVersions } from "compare-versions";
+import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { isDevMode } from "./env.js";
 import {
@@ -90,29 +91,21 @@ function launchDetachedInstall(
   //   1. Runs the install via execFile (bin + argv, NO shell) so a version
   //      string can never be re-interpreted as shell syntax — structural
   //      symmetry with the interactive `runDetectedInstall` path.
-  //   2. Under the config.json.lock protocol owned by withConfigLock in telemetry/config.ts, rewrites the
-  //      config with completedUpdate and clears pendingUpdate; skips on lock timeout or an unreadable file.
+  //   2. Under the shared settings lock (withFileLock, embedded as source), rewrites the config with
+  //      completedUpdate and clears pendingUpdate; skips on lock timeout or an unreadable file.
   // We run it through `node -e` so we don't need to ship a separate file. Bin
   // and args are embedded as JSON literals (data, not code).
   const nodeScript = `
     const { execFile } = require("node:child_process");
-    const { closeSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } = require("node:fs");
+    const fs = require("node:fs");
+    const { readFileSync, renameSync, writeFileSync } = fs;
     const CFG = ${JSON.stringify(configFile)};
     const TMP = \`\${CFG}.tmp\`;
-    const LOCK = \`\${CFG}.lock\`;
     const VERSION = ${JSON.stringify(version)};
     const BIN = ${JSON.stringify(invocation.bin)};
     const ARGS = ${JSON.stringify(invocation.args)};
-    function withLock(task) {
-      const started = Date.now();
-      for (;;) {
-        try { closeSync(openSync(LOCK, "wx")); break; } catch (e) { if (e.code !== "EEXIST") return; }
-        try { if (Date.now() - statSync(LOCK).mtimeMs > 5000) rmSync(LOCK); } catch (e) {}
-        if (Date.now() - started > 10000) return;
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-      }
-      try { task(); } finally { rmSync(LOCK, { force: true }); }
-    }
+    ${withFileLock.toString()}
+    const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
     execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => withLock(() => {
       let cfg = {};
       try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }

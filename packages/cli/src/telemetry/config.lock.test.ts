@@ -48,6 +48,22 @@ function anotherProcessSavesNo(): Promise<void> {
   });
 }
 
+describe("a settings file that exists but cannot be read", () => {
+  it.each([
+    [
+      "corrupt",
+      () => writeFileSync(join(configDir, "config.json"), '{"localEmbeddingEnabled": fal'),
+    ],
+    ["not a file", () => mkdirSync(join(configDir, "config.json"))],
+  ])("counts as a no when %s, never as a question not yet asked", async (_, make) => {
+    make();
+    const { readConfig, updateLocalModelConsent } = await import("./config.js");
+    readConfig();
+
+    expect(updateLocalModelConsent((onDisk) => onDisk ?? true)).toBe(false);
+  });
+});
+
 describe("config writes across processes", () => {
   it("waits for another process's settings write, then keeps the no it saved", async () => {
     const { readConfig, updateLocalModelConsent } = await import("./config.js");

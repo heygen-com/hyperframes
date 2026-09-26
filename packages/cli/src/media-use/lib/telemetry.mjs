@@ -2,19 +2,11 @@
 // never carry intent text, file names, or paths.
 
 import { randomUUID } from "node:crypto";
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import * as fs from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { withFileLock } from "./config-lock.mjs";
 import { globalMediaDir } from "./media-home.mjs";
 
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -72,39 +64,24 @@ function readSharedConfig() {
   return {};
 }
 
-// Same lock protocol as withConfigLock in packages/cli/src/telemetry/config.ts; best effort, never writes unlocked.
+// Best effort: skipped when the lock cannot be taken or the file cannot be read, never written unlocked.
 function updateSharedConfig(patch) {
   const file = sharedConfigPath();
-  const lock = `${file}.lock`;
   mkdirSync(dirname(file), { recursive: true });
-  const started = Date.now();
-  for (;;) {
-    try {
-      closeSync(openSync(lock, "wx"));
-      break;
-    } catch (error) {
-      if (error.code !== "EEXIST") return;
-    }
-    try {
-      if (Date.now() - statSync(lock).mtimeMs > 5000) rmSync(lock);
-    } catch {}
-    if (Date.now() - started > 10000) return;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-  }
   try {
-    let config = {};
-    try {
-      config = JSON.parse(readFileSync(file, "utf8"));
-    } catch (error) {
-      if (error.code !== "ENOENT") return;
-    }
-    if (!config || typeof config !== "object" || Array.isArray(config)) return;
-    const tmp = `${file}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ ...config, ...patch }, null, 2) + "\n", { mode: 0o600 });
-    renameSync(tmp, file);
-  } finally {
-    rmSync(lock, { force: true });
-  }
+    withFileLock(`${file}.lock`, fs, () => {
+      let config = {};
+      try {
+        config = JSON.parse(readFileSync(file, "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") return;
+      }
+      if (!config || typeof config !== "object" || Array.isArray(config)) return;
+      const tmp = `${file}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ ...config, ...patch }, null, 2) + "\n", { mode: 0o600 });
+      renameSync(tmp, file);
+    });
+  } catch {}
 }
 
 // Adopt a pre-existing media-use-only id (~/.media/anon-id from before this

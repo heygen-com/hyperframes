@@ -337,7 +337,7 @@ describe("scheduleBackgroundInstall", () => {
       const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
       expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(true);
       const args = spawnSpy.mock.calls[0]?.[1] as unknown as string[];
-      expect(args[1]).toContain(cfg);
+      expect(args[1]).toContain(JSON.stringify(cfg));
       execFileSync(process.execPath, args);
     }
 

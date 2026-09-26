@@ -1,19 +1,11 @@
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import * as fs from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { telemetryRuntimeOverride } from "./policy.js";
+import { withFileLock } from "../media-use/lib/config-lock.mjs";
 
 // ---------------------------------------------------------------------------
 // Config directory: ~/.hyperframes/
@@ -770,7 +762,7 @@ export function readConfig(): HyperframesConfig {
     // Recover through the same mint path as a missing file — so a tripped
     // breaker survives config corruption too — but fail closed for the
     // privacy control: recovery must never silently turn telemetry back on.
-    const config = { ...mintConfig(), telemetryEnabled: false };
+    const config = { ...mintConfig(), telemetryEnabled: false, localEmbeddingEnabled: false };
     const write = writeConfigWithResult(config);
     classifyIdentity(
       config.anonymousId,
@@ -858,51 +850,26 @@ function localModelConsentOnDisk(): boolean | undefined {
   try {
     const value = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).localEmbeddingEnabled;
     return typeof value === "boolean" ? value : undefined;
-  } catch {
-    return undefined;
+  } catch (error) {
+    // A settings file that exists but cannot be read may hold a no; only a missing one was never asked.
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : false;
   }
 }
 
-const CONFIG_LOCK = `${CONFIG_FILE}.lock`;
-const LOCK_STALE_MS = 5_000;
-const LOCK_TIMEOUT_MS = 10_000;
 let holdingConfigLock = false;
 
-function acquireConfigLock(): boolean {
-  try {
-    closeSync(openSync(CONFIG_LOCK, "wx"));
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    return false;
-  }
-}
-
-// ponytail: mtime staleness like media-use's lock; two waiters stealing at once can drop a fresh lock.
-function removeStaleConfigLock(): void {
-  try {
-    if (Date.now() - statSync(CONFIG_LOCK).mtimeMs > LOCK_STALE_MS) rmSync(CONFIG_LOCK);
-  } catch {}
-}
-
-/** One CLI process at a time between reading config.json and replacing it. */
+/** One process at a time between reading config.json and replacing it; re-entrant within this one. */
 function withConfigLock<T>(task: () => T): T {
   if (holdingConfigLock) return task();
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  const started = Date.now();
-  while (!acquireConfigLock()) {
-    removeStaleConfigLock();
-    if (Date.now() - started > LOCK_TIMEOUT_MS)
-      throw new Error("Another hyperframes process kept its settings locked.");
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-  }
-  holdingConfigLock = true;
-  try {
-    return task();
-  } finally {
-    holdingConfigLock = false;
-    rmSync(CONFIG_LOCK, { force: true });
-  }
+  return withFileLock(`${CONFIG_FILE}.lock`, fs, () => {
+    holdingConfigLock = true;
+    try {
+      return task();
+    } finally {
+      holdingConfigLock = false;
+    }
+  });
 }
 
 function persistConfig(config: HyperframesConfig): ConfigWriteResult {

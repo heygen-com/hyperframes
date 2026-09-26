@@ -11,6 +11,7 @@ import { join } from "node:path";
 // vitest worker.
 const fsState = vi.hoisted(() => ({
   files: new Map<string, string>(),
+  fds: new Map<number, string>(),
 }));
 
 vi.mock("node:fs", () => ({
@@ -18,7 +19,8 @@ vi.mock("node:fs", () => ({
   mkdirSync: vi.fn(() => undefined),
   readFileSync: vi.fn((path: string) => {
     const content = fsState.files.get(path);
-    if (content === undefined) throw new Error(`ENOENT: ${path}`);
+    if (content === undefined)
+      throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
     return content;
   }),
   writeFileSync: vi.fn((path: string, content: string) => {
@@ -35,14 +37,20 @@ vi.mock("node:fs", () => ({
   rmSync: vi.fn((path: string) => {
     fsState.files.delete(path);
   }),
-  // The settings lock: an exclusive create, released by rmSync.
+  // The settings lock: an exclusive create, then the owner's token written through the descriptor.
   openSync: vi.fn((path: string, flag: string) => {
     if (flag === "wx" && fsState.files.has(path))
       throw Object.assign(new Error(`EEXIST: ${path}`), { code: "EEXIST" });
     fsState.files.set(path, "");
+    fsState.fds.set(3, path);
     return 3;
   }),
+  writeSync: vi.fn((fd: number, data: string) => {
+    const path = fsState.fds.get(fd) ?? "";
+    fsState.files.set(path, (fsState.files.get(path) ?? "") + data);
+  }),
   closeSync: vi.fn(),
+  linkSync: vi.fn(),
   statSync: vi.fn(() => ({ mtimeMs: Date.now() })),
 }));
 
