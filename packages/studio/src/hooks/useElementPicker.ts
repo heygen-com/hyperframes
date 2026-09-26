@@ -266,9 +266,6 @@ interface PendingWrite {
   writes: string[];
 }
 
-// ponytail: keeps at most 50 writes per file for a host that never rerenders.
-const MAX_PENDING_WRITES = 50;
-
 function settlePendingWrites(
   pending: Map<string, PendingWrite>,
   files: Record<string, string> | undefined,
@@ -302,7 +299,7 @@ function recordPendingWrite(
   after: string,
 ): void {
   const write = pending.get(path) ?? { hostSource, writes: [] };
-  write.writes = [...write.writes, after].slice(-MAX_PENDING_WRITES);
+  write.writes.push(after);
   pending.set(path, write);
 }
 
