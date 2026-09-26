@@ -3227,7 +3227,8 @@ export function initSandboxRuntimeModular(): void {
         if (old.revert) old.revert();
         else previous.totalTime?.(0, true);
         root?.remove?.(previous);
-        old.kill?.();
+        // revert() has already killed it; a second kill() fires onInterrupt again.
+        if (!old.revert) old.kill?.();
         delete timelines[id];
       }
       // Each new style takes its own old one's place: same-named @keyframes resolve by order.

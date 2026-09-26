@@ -181,10 +181,26 @@ function restColorOf(el: HTMLElement, colorTweens: GsapTween[]): string {
 }
 
 // A declaration wins, per tween; otherwise a tween back to the word's rest colour is dim.
-const tweenState = (tw: GsapTween, el: HTMLElement, rest: string): "dim" | "active" =>
-  declaredCaptionState(tw) ?? (paintedColor(el, String(tw.vars.color)) === rest ? "dim" : "active");
+// `painted` caches resolutions for one apply: tween colours repeat, and each forces a style recalc.
+function tweenState(
+  tw: GsapTween,
+  el: HTMLElement,
+  rest: string,
+  painted: Map<string, string>,
+): "dim" | "active" {
+  const declared = declaredCaptionState(tw);
+  if (declared) return declared;
+  const color = String(tw.vars.color);
+  if (!painted.has(color)) painted.set(color, paintedColor(el, color));
+  return painted.get(color) === rest ? "dim" : "active";
+}
 
-function rewriteColorTweens(gsap: GsapStatic, el: HTMLElement, override: CaptionOverride): void {
+function rewriteColorTweens(
+  gsap: GsapStatic,
+  el: HTMLElement,
+  override: CaptionOverride,
+  painted: Map<string, string>,
+): void {
   const colorTweens = gsap
     .getTweensOf(el)
     .filter((tw) => tw.vars.color !== undefined)
@@ -192,26 +208,33 @@ function rewriteColorTweens(gsap: GsapStatic, el: HTMLElement, override: Caption
   const rest = restColorOf(el, colorTweens);
 
   for (const tw of colorTweens) {
-    const color = tweenState(tw, el, rest) === "dim" ? override.dimColor : override.activeColor;
+    const state = tweenState(tw, el, rest, painted);
+    const color = state === "dim" ? override.dimColor : override.activeColor;
     if (color) tw.vars.color = color;
-    // Each re-reads its start from the word the dim colour below re-colours, rewritten or not.
-    // A from() re-read that way would end on that dim colour instead.
+    // Each re-reads its start from the word as repainted below, rewritten or not.
+    // A from() re-read that way would end on that colour instead.
     if (!tw.vars.runBackwards) tw.invalidate?.();
   }
 
-  // Set current visible color (words start in dim state)
-  if (override.dimColor) {
-    gsap.set(el, { color: override.dimColor });
-  }
+  // The invalidated tweens re-read their start from this, wherever the playhead has been.
+  // A from() recorded its own start, which the rest colour would overwrite.
+  const restPaint =
+    override.dimColor || (colorTweens.some((tw) => tw.vars.runBackwards) ? undefined : rest);
+  if (restPaint) gsap.set(el, { color: restPaint });
 }
 
-function applyWordOverride(gsap: GsapStatic, el: HTMLElement, override: CaptionOverride): void {
+function applyWordOverride(
+  gsap: GsapStatic,
+  el: HTMLElement,
+  override: CaptionOverride,
+  painted: Map<string, string>,
+): void {
   // Split into transform props (wrapper) and style props (word span)
   const transformProps = definedProps(override, ["x", "y", "scale", "rotation"]);
   const styleProps = definedProps(override, ["opacity", "fontWeight", "fontFamily"]);
   if (override.fontSize !== undefined) styleProps.fontSize = `${override.fontSize}px`;
 
-  if (override.activeColor || override.dimColor) rewriteColorTweens(gsap, el, override);
+  if (override.activeColor || override.dimColor) rewriteColorTweens(gsap, el, override, painted);
 
   // Apply non-color style props
   if (Object.keys(styleProps).length > 0) {
@@ -237,10 +260,11 @@ export function applyFetchedCaptionOverrides(
 
   // Build word element index for wordIndex fallback
   const wordEls = getCaptionWordElements();
+  const painted = new Map<string, string>();
 
   for (const override of overrides) {
     const el = findOverrideTarget(override, wordEls);
     if (!el || (within && !within.some((root) => root.contains(el)))) continue;
-    applyWordOverride(gsap, el, override);
+    applyWordOverride(gsap, el, override, painted);
   }
 }

@@ -37,7 +37,9 @@ function installGsapMock() {
 /** A gsap mock whose `getTweensOf` returns the supplied colour tweens, so classification is testable. */
 function installGsapMockWithTweens(tweens: Array<Record<string, unknown>>) {
   const gsap = {
-    set() {},
+    set(target: HTMLElement, vars: Record<string, unknown>) {
+      if (typeof vars.color === "string") target.style.color = vars.color;
+    },
     killTweensOf() {},
     getTweensOf() {
       return tweens.map((vars, i) => ({ vars, startTime: () => i }));
@@ -231,7 +233,8 @@ describe("caption colour classification", () => {
     expect(tweens[0].color).toBe("#0f0");
   });
 
-  it("reads the rest colour past an inline colour GSAP already rendered, and puts that back", async () => {
+  it("repaints a word the playhead already lit with its rest colour, so it is dim before it is spoken", async () => {
+    // Overrides can land after the word lit up; its invalidated tween re-reads its start from this.
     const tweens = installGsapMockWithTweens([{ color: "#ffffff" }]);
     installCaptionOverrideFetch([{ wordIndex: 0, activeColor: "#0f0" }]);
     mountWord(SHIPPED_REST);
@@ -241,7 +244,37 @@ describe("caption colour classification", () => {
     await flushCaptionOverrides();
 
     expect(tweens[0].color).toBe("#0f0");
-    expect(document.getElementById("w0")!.style.color).toBe("rgb(255, 255, 255)");
+    expect(document.getElementById("w0")!.style.color).toBe(SHIPPED_REST);
+  });
+
+  it("leaves the colour a from() tween has rendered on its word", async () => {
+    // The from() is mid-way (#a2a2a2) when the overrides land; its recorded start stays #444.
+    installGsapMockWithTweens([{ color: "#444", runBackwards: true }]);
+    installCaptionOverrideFetch([{ wordIndex: 0, activeColor: "#0f0" }]);
+    mountWord("#fff");
+    document.getElementById("w0")!.style.color = "#a2a2a2";
+
+    applyCaptionOverrides();
+    await flushCaptionOverrides();
+
+    expect(document.getElementById("w0")!.style.color).toBe("rgb(162, 162, 162)");
+  });
+
+  it("resolves each distinct tween colour once per apply, not once per word", async () => {
+    installGsapMockWithTweens([{ color: "#ffffff" }, { color: SHIPPED_REST }]);
+    // An override that leaves the colours as they are, so every word sees the same two.
+    installCaptionOverrideFetch(
+      [0, 1, 2].map((wordIndex) => ({ wordIndex, activeColor: "#ffffff" })),
+    );
+    document.head.innerHTML = `<style>span { color: ${SHIPPED_REST}; }</style>`;
+    document.body.innerHTML = `<div class="caption-group"><span></span><span></span><span></span></div>`;
+    const computed = vi.spyOn(window, "getComputedStyle");
+
+    applyCaptionOverrides();
+    await flushCaptionOverrides();
+
+    // One rest colour per word, plus the two tween colours.
+    expect(computed).toHaveBeenCalledTimes(3 + 2);
   });
 });
 

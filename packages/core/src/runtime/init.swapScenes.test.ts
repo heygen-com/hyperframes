@@ -450,31 +450,37 @@ describe("__hfSwapScenes", () => {
   });
 
   it.each([
-    ["rewinds an old timeline that cannot revert", false, "1"],
-    ["reverts an old timeline that can, dropping the inline values it wrote", true, ""],
-  ])("%s, so a kept video carries none of its tweens' values", async (_, canRevert, opacity) => {
-    const { root } = trackingRoot();
-    quietMedia();
-    const scene = (text: string, label: string, hash: string): Scene => ({
-      ...A1,
-      label,
-      hash,
-      body: `<p>${text}</p><video src="clip.mp4" data-start="1">one</video>`,
-    });
-    boot([scene("A one", "a1", "ha1"), B], root);
-    await tick();
-    const video = sceneHost("a").querySelector("video")!;
-    const seek = made.a1!.totalTime.bind(made.a1);
-    const fadeOverTwentySeconds = (t?: number) => (
-      t !== undefined && (video.style.opacity = String(1 - t / 20)), seek(t)
-    );
-    made.a1!.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
-    if (canRevert) Object.assign(made.a1!, { revert: () => video.style.removeProperty("opacity") });
-    made.a1!.totalTime(10);
-    await window.__hfSwapScenes!(preview([scene("A two", "a2", "ha2"), B]).html);
-    expect(sceneHost("a").querySelector("video")).toBe(video);
-    expect(video.style.opacity).toBe(opacity);
-  });
+    ["rewinds and kills an old timeline that cannot revert", false, "1", 1],
+    ["reverts an old timeline that can, dropping the inline values it wrote", true, "", 0],
+  ])(
+    "%s, so a kept video carries none of its tweens' values",
+    async (_, canRevert, opacity, kills) => {
+      const { root } = trackingRoot();
+      quietMedia();
+      const scene = (text: string, label: string, hash: string): Scene => ({
+        ...A1,
+        label,
+        hash,
+        body: `<p>${text}</p><video src="clip.mp4" data-start="1">one</video>`,
+      });
+      boot([scene("A one", "a1", "ha1"), B], root);
+      await tick();
+      const video = sceneHost("a").querySelector("video")!;
+      const seek = made.a1!.totalTime.bind(made.a1);
+      const fadeOverTwentySeconds = (t?: number) => (
+        t !== undefined && (video.style.opacity = String(1 - t / 20)), seek(t)
+      );
+      made.a1!.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
+      if (canRevert)
+        Object.assign(made.a1!, { revert: () => video.style.removeProperty("opacity") });
+      made.a1!.totalTime(10);
+      await window.__hfSwapScenes!(preview([scene("A two", "a2", "ha2"), B]).html);
+      expect(sceneHost("a").querySelector("video")).toBe(video);
+      expect(video.style.opacity).toBe(opacity);
+      // GSAP's revert() kills the timeline itself; a second kill() fires its onInterrupt again.
+      expect(made.a1!.kill).toHaveBeenCalledTimes(kills);
+    },
+  );
 
   it.each([
     ["muted is added", "muted"],
