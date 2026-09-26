@@ -82,8 +82,8 @@ export function localModelConsent(): LocalModelDecision {
   return readConfig().localEmbeddingEnabled;
 }
 
-export function recordLocalModelConsent(enabled: boolean): void {
-  updateLocalModelConsent(() => enabled);
+export function recordLocalModelConsent(enabled: boolean): LocalModelDecision {
+  return updateLocalModelConsent(() => enabled);
 }
 
 /** --yes in a run nobody watches: it answers only a question never asked. Returns the decision that stands. */

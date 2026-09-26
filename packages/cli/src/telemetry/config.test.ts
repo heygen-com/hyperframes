@@ -838,3 +838,53 @@ describe("identity-persistence classification (sticky per anonymous id)", () => 
     expect(getIdentityWriteOutcome()).toBe("ok");
   });
 });
+
+describe("updateLocalModelConsent fails closed to the answer on disk", () => {
+  let readConfig: typeof import("./config.js").readConfig;
+  let updateLocalModelConsent: typeof import("./config.js").updateLocalModelConsent;
+  let CONFIG_PATH: typeof import("./config.js").CONFIG_PATH;
+
+  beforeEach(async () => {
+    fsState.files.clear();
+    vi.resetModules();
+    ({ readConfig, updateLocalModelConsent, CONFIG_PATH } = await import("./config.js"));
+  });
+
+  const consentOnDisk = () =>
+    JSON.parse(fsState.files.get(CONFIG_PATH) ?? "{}").localEmbeddingEnabled;
+
+  it("returns the answer on disk, not the new one, when the write fails", async () => {
+    readConfig();
+    const fs = await import("node:fs");
+    vi.mocked(fs.renameSync).mockImplementationOnce(() => {
+      throw new Error("EACCES: permission denied");
+    });
+
+    expect(updateLocalModelConsent(() => true)).toBeUndefined();
+    expect(consentOnDisk()).toBeUndefined();
+  });
+
+  it("returns the no on disk and writes nothing when another process keeps the lock", () => {
+    fsState.files.set(
+      CONFIG_PATH,
+      JSON.stringify({ ...readConfig(), localEmbeddingEnabled: false }),
+    );
+    fsState.files.set(`${CONFIG_PATH}.lock`, "");
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => (now += 4_000));
+    try {
+      expect(updateLocalModelConsent(() => true)).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(consentOnDisk()).toBe(false);
+  });
+
+  it("does not wait on its own lock when the read inside it has to write", async () => {
+    const fs = await import("node:fs");
+    vi.mocked(fs.openSync).mockClear();
+
+    expect(updateLocalModelConsent(() => true)).toBe(true);
+    expect(vi.mocked(fs.openSync).mock.calls.filter(([, flag]) => flag === "wx")).toHaveLength(1);
+  });
+});

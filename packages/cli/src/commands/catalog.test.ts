@@ -135,7 +135,9 @@ vi.mock("../registry/localModel.js", () => ({
     return true;
   },
   recordLocalModelConsent: (enabled: boolean) => {
+    if (state.consentWriteFails) return state.consentRecorded.at(-1);
     state.consentRecorded.push(enabled);
+    return enabled;
   },
   assumeLocalModelConsent: () => {
     if (state.consentWriteFails) return undefined;
@@ -624,14 +626,27 @@ describe("the on-device download offer", () => {
   // The offer only exists for someone who can answer it. Off a terminal the
   // caller must add --yes explicitly, so a test that forgets the terminal
   // never reaches the prompt and passes for the wrong reason.
-  const asATerminal = async (run: () => Promise<string>): Promise<string> => {
-    const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  const asATerminal = async <T>(
+    run: () => Promise<T>,
+    { stdin = true, ci }: { stdin?: boolean; ci?: string } = {},
+  ): Promise<T> => {
+    const streams = [process.stdin, process.stdout];
+    const descriptors = streams.map((stream) => Object.getOwnPropertyDescriptor(stream, "isTTY"));
+    const savedCi = process.env["CI"];
+    Object.defineProperty(process.stdin, "isTTY", { value: stdin, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    if (ci === undefined) delete process.env["CI"];
+    else process.env["CI"] = ci;
     try {
       return await run();
     } finally {
-      if (descriptor) Object.defineProperty(process.stdout, "isTTY", descriptor);
-      else delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
+      streams.forEach((stream, i) => {
+        const descriptor = descriptors[i];
+        if (descriptor) Object.defineProperty(stream, "isTTY", descriptor);
+        else delete (stream as unknown as { isTTY?: boolean }).isTTY;
+      });
+      if (savedCi === undefined) delete process.env["CI"];
+      else process.env["CI"] = savedCi;
     }
   };
 
@@ -673,6 +688,46 @@ describe("the on-device download offer", () => {
     await asATerminal(() => runCatalog({ query: "count up", "on-device": true, yes: true }));
     expect(state.downloads).toBe(1);
     expect(state.consentRecorded).toEqual([false, true]);
+  });
+
+  it("says a no that could not be saved was not saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() => runForExit({ query: "count up", "on-device": true }));
+
+    expect([state.downloads, state.consentRecorded]).toEqual([0, []]);
+    expect(err).toContain("declined, but could not save the answer in settings");
+  });
+
+  it("says so when a no given to the thin-results offer could not be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() => runForExit({ query: "count up" }));
+
+    expect(err).toContain("Could not save the answer in settings.");
+  });
+
+  it.each([
+    ["piped stdin", { stdin: false }],
+    ["CI", { ci: "true" }],
+  ])("treats a terminal with %s as unwatched, so its --yes keeps a saved no", async (_, env) => {
+    state.consentRecorded = [false];
+
+    const { err } = await asATerminal(
+      () => runForExit({ query: "count up", "on-device": true, yes: true }),
+      env,
+    );
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([
+      0,
+      0,
+      [false],
+    ]);
+    expect(err).toContain("previously declined");
   });
 
   it("does not treat non-interactive output as download consent", async () => {
