@@ -77,7 +77,7 @@ describe("useAutomationSelectionKeyboard", () => {
   });
 
   const setup = (binding: Partial<AutomationLaneBinding>) => {
-    const onCommit = vi.fn();
+    const onCommit = vi.fn().mockResolvedValue(undefined);
     const automation = {
       version: 1,
       lanes: [
@@ -102,7 +102,6 @@ describe("useAutomationSelectionKeyboard", () => {
         onCommit,
         onSelect: vi.fn(),
         readOnly: false,
-        commitTargetKey: "bgm",
         selection: null,
         onRangeSelect: vi.fn(),
         onRangeClear: vi.fn(),
@@ -230,7 +229,7 @@ describe("useAutomationSelectionKeyboard", () => {
     expect(entry?.points.map((p) => p.t)).toEqual([0, 2]);
   });
 
-  it("Cmd+V with no selection pastes at the playhead and selects the pasted span", () => {
+  it("Cmd+V with no selection pastes at the playhead and selects the pasted span", async () => {
     clearAutomationClipboard();
     // Duration wide enough that the playhead (5s) is not clamped down by the
     // 0..duration-span bound — this is a paste-at-playhead test, not a
@@ -255,6 +254,7 @@ describe("useAutomationSelectionKeyboard", () => {
     expect(times).toContain(7); // + clipboard span 2
 
     // Pasting again immediately should land right after the first paste.
+    await act(async () => {});
     expect(usePlayerStore.getState().automationSelection).toEqual({
       elementKey: "bgm",
       target: "volume",
@@ -268,7 +268,124 @@ describe("useAutomationSelectionKeyboard", () => {
     });
   });
 
-  it("chains a second Cmd+V after the first instead of overwriting it", () => {
+  it("marks nothing when the paste's save is refused, even for two quick presses", async () => {
+    clearAutomationClipboard();
+    usePlayerStore.setState({
+      elements: [{ ...bgmElement, duration: 10 }],
+      selectedElementId: "bgm",
+    });
+    const original = wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 });
+    usePlayerStore.getState().setAutomationSelection(original);
+    const onCommit = vi.fn().mockResolvedValue({ status: "refused", reason: "Locked" });
+    setup({ onCommit });
+    combo("c");
+    combo("v");
+    combo("v");
+    await act(async () => {});
+    expect(usePlayerStore.getState().automationSelection).toEqual(original);
+    combo("v");
+    const again = (onCommit.mock.calls.at(-1)?.[0]?.lanes?.[0]?.points ?? []).map(
+      (p: { t: number }) => p.t,
+    );
+    expect(again).toContain(2);
+    expect(again).not.toContain(6);
+  });
+
+  it.each([{ status: "saved" as const }, { status: "refused" as const, reason: "Locked" }])(
+    "keeps a selection drawn while a paste was saving ($status)",
+    async (outcome) => {
+      clearAutomationClipboard();
+      usePlayerStore.setState({
+        elements: [{ ...bgmElement, duration: 10 }],
+        selectedElementId: "bgm",
+      });
+      usePlayerStore
+        .getState()
+        .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
+      let land = () => {};
+      const onCommit = vi.fn(
+        () =>
+          new Promise<typeof outcome>((resolve) => {
+            land = () => resolve(outcome);
+          }),
+      );
+      setup({ onCommit });
+      combo("c");
+      combo("v");
+      const drawn = wholeAxis({ elementKey: "bgm", target: "volume", t0: 6, t1: 8 });
+      usePlayerStore.getState().setAutomationSelection(drawn);
+      land();
+      await act(async () => {});
+      expect(usePlayerStore.getState().automationSelection).toEqual(drawn);
+    },
+  );
+
+  it.each(["in order", "reversed"])(
+    "marks the latest paste when pastes on two clips resolve %s",
+    async (order) => {
+      clearAutomationClipboard();
+      usePlayerStore.setState({
+        elements: [
+          { ...bgmElement, duration: 10 },
+          { ...bgmElement, id: "vo", key: "vo", duration: 10 },
+        ],
+        selectedElementId: "bgm",
+        currentTime: 1,
+      });
+      usePlayerStore
+        .getState()
+        .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
+      const lands: Array<() => void> = [];
+      const onCommit = vi.fn(
+        () =>
+          new Promise<{ status: "saved" }>((resolve) =>
+            lands.push(() => resolve({ status: "saved" })),
+          ),
+      );
+      setup({ onCommit });
+      combo("c");
+      usePlayerStore.getState().clearAutomationSelection();
+      combo("v");
+      usePlayerStore.setState({ selectedElementId: "vo" });
+      combo("v");
+      const order_ = order === "in order" ? [0, 1] : [1, 0];
+      for (const i of order_) lands[i]?.();
+      await act(async () => {});
+      expect(usePlayerStore.getState().automationSelection?.elementKey).toBe("vo");
+    },
+  );
+
+  it("does not mark a paste whose clip was left before it landed", async () => {
+    clearAutomationClipboard();
+    usePlayerStore.setState({
+      elements: [
+        { ...bgmElement, duration: 10 },
+        { ...bgmElement, id: "vo", key: "vo", duration: 10 },
+      ],
+      selectedElementId: "bgm",
+      currentTime: 1,
+    });
+    usePlayerStore
+      .getState()
+      .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
+    let land = () => {};
+    const onCommit = vi.fn(
+      () =>
+        new Promise<{ status: "saved" }>((resolve) => {
+          land = () => resolve({ status: "saved" });
+        }),
+    );
+    setup({ onCommit });
+    combo("c");
+    usePlayerStore.getState().clearAutomationSelection();
+    combo("v");
+    usePlayerStore.setState({ selectedElementId: "vo" });
+    land();
+    await act(async () => {});
+    expect(usePlayerStore.getState().automationSelection).toBeNull();
+  });
+
+  it("chains a second Cmd+V after the first instead of overwriting it", async () => {
     // The regression this pins: paste leaves its own span selected, so anchoring
     // at sel.t0 unconditionally made every later press recompute the same atT.
     clearAutomationClipboard();
@@ -288,6 +405,7 @@ describe("useAutomationSelectionKeyboard", () => {
     );
     expect(first).toContain(2);
     expect(first).toContain(4);
+    await act(async () => {});
 
     combo("v");
     const second = (onCommit.mock.calls.at(-1)?.[0]?.lanes?.[0]?.points ?? []).map(
@@ -295,6 +413,7 @@ describe("useAutomationSelectionKeyboard", () => {
     );
     expect(second).toContain(4);
     expect(second).toContain(6);
+    await act(async () => {});
     expect(usePlayerStore.getState().automationSelection).toEqual({
       elementKey: "bgm",
       target: "volume",
@@ -308,7 +427,7 @@ describe("useAutomationSelectionKeyboard", () => {
     });
   });
 
-  it("Cmd+V at a selection near the clip's end clamps the paste inside its duration", () => {
+  it("Cmd+V at a selection near the clip's end clamps the paste inside its duration", async () => {
     // The playhead branch already clamps to duration - span; the
     // selection-start branch didn't, so pasting a 2s clip at a selection
     // sitting at t0=5.5 on a 6s clip used to write points out to t=7.5 —
@@ -334,6 +453,7 @@ describe("useAutomationSelectionKeyboard", () => {
       expect(t).toBeLessThanOrEqual(bgmElement.duration);
     }
     // Clamped to duration (6) - span (2) = 4, not the unclamped 5.5.
+    await act(async () => {});
     expect(usePlayerStore.getState().automationSelection).toEqual({
       elementKey: "bgm",
       target: "volume",
@@ -345,22 +465,6 @@ describe("useAutomationSelectionKeyboard", () => {
       v0: 0,
       v1: VOLUME_RANGE.max,
     });
-  });
-
-  it("refuses to paste when the dom-edit layer would write to a different clip", () => {
-    // selectedElementId says "bgm" but the commit channel is still on the
-    // previously selected clip — writing here would serialize bgm's automation
-    // onto that other clip and leave bgm untouched.
-    clearAutomationClipboard();
-    copyRange(null, { target: "volume", points: [{ t: 0, v: 0.5 }] }, VOLUME_RANGE, 0, 2);
-    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: "bgm" });
-    usePlayerStore
-      .getState()
-      .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
-    const { onCommit } = setup({ commitTargetKey: "some-other-clip" });
-    const e = combo("v");
-    expect(e.defaultPrevented).toBe(false);
-    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it("does not paste from a playhead outside the clip", () => {

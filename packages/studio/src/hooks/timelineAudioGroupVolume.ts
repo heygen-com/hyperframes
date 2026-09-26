@@ -1,5 +1,9 @@
 import { useCallback, useRef } from "react";
-import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
+import {
+  failedTimelineSave,
+  projectForTimelineSave,
+  type TimelineEditOutcome,
+} from "./timelineEditPermission";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { usePlayerStore } from "../player";
@@ -8,6 +12,8 @@ import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 import {
   buildPatchTarget,
   persistElementAttribute,
+  createLiveLanes,
+  readSavedAttribute,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
 import type {
@@ -146,6 +152,8 @@ interface SetAudioGroupAttributeInput {
   value: string | null;
   label: string;
   previewIframe: HTMLIFrameElement | null;
+  patchLive: (value: string | null) => void;
+  onFileRead: (value: string | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
@@ -157,6 +165,18 @@ interface SetAudioGroupAttributeInput {
  * `createAudioGroupAndAssignMembers`'s save shape but for a single element
  * and attribute rather than a member-assignment sweep.
  */
+function groupSaveTarget(
+  previewIframe: HTMLIFrameElement | null,
+  groupId: string,
+  activeCompPath: string | null,
+) {
+  const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
+  return {
+    targetPath: resolveGroupSourceFile(groupEl) || activeCompPath || "index.html",
+    patchTarget: buildPatchTarget({ domId: groupId }),
+  };
+}
+
 async function setAudioGroupAttribute({
   projectId,
   activeCompPath,
@@ -165,6 +185,8 @@ async function setAudioGroupAttribute({
   value,
   label,
   previewIframe,
+  patchLive,
+  onFileRead,
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
@@ -177,9 +199,7 @@ async function setAudioGroupAttribute({
   // means `readTagSnippetByTarget` finds nothing and every mute, fader move and
   // FX preset throws "Unable to patch element in index.html". Every sibling
   // timeline writer already routes `element.sourceFile || activeCompPath`.
-  const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
-  const targetPath = resolveGroupSourceFile(groupEl) || activeCompPath || "index.html";
-  const patchTarget = buildPatchTarget({ domId: groupId });
+  const { targetPath, patchTarget } = groupSaveTarget(previewIframe, groupId, activeCompPath);
   if (!patchTarget) return null;
 
   return persistElementAttribute({
@@ -192,7 +212,8 @@ async function setAudioGroupAttribute({
     writeProjectFile,
     recordEdit,
     pendingTimelineEditPathRef,
-    patchLive: (v) => patchLiveGroupAttribute(previewIframe, groupId, attr, v),
+    patchLive,
+    onFileRead,
   });
 }
 
@@ -222,14 +243,12 @@ export function useSetAudioGroupAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (groupId: string, attr: string) => void;
 } {
-  const liveBeforeRef = useRef(new Map<string, string | null>());
+  const liveLanes = useRef(createLiveLanes(() => projectIdRef.current));
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);
       const target = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-      if (!liveBeforeRef.current.has(key)) {
-        liveBeforeRef.current.set(key, target?.getAttribute(attr) ?? null);
-      }
+      liveLanes.current.preview(key, () => target?.getAttribute(attr) ?? null);
       patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
       // Live too, not just on commit: a fader drag is `setLive` per frame and
       // `setQuiet` once on release, so without this the strip's own readout
@@ -238,25 +257,23 @@ export function useSetAudioGroupAttribute({
     },
     [previewIframeRef],
   );
-  const revertLive = useCallback(
-    (groupId: string, attr: string) => {
-      const key = audioGroupAttributeLiveKey(groupId, attr);
-      if (!liveBeforeRef.current.has(key)) return;
-      patchLiveGroupAttribute(
-        previewIframeRef.current,
-        groupId,
-        attr,
-        liveBeforeRef.current.get(key) ?? null,
-      );
-      syncStoredGroupAttribute(
-        groupId,
-        attr,
-        previewIframeRef.current?.contentDocument?.getElementById(groupId)?.getAttribute(attr) ??
-          null,
-      );
-      liveBeforeRef.current.delete(key);
-    },
+  const laneApply = useCallback(
+    (groupId: string, attr: string) => ({
+      preview: (value: string | null) =>
+        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value),
+      store: (value: string | null) => syncStoredGroupAttribute(groupId, attr, value),
+    }),
     [previewIframeRef],
+  );
+  const claimLive = useCallback(
+    (groupId: string, attr: string) =>
+      liveLanes.current.claim(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
+    [laneApply],
+  );
+  const revertLive = useCallback(
+    (groupId: string, attr: string) =>
+      liveLanes.current.revert(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
+    [laneApply],
   );
   const setQuiet = useCallback(
     async (
@@ -265,8 +282,23 @@ export function useSetAudioGroupAttribute({
       value: string | null,
       label: string,
     ): Promise<TimelineEditOutcome> => {
-      const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      if (typeof pid !== "string") return pid;
+      const project = projectIdRef.current;
+      const pid = projectForTimelineSave(isRecordingRef?.current, project, showToast);
+      // Settles on what the file holds, so overlapping saves that fail cannot leave
+      // the preview or the store on a value that never landed.
+      const live = claimLive(groupId, attr);
+      const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
+        const { targetPath, patchTarget } = groupSaveTarget(
+          previewIframeRef.current,
+          groupId,
+          activeCompPath,
+        );
+        live.settle(
+          await readSavedAttribute(project, targetPath, patchTarget, attr, writeProjectFile),
+        );
+        return outcome;
+      };
+      if (typeof pid !== "string") return unsaved(pid);
       try {
         const written = await setAudioGroupAttribute({
           projectId: pid,
@@ -276,33 +308,24 @@ export function useSetAudioGroupAttribute({
           value,
           label,
           previewIframe: previewIframeRef.current,
+          patchLive: live.preview,
+          onFileRead: live.read,
           writeProjectFile,
           recordEdit,
           pendingTimelineEditPathRef,
         });
-        liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
-        if (!written) return { status: "failed", reason: "This group has no id to save it by" };
-        syncStoredGroupAttribute(groupId, attr, value);
+        if (!written)
+          return unsaved(failedTimelineSave("This group has no id to save it by", showToast));
+        live.settle(value);
         return { status: "saved" };
       } catch (error) {
-        // `persistElementAttribute` leaves the live DOM at the previous value
-        // however it failed — it unwinds a failed save, and an unresolvable
-        // target now throws before patching at all. But `setLive` mirrored the
-        // in-progress value into the store on every drag frame — so without
-        // this the fader reads 0.4 while
-        // the preview and the file are both back at 1.0, and nothing re-parses
-        // to correct it (a live patch causing no parse is this mirror's whole
-        // premise). Re-mirror from the DOM, which is now authoritative again.
-        const live = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-        syncStoredGroupAttribute(groupId, attr, live?.getAttribute(attr) ?? null);
         console.error("[Timeline] Failed to set group attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update group";
-        showToast(message);
-        liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
-        return { status: "failed", reason: message };
+        return unsaved(failedTimelineSave(message, showToast));
       }
     },
     [
+      claimLive,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,

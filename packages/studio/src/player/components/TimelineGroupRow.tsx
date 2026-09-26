@@ -80,9 +80,8 @@ export function TimelineGroupRow({
   // The group wearing a clip's shape so the lane machinery can render it — see
   // `groupAutomationElement` for why that beats a second, parallel lane path.
   const groupElement = groupAutomationElement(group, compositionDuration);
-  // The binder writes through the dom-edit selection, so a group lane is
-  // editable exactly when the group is the selected element — which clicking
-  // its name in the header does.
+  // A group lane is editable exactly when the group is the selected element,
+  // which clicking its name in the header does.
   const domSelection = useDomEditSelectionContextOptional()?.domEditSelection ?? null;
   const isGroupSelected = domSelection?.id === group.id;
   const isLaneOpen = expandedLaneOwnerIds.has(group.id);
@@ -169,8 +168,8 @@ export function TimelineGroupRow({
           theme={theme}
         />
         {/* The group's OWN curves, under the strip. Selected-gated exactly like a
-          clip's: the binder writes through the dom-edit selection, so a lane is
-          editable once the group is selected — which clicking its name does. */}
+          clip's: a lane is editable once the group is selected, which clicking
+          its name does. */}
         {/* The label column for those lanes, on the accent rail — inside the
             sticky column above, so they pin with the header. */}
         {isLaneOpen && (

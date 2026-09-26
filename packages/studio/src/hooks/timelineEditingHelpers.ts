@@ -15,7 +15,12 @@ import {
   furthestClipEndFromSource,
   getTimelineElementIdentity,
 } from "../player/lib/timelineElementHelpers";
-import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
+import {
+  saveProjectFilesWithHistory,
+  writeProjectFilesWithHistoryInQueue,
+  type RecordEditInput,
+} from "../utils/studioFileHistory";
+import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { readFileContent } from "./timelineTimingSync";
@@ -396,6 +401,107 @@ export async function persistTimelineBatchEdit(
   });
 }
 
+/** Live-preview bookkeeping per lane of the open project: the value before a gesture, pending saves, and the last value verified. */
+export function createLiveLanes(project: () => string | null) {
+  const before = new Map<string, string | null>();
+  const pending = new Map<string, Set<number>>();
+  const verified = new Map<string, string | null>();
+  // Lanes whose before-value was read with no save pending, so it is what the file holds.
+  const clean = new Set<string>();
+  let saves = 0;
+  const take = (key: string): string | null | undefined => {
+    const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
+    before.delete(key);
+    clean.delete(key);
+    return claimed;
+  };
+  const overtaken = (key: string, save: number): boolean =>
+    [...(pending.get(key) ?? [])].some((newer) => newer > save);
+  const scoped = (laneKey: string): string => `${project() ?? ""}\n${laneKey}`;
+  return {
+    preview(laneKey: string, readCurrent: () => string | null): void {
+      const key = scoped(laneKey);
+      if (before.has(key)) return;
+      before.set(key, readCurrent());
+      if (!pending.has(key)) clean.add(key);
+    },
+    // A save. Its settle records what the file holds: `saved`, else the last value verified on
+    // this lane (a landed save, a read-back, or a clean before-value), never an unsaved one.
+    // Store and preview follow only while no newer save is pending and its project is open,
+    // and the preview only while no drag is live.
+    claim(laneKey: string, apply: LiveLaneApply): LiveLaneSave {
+      const key = scoped(laneKey);
+      const open = () => scoped(laneKey) === key;
+      const trusted = clean.has(key);
+      const claimed = take(key);
+      const mine = ++saves;
+      if (claimed !== undefined && trusted) verified.set(key, claimed);
+      pending.set(key, (pending.get(key) ?? new Set<number>()).add(mine));
+      const preview = (value: string | null) => {
+        if (open() && !before.has(key) && !overtaken(key, mine)) apply.preview(value);
+      };
+      return {
+        preview,
+        read(value) {
+          verified.set(key, value);
+        },
+        settle(saved) {
+          const inFlight = pending.get(key);
+          inFlight?.delete(mine);
+          if (saved !== undefined) verified.set(key, saved);
+          const value = verified.get(key);
+          // With no save left in flight the file can change under it (undo, an outside edit).
+          if (!inFlight?.size) {
+            pending.delete(key);
+            verified.delete(key);
+          }
+          if (value === undefined || overtaken(key, mine) || !open()) return;
+          if (before.has(key)) {
+            before.set(key, value);
+            clean.add(key);
+          }
+          apply.store(value);
+          preview(value);
+        },
+      };
+    },
+    // A gesture refused before it saved: put its before-value back, which hands the lane
+    // back to any save still pending on it.
+    revert(laneKey: string, apply: LiveLaneApply): void {
+      const claimed = take(scoped(laneKey));
+      if (claimed === undefined) return;
+      apply.preview(claimed);
+      apply.store(claimed);
+    },
+  };
+}
+
+interface LiveLaneSave {
+  preview: (value: string | null) => void;
+  read: (value: string | null) => void;
+  settle: (saved?: string | null) => void;
+}
+interface LiveLaneApply {
+  preview: (value: string | null) => void;
+  store: (value: string | null) => void;
+}
+
+/** What the file holds for `attr` once queued writes to it land; undefined when unreadable. */
+export async function readSavedAttribute(
+  projectId: string | null,
+  targetPath: string,
+  patchTarget: PatchTarget | null,
+  attr: string,
+  writeFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
+): Promise<string | null | undefined> {
+  if (!projectId || !patchTarget) return undefined;
+  const html = await serializeStudioFileMutations(writeFile, [targetPath], () =>
+    readFileContent(projectId, targetPath),
+  ).catch(() => null);
+  if (html === null || readTagSnippetByTarget(html, patchTarget) === undefined) return undefined;
+  return readAttributeByTarget(html, patchTarget, attr) ?? null;
+}
+
 export { applyPatchByTarget, formatTimelineAttributeNumber };
 
 export { patchDocumentRootDuration } from "./timelineEditingGsap";
@@ -412,6 +518,8 @@ export interface PersistElementAttributeInput {
   pendingTimelineEditPathRef: { current: Set<string> };
   /** Write the attribute directly on the live preview DOM node. */
   patchLive: (value: string | null) => void;
+  /** What the file held for the attribute, read inside the queue before this write. */
+  onFileRead: (value: string | null) => void;
 }
 
 /**
@@ -433,47 +541,46 @@ export async function persistElementAttribute({
   recordEdit,
   pendingTimelineEditPathRef,
   patchLive,
+  onFileRead,
 }: PersistElementAttributeInput): Promise<string[]> {
-  // Resolve the target BEFORE patching the live DOM. The optimistic patch used
-  // to run first, and only the save was wrapped in the unwind — so an
-  // unresolvable target threw with the live preview (and, through the callers'
-  // catch, the store mirrored off it) holding a value that never reached disk.
-  // The write then read as successful until a reload dropped it.
-  const before = await readFileContent(projectId, targetPath);
-  if (readTagSnippetByTarget(before, patchTarget) === undefined) {
-    throw new Error(`Unable to patch element in ${targetPath}`);
-  }
-  // The unwind value comes from the FILE, not from `readLive()`.
-  //
-  // Every live-write caller patches the DOM before committing — a fader drag is
-  // `setLive` per frame, hovering a preset auditions the whole chain — so by the
-  // time this runs the live DOM already holds the in-progress value. Reading it
-  // here made `previousValue === value`, so the unwind below was a no-op, and
-  // `setQuiet`'s catch (which deliberately re-mirrors the store from the live
-  // DOM) then mirrored that same never-saved value. The group audibly had the
-  // preset, the panel agreed, and a reload dropped it — the failure class the
-  // target check above was added to close, still open on the live-write path.
-  const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
-  patchLive(value);
+  // Joins the file's mutation queue before reading, so saves land in the order they start
+  // and each patches what the save before it wrote. Resolve the target before patching
+  // the live DOM, so an unresolvable target never leaves an unsaved preview.
+  return serializeStudioFileMutations(writeProjectFile, [targetPath], async () => {
+    const before = await readFileContent(projectId, targetPath);
+    if (readTagSnippetByTarget(before, patchTarget) === undefined) {
+      throw new Error(`Unable to patch element in ${targetPath}`);
+    }
+    // The unwind value comes from the FILE, not from `readLive()`.
+    //
+    // Every live-write caller patches the DOM before committing — a fader drag is
+    // `setLive` per frame, hovering a preset auditions the whole chain — so by the
+    // time this runs the live DOM already holds the in-progress value. Reading it
+    // here made `previousValue === value`, so the unwind was a no-op and the preview
+    // kept a never-saved value that a reload dropped: the failure class the target
+    // check above closes, still open on the live-write path.
+    const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
+    onFileRead(previousValue);
+    patchLive(value);
 
-  const operation: PatchOperation = { type: "attribute", property: attr, value };
-  const patched = applyPatchByTarget(before, patchTarget, operation);
+    const operation: PatchOperation = { type: "attribute", property: attr, value };
+    const patched = applyPatchByTarget(before, patchTarget, operation);
 
-  pendingTimelineEditPathRef.current.add(targetPath);
-  try {
-    const changedPaths = await saveProjectFilesWithHistory({
-      projectId,
-      label,
-      files: { [targetPath]: patched },
-      readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
-      writeFile: writeProjectFile,
-      recordEdit,
-    });
-    return changedPaths;
-  } catch (error) {
-    // The optimistic live write already ran; unwind it on a save failure so
-    // the preview doesn't show a value that never reached disk.
-    patchLive(previousValue);
-    throw error;
-  }
+    pendingTimelineEditPathRef.current.add(targetPath);
+    try {
+      return await writeProjectFilesWithHistoryInQueue({
+        projectId,
+        label,
+        files: { [targetPath]: patched },
+        readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
+        writeFile: writeProjectFile,
+        recordEdit,
+      });
+    } catch (error) {
+      // The optimistic live write already ran; unwind it on a save failure so
+      // the preview doesn't show a value that never reached disk.
+      patchLive(previousValue);
+      throw error;
+    }
+  });
 }

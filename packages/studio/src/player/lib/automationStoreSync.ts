@@ -6,8 +6,9 @@
  * an envelope afterwards writes to the preview document and the source file, and the
  * store would go on holding the value it was born with until a reload.
  *
- * One reader, called from the two places a change lands: the resync every dom-edit
- * attribute commit already runs, and the soft restore an undo or redo applies. It
+ * One reader, called where a change lands: the resync every dom-edit attribute
+ * commit runs, and an undo or redo's soft restore (timeline saves record their own
+ * value through syncStoredElementAttribute below). It
  * reads the preview rather than being told, because those callers know a file
  * changed, not which attribute — and because three separate writers shipped without
  * remembering to sync, which is what a single sink prevents.
@@ -17,7 +18,7 @@ import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
-import { previewElementFinder } from "./timelineElementHelpers";
+import { getTimelineElementIdentity, previewElementFinder } from "./timelineElementHelpers";
 
 /**
  * Re-read every element's automation and FX-chain attributes from the preview
@@ -68,6 +69,32 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
       if (keys.every((key) => fields[key] === element[key])) return element;
       changed = true;
       return { ...element, ...fields };
+    });
+    return changed ? { elements } : {};
+  });
+}
+
+const STORED_FIELD: Record<string, "automation" | "fxChain"> = {
+  [HF_AUDIO_AUTOMATION_ATTR]: "automation",
+  [HF_AUDIO_FX_ATTR]: "fxChain",
+};
+
+/** Record a saved automation or FX-chain value on one element's stored copy. */
+export function syncStoredElementAttribute(
+  target: TimelineElement,
+  attr: string,
+  value: string | null,
+): void {
+  const field = STORED_FIELD[attr];
+  if (!field) return;
+  const key = getTimelineElementIdentity(target);
+  const next = value ?? undefined;
+  usePlayerStore.setState((state) => {
+    let changed = false;
+    const elements = state.elements.map((element) => {
+      if (getTimelineElementIdentity(element) !== key || element[field] === next) return element;
+      changed = true;
+      return { ...element, [field]: next };
     });
     return changed ? { elements } : {};
   });

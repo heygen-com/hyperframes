@@ -27,6 +27,7 @@ import {
   type HfAutomationLane,
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
+import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 import { envelopePath, fromUnit, laneFor, PAD_X, toUnit, withLane } from "./automationLaneGeometry";
 import { useAutomationLaneGestures } from "./useAutomationLaneGestures";
 import { AutomationValueInput } from "./AutomationValueInput";
@@ -182,7 +183,7 @@ export interface TimelineAutomationLaneProps {
   /** Continuous write while dragging; does not persist. */
   onPreview(automation: HfAutomation): void;
   /** Gesture-end write; this is the one that persists and lands in undo. */
-  onCommit(automation: HfAutomation): void;
+  onCommit(automation: HfAutomation): Promise<TimelineEditOutcome | void> | void;
   /**
    * Clip-local times a dragged point snaps to — the beat grid, shifted into this
    * clip's frame. Its own neighbouring points are added on top.
@@ -241,14 +242,6 @@ export function TimelineAutomationLane({
     [draft, target, stored],
   );
 
-  // The draft is released when the automation it was drawn over actually
-  // changes — the persisted edit landing, or an edit from elsewhere. Releasing
-  // it merely because the drag ended would snap the point back to where it
-  // started for as long as the write takes to come around.
-  useEffect(() => {
-    if (draft && draft.basedOn !== automation) setDraft(null);
-  }, [automation, draft]);
-
   // A different parameter is a different envelope; the draft does not carry over.
   useEffect(() => {
     setDraft(null);
@@ -293,8 +286,12 @@ export function TimelineAutomationLane({
       // Draw from the draft immediately; the write is what eventually agrees.
       setDraft({ points, basedOn: automation });
       const next = withLane(automation, { target, points });
-      if (persist) onCommit(next);
-      else onPreview(next);
+      if (!persist) return onPreview(next);
+      void Promise.resolve(onCommit(next)).then((outcome) => {
+        if (outcome && outcome.status !== "saved") {
+          setDraft((current) => (current?.points === points ? null : current));
+        }
+      });
     },
     [automation, target, onCommit, onPreview],
   );
@@ -319,6 +316,7 @@ export function TimelineAutomationLane({
     duration,
     rangeSelection,
   });
+
   const {
     dragIndex,
     curveIndex,
@@ -329,6 +327,13 @@ export function TimelineAutomationLane({
     hint,
     editing,
   } = gestures;
+  // Released when the automation it was drawn over changes, not on drag end (the point would
+  // snap back until the write lands) and not under a live gesture (its release would commit
+  // an older save's points).
+  const gestureLive = [dragIndex, curveIndex, segmentDragIndex, edgeDrag].some((g) => g !== null);
+  useEffect(() => {
+    if (draft && draft.basedOn !== automation && !gestureLive) setDraft(null);
+  }, [automation, draft, gestureLive]);
 
   const removeAt = useCallback(
     (index: number): void => {

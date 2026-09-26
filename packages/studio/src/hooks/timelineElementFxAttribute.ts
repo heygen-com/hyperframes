@@ -12,13 +12,20 @@ import type { TimelineElement } from "../player";
 import {
   buildPatchTarget,
   findTimelineElementInIframe,
+  createLiveLanes,
   persistElementAttribute,
+  readSavedAttribute,
 } from "./timelineEditingHelpers";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
-import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
+import {
+  failedTimelineSave,
+  projectForTimelineSave,
+  type TimelineEditOutcome,
+} from "./timelineEditPermission";
+import { syncStoredElementAttribute } from "../player/lib/automationStoreSync";
 
 function patchLiveElementAttribute(
   iframe: HTMLIFrameElement | null,
@@ -41,6 +48,13 @@ function elementAttributeLiveKey(
   return `${element.sourceFile || activeCompPath || "index.html"}\0${element.key ?? element.domId ?? element.id}\0${attr}`;
 }
 
+function elementSaveTarget(element: TimelineElement, activeCompPath: string | null) {
+  return {
+    targetPath: element.sourceFile || activeCompPath || "index.html",
+    patchTarget: buildPatchTarget(element),
+  };
+}
+
 interface SetElementAttributeInput {
   projectId: string;
   activeCompPath: string | null;
@@ -48,7 +62,8 @@ interface SetElementAttributeInput {
   attr: string;
   value: string | null;
   label: string;
-  previewIframe: HTMLIFrameElement | null;
+  patchLive: (value: string | null) => void;
+  onFileRead: (value: string | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: Parameters<typeof persistElementAttribute>[0]["recordEdit"];
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
@@ -61,13 +76,13 @@ async function setElementAttribute({
   attr,
   value,
   label,
-  previewIframe,
+  patchLive,
+  onFileRead,
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
 }: SetElementAttributeInput): Promise<string[] | null> {
-  const targetPath = element.sourceFile || activeCompPath || "index.html";
-  const patchTarget = buildPatchTarget(element);
+  const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
   if (!patchTarget) return null;
 
   return persistElementAttribute({
@@ -80,7 +95,8 @@ async function setElementAttribute({
     writeProjectFile,
     recordEdit,
     pendingTimelineEditPathRef,
-    patchLive: (v) => patchLiveElementAttribute(previewIframe, element, attr, v, activeCompPath),
+    patchLive,
+    onFileRead,
   });
 }
 
@@ -103,32 +119,39 @@ export function useSetElementAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (element: TimelineElement, attr: string) => void;
 } {
-  const liveBeforeRef = useRef(new Map<string, string | null>());
+  const liveLanes = useRef(createLiveLanes(() => projectIdRef.current));
   const setLive = useCallback(
     (element: TimelineElement, attr: string, value: string | null) => {
       const key = elementAttributeLiveKey(element, activeCompPath, attr);
       const target = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
-      if (!liveBeforeRef.current.has(key)) {
-        liveBeforeRef.current.set(key, target?.getAttribute(attr) ?? null);
-      }
+      liveLanes.current.preview(key, () => target?.getAttribute(attr) ?? null);
       patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
     },
     [previewIframeRef, activeCompPath],
   );
-  const revertLive = useCallback(
-    (element: TimelineElement, attr: string) => {
-      const key = elementAttributeLiveKey(element, activeCompPath, attr);
-      if (!liveBeforeRef.current.has(key)) return;
-      patchLiveElementAttribute(
-        previewIframeRef.current,
-        element,
-        attr,
-        liveBeforeRef.current.get(key) ?? null,
-        activeCompPath,
-      );
-      liveBeforeRef.current.delete(key);
-    },
+  const laneApply = useCallback(
+    (element: TimelineElement, attr: string) => ({
+      preview: (value: string | null) =>
+        patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath),
+      store: (value: string | null) => syncStoredElementAttribute(element, attr, value),
+    }),
     [previewIframeRef, activeCompPath],
+  );
+  const claimLive = useCallback(
+    (element: TimelineElement, attr: string) =>
+      liveLanes.current.claim(
+        elementAttributeLiveKey(element, activeCompPath, attr),
+        laneApply(element, attr),
+      ),
+    [laneApply, activeCompPath],
+  );
+  const revertLive = useCallback(
+    (element: TimelineElement, attr: string) =>
+      liveLanes.current.revert(
+        elementAttributeLiveKey(element, activeCompPath, attr),
+        laneApply(element, attr),
+      ),
+    [laneApply, activeCompPath],
   );
   const setQuiet = useCallback(
     async (
@@ -137,9 +160,17 @@ export function useSetElementAttribute({
       value: string | null,
       label: string,
     ): Promise<TimelineEditOutcome> => {
-      const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      if (typeof pid !== "string") return pid;
-      const liveKey = elementAttributeLiveKey(element, activeCompPath, attr);
+      const project = projectIdRef.current;
+      const pid = projectForTimelineSave(isRecordingRef?.current, project, showToast);
+      const live = claimLive(element, attr);
+      const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
+        const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
+        live.settle(
+          await readSavedAttribute(project, targetPath, patchTarget, attr, writeProjectFile),
+        );
+        return outcome;
+      };
+      if (typeof pid !== "string") return unsaved(pid);
       try {
         const written = await setElementAttribute({
           projectId: pid,
@@ -148,25 +179,25 @@ export function useSetElementAttribute({
           attr,
           value,
           label,
-          previewIframe: previewIframeRef.current,
+          patchLive: live.preview,
+          onFileRead: live.read,
           writeProjectFile,
           recordEdit,
           pendingTimelineEditPathRef,
         });
-        liveBeforeRef.current.delete(liveKey);
-        if (written) return { status: "saved" };
-        return { status: "failed", reason: "This clip has no id to save it by" };
+        if (!written)
+          return unsaved(failedTimelineSave("This clip has no id to save it by", showToast));
+        live.settle(value);
+        return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update effect";
-        showToast(message);
-        liveBeforeRef.current.delete(liveKey);
-        return { status: "failed", reason: message };
+        return unsaved(failedTimelineSave(message, showToast));
       }
     },
     [
+      claimLive,
       activeCompPath,
-      previewIframeRef,
       writeProjectFile,
       recordEdit,
       pendingTimelineEditPathRef,

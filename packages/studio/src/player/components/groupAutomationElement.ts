@@ -16,12 +16,18 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 
+const groupElements = new WeakSet<TimelineElement>();
+
+export function isGroupAutomationElement(element: TimelineElement): boolean {
+  return groupElements.has(element);
+}
+
 /** The synthetic element's track number — the group row's own anchor. */
 export function groupAutomationElement(
   group: Pick<TimelineTrackGroupInfo, "id" | "label" | "automation" | "fxChain" | "anchorKey">,
   compositionDuration: number,
 ): TimelineElement {
-  return {
+  const element: TimelineElement = {
     id: group.id,
     // The DOM id, so a write lands on the `<hf-audio-group>` and not on a clip.
     domId: group.id,
@@ -34,4 +40,6 @@ export function groupAutomationElement(
     ...(group.automation ? { automation: group.automation } : {}),
     ...(group.fxChain ? { fxChain: group.fxChain } : {}),
   };
+  groupElements.add(element);
+  return element;
 }
