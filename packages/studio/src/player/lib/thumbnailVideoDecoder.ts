@@ -151,6 +151,15 @@ export async function decodeVideoThumbnail(
       duration,
       Math.min(request.frameCount, budgets.richPreviewFrameCount),
     );
+    // A frame at its keyframe decodes alone; one between keyframes decodes the whole run before it.
+    const keys = new mediabunny.EncodedPacketSink(track);
+    const decodeAt = await Promise.all(
+      timestamps.map(async (time) => {
+        const key = await keys.getKeyPacket(time, { metadataOnly: true });
+        return key && key.timestamp >= sourceStart ? key.timestamp : time;
+      }),
+    );
+    throwIfAborted(signal);
     const aspect = displayWidth / displayHeight;
     const target = targetDimensions(aspect, budgets);
     const sink = new mediabunny.CanvasSink(track, {
@@ -159,7 +168,7 @@ export async function decodeVideoThumbnail(
       fit: request.fit ?? "cover",
       poolSize: 1,
     });
-    await decodeFrames(sink, timestamps, signal, resources);
+    await decodeFrames(sink, decodeAt, signal, resources);
     return loadedResult(resources, aspect, target.width, target.height);
   } catch (error) {
     releaseDecodedResources(resources);

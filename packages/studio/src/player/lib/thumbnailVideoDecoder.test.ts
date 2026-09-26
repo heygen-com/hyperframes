@@ -5,6 +5,7 @@ import { decodeVideoThumbnail, videoThumbnailTimestamps } from "./thumbnailVideo
 
 const dispose = vi.fn();
 const canvasesAtTimestamps = vi.fn();
+const getKeyPacket = vi.fn(async (_time: number) => null as { timestamp: number } | null);
 const input = {
   getPrimaryVideoTrack: vi.fn(),
   dispose,
@@ -22,10 +23,14 @@ vi.mock("mediabunny", () => ({
   CanvasSink: class {
     canvasesAtTimestamps = canvasesAtTimestamps;
   },
+  EncodedPacketSink: class {
+    getKeyPacket = getKeyPacket;
+  },
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getKeyPacket.mockImplementation(async () => null);
   vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:one").mockReturnValueOnce("blob:two");
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
@@ -72,6 +77,20 @@ describe("decodeVideoThumbnail", () => {
     result.dispose?.();
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("decodes each strip frame at its keyframe unless that keyframe is before the clip's range", async () => {
+    getKeyPacket.mockImplementation(async (time) => ({ timestamp: Math.floor(time / 4) * 4 }));
+    const decoded: number[][] = [];
+    canvasesAtTimestamps.mockImplementation(async function* (timestamps: number[]) {
+      decoded.push(timestamps);
+      for (const _ of timestamps) yield { canvas: document.createElement("canvas") };
+    });
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 2, sourceRangeDuration: 8, frameCount: 3 },
+      new AbortController().signal,
+    );
+    expect(decoded).toEqual([[2, 4, 8]]);
   });
 
   it("releases input and degrades when the source has no video track", async () => {
