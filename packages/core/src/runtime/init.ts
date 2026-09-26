@@ -236,23 +236,30 @@ const authoredShape = (el: Element): string =>
 
 // Each video and audio as written, recorded as the page parses: a scene script can write to it before init.
 const authoredMedia = new WeakMap<Element, string>();
+const isMedia = (el: Element) => el.localName === "video" || el.localName === "audio";
 const recordAuthoredMedia = (node: Node) => {
   if (!isElementNode(node)) return;
-  for (const el of node.matches("video, audio") ? [node] : node.querySelectorAll("video, audio"))
-    if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
+  // The parser adds one childless element at a time, so most nodes stop at the first check.
+  const media = isMedia(node)
+    ? [node]
+    : node.firstElementChild
+      ? node.querySelectorAll("video, audio")
+      : [];
+  for (const el of media) if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
 };
 let authoredMediaObserver: MutationObserver | null = null;
 
-/** Records media as the page parses, before scene scripts run; init stops it. */
+/** On a page with a scene manifest, records media as it parses, before scene scripts run; init stops it. */
 export function installAuthoredMediaCapture(): void {
-  if (typeof MutationObserver === "undefined") return;
+  if (typeof MutationObserver === "undefined" || !readSceneParts(document)) return;
   recordAuthoredMedia(document.documentElement);
   authoredMediaObserver = new MutationObserver((records) => {
     for (const record of records) {
       record.addedNodes.forEach(recordAuthoredMedia);
       // The parser can yield inside a <video>, so its <source> children may arrive after it.
-      const media = isElementNode(record.target) ? record.target.closest("video, audio") : null;
-      if (media) authoredMedia.set(media, authoredShape(media));
+      const { target } = record;
+      if (isElementNode(target) && isMedia(target))
+        authoredMedia.set(target, authoredShape(target));
     }
   });
   authoredMediaObserver.observe(document.documentElement, { childList: true, subtree: true });

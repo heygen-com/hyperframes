@@ -461,6 +461,23 @@ describe("__hfSwapScenes", () => {
     expect(video?.getAttribute("preload")).toBe("auto");
   });
 
+  it("does not watch a page without a scene manifest as it parses", () => {
+    const observe = vi.spyOn(MutationObserver.prototype, "observe");
+    installAuthoredMediaCapture();
+    expect(observe).not.toHaveBeenCalled();
+  });
+
+  it("stops watching the page it parses once the runtime starts", () => {
+    const observe = vi.spyOn(MutationObserver.prototype, "observe");
+    const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+    document.head.innerHTML = preview([A1, B]).head;
+    installAuthoredMediaCapture();
+    const watcher = observe.mock.contexts[0];
+    boot([A1, B], trackingRoot().root);
+    expect(watcher).toBeDefined();
+    expect(disconnect.mock.contexts).toContain(watcher);
+  });
+
   it("keeps a video a scene script wrote to while the page parsed", async () => {
     const { root } = trackingRoot();
     quietMedia();
@@ -469,6 +486,7 @@ describe("__hfSwapScenes", () => {
       hash,
       body: `<p>${text}</p><video src="clip.mp4"></video>`,
     });
+    document.head.innerHTML = preview([A1, B]).head;
     installAuthoredMediaCapture();
     mount([scene("A one", "ha1"), B], root);
     await tick();
@@ -489,6 +507,7 @@ describe("__hfSwapScenes", () => {
       hash,
       body: `<p>${text}</p><video><source src="clip.mp4"></video>`,
     });
+    document.head.innerHTML = preview([A1, B]).head;
     installAuthoredMediaCapture();
     mount([scene("A one", "ha1"), B], root);
     const video = sceneHost("a").querySelector("video")!;
