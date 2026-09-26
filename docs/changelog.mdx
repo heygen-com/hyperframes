@@ -9,6 +9,38 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.78"
+  description="Released - 2026-09-26"
+  tags={["Release", "CLI", "Shader Transitions", "Player"]}
+>
+The player now reports its picture size and can turn off click-to-play, and `hyperframes history` lists, undoes and restores a project's changes. The CLI uses a pinned onnxruntime-node installed next to it, and renders with shader transitions now match the preview.
+
+## Features
+
+- **Player:** Expose picture size, durationchange and a click-to-play opt-out ([4ef2fc3f1](https://github.com/heygen-com/hyperframes/commit/4ef2fc3f1e3cc44b883124725d15df1c2d3720ee), [#4505](https://github.com/heygen-com/hyperframes/pull/4505)).
+- **Shader Transitions:** Add playSeamTransitionLoop to preview a seam on a loop ([0f528ff2e](https://github.com/heygen-com/hyperframes/commit/0f528ff2e8cdc44febedc93f7e68a07a49395936), [#4307](https://github.com/heygen-com/hyperframes/pull/4307)).
+- **CLI:** The `hyperframes history` command lists, undoes and restores a project's recorded changes ([2734ee2c0](https://github.com/heygen-com/hyperframes/commit/2734ee2c02ef858f3c877c18b56ebcfbb846cb4c), [#4449](https://github.com/heygen-com/hyperframes/pull/4449)).
+
+## Fixes
+
+- **CLI:** Use onnxruntime-node installed beside the CLI when it is the pinned version ([2be82f009](https://github.com/heygen-com/hyperframes/commit/2be82f00999569e2e2d462a9f3eab57bd36d371e), [#4507](https://github.com/heygen-com/hyperframes/pull/4507)).
+- **Shader Transitions:** The render leaves scene visibility to the runtime ([5145a136a](https://github.com/heygen-com/hyperframes/commit/5145a136a00169f900c1dc4bb6dfbfab1398c131), [#4509](https://github.com/heygen-com/hyperframes/pull/4509)).
+- **Telemetry:** Honor CLI opt-out in Studio and render CI ([edb3747c4](https://github.com/heygen-com/hyperframes/commit/edb3747c4c987f2a20738ad67d2b7f8622f7bf56), [#4500](https://github.com/heygen-com/hyperframes/pull/4500)).
+- **Core:** Report one composition size in stage-size and timeline messages ([77b2260f2](https://github.com/heygen-com/hyperframes/commit/77b2260f2be5693b6d0d941f13e8628fbb576eb1), [#4496](https://github.com/heygen-com/hyperframes/pull/4496)).
+- **Core:** A clip gets its own inline display back when the runtime shows it ([02147b8d1](https://github.com/heygen-com/hyperframes/commit/02147b8d152ffaccc5357a48f1f87e4569792f70), [#4498](https://github.com/heygen-com/hyperframes/pull/4498)).
+- **CLI:** Timeline ids never writes over a save that lands while it stamps ([3746c9821](https://github.com/heygen-com/hyperframes/commit/3746c9821af66dde5a28a2738bb2b778b156c5dd), [#4494](https://github.com/heygen-com/hyperframes/pull/4494)).
+- **Core:** A clip that starts later keeps the place and size its CSS gives it ([aadeaf9dd](https://github.com/heygen-com/hyperframes/commit/aadeaf9ddd28822ff88ef002dcd0c465fffe714f), [#4495](https://github.com/heygen-com/hyperframes/pull/4495)).
+- **Studio Server:** Stamping ids at open never reverts a write that lands meanwhile ([b2a449df8](https://github.com/heygen-com/hyperframes/commit/b2a449df8e21e3b6dea650569d9464b537aa8035), [#4491](https://github.com/heygen-com/hyperframes/pull/4491)).
+- **Core:** A frame capture keeps waiting for a video between its range requests ([e266ad5e5](https://github.com/heygen-com/hyperframes/commit/e266ad5e5c42e71871c2e02345e2e93ea26d2251), [#4490](https://github.com/heygen-com/hyperframes/pull/4490)).
+
+## Internal
+
+- Stop running CodeQL on merge queue groups, where its upload races the merge ([fbaa9f920](https://github.com/heygen-com/hyperframes/commit/fbaa9f9205fca0107d3451a740556d97aa4bdf8d), [#4492](https://github.com/heygen-com/hyperframes/pull/4492)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.77...v0.8.78).
+</Update>
+
+<Update
   label="HyperFrames v0.8.77"
   description="Released - 2026-09-25"
   tags={["Release", "Studio", "Studio Server", "Core"]}
