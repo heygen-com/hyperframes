@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { ParentMediaManager, type ProxyEntry } from "./parent-media";
 
 // A fake media element whose paused state is driven by play()/pause() stubs.
@@ -164,6 +164,8 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
 });
 
 describe("ParentMediaManager across documents", () => {
+  afterEach(() => document.body.replaceChildren());
+
   it("drops the previous document's proxies on reset and keeps the audio-src one", () => {
     const mgr = makeManager();
     mgr.setupFromUrl("https://example.test/narration.mp3");
@@ -174,11 +176,31 @@ describe("ParentMediaManager across documents", () => {
     document.body.appendChild(track);
     mgr.setupFromIframe(document);
     expect(mgr.entries).toHaveLength(2);
+    const oldProxy = mgr.entries[1].el;
 
     mgr.resetForIframeLoad();
 
     expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://example.test/narration.mp3"]);
-    track.remove();
+    expect(oldProxy.getAttribute("src")).toBe("");
+  });
+
+  it("keeps the audio-src track after a reset when the old document shared its URL", () => {
+    const mgr = makeManager();
+    const track = document.createElement("audio");
+    track.setAttribute("src", "https://example.test/narration.mp3");
+    track.setAttribute("data-start", "2");
+    track.setAttribute("data-duration", "3");
+    track.preload = "auto";
+    document.body.appendChild(track);
+    mgr.setupFromIframe(document);
+    mgr.setupFromUrl("https://example.test/narration.mp3");
+    expect(mgr.entries).toHaveLength(1);
+
+    mgr.resetForIframeLoad();
+
+    expect(mgr.entries.map((m) => [m.el.src, m.start, m.duration])).toEqual([
+      ["https://example.test/narration.mp3", 0, Infinity],
+    ]);
   });
 });
 
