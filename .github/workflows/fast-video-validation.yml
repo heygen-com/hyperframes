@@ -46,6 +46,7 @@ jobs:
       - name: Validate fast-capture video (drawElement + BeginFrame)
         run: |
           docker run --rm \
+            -e HYPERFRAMES_NO_TELEMETRY=1 \
             --security-opt seccomp=unconfined \
             --shm-size=4g \
             -e PRODUCER_VALIDATE_COMP='${{ inputs.composition }}' \

@@ -19,7 +19,7 @@ function sandbox() {
   mkdirSync(home, { recursive: true });
   mkdirSync(projectA, { recursive: true });
   mkdirSync(projectB, { recursive: true });
-  process.env.HOME = home;
+  process.env.HYPERFRAMES_MEDIA_HOME = home;
   return { root, home, projectA, projectB };
 }
 

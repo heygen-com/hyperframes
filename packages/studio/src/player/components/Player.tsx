@@ -317,6 +317,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         player.setAttribute("shader-capture-scale", "1");
         player.setAttribute("shader-loading", "player");
+        player.setAttribute("low-power-idle", "");
         player.setAttribute("width", String(portrait ? 1080 : 1920));
         player.setAttribute("height", String(portrait ? 1920 : 1080));
         player.style.width = "100%";

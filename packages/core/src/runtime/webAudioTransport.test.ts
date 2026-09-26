@@ -134,6 +134,20 @@ describe("WebAudioTransport", () => {
       expect(transport.ownsClock()).toBe(false);
     });
 
+    it("drops a schedule still waiting on resume() when stopAll comes first", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      let resume!: () => void;
+      mock.ctx.state = "suspended";
+      mock.ctx.resume = vi.fn(() => new Promise<void>((r) => (resume = r)));
+
+      const pending = transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.stopAll();
+      resume();
+
+      expect(await pending).toBeNull();
+      expect(transport.routesElement(mockEl)).toBe(false);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 
@@ -258,14 +272,12 @@ describe("WebAudioTransport", () => {
 
       await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen1, 1);
       transport.stopAll();
-      mock.mediaElementSourceNode.disconnect.mockClear();
       el.setAttribute("src", "/assets/other-same-origin-clip.mp3");
       const gen2 = transport.startGeneration();
       const second = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen2, 1);
 
       expect(second).not.toBeNull();
       expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
-      expect(mock.mediaElementSourceNode.disconnect).not.toHaveBeenCalled();
     });
   });
 

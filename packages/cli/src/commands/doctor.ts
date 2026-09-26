@@ -287,8 +287,12 @@ function checkLocalMusic(): CheckResult {
 }
 
 /** Not a failure when missing: the package installs itself the first time a feature needs it. */
-export function checkOptionalPackage(name: OptionalPackage, cacheDir?: string): CheckResult {
-  const version = installedOptionalPackageVersion(name, cacheDir);
+export function checkOptionalPackage(
+  name: OptionalPackage,
+  cacheDir?: string,
+  cliUrl?: string,
+): CheckResult {
+  const version = installedOptionalPackageVersion(name, cacheDir, cliUrl);
   return {
     ok: true,
     detail: version ? `${version} installed` : "Not installed (installs on first use)",

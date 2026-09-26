@@ -83,7 +83,7 @@ function sandbox() {
   mkdirSync(project, { recursive: true });
   writeFileSync(join(project, "frame.md"), "# Frame spec\nbackground: #101014\n");
   writeFileSync(join(project, "STORYBOARD.md"), STORYBOARD);
-  process.env.HOME = home;
+  process.env.HYPERFRAMES_MEDIA_HOME = home;
   return { root, home, project };
 }
 

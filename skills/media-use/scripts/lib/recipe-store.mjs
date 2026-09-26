@@ -8,8 +8,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { globalMediaDir } from "./media-home.mjs";
 import { appendRecord, mediaDir, nextId } from "./manifest.mjs";
 import { regenerateIndex } from "./index-gen.mjs";
 import { mergedPreferences } from "./prefs-store.mjs";
@@ -58,7 +58,7 @@ export function projectRecipesDir(projectDir) {
 }
 
 export function userRecipesDir() {
-  return join(homedir(), ".media", "recipes");
+  return join(globalMediaDir(), "recipes");
 }
 
 export function slugifyRecipeName(name) {

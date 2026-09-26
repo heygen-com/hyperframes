@@ -1,11 +1,23 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { buildSync } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import {
   OPTIONAL_PACKAGES,
   install,
+  installedOptionalPackageVersion,
+  loadBesideCli,
   loadOptionalPackage,
   optionalPackageDir,
   type OptionalPackageDeps,
@@ -19,6 +31,7 @@ function fakeDeps(overrides: Partial<OptionalPackageDeps> = {}) {
   });
   const deps: OptionalPackageDeps = {
     cacheDir: "/cache",
+    loadBesideCli: () => null,
     loadInstalled: (dir) => installed.get(dir) ?? null,
     install,
     log,
@@ -42,6 +55,15 @@ describe("loadOptionalPackage", () => {
       OPTIONAL_PACKAGES["onnxruntime-node"],
     );
     expect(log.mock.calls).toEqual([["installing onnxruntime-node for background removal, once"]]);
+  });
+
+  it("uses the pinned copy installed beside the CLI, without installing", async () => {
+    const beside = { beside: "module" };
+    const { deps, install, log } = fakeDeps({ loadBesideCli: () => beside });
+
+    expect(await loadOptionalPackage("onnxruntime-node", "on-device search", deps)).toBe(beside);
+    expect(install).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
   });
 
   it("names the manual command when the install fails", async () => {
@@ -93,6 +115,137 @@ describe("loadOptionalPackage", () => {
     expect(optionalPackageDir("@google/genai", "/cache")).toMatch(
       /[\\/]cache[\\/]@google__genai@\d+\.\d+\.\d+$/,
     );
+  });
+});
+
+describe("a copy installed beside the CLI", () => {
+  // node_modules/hyperframes/dist/cli.js with onnxruntime-node installed next to hyperframes.
+  function layout(version: string) {
+    const root = mkdtempSync(join(tmpdir(), "hf-beside-"));
+    const pkg = join(root, "node_modules", "onnxruntime-node");
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(pkg, "package.json"), JSON.stringify({ version, main: "index.js" }));
+    writeFileSync(join(pkg, "index.js"), `module.exports = { copy: "beside ${version}" };`);
+    const cliUrl = pathToFileURL(join(root, "node_modules", "hyperframes", "dist", "cli.js")).href;
+    return { root, cliUrl };
+  }
+
+  it("loads it and reports its version when it is the pinned version", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+      expect(installedOptionalPackageVersion("onnxruntime-node", "/no-cache", cliUrl)).toBe(pin);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores it when its manifest is unreadable, instead of throwing", () => {
+    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+    writeFileSync(join(root, "node_modules", "onnxruntime-node", "package.json"), "{ version: 1");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+      expect(installedOptionalPackageVersion("onnxruntime-node", "/no-cache", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("checks the copy require would load first, not a later pinned one", () => {
+    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+    const nearer = join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node");
+    mkdirSync(nearer, { recursive: true });
+    writeFileSync(join(nearer, "index.js"), `module.exports = { copy: "unversioned" };`);
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads a symlinked copy, as bun and pnpm lay packages out", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const linked = join(root, "node_modules", "onnxruntime-node");
+    const store = join(root, "store", "onnxruntime-node");
+    mkdirSync(join(root, "store"), { recursive: true });
+    renameSync(linked, store);
+    symlinkSync(store, linked, "dir");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads a symlinked copy when Node preserves symlinks", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const linked = join(root, "node_modules", "onnxruntime-node");
+    const store = join(root, "store", "onnxruntime-node");
+    mkdirSync(join(root, "store"), { recursive: true });
+    renameSync(linked, store);
+    symlinkSync(store, linked, "dir");
+    // Bundled first: a TS loader cannot itself load under --preserve-symlinks in a bun store.
+    const bundle = join(root, "optionalPackages.mjs");
+    buildSync({
+      entryPoints: [fileURLToPath(new URL("./optionalPackages.ts", import.meta.url))],
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      outfile: bundle,
+    });
+    const script = `const m = await import(${JSON.stringify(pathToFileURL(bundle).href)});
+const url = ${JSON.stringify(cliUrl)};
+console.log(JSON.stringify([m.loadBesideCli("onnxruntime-node", url),
+  m.installedOptionalPackageVersion("onnxruntime-node", "/no-cache", url)]));`;
+    try {
+      const child = spawnSync(
+        process.execPath,
+        ["--preserve-symlinks", "--input-type=module", "-e", script],
+        { encoding: "utf-8" },
+      );
+      expect(child.stderr).toBe("");
+      expect(JSON.parse(child.stdout)).toEqual([{ copy: `beside ${pin}` }, pin]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("looks past an empty folder that require skips", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    mkdirSync(join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node"), {
+      recursive: true,
+    });
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores a file require would load before the pinned folder", () => {
+    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+    const nearer = join(root, "node_modules", "hyperframes", "node_modules");
+    mkdirSync(nearer, { recursive: true });
+    writeFileSync(join(nearer, "onnxruntime-node.js"), `module.exports = { copy: "file" };`);
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores it at any other version, so the cache install is used", () => {
+    const { root, cliUrl } = layout("1.0.0");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+      expect(installedOptionalPackageVersion("onnxruntime-node", "/no-cache", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

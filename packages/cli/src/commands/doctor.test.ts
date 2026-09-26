@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { optionalPackageDir } from "../utils/optionalPackages.js";
 import {
@@ -287,7 +288,8 @@ describe("checkOptionalPackage", () => {
   it("reports a package that has not been installed yet as ok, installing on first use", () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-doctor-optional-"));
     dirs.push(cacheDir);
-    expect(checkOptionalPackage("onnxruntime-node", cacheDir)).toEqual({
+    const cliUrl = pathToFileURL(join(cacheDir, "cli.js")).href;
+    expect(checkOptionalPackage("onnxruntime-node", cacheDir, cliUrl)).toEqual({
       ok: true,
       detail: "Not installed (installs on first use)",
     });
@@ -302,7 +304,8 @@ describe("checkOptionalPackage", () => {
     );
     mkdirSync(pkgDir, { recursive: true });
     writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ version: "1.52.0" }));
-    expect(checkOptionalPackage("@google/genai", cacheDir)).toEqual({
+    const cliUrl = pathToFileURL(join(cacheDir, "cli.js")).href;
+    expect(checkOptionalPackage("@google/genai", cacheDir, cliUrl)).toEqual({
       ok: true,
       detail: "1.52.0 installed",
     });

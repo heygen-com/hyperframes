@@ -1,10 +1,18 @@
 import { useState, useCallback, useRef } from "react";
 import { useMountEffect } from "./useMountEffect";
-import { resolveSourceFile, applyPatch } from "../utils/sourcePatcher";
+import {
+  resolveSourceFile,
+  applyPatch,
+  applyPatchByTarget,
+  findTagByTarget,
+  type PatchOperation,
+} from "../utils/sourcePatcher";
 import {
   acceptStudioRuntimeMessage,
   postRuntimeControlMessage,
 } from "../player/lib/runtimeProtocol";
+import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
+import { getSourceFileForElement } from "../components/editor/domEditingDom";
 
 export interface PickedElement {
   id: string | null;
@@ -91,6 +99,8 @@ export function useElementPicker(
 
   // Listen for picker messages from the iframe
   useMountEffect(() => {
+    // One guard per message field, then one branch per message type.
+    // fallow-ignore-next-line complexity
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
       if (data?.source !== "hf-preview") return;
@@ -101,40 +111,13 @@ export function useElementPicker(
       if (e.source !== activeIframe.contentWindow && e.source !== iframeRef.current?.contentWindow)
         return;
 
-      if (data.type === "element-picked") {
-        const el = data.elementInfo;
-        if (el) {
-          const styles = readComputedStyles(activeIframe, el.selector);
-          setPickedElement({
-            id: el.id ?? null,
-            tagName: el.tagName ?? "div",
-            selector: el.selector ?? "",
-            label: el.label ?? el.tagName ?? "Element",
-            boundingBox: el.boundingBox ?? { x: 0, y: 0, width: 0, height: 0 },
-            textContent: el.textContent ?? null,
-            src: el.src ?? null,
-            dataAttributes: el.dataAttributes ?? {},
-            computedStyles: styles,
-          });
-          setIsPickMode(false);
-        }
+      if (data.type === "element-picked" && data.elementInfo) {
+        setPickedElement(toPickedElement(data.elementInfo, activeIframe));
+        setIsPickMode(false);
       } else if (data.type === "element-pick-candidates") {
         // Multiple candidates at click point — pick the first one
         const el = data.candidates?.[data.selectedIndex ?? 0];
-        if (el) {
-          const styles = readComputedStyles(activeIframe, el.selector);
-          setPickedElement({
-            id: el.id ?? null,
-            tagName: el.tagName ?? "div",
-            selector: el.selector ?? "",
-            label: el.label ?? el.tagName ?? "Element",
-            boundingBox: el.boundingBox ?? { x: 0, y: 0, width: 0, height: 0 },
-            textContent: el.textContent ?? null,
-            src: el.src ?? null,
-            dataAttributes: el.dataAttributes ?? {},
-            computedStyles: styles,
-          });
-        }
+        if (el) setPickedElement(toPickedElement(el, activeIframe));
       }
 
       if (data.type === "pick-mode-cancelled") {
@@ -149,29 +132,26 @@ export function useElementPicker(
   // Ref for options to avoid stale closures in debounced callback
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const pendingWritesRef = useRef(new Map<string, PendingWrite>());
+  settlePendingWrites(pendingWritesRef.current, options?.workspaceFiles);
 
   // Sync immediately (not debounced) — save on every change for reliability
   const syncToSource = useCallback(
-    (
-      elementId: string,
-      selector: string,
-      op: {
-        type: "inline-style" | "attribute" | "text-content";
-        property: string;
-        value: string;
-      },
-    ) => {
+    (picked: PickedElement, live: HTMLElement, iframe: HTMLIFrameElement, op: PatchOperation) => {
       const opts = optionsRef.current;
-      if (!opts?.workspaceFiles || !opts.onSyncFiles || !elementId) return;
-      const files = opts.workspaceFiles;
-      const sourceFile = resolveSourceFile(elementId, selector, files);
-      if (!sourceFile || !files[sourceFile]) {
-        return;
-      }
-      const patched = applyPatch(files[sourceFile], elementId, op);
-      if (patched !== files[sourceFile]) {
-        opts.onSyncFiles({ [sourceFile]: patched });
-      }
+      if (!opts?.workspaceFiles || !opts.onSyncFiles) return;
+      // No id: the preview's hf-id names the element, in the file it was served from.
+      const hfId = live.getAttribute("data-hf-id");
+      const pending = pendingWritesRef.current;
+      const files = withPendingWrites(opts.workspaceFiles, pending);
+      const patch = picked.id
+        ? patchById(files, picked.id, picked.selector, op)
+        : hfId
+          ? patchByHfId(files, hfId, ownSourceFile(live, iframe), op)
+          : null;
+      if (!patch || patch.after === patch.before) return;
+      recordPendingWrite(pending, patch.path, opts.workspaceFiles[patch.path], patch.after);
+      opts.onSyncFiles({ [patch.path]: patch.after });
     },
     [],
   );
@@ -193,32 +173,11 @@ export function useElementPicker(
                 }
               : null,
           );
-          // Persist to source file
-          if (pickedElement.id) {
-            // ID-based patching — surgical edit of just the element's style
-            syncToSource(pickedElement.id, pickedElement.selector, {
-              type: "inline-style",
-              property: prop,
-              value,
-            });
-          } else {
-            // No ID — save the full composition HTML from the iframe
-            // This captures ALL inline style changes, not just the targeted one
-            try {
-              const fullHtml = activeIframe.contentDocument?.documentElement.outerHTML;
-              if (fullHtml && optionsRef.current?.onSyncFiles) {
-                // Determine which file this iframe represents
-                const src = activeIframe.getAttribute("src") ?? "";
-                const compMatch = src.match(/\/comp\/(.+?)(?:\?|$)/);
-                const filePath = compMatch ? compMatch[1] : "index.html";
-                optionsRef.current.onSyncFiles({
-                  [filePath]: `<!DOCTYPE html>\n<html>${fullHtml.replace(/<html[^>]*>/, "")}`,
-                });
-              }
-            } catch {
-              /* cross-origin */
-            }
-          }
+          syncToSource(pickedElement, el, activeIframe, {
+            type: "inline-style",
+            property: prop,
+            value,
+          });
         }
       } catch {
         /* cross-origin */
@@ -244,14 +203,11 @@ export function useElementPicker(
                 }
               : null,
           );
-          // Persist to source file immediately
-          if (pickedElement.id) {
-            syncToSource(pickedElement.id, pickedElement.selector, {
-              type: "attribute",
-              property: attr,
-              value,
-            });
-          }
+          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
+            type: "attribute",
+            property: attr,
+            value,
+          });
         }
       } catch {
         /* cross-origin */
@@ -270,14 +226,11 @@ export function useElementPicker(
         if (el) {
           el.textContent = text;
           setPickedElement((prev) => (prev ? { ...prev, textContent: text } : null));
-          // Persist to source file
-          if (pickedElement.id) {
-            syncToSource(pickedElement.id, pickedElement.selector, {
-              type: "text-content",
-              property: "textContent",
-              value: text,
-            });
-          }
+          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
+            type: "text-content",
+            property: "textContent",
+            value: text,
+          });
         }
       } catch {
         /* cross-origin */
@@ -303,6 +256,101 @@ export function useElementPicker(
     /** Ref that always points to the active iframe (focused canvas frame or preview panel) */
     activeIframeRef,
   };
+}
+
+type PickedElementInfo = Partial<Omit<PickedElement, "computedStyles">>;
+
+// workspaceFiles lags this hook's own writes until the host rerenders.
+interface PendingWrite {
+  hostSource: string | undefined;
+  writes: string[];
+}
+
+function settlePendingWrites(
+  pending: Map<string, PendingWrite>,
+  files: Record<string, string> | undefined,
+): void {
+  for (const [path, write] of pending) {
+    const hostSource = files?.[path];
+    if (hostSource === write.hostSource) continue;
+    const caughtUpTo = hostSource === undefined ? -1 : write.writes.indexOf(hostSource);
+    if (caughtUpTo < 0 || caughtUpTo === write.writes.length - 1) {
+      pending.delete(path);
+    } else {
+      write.hostSource = hostSource;
+      write.writes = write.writes.slice(caughtUpTo + 1);
+    }
+  }
+}
+
+function withPendingWrites(
+  files: Record<string, string>,
+  pending: Map<string, PendingWrite>,
+): Record<string, string> {
+  const merged = { ...files };
+  for (const [path, write] of pending) merged[path] = write.writes.at(-1) ?? merged[path];
+  return merged;
+}
+
+function recordPendingWrite(
+  pending: Map<string, PendingWrite>,
+  path: string,
+  hostSource: string | undefined,
+  after: string,
+): void {
+  const write = pending.get(path) ?? { hostSource, writes: [] };
+  write.writes.push(after);
+  pending.set(path, write);
+}
+
+// A default per field of the runtime's element info.
+// fallow-ignore-next-line complexity
+function toPickedElement(el: PickedElementInfo, iframe: HTMLIFrameElement): PickedElement {
+  return {
+    id: el.id ?? null,
+    tagName: el.tagName ?? "div",
+    selector: el.selector ?? "",
+    label: el.label ?? el.tagName ?? "Element",
+    boundingBox: el.boundingBox ?? { x: 0, y: 0, width: 0, height: 0 },
+    textContent: el.textContent ?? null,
+    src: el.src ?? null,
+    dataAttributes: el.dataAttributes ?? {},
+    computedStyles: readComputedStyles(iframe, el.selector ?? ""),
+  };
+}
+
+interface SourcePatch {
+  path: string;
+  before: string;
+  after: string;
+}
+
+function patchById(
+  files: Record<string, string>,
+  id: string,
+  selector: string,
+  op: PatchOperation,
+): SourcePatch | null {
+  const path = resolveSourceFile(id, selector, files);
+  const before = path ? files[path] : undefined;
+  return path && before ? { path, before, after: applyPatch(before, id, op) } : null;
+}
+
+function ownSourceFile(live: HTMLElement, iframe: HTMLIFrameElement): string {
+  const previewed = compositionPathOfPreviewUrl(iframe.getAttribute("src") ?? "");
+  return getSourceFileForElement(live, previewed).sourceFile;
+}
+
+function patchByHfId(
+  files: Record<string, string>,
+  hfId: string,
+  ownFile: string,
+  op: PatchOperation,
+): SourcePatch | null {
+  const matches = Object.keys(files).filter((file) => findTagByTarget(files[file] ?? "", { hfId }));
+  const path = matches.includes(ownFile) ? ownFile : matches.length === 1 ? matches[0] : undefined;
+  const before = path ? files[path] : undefined;
+  return path && before ? { path, before, after: applyPatchByTarget(before, { hfId }, op) } : null;
 }
 
 /** Read a subset of computed styles from an element in the iframe */

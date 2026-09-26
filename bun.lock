@@ -334,6 +334,7 @@
         "@hyperframes/parsers": "workspace:*",
         "@hyperframes/player": "workspace:*",
         "@hyperframes/sdk": "workspace:*",
+        "@hyperframes/shader-transitions": "workspace:*",
         "@hyperframes/studio-server": "workspace:*",
         "@mcp-b/global": "^5.0.1",
         "@phosphor-icons/react": "^2.1.10",

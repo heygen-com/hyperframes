@@ -244,7 +244,7 @@ export function useTimelineSyncCallbacks({
       adapter.pause();
       const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef);
       const commit = () => {
-        // Keep non-React listeners such as the capture link and time display in sync
+        // Keep non-React listeners such as the time display in sync
         // with the initial adapter seek on iframe load.
         liveTime.notify(startTime);
         syncAdapterDuration(adapter, setDuration);
@@ -309,28 +309,36 @@ export function useTimelineSyncCallbacks({
       // Listen for those instead of polling.
       const iframe = iframeRef.current;
       let settled = false;
+      let retryFrame = 0;
+      const stopWaiting = () => {
+        window.removeEventListener("message", onMessage);
+        cancelAnimationFrame(retryFrame);
+      };
 
       const trySettle = () => {
         if (settled) return;
         if (initializeAdapter(context)) {
           settled = true;
-          window.removeEventListener("message", onMessage);
+          stopWaiting();
           if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+          return;
         }
+        cancelAnimationFrame(retryFrame);
+        retryFrame = requestAnimationFrame(trySettle);
       };
 
       const onMessage = (e: MessageEvent) => {
         if (isPreviewReadinessMessage(e, iframe)) trySettle();
       };
       window.addEventListener("message", onMessage);
-      stopWaitingRef.current = () => window.removeEventListener("message", onMessage);
+      stopWaitingRef.current = stopWaiting;
 
       // Safety net: if no message arrives within 5s, try one last time then give up.
       probeIntervalRef.current = setTimeout(() => {
         if (!settled) {
           trySettle();
         }
-        window.removeEventListener("message", onMessage);
+        stopWaiting();
         if (!settled) onLoadGiveUp?.(context);
         revealIframe(iframeRef.current);
       }, 5000) as unknown as ReturnType<typeof setInterval>;

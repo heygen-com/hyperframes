@@ -6,6 +6,8 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
+process.env.HYPERFRAMES_MEDIA_HOME = mkdtempSync(join(tmpdir(), "media-use-compat-home-"));
+
 function run(scriptsDir, script, args) {
   return execFileSync(process.execPath, [join(scriptsDir, script), ...args], {
     encoding: "utf8",

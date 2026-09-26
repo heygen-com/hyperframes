@@ -345,6 +345,7 @@ export class WebAudioTransport {
 
       const sourceNode = this.acquireMediaElementSource(el);
       if (!sourceNode) return null;
+      sourceNode.disconnect();
 
       const safeRate = normalizeRate(rate);
       const gainNode = this._ctx.createGain();
@@ -770,10 +771,15 @@ export class WebAudioTransport {
         // already stopped
       }
       if (isBufferSource(source)) source.el.muted = source.priorMuted;
-      else source.el.volume = source.priorVolume;
+      else {
+        source.el.volume = source.priorVolume;
+        // Captured, it has no native output; outside a play it sounds through the destination.
+        if (this._ctx) source.sourceNode.connect(this._ctx.destination);
+      }
     }
     this._activeSources = [];
     this._paused = true;
+    this._playGeneration += 1;
   }
 
   setVolume(volume: number): void {

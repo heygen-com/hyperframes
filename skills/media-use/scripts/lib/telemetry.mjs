@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { globalMediaDir } from "./media-home.mjs";
 
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
 const POSTHOG_HOST = "https://us.i.posthog.com";
@@ -72,7 +73,7 @@ function writeSharedConfig(config) {
 // one — otherwise cross-surface continuity would start over on upgrade.
 function legacyMediaAnonId() {
   try {
-    const file = join(homedir(), ".media", "anon-id");
+    const file = join(globalMediaDir(), "anon-id");
     if (existsSync(file)) {
       const id = readFileSync(file, "utf8").trim();
       if (id) return id;

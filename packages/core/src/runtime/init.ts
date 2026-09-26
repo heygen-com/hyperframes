@@ -38,14 +38,30 @@ import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload, isRuntimeElementVisibleAt } from "./timeline";
+import {
+  findRootCompositionElement,
+  parseCompositionDimension,
+  parseLayoutDimension,
+} from "./compositionDimension";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
-import { applyCaptionOverrides } from "./captionOverrides";
+import {
+  applyCaptionOverrides,
+  applyFetchedCaptionOverrides,
+  fetchCaptionOverrides,
+} from "./captionOverrides";
+import {
+  SCENE_NO_SWAP_ATTR,
+  SCENE_PART_ATTR,
+  SCENE_PARTS_META,
+  type SceneParts,
+} from "../sceneParts";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
-import { applyVariableBindings } from "./applyVariableBindings";
+import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
+import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
 import { initVfx, paintVfx } from "./vfx";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -55,6 +71,7 @@ import {
   reportWebAudioMediaRoute,
 } from "./webAudioRoute.js";
 import {
+  audioGroupOf,
   ensureAudioGroupInertStyle,
   HF_AUDIO_GROUP_TAG,
   isMemberGroupHidden,
@@ -196,10 +213,41 @@ function createSettledTracker(
   };
 }
 
+function readSceneParts(doc: Document): SceneParts | null {
+  const content = doc.querySelector(`meta[name="${SCENE_PARTS_META}"]`)?.getAttribute("content");
+  if (!content) return null;
+  try {
+    return JSON.parse(content) as SceneParts;
+  } catch {
+    return null;
+  }
+}
+
+// A media element's attributes and content, less the grading capture stamped on it at parse time.
+const authoredShape = (el: Element): string =>
+  JSON.stringify([
+    Array.from(el.attributes, (a) => [a.name, a.value]).filter(
+      ([name]) => name !== COLOR_GRADING_AUTHORED_OPACITY_ATTR,
+    ),
+    el.innerHTML,
+  ]);
+
+// URL attributes a scene swap checks besides src, poster and srcset, by tag.
+const MEDIA_URL_ATTRS = new Map([
+  ["image", ["href", "xlink:href"]],
+  ["object", ["data"]],
+]);
+
 const SLOW_IDLE_HEARTBEAT_MS = 1000;
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  // Each video and audio as written, captured before the runtime writes to it; a swap keeps only these.
+  const authoredMedia = new WeakMap<Element, string>();
+  if (readSceneParts(document)) {
+    for (const el of document.querySelectorAll("video, audio"))
+      authoredMedia.set(el, authoredShape(el));
+  }
   // Runtime-data handlers may replace the timeline object they mutate. Keep the
   // reconciliation callback late-bound because the reporter is installed before
   // the timeline resolver/binder is declared below. Delivery cannot complete
@@ -374,28 +422,12 @@ export function initSandboxRuntimeModular(): void {
 
   window.__timelines = window.__timelines || {};
 
-  // Resolve the root composition element with the same priority the rest of
-  // the runtime uses (explicit `data-root` marker first, then the topmost
-  // non-nested composition, then first in DOM order). Defined here so the
-  // array-normalization + data-start defaults below pick the same root the
-  // closure-based `resolveRootCompositionElement` does on multi-comp pages.
-  const findRootCompositionEl = (): HTMLElement | null => {
-    const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
-    if (isHtmlElement(explicitRoot)) return explicitRoot;
-    const nodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
-    return (
-      nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
-      nodes[0] ??
-      null
-    );
-  };
-
   // Agents often write `window.__timelines = [tl]` (array) instead of the
   // keyed-by-composition-id object the runtime expects. Normalize at init so
   // the rest of the pipeline can assume a Record<string, timeline>.
   if (Array.isArray(window.__timelines)) {
     const arr = window.__timelines as unknown[];
-    const rootId = findRootCompositionEl()?.getAttribute("data-composition-id") ?? "root";
+    const rootId = findRootCompositionElement()?.getAttribute("data-composition-id") ?? "root";
     const normalized: Record<string, unknown> = {};
     if (arr.length === 1) {
       normalized[rootId] = arr[0];
@@ -408,7 +440,7 @@ export function initSandboxRuntimeModular(): void {
   // Agents sometimes omit data-start on the root composition element. The
   // runtime skips timed-visibility for elements without it, making clips
   // invisible and timelines non-seekable. Default to 0 for the root.
-  const rootComp = findRootCompositionEl();
+  const rootComp = findRootCompositionElement();
   if (rootComp && !rootComp.hasAttribute("data-start")) {
     rootComp.setAttribute("data-start", "0");
   }
@@ -552,13 +584,11 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const parseDimensionPx = (value: string | null): string | null => {
-    if (value == null || value.trim() === "") return null;
-    const parsed = Number.parseFloat(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return `${parsed}px`;
+    const parsed = parseLayoutDimension(value);
+    return parsed === null ? null : `${parsed}px`;
   };
 
-  const resolveRootCompositionElement = (): HTMLElement | null => findRootCompositionEl();
+  const resolveRootCompositionElement = (): HTMLElement | null => findRootCompositionElement();
 
   const applyCompositionSizing = () => {
     const rootEl = resolveRootCompositionElement();
@@ -579,7 +609,7 @@ export function initSandboxRuntimeModular(): void {
     // Mirror the SAME forced values onto documentElement/body (not a second
     // read of the root's own dimensions): once body's own size agrees with
     // the root it contains, `overflow: hidden` clips nothing that matters and
-    // the white-bar guard stays intact. `findRootCompositionEl` above returns
+    // the white-bar guard stays intact. `findRootCompositionElement` returns
     // the outermost `[data-root="true"]` composition by convention, not by a
     // structural guarantee — this only ever affects a document whose author
     // marked a NESTED composition `data-root="true"` too, which nothing in
@@ -629,11 +659,10 @@ export function initSandboxRuntimeModular(): void {
     const rootHeight = parseDimensionPx(rootEl.getAttribute("data-height"));
     if (rootWidth) rootEl.style.width = rootWidth;
     if (rootHeight) rootEl.style.height = rootHeight;
-    const children = Array.from(rootEl.children) as HTMLElement[];
-    for (const el of children) {
+    const clips = (Array.from(rootEl.children) as HTMLElement[]).filter((el) => {
       const tag = el.tagName.toLowerCase();
-      if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
-      if (!el.hasAttribute("data-start")) continue;
+      if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return false;
+      if (!el.hasAttribute("data-start")) return false;
       // Runtime-stamped clips are NOT authored overlay clips. In Studio/preview
       // the runtime stamps `data-start` onto ID'd or GSAP-targeted flow children
       // (a <header>/<footer> in a flex column) so the design panel can discover
@@ -642,7 +671,14 @@ export function initSandboxRuntimeModular(): void {
       // `justify-content: space-between` clusters in the top-left. Leave them in
       // flow so the preview matches the rendered video, which never stamps
       // (production renders run as the top-level page, not in an iframe).
-      if (el.hasAttribute("data-hf-autostamped")) continue;
+      return !el.hasAttribute("data-hf-autostamped");
+    });
+    const displayNoneLiftedToMeasureShown = clips
+      .filter((el) => el.style.getPropertyValue("display") === "none")
+      .map((el) => ({ el, priority: el.style.getPropertyPriority("display") }));
+    for (const { el } of displayNoneLiftedToMeasureShown) el.style.removeProperty("display");
+    for (const el of clips) {
+      const tag = el.tagName.toLowerCase();
       const hasLegacyAnchoredDefaults =
         (el.style.top === "0px" || el.style.top === "0") &&
         (el.style.left === "0px" || el.style.left === "0") &&
@@ -687,22 +723,6 @@ export function initSandboxRuntimeModular(): void {
       if (shouldForceAbsolute) {
         el.style.position = "absolute";
       }
-      const hasExplicitVerticalAnchor =
-        Boolean(el.style.top) ||
-        Boolean(el.style.bottom) ||
-        computed.top !== "auto" ||
-        computed.bottom !== "auto";
-      if (!hasExplicitVerticalAnchor) {
-        el.style.top = "0";
-      }
-      const hasExplicitHorizontalAnchor =
-        Boolean(el.style.left) ||
-        Boolean(el.style.right) ||
-        computed.left !== "auto" ||
-        computed.right !== "auto";
-      if (!hasExplicitHorizontalAnchor) {
-        el.style.left = "0";
-      }
       if (tag !== "audio") {
         const forcedWidth = parseDimensionPx(el.getAttribute("data-width"));
         const forcedHeight = parseDimensionPx(el.getAttribute("data-height"));
@@ -723,6 +743,9 @@ export function initSandboxRuntimeModular(): void {
           el.style.height = "100%";
         }
       }
+    }
+    for (const { el, priority } of displayNoneLiftedToMeasureShown) {
+      el.style.setProperty("display", "none", priority);
     }
   };
 
@@ -896,11 +919,9 @@ export function initSandboxRuntimeModular(): void {
       timelineRegistry: timelines,
       includeAuthoredTimingAttrs: true,
     });
-    // The root's own data-duration is the authored source of truth for
-    // composition length. Without it in the floor, a GSAP timeline that ends
-    // even slightly short of the declared duration shrinks the playable
-    // window — and duration-gated consumers (e.g. the studio's adapter
-    // selection) silently reject the runtime player, losing audio playback.
+    // getSafeTimelineDurationSeconds returns the declared length first; here it only sizes the
+    // stand-in timeline that resolveRootTimelineFromDocument builds for a root timeline with no
+    // length.
     const rootDeclaredSeconds = parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration"));
     const subCompositionEnds: number[] = [];
     const compositionNodes = Array.from(
@@ -1243,6 +1264,16 @@ export function initSandboxRuntimeModular(): void {
     fallback = 0,
     timingRevision?: number,
   ): number => {
+    // The root's declared length is the film's length, as in the render: a longer timeline is cut
+    // off.
+    const declaredDuration = parseStrictFiniteTimingNumber(
+      resolveRootCompositionElement()?.getAttribute("data-duration"),
+    );
+    // Any positive length counts, even one frame: the render accepts it too.
+    if (declaredDuration !== null && declaredDuration > 0) {
+      if (window.__hf?.durationSource) delete window.__hf.durationSource;
+      return declaredDuration;
+    }
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const { media: mediaFloor, authoredComposition: authoredCompositionFloor } =
       resolveDurationFloors(timingRevision);
@@ -1961,14 +1992,10 @@ export function initSandboxRuntimeModular(): void {
       return;
     }
     const rect = rootNode.getBoundingClientRect();
-    const declaredWidth = Number(rootNode.getAttribute("data-width"));
-    const declaredHeight = Number(rootNode.getAttribute("data-height"));
+    const declaredWidth = parseLayoutDimension(rootNode.getAttribute("data-width"));
+    const declaredHeight = parseLayoutDimension(rootNode.getAttribute("data-height"));
     const computedStyle = window.getComputedStyle(rootNode);
-    const hasDeclaredDimensions =
-      Number.isFinite(declaredWidth) &&
-      declaredWidth > 0 &&
-      Number.isFinite(declaredHeight) &&
-      declaredHeight > 0;
+    const hasDeclaredDimensions = declaredWidth !== null && declaredHeight !== null;
     const looksCollapsed =
       rect.width <= 0 ||
       rect.height <= 0 ||
@@ -2054,11 +2081,14 @@ export function initSandboxRuntimeModular(): void {
     window.addEventListener("unhandledrejection", runtimeUnhandledRejectionListener);
   };
 
+  const assetNodesWithDiagnostics = new WeakSet<Element>();
   const installAssetFailureDiagnostics = () => {
     const assetNodes = Array.from(
       document.querySelectorAll("img, video, audio, source, link[rel='stylesheet']"),
     );
     for (const node of assetNodes) {
+      if (assetNodesWithDiagnostics.has(node)) continue;
+      assetNodesWithDiagnostics.add(node);
       const onError = () => {
         if (!isElementNode(node)) {
           return;
@@ -2273,15 +2303,27 @@ export function initSandboxRuntimeModular(): void {
     if (isMediaElement(target)) reportWebAudioRoute(target);
   };
 
+  const unbindMedia = (mediaEl: HTMLMediaElement) => {
+    mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
+    mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
+    mediaEl.removeEventListener("error", onMediaErrorForProxy);
+    metadataBoundMedia.delete(mediaEl);
+  };
   const unbindMediaMetadataListeners = () => {
+    for (const mediaEl of metadataBoundMedia) unbindMedia(mediaEl);
+  };
+  // A swapped-out scene's media is detached but still buffering: stop it and drop its sources.
+  const releaseDetachedMedia = () => {
     for (const mediaEl of metadataBoundMedia) {
-      mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
-      mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
-      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
-      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
-      mediaEl.removeEventListener("error", onMediaErrorForProxy);
+      if (mediaEl.isConnected) continue;
+      unbindMedia(mediaEl);
+      mediaEl.pause();
+      for (const source of mediaEl.querySelectorAll("source")) source.remove();
+      mediaEl.removeAttribute("src");
+      mediaEl.load();
     }
-    metadataBoundMedia.clear();
   };
 
   const bindMediaMetadataListeners = () => {
@@ -2397,15 +2439,28 @@ export function initSandboxRuntimeModular(): void {
     timedClipIsLeaf = new WeakMap<Element, boolean>();
   };
 
-  // Which elements carry a `display:none` the visibility pass itself applied, so
-  // the un-hide branch can undo exactly that instead of re-deriving
-  // `isTimedClipInFlow`. That derived answer can flip between the hide and the
-  // show pass for the SAME element — `applyClipLayout` force-absolutizes a
-  // root-level clip after an earlier pass already cached it as in-flow and hid
-  // it — and the corrected, no-longer-in-flow reading then skips the removal,
-  // stranding the clip hidden for the rest of the render.
-  const timedClipDisplayNoneApplied = new WeakSet<HTMLElement>();
-  const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
+  // The author's inline display (value and priority) under each `display:none` the
+  // visibility pass applied, so showing the element puts exactly that back. Keyed on
+  // what was applied, not on `isTimedClipInFlow`: that answer can flip between the hide
+  // and the show pass once `applyClipLayout` force-absolutizes the clip.
+  const displayBeforeHide = new WeakMap<HTMLElement, { value: string; priority: string }>();
+  const hideByDisplay = (el: HTMLElement, plainNoneMayBeLeftover: boolean) => {
+    if (!displayBeforeHide.has(el)) {
+      const value = el.style.getPropertyValue("display");
+      const priority = el.style.getPropertyPriority("display");
+      // On the timed hide, a plain none may be a hide left behind (a Studio reveal restoring ours).
+      const isLeftoverHide = plainNoneMayBeLeftover && value === "none" && !priority;
+      displayBeforeHide.set(el, isLeftoverHide ? { value: "", priority: "" } : { value, priority });
+    }
+    el.style.display = "none";
+  };
+  const restoreDisplay = (el: HTMLElement) => {
+    const before = displayBeforeHide.get(el);
+    if (!before) return;
+    displayBeforeHide.delete(el);
+    if (before.value) el.style.setProperty("display", before.value, before.priority);
+    else el.style.removeProperty("display");
+  };
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
   // WebAudio playback so the hidden clip's source is dropped/restored mid-
@@ -2430,19 +2485,30 @@ export function initSandboxRuntimeModular(): void {
   // export time, per B4); this just keeps the live WebAudio group bus in
   // sync with a `data-hidden` toggle made mid-playback.
   const groupHiddenLast = new WeakMap<Element, boolean>();
-  /** Set when a `data-hidden` mutation could have touched a BUS, so the sweep
-   *  below is not a whole-document query on every visibility pass. Same
-   *  dirty-flag shape as `hiddenAudioDirty` right above it. */
-  let groupMuteDirty = true;
-  const syncAudioGroupMute = () => {
-    if (!groupMuteDirty) return;
-    groupMuteDirty = false;
+  const groupHasUncapturedMember = (groupId: string, currentTime: number): boolean => {
+    for (const el of document.querySelectorAll("audio[data-start]")) {
+      if (!isMediaElement(el) || audioGroupOf(el) !== groupId) continue;
+      if (webAudio.routesElement(el) || isSilencedByHidden(el)) continue;
+      const start = resolveAbsoluteMediaStartSeconds(el);
+      const duration = parseStrictFiniteTimingNumber(el.dataset.duration);
+      const end = duration != null && duration > 0 ? start + duration : Infinity;
+      if (Number.isFinite(start) && currentTime < end) return true;
+    }
+    return false;
+  };
+  /** The bus gain owns a group's mute; true when an unmute leaves a member still to play outside the graph. */
+  const syncAudioGroupMute = (currentTime: number): boolean => {
+    let needsCapture = false;
     for (const groupEl of document.querySelectorAll(HF_AUDIO_GROUP_TAG)) {
       const hidden = groupEl.hasAttribute("data-hidden");
-      if (groupHiddenLast.get(groupEl) === hidden) continue;
+      const last = groupHiddenLast.get(groupEl);
+      if (last === hidden) continue;
       groupHiddenLast.set(groupEl, hidden);
-      if (groupEl.id) webAudio.setGroupMuted(groupEl.id, hidden);
+      if (!groupEl.id) continue;
+      webAudio.setGroupMuted(groupEl.id, hidden);
+      if (last && !hidden && groupHasUncapturedMember(groupEl.id, currentTime)) needsCapture = true;
     }
+    return needsCapture;
   };
 
   const applyTimedElementVisibility = (
@@ -2462,12 +2528,10 @@ export function initSandboxRuntimeModular(): void {
 
       if (rawNode.hasAttribute("data-hidden")) {
         if (!dataHiddenDisplayNodes.has(rawNode)) {
-          dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
           dataHiddenDisplayNodes.add(rawNode);
           if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
-          groupMuteDirty = true;
         }
-        rawNode.style.display = "none";
+        hideByDisplay(rawNode, false);
         if (isVideoElement(rawNode) || isImageElement(rawNode)) {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
@@ -2475,16 +2539,9 @@ export function initSandboxRuntimeModular(): void {
       }
 
       if (dataHiddenDisplayNodes.has(rawNode)) {
-        const previousDisplay = dataHiddenDisplayRestores.get(rawNode);
-        if (previousDisplay) {
-          rawNode.style.display = previousDisplay;
-        } else {
-          rawNode.style.removeProperty("display");
-        }
-        dataHiddenDisplayRestores.delete(rawNode);
+        restoreDisplay(rawNode);
         dataHiddenDisplayNodes.delete(rawNode);
         if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
-        groupMuteDirty = true;
       }
 
       let isVisibleNow = isRuntimeElementVisibleAt(rawNode, {
@@ -2526,13 +2583,9 @@ export function initSandboxRuntimeModular(): void {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
       if (isVisibleNow) {
-        if (timedClipDisplayNoneApplied.has(rawNode)) {
-          rawNode.style.removeProperty("display");
-          timedClipDisplayNoneApplied.delete(rawNode);
-        }
+        restoreDisplay(rawNode);
       } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
-        rawNode.style.display = "none";
-        timedClipDisplayNoneApplied.add(rawNode);
+        hideByDisplay(rawNode, true);
       }
     }
     if (decidedTimedClip && revealTimedClipsAfterFirstPass()) colorGradingRuntime?.refresh();
@@ -2540,12 +2593,15 @@ export function initSandboxRuntimeModular(): void {
     // this reschedule exists to re-run are what change the active set, so
     // firing it otherwise was an audible stop-and-restart across the whole mix
     // that rebuilt an identical set.
-    if (hiddenAudioDirty && clock.isPlaying()) {
+    const groupNeedsCapture = syncAudioGroupMute(currentTime);
+    if ((hiddenAudioDirty || groupNeedsCapture) && clock.isPlaying()) {
       webAudio.stopAll();
+      for (const el of document.querySelectorAll("audio[data-start]")) {
+        if (isMediaElement(el) && isSilencedByHidden(el)) el.volume = 0;
+      }
       scheduleWebAudioForActiveClips();
     }
     hiddenAudioDirty = false;
-    syncAudioGroupMute();
   };
 
   // Scope 2 of 3 (see `withTimingResolver`). One resolver for the whole
@@ -2841,6 +2897,8 @@ export function initSandboxRuntimeModular(): void {
       source: "hf-preview",
       type: "state",
       frame,
+      currentTime: state.currentTime || 0,
+      ended: clock.reachedEnd(),
       isPlaying: state.isPlaying,
       muted: state.bridgeMuted,
       playbackRate: state.playbackRate,
@@ -2869,11 +2927,9 @@ export function initSandboxRuntimeModular(): void {
     // Post resolved stage size so the parent can scale the iframe container
     const stageSizeRootEl = resolveRootCompositionElement();
     if (stageSizeRootEl) {
-      const w = parseDimensionPx(stageSizeRootEl.getAttribute("data-width"));
-      const h = parseDimensionPx(stageSizeRootEl.getAttribute("data-height"));
-      const width = w ? parseInt(w, 10) : 0;
-      const height = h ? parseInt(h, 10) : 0;
-      if (width > 0 && height > 0) {
+      const width = parseCompositionDimension(stageSizeRootEl.getAttribute("data-width"));
+      const height = parseCompositionDimension(stageSizeRootEl.getAttribute("data-height"));
+      if (width !== null && height !== null) {
         postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
       }
     }
@@ -3008,6 +3064,18 @@ export function initSandboxRuntimeModular(): void {
     (err) => swallow("runtime.init.buildReady", err),
   );
 
+  // Passes that must see scene DOM, which arrives after init: when scenes mount, or when one is
+  // swapped. Resolves when caption overrides have landed.
+  const settleSceneDom = (): Promise<void> => {
+    bindMediaMetadataListeners();
+    installAssetFailureDiagnostics();
+    const captionsApplied = applyCaptionOverrides();
+    // Per-instance scoped values: data-var-* / --{id} bindings inside scenes. Idempotent.
+    applyVariableBindings(document);
+    // An unregistered vfx chain paints nothing and logs nothing, so re-scan the new DOM.
+    initVfx(document.body, state.canonicalFps);
+    return captionsApplied;
+  };
   if (!externalCompositionsReady) {
     const compositionLoaderParams = {
       injectedStyles: state.injectedCompStyles,
@@ -3033,22 +3101,201 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
-        bindMediaMetadataListeners();
-        installAssetFailureDiagnostics();
-        applyCaptionOverrides();
-        // Runtime-loaded sub-compositions (and their per-instance scoped
-        // values) don't exist at the init-time binding pass — re-apply so
-        // data-var-* / --{id} bindings inside them resolve. Idempotent.
-        applyVariableBindings(document);
-        // A vfx host inside a sub-composition enters the DOM only now, so the
-        // init-time pass below never saw it. Re-scan before readiness is
-        // published: an unregistered chain paints nothing and logs nothing.
-        initVfx(document.body, state.canonicalFps);
+        void settleSceneDom();
         maybePublishRenderReady();
       });
   } else {
     // No external/inline compositions to load — apply caption overrides immediately
-    applyCaptionOverrides();
+    void applyCaptionOverrides();
+  }
+
+  const sceneUrls = (parts: Element[]): Set<string> => {
+    const urls = new Set<string>();
+    const addCssUrls = (css: string | null) => {
+      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)|@import\s+(['"])(.*?)\3/gi))
+        urls.add(m[2] ?? m[4]!);
+      for (const set of (css ?? "").matchAll(/image-set\((?:[^()]|\([^()]*\))*\)/gi))
+        for (const m of set[0].matchAll(/(['"])(.*?)\1/g)) urls.add(m[2]!);
+    };
+    for (const part of parts) {
+      if (part.tagName === "STYLE") addCssUrls(part.textContent);
+      if (part.tagName === "STYLE" || part.tagName === "SCRIPT") continue;
+      for (const el of [part, ...part.querySelectorAll("*")]) {
+        const attrs = MEDIA_URL_ATTRS.get(el.localName) ?? [];
+        const values = [
+          unproxiedMediaSrc(el),
+          ...[...attrs, "poster", "srcset"].map((a) => el.getAttribute(a)),
+        ];
+        for (const value of values) if (value) urls.add(value);
+        addCssUrls(el.getAttribute("style"));
+      }
+    }
+    return urls;
+  };
+  let sceneSwapGeneration = 0;
+  // A video or audio the edit left as written keeps playing: the old element takes its copy's place.
+  const keepUnchangedMedia = (oldHost: Element, host: Element) => {
+    const byShape = new Map<string, Element[]>();
+    for (const el of oldHost.querySelectorAll("video, audio")) {
+      const shape = authoredMedia.get(el);
+      // Its grading canvas sits beside it in the old scene and cannot follow it.
+      if (!shape || colorGradingRuntime?.isGraded(el)) continue;
+      byShape.set(shape, [...(byShape.get(shape) ?? []), el]);
+    }
+    for (const el of host.querySelectorAll("video, audio")) {
+      const kept = byShape.get(authoredShape(el))?.shift();
+      if (kept) el.replaceWith(kept);
+    }
+  };
+  // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
+  // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
+  const swapScenes = async (html: string): Promise<void> => {
+    const generation = sceneSwapGeneration;
+    const next = new DOMParser().parseFromString(html, "text/html");
+    const liveParts = readSceneParts(document);
+    const nextParts = readSceneParts(next);
+    if (!liveParts || !nextParts) throw new Error("no scene manifest");
+    if (liveParts.shared !== nextParts.shared)
+      throw new Error("the film changed outside its scenes");
+    const names = Object.keys(nextParts.scenes);
+    if (
+      names.length !== Object.keys(liveParts.scenes).length ||
+      names.some((name) => !(name in liveParts.scenes))
+    ) {
+      throw new Error("scenes were added or removed");
+    }
+    const changed = names.filter((name) => nextParts.scenes[name] !== liveParts.scenes[name]);
+    if (changed.length === 0) throw new Error("no scene changed");
+    const swaps = changed.map((name) => {
+      const partsIn = (doc: Document) =>
+        Array.from(doc.querySelectorAll(`[${SCENE_PART_ATTR}="${CSS.escape(name)}"]`));
+      const isHost = (el: Element) => el.tagName !== "STYLE" && el.tagName !== "SCRIPT";
+      const oldParts = partsIn(document);
+      const newParts = partsIn(next);
+      const oldHosts = oldParts.filter(isHost);
+      const newHosts = newParts.filter(isHost);
+      const oldHost = oldHosts[0];
+      const newHost = newHosts[0];
+      if (!oldHost || !newHost || oldHosts.length > 1 || newHosts.length > 1) {
+        throw new Error(`scene ${name} cannot be swapped: it has no single host`);
+      }
+      // A duplicated scene's script also registers under its shared original id.
+      if (oldHost.hasAttribute("data-hf-original-composition-id")) {
+        throw new Error(`scene ${name} cannot be swapped: it is a duplicated instance`);
+      }
+      const refusal =
+        oldHost.getAttribute(SCENE_NO_SWAP_ATTR) ?? newHost.getAttribute(SCENE_NO_SWAP_ATTR);
+      if (refusal !== null) throw new Error(`scene ${name} cannot be swapped: ${refusal}`);
+      const loaded = sceneUrls(oldParts);
+      if ([...sceneUrls(newParts)].some((url) => !loaded.has(url))) {
+        throw new Error(
+          `scene ${name} cannot be swapped: it loads media this scene has not loaded`,
+        );
+      }
+      const styleCount = (parts: Element[]) => parts.filter((el) => el.tagName === "STYLE").length;
+      if (styleCount(oldParts) !== styleCount(newParts)) {
+        throw new Error(`scene ${name} cannot be swapped: its styles moved`);
+      }
+      return { oldParts, newParts, oldHost, newHost };
+    });
+    // Fetched before the first write, so a stalled or failed request leaves the page as it was.
+    const captionOverrides = swaps.some(({ newHost }) => newHost.querySelector(".caption-group"))
+      ? await fetchCaptionOverrides()
+      : [];
+    if (state.tornDown) throw new Error("the preview was torn down during the swap");
+    if (generation !== sceneSwapGeneration) {
+      throw new Error("the preview changed while this swap waited");
+    }
+    sceneSwapGeneration += 1;
+    const timelines = (window.__timelines ??= {}) as Record<
+      string,
+      RuntimeTimelineLike | undefined
+    >;
+    const root = state.capturedTimeline as
+      | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
+      | null;
+    // Overrides re-dim every word they touch, so only the swapped scenes' captions get them.
+    const captionHosts: Element[] = [];
+    const swappedHosts: Element[] = [];
+    for (const { oldParts, newParts, oldHost, newHost } of swaps) {
+      for (const el of [oldHost, ...oldHost.querySelectorAll("[data-composition-id]")]) {
+        const id = el.getAttribute("data-composition-id");
+        const previous = id ? timelines[id] : undefined;
+        if (!id || !previous) continue;
+        const old = previous as { revert?: () => void; kill?: () => void };
+        if (old.revert) old.revert();
+        else previous.totalTime?.(0, true);
+        root?.remove?.(previous);
+        // revert() has already killed it; a second kill() fires onInterrupt again.
+        if (!old.revert) old.kill?.();
+        delete timelines[id];
+      }
+      // Each new style takes its own old one's place: same-named @keyframes resolve by order.
+      const newStyles = newParts.filter((el) => el.tagName === "STYLE");
+      oldParts
+        .filter((el) => el.tagName === "STYLE")
+        .forEach((el, i) => el.replaceWith(document.importNode(newStyles[i]!, true)));
+      for (const el of oldParts) if (el !== oldHost) el.remove();
+      const host = document.importNode(newHost, true);
+      keepUnchangedMedia(oldHost, host);
+      oldHost.replaceWith(host);
+      swappedHosts.push(host);
+      if (host.querySelector(".caption-group")) captionHosts.push(host);
+      for (const el of newParts) {
+        if (el.tagName !== "SCRIPT") continue;
+        // An imported <script> never runs; a created one does.
+        const script = document.createElement("script");
+        for (const attr of Array.from(el.attributes)) script.setAttribute(attr.name, attr.value);
+        script.textContent = el.textContent;
+        document.body.appendChild(script);
+      }
+      for (const el of host.querySelectorAll("video, audio"))
+        if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
+    }
+    document
+      .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
+      ?.setAttribute("content", JSON.stringify(nextParts));
+    // Boot's order: bindings settle each src before media binding proxies and loads it.
+    for (const host of swappedHosts) applyVariableBindings(document, host);
+    bindMediaMetadataListeners();
+    // Rewound before the rewrite, so each rewritten tween re-reads its start from the reset word.
+    const rewindCaptionTimelines = () => {
+      for (const host of captionHosts) {
+        for (const el of [host, ...host.querySelectorAll("[data-composition-id]")]) {
+          const id = el.getAttribute("data-composition-id");
+          if (id) timelines[id]?.totalTime?.(0, true);
+        }
+      }
+    };
+    initVfx(document.body, state.canonicalFps);
+    applyFetchedCaptionOverrides(captionOverrides, captionHosts, rewindCaptionTimelines);
+    releaseDetachedMedia();
+    childrenBound = false;
+    bindRootTimelineIfAvailable();
+    // Probed before the scene was nested, so the new media found no volume envelope.
+    for (const host of swappedHosts) {
+      for (const el of host.querySelectorAll<HTMLMediaElement>("video, audio")) {
+        volumeKeyframeCache.delete(el);
+        probeAndCacheVolumeKeyframes(el);
+      }
+    }
+    const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (duration > 0) clock.setDuration(duration);
+    // Adapters drive only the elements they found at discover time; the new scene's are new.
+    runAdapters("discover", state.currentTime);
+    // The rebind above skips these when the root timeline object did not change.
+    applyPositionEdits(document);
+    // Redraw the current frame as a seek does, forcing a render at an unchanged time.
+    transport.seek(state.currentTime, { keepPlaying: true });
+    syncTimedElementVisibility(state.currentTime);
+    postTimeline();
+  };
+  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
+  if (readSceneParts(document)) {
+    window.__hfSwapScenes = swapScenes;
+    registerRuntimeCleanup(() => {
+      delete window.__hfSwapScenes;
+    });
   }
 
   const picker = createPickerModule({
@@ -3262,8 +3509,7 @@ export function initSandboxRuntimeModular(): void {
 
   emitAnalyticsEvent("composition_loaded", {
     duration: player.getDuration(),
-    compositionId:
-      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null,
+    compositionId: findRootCompositionElement()?.getAttribute("data-composition-id") ?? null,
   });
 
   state.deterministicAdapters = [
@@ -4088,7 +4334,8 @@ export function initSandboxRuntimeModular(): void {
             )
           : Promise.resolve(null);
       void capture.then((scheduled) => {
-        if (scheduled || !clock.isPlaying()) return;
+        const replacedByNewerPass = gen !== webAudio.currentGeneration();
+        if (scheduled || !clock.isPlaying() || replacedByNewerPass) return;
         const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
         // Deliberately the FX/automation pair and NOT
         // `nativeUnexpressibleProcessing()`, which this route's diagnostic uses.

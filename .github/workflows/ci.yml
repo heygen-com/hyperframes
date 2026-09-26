@@ -545,6 +545,8 @@ jobs:
       - name: Verify standalone skill imports
         run: bun test scripts/check-skill-import-boundaries.test.mjs
       - name: Discover and run skills tests
+        env:
+          HYPERFRAMES_MEDIA_HOME_REQUIRED: "1"
         # We expand the test list via bash so the job fails loudly when the
         # matcher comes back empty, rather than silently no-op'ing (which
         # would defeat the whole point of this job).
