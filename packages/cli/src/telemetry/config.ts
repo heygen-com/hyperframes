@@ -656,9 +656,7 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,
     skillsRemovedCount: parsed.skillsRemovedCount,
-    // Consent, so it survives the run that recorded it. Undefined stays
-    // undefined on purpose: it means never asked, which is not the same as no.
-    localEmbeddingEnabled: parsed.localEmbeddingEnabled,
+    localEmbeddingEnabled: consentFrom(parsed.localEmbeddingEnabled),
   };
 }
 
@@ -846,10 +844,14 @@ export function updateLocalModelConsent(
   }
 }
 
+/** Absent means never asked; anything present but not `true` counts as a no. */
+function consentFrom(value: unknown): boolean | undefined {
+  return value === undefined ? undefined : value === true;
+}
+
 function localModelConsentOnDisk(): boolean | undefined {
   try {
-    const value = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).localEmbeddingEnabled;
-    return typeof value === "boolean" ? value : undefined;
+    return consentFrom(JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).localEmbeddingEnabled);
   } catch (error) {
     // A settings file that exists but cannot be read may hold a no; only a missing one was never asked.
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : false;

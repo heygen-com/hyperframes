@@ -55,6 +55,10 @@ describe("a settings file that exists but cannot be read", () => {
       () => writeFileSync(join(configDir, "config.json"), '{"localEmbeddingEnabled": fal'),
     ],
     ["not a file", () => mkdirSync(join(configDir, "config.json"))],
+    [
+      "its answer is not a yes or no",
+      () => writeFileSync(join(configDir, "config.json"), '{"localEmbeddingEnabled": "false"}'),
+    ],
   ])("counts as a no when %s, never as a question not yet asked", async (_, make) => {
     make();
     const { readConfig, updateLocalModelConsent } = await import("./config.js");

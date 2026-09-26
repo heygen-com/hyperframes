@@ -893,6 +893,9 @@ describe("updateLocalModelConsent fails closed to the answer on disk", () => {
     vi.mocked(fs.openSync).mockClear();
 
     expect(updateLocalModelConsent(() => true)).toBe(true);
-    expect(vi.mocked(fs.openSync).mock.calls.filter(([, flag]) => flag === "wx")).toHaveLength(1);
+    const lockTakes = vi
+      .mocked(fs.openSync)
+      .mock.calls.filter(([path, flag]) => flag === "wx" && path === `${CONFIG_PATH}.lock`);
+    expect(lockTakes).toHaveLength(1);
   });
 });

@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { spawn } from "node:child_process";
 import { test } from "node:test";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,30 +40,34 @@ test("takes over a lock left behind by a process that died holding it", () => {
   }
 });
 
-test("puts back a live lock that replaced the stale one just before the takeover", () => {
+test("waits for another process's takeover of a stale lock instead of racing it", async () => {
   const { lock, cleanup } = lockIn();
   try {
     fs.writeFileSync(lock, "dead");
     const past = new Date(Date.now() - 60_000);
     fs.utimesSync(lock, past, past);
-    let restored;
-    const racing = {
-      ...fs,
-      renameSync(from, to) {
-        if (from === lock && !restored) {
-          fs.rmSync(lock);
-          fs.writeFileSync(lock, "live");
-        }
-        fs.renameSync(from, to);
-      },
-      linkSync(from, to) {
-        fs.linkSync(from, to);
-        restored = fs.readFileSync(lock, "utf8");
+    // Another process holds the reaper, replaces the stale lock with its own, then releases after a pause.
+    const script = `
+      const fs = require("fs");
+      const lock = process.argv[1];
+      fs.writeFileSync(lock + ".reap", "other", { flag: "wx" });
+      process.stdout.write("reaping\\n");
+      setTimeout(() => {
         fs.rmSync(lock);
-      },
-    };
-    withFileLock(lock, racing, () => {});
-    assert.equal(restored, "live");
+        fs.writeFileSync(lock, "other", { flag: "wx" });
+        fs.rmSync(lock + ".reap");
+        setTimeout(() => {
+          fs.writeFileSync(lock + ".released", String(Date.now()));
+          fs.rmSync(lock);
+        }, 300);
+      }, 300);`;
+    const other = spawn(process.execPath, ["-e", script, lock]);
+    await new Promise((ready) => other.stdout.once("data", ready));
+
+    const ranAt = withFileLock(lock, fs, () => Date.now());
+
+    assert.ok(ranAt >= Number(fs.readFileSync(`${lock}.released`, "utf8")));
+    await new Promise((exited) => other.once("exit", exited));
   } finally {
     cleanup();
   }

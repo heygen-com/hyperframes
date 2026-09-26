@@ -104,7 +104,7 @@ function launchDetachedInstall(
     const VERSION = ${JSON.stringify(version)};
     const BIN = ${JSON.stringify(invocation.bin)};
     const ARGS = ${JSON.stringify(invocation.args)};
-    ${withFileLock.toString()}
+    const withFileLock = ${withFileLock.toString()};
     const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
     execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => withLock(() => {
       let cfg = {};
